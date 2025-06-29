@@ -54,3 +54,7 @@ htmlcov/
 kubeconfig*
 *.key
 *.pem
+
+# Submodules and external repos
+gitignore/netbox-docker/
+gitignore/

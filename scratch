@@ -25,3 +25,14 @@ The hedgehog CR's that should be included in the initial scope are:
 
 The hedgehog documentation can be found here: https://hedgehog.io/docs/hedgehog/latest/
 The hedgehog documentation for the API for these cr's can be found here: https://docs.hedgehog.cloud/latest/reference/fabric-api/
+
+git clone -b release https://github.com/netbox-community/netbox-docker.git
+cd netbox-docker
+tee docker-compose.override.yml <<EOF
+services:
+  netbox:
+    ports:
+      - 8000:8080
+EOF
+docker compose pull
+docker compose up
