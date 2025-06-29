@@ -1,0 +1,481 @@
+{% extends "netbox_hedgehog/base.html" %}
+{% load i18n %}
+{% load static %}
+
+{% block title %}Create VPC{% endblock %}
+
+{% block breadcrumbs %}
+    <li class="breadcrumb-item">
+        <a href="{% url 'plugins:netbox_hedgehog:vpc_list' %}">VPCs</a>
+    </li>
+    <li class="breadcrumb-item active">Create</li>
+{% endblock %}
+
+{% block hedgehog_content %}
+    <div class="row">
+        <div class="col-lg-8">
+            <div class="card">
+                <div class="card-header">
+                    <h5 class="card-title mb-0">
+                        <i class="mdi mdi-cloud-plus"></i> Create New VPC
+                    </h5>
+                </div>
+                <div class="card-body">
+                    <form id="vpc-create-form" method="post">
+                        {% csrf_token %}
+                        
+                        <!-- Basic Information -->
+                        <div class="row mb-3">
+                            <div class="col-md-6">
+                                <label for="id_name" class="form-label">
+                                    VPC Name <span class="text-danger">*</span>
+                                </label>
+                                <input type="text" class="form-control" id="id_name" name="name" 
+                                       maxlength="11" required 
+                                       placeholder="e.g., web-vpc">
+                                <div class="form-text">
+                                    Maximum 11 characters for Kubernetes compatibility
+                                </div>
+                            </div>
+                            <div class="col-md-6">
+                                <label for="id_fabric" class="form-label">
+                                    Fabric <span class="text-danger">*</span>
+                                </label>
+                                <select class="form-select" id="id_fabric" name="fabric" required>
+                                    <option value="">Select a fabric...</option>
+                                    {% for fabric in fabrics %}
+                                        <option value="{{ fabric.pk }}" 
+                                                {% if fabric.pk|stringformat:"s" == selected_fabric %}selected{% endif %}>
+                                            {{ fabric.name }}
+                                            {% if fabric.description %} - {{ fabric.description|truncatechars:50 }}{% endif %}
+                                        </option>
+                                    {% endfor %}
+                                </select>
+                            </div>
+                        </div>
+
+                        <div class="mb-3">
+                            <label for="id_description" class="form-label">Description</label>
+                            <textarea class="form-control" id="id_description" name="description" 
+                                      rows="3" placeholder="Optional description for this VPC"></textarea>
+                        </div>
+
+                        <!-- Template Selection -->
+                        <div class="mb-4">
+                            <label class="form-label">VPC Template <span class="text-danger">*</span></label>
+                            <div class="row">
+                                {% for template_id, template in templates.items %}
+                                    <div class="col-md-6 mb-3">
+                                        <div class="card template-card" data-template="{{ template_id }}">
+                                            <div class="card-body">
+                                                <div class="form-check">
+                                                    <input class="form-check-input" type="radio" 
+                                                           name="template" id="template_{{ template_id }}" 
+                                                           value="{{ template_id }}"
+                                                           {% if template_id == 'basic' %}checked{% endif %}>
+                                                    <label class="form-check-label" for="template_{{ template_id }}">
+                                                        <strong>{{ template.name }}</strong>
+                                                    </label>
+                                                </div>
+                                                <p class="card-text small text-muted mt-2">
+                                                    {{ template.description }}
+                                                </p>
+                                                <div class="template-details">
+                                                    <span class="badge bg-primary">{{ template.subnets }} subnet{{ template.subnets|pluralize }}</span>
+                                                    {% if template.dhcp %}
+                                                        <span class="badge bg-success">DHCP</span>
+                                                    {% endif %}
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                {% endfor %}
+                            </div>
+                            <input type="hidden" name="template" id="selected_template" value="basic">
+                        </div>
+
+                        <!-- Namespace Selection -->
+                        <div class="row mb-3" id="namespace-selection" style="display: none;">
+                            <div class="col-md-6">
+                                <label for="id_ipv4_namespace" class="form-label">IPv4 Namespace</label>
+                                <select class="form-select" id="id_ipv4_namespace" name="ipv4_namespace">
+                                    <option value="">Default</option>
+                                    {% for ns in ipv4_namespaces %}
+                                        <option value="{{ ns.pk }}">{{ ns.name }}</option>
+                                    {% endfor %}
+                                </select>
+                            </div>
+                            <div class="col-md-6">
+                                <label for="id_vlan_namespace" class="form-label">VLAN Namespace</label>
+                                <select class="form-select" id="id_vlan_namespace" name="vlan_namespace">
+                                    <option value="">Default</option>
+                                    {% for ns in vlan_namespaces %}
+                                        <option value="{{ ns.pk }}">{{ ns.name }}</option>
+                                    {% endfor %}
+                                </select>
+                            </div>
+                        </div>
+
+                        <!-- Template Configuration -->
+                        <div id="template-config" class="mb-4">
+                            <h6>Configuration</h6>
+                            <div class="row">
+                                <div class="col-md-6">
+                                    <label for="id_base_subnet" class="form-label">Base Network</label>
+                                    <input type="text" class="form-control" id="id_base_subnet" name="base_subnet" 
+                                           value="10.100.0.0/16" placeholder="10.100.0.0/16">
+                                    <div class="form-text">Base network for subnet allocation</div>
+                                </div>
+                                <div class="col-md-6">
+                                    <label for="id_base_vlan" class="form-label">Starting VLAN</label>
+                                    <input type="number" class="form-control" id="id_base_vlan" name="base_vlan" 
+                                           value="1100" min="1" max="4094" placeholder="1100">
+                                    <div class="form-text">Starting VLAN ID for allocation</div>
+                                </div>
+                            </div>
+                            <div class="form-check mt-3">
+                                <input class="form-check-input" type="checkbox" id="id_enable_dhcp" 
+                                       name="enable_dhcp" checked>
+                                <label class="form-check-label" for="id_enable_dhcp">
+                                    Enable DHCP on all subnets
+                                </label>
+                            </div>
+                        </div>
+
+                        <!-- Custom Configuration (hidden by default) -->
+                        <div id="custom-config" style="display: none;">
+                            <h6>Custom Subnet Configuration</h6>
+                            <div id="subnet-forms">
+                                <!-- Dynamic subnet forms will be added here -->
+                            </div>
+                            <button type="button" class="btn btn-outline-primary btn-sm" id="add-subnet">
+                                <i class="mdi mdi-plus"></i> Add Subnet
+                            </button>
+                        </div>
+
+                        <!-- Options -->
+                        <div class="form-check mb-4">
+                            <input class="form-check-input" type="checkbox" id="id_apply_immediately" 
+                                   name="apply_immediately" checked>
+                            <label class="form-check-label" for="id_apply_immediately">
+                                Apply to Kubernetes cluster immediately
+                            </label>
+                        </div>
+
+                        <!-- Actions -->
+                        <div class="d-flex gap-2">
+                            <button type="submit" class="btn btn-success">
+                                <i class="mdi mdi-check"></i> Create VPC
+                            </button>
+                            <a href="{% url 'plugins:netbox_hedgehog:vpc_list' %}" class="btn btn-secondary">
+                                <i class="mdi mdi-cancel"></i> Cancel
+                            </a>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+
+        <!-- Template Preview -->
+        <div class="col-lg-4">
+            <div class="card">
+                <div class="card-header">
+                    <h5 class="card-title mb-0">
+                        <i class="mdi mdi-eye"></i> Template Preview
+                    </h5>
+                </div>
+                <div class="card-body">
+                    <div id="template-preview">
+                        <!-- Preview will be populated by JavaScript -->
+                    </div>
+                </div>
+            </div>
+
+            <!-- Template Examples -->
+            <div class="card mt-3">
+                <div class="card-header">
+                    <h5 class="card-title mb-0">
+                        <i class="mdi mdi-information-outline"></i> Template Examples
+                    </h5>
+                </div>
+                <div class="card-body">
+                    <div id="template-examples">
+                        {% for template_id, template in templates.items %}
+                            {% if template.example %}
+                                <div class="template-example" data-template="{{ template_id }}" 
+                                     {% if template_id != 'basic' %}style="display: none;"{% endif %}>
+                                    <h6>{{ template.name }}</h6>
+                                    <div class="small">
+                                        {% for subnet_name, subnet_config in template.example.items %}
+                                            <div class="border rounded p-2 mb-2">
+                                                <strong>{{ subnet_name }}</strong><br>
+                                                <span class="text-muted">{{ subnet_config.subnet }}</span><br>
+                                                <span class="badge bg-info">VLAN {{ subnet_config.vlan }}</span>
+                                                {% if subnet_config.dhcp.enable %}
+                                                    <span class="badge bg-success">DHCP</span>
+                                                {% endif %}
+                                            </div>
+                                        {% endfor %}
+                                    </div>
+                                </div>
+                            {% endif %}
+                        {% endfor %}
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+{% endblock %}
+
+{% block hedgehog_javascript %}
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const form = document.getElementById('vpc-create-form');
+    const templateCards = document.querySelectorAll('.template-card');
+    const templateConfig = document.getElementById('template-config');
+    const customConfig = document.getElementById('custom-config');
+    const namespaceSelection = document.getElementById('namespace-selection');
+    const fabricSelect = document.getElementById('id_fabric');
+    const subnetFormContainer = document.getElementById('subnet-forms');
+    let subnetFormCount = 0;
+
+    // Template selection
+    templateCards.forEach(card => {
+        card.addEventListener('click', function() {
+            const templateId = this.dataset.template;
+            const radioBtn = this.querySelector('input[type="radio"]');
+            
+            // Update selection
+            templateCards.forEach(c => c.classList.remove('border-primary'));
+            this.classList.add('border-primary');
+            radioBtn.checked = true;
+            document.getElementById('selected_template').value = templateId;
+            
+            // Show/hide configuration sections
+            if (templateId === 'custom') {
+                templateConfig.style.display = 'none';
+                customConfig.style.display = 'block';
+                if (subnetFormCount === 0) {
+                    addSubnetForm();
+                }
+            } else {
+                templateConfig.style.display = 'block';
+                customConfig.style.display = 'none';
+            }
+            
+            // Update preview
+            updateTemplatePreview(templateId);
+            updateTemplateExamples(templateId);
+        });
+    });
+
+    // Fabric selection change
+    fabricSelect.addEventListener('change', function() {
+        if (this.value) {
+            namespaceSelection.style.display = 'block';
+            // In a real implementation, this would load namespaces via AJAX
+        } else {
+            namespaceSelection.style.display = 'none';
+        }
+    });
+
+    // Add subnet form for custom configuration
+    document.getElementById('add-subnet').addEventListener('click', addSubnetForm);
+
+    function addSubnetForm() {
+        const formHtml = `
+            <div class="subnet-form border rounded p-3 mb-3" data-index="${subnetFormCount}">
+                <div class="d-flex justify-content-between align-items-center mb-2">
+                    <h6 class="mb-0">Subnet ${subnetFormCount + 1}</h6>
+                    <button type="button" class="btn btn-sm btn-outline-danger remove-subnet">
+                        <i class="mdi mdi-delete"></i>
+                    </button>
+                </div>
+                <div class="row">
+                    <div class="col-md-6">
+                        <label class="form-label">Name</label>
+                        <input type="text" class="form-control" name="subnet_${subnetFormCount}_name" 
+                               placeholder="e.g., web, db">
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label">CIDR</label>
+                        <input type="text" class="form-control" name="subnet_${subnetFormCount}_subnet" 
+                               placeholder="10.100.1.0/24">
+                    </div>
+                </div>
+                <div class="row mt-2">
+                    <div class="col-md-6">
+                        <label class="form-label">Gateway</label>
+                        <input type="text" class="form-control" name="subnet_${subnetFormCount}_gateway" 
+                               placeholder="10.100.1.1">
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label">VLAN</label>
+                        <input type="number" class="form-control" name="subnet_${subnetFormCount}_vlan" 
+                               min="1" max="4094" placeholder="1100">
+                    </div>
+                </div>
+                <div class="form-check mt-2">
+                    <input class="form-check-input" type="checkbox" 
+                           name="subnet_${subnetFormCount}_dhcp" checked>
+                    <label class="form-check-label">Enable DHCP</label>
+                </div>
+            </div>
+        `;
+        
+        subnetFormContainer.insertAdjacentHTML('beforeend', formHtml);
+        
+        // Add remove listener
+        const removeBtn = subnetFormContainer.lastElementChild.querySelector('.remove-subnet');
+        removeBtn.addEventListener('click', function() {
+            this.closest('.subnet-form').remove();
+        });
+        
+        subnetFormCount++;
+    }
+
+    function updateTemplatePreview(templateId) {
+        const preview = document.getElementById('template-preview');
+        const baseSubnet = document.getElementById('id_base_subnet').value || '10.100.0.0/16';
+        const baseVlan = document.getElementById('id_base_vlan').value || '1100';
+        
+        let previewHtml = '';
+        
+        switch(templateId) {
+            case 'basic':
+                previewHtml = `
+                    <div class="border rounded p-2 mb-2">
+                        <strong>main</strong><br>
+                        <span class="text-muted">${baseSubnet.replace('/16', '/24')}</span><br>
+                        <span class="badge bg-info">VLAN ${baseVlan}</span>
+                        <span class="badge bg-success">DHCP</span>
+                    </div>
+                `;
+                break;
+            case 'web-db':
+                previewHtml = `
+                    <div class="border rounded p-2 mb-2">
+                        <strong>web</strong><br>
+                        <span class="text-muted">10.100.10.0/24</span><br>
+                        <span class="badge bg-info">VLAN ${baseVlan}</span>
+                        <span class="badge bg-success">DHCP</span>
+                    </div>
+                    <div class="border rounded p-2 mb-2">
+                        <strong>db</strong><br>
+                        <span class="text-muted">10.100.11.0/24</span><br>
+                        <span class="badge bg-info">VLAN ${parseInt(baseVlan) + 1}</span>
+                        <span class="badge bg-success">DHCP</span>
+                    </div>
+                `;
+                break;
+            case 'three-tier':
+                previewHtml = `
+                    <div class="border rounded p-2 mb-2">
+                        <strong>web</strong><br>
+                        <span class="text-muted">10.100.20.0/24</span><br>
+                        <span class="badge bg-info">VLAN ${baseVlan}</span>
+                        <span class="badge bg-success">DHCP</span>
+                    </div>
+                    <div class="border rounded p-2 mb-2">
+                        <strong>app</strong><br>
+                        <span class="text-muted">10.100.21.0/24</span><br>
+                        <span class="badge bg-info">VLAN ${parseInt(baseVlan) + 1}</span>
+                        <span class="badge bg-success">DHCP</span>
+                    </div>
+                    <div class="border rounded p-2 mb-2">
+                        <strong>db</strong><br>
+                        <span class="text-muted">10.100.22.0/24</span><br>
+                        <span class="badge bg-info">VLAN ${parseInt(baseVlan) + 2}</span>
+                        <span class="badge bg-success">DHCP</span>
+                    </div>
+                `;
+                break;
+            case 'custom':
+                previewHtml = '<p class="text-muted">Configure subnets on the left</p>';
+                break;
+        }
+        
+        preview.innerHTML = previewHtml;
+    }
+
+    function updateTemplateExamples(templateId) {
+        document.querySelectorAll('.template-example').forEach(example => {
+            example.style.display = example.dataset.template === templateId ? 'block' : 'none';
+        });
+    }
+
+    // Form submission
+    form.addEventListener('submit', function(e) {
+        e.preventDefault();
+        
+        const formData = new FormData(form);
+        const submitBtn = form.querySelector('button[type="submit"]');
+        const originalText = submitBtn.innerHTML;
+        
+        submitBtn.disabled = true;
+        submitBtn.innerHTML = '<i class="mdi mdi-loading mdi-spin"></i> Creating...';
+        
+        fetch(form.action || window.location.href, {
+            method: 'POST',
+            body: formData,
+            headers: {
+                'X-CSRFToken': formData.get('csrfmiddlewaretoken'),
+            },
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                window.location.href = data.redirect_url || '/plugins/hedgehog/vpcs/';
+            } else {
+                alert('Error: ' + data.error);
+                submitBtn.disabled = false;
+                submitBtn.innerHTML = originalText;
+            }
+        })
+        .catch(error => {
+            alert('Error: ' + error);
+            submitBtn.disabled = false;
+            submitBtn.innerHTML = originalText;
+        });
+    });
+
+    // Initial setup
+    updateTemplatePreview('basic');
+    document.querySelector('[data-template="basic"]').classList.add('border-primary');
+});
+</script>
+
+<style>
+.template-card {
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.template-card:hover {
+    border-color: var(--bs-primary) !important;
+}
+
+.template-card.border-primary {
+    border-width: 2px !important;
+}
+
+.timeline {
+    position: relative;
+}
+
+.timeline-item {
+    position: relative;
+    padding-left: 2rem;
+    margin-bottom: 1rem;
+}
+
+.timeline-marker {
+    position: absolute;
+    left: 0;
+    top: 0.25rem;
+    width: 0.75rem;
+    height: 0.75rem;
+    border-radius: 50%;
+}
+</style>
+{% endblock %}

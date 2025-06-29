@@ -1,0 +1,418 @@
+/* Hedgehog NetBox Plugin Styles */
+
+/* Base Wrapper */
+.hedgehog-wrapper {
+    min-height: calc(100vh - 200px);
+}
+
+.hedgehog-header {
+    margin-bottom: 2rem;
+    padding-bottom: 1rem;
+    border-bottom: 2px solid var(--bs-primary);
+}
+
+/* Navigation Enhancement */
+.nav-link .mdi {
+    margin-right: 0.5rem;
+}
+
+.dropdown-item .mdi {
+    margin-right: 0.5rem;
+    width: 1.2rem;
+}
+
+/* Cards and Status */
+.card {
+    box-shadow: 0 0.125rem 0.25rem rgba(0, 0, 0, 0.075);
+    border: 1px solid rgba(0, 0, 0, 0.125);
+}
+
+.card-header {
+    background-color: var(--bs-light);
+    border-bottom: 1px solid rgba(0, 0, 0, 0.125);
+}
+
+.card-title .mdi {
+    margin-right: 0.5rem;
+}
+
+/* Status Badges */
+.badge {
+    font-size: 0.75em;
+}
+
+.badge .mdi {
+    margin-right: 0.25rem;
+}
+
+/* Timeline for Activity */
+.timeline {
+    position: relative;
+    padding-left: 1.5rem;
+}
+
+.timeline::before {
+    content: '';
+    position: absolute;
+    left: 0.375rem;
+    top: 0;
+    bottom: 0;
+    width: 2px;
+    background-color: var(--bs-border-color);
+}
+
+.timeline-item {
+    position: relative;
+    margin-bottom: 1.5rem;
+}
+
+.timeline-marker {
+    position: absolute;
+    left: -1.875rem;
+    top: 0.25rem;
+    width: 0.75rem;
+    height: 0.75rem;
+    border-radius: 50%;
+    border: 2px solid #fff;
+    box-shadow: 0 0 0 2px var(--bs-border-color);
+}
+
+.timeline-content {
+    background: #fff;
+    border: 1px solid var(--bs-border-color);
+    border-radius: 0.375rem;
+    padding: 1rem;
+}
+
+.timeline-title {
+    margin-bottom: 0.5rem;
+    font-size: 0.875rem;
+    font-weight: 600;
+}
+
+.timeline-text {
+    margin-bottom: 0;
+    font-size: 0.875rem;
+    color: var(--bs-secondary);
+}
+
+/* Template Selection Cards */
+.template-card {
+    cursor: pointer;
+    transition: all 0.2s ease;
+    height: 100%;
+}
+
+.template-card:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 0.5rem 1rem rgba(0, 0, 0, 0.15);
+}
+
+.template-card.border-primary {
+    border-width: 2px !important;
+    box-shadow: 0 0 0 0.2rem rgba(13, 110, 253, 0.25);
+}
+
+.template-details .badge {
+    margin-right: 0.25rem;
+}
+
+/* Form Enhancements */
+.form-label {
+    font-weight: 600;
+    margin-bottom: 0.5rem;
+}
+
+.form-text {
+    font-size: 0.8rem;
+}
+
+.subnet-form {
+    background-color: var(--bs-light);
+    transition: all 0.2s ease;
+}
+
+.subnet-form:hover {
+    background-color: rgba(var(--bs-light-rgb), 0.8);
+}
+
+/* Button Groups */
+.btn-group-sm .btn {
+    padding: 0.25rem 0.5rem;
+    font-size: 0.775rem;
+}
+
+/* Loading States */
+.btn:disabled .mdi-spin {
+    animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+    from { transform: rotate(0deg); }
+    to { transform: rotate(360deg); }
+}
+
+/* Statistics Cards */
+.stats-card {
+    text-align: center;
+    padding: 1.5rem;
+}
+
+.stats-card h2 {
+    font-size: 2.5rem;
+    font-weight: 700;
+    margin-bottom: 0.5rem;
+}
+
+.stats-card .text-muted {
+    font-size: 0.9rem;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+/* Table Enhancements */
+.table th {
+    font-weight: 600;
+    border-top: none;
+    background-color: var(--bs-light);
+}
+
+.table-responsive {
+    border-radius: 0.375rem;
+}
+
+/* Empty States */
+.empty-state {
+    text-align: center;
+    padding: 3rem 1rem;
+    color: var(--bs-secondary);
+}
+
+.empty-state .mdi {
+    font-size: 4rem;
+    margin-bottom: 1rem;
+    opacity: 0.5;
+}
+
+/* Topology Visualization */
+.topology-container {
+    position: relative;
+    min-height: 400px;
+    border: 1px solid var(--bs-border-color);
+    border-radius: 0.375rem;
+    background-color: #f8f9fa;
+}
+
+.topology-node {
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+.topology-node:hover {
+    transform: scale(1.1);
+}
+
+.topology-link {
+    stroke: var(--bs-secondary);
+    stroke-width: 2px;
+    transition: all 0.2s ease;
+}
+
+.topology-link:hover {
+    stroke: var(--bs-primary);
+    stroke-width: 3px;
+}
+
+/* Switch Role Colors */
+.role-spine {
+    color: var(--bs-primary);
+}
+
+.role-leaf {
+    color: var(--bs-success);
+}
+
+.role-border {
+    color: var(--bs-warning);
+}
+
+.role-server {
+    color: var(--bs-info);
+}
+
+/* Connection Type Colors */
+.connection-unbundled {
+    color: var(--bs-secondary);
+}
+
+.connection-bundled {
+    color: var(--bs-primary);
+}
+
+.connection-mclag {
+    color: var(--bs-warning);
+}
+
+.connection-eslag {
+    color: var(--bs-danger);
+}
+
+/* Health Indicators */
+.health-healthy {
+    color: var(--bs-success);
+}
+
+.health-warning {
+    color: var(--bs-warning);
+}
+
+.health-error {
+    color: var(--bs-danger);
+}
+
+.health-unknown {
+    color: var(--bs-secondary);
+}
+
+/* VPC Configuration Preview */
+.vpc-preview {
+    background-color: #f8f9fa;
+    border: 1px solid var(--bs-border-color);
+    border-radius: 0.375rem;
+    padding: 1rem;
+}
+
+.subnet-preview {
+    background-color: #fff;
+    border: 1px solid var(--bs-border-color);
+    border-radius: 0.25rem;
+    padding: 0.75rem;
+    margin-bottom: 0.5rem;
+}
+
+.subnet-preview:last-child {
+    margin-bottom: 0;
+}
+
+/* Responsive Design */
+@media (max-width: 768px) {
+    .hedgehog-header .row {
+        text-align: center;
+    }
+    
+    .hedgehog-header .col-auto {
+        margin-top: 1rem;
+    }
+    
+    .template-card {
+        margin-bottom: 1rem;
+    }
+    
+    .stats-card h2 {
+        font-size: 2rem;
+    }
+}
+
+/* Dark Mode Support */
+@media (prefers-color-scheme: dark) {
+    .timeline-content {
+        background: var(--bs-dark);
+        border-color: var(--bs-secondary);
+    }
+    
+    .topology-container {
+        background-color: var(--bs-dark);
+    }
+    
+    .subnet-form {
+        background-color: var(--bs-dark);
+    }
+    
+    .vpc-preview,
+    .subnet-preview {
+        background-color: var(--bs-dark);
+        border-color: var(--bs-secondary);
+    }
+}
+
+/* Print Styles */
+@media print {
+    .hedgehog-wrapper {
+        min-height: auto;
+    }
+    
+    .card {
+        border: 1px solid #dee2e6 !important;
+        box-shadow: none !important;
+    }
+    
+    .btn {
+        display: none !important;
+    }
+    
+    .timeline::before {
+        background-color: #dee2e6 !important;
+    }
+}
+
+/* Accessibility */
+.sr-only {
+    position: absolute !important;
+    width: 1px !important;
+    height: 1px !important;
+    padding: 0 !important;
+    margin: -1px !important;
+    overflow: hidden !important;
+    clip: rect(0, 0, 0, 0) !important;
+    white-space: nowrap !important;
+    border: 0 !important;
+}
+
+.focus-visible {
+    outline: 2px solid var(--bs-primary) !important;
+    outline-offset: 2px !important;
+}
+
+/* Animation Classes */
+.fade-in {
+    animation: fadeIn 0.3s ease-in;
+}
+
+@keyframes fadeIn {
+    from { opacity: 0; transform: translateY(10px); }
+    to { opacity: 1; transform: translateY(0); }
+}
+
+.slide-in {
+    animation: slideIn 0.3s ease-out;
+}
+
+@keyframes slideIn {
+    from { transform: translateX(-100%); }
+    to { transform: translateX(0); }
+}
+
+/* Utility Classes */
+.text-truncate-2 {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+}
+
+.border-2 {
+    border-width: 2px !important;
+}
+
+.rounded-lg {
+    border-radius: 0.5rem !important;
+}
+
+.shadow-sm {
+    box-shadow: 0 0.125rem 0.25rem rgba(0, 0, 0, 0.075) !important;
+}
+
+.shadow-lg {
+    box-shadow: 0 1rem 3rem rgba(0, 0, 0, 0.175) !important;
+}

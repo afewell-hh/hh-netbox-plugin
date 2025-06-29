@@ -1,0 +1,402 @@
+{% extends "netbox_hedgehog/base.html" %}
+{% load i18n %}
+
+{% block title %}{{ switch.name }}{% endblock %}
+
+{% block breadcrumbs %}
+    <li class="breadcrumb-item">
+        <a href="{% url 'plugins:netbox_hedgehog:switch_list' %}">Switches</a>
+    </li>
+    <li class="breadcrumb-item active">{{ switch.name }}</li>
+{% endblock %}
+
+{% block header_actions %}
+    {% if can_change %}
+        <a href="#" class="btn btn-outline-primary" title="Edit Switch">
+            <i class="mdi mdi-pencil"></i> Edit
+        </a>
+    {% endif %}
+    {% if can_delete %}
+        <a href="#" class="btn btn-outline-danger" title="Delete Switch">
+            <i class="mdi mdi-delete"></i> Delete
+        </a>
+    {% endif %}
+{% endblock %}
+
+{% block hedgehog_content %}
+    <div class="row">
+        <!-- Switch Information -->
+        <div class="col-lg-6">
+            <div class="card">
+                <div class="card-header">
+                    <h5 class="card-title mb-0">
+                        <i class="mdi mdi-information-outline"></i> Switch Information
+                    </h5>
+                </div>
+                <div class="card-body">
+                    <dl class="row">
+                        <dt class="col-sm-4">Name</dt>
+                        <dd class="col-sm-8">{{ switch.name }}</dd>
+                        
+                        <dt class="col-sm-4">Fabric</dt>
+                        <dd class="col-sm-8">
+                            <a href="{% url 'plugins:netbox_hedgehog:fabric_detail' pk=switch.fabric.pk %}">
+                                {{ switch.fabric.name }}
+                            </a>
+                        </dd>
+                        
+                        <dt class="col-sm-4">Role</dt>
+                        <dd class="col-sm-8">
+                            <span class="badge bg-primary">{{ switch.get_role_display|default:switch.role }}</span>
+                        </dd>
+                        
+                        <dt class="col-sm-4">ASN</dt>
+                        <dd class="col-sm-8">{{ switch.asn }}</dd>
+                        
+                        <dt class="col-sm-4">Profile</dt>
+                        <dd class="col-sm-8">{{ switch.profile|default:"Default" }}</dd>
+                        
+                        {% if switch.description %}
+                            <dt class="col-sm-4">Description</dt>
+                            <dd class="col-sm-8">{{ switch.description }}</dd>
+                        {% endif %}
+                        
+                        <dt class="col-sm-4">Status</dt>
+                        <dd class="col-sm-8">
+                            {% if switch.kubernetes_status == 'applied' %}
+                                <span class="badge bg-success">
+                                    <i class="mdi mdi-check-circle"></i> Applied
+                                </span>
+                            {% elif switch.kubernetes_status == 'pending' %}
+                                <span class="badge bg-warning">
+                                    <i class="mdi mdi-clock"></i> Pending
+                                </span>
+                            {% else %}
+                                <span class="badge bg-secondary">
+                                    <i class="mdi mdi-help-circle"></i> Unknown
+                                </span>
+                            {% endif %}
+                        </dd>
+                    </dl>
+                </div>
+            </div>
+            
+            <!-- Network Configuration -->
+            <div class="card mt-3">
+                <div class="card-header">
+                    <h5 class="card-title mb-0">
+                        <i class="mdi mdi-ip-network"></i> Network Configuration
+                    </h5>
+                </div>
+                <div class="card-body">
+                    <dl class="row">
+                        {% if switch.ip %}
+                            <dt class="col-sm-4">Management IP</dt>
+                            <dd class="col-sm-8">
+                                <code>{{ switch.ip }}</code>
+                            </dd>
+                        {% endif %}
+                        
+                        {% if switch.protocol_ip %}
+                            <dt class="col-sm-4">Protocol IP</dt>
+                            <dd class="col-sm-8">
+                                <code>{{ switch.protocol_ip }}</code>
+                            </dd>
+                        {% endif %}
+                        
+                        {% if switch.vtep_ip %}
+                            <dt class="col-sm-4">VTEP IP</dt>
+                            <dd class="col-sm-8">
+                                <code>{{ switch.vtep_ip }}</code>
+                            </dd>
+                        {% endif %}
+                        
+                        {% if switch.boot_mac %}
+                            <dt class="col-sm-4">Boot MAC</dt>
+                            <dd class="col-sm-8">
+                                <code>{{ switch.boot_mac }}</code>
+                            </dd>
+                        {% endif %}
+                    </dl>
+                </div>
+            </div>
+        </div>
+
+        <!-- Groups and Redundancy -->
+        <div class="col-lg-6">
+            <!-- Groups -->
+            {% if groups or vlan_namespaces %}
+                <div class="card">
+                    <div class="card-header">
+                        <h5 class="card-title mb-0">
+                            <i class="mdi mdi-group"></i> Groups & Namespaces
+                        </h5>
+                    </div>
+                    <div class="card-body">
+                        {% if groups %}
+                            <h6>Switch Groups</h6>
+                            <div class="mb-3">
+                                {% for group in groups %}
+                                    <span class="badge bg-info me-1">{{ group }}</span>
+                                {% endfor %}
+                            </div>
+                        {% endif %}
+                        
+                        {% if vlan_namespaces %}
+                            <h6>VLAN Namespaces</h6>
+                            <div>
+                                {% for vlan_ns in vlan_namespaces %}
+                                    <span class="badge bg-secondary me-1">{{ vlan_ns }}</span>
+                                {% endfor %}
+                            </div>
+                        {% endif %}
+                    </div>
+                </div>
+            {% endif %}
+            
+            <!-- Redundancy Configuration -->
+            {% if redundancy_info %}
+                <div class="card mt-3">
+                    <div class="card-header">
+                        <h5 class="card-title mb-0">
+                            <i class="mdi mdi-backup-restore"></i> Redundancy
+                        </h5>
+                    </div>
+                    <div class="card-body">
+                        <dl class="row">
+                            <dt class="col-sm-4">Type</dt>
+                            <dd class="col-sm-8">
+                                <span class="badge bg-warning">{{ redundancy_info.type|upper }}</span>
+                            </dd>
+                            
+                            {% if redundancy_info.group %}
+                                <dt class="col-sm-4">Group</dt>
+                                <dd class="col-sm-8">{{ redundancy_info.group }}</dd>
+                            {% endif %}
+                        </dl>
+                    </div>
+                </div>
+            {% endif %}
+            
+            <!-- Interface Summary -->
+            <div class="card mt-3">
+                <div class="card-header">
+                    <h5 class="card-title mb-0">
+                        <i class="mdi mdi-ethernet"></i> Interface Summary
+                    </h5>
+                </div>
+                <div class="card-body">
+                    <div class="row text-center">
+                        <div class="col-3">
+                            <h4 class="text-primary mb-0">{{ interface_summary.total_ports }}</h4>
+                            <small class="text-muted">Total</small>
+                        </div>
+                        <div class="col-3">
+                            <h4 class="text-success mb-0">{{ interface_summary.used_ports }}</h4>
+                            <small class="text-muted">Used</small>
+                        </div>
+                        <div class="col-3">
+                            <h4 class="text-warning mb-0">{{ interface_summary.free_ports }}</h4>
+                            <small class="text-muted">Free</small>
+                        </div>
+                        <div class="col-3">
+                            <h4 class="text-info mb-0">{{ interface_summary.breakout_ports }}</h4>
+                            <small class="text-muted">Breakout</small>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Connections -->
+    <div class="row mt-4">
+        <div class="col-12">
+            <div class="card">
+                <div class="card-header">
+                    <h5 class="card-title mb-0">
+                        <i class="mdi mdi-cable-data"></i> Connections ({{ connections.count }})
+                    </h5>
+                </div>
+                <div class="card-body">
+                    {% if connections %}
+                        <div class="table-responsive">
+                            <table class="table table-sm">
+                                <thead>
+                                    <tr>
+                                        <th>Connection</th>
+                                        <th>Type</th>
+                                        <th>Remote End</th>
+                                        <th>Status</th>
+                                        <th>Actions</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {% for connection in connections %}
+                                        <tr>
+                                            <td>
+                                                <a href="{% url 'plugins:netbox_hedgehog:connection_detail' pk=connection.pk %}">
+                                                    <strong>{{ connection.name }}</strong>
+                                                </a>
+                                                {% if connection.description %}
+                                                    <br><small class="text-muted">{{ connection.description|truncatechars:50 }}</small>
+                                                {% endif %}
+                                            </td>
+                                            <td>
+                                                <span class="badge bg-secondary">{{ connection.get_connection_type_display }}</span>
+                                            </td>
+                                            <td>
+                                                <span class="text-muted">Multiple endpoints</span>
+                                            </td>
+                                            <td>
+                                                {% if connection.kubernetes_status == 'applied' %}
+                                                    <span class="badge bg-success">Active</span>
+                                                {% else %}
+                                                    <span class="badge bg-warning">Pending</span>
+                                                {% endif %}
+                                            </td>
+                                            <td>
+                                                <a href="{% url 'plugins:netbox_hedgehog:connection_detail' pk=connection.pk %}" 
+                                                   class="btn btn-sm btn-outline-primary" title="View Details">
+                                                    <i class="mdi mdi-eye"></i>
+                                                </a>
+                                            </td>
+                                        </tr>
+                                    {% endfor %}
+                                </tbody>
+                            </table>
+                        </div>
+                    {% else %}
+                        <div class="text-center text-muted py-4">
+                            <i class="mdi mdi-cable-data" style="font-size: 2rem;"></i>
+                            <p class="mt-2">No connections found for this switch</p>
+                        </div>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Related Servers -->
+    {% if servers %}
+        <div class="row mt-4">
+            <div class="col-12">
+                <div class="card">
+                    <div class="card-header">
+                        <h5 class="card-title mb-0">
+                            <i class="mdi mdi-server"></i> Connected Servers ({{ servers.count }})
+                        </h5>
+                    </div>
+                    <div class="card-body">
+                        <div class="table-responsive">
+                            <table class="table table-sm">
+                                <thead>
+                                    <tr>
+                                        <th>Server</th>
+                                        <th>Connection Type</th>
+                                        <th>Status</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {% for server in servers %}
+                                        <tr>
+                                            <td>
+                                                <strong>{{ server.name }}</strong>
+                                                {% if server.description %}
+                                                    <br><small class="text-muted">{{ server.description|truncatechars:50 }}</small>
+                                                {% endif %}
+                                            </td>
+                                            <td>
+                                                <span class="badge bg-info">Server Connection</span>
+                                            </td>
+                                            <td>
+                                                <span class="badge bg-success">Active</span>
+                                            </td>
+                                        </tr>
+                                    {% endfor %}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    {% endif %}
+
+    <!-- Kubernetes Status -->
+    {% if k8s_status %}
+        <div class="row mt-4">
+            <div class="col-12">
+                <div class="card">
+                    <div class="card-header">
+                        <h5 class="card-title mb-0">
+                            <i class="mdi mdi-kubernetes"></i> Kubernetes Status
+                        </h5>
+                    </div>
+                    <div class="card-body">
+                        {% if k8s_status.ready %}
+                            <div class="alert alert-success">
+                                <i class="mdi mdi-check-circle"></i>
+                                Switch is operational in the cluster
+                            </div>
+                            
+                            {% if k8s_status.conditions %}
+                                <h6>Conditions</h6>
+                                <div class="table-responsive">
+                                    <table class="table table-sm">
+                                        <thead>
+                                            <tr>
+                                                <th>Type</th>
+                                                <th>Status</th>
+                                                <th>Message</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            {% for condition in k8s_status.conditions %}
+                                                <tr>
+                                                    <td>{{ condition.type }}</td>
+                                                    <td>
+                                                        {% if condition.status == 'True' %}
+                                                            <span class="badge bg-success">{{ condition.status }}</span>
+                                                        {% else %}
+                                                            <span class="badge bg-warning">{{ condition.status }}</span>
+                                                        {% endif %}
+                                                    </td>
+                                                    <td>{{ condition.message|default:"-" }}</td>
+                                                </tr>
+                                            {% endfor %}
+                                        </tbody>
+                                    </table>
+                                </div>
+                            {% endif %}
+                            
+                            {% if k8s_status.profile %}
+                                <p class="mb-0">
+                                    <strong>Profile:</strong> {{ k8s_status.profile }}
+                                </p>
+                            {% endif %}
+                        {% else %}
+                            <div class="alert alert-warning">
+                                <i class="mdi mdi-alert-circle"></i>
+                                {% if k8s_status.error %}
+                                    {{ k8s_status.error }}
+                                {% else %}
+                                    Unable to fetch switch status from cluster
+                                {% endif %}
+                            </div>
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+        </div>
+    {% endif %}
+{% endblock %}
+
+{% block hedgehog_javascript %}
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    // Add any switch-specific JavaScript here
+    console.log('Switch detail page loaded for: {{ switch.name }}');
+});
+</script>
+{% endblock %}
