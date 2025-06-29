@@ -347,3 +347,86 @@ class FabricDeleteView(generic.ObjectDeleteView):
     """Delete view for fabrics"""
     queryset = HedgehogFabric.objects.all()
     template_name = 'netbox_hedgehog/fabric_delete.html'
+
+
+@method_decorator(login_required, name='dispatch')
+class FabricBulkActionsView(View):
+    """Bulk actions for fabrics"""
+    
+    def post(self, request):
+        """Perform bulk actions on fabrics"""
+        
+        if not request.user.has_perm('netbox_hedgehog.change_hedgehogfabric'):
+            return JsonResponse({'success': False, 'error': 'Permission denied'}, status=403)
+        
+        action = request.POST.get('action')
+        fabric_ids = request.POST.getlist('fabrics')
+        
+        if not action or not fabric_ids:
+            return JsonResponse({'success': False, 'error': 'Missing action or fabric selection'})
+        
+        fabrics = HedgehogFabric.objects.filter(pk__in=fabric_ids)
+        
+        try:
+            if action == 'test_connection':
+                # Test connection for selected fabrics
+                success_count = 0
+                for fabric in fabrics:
+                    try:
+                        onboarding_manager = FabricOnboardingManager(fabric)
+                        success, message, cluster_info = onboarding_manager.validate_kubernetes_connection()
+                        
+                        if success:
+                            fabric.cluster_info = cluster_info
+                            fabric.sync_status = 'synced'
+                            fabric.last_sync = datetime.now()
+                            fabric.save()
+                            success_count += 1
+                        else:
+                            fabric.sync_status = 'error'
+                            fabric.save()
+                    except Exception:
+                        fabric.sync_status = 'error'
+                        fabric.save()
+                
+                return JsonResponse({
+                    'success': True,
+                    'message': f'Tested {success_count} of {fabrics.count()} fabric connections'
+                })
+                
+            elif action == 'sync':
+                # Sync selected fabrics
+                success_count = 0
+                for fabric in fabrics:
+                    try:
+                        reconciliation_manager = ReconciliationManager(fabric)
+                        result = reconciliation_manager.perform_reconciliation(dry_run=False)
+                        
+                        if result.get('initialization_success'):
+                            success_count += 1
+                    except Exception:
+                        pass
+                
+                return JsonResponse({
+                    'success': True,
+                    'message': f'Successfully synced {success_count} of {fabrics.count()} fabrics'
+                })
+                
+            elif action == 'delete':
+                # Delete selected fabrics
+                deleted_count = fabrics.count()
+                fabrics.delete()
+                
+                return JsonResponse({
+                    'success': True,
+                    'message': f'Deleted {deleted_count} fabrics'
+                })
+            
+            else:
+                return JsonResponse({'success': False, 'error': f'Unknown action: {action}'})
+                
+        except Exception as e:
+            return JsonResponse({
+                'success': False,
+                'error': f'Bulk action failed: {str(e)}'
+            })

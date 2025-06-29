@@ -5,6 +5,18 @@ from netbox.choices import ButtonColorChoices
 menu = PluginMenu(
     label='Hedgehog',
     groups=(
+        ('Overview', (
+            PluginMenuItem(
+                link='plugins:netbox_hedgehog:overview',
+                link_text='Dashboard',
+                buttons=()
+            ),
+            PluginMenuItem(
+                link='plugins:netbox_hedgehog:topology',
+                link_text='Network Topology',
+                buttons=()
+            ),
+        )),
         ('Fabric Management', (
             PluginMenuItem(
                 link='plugins:netbox_hedgehog:fabric_list',
@@ -37,8 +49,8 @@ menu = PluginMenu(
                 link_text='VPCs',
                 buttons=(
                     PluginMenuButton(
-                        link='plugins:netbox_hedgehog:vpc_add',
-                        title='Add VPC',
+                        link='plugins:netbox_hedgehog:vpc_create',
+                        title='Create VPC',
                         icon_class='mdi mdi-plus-thick',
                         color=ButtonColorChoices.GREEN
                     ),
@@ -101,6 +113,18 @@ menu = PluginMenu(
                     PluginMenuButton(
                         link='plugins:netbox_hedgehog:server_add',
                         title='Add Server',
+                        icon_class='mdi mdi-plus-thick',
+                        color=ButtonColorChoices.GREEN
+                    ),
+                )
+            ),
+            PluginMenuItem(
+                link='plugins:netbox_hedgehog:vlan_namespace_list',
+                link_text='VLAN Namespaces',
+                buttons=(
+                    PluginMenuButton(
+                        link='plugins:netbox_hedgehog:vlan_namespace_add',
+                        title='Add VLAN Namespace',
                         icon_class='mdi mdi-plus-thick',
                         color=ButtonColorChoices.GREEN
                     ),

@@ -500,3 +500,245 @@ class VLANNamespaceDetailView(View):
         }
         
         return render(request, self.template_name, context)
+
+
+@method_decorator(login_required, name='dispatch')
+class SwitchBulkActionsView(View):
+    """Bulk actions for switches"""
+    
+    def post(self, request):
+        """Perform bulk actions on switches"""
+        
+        if not request.user.has_perm('netbox_hedgehog.change_switch'):
+            return JsonResponse({'success': False, 'error': 'Permission denied'}, status=403)
+        
+        action = request.POST.get('action')
+        switch_ids = request.POST.getlist('switches')
+        
+        if not action or not switch_ids:
+            return JsonResponse({'success': False, 'error': 'Missing action or switch selection'})
+        
+        switches = Switch.objects.filter(pk__in=switch_ids)
+        
+        try:
+            if action == 'apply':
+                # Apply selected switches to cluster
+                applied_count = 0
+                for switch in switches:
+                    if switch.kubernetes_status in ['pending', 'error']:
+                        try:
+                            k8s_client = KubernetesClient(switch.fabric)
+                            manifest = switch.to_kubernetes_manifest()
+                            success, _ = k8s_client.apply_crd(manifest)
+                            
+                            if success:
+                                switch.kubernetes_status = 'applied'
+                                switch.last_applied = datetime.now()
+                                switch.save()
+                                applied_count += 1
+                        except Exception:
+                            pass
+                
+                return JsonResponse({
+                    'success': True,
+                    'message': f'Applied {applied_count} switches to cluster'
+                })
+                
+            elif action == 'delete':
+                # Delete selected switches
+                deleted_count = switches.count()
+                
+                # Delete from clusters first
+                for switch in switches:
+                    if switch.kubernetes_status == 'applied':
+                        try:
+                            k8s_client = KubernetesClient(switch.fabric)
+                            k8s_client.delete_crd('Switch', switch.name, switch.kubernetes_namespace or 'default')
+                        except Exception:
+                            pass
+                
+                switches.delete()
+                
+                return JsonResponse({
+                    'success': True,
+                    'message': f'Deleted {deleted_count} switches'
+                })
+                
+            elif action == 'update_role':
+                # Update role for selected switches
+                new_role = request.POST.get('new_role')
+                if not new_role:
+                    return JsonResponse({'success': False, 'error': 'Missing new role'})
+                
+                updated_count = switches.update(role=new_role)
+                
+                return JsonResponse({
+                    'success': True,
+                    'message': f'Updated role for {updated_count} switches'
+                })
+            
+            else:
+                return JsonResponse({'success': False, 'error': f'Unknown action: {action}'})
+                
+        except Exception as e:
+            return JsonResponse({
+                'success': False,
+                'error': f'Bulk action failed: {str(e)}'
+            })
+
+
+@method_decorator(login_required, name='dispatch')
+class ConnectionBulkActionsView(View):
+    """Bulk actions for connections"""
+    
+    def post(self, request):
+        """Perform bulk actions on connections"""
+        
+        if not request.user.has_perm('netbox_hedgehog.change_connection'):
+            return JsonResponse({'success': False, 'error': 'Permission denied'}, status=403)
+        
+        action = request.POST.get('action')
+        connection_ids = request.POST.getlist('connections')
+        
+        if not action or not connection_ids:
+            return JsonResponse({'success': False, 'error': 'Missing action or connection selection'})
+        
+        connections = Connection.objects.filter(pk__in=connection_ids)
+        
+        try:
+            if action == 'apply':
+                # Apply selected connections to cluster
+                applied_count = 0
+                for connection in connections:
+                    if connection.kubernetes_status in ['pending', 'error']:
+                        try:
+                            k8s_client = KubernetesClient(connection.fabric)
+                            manifest = connection.to_kubernetes_manifest()
+                            success, _ = k8s_client.apply_crd(manifest)
+                            
+                            if success:
+                                connection.kubernetes_status = 'applied'
+                                connection.last_applied = datetime.now()
+                                connection.save()
+                                applied_count += 1
+                        except Exception:
+                            pass
+                
+                return JsonResponse({
+                    'success': True,
+                    'message': f'Applied {applied_count} connections to cluster'
+                })
+                
+            elif action == 'delete':
+                # Delete selected connections
+                deleted_count = connections.count()
+                
+                # Delete from clusters first
+                for connection in connections:
+                    if connection.kubernetes_status == 'applied':
+                        try:
+                            k8s_client = KubernetesClient(connection.fabric)
+                            k8s_client.delete_crd('Connection', connection.name, connection.kubernetes_namespace or 'default')
+                        except Exception:
+                            pass
+                
+                connections.delete()
+                
+                return JsonResponse({
+                    'success': True,
+                    'message': f'Deleted {deleted_count} connections'
+                })
+                
+            elif action == 'update_type':
+                # Update connection type for selected connections
+                new_type = request.POST.get('new_type')
+                if not new_type:
+                    return JsonResponse({'success': False, 'error': 'Missing new connection type'})
+                
+                updated_count = connections.update(connection_type=new_type)
+                
+                return JsonResponse({
+                    'success': True,
+                    'message': f'Updated connection type for {updated_count} connections'
+                })
+            
+            else:
+                return JsonResponse({'success': False, 'error': f'Unknown action: {action}'})
+                
+        except Exception as e:
+            return JsonResponse({
+                'success': False,
+                'error': f'Bulk action failed: {str(e)}'
+            })
+
+
+@method_decorator(login_required, name='dispatch')
+class VLANNamespaceBulkActionsView(View):
+    """Bulk actions for VLAN namespaces"""
+    
+    def post(self, request):
+        """Perform bulk actions on VLAN namespaces"""
+        
+        if not request.user.has_perm('netbox_hedgehog.change_vlannamespace'):
+            return JsonResponse({'success': False, 'error': 'Permission denied'}, status=403)
+        
+        action = request.POST.get('action')
+        namespace_ids = request.POST.getlist('vlan_namespaces')
+        
+        if not action or not namespace_ids:
+            return JsonResponse({'success': False, 'error': 'Missing action or namespace selection'})
+        
+        vlan_namespaces = VLANNamespace.objects.filter(pk__in=namespace_ids)
+        
+        try:
+            if action == 'apply':
+                # Apply selected VLAN namespaces to cluster
+                applied_count = 0
+                for vlan_namespace in vlan_namespaces:
+                    if vlan_namespace.kubernetes_status in ['pending', 'error']:
+                        try:
+                            k8s_client = KubernetesClient(vlan_namespace.fabric)
+                            manifest = vlan_namespace.to_kubernetes_manifest()
+                            success, _ = k8s_client.apply_crd(manifest)
+                            
+                            if success:
+                                vlan_namespace.kubernetes_status = 'applied'
+                                vlan_namespace.last_applied = datetime.now()
+                                vlan_namespace.save()
+                                applied_count += 1
+                        except Exception:
+                            pass
+                
+                return JsonResponse({
+                    'success': True,
+                    'message': f'Applied {applied_count} VLAN namespaces to cluster'
+                })
+                
+            elif action == 'delete':
+                # Delete selected VLAN namespaces
+                deleted_count = vlan_namespaces.count()
+                
+                # Delete from clusters first
+                for vlan_namespace in vlan_namespaces:
+                    if vlan_namespace.kubernetes_status == 'applied':
+                        try:
+                            k8s_client = KubernetesClient(vlan_namespace.fabric)
+                            k8s_client.delete_crd('VLANNamespace', vlan_namespace.name, vlan_namespace.kubernetes_namespace or 'default')
+                        except Exception:
+                            pass
+                
+                vlan_namespaces.delete()
+                
+                return JsonResponse({
+                    'success': True,
+                    'message': f'Deleted {deleted_count} VLAN namespaces'
+                })
+            
+            else:
+                return JsonResponse({'success': False, 'error': f'Unknown action: {action}'})
+                
+        except Exception as e:
+            return JsonResponse({
+                'success': False,
+                'error': f'Bulk action failed: {str(e)}'
+            })
