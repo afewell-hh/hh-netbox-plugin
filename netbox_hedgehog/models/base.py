@@ -1,0 +1,207 @@
+from django.db import models
+from django.core.exceptions import ValidationError
+from netbox.models import NetBoxModel
+import json
+import yaml
+
+from ..choices import KubernetesStatusChoices
+from .fabric import HedgehogFabric
+
+class BaseCRD(NetBoxModel):
+    """
+    Abstract base model for all Hedgehog CRDs.
+    Contains common fields and functionality shared by all CRD types.
+    """
+    
+    fabric = models.ForeignKey(
+        HedgehogFabric,
+        on_delete=models.CASCADE,
+        related_name='%(class)s_set',
+        help_text="Hedgehog fabric this CRD belongs to"
+    )
+    
+    name = models.CharField(
+        max_length=253,  # Kubernetes resource name limit
+        help_text="Kubernetes resource name (must be DNS-1123 compliant)"
+    )
+    
+    namespace = models.CharField(
+        max_length=253,
+        default='default',
+        help_text="Kubernetes namespace for this resource"
+    )
+    
+    # CRD specification (the actual resource definition)
+    spec = models.JSONField(
+        help_text="CRD specification as JSON"
+    )
+    
+    # Labels and annotations
+    labels = models.JSONField(
+        default=dict,
+        blank=True,
+        help_text="Kubernetes labels as JSON"
+    )
+    
+    annotations = models.JSONField(
+        default=dict,
+        blank=True,
+        help_text="Kubernetes annotations as JSON"
+    )
+    
+    # Kubernetes status tracking
+    kubernetes_status = models.CharField(
+        max_length=20,
+        choices=KubernetesStatusChoices,
+        default=KubernetesStatusChoices.UNKNOWN,
+        help_text="Current status in Kubernetes"
+    )
+    
+    kubernetes_uid = models.CharField(
+        max_length=36,
+        blank=True,
+        help_text="Kubernetes resource UID"
+    )
+    
+    kubernetes_resource_version = models.CharField(
+        max_length=50,
+        blank=True,
+        help_text="Kubernetes resource version"
+    )
+    
+    # Sync tracking
+    last_applied = models.DateTimeField(
+        null=True,
+        blank=True,
+        help_text="When this CRD was last applied to Kubernetes"
+    )
+    
+    last_synced = models.DateTimeField(
+        null=True,
+        blank=True,
+        help_text="When this CRD was last synced from Kubernetes"
+    )
+    
+    sync_error = models.TextField(
+        blank=True,
+        help_text="Last sync error message (if any)"
+    )
+    
+    # Management fields
+    auto_sync = models.BooleanField(
+        default=True,
+        help_text="Enable automatic sync for this resource"
+    )
+    
+    class Meta:
+        abstract = True
+        unique_together = [['fabric', 'namespace', 'name']]
+        ordering = ['fabric', 'namespace', 'name']
+    
+    def __str__(self):
+        return f"{self.name} ({self.fabric.name})"
+    
+    def clean(self):
+        """Validate the CRD before saving"""
+        super().clean()
+        
+        # Validate Kubernetes name format
+        if not self.is_valid_k8s_name(self.name):
+            raise ValidationError({
+                'name': 'Name must be a valid Kubernetes resource name (DNS-1123 compliant)'
+            })
+        
+        # Validate namespace format
+        if not self.is_valid_k8s_name(self.namespace):
+            raise ValidationError({
+                'namespace': 'Namespace must be a valid Kubernetes namespace name'
+            })
+        
+        # Validate spec is valid JSON
+        if isinstance(self.spec, str):
+            try:
+                self.spec = json.loads(self.spec)
+            except json.JSONDecodeError as e:
+                raise ValidationError({
+                    'spec': f'Invalid JSON in spec: {e}'
+                })
+        
+        # Validate labels and annotations are valid JSON
+        for field_name in ['labels', 'annotations']:
+            field_value = getattr(self, field_name)
+            if isinstance(field_value, str):
+                try:
+                    setattr(self, field_name, json.loads(field_value))
+                except json.JSONDecodeError as e:
+                    raise ValidationError({
+                        field_name: f'Invalid JSON in {field_name}: {e}'
+                    })
+    
+    @staticmethod
+    def is_valid_k8s_name(name):
+        """
+        Validate Kubernetes resource name (DNS-1123 compliant).
+        Must be lowercase alphanumeric plus hyphens, start/end with alphanumeric.
+        """
+        import re
+        pattern = r'^[a-z0-9]([-a-z0-9]*[a-z0-9])?$'
+        return bool(re.match(pattern, name)) and len(name) <= 253
+    
+    def to_kubernetes_manifest(self):
+        """
+        Convert this CRD to a Kubernetes manifest dictionary.
+        Subclasses should override this to provide proper apiVersion and kind.
+        """
+        return {
+            'apiVersion': self.get_api_version(),
+            'kind': self.get_kind(),
+            'metadata': {
+                'name': self.name,
+                'namespace': self.namespace,
+                'labels': self.labels or {},
+                'annotations': self.annotations or {},
+            },
+            'spec': self.spec
+        }
+    
+    def to_yaml(self):
+        """Convert this CRD to YAML format"""
+        return yaml.dump(self.to_kubernetes_manifest(), default_flow_style=False)
+    
+    def get_api_version(self):
+        """Return the Kubernetes API version for this CRD type"""
+        # Subclasses must implement this
+        raise NotImplementedError("Subclasses must implement get_api_version()")
+    
+    def get_kind(self):
+        """Return the Kubernetes kind for this CRD type"""
+        # Default implementation uses the class name
+        return self.__class__.__name__
+    
+    def get_crd_type(self):
+        """Return the CRD type identifier"""
+        return self.__class__.__name__.lower()
+    
+    @property
+    def status_display(self):
+        """Return human-readable status with icon"""
+        status_icons = {
+            KubernetesStatusChoices.LIVE: '🟢',
+            KubernetesStatusChoices.APPLIED: '🟡',
+            KubernetesStatusChoices.PENDING: '🟡',
+            KubernetesStatusChoices.SYNCING: '🟡',
+            KubernetesStatusChoices.ERROR: '🔴',
+            KubernetesStatusChoices.DELETING: '🟠',
+            KubernetesStatusChoices.UNKNOWN: '⚪',
+        }
+        icon = status_icons.get(self.kubernetes_status, '⚪')
+        return f"{icon} {self.get_kubernetes_status_display()}"
+    
+    @property
+    def has_sync_error(self):
+        """Return True if this CRD has a sync error"""
+        return bool(self.sync_error)
+    
+    def get_full_name(self):
+        """Return the full Kubernetes resource name (namespace/name)"""
+        return f"{self.namespace}/{self.name}"

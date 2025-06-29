@@ -1,0 +1,15 @@
+# Core dependencies
+kubernetes>=24.0.0
+pyyaml>=6.0
+jsonschema>=4.0.0
+
+# Development dependencies  
+pytest>=7.0.0
+pytest-django>=4.5.0
+black>=22.0.0
+flake8>=4.0.0
+pre-commit>=2.17.0
+
+# NetBox (for development)
+# Note: In production, NetBox should already be installed
+netbox>=3.4.0

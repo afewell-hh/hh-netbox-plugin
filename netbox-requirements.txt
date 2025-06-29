@@ -1,0 +1,7 @@
+# NetBox Hedgehog plugin requirements
+kubernetes>=24.0.0
+pyyaml>=6.0
+jsonschema>=4.0.0
+
+# Install local plugin in development mode
+-e /opt/netbox-hedgehog-plugin

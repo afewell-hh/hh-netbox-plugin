@@ -1,0 +1,27 @@
+Hi, I work for Hedgehog and we make an ethernet fabric solution that essentially uses kubernetes to manage physical ethernet switches. To configure the fabric, a user creates a variety of yaml objects for custom CRD's that are created by hedgehog. The hedgehog controllers then use the information provided in these cr's to create configuration files for ethernet switches. The customer does not need to be aware of the ethernet switches directly, the switches themselves, all the connections, all the objects that make up the physical fabric, they are all monitored in kubernetes and use kubernetes reconciliation to report metrics and object availability. And so customers only need to interact with kubernetes to configure and monitor their fabric. 
+
+I need to create a simpler way for our customers to create, monitor, and have an inventory of the cr's they have applied to kubernetes for their hedgehog fabric. I think for each type of object, it would be cool to have a gui similar to a self service catalog where a customer could click a button to add a type of cr, and then be presented with a web form, and then be given the option to apply the configuration, and then be able to have an inventory of the cr's that have been applied in k8s for their fabric. A customer might have more than one fabric. And, it would be ideal if this system could sync with kubernetes and was able to display status on if the object is applied, if its live, if there are errors. We already have grafana dashboards so that wouldnt need to be comprehensive, but I think it would be helpful if customers could look at the objects that represent desired state and easily be able to tell if actual state was aligned with desired state from looking at their inventory of applied CR's. 
+
+I think it would be ideal to do this as a netbox plugin. I dont know how extensible netbox is so we need to do some research and concept validation, but if it can support the type of UX I would like to have I think it would be ideal, many of our customers already use netbox, and it would be nice to not have to give them yet another tool to manage. 
+
+I would like you to help me scope this out, validate the concept, and then create specifications and a plan to implement it. 
+
+The hedgehog CR's that should be included in the initial scope are:
+**VPC API CRDs:**
+* External
+* ExternalAttachment
+* ExternalPeering
+* IPv4Namespace
+* VPC
+* VPCAttachment
+* VPCPeering
+
+**Wiring API CRDs:**
+* Connection
+* Server
+* Switch
+* SwitchGroup
+* VLANNamespace
+
+The hedgehog documentation can be found here: https://hedgehog.io/docs/hedgehog/latest/
+The hedgehog documentation for the API for these cr's can be found here: https://docs.hedgehog.cloud/latest/reference/fabric-api/
