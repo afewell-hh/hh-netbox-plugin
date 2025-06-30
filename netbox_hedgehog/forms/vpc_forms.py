@@ -11,7 +11,8 @@ import ipaddress
 
 # NetBox imports
 from netbox.forms import NetBoxModelForm
-from utilities.forms import DynamicModelChoiceField, StaticSelect2, JSONField
+# from utilities.forms.fields import DynamicModelChoiceField, JSONField
+# from utilities.forms.widgets import StaticSelect2
 
 # Plugin imports
 from ..models.fabric import HedgehogFabric

@@ -1,0 +1,64 @@
+{% extends "base/layout.html" %}
+{% load static %}
+
+{% block title %}Hedgehog Plugin Dashboard{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+    <div class="row">
+        <div class="col-12">
+            <div class="card">
+                <div class="card-header">
+                    <h3><i class="mdi mdi-router-wireless"></i> Hedgehog NetBox Plugin</h3>
+                </div>
+                <div class="card-body">
+                    <h4>🎉 Plugin Successfully Loaded!</h4>
+                    <p>The Hedgehog NetBox Plugin is now installed and working. This is a simplified version for demonstration.</p>
+                    
+                    <div class="row mt-4">
+                        <div class="col-md-4">
+                            <div class="card border-primary">
+                                <div class="card-body">
+                                    <h5 class="card-title">🏗️ Fabric Management</h5>
+                                    <p class="card-text">Manage multiple Hedgehog fabric installations.</p>
+                                    <a href="{% url 'plugins:netbox_hedgehog:fabric_list' %}" class="btn btn-primary">View Fabrics</a>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div class="col-md-4">
+                            <div class="card border-success">
+                                <div class="card-body">
+                                    <h5 class="card-title">☁️ VPC Management</h5>
+                                    <p class="card-text">Create and manage Virtual Private Clouds.</p>
+                                    <a href="{% url 'plugins:netbox_hedgehog:vpc_list' %}" class="btn btn-success">View VPCs</a>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div class="col-md-4">
+                            <div class="card border-info">
+                                <div class="card-body">
+                                    <h5 class="card-title">🔌 Infrastructure</h5>
+                                    <p class="card-text">Monitor switches and connections.</p>
+                                    <a href="{% url 'plugins:netbox_hedgehog:switch_list' %}" class="btn btn-info">View Switches</a>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="alert alert-info mt-4">
+                        <h5>🚀 Next Steps</h5>
+                        <ul>
+                            <li>This is a simplified version for demonstration</li>
+                            <li>Full plugin functionality includes templates, forms, and bulk operations</li>
+                            <li>See the comprehensive documentation in <code>docs/</code></li>
+                            <li>To enable full functionality, fix the import issues and restart</li>
+                        </ul>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

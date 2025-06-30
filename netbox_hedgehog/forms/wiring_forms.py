@@ -10,7 +10,8 @@ import json
 
 # NetBox imports
 from netbox.forms import NetBoxModelForm
-from utilities.forms import DynamicModelChoiceField, StaticSelect2
+# from utilities.forms.fields import DynamicModelChoiceField
+# from utilities.forms.widgets import StaticSelect2
 
 # Plugin imports
 from ..models.fabric import HedgehogFabric

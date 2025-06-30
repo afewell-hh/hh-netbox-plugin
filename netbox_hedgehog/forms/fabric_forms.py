@@ -11,7 +11,8 @@ import yaml
 
 # NetBox imports
 from netbox.forms import NetBoxModelForm
-from utilities.forms import DynamicModelChoiceField, StaticSelect2
+# from utilities.forms.fields import DynamicModelChoiceField
+# from utilities.forms.widgets import StaticSelect2
 
 # Plugin imports  
 from ..models.fabric import HedgehogFabric
@@ -176,9 +177,9 @@ class HedgehogFabricForm(NetBoxModelForm):
 class FabricOnboardingForm(forms.Form):
     """Form for fabric onboarding workflow"""
     
-    fabric = DynamicModelChoiceField(
+    fabric = forms.ModelChoiceField(
         queryset=HedgehogFabric.objects.all(),
-        widget=StaticSelect2(),
+        widget=forms.Select(),
         help_text="Select the fabric to onboard"
     )
     
@@ -222,9 +223,9 @@ class FabricOnboardingForm(forms.Form):
 class ConnectionTestForm(forms.Form):
     """Form for testing Kubernetes connection"""
     
-    fabric = DynamicModelChoiceField(
+    fabric = forms.ModelChoiceField(
         queryset=HedgehogFabric.objects.all(),
-        widget=StaticSelect2(),
+        widget=forms.Select(),
         help_text="Select fabric to test"
     )
     
@@ -236,7 +237,7 @@ class ConnectionTestForm(forms.Form):
             ('full', 'Full Integration Test'),
         ],
         initial='basic',
-        widget=StaticSelect2(),
+        widget=forms.Select(),
         help_text="Type of connection test to perform"
     )
     
@@ -331,9 +332,9 @@ class KubeconfigUploadForm(forms.Form):
 class ReconciliationSettingsForm(forms.Form):
     """Form for configuring reconciliation settings"""
     
-    fabric = DynamicModelChoiceField(
+    fabric = forms.ModelChoiceField(
         queryset=HedgehogFabric.objects.all(),
-        widget=StaticSelect2()
+        widget=forms.Select()
     )
     
     sync_interval = forms.IntegerField(
@@ -383,7 +384,7 @@ class BulkFabricOperationsForm(forms.Form):
             ('update_status', 'Update Status'),
             ('export_config', 'Export Configuration'),
         ],
-        widget=StaticSelect2(),
+        widget=forms.Select(),
         help_text="Operation to perform on selected fabrics"
     )
     
