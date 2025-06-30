@@ -19,9 +19,9 @@ from utilities.views import ViewTab, register_model_view
 from utilities.permissions import get_permission_for_model
 
 # Plugin imports  
-from ..models.fabric import HedgehogFabric
-from ..models.vpc import VPC, IPv4Namespace, VLANNamespace
-from ..models.wiring import Switch, Connection
+from ..models import HedgehogFabric
+from ..models.vpc_api import VPC, IPv4Namespace, VLANNamespace
+from ..models.wiring_api import Switch, Connection
 from ..utils.fabric_onboarding import FabricOnboardingManager
 from ..utils.reconciliation import ReconciliationManager
 from ..choices import KubernetesStatusChoices

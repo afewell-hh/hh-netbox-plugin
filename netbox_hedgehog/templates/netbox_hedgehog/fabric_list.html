@@ -34,7 +34,9 @@
                                 <tr>
                                     <th>Name</th>
                                     <th>Description</th>
-                                    <th>Status</th>
+                                    <th>Config Status</th>
+                                    <th>Connection</th>
+                                    <th>Sync Status</th>
                                     <th>Namespace</th>
                                     <th>Last Sync</th>
                                     <th>CRDs</th>
@@ -54,6 +56,30 @@
                                         <span class="badge bg-{% if fabric.status == 'active' %}success{% elif fabric.status == 'maintenance' %}warning{% else %}secondary{% endif %}">
                                             {{ fabric.get_status_display }}
                                         </span>
+                                    </td>
+                                    <td>
+                                        {% if fabric.connection_status == 'connected' %}
+                                            <span class="badge bg-success">Connected</span>
+                                        {% elif fabric.connection_status == 'disconnected' %}
+                                            <span class="badge bg-danger">Disconnected</span>
+                                        {% elif fabric.connection_status == 'error' %}
+                                            <span class="badge bg-danger">Error</span>
+                                        {% else %}
+                                            <span class="badge bg-secondary">Unknown</span>
+                                        {% endif %}
+                                    </td>
+                                    <td>
+                                        {% if fabric.sync_status == 'in_sync' %}
+                                            <span class="badge bg-success">In Sync</span>
+                                        {% elif fabric.sync_status == 'out_of_sync' %}
+                                            <span class="badge bg-warning">Out of Sync</span>
+                                        {% elif fabric.sync_status == 'syncing' %}
+                                            <span class="badge bg-info">Syncing</span>
+                                        {% elif fabric.sync_status == 'error' %}
+                                            <span class="badge bg-danger">Sync Error</span>
+                                        {% else %}
+                                            <span class="badge bg-secondary">Never Synced</span>
+                                        {% endif %}
                                     </td>
                                     <td><code>{{ fabric.kubernetes_namespace }}</code></td>
                                     <td>

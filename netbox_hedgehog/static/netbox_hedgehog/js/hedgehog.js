@@ -388,45 +388,110 @@ window.Hedgehog = window.Hedgehog || {};
     Hedgehog.fabric = {
         // Test connection with visual feedback
         testConnection: function(fabricId, button) {
-            Hedgehog.utils.setButtonLoading(button, true);
+            console.log('Hedgehog.fabric.testConnection called:', fabricId);
             
+            // Show loading state
+            const originalText = button.innerHTML;
+            button.innerHTML = '<i class="mdi mdi-loading mdi-spin"></i> Testing...';
+            button.disabled = true;
+            
+            console.log('Making API request to test connection...');
             Hedgehog.api.testConnection(fabricId)
                 .then(response => response.json())
                 .then(data => {
                     if (data.success) {
-                        Hedgehog.utils.showNotification('Connection test successful!', 'success');
+                        // Show success state
+                        button.innerHTML = '<i class="mdi mdi-check"></i> Connected!';
+                        button.className = 'btn btn-success';
+                        
+                        // Show detailed notification
+                        const message = data.message + (data.details ? ` (Namespace: ${data.details.namespace})` : '');
+                        Hedgehog.utils.showNotification(message, 'success');
+                        
+                        // Reload page to show updated status
+                        setTimeout(() => window.location.reload(), 2000);
                     } else {
+                        // Show error state
+                        button.innerHTML = '<i class="mdi mdi-close"></i> Failed';
+                        button.className = 'btn btn-danger';
+                        
                         Hedgehog.utils.showNotification('Connection test failed: ' + data.error, 'danger');
+                        
+                        // Reset button after delay
+                        setTimeout(() => {
+                            button.innerHTML = originalText;
+                            button.className = 'btn btn-outline-info';
+                            button.disabled = false;
+                        }, 3000);
                     }
                 })
                 .catch(error => {
+                    button.innerHTML = '<i class="mdi mdi-close"></i> Error';
+                    button.className = 'btn btn-danger';
+                    
                     Hedgehog.utils.showNotification('Connection test failed: ' + error.message, 'danger');
-                })
-                .finally(() => {
-                    Hedgehog.utils.setButtonLoading(button, false);
+                    
+                    // Reset button after delay
+                    setTimeout(() => {
+                        button.innerHTML = originalText;
+                        button.className = 'btn btn-outline-info';
+                        button.disabled = false;
+                    }, 3000);
                 });
         },
 
         // Sync fabric with visual feedback
         sync: function(fabricId, button) {
-            Hedgehog.utils.setButtonLoading(button, true);
+            console.log('Hedgehog.fabric.sync called:', fabricId);
             
+            // Show loading state
+            const originalText = button.innerHTML;
+            button.innerHTML = '<i class="mdi mdi-loading mdi-spin"></i> Syncing...';
+            button.disabled = true;
+            button.className = 'btn btn-warning';
+            
+            console.log('Making API request to sync fabric...');
             Hedgehog.api.syncFabric(fabricId)
                 .then(response => response.json())
                 .then(data => {
                     if (data.success) {
-                        Hedgehog.utils.showNotification('Fabric sync completed!', 'success');
+                        // Show success state
+                        button.innerHTML = '<i class="mdi mdi-check"></i> Synchronized!';
+                        button.className = 'btn btn-success';
+                        
+                        // Show detailed notification
+                        const message = data.message + (data.stats ? ` (Duration: ${data.stats.duration})` : '');
+                        Hedgehog.utils.showNotification(message, 'success');
+                        
                         // Reload page to show updated status
-                        setTimeout(() => window.location.reload(), 1000);
+                        setTimeout(() => window.location.reload(), 2000);
                     } else {
-                        Hedgehog.utils.showNotification('Fabric sync failed: ' + data.error, 'danger');
+                        // Show error state
+                        button.innerHTML = '<i class="mdi mdi-close"></i> Sync Failed';
+                        button.className = 'btn btn-danger';
+                        
+                        Hedgehog.utils.showNotification('Sync failed: ' + data.error, 'danger');
+                        
+                        // Reset button after delay
+                        setTimeout(() => {
+                            button.innerHTML = originalText;
+                            button.className = 'btn btn-primary';
+                            button.disabled = false;
+                        }, 3000);
                     }
                 })
                 .catch(error => {
-                    Hedgehog.utils.showNotification('Fabric sync failed: ' + error.message, 'danger');
-                })
-                .finally(() => {
-                    Hedgehog.utils.setButtonLoading(button, false);
+                    button.innerHTML = '<i class="mdi mdi-close"></i> Error';
+                    button.className = 'btn btn-danger';
+                    
+                    Hedgehog.utils.showNotification('Sync failed: ' + error.message, 'danger');
+                    
+                    // Reset button after delay
+                    setTimeout(() => {
+                        button.innerHTML = originalText;
+                        button.className = 'btn btn-primary';
+                        button.disabled = false;
+                    }, 3000);
                 });
         }
     };
@@ -441,6 +506,57 @@ window.Hedgehog = window.Hedgehog || {};
     });
 
 })(window.Hedgehog);
+
+// Global helper functions for template use
+function syncFabric(fabricId) {
+    console.log('🚀 syncFabric called with fabricId:', fabricId);
+    const button = event.target;
+    console.log('Button element:', button);
+    
+    // Immediate visual feedback
+    const originalText = button.innerHTML;
+    button.innerHTML = '<i class="mdi mdi-loading mdi-spin"></i> Starting Sync...';
+    button.disabled = true;
+    
+    if (window.Hedgehog && Hedgehog.fabric && Hedgehog.fabric.sync) {
+        console.log('✅ Calling Hedgehog.fabric.sync...');
+        Hedgehog.fabric.sync(fabricId, button);
+    } else {
+        console.error('❌ Hedgehog.fabric.sync not available');
+        alert('Sync functionality not loaded. Please refresh the page.');
+        
+        // Reset button
+        setTimeout(() => {
+            button.innerHTML = originalText;
+            button.disabled = false;
+        }, 2000);
+    }
+}
+
+function testConnection(fabricId) {
+    console.log('🔍 testConnection called with fabricId:', fabricId);
+    const button = event.target;
+    console.log('Button element:', button);
+    
+    // Immediate visual feedback
+    const originalText = button.innerHTML;
+    button.innerHTML = '<i class="mdi mdi-loading mdi-spin"></i> Testing...';
+    button.disabled = true;
+    
+    if (window.Hedgehog && Hedgehog.fabric && Hedgehog.fabric.testConnection) {
+        console.log('✅ Calling Hedgehog.fabric.testConnection...');
+        Hedgehog.fabric.testConnection(fabricId, button);
+    } else {
+        console.error('❌ Hedgehog.fabric.testConnection not available');
+        alert('Test connection functionality not loaded. Please refresh the page.');
+        
+        // Reset button
+        setTimeout(() => {
+            button.innerHTML = originalText;
+            button.disabled = false;
+        }, 2000);
+    }
+}
 
 // Export for use in other scripts
 if (typeof module !== 'undefined' && module.exports) {
