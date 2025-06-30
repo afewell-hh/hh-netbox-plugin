@@ -105,6 +105,6 @@ urlpatterns = [
     path('catalog/', views.CRDCatalogView.as_view(), name='catalog'),
     path('sync-all/', views.SyncAllView.as_view(), name='sync_all'),
     
-    # API URLs
-    path('api/', include('netbox_hedgehog.api.urls')),
+    # API URLs - temporarily disabled
+    # path('api/', include('netbox_hedgehog.api.urls')),
 ]
