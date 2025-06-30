@@ -1,10 +1,10 @@
 # Forms for Hedgehog NetBox Plugin
 from django import forms
-from netbox.forms import NetBoxModelForm
+from django.forms import ModelForm
 from ..models.fabric import HedgehogFabric
 from ..models.vpc_api import VPC
 
-class HedgehogFabricForm(NetBoxModelForm):
+class HedgehogFabricForm(ModelForm):
     """Form for creating and editing Hedgehog Fabrics"""
     
     class Meta:
@@ -15,21 +15,29 @@ class HedgehogFabricForm(NetBoxModelForm):
             'kubernetes_namespace', 'sync_enabled', 'sync_interval'
         ]
         widgets = {
-            'description': forms.Textarea(attrs={'rows': 3}),
+            'name': forms.TextInput(attrs={'class': 'form-control'}),
+            'description': forms.Textarea(attrs={'rows': 3, 'class': 'form-control'}),
+            'status': forms.Select(attrs={'class': 'form-select'}),
             'kubernetes_server': forms.URLInput(attrs={
-                'placeholder': 'https://k8s-api.example.com:6443'
+                'placeholder': 'https://k8s-api.example.com:6443',
+                'class': 'form-control'
             }),
             'kubernetes_token': forms.Textarea(attrs={
                 'rows': 4,
-                'placeholder': 'Service account token for authentication'
+                'placeholder': 'Service account token for authentication',
+                'class': 'form-control'
             }),
             'kubernetes_ca_cert': forms.Textarea(attrs={
                 'rows': 4,
-                'placeholder': 'CA certificate for TLS verification (optional)'
+                'placeholder': 'CA certificate for TLS verification (optional)',
+                'class': 'form-control'
             }),
             'kubernetes_namespace': forms.TextInput(attrs={
-                'placeholder': 'default'
+                'placeholder': 'default',
+                'class': 'form-control'
             }),
+            'sync_enabled': forms.CheckboxInput(attrs={'class': 'form-check-input'}),
+            'sync_interval': forms.NumberInput(attrs={'class': 'form-control'}),
         }
         help_texts = {
             'kubernetes_server': 'Kubernetes API server URL for this fabric',
@@ -39,7 +47,7 @@ class HedgehogFabricForm(NetBoxModelForm):
             'sync_interval': 'Sync interval in seconds (0 to disable)',
         }
 
-class VPCForm(NetBoxModelForm):
+class VPCForm(ModelForm):
     """Form for creating and editing VPCs"""
     
     # Add helper fields for better UX
