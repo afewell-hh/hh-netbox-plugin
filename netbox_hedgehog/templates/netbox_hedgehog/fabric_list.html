@@ -21,9 +21,9 @@
                             <p>Manage multiple Hedgehog fabric installations from this central interface.</p>
                         </div>
                         <div>
-                            <button class="btn btn-primary" disabled>
+                            <a href="{% url 'plugins:netbox_hedgehog:fabric_add' %}" class="btn btn-primary">
                                 <i class="mdi mdi-plus"></i> Add Fabric
-                            </button>
+                            </a>
                         </div>
                     </div>
                     
@@ -75,11 +75,12 @@
                                                class="btn btn-outline-primary" title="View Details">
                                                 <i class="mdi mdi-eye"></i>
                                             </a>
+                                            <a href="{% url 'plugins:netbox_hedgehog:fabric_edit' pk=fabric.pk %}" 
+                                               class="btn btn-outline-secondary" title="Edit">
+                                                <i class="mdi mdi-pencil"></i>
+                                            </a>
                                             <button class="btn btn-outline-secondary" disabled title="Sync">
                                                 <i class="mdi mdi-sync"></i>
-                                            </button>
-                                            <button class="btn btn-outline-secondary" disabled title="Edit">
-                                                <i class="mdi mdi-pencil"></i>
                                             </button>
                                         </div>
                                     </td>
@@ -116,9 +117,9 @@
                     <div class="alert alert-info">
                         <h5><i class="mdi mdi-information"></i> No Fabrics Found</h5>
                         <p>No Hedgehog fabrics have been configured yet. Create your first fabric to get started.</p>
-                        <button class="btn btn-primary" disabled>
+                        <a href="{% url 'plugins:netbox_hedgehog:fabric_add' %}" class="btn btn-primary">
                             <i class="mdi mdi-plus"></i> Create First Fabric
-                        </button>
+                        </a>
                     </div>
                     {% endif %}
                 </div>

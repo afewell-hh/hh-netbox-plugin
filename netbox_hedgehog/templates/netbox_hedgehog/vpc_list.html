@@ -21,9 +21,9 @@
                             <p>Create and manage VPCs across your Hedgehog fabric infrastructure.</p>
                         </div>
                         <div>
-                            <button class="btn btn-success" disabled>
+                            <a href="{% url 'plugins:netbox_hedgehog:vpc_add' %}" class="btn btn-success">
                                 <i class="mdi mdi-plus"></i> Create VPC
-                            </button>
+                            </a>
                         </div>
                     </div>
                     
@@ -71,14 +71,16 @@
                                     </td>
                                     <td>
                                         <div class="btn-group btn-group-sm">
-                                            <button class="btn btn-outline-primary" disabled title="View Details">
+                                            <a href="{% url 'plugins:netbox_hedgehog:vpc_detail' pk=vpc.pk %}" 
+                                               class="btn btn-outline-primary" title="View Details">
                                                 <i class="mdi mdi-eye"></i>
-                                            </button>
+                                            </a>
+                                            <a href="{% url 'plugins:netbox_hedgehog:vpc_edit' pk=vpc.pk %}" 
+                                               class="btn btn-outline-secondary" title="Edit">
+                                                <i class="mdi mdi-pencil"></i>
+                                            </a>
                                             <button class="btn btn-outline-success" disabled title="Apply">
                                                 <i class="mdi mdi-play"></i>
-                                            </button>
-                                            <button class="btn btn-outline-secondary" disabled title="Edit">
-                                                <i class="mdi mdi-pencil"></i>
                                             </button>
                                         </div>
                                     </td>
@@ -115,9 +117,9 @@
                     <div class="alert alert-info">
                         <h5><i class="mdi mdi-information"></i> No VPCs Found</h5>
                         <p>No Virtual Private Clouds have been configured yet. Create your first VPC to get started.</p>
-                        <button class="btn btn-success" disabled>
+                        <a href="{% url 'plugins:netbox_hedgehog:vpc_add' %}" class="btn btn-success">
                             <i class="mdi mdi-plus"></i> Create First VPC
-                        </button>
+                        </a>
                     </div>
                     {% endif %}
                 </div>

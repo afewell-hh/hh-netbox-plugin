@@ -1,0 +1,50 @@
+{% extends "generic/object_edit.html" %}
+{% load static %}
+{% load form_helpers %}
+
+{% block title %}
+    {% if object %}
+        Edit {{ object }}
+    {% else %}
+        Add Hedgehog Fabric
+    {% endif %}
+{% endblock %}
+
+{% block content_title %}
+    {% if object %}
+        <i class="mdi mdi-pencil"></i> Edit Fabric: {{ object }}
+    {% else %}
+        <i class="mdi mdi-plus-thick"></i> Add Hedgehog Fabric
+    {% endif %}
+{% endblock %}
+
+{% block form %}
+    <div class="row">
+        <div class="col col-md-6">
+            <div class="card">
+                <h5 class="card-header">Fabric Information</h5>
+                <div class="card-body">
+                    {% render_field form.name %}
+                    {% render_field form.description %}
+                    {% render_field form.status %}
+                </div>
+            </div>
+        </div>
+        
+        <div class="col col-md-6">
+            <div class="card">
+                <h5 class="card-header">Kubernetes Configuration</h5>
+                <div class="card-body">
+                    {% render_field form.kubernetes_server %}
+                    {% render_field form.kubernetes_namespace %}
+                    
+                    <hr>
+                    
+                    <h6>Synchronization</h6>
+                    {% render_field form.sync_enabled %}
+                    {% render_field form.sync_interval %}
+                </div>
+            </div>
+        </div>
+    </div>
+{% endblock %}
