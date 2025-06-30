@@ -33,10 +33,21 @@
         
         <div class="col col-md-6">
             <div class="card">
-                <h5 class="card-header">Kubernetes Configuration</h5>
+                <h5 class="card-header">Kubernetes Connection</h5>
                 <div class="card-body">
                     {% render_field form.kubernetes_server %}
                     {% render_field form.kubernetes_namespace %}
+                    
+                    <hr>
+                    
+                    <h6>Authentication</h6>
+                    <div class="alert alert-info">
+                        <small><i class="mdi mdi-information"></i> 
+                        Each Hedgehog fabric runs its own Kubernetes cluster. Provide the connection details and service account token for this specific fabric.
+                        </small>
+                    </div>
+                    {% render_field form.kubernetes_token %}
+                    {% render_field form.kubernetes_ca_cert %}
                     
                     <hr>
                     

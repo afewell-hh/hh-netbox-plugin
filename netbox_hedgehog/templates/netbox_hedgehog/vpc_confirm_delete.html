@@ -1,0 +1,46 @@
+{% extends "base/layout.html" %}
+{% load static %}
+
+{% block title %}Delete {{ object.name }}{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+    <div class="row">
+        <div class="col-12">
+            <div class="card">
+                <div class="card-header d-flex justify-content-between">
+                    <h3><i class="mdi mdi-delete"></i> Delete VPC: {{ object.name }}</h3>
+                    <a href="{% url 'plugins:netbox_hedgehog:vpc_detail' pk=object.pk %}" class="btn btn-outline-secondary">
+                        <i class="mdi mdi-arrow-left"></i> Cancel
+                    </a>
+                </div>
+                <div class="card-body">
+                    <div class="alert alert-danger">
+                        <h5><i class="mdi mdi-alert"></i> Confirm Deletion</h5>
+                        <p>Are you sure you want to delete the VPC <strong>{{ object.name }}</strong>?</p>
+                        <p>This action cannot be undone and will remove:</p>
+                        <ul>
+                            <li>The VPC configuration and specification</li>
+                            <li>All network attachments and peerings</li>
+                            <li>Kubernetes CRD from the fabric</li>
+                            <li>Any associated metadata and labels</li>
+                        </ul>
+                    </div>
+                    
+                    <form method="post">
+                        {% csrf_token %}
+                        <div class="d-flex gap-2">
+                            <button type="submit" class="btn btn-danger">
+                                <i class="mdi mdi-delete"></i> Yes, Delete VPC
+                            </button>
+                            <a href="{% url 'plugins:netbox_hedgehog:vpc_detail' pk=object.pk %}" class="btn btn-secondary">
+                                <i class="mdi mdi-close"></i> Cancel
+                            </a>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

@@ -11,20 +11,31 @@ class HedgehogFabricForm(NetBoxModelForm):
         model = HedgehogFabric
         fields = [
             'name', 'description', 'status', 
-            'kubernetes_server', 'kubernetes_namespace',
-            'sync_enabled', 'sync_interval'
+            'kubernetes_server', 'kubernetes_token', 'kubernetes_ca_cert',
+            'kubernetes_namespace', 'sync_enabled', 'sync_interval'
         ]
         widgets = {
             'description': forms.Textarea(attrs={'rows': 3}),
             'kubernetes_server': forms.URLInput(attrs={
-                'placeholder': 'https://k8s-api.example.com:6443 (optional)'
+                'placeholder': 'https://k8s-api.example.com:6443'
+            }),
+            'kubernetes_token': forms.Textarea(attrs={
+                'rows': 4,
+                'placeholder': 'Service account token for authentication'
+            }),
+            'kubernetes_ca_cert': forms.Textarea(attrs={
+                'rows': 4,
+                'placeholder': 'CA certificate for TLS verification (optional)'
             }),
             'kubernetes_namespace': forms.TextInput(attrs={
                 'placeholder': 'default'
             }),
         }
         help_texts = {
-            'kubernetes_server': 'Leave empty to use default kubeconfig',
+            'kubernetes_server': 'Kubernetes API server URL for this fabric',
+            'kubernetes_token': 'Service account token with appropriate permissions',
+            'kubernetes_ca_cert': 'CA certificate for TLS verification (leave empty for insecure connections)',
+            'kubernetes_namespace': 'Default namespace for this fabric\'s resources',
             'sync_interval': 'Sync interval in seconds (0 to disable)',
         }
 

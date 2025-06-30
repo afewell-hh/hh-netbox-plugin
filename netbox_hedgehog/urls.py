@@ -1,6 +1,6 @@
 from django.urls import path
-from django.views.generic import TemplateView, ListView
-from netbox.views.generic import ObjectView, ObjectEditView, ObjectDeleteView
+from django.views.generic import TemplateView, ListView, CreateView, UpdateView, DeleteView
+from netbox.views.generic import ObjectView
 
 from .models import HedgehogFabric, VPC
 from .forms import HedgehogFabricForm, VPCForm
@@ -29,14 +29,22 @@ class FabricDetailView(ObjectView):
     queryset = HedgehogFabric.objects.all()
     template_name = 'netbox_hedgehog/fabric_detail.html'
 
-class FabricEditView(ObjectEditView):
-    queryset = HedgehogFabric.objects.all()
-    form = HedgehogFabricForm
+class FabricCreateView(CreateView):
+    model = HedgehogFabric
+    form_class = HedgehogFabricForm
     template_name = 'netbox_hedgehog/fabric_edit.html'
+    success_url = '/plugins/netbox_hedgehog/fabrics/'
 
-class FabricDeleteView(ObjectDeleteView):
-    queryset = HedgehogFabric.objects.all()
-    default_return_url = 'plugins:netbox_hedgehog:fabric_list'
+class FabricEditView(UpdateView):
+    model = HedgehogFabric
+    form_class = HedgehogFabricForm
+    template_name = 'netbox_hedgehog/fabric_edit.html'
+    success_url = '/plugins/netbox_hedgehog/fabrics/'
+
+class FabricDeleteView(DeleteView):
+    model = HedgehogFabric
+    template_name = 'netbox_hedgehog/fabric_confirm_delete.html'
+    success_url = '/plugins/netbox_hedgehog/fabrics/'
 
 # VPC Views
 class VPCListView(ListView):
@@ -49,14 +57,22 @@ class VPCDetailView(ObjectView):
     queryset = VPC.objects.all()
     template_name = 'netbox_hedgehog/vpc_detail.html'
 
-class VPCEditView(ObjectEditView):
-    queryset = VPC.objects.all()
-    form = VPCForm
+class VPCCreateView(CreateView):
+    model = VPC
+    form_class = VPCForm
     template_name = 'netbox_hedgehog/vpc_edit.html'
+    success_url = '/plugins/netbox_hedgehog/vpcs/'
 
-class VPCDeleteView(ObjectDeleteView):
-    queryset = VPC.objects.all()
-    default_return_url = 'plugins:netbox_hedgehog:vpc_list'
+class VPCEditView(UpdateView):
+    model = VPC
+    form_class = VPCForm
+    template_name = 'netbox_hedgehog/vpc_edit.html'
+    success_url = '/plugins/netbox_hedgehog/vpcs/'
+
+class VPCDeleteView(DeleteView):
+    model = VPC
+    template_name = 'netbox_hedgehog/vpc_confirm_delete.html'
+    success_url = '/plugins/netbox_hedgehog/vpcs/'
 
 # Other Views
 class TopologyView(TemplateView):
@@ -67,14 +83,14 @@ urlpatterns = [
     
     # Fabric URLs
     path('fabrics/', FabricListView.as_view(), name='fabric_list'),
-    path('fabrics/add/', FabricEditView.as_view(), name='fabric_add'),
+    path('fabrics/add/', FabricCreateView.as_view(), name='fabric_add'),
     path('fabrics/<int:pk>/', FabricDetailView.as_view(), name='fabric_detail'),
     path('fabrics/<int:pk>/edit/', FabricEditView.as_view(), name='fabric_edit'),
     path('fabrics/<int:pk>/delete/', FabricDeleteView.as_view(), name='fabric_delete'),
     
     # VPC URLs
     path('vpcs/', VPCListView.as_view(), name='vpc_list'),
-    path('vpcs/add/', VPCEditView.as_view(), name='vpc_add'),
+    path('vpcs/add/', VPCCreateView.as_view(), name='vpc_add'),
     path('vpcs/<int:pk>/', VPCDetailView.as_view(), name='vpc_detail'),
     path('vpcs/<int:pk>/edit/', VPCEditView.as_view(), name='vpc_edit'),
     path('vpcs/<int:pk>/delete/', VPCDeleteView.as_view(), name='vpc_delete'),
