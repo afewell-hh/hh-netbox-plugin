@@ -15,28 +15,111 @@
                     </a>
                 </div>
                 <div class="card-body">
-                    <h4>Virtual Private Clouds</h4>
-                    <p>Create and manage VPCs across your Hedgehog fabric infrastructure.</p>
+                    <div class="d-flex justify-content-between align-items-center mb-3">
+                        <div>
+                            <h4>Virtual Private Clouds</h4>
+                            <p>Create and manage VPCs across your Hedgehog fabric infrastructure.</p>
+                        </div>
+                        <div>
+                            <button class="btn btn-success" disabled>
+                                <i class="mdi mdi-plus"></i> Create VPC
+                            </button>
+                        </div>
+                    </div>
                     
-                    <div class="alert alert-info">
-                        <h5><i class="mdi mdi-information"></i> Demo Mode</h5>
-                        <p>This is a demonstration page. In the full version, you would see:</p>
-                        <ul>
-                            <li>List of configured VPCs</li>
-                            <li>VPC deployment status</li>
-                            <li>Network topology visualization</li>
-                            <li>VPC configuration and management tools</li>
+                    {% if vpcs %}
+                    <div class="table-responsive">
+                        <table class="table table-striped">
+                            <thead>
+                                <tr>
+                                    <th>Name</th>
+                                    <th>Fabric</th>
+                                    <th>Status</th>
+                                    <th>Subnets</th>
+                                    <th>Created</th>
+                                    <th>Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for vpc in vpcs %}
+                                <tr>
+                                    <td>
+                                        <strong>{{ vpc.name }}</strong>
+                                        {% if vpc.description %}
+                                            <br><small class="text-muted">{{ vpc.description|truncatechars:40 }}</small>
+                                        {% endif %}
+                                    </td>
+                                    <td>
+                                        {% if vpc.fabric %}
+                                            <a href="{% url 'plugins:netbox_hedgehog:fabric_detail' pk=vpc.fabric.pk %}">
+                                                {{ vpc.fabric.name }}
+                                            </a>
+                                        {% else %}
+                                            <span class="text-muted">—</span>
+                                        {% endif %}
+                                    </td>
+                                    <td>
+                                        <span class="badge bg-{% if vpc.kubernetes_status == 'live' %}success{% elif vpc.kubernetes_status == 'error' %}danger{% else %}secondary{% endif %}">
+                                            {{ vpc.get_kubernetes_status_display|default:"Unknown" }}
+                                        </span>
+                                    </td>
+                                    <td>
+                                        <span class="badge bg-info">{{ vpc.subnets.count|default:0 }}</span>
+                                    </td>
+                                    <td>
+                                        <span title="{{ vpc.created }}">{{ vpc.created|timesince }} ago</span>
+                                    </td>
+                                    <td>
+                                        <div class="btn-group btn-group-sm">
+                                            <button class="btn btn-outline-primary" disabled title="View Details">
+                                                <i class="mdi mdi-eye"></i>
+                                            </button>
+                                            <button class="btn btn-outline-success" disabled title="Apply">
+                                                <i class="mdi mdi-play"></i>
+                                            </button>
+                                            <button class="btn btn-outline-secondary" disabled title="Edit">
+                                                <i class="mdi mdi-pencil"></i>
+                                            </button>
+                                        </div>
+                                    </td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                    
+                    <!-- Pagination -->
+                    {% if is_paginated %}
+                    <nav aria-label="VPC pagination">
+                        <ul class="pagination justify-content-center">
+                            {% if page_obj.has_previous %}
+                                <li class="page-item">
+                                    <a class="page-link" href="?page={{ page_obj.previous_page_number }}">Previous</a>
+                                </li>
+                            {% endif %}
+                            
+                            <li class="page-item active">
+                                <span class="page-link">Page {{ page_obj.number }} of {{ page_obj.paginator.num_pages }}</span>
+                            </li>
+                            
+                            {% if page_obj.has_next %}
+                                <li class="page-item">
+                                    <a class="page-link" href="?page={{ page_obj.next_page_number }}">Next</a>
+                                </li>
+                            {% endif %}
                         </ul>
-                    </div>
+                    </nav>
+                    {% endif %}
                     
-                    <div class="mt-4">
+                    {% else %}
+                    <div class="alert alert-info">
+                        <h5><i class="mdi mdi-information"></i> No VPCs Found</h5>
+                        <p>No Virtual Private Clouds have been configured yet. Create your first VPC to get started.</p>
                         <button class="btn btn-success" disabled>
-                            <i class="mdi mdi-plus"></i> Create VPC (Demo)
-                        </button>
-                        <button class="btn btn-info" disabled>
-                            <i class="mdi mdi-eye"></i> View Templates (Demo)
+                            <i class="mdi mdi-plus"></i> Create First VPC
                         </button>
                     </div>
+                    {% endif %}
                 </div>
             </div>
         </div>

@@ -1,0 +1,158 @@
+{% extends "base/layout.html" %}
+{% load static %}
+
+{% block title %}{{ object.name }} - Fabric Details{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+    <div class="row">
+        <div class="col-12">
+            <div class="card">
+                <div class="card-header d-flex justify-content-between">
+                    <h3><i class="mdi mdi-server-network"></i> {{ object.name }}</h3>
+                    <div>
+                        <a href="{% url 'plugins:netbox_hedgehog:fabric_list' %}" class="btn btn-outline-secondary">
+                            <i class="mdi mdi-arrow-left"></i> Back to Fabrics
+                        </a>
+                        <button class="btn btn-outline-primary" disabled>
+                            <i class="mdi mdi-pencil"></i> Edit
+                        </button>
+                    </div>
+                </div>
+                <div class="card-body">
+                    <div class="row">
+                        <div class="col-md-8">
+                            <h4>Fabric Information</h4>
+                            <table class="table table-borderless">
+                                <tr>
+                                    <th width="200">Name:</th>
+                                    <td>{{ object.name }}</td>
+                                </tr>
+                                <tr>
+                                    <th>Description:</th>
+                                    <td>{{ object.description|default:"—" }}</td>
+                                </tr>
+                                <tr>
+                                    <th>Status:</th>
+                                    <td>
+                                        <span class="badge bg-{% if object.status == 'active' %}success{% elif object.status == 'maintenance' %}warning{% else %}secondary{% endif %}">
+                                            {{ object.get_status_display }}
+                                        </span>
+                                    </td>
+                                </tr>
+                                <tr>
+                                    <th>Kubernetes Namespace:</th>
+                                    <td><code>{{ object.kubernetes_namespace }}</code></td>
+                                </tr>
+                                <tr>
+                                    <th>Kubernetes Server:</th>
+                                    <td>{{ object.kubernetes_server|default:"Using default kubeconfig" }}</td>
+                                </tr>
+                                <tr>
+                                    <th>Sync Enabled:</th>
+                                    <td>
+                                        {% if object.sync_enabled %}
+                                            <span class="badge bg-success">Enabled</span>
+                                            ({{ object.sync_interval }}s interval)
+                                        {% else %}
+                                            <span class="badge bg-secondary">Disabled</span>
+                                        {% endif %}
+                                    </td>
+                                </tr>
+                                <tr>
+                                    <th>Last Sync:</th>
+                                    <td>
+                                        {% if object.last_sync %}
+                                            {{ object.last_sync }} ({{ object.last_sync|timesince }} ago)
+                                        {% else %}
+                                            <span class="text-muted">Never synchronized</span>
+                                        {% endif %}
+                                    </td>
+                                </tr>
+                                {% if object.sync_error %}
+                                <tr>
+                                    <th>Sync Error:</th>
+                                    <td>
+                                        <div class="alert alert-danger mb-0">
+                                            <small>{{ object.sync_error }}</small>
+                                        </div>
+                                    </td>
+                                </tr>
+                                {% endif %}
+                            </table>
+                        </div>
+                        
+                        <div class="col-md-4">
+                            <h4>Statistics</h4>
+                            <div class="row">
+                                <div class="col-6">
+                                    <div class="card bg-info text-white text-center">
+                                        <div class="card-body">
+                                            <h3>{{ object.crd_count }}</h3>
+                                            <small>Total CRDs</small>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="col-6">
+                                    <div class="card bg-success text-white text-center">
+                                        <div class="card-body">
+                                            <h3>{{ object.active_crd_count }}</h3>
+                                            <small>Active CRDs</small>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="col-6 mt-2">
+                                    <div class="card bg-danger text-white text-center">
+                                        <div class="card-body">
+                                            <h3>{{ object.error_crd_count }}</h3>
+                                            <small>Error CRDs</small>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="col-6 mt-2">
+                                    <div class="card bg-warning text-white text-center">
+                                        <div class="card-body">
+                                            <h3>0</h3>
+                                            <small>Pending</small>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                            
+                            <div class="mt-3">
+                                <h5>Actions</h5>
+                                <div class="d-grid gap-2">
+                                    <button class="btn btn-primary" disabled>
+                                        <i class="mdi mdi-sync"></i> Sync Now
+                                    </button>
+                                    <button class="btn btn-info" disabled>
+                                        <i class="mdi mdi-eye"></i> View CRDs
+                                    </button>
+                                    <button class="btn btn-warning" disabled>
+                                        <i class="mdi mdi-cog"></i> Configuration
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <hr>
+                    
+                    <h4>Configuration Details</h4>
+                    <div class="alert alert-info">
+                        <h5><i class="mdi mdi-information"></i> Demo Mode</h5>
+                        <p>In the full version, this section would show:</p>
+                        <ul>
+                            <li>Kubernetes connection status and details</li>
+                            <li>CRD management interface</li>
+                            <li>Sync logs and history</li>
+                            <li>Configuration management tools</li>
+                            <li>Real-time status monitoring</li>
+                        </ul>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
