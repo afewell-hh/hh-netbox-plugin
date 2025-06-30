@@ -1,0 +1,45 @@
+{% extends "base/layout.html" %}
+{% load static %}
+
+{% block title %}Fabric Management{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+    <div class="row">
+        <div class="col-12">
+            <div class="card">
+                <div class="card-header d-flex justify-content-between">
+                    <h3><i class="mdi mdi-server-network"></i> Fabric Management</h3>
+                    <a href="{% url 'plugins:netbox_hedgehog:overview' %}" class="btn btn-outline-secondary">
+                        <i class="mdi mdi-arrow-left"></i> Back to Dashboard
+                    </a>
+                </div>
+                <div class="card-body">
+                    <h4>Hedgehog Fabrics</h4>
+                    <p>Manage multiple Hedgehog fabric installations from this central interface.</p>
+                    
+                    <div class="alert alert-info">
+                        <h5><i class="mdi mdi-information"></i> Demo Mode</h5>
+                        <p>This is a demonstration page. In the full version, you would see:</p>
+                        <ul>
+                            <li>List of configured fabric instances</li>
+                            <li>Connection status indicators</li>
+                            <li>Quick actions for fabric management</li>
+                            <li>Fabric configuration options</li>
+                        </ul>
+                    </div>
+                    
+                    <div class="mt-4">
+                        <button class="btn btn-primary" disabled>
+                            <i class="mdi mdi-plus"></i> Add Fabric (Demo)
+                        </button>
+                        <button class="btn btn-secondary" disabled>
+                            <i class="mdi mdi-sync"></i> Sync All (Demo)
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

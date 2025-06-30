@@ -1,0 +1,51 @@
+{% extends "base/layout.html" %}
+{% load static %}
+
+{% block title %}Network Topology{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+    <div class="row">
+        <div class="col-12">
+            <div class="card">
+                <div class="card-header d-flex justify-content-between">
+                    <h3><i class="mdi mdi-graph"></i> Network Topology</h3>
+                    <a href="{% url 'plugins:netbox_hedgehog:overview' %}" class="btn btn-outline-secondary">
+                        <i class="mdi mdi-arrow-left"></i> Back to Dashboard
+                    </a>
+                </div>
+                <div class="card-body">
+                    <h4>Network Visualization</h4>
+                    <p>Interactive topology view of your Hedgehog network infrastructure.</p>
+                    
+                    <div class="alert alert-info">
+                        <h5><i class="mdi mdi-information"></i> Demo Mode</h5>
+                        <p>This is a demonstration page. In the full version, you would see:</p>
+                        <ul>
+                            <li>Interactive network topology diagram</li>
+                            <li>Real-time connection status</li>
+                            <li>Switch and server positioning</li>
+                            <li>Traffic flow visualization</li>
+                        </ul>
+                    </div>
+                    
+                    <div class="border rounded p-4 mt-4 bg-light text-center">
+                        <i class="mdi mdi-graph mdi-48px text-muted"></i>
+                        <p class="mt-2 text-muted">Network topology visualization would appear here</p>
+                        <small class="text-muted">Interactive graph showing switches, servers, and connections</small>
+                    </div>
+                    
+                    <div class="mt-4">
+                        <button class="btn btn-primary" disabled>
+                            <i class="mdi mdi-refresh"></i> Refresh Topology (Demo)
+                        </button>
+                        <button class="btn btn-secondary" disabled>
+                            <i class="mdi mdi-fullscreen"></i> Fullscreen View (Demo)
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

@@ -1,0 +1,45 @@
+{% extends "base/layout.html" %}
+{% load static %}
+
+{% block title %}VPC Management{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+    <div class="row">
+        <div class="col-12">
+            <div class="card">
+                <div class="card-header d-flex justify-content-between">
+                    <h3><i class="mdi mdi-cloud-outline"></i> VPC Management</h3>
+                    <a href="{% url 'plugins:netbox_hedgehog:overview' %}" class="btn btn-outline-secondary">
+                        <i class="mdi mdi-arrow-left"></i> Back to Dashboard
+                    </a>
+                </div>
+                <div class="card-body">
+                    <h4>Virtual Private Clouds</h4>
+                    <p>Create and manage VPCs across your Hedgehog fabric infrastructure.</p>
+                    
+                    <div class="alert alert-info">
+                        <h5><i class="mdi mdi-information"></i> Demo Mode</h5>
+                        <p>This is a demonstration page. In the full version, you would see:</p>
+                        <ul>
+                            <li>List of configured VPCs</li>
+                            <li>VPC deployment status</li>
+                            <li>Network topology visualization</li>
+                            <li>VPC configuration and management tools</li>
+                        </ul>
+                    </div>
+                    
+                    <div class="mt-4">
+                        <button class="btn btn-success" disabled>
+                            <i class="mdi mdi-plus"></i> Create VPC (Demo)
+                        </button>
+                        <button class="btn btn-info" disabled>
+                            <i class="mdi mdi-eye"></i> View Templates (Demo)
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
