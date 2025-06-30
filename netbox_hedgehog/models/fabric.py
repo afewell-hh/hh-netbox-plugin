@@ -2,7 +2,7 @@ from django.db import models
 from django.urls import reverse
 from netbox.models import NetBoxModel
 
-from ..choices import FabricStatusChoices
+from ..choices import FabricStatusChoices, ConnectionStatusChoices, SyncStatusChoices
 
 class HedgehogFabric(NetBoxModel):
     """
@@ -24,8 +24,22 @@ class HedgehogFabric(NetBoxModel):
     status = models.CharField(
         max_length=20,
         choices=FabricStatusChoices,
-        default=FabricStatusChoices.ACTIVE,
-        help_text="Current status of this fabric"
+        default=FabricStatusChoices.PLANNED,
+        help_text="Configuration status - whether this fabric is planned, active, etc."
+    )
+    
+    connection_status = models.CharField(
+        max_length=20,
+        choices=ConnectionStatusChoices,
+        default=ConnectionStatusChoices.UNKNOWN,
+        help_text="Connection status - whether NetBox can connect to this fabric"
+    )
+    
+    sync_status = models.CharField(
+        max_length=20,
+        choices=SyncStatusChoices,
+        default=SyncStatusChoices.NEVER_SYNCED,
+        help_text="Sync status - whether data is synchronized with Kubernetes"
     )
     
     # Kubernetes connection configuration
@@ -86,28 +100,78 @@ class HedgehogFabric(NetBoxModel):
     @property
     def crd_count(self):
         """Return total count of CRDs in this fabric"""
-        from .base import BaseCRD
-        return BaseCRD.objects.filter(fabric=self).count()
+        # Count all concrete CRD types that have this fabric
+        # Handle missing tables gracefully during development
+        total = 0
+        try:
+            from .vpc_api import VPC, External, ExternalAttachment, ExternalPeering, IPv4Namespace, VPCAttachment, VPCPeering
+            from .wiring_api import Connection, Server, Switch, SwitchGroup, VLANNamespace
+            
+            models = [VPC, External, ExternalAttachment, ExternalPeering, IPv4Namespace, VPCAttachment, VPCPeering,
+                     Connection, Server, Switch, SwitchGroup, VLANNamespace]
+            
+            for model in models:
+                try:
+                    total += model.objects.filter(fabric=self).count()
+                except Exception:
+                    # Table doesn't exist yet, skip this model
+                    pass
+        except ImportError:
+            # Models not available, return 0
+            pass
+        return total
     
     @property
     def active_crd_count(self):
         """Return count of active/live CRDs in this fabric"""
-        from .base import BaseCRD
-        from ..choices import KubernetesStatusChoices
-        return BaseCRD.objects.filter(
-            fabric=self,
-            kubernetes_status=KubernetesStatusChoices.LIVE
-        ).count()
+        total = 0
+        try:
+            from ..choices import KubernetesStatusChoices
+            from .vpc_api import VPC, External, ExternalAttachment, ExternalPeering, IPv4Namespace, VPCAttachment, VPCPeering
+            from .wiring_api import Connection, Server, Switch, SwitchGroup, VLANNamespace
+            
+            models = [VPC, External, ExternalAttachment, ExternalPeering, IPv4Namespace, VPCAttachment, VPCPeering,
+                     Connection, Server, Switch, SwitchGroup, VLANNamespace]
+            
+            for model in models:
+                try:
+                    total += model.objects.filter(
+                        fabric=self,
+                        kubernetes_status=KubernetesStatusChoices.LIVE
+                    ).count()
+                except Exception:
+                    # Table doesn't exist yet, skip this model
+                    pass
+        except ImportError:
+            # Models not available, return 0
+            pass
+        return total
     
     @property
     def error_crd_count(self):
         """Return count of CRDs with errors in this fabric"""
-        from .base import BaseCRD
-        from ..choices import KubernetesStatusChoices
-        return BaseCRD.objects.filter(
-            fabric=self,
-            kubernetes_status=KubernetesStatusChoices.ERROR
-        ).count()
+        total = 0
+        try:
+            from ..choices import KubernetesStatusChoices
+            from .vpc_api import VPC, External, ExternalAttachment, ExternalPeering, IPv4Namespace, VPCAttachment, VPCPeering
+            from .wiring_api import Connection, Server, Switch, SwitchGroup, VLANNamespace
+            
+            models = [VPC, External, ExternalAttachment, ExternalPeering, IPv4Namespace, VPCAttachment, VPCPeering,
+                     Connection, Server, Switch, SwitchGroup, VLANNamespace]
+            
+            for model in models:
+                try:
+                    total += model.objects.filter(
+                        fabric=self,
+                        kubernetes_status=KubernetesStatusChoices.ERROR
+                    ).count()
+                except Exception:
+                    # Table doesn't exist yet, skip this model
+                    pass
+        except ImportError:
+            # Models not available, return 0
+            pass
+        return total
     
     def get_kubernetes_config(self):
         """

@@ -4,6 +4,7 @@ from netbox.views.generic import ObjectView
 
 from .models import HedgehogFabric, VPC
 from .forms import HedgehogFabricForm, VPCForm
+from .simple_sync import SimpleFabricSyncView, SimpleFabricTestConnectionView
 
 app_name = 'netbox_hedgehog'
 
@@ -87,6 +88,8 @@ urlpatterns = [
     path('fabrics/<int:pk>/', FabricDetailView.as_view(), name='fabric_detail'),
     path('fabrics/<int:pk>/edit/', FabricEditView.as_view(), name='fabric_edit'),
     path('fabrics/<int:pk>/delete/', FabricDeleteView.as_view(), name='fabric_delete'),
+    path('fabrics/<int:pk>/sync/', SimpleFabricSyncView.as_view(), name='fabric_sync'),
+    path('fabrics/<int:pk>/test-connection/', SimpleFabricTestConnectionView.as_view(), name='fabric_test_connection'),
     
     # VPC URLs
     path('vpcs/', VPCListView.as_view(), name='vpc_list'),

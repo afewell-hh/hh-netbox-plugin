@@ -5,7 +5,6 @@ import json
 import yaml
 
 from ..choices import KubernetesStatusChoices
-from .fabric import HedgehogFabric
 
 class BaseCRD(NetBoxModel):
     """
@@ -14,7 +13,7 @@ class BaseCRD(NetBoxModel):
     """
     
     fabric = models.ForeignKey(
-        HedgehogFabric,
+        'netbox_hedgehog.HedgehogFabric',
         on_delete=models.CASCADE,
         related_name='%(class)s_set',
         help_text="Hedgehog fabric this CRD belongs to"

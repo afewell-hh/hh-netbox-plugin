@@ -20,18 +20,50 @@ class KubernetesStatusChoices(ChoiceSet):
     ]
 
 class FabricStatusChoices(ChoiceSet):
-    """Choices for Hedgehog fabric status"""
+    """Configuration status choices for Hedgehog Fabrics"""
     
-    ACTIVE = 'active'
-    INACTIVE = 'inactive'
-    ERROR = 'error'
-    SYNCING = 'syncing'
+    PLANNED = 'planned'
+    ACTIVE = 'active' 
+    MAINTENANCE = 'maintenance'
+    DECOMMISSIONED = 'decommissioned'
     
     CHOICES = [
+        (PLANNED, 'Planned'),
         (ACTIVE, 'Active'),
-        (INACTIVE, 'Inactive'),
+        (MAINTENANCE, 'Maintenance'),
+        (DECOMMISSIONED, 'Decommissioned'),
+    ]
+
+class ConnectionStatusChoices(ChoiceSet):
+    """Connection status choices for Hedgehog Fabrics"""
+    
+    UNKNOWN = 'unknown'
+    CONNECTED = 'connected'
+    DISCONNECTED = 'disconnected'
+    ERROR = 'error'
+    
+    CHOICES = [
+        (UNKNOWN, 'Unknown'),
+        (CONNECTED, 'Connected'),
+        (DISCONNECTED, 'Disconnected'), 
         (ERROR, 'Error'),
+    ]
+
+class SyncStatusChoices(ChoiceSet):
+    """Sync status choices for Hedgehog Fabrics"""
+    
+    NEVER_SYNCED = 'never_synced'
+    IN_SYNC = 'in_sync'
+    OUT_OF_SYNC = 'out_of_sync'
+    SYNCING = 'syncing'
+    ERROR = 'error'
+    
+    CHOICES = [
+        (NEVER_SYNCED, 'Never Synced'),
+        (IN_SYNC, 'In Sync'),
+        (OUT_OF_SYNC, 'Out of Sync'),
         (SYNCING, 'Syncing'),
+        (ERROR, 'Sync Error'),
     ]
 
 class CRDTypeChoices(ChoiceSet):

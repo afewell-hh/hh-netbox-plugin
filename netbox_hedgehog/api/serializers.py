@@ -8,6 +8,12 @@ class FabricSerializer(NetBoxModelSerializer):
         model = models.HedgehogFabric
         fields = '__all__'
 
+# Alias for NetBox event system
+class HedgehogFabricSerializer(NetBoxModelSerializer):
+    class Meta:
+        model = models.HedgehogFabric
+        fields = '__all__'
+
 # VPC API Serializers
 class VPCSerializer(NetBoxModelSerializer):
     class Meta:
