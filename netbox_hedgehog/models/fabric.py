@@ -86,6 +86,11 @@ class HedgehogFabric(NetBoxModel):
         help_text="Last sync error message (if any)"
     )
     
+    connection_error = models.TextField(
+        blank=True,
+        help_text="Last connection error message (if any)"
+    )
+    
     class Meta:
         verbose_name = "Hedgehog Fabric"
         verbose_name_plural = "Hedgehog Fabrics"

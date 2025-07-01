@@ -80,7 +80,8 @@ class KubernetesClient:
             v1 = client.CoreV1Api(api_client)
             
             # Try to get cluster version
-            version_info = v1.get_code()
+            version_api = client.VersionApi(api_client)
+            version_info = version_api.get_code()
             
             # Try to list namespaces to verify permissions
             namespaces = v1.list_namespace(limit=1)
