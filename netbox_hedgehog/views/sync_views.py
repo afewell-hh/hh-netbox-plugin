@@ -129,10 +129,8 @@ class FabricSyncView(View):
                     fabric.sync_error = ''
                     fabric.last_sync = timezone.now()
                     
-                    # Update CRD counts from sync results
-                    fabric.crd_count = sync_result.get('total', 0)
-                    fabric.vpc_count = sync_result.get('vpc_count', 0)
-                    fabric.connection_count = sync_result.get('connection_count', 0)
+                    # CRD counts are already updated by the sync service
+                    # No need to update here as KubernetesSync.sync_all_crds() handles it
                     fabric.save()
                     
                     messages.success(request, f"Sync completed successfully for fabric '{fabric.name}'")

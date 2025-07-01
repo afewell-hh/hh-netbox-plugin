@@ -91,6 +91,22 @@ class HedgehogFabric(NetBoxModel):
         help_text="Last connection error message (if any)"
     )
     
+    # Cached CRD counts for dashboard display
+    cached_crd_count = models.PositiveIntegerField(
+        default=0,
+        help_text="Cached total count of CRDs (updated during sync)"
+    )
+    
+    cached_vpc_count = models.PositiveIntegerField(
+        default=0,
+        help_text="Cached VPC count (updated during sync)"
+    )
+    
+    cached_connection_count = models.PositiveIntegerField(
+        default=0,
+        help_text="Cached Connection count (updated during sync)"
+    )
+    
     class Meta:
         verbose_name = "Hedgehog Fabric"
         verbose_name_plural = "Hedgehog Fabrics"

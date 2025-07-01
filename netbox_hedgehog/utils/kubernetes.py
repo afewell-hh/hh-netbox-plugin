@@ -345,56 +345,78 @@ class KubernetesSync:
     def __init__(self, fabric: HedgehogFabric):
         self.fabric = fabric
         self.client = KubernetesClient(fabric)
+        
+        # Define Hedgehog CRD types and their API groups
+        self.crd_types = {
+            # VPC API CRDs
+            'vpcs': {'group': 'vpc.githedgehog.com', 'version': 'v1beta1', 'kind': 'VPC'},
+            'externals': {'group': 'vpc.githedgehog.com', 'version': 'v1beta1', 'kind': 'External'},
+            'externalattachments': {'group': 'vpc.githedgehog.com', 'version': 'v1beta1', 'kind': 'ExternalAttachment'},
+            'externalpeerings': {'group': 'vpc.githedgehog.com', 'version': 'v1beta1', 'kind': 'ExternalPeering'},
+            'ipv4namespaces': {'group': 'vpc.githedgehog.com', 'version': 'v1beta1', 'kind': 'IPv4Namespace'},
+            'vpcattachments': {'group': 'vpc.githedgehog.com', 'version': 'v1beta1', 'kind': 'VPCAttachment'},
+            'vpcpeerings': {'group': 'vpc.githedgehog.com', 'version': 'v1beta1', 'kind': 'VPCPeering'},
+            # Wiring API CRDs
+            'connections': {'group': 'wiring.githedgehog.com', 'version': 'v1beta1', 'kind': 'Connection'},
+            'servers': {'group': 'wiring.githedgehog.com', 'version': 'v1beta1', 'kind': 'Server'},
+            'switches': {'group': 'wiring.githedgehog.com', 'version': 'v1beta1', 'kind': 'Switch'},
+            'switchgroups': {'group': 'wiring.githedgehog.com', 'version': 'v1beta1', 'kind': 'SwitchGroup'},
+            'vlannamespaces': {'group': 'wiring.githedgehog.com', 'version': 'v1beta1', 'kind': 'VLANNamespace'},
+        }
     
     def sync_all_crds(self) -> Dict[str, Any]:
         """
-        Synchronize all CRDs for this fabric.
+        Synchronize all CRDs for this fabric by fetching from Kubernetes.
         Returns summary of sync operations.
         """
-        from ..models.base import BaseCRD
-        
         results = {
             'success': True,
             'total': 0,
             'updated': 0,
             'errors': 0,
-            'error_details': []
+            'error_details': [],
+            'totals_by_type': {}
         }
         
         try:
-            # Get all CRDs for this fabric
-            crds = BaseCRD.objects.filter(fabric=self.fabric, auto_sync=True)
-            results['total'] = len(crds)
+            # First, fetch CRDs from Kubernetes
+            fetch_result = self.fetch_crds_from_kubernetes()
             
-            for crd in crds:
-                try:
-                    status_result = self.client.get_crd_status(crd)
-                    if status_result['success']:
-                        results['updated'] += 1
-                    else:
-                        results['errors'] += 1
-                        results['error_details'].append({
-                            'crd': str(crd),
-                            'error': status_result.get('error', 'Unknown error')
-                        })
+            if not fetch_result['success']:
+                results['success'] = False
+                results['error_details'] = fetch_result['errors']
+                results['errors'] = len(fetch_result['errors'])
                 
-                except Exception as e:
-                    results['errors'] += 1
-                    results['error_details'].append({
-                        'crd': str(crd),
-                        'error': str(e)
-                    })
+                # Update fabric with error status
+                self.fabric.sync_error = '; '.join(fetch_result['errors'][:3])  # First 3 errors
+                self.fabric.save()
+                
+                return results
+            
+            # Calculate totals
+            total_resources = sum(fetch_result['totals'].values())
+            results['total'] = total_resources
+            results['totals_by_type'] = fetch_result['totals']
+            
+            # Count VPCs and connections specifically for fabric dashboard
+            vpc_count = fetch_result['totals'].get('VPC', 0)
+            connection_count = fetch_result['totals'].get('Connection', 0)
+            
+            # Update fabric CRD counts (these are used in templates)
+            self.fabric.cached_crd_count = total_resources
+            self.fabric.cached_vpc_count = vpc_count  
+            self.fabric.cached_connection_count = connection_count
+            
+            # For now, just report successful fetch as "updated"
+            # In future, we can sync individual CRD status by checking each resource
+            results['updated'] = total_resources
             
             # Update fabric sync timestamp
-            if results['errors'] == 0:
-                self.fabric.last_sync = datetime.now()
-                self.fabric.sync_error = ''
-            else:
-                error_summary = f"{results['errors']} CRDs failed to sync"
-                self.fabric.sync_error = error_summary
-                results['success'] = False
-            
+            self.fabric.last_sync = datetime.now()
+            self.fabric.sync_error = ''
             self.fabric.save()
+            
+            logger.info(f"Successfully synced {total_resources} CRDs for fabric {self.fabric.name}")
             
         except Exception as e:
             logger.error(f"Fabric sync failed: {e}")
@@ -403,5 +425,67 @@ class KubernetesSync:
                 'crd': 'fabric_sync',
                 'error': str(e)
             })
+            results['errors'] = 1
+            
+            # Update fabric with error status
+            self.fabric.sync_error = str(e)
+            self.fabric.save()
         
+        return results
+    
+    def fetch_crds_from_kubernetes(self) -> Dict[str, Any]:
+        """
+        Fetch all Hedgehog CRDs from Kubernetes cluster.
+        Returns dict with CRD type as key and list of resources as value.
+        """
+        results = {
+            'success': True,
+            'resources': {},
+            'totals': {},
+            'errors': []
+        }
+        
+        try:
+            custom_api = self.client._get_custom_api()
+            
+            for plural, crd_info in self.crd_types.items():
+                try:
+                    # Fetch all resources of this type
+                    response = custom_api.list_namespaced_custom_object(
+                        group=crd_info['group'],
+                        version=crd_info['version'],
+                        namespace=self.fabric.kubernetes_namespace or 'default',
+                        plural=plural
+                    )
+                    
+                    resources = response.get('items', [])
+                    results['resources'][crd_info['kind']] = resources
+                    results['totals'][crd_info['kind']] = len(resources)
+                    
+                    logger.info(f"Fetched {len(resources)} {crd_info['kind']} resources from Kubernetes")
+                    
+                except ApiException as e:
+                    if e.status == 404:
+                        # CRD not found, skip
+                        logger.warning(f"CRD {plural} not found in cluster")
+                        results['resources'][crd_info['kind']] = []
+                        results['totals'][crd_info['kind']] = 0
+                    else:
+                        error_msg = f"Failed to fetch {plural}: {e}"
+                        logger.error(error_msg)
+                        results['errors'].append(error_msg)
+                        results['success'] = False
+                        
+                except Exception as e:
+                    error_msg = f"Unexpected error fetching {plural}: {e}"
+                    logger.error(error_msg)
+                    results['errors'].append(error_msg)
+                    results['success'] = False
+                    
+        except Exception as e:
+            error_msg = f"Failed to initialize Kubernetes client: {e}"
+            logger.error(error_msg)
+            results['errors'].append(error_msg)
+            results['success'] = False
+            
         return results
