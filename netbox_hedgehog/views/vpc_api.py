@@ -28,7 +28,7 @@ class ExternalListView(generic.ObjectListView):
 
 class ExternalView(generic.ObjectView):
     queryset = models.External.objects.all()
-    template_name = 'netbox_hedgehog/external.html'
+    template_name = 'netbox_hedgehog/external_detail.html'
 
 class ExternalEditView(generic.ObjectEditView):
     queryset = models.External.objects.all()
@@ -37,7 +37,7 @@ class ExternalEditView(generic.ObjectEditView):
 
 class ExternalDeleteView(generic.ObjectDeleteView):
     queryset = models.External.objects.all()
-    template_name = 'netbox_hedgehog/external_delete.html'
+    template_name = 'netbox_hedgehog/external_confirm_delete.html'
 
 # IPv4Namespace Views
 class IPv4NamespaceListView(generic.ObjectListView):

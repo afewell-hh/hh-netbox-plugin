@@ -2,9 +2,10 @@ from django.urls import path
 from django.views.generic import TemplateView, ListView, CreateView, UpdateView, DeleteView
 from netbox.views.generic import ObjectView
 
-from .models import HedgehogFabric, VPC
-from .forms import HedgehogFabricForm, VPCForm
+from .models import HedgehogFabric, VPC, External
+from .forms import HedgehogFabricForm, VPCForm, ExternalForm
 from .simple_sync import SimpleFabricSyncView, SimpleFabricTestConnectionView
+from .views.vpc_api import ExternalListView, ExternalView, ExternalEditView, ExternalDeleteView
 # from .views.crd_views import FabricCRDListView, CRDDetailView, ApplyCRDView, DeleteCRDView
 
 app_name = 'netbox_hedgehog'
@@ -104,6 +105,13 @@ urlpatterns = [
     path('vpcs/<int:pk>/', VPCDetailView.as_view(), name='vpc_detail'),
     path('vpcs/<int:pk>/edit/', VPCEditView.as_view(), name='vpc_edit'),
     path('vpcs/<int:pk>/delete/', VPCDeleteView.as_view(), name='vpc_delete'),
+    
+    # External URLs
+    path('externals/', ExternalListView.as_view(), name='external_list'),
+    path('externals/add/', ExternalEditView.as_view(), name='external_add'),
+    path('externals/<int:pk>/', ExternalView.as_view(), name='external_detail'),
+    path('externals/<int:pk>/edit/', ExternalEditView.as_view(), name='external_edit'),
+    path('externals/<int:pk>/delete/', ExternalDeleteView.as_view(), name='external_delete'),
     
     # Other URLs
     path('topology/', TopologyView.as_view(), name='topology'),

@@ -2,7 +2,7 @@
 from django import forms
 from django.forms import ModelForm
 from ..models.fabric import HedgehogFabric
-from ..models.vpc_api import VPC
+from ..models.vpc_api import VPC, External
 
 class HedgehogFabricForm(ModelForm):
     """Form for creating and editing Hedgehog Fabrics"""
@@ -47,43 +47,12 @@ class HedgehogFabricForm(ModelForm):
             'sync_interval': 'Sync interval in seconds (0 to disable)',
         }
 
-class VPCForm(ModelForm):
-    """Form for creating and editing VPCs"""
-    
-    # Add helper fields for better UX
-    subnets_text = forms.CharField(
-        label='Subnets',
-        widget=forms.Textarea(attrs={
-            'rows': 4,
-            'placeholder': '10.1.0.0/24\n10.1.1.0/24'
-        }),
-        help_text='One subnet per line in CIDR notation',
-        required=False
-    )
-    
-    permit_list_support = forms.BooleanField(
-        label='Permit List Support',
-        required=False,
-        help_text='Enable permit list support for this VPC'
-    )
-    
-    class Meta:
-        model = VPC
-        fields = [
-            'name', 'fabric', 'namespace', 'spec', 'labels', 'annotations'
-        ]
-        widgets = {
-            'spec': forms.Textarea(attrs={'rows': 8}),
-            'labels': forms.Textarea(attrs={'rows': 3}),
-            'annotations': forms.Textarea(attrs={'rows': 3}),
-        }
-        help_texts = {
-            'spec': 'VPC specification as JSON (e.g., {"subnets": ["10.1.0.0/24"]})',
-            'labels': 'Kubernetes labels as JSON',
-            'annotations': 'Kubernetes annotations as JSON',
-        }
+# Import forms from other modules
+from .vpc_api import VPCForm, ExternalForm, IPv4NamespaceForm
 
 __all__ = [
     'HedgehogFabricForm',
     'VPCForm',
+    'ExternalForm',
+    'IPv4NamespaceForm',
 ]

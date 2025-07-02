@@ -15,7 +15,7 @@ class FabricView(generic.ObjectView):
 class FabricEditView(generic.ObjectEditView):
     """Create/edit view for Hedgehog fabrics"""
     queryset = models.HedgehogFabric.objects.all()
-    form = forms.FabricForm
+    form = forms.HedgehogFabricForm
     template_name = 'netbox_hedgehog/fabric_edit.html'
 
 class FabricDeleteView(generic.ObjectDeleteView):
