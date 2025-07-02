@@ -24,7 +24,7 @@
 
 #### VPC API Forms
 - ✅ **VPC Forms** - Basic VPC CRUD forms working
-- 🔲 **External Forms** - Create/edit forms for External CRDs
+- 🔄 **External Forms** - Create/edit forms for External CRDs
 - 🔲 **ExternalAttachment Forms** - Create/edit forms for ExternalAttachment CRDs  
 - 🔲 **ExternalPeering Forms** - Create/edit forms for ExternalPeering CRDs
 - 🔲 **IPv4Namespace Forms** - Create/edit forms for IPv4Namespace CRDs
