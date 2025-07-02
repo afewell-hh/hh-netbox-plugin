@@ -2,10 +2,9 @@ from django.urls import path
 from django.views.generic import TemplateView, ListView, CreateView, UpdateView, DeleteView
 from netbox.views.generic import ObjectView
 
-from .models import HedgehogFabric, VPC
-from .forms import HedgehogFabricForm, VPCForm
-from .simple_sync import SimpleFabricSyncView, SimpleFabricTestConnectionView
-# from .views.crd_views import FabricCRDListView, CRDDetailView, ApplyCRDView, DeleteCRDView
+# Import models directly to avoid conflicts
+from .models.fabric import HedgehogFabric
+from .models.vpc_api import VPC
 
 app_name = 'netbox_hedgehog'
 
@@ -15,9 +14,15 @@ class OverviewView(TemplateView):
     
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
-        context['fabric_count'] = HedgehogFabric.objects.count()
-        context['vpc_count'] = VPC.objects.count()
-        context['recent_fabrics'] = HedgehogFabric.objects.order_by('-created')[:5]
+        try:
+            context['fabric_count'] = HedgehogFabric.objects.count()
+            context['vpc_count'] = VPC.objects.count()
+            context['recent_fabrics'] = HedgehogFabric.objects.order_by('-created')[:5]
+        except Exception:
+            # Handle case where tables don't exist yet
+            context['fabric_count'] = 0
+            context['vpc_count'] = 0
+            context['recent_fabrics'] = []
         return context
 
 # Fabric Views
@@ -31,17 +36,30 @@ class FabricDetailView(ObjectView):
     queryset = HedgehogFabric.objects.all()
     template_name = 'netbox_hedgehog/fabric_detail.html'
 
+# Import forms only when needed to avoid circular imports
+def get_fabric_form():
+    from .forms import HedgehogFabricForm
+    return HedgehogFabricForm
+
+def get_vpc_form():
+    from .forms import VPCForm
+    return VPCForm
+
 class FabricCreateView(CreateView):
     model = HedgehogFabric
-    form_class = HedgehogFabricForm
     template_name = 'netbox_hedgehog/fabric_edit.html'
     success_url = '/plugins/netbox_hedgehog/fabrics/'
+    
+    def get_form_class(self):
+        return get_fabric_form()
 
 class FabricEditView(UpdateView):
     model = HedgehogFabric
-    form_class = HedgehogFabricForm
     template_name = 'netbox_hedgehog/fabric_edit.html'
     success_url = '/plugins/netbox_hedgehog/fabrics/'
+    
+    def get_form_class(self):
+        return get_fabric_form()
 
 class FabricDeleteView(DeleteView):
     model = HedgehogFabric
@@ -61,24 +79,41 @@ class VPCDetailView(ObjectView):
 
 class VPCCreateView(CreateView):
     model = VPC
-    form_class = VPCForm
     template_name = 'netbox_hedgehog/vpc_edit.html'
     success_url = '/plugins/netbox_hedgehog/vpcs/'
+    
+    def get_form_class(self):
+        return get_vpc_form()
 
 class VPCEditView(UpdateView):
     model = VPC
-    form_class = VPCForm
     template_name = 'netbox_hedgehog/vpc_edit.html'
     success_url = '/plugins/netbox_hedgehog/vpcs/'
+    
+    def get_form_class(self):
+        return get_vpc_form()
 
 class VPCDeleteView(DeleteView):
     model = VPC
     template_name = 'netbox_hedgehog/vpc_confirm_delete.html'
     success_url = '/plugins/netbox_hedgehog/vpcs/'
 
+# Import sync views dynamically to avoid import issues
+def get_sync_views():
+    try:
+        from .views.sync_views import FabricSyncView, FabricTestConnectionView
+        return FabricSyncView, FabricTestConnectionView
+    except ImportError:
+        # Fallback to simple sync if imports fail
+        from .simple_sync import SimpleFabricSyncView, SimpleFabricTestConnectionView
+        return SimpleFabricSyncView, SimpleFabricTestConnectionView
+
 # Other Views
 class TopologyView(TemplateView):
     template_name = 'netbox_hedgehog/topology.html'
+
+# Get sync views
+SyncView, TestConnectionView = get_sync_views()
 
 urlpatterns = [
     path('', OverviewView.as_view(), name='overview'),
@@ -89,14 +124,8 @@ urlpatterns = [
     path('fabrics/<int:pk>/', FabricDetailView.as_view(), name='fabric_detail'),
     path('fabrics/<int:pk>/edit/', FabricEditView.as_view(), name='fabric_edit'),
     path('fabrics/<int:pk>/delete/', FabricDeleteView.as_view(), name='fabric_delete'),
-    path('fabrics/<int:pk>/sync/', SimpleFabricSyncView.as_view(), name='fabric_sync'),
-    path('fabrics/<int:pk>/test-connection/', SimpleFabricTestConnectionView.as_view(), name='fabric_test_connection'),
-    
-    # CRD URLs - temporarily disabled
-    # path('fabrics/<int:pk>/crds/', FabricCRDListView.as_view(), name='fabric_crds'),
-    # path('fabrics/<int:fabric_pk>/crds/<str:crd_type>/<int:crd_pk>/', CRDDetailView.as_view(), name='crd_detail'),
-    # path('fabrics/<int:fabric_pk>/crds/<str:crd_type>/<int:crd_pk>/apply/', ApplyCRDView.as_view(), name='crd_apply'),
-    # path('fabrics/<int:fabric_pk>/crds/<str:crd_type>/<int:crd_pk>/delete/', DeleteCRDView.as_view(), name='crd_delete'),
+    path('fabrics/<int:pk>/sync/', SyncView.as_view(), name='fabric_sync'),
+    path('fabrics/<int:pk>/test-connection/', TestConnectionView.as_view(), name='fabric_test_connection'),
     
     # VPC URLs
     path('vpcs/', VPCListView.as_view(), name='vpc_list'),

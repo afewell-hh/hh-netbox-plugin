@@ -1,0 +1,90 @@
+Script started on 2025-06-30 09:21:42+00:00 [TERM="xterm-256color" TTY="/dev/pts/23" COLUMNS="132" LINES="19"]
+[1G[0K⠙[1G[0K⠹[1G[0K⠸[1G[0K⠼[1G[0K⠴[1G[0K
+[36m[1m🧠 Claude-Flow v1.0.72[22m[39m - Advanced AI Agent Orchestration System
+
+[33mUSAGE:[39m
+  claude-flow <command> [options]
+
+[33mINSTALLATION & SETUP:[39m
+  npx claude-flow@latest init --sparc  # Initialize SPARC development environment
+  
+  The --sparc flag creates:
+  • .roomodes file with 17 pre-configured SPARC modes
+  • CLAUDE.md for project instructions
+  • Ready-to-use TDD and code generation environment
+
+[33mKEY COMMANDS:[39m
+  init [--sparc]                       Initialize project with Claude integration
+  start [--ui]                         Start orchestration (--ui for enhanced UI)
+  spawn <type> [--name <name>]         Create AI agent (alias for agent spawn)
+  agent spawn <type> [--name <name>]   Create AI agent (researcher, coder, analyst)
+  sparc <subcommand>                   SPARC-based development modes
+  memory <subcommand>                  Manage persistent memory
+  status                               Show system status
+
+[33mCOMMAND CATEGORIES:[39m
+  [32mCore:[39m         init, start, status, config
+  [32mAgents:[39m       agent, task, claude
+  [32mDevelopment:[39m  sparc, memory, workflow
+  [32mInfrastructure:[39m mcp, terminal, session
+  [32mEnterprise:[39m   project, deploy, cloud, security, analytics
+
+[33mQUICK START:[39m
+  npx -y claude-flow@latest init --sparc # First-time setup with SPARC modes
+  ./claude-flow start --ui              # Interactive process management UI
+  ./claude-flow sparc modes             # List available development modes
+  ./claude-flow sparc "build app"       # Run SPARC orchestrator (default)
+  ./claude-flow sparc run code "feature" # Run specific mode (auto-coder)
+  ./claude-flow sparc tdd "tests"       # Run test-driven development
+  ./claude-flow memory store key "data"  # Store information
+  ./claude-flow status                  # Check system status
+
+[33mGET DETAILED HELP:[39m
+  claude-flow help <command>           # Show command-specific help
+  claude-flow <command> --help         # Alternative help syntax
+  
+  Examples:
+    claude-flow help sparc             # SPARC development commands
+    claude-flow help agent             # Agent management commands
+    claude-flow help memory            # Memory operations
+    claude-flow agent --help           # Agent subcommands
+
+[33mCOMMON OPTIONS:[39m
+  --verbose, -v                        Enable detailed output
+  --help                               Show command help
+  --config <path>                      Use custom config file
+
+Documentation: [34mhttps://github.com/ruvnet/claude-code-flow[39m
+
+Created by [35mrUv[39m - Built with [31m❤️[39m for the Claude community
+
+
+[33mRegistered Commands:[39m
+  [32mstart      [39m Start the orchestration system
+  [32magent      [39m Manage agents (spawn, list, terminate, info)
+  [32mtask       [39m Comprehensive task management with orchestration features
+  [32mconfig     [39m Manage configuration (show, get, set, init, validate)
+  [32mstatus     [39m Show system status
+  [32mmemory     [39m Advanced memory management with indexing, compression, and cross-agent sharing
+  [32mmonitor    [39m Monitor system in real-time
+  [32mui         [39m UI and terminal compatibility tools
+  [32mmcp        [39m Manage MCP server and tools
+  [32msession    [39m Manage terminal sessions
+  [32mmcp        [39m Manage MCP server and tools
+  [32mworkflow   [39m Execute workflow files
+  [32mrepl       [39m Start interactive REPL mode
+  [32minit       [39m Initialize Claude-Flow project
+  [32mspawn      [39m Spawn a new agent (alias for agent spawn)
+  [32msparc      [39m SPARC-based development commands with comprehensive mode support
+  [32mclaude     [39m Claude API integration with conversation management and context optimization
+  [32mproject    [39m Project management (Enterprise feature)
+  [32mdeploy     [39m Deployment operations (Enterprise feature)
+  [32mcloud      [39m Cloud infrastructure management (Enterprise feature)
+  [32msecurity   [39m Security and compliance tools (Enterprise feature)
+  [32manalytics  [39m Analytics and insights (Enterprise feature)
+  [32mswarm      [39m Swarm-based AI agent coordination
+  [32mhelp       [39m Show help for a specific command
+
+Use "[36mclaude-flow help <command>[39m" for detailed usage information
+[1G[0K⠙[1G[0K
+Script done on 2025-06-30 09:21:43+00:00 [COMMAND_EXIT_CODE="0"]

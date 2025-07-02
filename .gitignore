@@ -58,3 +58,4 @@ kubeconfig*
 # Submodules and external repos
 gitignore/netbox-docker/
 gitignore/
+node_modules 

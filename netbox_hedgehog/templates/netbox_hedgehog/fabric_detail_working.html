@@ -1,0 +1,220 @@
+{% extends "netbox_hedgehog/base.html" %}
+{% load i18n %}
+{% load static %}
+
+{% block title %}{{ object.name }} - Fabric Details{% endblock %}
+
+{% block hedgehog_content %}
+<div class="container-fluid">
+    <div class="row">
+        <div class="col-12">
+            <div class="card">
+                <div class="card-header d-flex justify-content-between">
+                    <h3><i class="mdi mdi-server-network"></i> {{ object.name }}</h3>
+                    <div>
+                        <a href="{% url 'plugins:netbox_hedgehog:fabric_list' %}" class="btn btn-outline-secondary">
+                            <i class="mdi mdi-arrow-left"></i> Back to Fabrics
+                        </a>
+                        <a href="{% url 'plugins:netbox_hedgehog:fabric_edit' pk=object.pk %}" class="btn btn-outline-primary">
+                            <i class="mdi mdi-pencil"></i> Edit
+                        </a>
+                        <a href="{% url 'plugins:netbox_hedgehog:fabric_delete' pk=object.pk %}" class="btn btn-outline-danger">
+                            <i class="mdi mdi-delete"></i> Delete
+                        </a>
+                    </div>
+                </div>
+                <div class="card-body">
+                    <div class="row">
+                        <div class="col-md-8">
+                            <h4>Fabric Information</h4>
+                            <table class="table table-borderless">
+                                <tr>
+                                    <th width="200">Name:</th>
+                                    <td>{{ object.name }}</td>
+                                </tr>
+                                <tr>
+                                    <th>Description:</th>
+                                    <td>{{ object.description|default:"—" }}</td>
+                                </tr>
+                                <tr>
+                                    <th>Configuration Status:</th>
+                                    <td>
+                                        <span class="badge bg-{% if object.status == 'active' %}success{% elif object.status == 'maintenance' %}warning{% elif object.status == 'planned' %}info{% else %}secondary{% endif %}">
+                                            {{ object.get_status_display }}
+                                        </span>
+                                    </td>
+                                </tr>
+                                <tr>
+                                    <th>Connection Status:</th>
+                                    <td>
+                                        <span class="badge bg-{% if object.connection_status == 'connected' %}success{% elif object.connection_status == 'disconnected' %}danger{% elif object.connection_status == 'error' %}danger{% else %}secondary{% endif %}">
+                                            {{ object.get_connection_status_display }}
+                                        </span>
+                                    </td>
+                                </tr>
+                                <tr>
+                                    <th>Sync Status:</th>
+                                    <td>
+                                        <span class="badge bg-{% if object.sync_status == 'in_sync' %}success{% elif object.sync_status == 'syncing' %}warning{% elif object.sync_status == 'error' %}danger{% elif object.sync_status == 'out_of_sync' %}warning{% else %}secondary{% endif %}">
+                                            {{ object.get_sync_status_display }}
+                                        </span>
+                                    </td>
+                                </tr>
+                                <tr>
+                                    <th>Kubernetes Namespace:</th>
+                                    <td><code>{{ object.kubernetes_namespace }}</code></td>
+                                </tr>
+                                <tr>
+                                    <th>Kubernetes Server:</th>
+                                    <td>{{ object.kubernetes_server|default:"Using default kubeconfig" }}</td>
+                                </tr>
+                                <tr>
+                                    <th>Sync Enabled:</th>
+                                    <td>
+                                        {% if object.sync_enabled %}
+                                            <span class="badge bg-success">Enabled</span>
+                                            ({{ object.sync_interval }}s interval)
+                                        {% else %}
+                                            <span class="badge bg-secondary">Disabled</span>
+                                        {% endif %}
+                                    </td>
+                                </tr>
+                                <tr>
+                                    <th>Last Sync:</th>
+                                    <td>
+                                        {% if object.last_sync %}
+                                            {{ object.last_sync }} ({{ object.last_sync|timesince }} ago)
+                                        {% else %}
+                                            <span class="text-muted">Never synchronized</span>
+                                        {% endif %}
+                                    </td>
+                                </tr>
+                                {% if object.sync_error %}
+                                <tr>
+                                    <th>Sync Error:</th>
+                                    <td>
+                                        <div class="alert alert-danger mb-0">
+                                            <small>{{ object.sync_error }}</small>
+                                        </div>
+                                    </td>
+                                </tr>
+                                {% endif %}
+                            </table>
+                        </div>
+                        
+                        <div class="col-md-4">
+                            <h4>Actions</h4>
+                            <div class="d-grid gap-2">
+                                <button type="button" class="btn btn-outline-info btn-test-connection" 
+                                        data-fabric-id="{{ object.pk }}"
+                                        title="Test Connection">
+                                    <i class="mdi mdi-test-tube"></i> Test Connection
+                                </button>
+                                <button type="button" class="btn btn-primary btn-sync-fabric" 
+                                        data-fabric-id="{{ object.pk }}"
+                                        title="Sync Fabric">
+                                    <i class="mdi mdi-sync"></i> Sync Now
+                                </button>
+                            </div>
+                            
+                            <h4 class="mt-4">Statistics</h4>
+                            <div class="row">
+                                <div class="col-6">
+                                    <div class="card bg-info text-white text-center">
+                                        <div class="card-body">
+                                            <h3>{{ object.crd_count }}</h3>
+                                            <small>Total CRDs</small>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="col-6">
+                                    <div class="card bg-success text-white text-center">
+                                        <div class="card-body">
+                                            <h3>{{ object.active_crd_count }}</h3>
+                                            <small>Active CRDs</small>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block hedgehog_javascript %}
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    // Sync fabric buttons - copied exactly from working fabric_overview.html
+    document.querySelectorAll('.btn-sync-fabric').forEach(function(btn) {
+        btn.addEventListener('click', function() {
+            const fabricId = this.dataset.fabricId;
+            const button = this;
+            
+            button.disabled = true;
+            button.innerHTML = '<i class="mdi mdi-loading mdi-spin"></i>';
+            
+            fetch(`/plugins/hedgehog/fabrics/${fabricId}/sync/`, {
+                method: 'POST',
+                headers: {
+                    'X-CSRFToken': document.querySelector('[name=csrfmiddlewaretoken]').value,
+                    'Content-Type': 'application/json',
+                },
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    location.reload();
+                } else {
+                    alert('Sync failed: ' + data.error);
+                    button.disabled = false;
+                    button.innerHTML = '<i class="mdi mdi-sync"></i>';
+                }
+            })
+            .catch(error => {
+                alert('Sync failed: ' + error);
+                button.disabled = false;
+                button.innerHTML = '<i class="mdi mdi-sync"></i>';
+            });
+        });
+    });
+
+    // Test connection buttons - copied exactly from working fabric_overview.html
+    document.querySelectorAll('.btn-test-connection').forEach(function(btn) {
+        btn.addEventListener('click', function() {
+            const fabricId = this.dataset.fabricId;
+            const button = this;
+            
+            button.disabled = true;
+            button.innerHTML = '<i class="mdi mdi-loading mdi-spin"></i>';
+            
+            fetch(`/plugins/hedgehog/fabrics/${fabricId}/test-connection/`, {
+                method: 'POST',
+                headers: {
+                    'X-CSRFToken': document.querySelector('[name=csrfmiddlewaretoken]').value,
+                    'Content-Type': 'application/json',
+                },
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    alert('Connection test successful!');
+                } else {
+                    alert('Connection test failed: ' + data.error);
+                }
+                button.disabled = false;
+                button.innerHTML = '<i class="mdi mdi-test-tube"></i>';
+            })
+            .catch(error => {
+                alert('Connection test failed: ' + error);
+                button.disabled = false;
+                button.innerHTML = '<i class="mdi mdi-test-tube"></i>';
+            });
+        });
+    });
+});
+</script>
+{% endblock %}

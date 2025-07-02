@@ -1,0 +1,38 @@
+{% extends "netbox_hedgehog/base.html" %}
+{% load static %}
+
+{% block title %}Fabric Management DEBUG{% endblock %}
+
+{% csrf_token %}
+
+{% block hedgehog_content %}
+<div class="container-fluid">
+    <h1>DEBUG: Fabric List Template</h1>
+    <p>Fabrics variable: {{ fabrics|length }} items</p>
+    <p>Fabrics exists: {% if fabrics %}YES{% else %}NO{% endif %}</p>
+    
+    {% if fabrics %}
+        <h2>Fabrics Found:</h2>
+        <ul>
+        {% for fabric in fabrics %}
+            <li>{{ fabric.name }}</li>
+        {% endfor %}
+        </ul>
+    {% else %}
+        <div class="alert alert-info">
+            <h5><i class="mdi mdi-information"></i> No Fabrics Found</h5>
+            <p>No Hedgehog fabrics have been configured yet. Create your first fabric to get started.</p>
+            <a href="{% url 'plugins:netbox_hedgehog:fabric_add' %}" class="btn btn-primary">
+                <i class="mdi mdi-plus"></i> Create First Fabric
+            </a>
+        </div>
+    {% endif %}
+</div>
+{% endblock %}
+
+{% block hedgehog_javascript %}
+<script>
+console.log('🚀 DEBUG FABRIC LIST TEMPLATE LOADED');
+console.log('Page content should be visible above this message');
+</script>
+{% endblock %}

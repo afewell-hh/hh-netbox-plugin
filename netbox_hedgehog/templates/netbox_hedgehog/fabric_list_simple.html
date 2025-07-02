@@ -1,0 +1,22 @@
+{% extends "netbox_hedgehog/base.html" %}
+
+{% block title %}Fabric Management{% endblock %}
+
+{% block hedgehog_content %}
+<h1>SIMPLE TEST - Fabric List</h1>
+<p>This is a very basic test to see if content renders.</p>
+
+<h2>Fabrics data test:</h2>
+<p>Fabrics count: {{ fabrics|length }}</p>
+<p>Fabrics object: {{ fabrics }}</p>
+
+{% if fabrics %}
+    <h3>We have fabrics:</h3>
+    {% for fabric in fabrics %}
+        <p>- {{ fabric.name }}</p>
+    {% endfor %}
+{% else %}
+    <h3>No fabrics found</h3>
+    <p>The fabrics variable is empty or None</p>
+{% endif %}
+{% endblock %}

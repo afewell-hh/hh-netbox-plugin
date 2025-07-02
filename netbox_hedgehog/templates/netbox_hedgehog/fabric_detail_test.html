@@ -1,0 +1,19 @@
+{% extends "base/layout.html" %}
+{% load static %}
+
+{% block title %}Fabric Test{% endblock %}
+
+{% block content %}
+<h1>JavaScript Test Page</h1>
+
+<button onclick="alert('Direct onclick works')">Test Direct Alert</button>
+<button onclick="testFunction()">Test Function Call</button>
+
+<script>
+console.log('Script tag in content block executed');
+function testFunction() {
+    alert('Function call works!');
+}
+</script>
+
+{% endblock %}

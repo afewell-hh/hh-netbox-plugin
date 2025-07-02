@@ -306,8 +306,12 @@ document.addEventListener('DOMContentLoaded', function() {
                     this.innerHTML = '<i class="mdi mdi-check"></i> Synchronized!';
                     this.className = 'btn btn-success';
                     alert('Sync completed successfully!');
-                    // Reload page to show updated status
-                    setTimeout(() => location.reload(), 2000);
+                    // Reset button after delay
+                    setTimeout(() => {
+                        this.innerHTML = originalText;
+                        this.className = 'btn btn-primary';
+                        this.disabled = false;
+                    }, 3000);
                 } else {
                     this.innerHTML = '<i class="mdi mdi-close"></i> Failed';
                     this.className = 'btn btn-danger';

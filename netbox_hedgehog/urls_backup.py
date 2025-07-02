@@ -4,8 +4,8 @@ from netbox.views.generic import ObjectView
 
 from .models import HedgehogFabric, VPC
 from .forms import HedgehogFabricForm, VPCForm
-from .simple_sync import SimpleFabricSyncView, SimpleFabricTestConnectionView
-# from .views.crd_views import FabricCRDListView, CRDDetailView, ApplyCRDView, DeleteCRDView
+from .views.sync_views import FabricSyncView, FabricTestConnectionView
+from .views.crd_views import FabricCRDListView, CRDDetailView, ApplyCRDView, DeleteCRDView
 
 app_name = 'netbox_hedgehog'
 
@@ -89,14 +89,14 @@ urlpatterns = [
     path('fabrics/<int:pk>/', FabricDetailView.as_view(), name='fabric_detail'),
     path('fabrics/<int:pk>/edit/', FabricEditView.as_view(), name='fabric_edit'),
     path('fabrics/<int:pk>/delete/', FabricDeleteView.as_view(), name='fabric_delete'),
-    path('fabrics/<int:pk>/sync/', SimpleFabricSyncView.as_view(), name='fabric_sync'),
-    path('fabrics/<int:pk>/test-connection/', SimpleFabricTestConnectionView.as_view(), name='fabric_test_connection'),
+    path('fabrics/<int:pk>/sync/', FabricSyncView.as_view(), name='fabric_sync'),
+    path('fabrics/<int:pk>/test-connection/', FabricTestConnectionView.as_view(), name='fabric_test_connection'),
     
-    # CRD URLs - temporarily disabled
-    # path('fabrics/<int:pk>/crds/', FabricCRDListView.as_view(), name='fabric_crds'),
-    # path('fabrics/<int:fabric_pk>/crds/<str:crd_type>/<int:crd_pk>/', CRDDetailView.as_view(), name='crd_detail'),
-    # path('fabrics/<int:fabric_pk>/crds/<str:crd_type>/<int:crd_pk>/apply/', ApplyCRDView.as_view(), name='crd_apply'),
-    # path('fabrics/<int:fabric_pk>/crds/<str:crd_type>/<int:crd_pk>/delete/', DeleteCRDView.as_view(), name='crd_delete'),
+    # CRD URLs
+    path('fabrics/<int:pk>/crds/', FabricCRDListView.as_view(), name='fabric_crds'),
+    path('fabrics/<int:fabric_pk>/crds/<str:crd_type>/<int:crd_pk>/', CRDDetailView.as_view(), name='crd_detail'),
+    path('fabrics/<int:fabric_pk>/crds/<str:crd_type>/<int:crd_pk>/apply/', ApplyCRDView.as_view(), name='crd_apply'),
+    path('fabrics/<int:fabric_pk>/crds/<str:crd_type>/<int:crd_pk>/delete/', DeleteCRDView.as_view(), name='crd_delete'),
     
     # VPC URLs
     path('vpcs/', VPCListView.as_view(), name='vpc_list'),

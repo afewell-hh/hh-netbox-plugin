@@ -1,0 +1,177 @@
+{% extends "netbox_hedgehog/base.html" %}
+{% load static %}
+
+{% block title %}Fabric Management{% endblock %}
+
+{% csrf_token %}
+
+{% block hedgehog_content %}
+<div class="container-fluid">
+    <div class="row">
+        <div class="col-12">
+            <div class="card">
+                <div class="card-header d-flex justify-content-between">
+                    <h3><i class="mdi mdi-server-network"></i> Fabric Management</h3>
+                    <a href="{% url 'plugins:netbox_hedgehog:overview' %}" class="btn btn-outline-secondary">
+                        <i class="mdi mdi-arrow-left"></i> Back to Dashboard
+                    </a>
+                </div>
+                <div class="card-body">
+                    <div class="d-flex justify-content-between align-items-center mb-3">
+                        <div>
+                            <h4>Hedgehog Fabrics</h4>
+                            <p>Manage multiple Hedgehog fabric installations from this central interface.</p>
+                        </div>
+                        <div>
+                            <a href="{% url 'plugins:netbox_hedgehog:fabric_add' %}" class="btn btn-primary">
+                                <i class="mdi mdi-plus"></i> Add Fabric
+                            </a>
+                        </div>
+                    </div>
+                    
+                    {% if fabrics %}
+                    <div class="table-responsive">
+                        <table class="table table-striped">
+                            <thead>
+                                <tr>
+                                    <th>Name</th>
+                                    <th>Description</th>
+                                    <th>Config Status</th>
+                                    <th>Connection</th>
+                                    <th>Sync Status</th>
+                                    <th>CRDs</th>
+                                    <th>Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for fabric in fabrics %}
+                                <tr>
+                                    <td>
+                                        <a href="{% url 'plugins:netbox_hedgehog:fabric_detail' pk=fabric.pk %}">
+                                            <strong>{{ fabric.name }}</strong>
+                                        </a>
+                                    </td>
+                                    <td>{{ fabric.description|truncatechars:50|default:"—" }}</td>
+                                    <td>
+                                        {% if fabric.status == 'planned' %}
+                                            <span class="badge bg-secondary">{{ fabric.get_status_display }}</span>
+                                        {% elif fabric.status == 'active' %}
+                                            <span class="badge bg-primary">{{ fabric.get_status_display }}</span>
+                                        {% elif fabric.status == 'maintenance' %}
+                                            <span class="badge bg-warning">{{ fabric.get_status_display }}</span>
+                                        {% else %}
+                                            <span class="badge bg-danger">{{ fabric.get_status_display }}</span>
+                                        {% endif %}
+                                    </td>
+                                    <td>
+                                        {% if fabric.connection_status == 'connected' %}
+                                            <span class="badge bg-success">Connected</span>
+                                        {% elif fabric.connection_status == 'disconnected' %}
+                                            <span class="badge bg-danger">Disconnected</span>
+                                        {% elif fabric.connection_status == 'error' %}
+                                            <span class="badge bg-danger">Error</span>
+                                        {% else %}
+                                            <span class="badge bg-secondary">Unknown</span>
+                                        {% endif %}
+                                    </td>
+                                    <td>
+                                        {% if fabric.sync_status == 'in_sync' %}
+                                            <span class="badge bg-success">In Sync</span>
+                                        {% elif fabric.sync_status == 'out_of_sync' %}
+                                            <span class="badge bg-warning">Out of Sync</span>
+                                        {% elif fabric.sync_status == 'syncing' %}
+                                            <span class="badge bg-info">Syncing</span>
+                                        {% elif fabric.sync_status == 'error' %}
+                                            <span class="badge bg-danger">Sync Error</span>
+                                        {% else %}
+                                            <span class="badge bg-secondary">Never Synced</span>
+                                        {% endif %}
+                                    </td>
+                                    <td>
+                                        <span class="badge bg-info">{{ fabric.crd_count }}</span>
+                                        {% if fabric.error_crd_count %}
+                                            <span class="badge bg-danger">{{ fabric.error_crd_count }} errors</span>
+                                        {% endif %}
+                                    </td>
+                                    <td>
+                                        <div class="btn-group btn-group-sm">
+                                            <a href="{% url 'plugins:netbox_hedgehog:fabric_detail' pk=fabric.pk %}" 
+                                               class="btn btn-outline-primary" title="View Details">
+                                                <i class="mdi mdi-eye"></i>
+                                            </a>
+                                            <a href="{% url 'plugins:netbox_hedgehog:fabric_edit' pk=fabric.pk %}" 
+                                               class="btn btn-outline-secondary" title="Edit">
+                                                <i class="mdi mdi-pencil"></i>
+                                            </a>
+                                            <button type="button" class="btn btn-outline-secondary btn-sync-fabric" 
+                                                    data-fabric-id="{{ fabric.pk }}" 
+                                                    title="Sync fabric">
+                                                <i class="mdi mdi-sync"></i>
+                                            </button>
+                                        </div>
+                                    </td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                    
+                    {% else %}
+                    <div class="alert alert-info">
+                        <h5><i class="mdi mdi-information"></i> No Fabrics Found</h5>
+                        <p>No Hedgehog fabrics have been configured yet. Create your first fabric to get started.</p>
+                        <a href="{% url 'plugins:netbox_hedgehog:fabric_add' %}" class="btn btn-primary">
+                            <i class="mdi mdi-plus"></i> Create First Fabric
+                        </a>
+                    </div>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block hedgehog_javascript %}
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    console.log('🚀 CLEAN FABRIC LIST TEMPLATE LOADED');
+    
+    // Sync fabric buttons (copied from working fabric_overview.html)
+    document.querySelectorAll('.btn-sync-fabric').forEach(function(btn) {
+        btn.addEventListener('click', function() {
+            const fabricId = this.dataset.fabricId;
+            const button = this;
+            
+            button.disabled = true;
+            button.innerHTML = '<i class="mdi mdi-loading mdi-spin"></i>';
+            
+            fetch(`/plugins/hedgehog/fabrics/${fabricId}/sync/`, {
+                method: 'POST',
+                headers: {
+                    'X-CSRFToken': document.querySelector('[name=csrfmiddlewaretoken]').value,
+                    'Content-Type': 'application/json',
+                },
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    location.reload();
+                } else {
+                    alert('Sync failed: ' + data.error);
+                    button.disabled = false;
+                    button.innerHTML = '<i class="mdi mdi-sync"></i>';
+                }
+            })
+            .catch(error => {
+                alert('Sync failed: ' + error);
+                button.disabled = false;
+                button.innerHTML = '<i class="mdi mdi-sync"></i>';
+            });
+        });
+    });
+    
+    console.log('✅ Clean fabric list event listeners attached');
+});
+</script>
+{% endblock %}
