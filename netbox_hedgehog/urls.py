@@ -5,7 +5,7 @@ from netbox.views.generic import ObjectView
 from .models import HedgehogFabric, VPC, External
 from .forms import HedgehogFabricForm, VPCForm, ExternalForm
 from .simple_sync import SimpleFabricSyncView, SimpleFabricTestConnectionView
-from .views.vpc_api import ExternalListView, ExternalView, ExternalEditView, ExternalDeleteView
+from .views.vpc_api import ExternalListView, ExternalView, ExternalEditView, ExternalDeleteView, IPv4NamespaceListView, IPv4NamespaceView, IPv4NamespaceEditView, IPv4NamespaceDeleteView
 # from .views.crd_views import FabricCRDListView, CRDDetailView, ApplyCRDView, DeleteCRDView
 
 app_name = 'netbox_hedgehog'
@@ -112,6 +112,13 @@ urlpatterns = [
     path('externals/<int:pk>/', ExternalView.as_view(), name='external_detail'),
     path('externals/<int:pk>/edit/', ExternalEditView.as_view(), name='external_edit'),
     path('externals/<int:pk>/delete/', ExternalDeleteView.as_view(), name='external_delete'),
+    
+    # IPv4Namespace URLs
+    path('ipv4namespaces/', IPv4NamespaceListView.as_view(), name='ipv4namespace_list'),
+    path('ipv4namespaces/add/', IPv4NamespaceEditView.as_view(), name='ipv4namespace_add'),
+    path('ipv4namespaces/<int:pk>/', IPv4NamespaceView.as_view(), name='ipv4namespace_detail'),
+    path('ipv4namespaces/<int:pk>/edit/', IPv4NamespaceEditView.as_view(), name='ipv4namespace_edit'),
+    path('ipv4namespaces/<int:pk>/delete/', IPv4NamespaceDeleteView.as_view(), name='ipv4namespace_delete'),
     
     # Other URLs
     path('topology/', TopologyView.as_view(), name='topology'),

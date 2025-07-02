@@ -1,0 +1,222 @@
+{% extends "base/layout.html" %}
+{% load static %}
+
+{% block title %}{{ object.name }}{% endblock %}
+
+{% block head %}
+<link rel="stylesheet" href="{% static 'netbox_hedgehog/css/hedgehog.css' %}">
+{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+    <div class="row">
+        <div class="col-12">
+            <div class="card">
+                <div class="card-header d-flex justify-content-between align-items-center">
+                    <h3 class="mb-0">
+                        <i class="mdi mdi-ip-network"></i> IPv4 Namespace: {{ object.name }}
+                    </h3>
+                    <div>
+                        {% if perms.netbox_hedgehog.change_ipv4namespace %}
+                        <a href="{% url 'plugins:netbox_hedgehog:ipv4namespace_edit' pk=object.pk %}" class="btn btn-warning">
+                            <i class="mdi mdi-pencil"></i> Edit
+                        </a>
+                        {% endif %}
+                        {% if perms.netbox_hedgehog.delete_ipv4namespace %}
+                        <a href="{% url 'plugins:netbox_hedgehog:ipv4namespace_delete' pk=object.pk %}" class="btn btn-danger">
+                            <i class="mdi mdi-delete"></i> Delete
+                        </a>
+                        {% endif %}
+                        <a href="{% url 'plugins:netbox_hedgehog:ipv4namespace_list' %}" class="btn btn-secondary">
+                            <i class="mdi mdi-arrow-left"></i> Back to List
+                        </a>
+                    </div>
+                </div>
+                <div class="card-body">
+                    <div class="row">
+                        <div class="col-md-6">
+                            <table class="table table-hover">
+                                <tbody>
+                                    <tr>
+                                        <th scope="row">Name</th>
+                                        <td>{{ object.name }}</td>
+                                    </tr>
+                                    <tr>
+                                        <th scope="row">Fabric</th>
+                                        <td>
+                                            <a href="{% url 'plugins:netbox_hedgehog:fabric_detail' pk=object.fabric.pk %}">
+                                                {{ object.fabric.name }}
+                                            </a>
+                                        </td>
+                                    </tr>
+                                    <tr>
+                                        <th scope="row">Namespace</th>
+                                        <td>{{ object.namespace|default:"default" }}</td>
+                                    </tr>
+                                    <tr>
+                                        <th scope="row">Status</th>
+                                        <td>{{ object.status_display|safe }}</td>
+                                    </tr>
+                                    <tr>
+                                        <th scope="row">Kubernetes Status</th>
+                                        <td>
+                                            <span class="badge bg-{{ object.kubernetes_status_color }}">
+                                                {{ object.get_kubernetes_status_display }}
+                                            </span>
+                                        </td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                        <div class="col-md-6">
+                            <table class="table table-hover">
+                                <tbody>
+                                    <tr>
+                                        <th scope="row">Auto Sync</th>
+                                        <td>
+                                            {% if object.auto_sync %}
+                                                <span class="badge bg-success">Enabled</span>
+                                            {% else %}
+                                                <span class="badge bg-secondary">Disabled</span>
+                                            {% endif %}
+                                        </td>
+                                    </tr>
+                                    <tr>
+                                        <th scope="row">Last Applied</th>
+                                        <td>{{ object.last_applied|default:"Never" }}</td>
+                                    </tr>
+                                    <tr>
+                                        <th scope="row">Last Synced</th>
+                                        <td>{{ object.last_synced|default:"Never" }}</td>
+                                    </tr>
+                                    <tr>
+                                        <th scope="row">Created</th>
+                                        <td>{{ object.created }}</td>
+                                    </tr>
+                                    <tr>
+                                        <th scope="row">Last Updated</th>
+                                        <td>{{ object.last_updated }}</td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- CRD Specification -->
+            <div class="card mt-3">
+                <div class="card-header">
+                    <h5 class="mb-0"><i class="mdi mdi-code-json"></i> CRD Specification</h5>
+                </div>
+                <div class="card-body">
+                    {% if object.spec %}
+                        <pre class="bg-light p-3 rounded"><code>{{ object.spec|safe }}</code></pre>
+                    {% else %}
+                        <p class="text-muted mb-0">No specification defined</p>
+                    {% endif %}
+                </div>
+            </div>
+            
+            <!-- Kubernetes Metadata -->
+            <div class="card mt-3">
+                <div class="card-header">
+                    <h5 class="mb-0"><i class="mdi mdi-kubernetes"></i> Kubernetes Metadata</h5>
+                </div>
+                <div class="card-body">
+                    <div class="row">
+                        <div class="col-md-6">
+                            <h6>Labels</h6>
+                            {% if object.labels %}
+                                <pre class="bg-light p-3 rounded"><code>{{ object.labels|safe }}</code></pre>
+                            {% else %}
+                                <p class="text-muted">No labels defined</p>
+                            {% endif %}
+                        </div>
+                        <div class="col-md-6">
+                            <h6>Annotations</h6>
+                            {% if object.annotations %}
+                                <pre class="bg-light p-3 rounded"><code>{{ object.annotations|safe }}</code></pre>
+                            {% else %}
+                                <p class="text-muted">No annotations defined</p>
+                            {% endif %}
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Actions -->
+            <div class="card mt-3">
+                <div class="card-header">
+                    <h5 class="mb-0"><i class="mdi mdi-lightning-bolt"></i> Actions</h5>
+                </div>
+                <div class="card-body">
+                    <p class="text-muted mb-3">
+                        Manage this IPv4 Namespace CRD in the Kubernetes cluster.
+                    </p>
+                    <div class="d-flex gap-2">
+                        {% if object.kubernetes_status != 'applied' %}
+                        <button class="btn btn-success" onclick="applyToKubernetes()">
+                            <i class="mdi mdi-cloud-upload"></i> Apply to Kubernetes
+                        </button>
+                        {% else %}
+                        <button class="btn btn-info" onclick="syncFromKubernetes()">
+                            <i class="mdi mdi-sync"></i> Sync from Kubernetes
+                        </button>
+                        <button class="btn btn-warning" onclick="updateInKubernetes()">
+                            <i class="mdi mdi-cloud-upload"></i> Update in Kubernetes
+                        </button>
+                        {% endif %}
+                        
+                        {% if object.kubernetes_status == 'applied' %}
+                        <button class="btn btn-danger" onclick="deleteFromKubernetes()">
+                            <i class="mdi mdi-delete-forever"></i> Delete from Kubernetes
+                        </button>
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Tags -->
+            {% if object.tags.all %}
+            <div class="card mt-3">
+                <div class="card-header">
+                    <h5 class="mb-0"><i class="mdi mdi-tag-multiple"></i> Tags</h5>
+                </div>
+                <div class="card-body">
+                    {% for tag in object.tags.all %}
+                        <span class="badge bg-secondary me-1">{{ tag.name }}</span>
+                    {% endfor %}
+                </div>
+            </div>
+            {% endif %}
+        </div>
+    </div>
+</div>
+
+<script>
+function applyToKubernetes() {
+    if (confirm('Apply this IPv4 Namespace to Kubernetes?')) {
+        alert('Apply to Kubernetes functionality not yet implemented');
+    }
+}
+
+function syncFromKubernetes() {
+    if (confirm('Sync this IPv4 Namespace from Kubernetes?')) {
+        alert('Sync from Kubernetes functionality not yet implemented');
+    }
+}
+
+function updateInKubernetes() {
+    if (confirm('Update this IPv4 Namespace in Kubernetes?')) {
+        alert('Update in Kubernetes functionality not yet implemented');
+    }
+}
+
+function deleteFromKubernetes() {
+    if (confirm('Delete this IPv4 Namespace from Kubernetes? This action cannot be undone.')) {
+        alert('Delete from Kubernetes functionality not yet implemented');
+    }
+}
+</script>
+{% endblock %}

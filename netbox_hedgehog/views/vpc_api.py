@@ -47,7 +47,7 @@ class IPv4NamespaceListView(generic.ObjectListView):
 
 class IPv4NamespaceView(generic.ObjectView):
     queryset = models.IPv4Namespace.objects.all()
-    template_name = 'netbox_hedgehog/ipv4namespace.html'
+    template_name = 'netbox_hedgehog/ipv4namespace_detail.html'
 
 class IPv4NamespaceEditView(generic.ObjectEditView):
     queryset = models.IPv4Namespace.objects.all()
@@ -56,4 +56,4 @@ class IPv4NamespaceEditView(generic.ObjectEditView):
 
 class IPv4NamespaceDeleteView(generic.ObjectDeleteView):
     queryset = models.IPv4Namespace.objects.all()
-    template_name = 'netbox_hedgehog/ipv4namespace_delete.html'
+    template_name = 'netbox_hedgehog/ipv4namespace_confirm_delete.html'
