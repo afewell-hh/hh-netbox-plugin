@@ -408,8 +408,19 @@ window.Hedgehog = window.Hedgehog || {};
                         const message = data.message + (data.details ? ` (Namespace: ${data.details.namespace})` : '');
                         Hedgehog.utils.showNotification(message, 'success');
                         
-                        // Reload page to show updated status
-                        setTimeout(() => window.location.reload(), 2000);
+                        // Update status indicator without reloading page
+                        const statusElement = document.querySelector('[data-connection-status]');
+                        if (statusElement) {
+                            statusElement.className = 'badge bg-success';
+                            statusElement.innerHTML = '<i class="mdi mdi-check-circle"></i> Connected';
+                        }
+                        
+                        // Reset button after delay
+                        setTimeout(() => {
+                            button.innerHTML = originalText;
+                            button.className = 'btn btn-outline-info';
+                            button.disabled = false;
+                        }, 3000);
                     } else {
                         // Show error state
                         button.innerHTML = '<i class="mdi mdi-close"></i> Failed';
@@ -460,11 +471,28 @@ window.Hedgehog = window.Hedgehog || {};
                         button.className = 'btn btn-success';
                         
                         // Show detailed notification
-                        const message = data.message + (data.stats ? ` (Duration: ${data.stats.duration})` : '');
+                        const message = data.message + (data.stats ? ` (Total CRDs: ${data.stats.total_crds})` : '');
                         Hedgehog.utils.showNotification(message, 'success');
                         
-                        // Reload page to show updated status
-                        setTimeout(() => window.location.reload(), 2000);
+                        // Update status indicators without reloading page
+                        const syncStatusElement = document.querySelector('[data-sync-status]');
+                        if (syncStatusElement) {
+                            syncStatusElement.className = 'badge bg-success';
+                            syncStatusElement.innerHTML = '<i class="mdi mdi-check-circle"></i> In Sync';
+                        }
+                        
+                        // Update CRD count if present
+                        const crdCountElement = document.querySelector('[data-crd-count]');
+                        if (crdCountElement && data.stats && data.stats.total_crds !== undefined) {
+                            crdCountElement.textContent = data.stats.total_crds;
+                        }
+                        
+                        // Reset button after delay
+                        setTimeout(() => {
+                            button.innerHTML = originalText;
+                            button.className = 'btn btn-primary';
+                            button.disabled = false;
+                        }, 3000);
                     } else {
                         // Show error state
                         button.innerHTML = '<i class="mdi mdi-close"></i> Sync Failed';

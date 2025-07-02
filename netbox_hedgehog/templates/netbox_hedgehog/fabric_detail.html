@@ -48,13 +48,13 @@
                                     <th>Connection Status:</th>
                                     <td>
                                         {% if object.connection_status == 'connected' %}
-                                            <span class="badge bg-success">Connected</span>
+                                            <span class="badge bg-success" data-connection-status>Connected</span>
                                         {% elif object.connection_status == 'disconnected' %}
-                                            <span class="badge bg-danger">Disconnected</span>
+                                            <span class="badge bg-danger" data-connection-status>Disconnected</span>
                                         {% elif object.connection_status == 'error' %}
-                                            <span class="badge bg-danger">Error</span>
+                                            <span class="badge bg-danger" data-connection-status>Error</span>
                                         {% else %}
-                                            <span class="badge bg-secondary">Unknown</span>
+                                            <span class="badge bg-secondary" data-connection-status>Unknown</span>
                                         {% endif %}
                                     </td>
                                 </tr>
@@ -62,15 +62,15 @@
                                     <th>Sync Status:</th>
                                     <td>
                                         {% if object.sync_status == 'in_sync' %}
-                                            <span class="badge bg-success">In Sync</span>
+                                            <span class="badge bg-success" data-sync-status>In Sync</span>
                                         {% elif object.sync_status == 'out_of_sync' %}
-                                            <span class="badge bg-warning">Out of Sync</span>
+                                            <span class="badge bg-warning" data-sync-status>Out of Sync</span>
                                         {% elif object.sync_status == 'syncing' %}
-                                            <span class="badge bg-info">Syncing</span>
+                                            <span class="badge bg-info" data-sync-status>Syncing</span>
                                         {% elif object.sync_status == 'error' %}
-                                            <span class="badge bg-danger">Sync Error</span>
+                                            <span class="badge bg-danger" data-sync-status>Sync Error</span>
                                         {% else %}
-                                            <span class="badge bg-secondary">Never Synced</span>
+                                            <span class="badge bg-secondary" data-sync-status>Never Synced</span>
                                         {% endif %}
                                     </td>
                                 </tr>
@@ -122,7 +122,7 @@
                                 <div class="col-6">
                                     <div class="card bg-info text-white text-center">
                                         <div class="card-body">
-                                            <h3>{{ object.crd_count }}</h3>
+                                            <h3 data-crd-count>{{ object.crd_count }}</h3>
                                             <small>Total CRDs</small>
                                         </div>
                                     </div>
