@@ -146,13 +146,30 @@ class SimpleFabricSyncView(View):
                 sync_result = k8s_sync.sync_all_crds()
                 
                 if sync_result['success']:
-                    # Sync completed successfully
+                    # Check if we actually synced any CRDs or if there were partial errors
+                    total_crds = sync_result.get('total', 0)
+                    errors = sync_result.get('errors', 0)
+                    
+                    # Determine appropriate sync status
+                    if errors > 0:
+                        # Had errors, even if some succeeded
+                        sync_status = 'error'
+                        sync_error = f"{errors} errors occurred during sync"
+                    elif total_crds == 0:
+                        # No CRDs found - might indicate connection issue
+                        sync_status = 'out_of_sync'
+                        sync_error = ''
+                    else:
+                        # Actually synced some CRDs successfully
+                        sync_status = 'in_sync'
+                        sync_error = ''
+                    
                     update_fields = {
-                        'sync_status': 'in_sync', 
+                        'sync_status': sync_status, 
                         'last_sync': timezone.now()
                     }
                     try:
-                        update_fields['sync_error'] = ''
+                        update_fields['sync_error'] = sync_error
                         # CRD counts are updated by the sync service directly
                     except:
                         pass
@@ -201,19 +218,24 @@ class SimpleFabricSyncView(View):
                     })
                     
             except ImportError:
-                # Fallback to simple sync if Kubernetes client unavailable
-                import time
-                time.sleep(1)  # Brief delay to show syncing status
+                # Kubernetes client unavailable - report as error
+                update_fields = {
+                    'sync_status': 'error'
+                }
+                try:
+                    update_fields['sync_error'] = 'Kubernetes client not available - cannot perform sync'
+                except:
+                    pass
+                HedgehogFabric.objects.filter(pk=fabric.pk).update(**update_fields)
                 
-                HedgehogFabric.objects.filter(pk=fabric.pk).update(sync_status='in_sync')
+                logger.error(f"Cannot sync fabric {fabric.name}: Kubernetes client not available")
+                messages.error(request, f"Sync failed: Kubernetes client not available")
                 
                 return JsonResponse({
-                    'success': True,
-                    'message': f'Sync completed successfully! Fabric "{fabric.name}" is now synchronized.',
+                    'success': False,
+                    'error': 'Kubernetes client not available. Please ensure the kubernetes Python package is installed.',
                     'stats': {
-                        'duration': '1.2s',
-                        'resources_synced': 0,  # Placeholder for real sync stats
-                        'status': 'in_sync'
+                        'status': 'error'
                     }
                 })
                 
