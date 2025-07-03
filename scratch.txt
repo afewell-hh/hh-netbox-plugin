@@ -1,3 +1,4 @@
+<original instructions>
 Hi, I have been working with another team to create a NetBox plugin that integrates with Hedgehog's Kubernetes-based Ethernet fabric solution. The goal is to provide a user-friendly interface for customers to manage their custom resource definitions (CRDs) related to the Hedgehog fabric. The plugin will allow users to create, monitor, and inventory their CRDs through a web interface, leveraging NetBox's existing capabilities. 
 
 The other team has already made significant progress, including creating a basic plugin structure and implementing the necessary API calls to interact with Hedgehog's Kubernetes cluster. They have also set up a dashboard to display the status of the CRDs and their synchronization with Kubernetes. Kubectl in the local environment is setup to so it can interact with a live hedgehog installation. Also, netbox-docker is installed and running, the previous dev team successfully created and installed the netbox plugin and got pretty far into its development, I am pretty happy with how things look so far, but the other team seemed to be getting stuck on being able to further progress the plugin development towards the desired UX and functionality, so I wanted to see if you can help bring this project to successful mvp, completing the features the other team was unable to complete. The other team created a variety of code, planning documents, documentation and other files that are all saved locally within this repo, so I think by studying those thoroughly, you should be able to get a good understanding of the current state of the project and what needs to be done next. Where we left off is the fabric detail page has buttons for "test connection" and "sync now" which the other team could not get to work, and there are a number of other features that are not yet implemented, such as the ability to create and manage the various CRDs through a web form interface.
@@ -35,3 +36,63 @@ The hedgehog CR's that should be included in the initial scope are:
 The hedgehog documentation can be found here: https://hedgehog.io/docs/hedgehog/latest/
 The hedgehog documentation for the API for these cr's can be found here: https://docs.hedgehog.cloud/latest/reference/fabric-api/
 </original instructions>
+
+
+
+--------------------------------
+
+
+hi Claude, I was working with you in a previous session to develop a netbox plugin for an ethernet fabric software solution known as hedgehog open network fabric (ONF). It is a complex software project and we are about 70% completed with mvp. I need you to do thorough research on this project to be able to get very thoroughly up to speed on the vision, goals, coding standard, code base, and the exact state of the current project so you can pick up right where I left off with the previous agent. I was very dissapointed my claude code session with the previous agent crashed because it can take a while to get up to speed on a new project and sometimes when training a new agent doesnt go smoothly mistakes are made that can regress the state of the project. It is critical that we do not regress the state of the project, a tremendous amount of good work has already been done and we cannot afford to mess that up, so please do extensive research to get yourself fully up to speed, take as much time as you need to be confident of the exact existing state of all the code so you do not regress any good work that has already been done. 
+To get yourself up to speed, I recommend you first review the original instructions that I used to start this project. Significant work has been done on the project since these original instructions were given but it still does a good job providing a high level outline for the vision and scope of the project as well as some information that will be good to research to get yourself fully up to speed with the background information you will need to work successfully on this project. Here are the original instructions:
+<original instructions>
+Hi, I have been working with another team to create a NetBox plugin that integrates with Hedgehog's Kubernetes-based Ethernet fabric solution. The goal is to provide a user-friendly interface for customers to manage their custom resource definitions (CRDs) related to the Hedgehog fabric. The plugin will allow users to create, monitor, and inventory their CRDs through a web interface, leveraging NetBox's existing capabilities. 
+
+The other team has already made significant progress, including creating a basic plugin structure and implementing the necessary API calls to interact with Hedgehog's Kubernetes cluster. They have also set up a dashboard to display the status of the CRDs and their synchronization with Kubernetes. Kubectl in the local environment is setup to so it can interact with a live hedgehog installation. Also, netbox-docker is installed and running, the previous dev team successfully created and installed the netbox plugin and got pretty far into its development, I am pretty happy with how things look so far, but the other team seemed to be getting stuck on being able to further progress the plugin development towards the desired UX and functionality, so I wanted to see if you can help bring this project to successful mvp, completing the features the other team was unable to complete. The other team created a variety of code, planning documents, documentation and other files that are all saved locally within this repo, so I think by studying those thoroughly, you should be able to get a good understanding of the current state of the project and what needs to be done next. Where we left off is the fabric detail page has buttons for "test connection" and "sync now" which the other team could not get to work, and there are a number of other features that are not yet implemented, such as the ability to create and manage the various CRDs through a web form interface.
+
+In addition to all the files that are available locally, I wanted to share with you the original instructions I provided to the other team, which outline the overall goals and requirements for the NetBox plugin. These instructions should give you a clear understanding of what we are trying to achieve with this project:
+
+I think it would be a good idea for you to thoroughly research the best practices for netbox plugin development before you get started. 
+
+<original instructions>
+Hi, I work for Hedgehog and we make an ethernet fabric solution that essentially uses kubernetes to manage physical ethernet switches. To configure the fabric, a user creates a variety of yaml objects for custom CRD's that are created by hedgehog. The hedgehog controllers then use the information provided in these cr's to create configuration files for ethernet switches. The customer does not need to be aware of the ethernet switches directly, the switches themselves, all the connections, all the objects that make up the physical fabric, they are all monitored in kubernetes and use kubernetes reconciliation to report metrics and object availability. And so customers only need to interact with kubernetes to configure and monitor their fabric. 
+
+I need to create a simpler way for our customers to create, monitor, and have an inventory of the cr's they have applied to kubernetes for their hedgehog fabric. I think for each type of object, it would be cool to have a gui similar to a self service catalog where a customer could click a button to add a type of cr, and then be presented with a web form, and then be given the option to apply the configuration, and then be able to have an inventory of the cr's that have been applied in k8s for their fabric. A customer might have more than one fabric. And, it would be ideal if this system could sync with kubernetes and was able to display status on if the object is applied, if its live, if there are errors. We already have grafana dashboards so that wouldnt need to be comprehensive, but I think it would be helpful if customers could look at the objects that represent desired state and easily be able to tell if actual state was aligned with desired state from looking at their inventory of applied CR's. 
+
+I think it would be ideal to do this as a netbox plugin. I dont know how extensible netbox is so we need to do some research and concept validation, but if it can support the type of UX I would like to have I think it would be ideal, many of our customers already use netbox, and it would be nice to not have to give them yet another tool to manage. 
+
+I would like you to help me scope this out, validate the concept, and then create specifications and a plan to implement it. 
+
+The hedgehog CR's that should be included in the initial scope are:
+**VPC API CRDs:**
+* External
+* ExternalAttachment
+* ExternalPeering
+* IPv4Namespace
+* VPC
+* VPCAttachment
+* VPCPeering
+
+**Wiring API CRDs:**
+* Connection
+* Server
+* Switch
+* SwitchGroup
+* VLANNamespace
+
+The hedgehog documentation can be found here: https://hedgehog.io/docs/hedgehog/latest/
+The hedgehog documentation for the API for these cr's can be found here: https://docs.hedgehog.cloud/latest/reference/fabric-api/
+</original instructions>
+
+In anticipation of a possible claude code crash, I asked the previous agent to create extensive local project planning and management processes and local documents specifically to help a new agent get up to speed quickly. THis was supposed to include keeping frequent git commits, as well as keeping task tracking documents up to speed with the latest state of the project. Fortunately it does appear all changes made by the previous agent have been committed to git, so there is a lot of valuable information about all the projects history within the git history. Unfortunately, it does not look like the project management related documents have all been kept up to date. I do think they will still be very valuable in helping to determine the remaining tasks that still need to be done, but the difficult part you need to be very careful about before we get started writing any new code is getting all the project management and tracking documents organized, up to speed, and accurately reflecting the current state of the code. 
+
+Going back to the beginning of the project, there have been a couple crashes of claude code agent sessions, and as a result, the project management and tracking documents for this project are disorganized and not up to date. The first thing I think you should do is any initial research you need to do to get yourself up to speed on the project. As you are doing that, I think it will be a great compliment to your goal of getting up to speed on the project, to organize and reconcile the project management documents. There are several project management documents scattered around the repository, I am not sure if I know about all of them, I am not sure if they are all related to each other, or if they may have been made at different times by different agents, I am not sure if they all reflect the same state of the project, or if different of these documents were last updated at different times and may reflect different states. I am not sure if the project documentation in the docs folder is up to date, I doubt it is though. Some of the local project management related documents are:
+- `/home/ubuntu/cc/hedgehog-netbox-plugin/PROJECT_MANAGEMENT.md`
+- `/home/ubuntu/cc/hedgehog-netbox-plugin/PROJECT_STATUS.md`
+- `/home/ubuntu/cc/hedgehog-netbox-plugin/TASK_TRACKING.md`
+- `/home/ubuntu/cc/hedgehog-netbox-plugin/ARCHITECTURE_OVERVIEW.md`
+- `/home/ubuntu/cc/hedgehog-netbox-plugin/DEVELOPMENT_LOG.md`
+- `/home/ubuntu/cc/hedgehog-netbox-plugin/DEVELOPMENT_PROCESS.md`
+- `/home/ubuntu/cc/hedgehog-netbox-plugin/DEVELOPMENT.md`
+- `/home/ubuntu/cc/hedgehog-netbox-plugin/HEDGEHOG_ENVIRONMENT_ANALYSIS.md`
+
+The primary purpose of the project management and tracking documents is to help ensure the project stays on track through MVP, and in particular across transitions between agents that happens occasionally due to occasional claude code crashes. I want to have thorough project management and tracking documents that have all the thorough, highly-detailed information an agent would need to get up to speed and productive quickly while maintaining extremely high quality standards. They should include robust processes and instructions for agents to follow to ensure all of the project management standards are followed and documents kept up to date, including making frequent git commits, updating project tracking documents to reflect the current state of the project so that completed tasks are marked down, the current task being worked on is appropriately notated to reflect current state, and the list of subsequent/remaining tasks is kept up to date. While these project management documents should be thorough, they should also be streamlined and efficient, and I would guess the project management documents that are currently in the repo may overlap and may be inconsistent. I think you should reconcile and streamline all these documents into a common set that are not overlapping and are very clearly organized, and I think you should make a dedicated subdirectory for all project management related documents so they dont get lost and are easier to keep organized in the future. As you are organizing the project management documents, remember that any or all of them may not be current, and that may be confusing - so always remember the gold standard for truth is the actual source code that is working right now in the project, as well as the git commit history. If you are evern in doubt about the actual state of the project, in cases where information in the project management  Please proceed, thanks!
