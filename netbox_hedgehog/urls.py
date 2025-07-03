@@ -5,17 +5,9 @@ from netbox.views.generic import ObjectView
 from .models import HedgehogFabric, VPC, External
 from .forms import HedgehogFabricForm, VPCForm, ExternalForm
 from .simple_sync import SimpleFabricSyncView, SimpleFabricTestConnectionView
-# Temporarily disable new views to test basic import
-# from .views.vpc_api import (
-#     ExternalListView, ExternalView, ExternalEditView, ExternalDeleteView,
-#     IPv4NamespaceListView, IPv4NamespaceView, IPv4NamespaceEditView, IPv4NamespaceDeleteView,
-#     ExternalAttachmentListView, ExternalAttachmentView, ExternalAttachmentEditView, ExternalAttachmentDeleteView,
-#     ExternalPeeringListView, ExternalPeeringView, ExternalPeeringEditView, ExternalPeeringDeleteView,
-#     VPCAttachmentListView, VPCAttachmentView, VPCAttachmentEditView, VPCAttachmentDeleteView,
-#     VPCPeeringListView, VPCPeeringView, VPCPeeringEditView, VPCPeeringDeleteView
-# )
-# Re-enable External, IPv4Namespace, ExternalAttachment, ExternalPeering, VPCAttachment, and VPCPeering views
+# Import VPC API views
 from .views.vpc_api import (
+    VPCListView, VPCView, VPCEditView, VPCDeleteView,
     ExternalListView, ExternalView, ExternalEditView, ExternalDeleteView,
     IPv4NamespaceListView, IPv4NamespaceView, IPv4NamespaceEditView, IPv4NamespaceDeleteView,
     ExternalAttachmentListView, ExternalAttachmentView, ExternalAttachmentEditView, ExternalAttachmentDeleteView,
@@ -77,28 +69,6 @@ class FabricDeleteView(DeleteView):
     model = HedgehogFabric
     template_name = 'netbox_hedgehog/fabric_confirm_delete.html'
     success_url = '/plugins/netbox_hedgehog/fabrics/'
-
-# VPC Views - temporarily define locally
-class VPCListView(ListView):
-    model = VPC
-    template_name = 'netbox_hedgehog/vpc_list.html'
-    context_object_name = 'vpcs'
-    paginate_by = 25
-
-class VPCView(ObjectView):
-    queryset = VPC.objects.all()
-    template_name = 'netbox_hedgehog/vpc_detail.html'
-
-class VPCEditView(UpdateView):
-    model = VPC
-    form_class = VPCForm
-    template_name = 'netbox_hedgehog/vpc_edit.html'
-    success_url = '/plugins/netbox_hedgehog/vpcs/'
-
-class VPCDeleteView(DeleteView):
-    model = VPC
-    template_name = 'netbox_hedgehog/vpc_confirm_delete.html'
-    success_url = '/plugins/netbox_hedgehog/vpcs/'
 
 # Other Views
 class TopologyView(TemplateView):
