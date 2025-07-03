@@ -1,7 +1,7 @@
 from django import forms
 from netbox.forms import NetBoxModelForm
 
-from ..models import VPC, External, IPv4Namespace
+from ..models import VPC, External, IPv4Namespace, ExternalAttachment, ExternalPeering, VPCAttachment, VPCPeering
 
 class VPCForm(NetBoxModelForm):
     """Form for creating and editing VPCs"""
@@ -79,6 +79,114 @@ class IPv4NamespaceForm(NetBoxModelForm):
     
     class Meta:
         model = IPv4Namespace
+        fields = [
+            'fabric', 'name', 'namespace', 'spec', 'labels',
+            'annotations', 'auto_sync', 'tags'
+        ]
+
+class ExternalAttachmentForm(NetBoxModelForm):
+    """Form for creating and editing External Attachments"""
+    
+    spec = forms.JSONField(
+        widget=forms.Textarea(attrs={'rows': 10, 'class': 'font-monospace'}),
+        help_text='External attachment specification as JSON'
+    )
+    
+    labels = forms.JSONField(
+        required=False,
+        widget=forms.Textarea(attrs={'rows': 3, 'class': 'font-monospace'}),
+        help_text='Kubernetes labels as JSON (optional)'
+    )
+    
+    annotations = forms.JSONField(
+        required=False,
+        widget=forms.Textarea(attrs={'rows': 3, 'class': 'font-monospace'}),
+        help_text='Kubernetes annotations as JSON (optional)'
+    )
+    
+    class Meta:
+        model = ExternalAttachment
+        fields = [
+            'fabric', 'name', 'namespace', 'spec', 'labels',
+            'annotations', 'auto_sync', 'tags'
+        ]
+
+class ExternalPeeringForm(NetBoxModelForm):
+    """Form for creating and editing External Peerings"""
+    
+    spec = forms.JSONField(
+        widget=forms.Textarea(attrs={'rows': 10, 'class': 'font-monospace'}),
+        help_text='External peering specification as JSON'
+    )
+    
+    labels = forms.JSONField(
+        required=False,
+        widget=forms.Textarea(attrs={'rows': 3, 'class': 'font-monospace'}),
+        help_text='Kubernetes labels as JSON (optional)'
+    )
+    
+    annotations = forms.JSONField(
+        required=False,
+        widget=forms.Textarea(attrs={'rows': 3, 'class': 'font-monospace'}),
+        help_text='Kubernetes annotations as JSON (optional)'
+    )
+    
+    class Meta:
+        model = ExternalPeering
+        fields = [
+            'fabric', 'name', 'namespace', 'spec', 'labels',
+            'annotations', 'auto_sync', 'tags'
+        ]
+
+class VPCAttachmentForm(NetBoxModelForm):
+    """Form for creating and editing VPC Attachments"""
+    
+    spec = forms.JSONField(
+        widget=forms.Textarea(attrs={'rows': 10, 'class': 'font-monospace'}),
+        help_text='VPC attachment specification as JSON'
+    )
+    
+    labels = forms.JSONField(
+        required=False,
+        widget=forms.Textarea(attrs={'rows': 3, 'class': 'font-monospace'}),
+        help_text='Kubernetes labels as JSON (optional)'
+    )
+    
+    annotations = forms.JSONField(
+        required=False,
+        widget=forms.Textarea(attrs={'rows': 3, 'class': 'font-monospace'}),
+        help_text='Kubernetes annotations as JSON (optional)'
+    )
+    
+    class Meta:
+        model = VPCAttachment
+        fields = [
+            'fabric', 'name', 'namespace', 'spec', 'labels',
+            'annotations', 'auto_sync', 'tags'
+        ]
+
+class VPCPeeringForm(NetBoxModelForm):
+    """Form for creating and editing VPC Peerings"""
+    
+    spec = forms.JSONField(
+        widget=forms.Textarea(attrs={'rows': 10, 'class': 'font-monospace'}),
+        help_text='VPC peering specification as JSON'
+    )
+    
+    labels = forms.JSONField(
+        required=False,
+        widget=forms.Textarea(attrs={'rows': 3, 'class': 'font-monospace'}),
+        help_text='Kubernetes labels as JSON (optional)'
+    )
+    
+    annotations = forms.JSONField(
+        required=False,
+        widget=forms.Textarea(attrs={'rows': 3, 'class': 'font-monospace'}),
+        help_text='Kubernetes annotations as JSON (optional)'
+    )
+    
+    class Meta:
+        model = VPCPeering
         fields = [
             'fabric', 'name', 'namespace', 'spec', 'labels',
             'annotations', 'auto_sync', 'tags'

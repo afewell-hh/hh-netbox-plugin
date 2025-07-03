@@ -48,11 +48,15 @@ class HedgehogFabricForm(ModelForm):
         }
 
 # Import forms from other modules
-from .vpc_api import VPCForm, ExternalForm, IPv4NamespaceForm
+from .vpc_api import VPCForm, ExternalForm, IPv4NamespaceForm, ExternalAttachmentForm, ExternalPeeringForm, VPCAttachmentForm, VPCPeeringForm
 
 __all__ = [
     'HedgehogFabricForm',
     'VPCForm',
     'ExternalForm',
     'IPv4NamespaceForm',
+    'ExternalAttachmentForm',
+    'ExternalPeeringForm',
+    'VPCAttachmentForm',
+    'VPCPeeringForm',
 ]

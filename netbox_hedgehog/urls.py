@@ -5,7 +5,14 @@ from netbox.views.generic import ObjectView
 from .models import HedgehogFabric, VPC, External
 from .forms import HedgehogFabricForm, VPCForm, ExternalForm
 from .simple_sync import SimpleFabricSyncView, SimpleFabricTestConnectionView
-from .views.vpc_api import ExternalListView, ExternalView, ExternalEditView, ExternalDeleteView, IPv4NamespaceListView, IPv4NamespaceView, IPv4NamespaceEditView, IPv4NamespaceDeleteView
+from .views.vpc_api import (
+    ExternalListView, ExternalView, ExternalEditView, ExternalDeleteView,
+    IPv4NamespaceListView, IPv4NamespaceView, IPv4NamespaceEditView, IPv4NamespaceDeleteView,
+    ExternalAttachmentListView, ExternalAttachmentView, ExternalAttachmentEditView, ExternalAttachmentDeleteView,
+    ExternalPeeringListView, ExternalPeeringView, ExternalPeeringEditView, ExternalPeeringDeleteView,
+    VPCAttachmentListView, VPCAttachmentView, VPCAttachmentEditView, VPCAttachmentDeleteView,
+    VPCPeeringListView, VPCPeeringView, VPCPeeringEditView, VPCPeeringDeleteView
+)
 # from .views.crd_views import FabricCRDListView, CRDDetailView, ApplyCRDView, DeleteCRDView
 
 app_name = 'netbox_hedgehog'
@@ -119,6 +126,34 @@ urlpatterns = [
     path('ipv4namespaces/<int:pk>/', IPv4NamespaceView.as_view(), name='ipv4namespace_detail'),
     path('ipv4namespaces/<int:pk>/edit/', IPv4NamespaceEditView.as_view(), name='ipv4namespace_edit'),
     path('ipv4namespaces/<int:pk>/delete/', IPv4NamespaceDeleteView.as_view(), name='ipv4namespace_delete'),
+    
+    # ExternalAttachment URLs
+    path('external-attachments/', ExternalAttachmentListView.as_view(), name='externalattachment_list'),
+    path('external-attachments/add/', ExternalAttachmentEditView.as_view(), name='externalattachment_add'),
+    path('external-attachments/<int:pk>/', ExternalAttachmentView.as_view(), name='externalattachment_detail'),
+    path('external-attachments/<int:pk>/edit/', ExternalAttachmentEditView.as_view(), name='externalattachment_edit'),
+    path('external-attachments/<int:pk>/delete/', ExternalAttachmentDeleteView.as_view(), name='externalattachment_delete'),
+    
+    # ExternalPeering URLs
+    path('external-peerings/', ExternalPeeringListView.as_view(), name='externalpeering_list'),
+    path('external-peerings/add/', ExternalPeeringEditView.as_view(), name='externalpeering_add'),
+    path('external-peerings/<int:pk>/', ExternalPeeringView.as_view(), name='externalpeering_detail'),
+    path('external-peerings/<int:pk>/edit/', ExternalPeeringEditView.as_view(), name='externalpeering_edit'),
+    path('external-peerings/<int:pk>/delete/', ExternalPeeringDeleteView.as_view(), name='externalpeering_delete'),
+    
+    # VPCAttachment URLs
+    path('vpc-attachments/', VPCAttachmentListView.as_view(), name='vpcattachment_list'),
+    path('vpc-attachments/add/', VPCAttachmentEditView.as_view(), name='vpcattachment_add'),
+    path('vpc-attachments/<int:pk>/', VPCAttachmentView.as_view(), name='vpcattachment_detail'),
+    path('vpc-attachments/<int:pk>/edit/', VPCAttachmentEditView.as_view(), name='vpcattachment_edit'),
+    path('vpc-attachments/<int:pk>/delete/', VPCAttachmentDeleteView.as_view(), name='vpcattachment_delete'),
+    
+    # VPCPeering URLs
+    path('vpc-peerings/', VPCPeeringListView.as_view(), name='vpcpeering_list'),
+    path('vpc-peerings/add/', VPCPeeringEditView.as_view(), name='vpcpeering_add'),
+    path('vpc-peerings/<int:pk>/', VPCPeeringView.as_view(), name='vpcpeering_detail'),
+    path('vpc-peerings/<int:pk>/edit/', VPCPeeringEditView.as_view(), name='vpcpeering_edit'),
+    path('vpc-peerings/<int:pk>/delete/', VPCPeeringDeleteView.as_view(), name='vpcpeering_delete'),
     
     # Other URLs
     path('topology/', TopologyView.as_view(), name='topology'),
