@@ -1,12 +1,12 @@
 # Hedgehog NetBox Plugin - Current Status
 
 **Last Updated**: 2025-07-03  
-**Status**: Functional with Core Features Working (85% Complete)  
+**Status**: Nearly Complete with Specific Blocking Issues (90% Complete)  
 **Session Start**: New agent onboarding after crash
 
 ## 🔍 Status Verification Results  
 
-Based on thorough code inspection, git history analysis, and live environment verification:
+Based on thorough code inspection, git history analysis, live environment verification, and user confirmation:
 
 ### ✅ **VERIFIED WORKING FEATURES**
 
@@ -24,12 +24,14 @@ Based on thorough code inspection, git history analysis, and live environment ve
    - Updates sync status and CRD counts in database
    - Shows sync statistics and error handling
 
-3. **CRD Forms** - COMPLETE
-   - All VPC API forms implemented (7 types): VPC, External, ExternalAttachment, ExternalPeering, IPv4Namespace, VPCAttachment, VPCPeering
-   - All Wiring API forms implemented (5 types): Connection, Server, Switch, SwitchGroup, VLANNamespace  
-   - All 12 CRD types have views, forms, templates, and URL patterns
-   - Full navigation menu organized by API type
-   - Git history confirms: "implement complete CRD synchronization and Wiring API support"
+3. **Complete UI Infrastructure** - WORKING
+   - Dashboard complete ✅
+   - Fabric list/detail pages complete ✅
+   - VPC list/detail pages complete ✅
+   - Network topology page (placeholder) ✅
+   - API endpoints for all 12 CRD types complete ✅
+   - Navigation for all CRD types complete ✅
+   - All CRD list pages accessible ✅
 
 4. **Live Environment Verified**
    - NetBox 4.3.3 running at localhost:8000 ✅
@@ -37,27 +39,28 @@ Based on thorough code inspection, git history analysis, and live environment ve
    - kubectl connected to K3s cluster at 127.0.0.1:6443 ✅
    - All 6 Docker containers running healthy ✅
 
-### 🔄 **Current Issues & Blockers**
+### 🚨 **CRITICAL BLOCKING ISSUES**
 
-1. **Navigation Menu**
-   - Using `navigation_minimal.py` instead of full navigation
-   - Some menu items commented out to avoid URL conflicts
-   - "View CRDs" button disabled on fabric detail page
+1. **CRD Form Creation Errors** 
+   - Add buttons on all CRD list pages throw errors
+   - Users cannot create new CRD instances through forms
+   - Blocks core user functionality
 
-2. **CRD Detail Views**
-   - Temporarily disabled due to `fabric_crds` URL reference issues
-   - Individual CRD detail pages not accessible
-   - Affects user ability to view individual CRDs
+2. **Sync Status Display Bug**
+   - Shows "in sync" (green) even when sync is failing
+   - Fabric detail page shows sync errors (good) but status indicator is misleading
+   - Users can't trust sync status indicator
 
-3. **Import Functionality**
+3. **Missing Import Functionality**
    - Sync discovers CRDs but doesn't create NetBox records
-   - No way to import existing CRDs from Kubernetes
-   - Critical gap for real-world usage
+   - Critical for user workflow: fabric installation → add to HNP → see existing CRDs
+   - Blocks primary use case: importing CRDs created during Hedgehog installation
 
-4. **Apply Operations**
+### 🔄 **Secondary Issues**
+
+4. **Apply Operations Not Implemented**
    - Cannot push CRDs from NetBox to Kubernetes
-   - No apply buttons or functionality implemented
-   - Essential for bi-directional sync
+   - Post-MVP functionality for bi-directional sync
 
 ### 📊 **Code Analysis Findings**
 
@@ -96,28 +99,42 @@ Based on thorough code inspection, git history analysis, and live environment ve
 
 ### 🎯 **Immediate Priorities** 
 
-**Project is actually 85% complete, not 70% as initially estimated**
+**Project is actually 90% complete - just 3 specific blocking issues remain**
 
-1. **Complete Import Feature** (TOP PRIORITY)
-   - Most critical missing piece for MVP
-   - Extend `KubernetesSync.sync_all_crds()` to create NetBox records  
-   - Map K8s CRD fields to NetBox model fields
-   - Handle namespace filtering and update conflicts
+1. **Fix CRD Form Creation Errors** (CRITICAL)
+   - Debug why Add buttons on CRD list pages throw errors
+   - Essential for users to create new CRD instances
+   - Likely form validation or URL pattern issue
 
-2. **Test Reported Issues**
-   - Verify Test Connection and Sync Now buttons actually work
-   - User reports they don't work, but code shows full implementation
-   - May be configuration or user expectation issue
+2. **Fix Sync Status Display Bug** (CRITICAL)
+   - Sync status shows "in sync" (green) when sync is failing
+   - Should show error status when sync errors occur
+   - Critical for user trust and debugging
 
-3. **Fix Navigation Issues** (Secondary)
-   - Currently using `navigation_minimal.py` instead of full menu
-   - Re-enable organized navigation in `navigation.py`
-   - Fix any URL conflicts that caused the reduction
+3. **Implement Import Functionality** (CRITICAL FOR MVP)
+   - Extend sync to create NetBox records from discovered CRDs
+   - Core user workflow: Hedgehog installation → add fabric → see existing CRDs
+   - Map K8s CRD fields to NetBox model fields properly
 
 4. **Implement Apply Operations** (Post-MVP)
-   - Add apply buttons to CRD forms
-   - Push CRDs from NetBox to Kubernetes
-   - Handle K8s API responses and status updates
+   - Add ability to push CRDs from NetBox to Kubernetes
+   - Secondary priority after import functionality works
+
+### 👤 **Critical User Workflow Context**
+
+**Typical User Journey:**
+1. User installs Hedgehog fabric (outside HNP scope)
+2. During installation, several Hedgehog CRDs are created in K8s
+3. User adds the fabric to HNP
+4. **CRITICAL**: HNP should sync and import existing CRDs from K8s installation
+5. User should immediately see their existing CRDs in HNP inventory
+6. User can then manage additional CRDs through HNP interface
+
+**Why Import is Critical:**
+- User expects to see existing infrastructure after adding fabric
+- Import validates that HNP is properly connected and functional
+- Without import, HNP appears empty despite connected fabric having CRDs
+- This is the primary value proposition: unified view of existing infrastructure
 
 ### 📝 **Environment Assumptions**
 

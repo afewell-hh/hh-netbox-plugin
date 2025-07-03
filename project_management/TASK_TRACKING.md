@@ -1,8 +1,8 @@
 # Hedgehog NetBox Plugin - Task Tracking
 
 **Last Updated**: 2025-07-03  
-**Current Sprint**: Testing & Import Implementation  
-**Sprint Goal**: Verify reported issues and implement CRD import functionality
+**Current Sprint**: Fix 3 Critical Blocking Issues  
+**Sprint Goal**: Fix CRD forms, sync status display, and implement import functionality
 
 ## 📋 Task Status Legend
 - ✅ **COMPLETED**: Task finished and tested
@@ -21,55 +21,41 @@
 
 ## 🎯 **IMMEDIATE PRIORITIES (This Sprint)**
 
-### **Priority 1: Verify Reported Issues** 
-*Estimated: 30 minutes*
+### **CRITICAL ISSUE 1: Fix CRD Form Creation Errors** 
+*Estimated: 2-3 hours | Priority: CRITICAL*
 
-- 🔲 **Test "Non-Working" Buttons**
-  - User reports Test Connection and Sync Now don't work
-  - Code analysis shows they are fully implemented
-  - Test both buttons with live fabric to verify actual functionality
-  - Document results: do they work or show specific errors?
+- 🔲 **Debug Add Button Errors**
+  - All CRD list pages have working Add buttons, but forms throw errors
+  - Test specific error messages when clicking Add buttons
+  - Check form validation, URL patterns, and view implementations
+  - Verify forms work for all 12 CRD types
 
-### **Priority 2: Implement Import Functionality**
-*Estimated: 4-6 hours*
+### **CRITICAL ISSUE 2: Fix Sync Status Display Bug**
+*Estimated: 1-2 hours | Priority: CRITICAL*
 
-- 🔲 **Extend Sync to Create Records**
-  - Modify `KubernetesSync.sync_all_crds()` to create NetBox records
-  - Map K8s CRD fields to NetBox model fields
-  - Handle namespace filtering appropriately
+- 🔲 **Fix Misleading Status Indicator**
+  - Sync status shows "in sync" (green) even when sync is failing
+  - Fabric detail page correctly shows sync errors, but status indicator is wrong
+  - Update status logic to show error state when sync errors occur
+  - Ensure status accurately reflects sync health
+
+### **CRITICAL ISSUE 3: Implement Import Functionality**
+*Estimated: 4-6 hours | Priority: CRITICAL FOR MVP*
+
+- 🔲 **Enable CRD Import During Sync**
+  - Extend `KubernetesSync.sync_all_crds()` to create NetBox records
+  - Map discovered K8s CRDs to appropriate NetBox model instances
+  - Handle namespace filtering and avoid duplicates
   
 - 🔲 **Handle Import Conflicts**
   - Detect existing records by name/namespace
   - Implement update vs create logic
-  - Add option to overwrite or skip existing
+  - Add proper error handling for import failures
   
-- 🔲 **Import UI Feedback**
-  - Show import progress in UI
-  - Display created/updated/skipped counts
-  - List any errors with details
-  
-- 🔲 **Test Import Thoroughly**
-  - Test with empty NetBox database
-  - Test with existing records
-  - Test error scenarios
-
-### **Priority 3: Fix Navigation Issues**
-*Estimated: 2-3 hours*
-
-- 🔲 **Re-enable Full Navigation**
-  - Switch from `navigation_minimal.py` to full navigation
-  - Test all menu items work correctly
-  - Fix any URL resolution errors
-  
-- 🔲 **Fix CRD Detail Views**
-  - Debug `fabric_crds` URL reference issue
-  - Re-enable CRD detail view URLs
-  - Test navigation to individual CRDs
-  
-- 🔲 **Enable View CRDs Button**
-  - Fix disabled button on fabric detail page
-  - Implement fabric-specific CRD list view
-  - Add proper filtering by fabric
+- 🔲 **Test Complete User Workflow**
+  - Install fabric → add to HNP → sync → see existing CRDs
+  - Verify imported CRDs display correctly in list views
+  - Test that imported CRDs have proper status indicators
 
 ---
 
@@ -153,34 +139,48 @@
 
 ### Overall Project Progress
 - **Infrastructure**: 100% ✅
+- **Dashboard & Core UI**: 100% ✅ 
 - **Fabric Management**: 100% ✅
+- **All CRD Navigation**: 100% ✅ (user confirmed)
+- **All CRD List Pages**: 100% ✅ (user confirmed)
+- **API Endpoints**: 100% ✅ (user confirmed)
 - **K8s Integration**: 90% (missing import only)
-- **CRD Coverage**: 100% ✅ (all 12 types complete)
-- **Navigation & UI**: 95% (minor menu issue)
+- **CRD Form Creation**: 50% ❌ (forms exist but throw errors)
+- **Sync Status Display**: 80% ❌ (works but shows wrong status)
 - **Import Functionality**: 0% 🔲
 - **Apply Operations**: 0% 🔲
-- **API Development**: 0% 🔲
 
-**Overall MVP Completion**: ~85%
+**Overall MVP Completion**: ~90% (3 specific issues blocking)**
 
 ---
 
 ## 🚨 **Known Issues & Blockers**
 
-1. **Navigation Menu Reduced**
-   - Impact: Some features not easily accessible
-   - Workaround: Using minimal navigation
-   - Fix: Priority 3 tasks above
+1. **CRD Form Creation Errors (CRITICAL)**
+   - Impact: Users cannot create new CRD instances
+   - Workaround: None - blocks core functionality
+   - Fix: Critical Issue 1 above
 
-2. **No Import Capability**
-   - Impact: Can't import existing CRDs
-   - Workaround: None
-   - Fix: Priority 2 tasks above
+2. **Sync Status Display Bug (CRITICAL)**
+   - Impact: Users see "in sync" when sync is failing
+   - Workaround: Check fabric detail page for actual errors
+   - Fix: Critical Issue 2 above
 
-3. **CRD Detail Views Disabled**
-   - Impact: Can't view individual CRDs
-   - Workaround: Use list views only
-   - Fix: Part of Priority 3
+3. **No Import Capability (CRITICAL FOR MVP)**
+   - Impact: Users can't see existing CRDs after adding fabric
+   - Workaround: None - breaks primary user workflow
+   - Fix: Critical Issue 3 above
+
+## 👤 **User Workflow Context**
+
+**Critical Understanding**: The following workflow MUST work for MVP:
+1. User installs Hedgehog fabric (creates CRDs in K8s)
+2. User adds fabric to HNP
+3. **EXPECTED**: HNP syncs and shows existing CRDs
+4. **REALITY**: HNP sync fails (Issue 2) and shows no CRDs (Issue 3)
+5. User tries to create CRDs manually but forms error (Issue 1)
+
+**Result**: User cannot successfully use HNP for its primary purpose
 
 ---
 
