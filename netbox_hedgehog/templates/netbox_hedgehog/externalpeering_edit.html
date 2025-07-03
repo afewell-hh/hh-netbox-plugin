@@ -1,0 +1,64 @@
+{% extends "generic/object_edit.html" %}
+{% load static %}
+{% load form_helpers %}
+
+{% block title %}
+    {% if object %}
+        Edit {{ object }}
+    {% else %}
+        Add External Peering
+    {% endif %}
+{% endblock %}
+
+{% block content_title %}
+    {% if object %}
+        <i class="mdi mdi-pencil"></i> Edit External Peering: {{ object }}
+    {% else %}
+        <i class="mdi mdi-plus-thick"></i> Add External Peering
+    {% endif %}
+{% endblock %}
+
+{% block form %}
+    <div class="row">
+        <div class="col col-md-6">
+            <div class="card">
+                <h5 class="card-header">External Peering Information</h5>
+                <div class="card-body">
+                    {% render_field form.name %}
+                    {% render_field form.fabric %}
+                    {% render_field form.namespace %}
+                </div>
+            </div>
+            
+            <div class="card mt-3">
+                <h5 class="card-header">Peering Settings</h5>
+                <div class="card-body">
+                    {% render_field form.auto_sync %}
+                    {% render_field form.tags %}
+                </div>
+            </div>
+        </div>
+        
+        <div class="col col-md-6">
+            <div class="card">
+                <h5 class="card-header">CRD Specification</h5>
+                <div class="card-body">
+                    <p class="text-muted">
+                        Define the external peering specification in JSON format. 
+                        This typically includes BGP configuration, peering details, 
+                        and external peering properties.
+                    </p>
+                    {% render_field form.spec %}
+                </div>
+            </div>
+            
+            <div class="card mt-3">
+                <h5 class="card-header">Kubernetes Metadata</h5>
+                <div class="card-body">
+                    {% render_field form.labels %}
+                    {% render_field form.annotations %}
+                </div>
+            </div>
+        </div>
+    </div>
+{% endblock %}

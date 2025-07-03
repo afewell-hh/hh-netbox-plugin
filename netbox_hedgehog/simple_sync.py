@@ -166,9 +166,11 @@ class SimpleFabricSyncView(View):
                         'message': f'Sync completed successfully! Fabric "{fabric.name}" is now synchronized.',
                         'stats': {
                             'total_crds': sync_result.get('total', 0),
+                            'created': sync_result.get('created', 0),
                             'updated': sync_result.get('updated', 0),
                             'errors': sync_result.get('errors', 0),
-                            'status': 'in_sync'
+                            'status': 'in_sync',
+                            'details': f"{sync_result.get('created', 0)} created, {sync_result.get('updated', 0)} updated"
                         }
                     })
                 else:

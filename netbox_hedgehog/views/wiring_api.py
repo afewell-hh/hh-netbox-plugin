@@ -57,3 +57,41 @@ class ServerEditView(generic.ObjectEditView):
 class ServerDeleteView(generic.ObjectDeleteView):
     queryset = models.Server.objects.all()
     template_name = 'netbox_hedgehog/server_delete.html'
+
+# SwitchGroup Views
+class SwitchGroupListView(generic.ObjectListView):
+    queryset = models.SwitchGroup.objects.all()
+    table = tables.SwitchGroupTable
+    template_name = 'netbox_hedgehog/switchgroup_list.html'
+
+class SwitchGroupView(generic.ObjectView):
+    queryset = models.SwitchGroup.objects.all()
+    template_name = 'netbox_hedgehog/switchgroup_detail.html'
+
+class SwitchGroupEditView(generic.ObjectEditView):
+    queryset = models.SwitchGroup.objects.all()
+    form = forms.SwitchGroupForm
+    template_name = 'netbox_hedgehog/switchgroup_edit.html'
+
+class SwitchGroupDeleteView(generic.ObjectDeleteView):
+    queryset = models.SwitchGroup.objects.all()
+    template_name = 'netbox_hedgehog/switchgroup_confirm_delete.html'
+
+# VLANNamespace Views
+class VLANNamespaceListView(generic.ObjectListView):
+    queryset = models.VLANNamespace.objects.all()
+    table = tables.VLANNamespaceTable
+    template_name = 'netbox_hedgehog/vlannamespace_list.html'
+
+class VLANNamespaceView(generic.ObjectView):
+    queryset = models.VLANNamespace.objects.all()
+    template_name = 'netbox_hedgehog/vlannamespace_detail.html'
+
+class VLANNamespaceEditView(generic.ObjectEditView):
+    queryset = models.VLANNamespace.objects.all()
+    form = forms.VLANNamespaceForm
+    template_name = 'netbox_hedgehog/vlannamespace_edit.html'
+
+class VLANNamespaceDeleteView(generic.ObjectDeleteView):
+    queryset = models.VLANNamespace.objects.all()
+    template_name = 'netbox_hedgehog/vlannamespace_confirm_delete.html'

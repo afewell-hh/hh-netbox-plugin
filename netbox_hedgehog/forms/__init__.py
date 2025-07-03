@@ -49,6 +49,7 @@ class HedgehogFabricForm(ModelForm):
 
 # Import forms from other modules
 from .vpc_api import VPCForm, ExternalForm, IPv4NamespaceForm, ExternalAttachmentForm, ExternalPeeringForm, VPCAttachmentForm, VPCPeeringForm
+from .wiring_api import ConnectionForm, SwitchForm, ServerForm, SwitchGroupForm, VLANNamespaceForm
 
 __all__ = [
     'HedgehogFabricForm',
@@ -59,4 +60,9 @@ __all__ = [
     'ExternalPeeringForm',
     'VPCAttachmentForm',
     'VPCPeeringForm',
+    'ConnectionForm',
+    'SwitchForm',
+    'ServerForm',
+    'SwitchGroupForm',
+    'VLANNamespaceForm',
 ]

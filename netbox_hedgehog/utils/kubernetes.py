@@ -366,12 +366,13 @@ class KubernetesSync:
     
     def sync_all_crds(self) -> Dict[str, Any]:
         """
-        Synchronize all CRDs for this fabric by fetching from Kubernetes.
+        Synchronize all CRDs for this fabric by fetching from Kubernetes and importing into NetBox.
         Returns summary of sync operations.
         """
         results = {
             'success': True,
             'total': 0,
+            'created': 0,
             'updated': 0,
             'errors': 0,
             'error_details': [],
@@ -393,30 +394,43 @@ class KubernetesSync:
                 
                 return results
             
-            # Calculate totals
-            total_resources = sum(fetch_result['totals'].values())
-            results['total'] = total_resources
+            # Now import the fetched CRDs into NetBox models
+            import_result = self.import_crds_to_netbox(fetch_result['resources'])
+            
+            # Merge results
+            results['total'] = import_result['total']
+            results['created'] = import_result['created']
+            results['updated'] = import_result['updated']
+            results['errors'] += import_result['errors']
+            results['error_details'].extend(import_result['error_details'])
             results['totals_by_type'] = fetch_result['totals']
             
-            # Count VPCs and connections specifically for fabric dashboard
+            if import_result['errors'] > 0:
+                results['success'] = False
+            
+            # Update fabric CRD counts (these are used in templates)
+            total_resources = sum(fetch_result['totals'].values())
             vpc_count = fetch_result['totals'].get('VPC', 0)
             connection_count = fetch_result['totals'].get('Connection', 0)
             
-            # Update fabric CRD counts (these are used in templates)
             self.fabric.cached_crd_count = total_resources
             self.fabric.cached_vpc_count = vpc_count  
             self.fabric.cached_connection_count = connection_count
             
-            # For now, just report successful fetch as "updated"
-            # In future, we can sync individual CRD status by checking each resource
-            results['updated'] = total_resources
-            
             # Update fabric sync timestamp
-            self.fabric.last_sync = datetime.now()
-            self.fabric.sync_error = ''
-            self.fabric.save()
+            from django.utils import timezone
+            self.fabric.last_sync = timezone.now()
             
-            logger.info(f"Successfully synced {total_resources} CRDs for fabric {self.fabric.name}")
+            if results['success']:
+                self.fabric.sync_error = ''
+                logger.info(f"Successfully synced {results['total']} CRDs for fabric {self.fabric.name} "
+                           f"({results['created']} created, {results['updated']} updated)")
+            else:
+                error_summary = f"{results['errors']} errors occurred during sync"
+                self.fabric.sync_error = error_summary
+                logger.warning(f"Sync completed with errors for fabric {self.fabric.name}: {error_summary}")
+            
+            self.fabric.save()
             
         except Exception as e:
             logger.error(f"Fabric sync failed: {e}")
@@ -430,6 +444,148 @@ class KubernetesSync:
             # Update fabric with error status
             self.fabric.sync_error = str(e)
             self.fabric.save()
+        
+        return results
+    
+    def import_crds_to_netbox(self, resources_by_kind: Dict[str, List]) -> Dict[str, Any]:
+        """
+        Import fetched Kubernetes CRDs into NetBox models.
+        Creates or updates NetBox objects based on Kubernetes resources.
+        """
+        results = {
+            'total': 0,
+            'created': 0,
+            'updated': 0,
+            'errors': 0,
+            'error_details': []
+        }
+        
+        # Import the models we'll need
+        from ..models import (
+            VPC, External, IPv4Namespace, ExternalAttachment, ExternalPeering, 
+            VPCAttachment, VPCPeering, Connection, Switch, Server, SwitchGroup, VLANNamespace
+        )
+        
+        # Map Kubernetes kinds to NetBox model classes
+        model_mapping = {
+            'VPC': VPC,
+            'External': External,
+            'IPv4Namespace': IPv4Namespace,
+            'ExternalAttachment': ExternalAttachment,
+            'ExternalPeering': ExternalPeering,
+            'VPCAttachment': VPCAttachment,
+            'VPCPeering': VPCPeering,
+            'Connection': Connection,
+            'Switch': Switch,
+            'Server': Server,
+            'SwitchGroup': SwitchGroup,
+            'VLANNamespace': VLANNamespace,
+        }
+        
+        for kind, resources in resources_by_kind.items():
+            if kind not in model_mapping:
+                logger.warning(f"No NetBox model found for Kubernetes kind: {kind}")
+                continue
+                
+            model_class = model_mapping[kind]
+            
+            for resource in resources:
+                try:
+                    # Extract metadata
+                    metadata = resource.get('metadata', {})
+                    spec = resource.get('spec', {})
+                    status = resource.get('status', {})
+                    
+                    name = metadata.get('name', '')
+                    namespace = metadata.get('namespace', 'default')
+                    uid = metadata.get('uid', '')
+                    resource_version = metadata.get('resourceVersion', '')
+                    
+                    if not name:
+                        logger.warning(f"Skipping {kind} resource without name")
+                        continue
+                    
+                    # Check if this CRD already exists in NetBox
+                    existing = None
+                    try:
+                        existing = model_class.objects.get(
+                            fabric=self.fabric,
+                            name=name,
+                            namespace=namespace
+                        )
+                    except model_class.DoesNotExist:
+                        pass
+                    except Exception as e:
+                        logger.error(f"Error checking for existing {kind} {name}: {e}")
+                        continue
+                    
+                    # Prepare data for NetBox model
+                    model_data = {
+                        'fabric': self.fabric,
+                        'name': name,
+                        'namespace': namespace,
+                        'spec': spec,
+                        'labels': metadata.get('labels', {}),
+                        'annotations': metadata.get('annotations', {}),
+                        'kubernetes_uid': uid,
+                        'kubernetes_resource_version': resource_version,
+                        'kubernetes_status': self._determine_resource_status(resource),
+                        'last_synced': datetime.now(),
+                        'sync_error': '',
+                        'auto_sync': True,  # Mark as auto-synced from cluster
+                    }
+                    
+                    if existing:
+                        # Update existing object
+                        try:
+                            for field, value in model_data.items():
+                                if field != 'fabric':  # Don't change fabric association
+                                    setattr(existing, field, value)
+                            existing.save()
+                            
+                            results['updated'] += 1
+                            logger.debug(f"Updated {kind}: {name}")
+                            
+                        except Exception as e:
+                            error_msg = f"Failed to update {kind} {name}: {e}"
+                            logger.error(error_msg)
+                            results['errors'] += 1
+                            results['error_details'].append({
+                                'crd': f"{kind}/{name}",
+                                'error': str(e),
+                                'operation': 'update'
+                            })
+                    else:
+                        # Create new object
+                        try:
+                            new_obj = model_class.objects.create(**model_data)
+                            results['created'] += 1
+                            logger.debug(f"Created {kind}: {name}")
+                            
+                        except Exception as e:
+                            error_msg = f"Failed to create {kind} {name}: {e}"
+                            logger.error(error_msg)
+                            results['errors'] += 1
+                            results['error_details'].append({
+                                'crd': f"{kind}/{name}",
+                                'error': str(e),
+                                'operation': 'create'
+                            })
+                    
+                    results['total'] += 1
+                    
+                except Exception as e:
+                    error_msg = f"Unexpected error processing {kind} resource: {e}"
+                    logger.error(error_msg)
+                    results['errors'] += 1
+                    results['error_details'].append({
+                        'crd': f"{kind}/unknown",
+                        'error': str(e),
+                        'operation': 'process'
+                    })
+        
+        logger.info(f"Import completed: {results['total']} total, {results['created']} created, "
+                   f"{results['updated']} updated, {results['errors']} errors")
         
         return results
     

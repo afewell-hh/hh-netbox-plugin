@@ -14,10 +14,22 @@ from .simple_sync import SimpleFabricSyncView, SimpleFabricTestConnectionView
 #     VPCAttachmentListView, VPCAttachmentView, VPCAttachmentEditView, VPCAttachmentDeleteView,
 #     VPCPeeringListView, VPCPeeringView, VPCPeeringEditView, VPCPeeringDeleteView
 # )
-# Re-enable External and IPv4Namespace views - table imports should be fixed
+# Re-enable External, IPv4Namespace, ExternalAttachment, ExternalPeering, VPCAttachment, and VPCPeering views
 from .views.vpc_api import (
     ExternalListView, ExternalView, ExternalEditView, ExternalDeleteView,
-    IPv4NamespaceListView, IPv4NamespaceView, IPv4NamespaceEditView, IPv4NamespaceDeleteView
+    IPv4NamespaceListView, IPv4NamespaceView, IPv4NamespaceEditView, IPv4NamespaceDeleteView,
+    ExternalAttachmentListView, ExternalAttachmentView, ExternalAttachmentEditView, ExternalAttachmentDeleteView,
+    ExternalPeeringListView, ExternalPeeringView, ExternalPeeringEditView, ExternalPeeringDeleteView,
+    VPCAttachmentListView, VPCAttachmentView, VPCAttachmentEditView, VPCAttachmentDeleteView,
+    VPCPeeringListView, VPCPeeringView, VPCPeeringEditView, VPCPeeringDeleteView
+)
+# Import Wiring API views
+from .views.wiring_api import (
+    ConnectionListView, ConnectionView, ConnectionEditView, ConnectionDeleteView,
+    SwitchListView, SwitchView, SwitchEditView, SwitchDeleteView,
+    ServerListView, ServerView, ServerEditView, ServerDeleteView,
+    SwitchGroupListView, SwitchGroupView, SwitchGroupEditView, SwitchGroupDeleteView,
+    VLANNamespaceListView, VLANNamespaceView, VLANNamespaceEditView, VLANNamespaceDeleteView
 )
 # from .views.crd_views import FabricCRDListView, CRDDetailView, ApplyCRDView, DeleteCRDView
 
@@ -131,34 +143,69 @@ urlpatterns = [
     path('ipv4namespaces/<int:pk>/edit/', IPv4NamespaceEditView.as_view(), name='ipv4namespace_edit'),
     path('ipv4namespaces/<int:pk>/delete/', IPv4NamespaceDeleteView.as_view(), name='ipv4namespace_delete'),
     
-    # Temporarily disabled - need to debug import issues
-    # # ExternalAttachment URLs
-    # path('external-attachments/', ExternalAttachmentListView.as_view(), name='externalattachment_list'),
-    # path('external-attachments/add/', ExternalAttachmentEditView.as_view(), name='externalattachment_add'),
-    # path('external-attachments/<int:pk>/', ExternalAttachmentView.as_view(), name='externalattachment_detail'),
-    # path('external-attachments/<int:pk>/edit/', ExternalAttachmentEditView.as_view(), name='externalattachment_edit'),
-    # path('external-attachments/<int:pk>/delete/', ExternalAttachmentDeleteView.as_view(), name='externalattachment_delete'),
-    # 
-    # # ExternalPeering URLs
-    # path('external-peerings/', ExternalPeeringListView.as_view(), name='externalpeering_list'),
-    # path('external-peerings/add/', ExternalPeeringEditView.as_view(), name='externalpeering_add'),
-    # path('external-peerings/<int:pk>/', ExternalPeeringView.as_view(), name='externalpeering_detail'),
-    # path('external-peerings/<int:pk>/edit/', ExternalPeeringEditView.as_view(), name='externalpeering_edit'),
-    # path('external-peerings/<int:pk>/delete/', ExternalPeeringDeleteView.as_view(), name='externalpeering_delete'),
-    # 
-    # # VPCAttachment URLs
-    # path('vpc-attachments/', VPCAttachmentListView.as_view(), name='vpcattachment_list'),
-    # path('vpc-attachments/add/', VPCAttachmentEditView.as_view(), name='vpcattachment_add'),
-    # path('vpc-attachments/<int:pk>/', VPCAttachmentView.as_view(), name='vpcattachment_detail'),
-    # path('vpc-attachments/<int:pk>/edit/', VPCAttachmentEditView.as_view(), name='vpcattachment_edit'),
-    # path('vpc-attachments/<int:pk>/delete/', VPCAttachmentDeleteView.as_view(), name='vpcattachment_delete'),
-    # 
-    # # VPCPeering URLs
-    # path('vpc-peerings/', VPCPeeringListView.as_view(), name='vpcpeering_list'),
-    # path('vpc-peerings/add/', VPCPeeringEditView.as_view(), name='vpcpeering_add'),
-    # path('vpc-peerings/<int:pk>/', VPCPeeringView.as_view(), name='vpcpeering_detail'),
-    # path('vpc-peerings/<int:pk>/edit/', VPCPeeringEditView.as_view(), name='vpcpeering_edit'),
-    # path('vpc-peerings/<int:pk>/delete/', VPCPeeringDeleteView.as_view(), name='vpcpeering_delete'),
+    # ExternalAttachment URLs
+    path('external-attachments/', ExternalAttachmentListView.as_view(), name='externalattachment_list'),
+    path('external-attachments/add/', ExternalAttachmentEditView.as_view(), name='externalattachment_add'),
+    path('external-attachments/<int:pk>/', ExternalAttachmentView.as_view(), name='externalattachment_detail'),
+    path('external-attachments/<int:pk>/edit/', ExternalAttachmentEditView.as_view(), name='externalattachment_edit'),
+    path('external-attachments/<int:pk>/delete/', ExternalAttachmentDeleteView.as_view(), name='externalattachment_delete'),
+    
+    # ExternalPeering URLs
+    path('external-peerings/', ExternalPeeringListView.as_view(), name='externalpeering_list'),
+    path('external-peerings/add/', ExternalPeeringEditView.as_view(), name='externalpeering_add'),
+    path('external-peerings/<int:pk>/', ExternalPeeringView.as_view(), name='externalpeering_detail'),
+    path('external-peerings/<int:pk>/edit/', ExternalPeeringEditView.as_view(), name='externalpeering_edit'),
+    path('external-peerings/<int:pk>/delete/', ExternalPeeringDeleteView.as_view(), name='externalpeering_delete'),
+    
+    # VPCAttachment URLs
+    path('vpc-attachments/', VPCAttachmentListView.as_view(), name='vpcattachment_list'),
+    path('vpc-attachments/add/', VPCAttachmentEditView.as_view(), name='vpcattachment_add'),
+    path('vpc-attachments/<int:pk>/', VPCAttachmentView.as_view(), name='vpcattachment_detail'),
+    path('vpc-attachments/<int:pk>/edit/', VPCAttachmentEditView.as_view(), name='vpcattachment_edit'),
+    path('vpc-attachments/<int:pk>/delete/', VPCAttachmentDeleteView.as_view(), name='vpcattachment_delete'),
+    
+    # VPCPeering URLs
+    path('vpc-peerings/', VPCPeeringListView.as_view(), name='vpcpeering_list'),
+    path('vpc-peerings/add/', VPCPeeringEditView.as_view(), name='vpcpeering_add'),
+    path('vpc-peerings/<int:pk>/', VPCPeeringView.as_view(), name='vpcpeering_detail'),
+    path('vpc-peerings/<int:pk>/edit/', VPCPeeringEditView.as_view(), name='vpcpeering_edit'),
+    path('vpc-peerings/<int:pk>/delete/', VPCPeeringDeleteView.as_view(), name='vpcpeering_delete'),
+    
+    # Wiring API URLs
+    # Connection URLs
+    path('connections/', ConnectionListView.as_view(), name='connection_list'),
+    path('connections/add/', ConnectionEditView.as_view(), name='connection_add'),
+    path('connections/<int:pk>/', ConnectionView.as_view(), name='connection_detail'),
+    path('connections/<int:pk>/edit/', ConnectionEditView.as_view(), name='connection_edit'),
+    path('connections/<int:pk>/delete/', ConnectionDeleteView.as_view(), name='connection_delete'),
+    
+    # Switch URLs
+    path('switches/', SwitchListView.as_view(), name='switch_list'),
+    path('switches/add/', SwitchEditView.as_view(), name='switch_add'),
+    path('switches/<int:pk>/', SwitchView.as_view(), name='switch_detail'),
+    path('switches/<int:pk>/edit/', SwitchEditView.as_view(), name='switch_edit'),
+    path('switches/<int:pk>/delete/', SwitchDeleteView.as_view(), name='switch_delete'),
+    
+    # Server URLs
+    path('servers/', ServerListView.as_view(), name='server_list'),
+    path('servers/add/', ServerEditView.as_view(), name='server_add'),
+    path('servers/<int:pk>/', ServerView.as_view(), name='server_detail'),
+    path('servers/<int:pk>/edit/', ServerEditView.as_view(), name='server_edit'),
+    path('servers/<int:pk>/delete/', ServerDeleteView.as_view(), name='server_delete'),
+    
+    # SwitchGroup URLs
+    path('switch-groups/', SwitchGroupListView.as_view(), name='switchgroup_list'),
+    path('switch-groups/add/', SwitchGroupEditView.as_view(), name='switchgroup_add'),
+    path('switch-groups/<int:pk>/', SwitchGroupView.as_view(), name='switchgroup_detail'),
+    path('switch-groups/<int:pk>/edit/', SwitchGroupEditView.as_view(), name='switchgroup_edit'),
+    path('switch-groups/<int:pk>/delete/', SwitchGroupDeleteView.as_view(), name='switchgroup_delete'),
+    
+    # VLANNamespace URLs
+    path('vlan-namespaces/', VLANNamespaceListView.as_view(), name='vlannamespace_list'),
+    path('vlan-namespaces/add/', VLANNamespaceEditView.as_view(), name='vlannamespace_add'),
+    path('vlan-namespaces/<int:pk>/', VLANNamespaceView.as_view(), name='vlannamespace_detail'),
+    path('vlan-namespaces/<int:pk>/edit/', VLANNamespaceEditView.as_view(), name='vlannamespace_edit'),
+    path('vlan-namespaces/<int:pk>/delete/', VLANNamespaceDeleteView.as_view(), name='vlannamespace_delete'),
     
     # Other URLs
     path('topology/', TopologyView.as_view(), name='topology'),

@@ -84,6 +84,186 @@
                         </div>
                     </div>
                     
+                    <!-- CRD Management Section -->
+                    <div class="row mt-4">
+                        <div class="col-12">
+                            <h4><i class="mdi mdi-kubernetes"></i> CRD Management</h4>
+                            <p class="text-muted">Manage Kubernetes Custom Resource Definitions for your Hedgehog fabric infrastructure.</p>
+                        </div>
+                    </div>
+                    
+                    <!-- VPC API CRDs -->
+                    <div class="row mt-3">
+                        <div class="col-12">
+                            <h5 class="text-primary"><i class="mdi mdi-cloud-outline"></i> VPC API Resources</h5>
+                        </div>
+                    </div>
+                    <div class="row">
+                        <div class="col-md-3">
+                            <div class="card border-secondary h-100">
+                                <div class="card-body">
+                                    <h6 class="card-title"><i class="mdi mdi-earth"></i> External Systems</h6>
+                                    <p class="card-text text-muted">Configure external BGP systems and connections</p>
+                                    <div class="btn-group-vertical w-100">
+                                        <a href="{% url 'plugins:netbox_hedgehog:external_list' %}" class="btn btn-sm btn-outline-primary">View All</a>
+                                        <a href="{% url 'plugins:netbox_hedgehog:external_add' %}" class="btn btn-sm btn-success">Create New</a>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-md-3">
+                            <div class="card border-secondary h-100">
+                                <div class="card-body">
+                                    <h6 class="card-title"><i class="mdi mdi-ip-network"></i> IPv4 Namespaces</h6>
+                                    <p class="card-text text-muted">Manage IP address allocation namespaces</p>
+                                    <div class="btn-group-vertical w-100">
+                                        <a href="{% url 'plugins:netbox_hedgehog:ipv4namespace_list' %}" class="btn btn-sm btn-outline-primary">View All</a>
+                                        <a href="{% url 'plugins:netbox_hedgehog:ipv4namespace_add' %}" class="btn btn-sm btn-success">Create New</a>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-md-3">
+                            <div class="card border-secondary h-100">
+                                <div class="card-body">
+                                    <h6 class="card-title"><i class="mdi mdi-attachment"></i> External Attachments</h6>
+                                    <p class="card-text text-muted">Connect external systems to fabric ports</p>
+                                    <div class="btn-group-vertical w-100">
+                                        <a href="{% url 'plugins:netbox_hedgehog:externalattachment_list' %}" class="btn btn-sm btn-outline-primary">View All</a>
+                                        <a href="{% url 'plugins:netbox_hedgehog:externalattachment_add' %}" class="btn btn-sm btn-success">Create New</a>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-md-3">
+                            <div class="card border-secondary h-100">
+                                <div class="card-body">
+                                    <h6 class="card-title"><i class="mdi mdi-transit-connection-variant"></i> External Peerings</h6>
+                                    <p class="card-text text-muted">Configure BGP peering relationships</p>
+                                    <div class="btn-group-vertical w-100">
+                                        <a href="{% url 'plugins:netbox_hedgehog:externalpeering_list' %}" class="btn btn-sm btn-outline-primary">View All</a>
+                                        <a href="{% url 'plugins:netbox_hedgehog:externalpeering_add' %}" class="btn btn-sm btn-success">Create New</a>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="row mt-3">
+                        <div class="col-md-3">
+                            <div class="card border-secondary h-100">
+                                <div class="card-body">
+                                    <h6 class="card-title"><i class="mdi mdi-link-variant"></i> VPC Attachments</h6>
+                                    <p class="card-text text-muted">Attach workloads to VPC subnets</p>
+                                    <div class="btn-group-vertical w-100">
+                                        <a href="{% url 'plugins:netbox_hedgehog:vpcattachment_list' %}" class="btn btn-sm btn-outline-primary">View All</a>
+                                        <a href="{% url 'plugins:netbox_hedgehog:vpcattachment_add' %}" class="btn btn-sm btn-success">Create New</a>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-md-3">
+                            <div class="card border-secondary h-100">
+                                <div class="card-body">
+                                    <h6 class="card-title"><i class="mdi mdi-vector-link"></i> VPC Peerings</h6>
+                                    <p class="card-text text-muted">Establish VPC-to-VPC connections</p>
+                                    <div class="btn-group-vertical w-100">
+                                        <a href="{% url 'plugins:netbox_hedgehog:vpcpeering_list' %}" class="btn btn-sm btn-outline-primary">View All</a>
+                                        <a href="{% url 'plugins:netbox_hedgehog:vpcpeering_add' %}" class="btn btn-sm btn-success">Create New</a>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="card border-info h-100">
+                                <div class="card-body">
+                                    <h6 class="card-title"><i class="mdi mdi-information"></i> Getting Started with CRDs</h6>
+                                    <p class="card-text">New to Hedgehog CRD management? Follow these steps:</p>
+                                    <ol class="small">
+                                        <li><strong>Create a fabric connection</strong> - Set up your Kubernetes cluster connection</li>
+                                        <li><strong>Set up IPv4 namespaces</strong> - Define IP address allocation scopes</li>
+                                        <li><strong>Configure external systems</strong> - Add BGP neighbors and connections</li>
+                                        <li><strong>Create VPCs and attachments</strong> - Deploy workload networking</li>
+                                        <li><strong>Establish peerings</strong> - Connect VPCs and external networks</li>
+                                    </ol>
+                                    <a href="{% url 'plugins:netbox_hedgehog:fabric_list' %}" class="btn btn-sm btn-primary">Start with Fabrics</a>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- Wiring API CRDs -->
+                    <div class="row mt-4">
+                        <div class="col-12">
+                            <h5 class="text-secondary"><i class="mdi mdi-cable-data"></i> Wiring API Resources</h5>
+                        </div>
+                    </div>
+                    <div class="row">
+                        <div class="col-md-4">
+                            <div class="card border-secondary h-100">
+                                <div class="card-body">
+                                    <h6 class="card-title"><i class="mdi mdi-connection"></i> Connections</h6>
+                                    <p class="card-text text-muted">Physical and logical connections between devices</p>
+                                    <div class="btn-group-vertical w-100">
+                                        <a href="{% url 'plugins:netbox_hedgehog:connection_list' %}" class="btn btn-sm btn-outline-secondary">View All</a>
+                                        <a href="{% url 'plugins:netbox_hedgehog:connection_add' %}" class="btn btn-sm btn-success">Create New</a>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-md-4">
+                            <div class="card border-secondary h-100">
+                                <div class="card-body">
+                                    <h6 class="card-title"><i class="mdi mdi-switch"></i> Switches</h6>
+                                    <p class="card-text text-muted">Network switch configurations and roles</p>
+                                    <div class="btn-group-vertical w-100">
+                                        <a href="{% url 'plugins:netbox_hedgehog:switch_list' %}" class="btn btn-sm btn-outline-secondary">View All</a>
+                                        <a href="{% url 'plugins:netbox_hedgehog:switch_add' %}" class="btn btn-sm btn-success">Create New</a>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-md-4">
+                            <div class="card border-secondary h-100">
+                                <div class="card-body">
+                                    <h6 class="card-title"><i class="mdi mdi-server"></i> Servers</h6>
+                                    <p class="card-text text-muted">Server configurations and connections</p>
+                                    <div class="btn-group-vertical w-100">
+                                        <a href="{% url 'plugins:netbox_hedgehog:server_list' %}" class="btn btn-sm btn-outline-secondary">View All</a>
+                                        <a href="{% url 'plugins:netbox_hedgehog:server_add' %}" class="btn btn-sm btn-success">Create New</a>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="row mt-3">
+                        <div class="col-md-6">
+                            <div class="card border-secondary h-100">
+                                <div class="card-body">
+                                    <h6 class="card-title"><i class="mdi mdi-group"></i> Switch Groups</h6>
+                                    <p class="card-text text-muted">Logical groupings of network switches</p>
+                                    <div class="btn-group-vertical w-100">
+                                        <a href="{% url 'plugins:netbox_hedgehog:switchgroup_list' %}" class="btn btn-sm btn-outline-secondary">View All</a>
+                                        <a href="{% url 'plugins:netbox_hedgehog:switchgroup_add' %}" class="btn btn-sm btn-success">Create New</a>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="card border-secondary h-100">
+                                <div class="card-body">
+                                    <h6 class="card-title"><i class="mdi mdi-lan"></i> VLAN Namespaces</h6>
+                                    <p class="card-text text-muted">VLAN isolation and namespace management</p>
+                                    <div class="btn-group-vertical w-100">
+                                        <a href="{% url 'plugins:netbox_hedgehog:vlannamespace_list' %}" class="btn btn-sm btn-outline-secondary">View All</a>
+                                        <a href="{% url 'plugins:netbox_hedgehog:vlannamespace_add' %}" class="btn btn-sm btn-success">Create New</a>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    
                     <!-- Recent Fabrics -->
                     {% if recent_fabrics %}
                     <div class="row mt-4">

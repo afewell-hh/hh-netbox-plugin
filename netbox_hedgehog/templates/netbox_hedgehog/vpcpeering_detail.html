@@ -1,0 +1,165 @@
+{% extends "base/layout.html" %}
+{% load static %}
+
+{% block title %}{{ object.name }} - VPC Peering Details{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+    <div class="row">
+        <div class="col-12">
+            <div class="card">
+                <div class="card-header d-flex justify-content-between">
+                    <h3><i class="mdi mdi-vector-link"></i> {{ object.name }}</h3>
+                    <div>
+                        <a href="{% url 'plugins:netbox_hedgehog:vpcpeering_list' %}" class="btn btn-outline-secondary">
+                            <i class="mdi mdi-arrow-left"></i> Back to VPC Peerings
+                        </a>
+                        <a href="{% url 'plugins:netbox_hedgehog:vpcpeering_edit' pk=object.pk %}" class="btn btn-outline-primary">
+                            <i class="mdi mdi-pencil"></i> Edit
+                        </a>
+                        <a href="{% url 'plugins:netbox_hedgehog:vpcpeering_delete' pk=object.pk %}" class="btn btn-outline-danger">
+                            <i class="mdi mdi-delete"></i> Delete
+                        </a>
+                    </div>
+                </div>
+                <div class="card-body">
+                    <div class="row">
+                        <div class="col-md-8">
+                            <h4>VPC Peering Information</h4>
+                            <table class="table table-borderless">
+                                <tr>
+                                    <th width="200">Name:</th>
+                                    <td>{{ object.name }}</td>
+                                </tr>
+                                <tr>
+                                    <th>Namespace:</th>
+                                    <td><code>{{ object.namespace }}</code></td>
+                                </tr>
+                                <tr>
+                                    <th>Fabric:</th>
+                                    <td>
+                                        {% if object.fabric %}
+                                            <a href="{% url 'plugins:netbox_hedgehog:fabric_detail' pk=object.fabric.pk %}">
+                                                {{ object.fabric.name }}
+                                            </a>
+                                        {% else %}
+                                            <span class="text-muted">Not assigned</span>
+                                        {% endif %}
+                                    </td>
+                                </tr>
+                                <tr>
+                                    <th>K8s Status:</th>
+                                    <td>
+                                        <span class="badge bg-{% if object.kubernetes_status == 'live' %}success{% elif object.kubernetes_status == 'error' %}danger{% else %}secondary{% endif %}">
+                                            {{ object.get_kubernetes_status_display|default:"Unknown" }}
+                                        </span>
+                                    </td>
+                                </tr>
+                                <tr>
+                                    <th>Auto Sync:</th>
+                                    <td>
+                                        {% if object.auto_sync %}
+                                            <span class="badge bg-success">Enabled</span>
+                                        {% else %}
+                                            <span class="badge bg-secondary">Disabled</span>
+                                        {% endif %}
+                                    </td>
+                                </tr>
+                                <tr>
+                                    <th>Created:</th>
+                                    <td>{{ object.created }} ({{ object.created|timesince }} ago)</td>
+                                </tr>
+                                <tr>
+                                    <th>Last Modified:</th>
+                                    <td>{{ object.last_updated }}</td>
+                                </tr>
+                            </table>
+                            
+                            <h4>CRD Specification</h4>
+                            <div class="row">
+                                <div class="col-12">
+                                    <h5>Spec</h5>
+                                    {% if object.spec %}
+                                        <pre class="bg-light p-2">{{ object.spec|pprint }}</pre>
+                                    {% else %}
+                                        <p class="text-muted">No specification configured</p>
+                                    {% endif %}
+                                </div>
+                            </div>
+                            
+                            {% if object.labels or object.annotations %}
+                            <h4>Kubernetes Metadata</h4>
+                            <div class="row">
+                                {% if object.labels %}
+                                <div class="col-md-6">
+                                    <h5>Labels</h5>
+                                    <pre class="bg-light p-2">{{ object.labels|pprint }}</pre>
+                                </div>
+                                {% endif %}
+                                {% if object.annotations %}
+                                <div class="col-md-6">
+                                    <h5>Annotations</h5>
+                                    <pre class="bg-light p-2">{{ object.annotations|pprint }}</pre>
+                                </div>
+                                {% endif %}
+                            </div>
+                            {% endif %}
+                        </div>
+                        
+                        <div class="col-md-4">
+                            <h4>Actions</h4>
+                            <div class="d-grid gap-2">
+                                <button class="btn btn-success" disabled title="Apply VPC Peering (Coming Soon)">
+                                    <i class="mdi mdi-play"></i> Apply Peering
+                                </button>
+                                <button class="btn btn-info" disabled title="View YAML (Coming Soon)">
+                                    <i class="mdi mdi-eye"></i> View YAML
+                                </button>
+                                <button class="btn btn-warning" disabled title="Sync Status (Coming Soon)">
+                                    <i class="mdi mdi-sync"></i> Sync Status
+                                </button>
+                            </div>
+                            
+                            <hr>
+                            
+                            <h5>Related Objects</h5>
+                            <div class="list-group">
+                                {% if object.fabric %}
+                                <a href="{% url 'plugins:netbox_hedgehog:fabric_detail' pk=object.fabric.pk %}" 
+                                   class="list-group-item list-group-item-action">
+                                    <i class="mdi mdi-server-network"></i> Fabric: {{ object.fabric.name }}
+                                </a>
+                                {% endif %}
+                                
+                                <div class="list-group-item">
+                                    <i class="mdi mdi-information"></i> Type: 
+                                    <span class="badge bg-info">VPC Peering</span>
+                                </div>
+                                
+                                <div class="list-group-item">
+                                    <i class="mdi mdi-kubernetes"></i> API Version: 
+                                    <code>{{ object.get_api_version }}</code>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <hr>
+                    
+                    <div class="alert alert-info">
+                        <h5><i class="mdi mdi-information"></i> VPC Peering Status</h5>
+                        <p>In the full version, this section would show:</p>
+                        <ul>
+                            <li>Real-time VPC peering deployment status</li>
+                            <li>Kubernetes YAML configuration preview</li>
+                            <li>Peering connection information and state</li>
+                            <li>Deployment history and logs</li>
+                            <li>Peering health monitoring</li>
+                        </ul>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

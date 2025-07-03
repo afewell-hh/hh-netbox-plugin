@@ -1,0 +1,25 @@
+{% extends "base/layout.html" %}
+{% load static %}
+
+{% block title %}Hedgehog Plugin Dashboard{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+    <div class="row">
+        <div class="col-12">
+            <div class="card">
+                <div class="card-header">
+                    <h3><i class="mdi mdi-router-wireless"></i> Hedgehog NetBox Plugin</h3>
+                </div>
+                <div class="card-body">
+                    <h4>🎉 Hedgehog NetBox Plugin Dashboard</h4>
+                    <p>Monitor and manage your Hedgehog fabric infrastructure.</p>
+                    
+                    <p>Fabric count: {{ fabric_count }}</p>
+                    <p>Total CRDs: {{ total_crds }}</p>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
