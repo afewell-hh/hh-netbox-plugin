@@ -14,8 +14,16 @@ from .simple_sync import SimpleFabricSyncView, SimpleFabricTestConnectionView
 #     VPCAttachmentListView, VPCAttachmentView, VPCAttachmentEditView, VPCAttachmentDeleteView,
 #     VPCPeeringListView, VPCPeeringView, VPCPeeringEditView, VPCPeeringDeleteView
 # )
-from .views.vpc_api import ExternalListView, ExternalView, ExternalEditView, ExternalDeleteView, IPv4NamespaceListView, IPv4NamespaceView, IPv4NamespaceEditView, IPv4NamespaceDeleteView
+# Temporarily disable vpc_api imports to debug
+# from .views.vpc_api import (
+#     ExternalListView, ExternalView, ExternalEditView, ExternalDeleteView,
+#     IPv4NamespaceListView, IPv4NamespaceView, IPv4NamespaceEditView, IPv4NamespaceDeleteView
+# )
 # from .views.crd_views import FabricCRDListView, CRDDetailView, ApplyCRDView, DeleteCRDView
+
+# Other Views
+class TopologyView(TemplateView):
+    template_name = 'netbox_hedgehog/topology.html'
 
 app_name = 'netbox_hedgehog'
 
@@ -58,22 +66,16 @@ class FabricDeleteView(DeleteView):
     template_name = 'netbox_hedgehog/fabric_confirm_delete.html'
     success_url = '/plugins/netbox_hedgehog/fabrics/'
 
-# VPC Views
+# VPC Views - temporarily define locally
 class VPCListView(ListView):
     model = VPC
     template_name = 'netbox_hedgehog/vpc_list.html'
     context_object_name = 'vpcs'
     paginate_by = 25
 
-class VPCDetailView(ObjectView):
+class VPCView(ObjectView):
     queryset = VPC.objects.all()
     template_name = 'netbox_hedgehog/vpc_detail.html'
-
-class VPCCreateView(CreateView):
-    model = VPC
-    form_class = VPCForm
-    template_name = 'netbox_hedgehog/vpc_edit.html'
-    success_url = '/plugins/netbox_hedgehog/vpcs/'
 
 class VPCEditView(UpdateView):
     model = VPC
@@ -110,24 +112,24 @@ urlpatterns = [
     
     # VPC URLs
     path('vpcs/', VPCListView.as_view(), name='vpc_list'),
-    path('vpcs/add/', VPCCreateView.as_view(), name='vpc_add'),
-    path('vpcs/<int:pk>/', VPCDetailView.as_view(), name='vpc_detail'),
+    path('vpcs/add/', VPCEditView.as_view(), name='vpc_add'),
+    path('vpcs/<int:pk>/', VPCView.as_view(), name='vpc_detail'),
     path('vpcs/<int:pk>/edit/', VPCEditView.as_view(), name='vpc_edit'),
     path('vpcs/<int:pk>/delete/', VPCDeleteView.as_view(), name='vpc_delete'),
     
-    # External URLs
-    path('externals/', ExternalListView.as_view(), name='external_list'),
-    path('externals/add/', ExternalEditView.as_view(), name='external_add'),
-    path('externals/<int:pk>/', ExternalView.as_view(), name='external_detail'),
-    path('externals/<int:pk>/edit/', ExternalEditView.as_view(), name='external_edit'),
-    path('externals/<int:pk>/delete/', ExternalDeleteView.as_view(), name='external_delete'),
+    # External URLs - temporarily disabled
+    # path('externals/', ExternalListView.as_view(), name='external_list'),
+    # path('externals/add/', ExternalEditView.as_view(), name='external_add'),
+    # path('externals/<int:pk>/', ExternalView.as_view(), name='external_detail'),
+    # path('externals/<int:pk>/edit/', ExternalEditView.as_view(), name='external_edit'),
+    # path('externals/<int:pk>/delete/', ExternalDeleteView.as_view(), name='external_delete'),
     
-    # IPv4Namespace URLs
-    path('ipv4namespaces/', IPv4NamespaceListView.as_view(), name='ipv4namespace_list'),
-    path('ipv4namespaces/add/', IPv4NamespaceEditView.as_view(), name='ipv4namespace_add'),
-    path('ipv4namespaces/<int:pk>/', IPv4NamespaceView.as_view(), name='ipv4namespace_detail'),
-    path('ipv4namespaces/<int:pk>/edit/', IPv4NamespaceEditView.as_view(), name='ipv4namespace_edit'),
-    path('ipv4namespaces/<int:pk>/delete/', IPv4NamespaceDeleteView.as_view(), name='ipv4namespace_delete'),
+    # IPv4Namespace URLs - temporarily disabled
+    # path('ipv4namespaces/', IPv4NamespaceListView.as_view(), name='ipv4namespace_list'),
+    # path('ipv4namespaces/add/', IPv4NamespaceEditView.as_view(), name='ipv4namespace_add'),
+    # path('ipv4namespaces/<int:pk>/', IPv4NamespaceView.as_view(), name='ipv4namespace_detail'),
+    # path('ipv4namespaces/<int:pk>/edit/', IPv4NamespaceEditView.as_view(), name='ipv4namespace_edit'),
+    # path('ipv4namespaces/<int:pk>/delete/', IPv4NamespaceDeleteView.as_view(), name='ipv4namespace_delete'),
     
     # Temporarily disabled - need to debug import issues
     # # ExternalAttachment URLs
