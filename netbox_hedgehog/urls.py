@@ -14,11 +14,11 @@ from .simple_sync import SimpleFabricSyncView, SimpleFabricTestConnectionView
 #     VPCAttachmentListView, VPCAttachmentView, VPCAttachmentEditView, VPCAttachmentDeleteView,
 #     VPCPeeringListView, VPCPeeringView, VPCPeeringEditView, VPCPeeringDeleteView
 # )
-# Temporarily disable vpc_api imports to debug
-# from .views.vpc_api import (
-#     ExternalListView, ExternalView, ExternalEditView, ExternalDeleteView,
-#     IPv4NamespaceListView, IPv4NamespaceView, IPv4NamespaceEditView, IPv4NamespaceDeleteView
-# )
+# Re-enable External and IPv4Namespace views - table imports should be fixed
+from .views.vpc_api import (
+    ExternalListView, ExternalView, ExternalEditView, ExternalDeleteView,
+    IPv4NamespaceListView, IPv4NamespaceView, IPv4NamespaceEditView, IPv4NamespaceDeleteView
+)
 # from .views.crd_views import FabricCRDListView, CRDDetailView, ApplyCRDView, DeleteCRDView
 
 # Other Views
@@ -117,19 +117,19 @@ urlpatterns = [
     path('vpcs/<int:pk>/edit/', VPCEditView.as_view(), name='vpc_edit'),
     path('vpcs/<int:pk>/delete/', VPCDeleteView.as_view(), name='vpc_delete'),
     
-    # External URLs - temporarily disabled
-    # path('externals/', ExternalListView.as_view(), name='external_list'),
-    # path('externals/add/', ExternalEditView.as_view(), name='external_add'),
-    # path('externals/<int:pk>/', ExternalView.as_view(), name='external_detail'),
-    # path('externals/<int:pk>/edit/', ExternalEditView.as_view(), name='external_edit'),
-    # path('externals/<int:pk>/delete/', ExternalDeleteView.as_view(), name='external_delete'),
+    # External URLs
+    path('externals/', ExternalListView.as_view(), name='external_list'),
+    path('externals/add/', ExternalEditView.as_view(), name='external_add'),
+    path('externals/<int:pk>/', ExternalView.as_view(), name='external_detail'),
+    path('externals/<int:pk>/edit/', ExternalEditView.as_view(), name='external_edit'),
+    path('externals/<int:pk>/delete/', ExternalDeleteView.as_view(), name='external_delete'),
     
-    # IPv4Namespace URLs - temporarily disabled
-    # path('ipv4namespaces/', IPv4NamespaceListView.as_view(), name='ipv4namespace_list'),
-    # path('ipv4namespaces/add/', IPv4NamespaceEditView.as_view(), name='ipv4namespace_add'),
-    # path('ipv4namespaces/<int:pk>/', IPv4NamespaceView.as_view(), name='ipv4namespace_detail'),
-    # path('ipv4namespaces/<int:pk>/edit/', IPv4NamespaceEditView.as_view(), name='ipv4namespace_edit'),
-    # path('ipv4namespaces/<int:pk>/delete/', IPv4NamespaceDeleteView.as_view(), name='ipv4namespace_delete'),
+    # IPv4Namespace URLs
+    path('ipv4namespaces/', IPv4NamespaceListView.as_view(), name='ipv4namespace_list'),
+    path('ipv4namespaces/add/', IPv4NamespaceEditView.as_view(), name='ipv4namespace_add'),
+    path('ipv4namespaces/<int:pk>/', IPv4NamespaceView.as_view(), name='ipv4namespace_detail'),
+    path('ipv4namespaces/<int:pk>/edit/', IPv4NamespaceEditView.as_view(), name='ipv4namespace_edit'),
+    path('ipv4namespaces/<int:pk>/delete/', IPv4NamespaceDeleteView.as_view(), name='ipv4namespace_delete'),
     
     # Temporarily disabled - need to debug import issues
     # # ExternalAttachment URLs
