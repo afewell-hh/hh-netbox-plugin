@@ -200,15 +200,18 @@ class HedgehogFabric(NetBoxModel):
         Returns dict with connection parameters or None to use default kubeconfig.
         """
         if self.kubernetes_server:
+            # Check if this looks like a Docker network proxy (disable SSL verification)
+            is_docker_proxy = '://172.18.0.1:' in self.kubernetes_server or '://172.18.0.1/' in self.kubernetes_server
+            
             config = {
                 'host': self.kubernetes_server,
-                'verify_ssl': bool(self.kubernetes_ca_cert),
+                'verify_ssl': bool(self.kubernetes_ca_cert) and not is_docker_proxy,
             }
             
             if self.kubernetes_token:
                 config['api_key'] = {'authorization': f'Bearer {self.kubernetes_token}'}
             
-            if self.kubernetes_ca_cert:
+            if self.kubernetes_ca_cert and not is_docker_proxy:
                 config['ssl_ca_cert'] = self.kubernetes_ca_cert
             
             return config
