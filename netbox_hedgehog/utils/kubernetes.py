@@ -414,24 +414,26 @@ class KubernetesSync:
             vpc_count = fetch_result['totals'].get('VPC', 0)
             connection_count = fetch_result['totals'].get('Connection', 0)
             
-            self.fabric.cached_crd_count = total_resources
-            self.fabric.cached_vpc_count = vpc_count  
-            self.fabric.cached_connection_count = connection_count
-            
-            # Update fabric sync timestamp
+            # Prepare fabric update data
             from django.utils import timezone
-            self.fabric.last_sync = timezone.now()
+            fabric_update = {
+                'cached_crd_count': total_resources,
+                'cached_vpc_count': vpc_count,
+                'cached_connection_count': connection_count,
+                'last_sync': timezone.now()
+            }
             
             if results['success']:
-                self.fabric.sync_error = ''
+                fabric_update['sync_error'] = ''
                 logger.info(f"Successfully synced {results['total']} CRDs for fabric {self.fabric.name} "
                            f"({results['created']} created, {results['updated']} updated)")
             else:
                 error_summary = f"{results['errors']} errors occurred during sync"
-                self.fabric.sync_error = error_summary
+                fabric_update['sync_error'] = error_summary
                 logger.warning(f"Sync completed with errors for fabric {self.fabric.name}: {error_summary}")
             
-            self.fabric.save()
+            # Use queryset update to bypass change logging
+            HedgehogFabric.objects.filter(pk=self.fabric.pk).update(**fabric_update)
             
         except Exception as e:
             logger.error(f"Fabric sync failed: {e}")
@@ -545,13 +547,18 @@ class KubernetesSync:
                                 if field != 'fabric':  # Don't change fabric association
                                     update_data[field] = value
                             
+                            logger.info(f"DEBUG: About to update {kind}: {name}")
                             # Use queryset update to bypass change logging and serialization
                             model_class.objects.filter(pk=existing.pk).update(**update_data)
+                            logger.info(f"DEBUG: Successfully updated {kind}: {name}")
                             
                             results['updated'] += 1
                             logger.debug(f"Updated {kind}: {name}")
                             
                         except Exception as e:
+                            logger.error(f"DEBUG: Exception during {kind} {name} update: {type(e).__name__}: {e}")
+                            import traceback
+                            logger.error(f"DEBUG: Full traceback: {traceback.format_exc()}")
                             error_msg = f"Failed to update {kind} {name}: {e}"
                             logger.error(error_msg)
                             results['errors'] += 1
@@ -563,11 +570,16 @@ class KubernetesSync:
                     else:
                         # Create new object
                         try:
+                            logger.info(f"DEBUG: About to create {kind}: {name}")
                             new_obj = model_class.objects.create(**model_data)
+                            logger.info(f"DEBUG: Successfully created {kind}: {name}")
                             results['created'] += 1
                             logger.debug(f"Created {kind}: {name}")
                             
                         except Exception as e:
+                            logger.error(f"DEBUG: Exception during {kind} {name} creation: {type(e).__name__}: {e}")
+                            import traceback
+                            logger.error(f"DEBUG: Full traceback: {traceback.format_exc()}")
                             error_msg = f"Failed to create {kind} {name}: {e}"
                             logger.error(error_msg)
                             results['errors'] += 1

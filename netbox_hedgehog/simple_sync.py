@@ -141,9 +141,12 @@ class SimpleFabricSyncView(View):
             
             # Use the real Kubernetes sync service
             try:
+                logger.info(f"DEBUG SimpleFabricSyncView: Starting sync for fabric {fabric.name}")
                 from .utils.kubernetes import KubernetesSync
                 k8s_sync = KubernetesSync(fabric)
+                logger.info(f"DEBUG SimpleFabricSyncView: Created KubernetesSync instance")
                 sync_result = k8s_sync.sync_all_crds()
+                logger.info(f"DEBUG SimpleFabricSyncView: sync_all_crds returned: {sync_result}")
                 
                 if sync_result['success']:
                     # Check if we actually synced any CRDs or if there were partial errors
@@ -240,6 +243,10 @@ class SimpleFabricSyncView(View):
                 })
                 
         except Exception as e:
+            import traceback
+            logger.error(f"DEBUG SimpleFabricSyncView: Exception caught: {type(e).__name__}: {e}")
+            logger.error(f"DEBUG SimpleFabricSyncView: Full traceback:\n{traceback.format_exc()}")
+            
             update_fields = {'sync_status': 'error'}
             try:
                 update_fields['sync_error'] = str(e)
