@@ -19,11 +19,5 @@ class HedgehogPluginConfig(PluginConfig):
         'fabric_status': 60,  # Cache fabric status for 60 seconds
         'crd_schemas': 3600,  # Cache CRD schemas for 1 hour
     }
-    
-    # Register API URL patterns
-    @property
-    def api_urlpatterns(self):
-        from .api import urls as api_urls
-        return api_urls.urlpatterns
 
 config = HedgehogPluginConfig

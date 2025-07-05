@@ -1,9 +1,9 @@
 from django.urls import path, include
-from rest_framework.routers import DefaultRouter
+from netbox.api.routers import NetBoxRouter
 
 from . import views
 
-router = DefaultRouter()
+router = NetBoxRouter()
 
 # Fabric API
 router.register('fabrics', views.FabricViewSet)
@@ -24,10 +24,7 @@ router.register('switches', views.SwitchViewSet)
 router.register('switch-groups', views.SwitchGroupViewSet)
 router.register('vlan-namespaces', views.VLANNamespaceViewSet)
 
-app_name = 'netbox_hedgehog-api'
-
-urlpatterns = [
-    path('', include(router.urls)),
+urlpatterns = router.urls + [
     # Custom endpoints
     path('sync/', views.SyncAPIView.as_view(), name='sync'),
     path('status/', views.StatusAPIView.as_view(), name='status'),
