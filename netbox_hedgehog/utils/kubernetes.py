@@ -2,6 +2,7 @@ import logging
 from typing import Dict, Any, Optional, List
 from datetime import datetime
 import json
+from django.utils import timezone
 
 try:
     from kubernetes import client, config
@@ -530,7 +531,7 @@ class KubernetesSync:
                         'kubernetes_uid': uid,
                         'kubernetes_resource_version': resource_version,
                         'kubernetes_status': self.client._determine_resource_status(resource),
-                        'last_synced': datetime.now(),
+                        'last_synced': timezone.now(),
                         'sync_error': '',
                         'auto_sync': True,  # Mark as auto-synced from cluster
                     }
@@ -538,10 +539,14 @@ class KubernetesSync:
                     if existing:
                         # Update existing object
                         try:
+                            update_fields = []
                             for field, value in model_data.items():
                                 if field != 'fabric':  # Don't change fabric association
                                     setattr(existing, field, value)
-                            existing.save()
+                                    update_fields.append(field)
+                            
+                            # Use update_fields to avoid full serialization for change logging
+                            existing.save(update_fields=update_fields)
                             
                             results['updated'] += 1
                             logger.debug(f"Updated {kind}: {name}")
