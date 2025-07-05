@@ -186,7 +186,7 @@ class SimpleFabricSyncView(View):
                             'created': sync_result.get('created', 0),
                             'updated': sync_result.get('updated', 0),
                             'errors': sync_result.get('errors', 0),
-                            'status': 'in_sync',
+                            'status': sync_status,
                             'details': f"{sync_result.get('created', 0)} created, {sync_result.get('updated', 0)} updated"
                         }
                     })

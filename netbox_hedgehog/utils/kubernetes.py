@@ -529,7 +529,7 @@ class KubernetesSync:
                         'annotations': metadata.get('annotations', {}),
                         'kubernetes_uid': uid,
                         'kubernetes_resource_version': resource_version,
-                        'kubernetes_status': self._determine_resource_status(resource),
+                        'kubernetes_status': self.client._determine_resource_status(resource),
                         'last_synced': datetime.now(),
                         'sync_error': '',
                         'auto_sync': True,  # Mark as auto-synced from cluster
