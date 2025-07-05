@@ -539,14 +539,14 @@ class KubernetesSync:
                     if existing:
                         # Update existing object
                         try:
-                            update_fields = []
+                            # Try direct database update to bypass change logging
+                            update_data = {}
                             for field, value in model_data.items():
                                 if field != 'fabric':  # Don't change fabric association
-                                    setattr(existing, field, value)
-                                    update_fields.append(field)
+                                    update_data[field] = value
                             
-                            # Use update_fields to avoid full serialization for change logging
-                            existing.save(update_fields=update_fields)
+                            # Use queryset update to bypass change logging and serialization
+                            model_class.objects.filter(pk=existing.pk).update(**update_data)
                             
                             results['updated'] += 1
                             logger.debug(f"Updated {kind}: {name}")
