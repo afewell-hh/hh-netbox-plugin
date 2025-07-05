@@ -21,6 +21,7 @@ class HedgehogPluginConfig(PluginConfig):
     }
     
     # Register API URL patterns
+    @property
     def api_urlpatterns(self):
         from .api import urls as api_urls
         return api_urls.urlpatterns
