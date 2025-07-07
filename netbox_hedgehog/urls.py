@@ -95,9 +95,10 @@ urlpatterns = [
     # VPC URLs
     path('vpcs/', VPCListView.as_view(), name='vpc_list'),
     path('vpcs/add/', VPCEditView.as_view(), name='vpc_add'),
-    path('vpcs/<int:pk>/', VPCView.as_view(), name='vpc_detail'),
+    path('vpcs/<int:pk>/', VPCView.as_view(), name='vpc'),
     path('vpcs/<int:pk>/edit/', VPCEditView.as_view(), name='vpc_edit'),
     path('vpcs/<int:pk>/delete/', VPCDeleteView.as_view(), name='vpc_delete'),
+    path('vpcs/<int:pk>/changelog/', VPCView.as_view(), name='vpc_changelog'),
     
     # External URLs
     path('externals/', ExternalListView.as_view(), name='external_list'),
@@ -105,6 +106,7 @@ urlpatterns = [
     path('externals/<int:pk>/', ExternalView.as_view(), name='external_detail'),
     path('externals/<int:pk>/edit/', ExternalEditView.as_view(), name='external_edit'),
     path('externals/<int:pk>/delete/', ExternalDeleteView.as_view(), name='external_delete'),
+    path('externals/<int:pk>/changelog/', ExternalView.as_view(), name='external_changelog'),
     
     # IPv4Namespace URLs
     path('ipv4namespaces/', IPv4NamespaceListView.as_view(), name='ipv4namespace_list'),
@@ -112,6 +114,7 @@ urlpatterns = [
     path('ipv4namespaces/<int:pk>/', IPv4NamespaceView.as_view(), name='ipv4namespace_detail'),
     path('ipv4namespaces/<int:pk>/edit/', IPv4NamespaceEditView.as_view(), name='ipv4namespace_edit'),
     path('ipv4namespaces/<int:pk>/delete/', IPv4NamespaceDeleteView.as_view(), name='ipv4namespace_delete'),
+    path('ipv4namespaces/<int:pk>/changelog/', IPv4NamespaceView.as_view(), name='ipv4namespace_changelog'),
     
     # ExternalAttachment URLs
     path('external-attachments/', ExternalAttachmentListView.as_view(), name='externalattachment_list'),
@@ -119,6 +122,7 @@ urlpatterns = [
     path('external-attachments/<int:pk>/', ExternalAttachmentView.as_view(), name='externalattachment_detail'),
     path('external-attachments/<int:pk>/edit/', ExternalAttachmentEditView.as_view(), name='externalattachment_edit'),
     path('external-attachments/<int:pk>/delete/', ExternalAttachmentDeleteView.as_view(), name='externalattachment_delete'),
+    path('external-attachments/<int:pk>/changelog/', ExternalAttachmentView.as_view(), name='externalattachment_changelog'),
     
     # ExternalPeering URLs
     path('external-peerings/', ExternalPeeringListView.as_view(), name='externalpeering_list'),
@@ -126,6 +130,7 @@ urlpatterns = [
     path('external-peerings/<int:pk>/', ExternalPeeringView.as_view(), name='externalpeering_detail'),
     path('external-peerings/<int:pk>/edit/', ExternalPeeringEditView.as_view(), name='externalpeering_edit'),
     path('external-peerings/<int:pk>/delete/', ExternalPeeringDeleteView.as_view(), name='externalpeering_delete'),
+    path('external-peerings/<int:pk>/changelog/', ExternalPeeringView.as_view(), name='externalpeering_changelog'),
     
     # VPCAttachment URLs
     path('vpc-attachments/', VPCAttachmentListView.as_view(), name='vpcattachment_list'),
@@ -133,6 +138,7 @@ urlpatterns = [
     path('vpc-attachments/<int:pk>/', VPCAttachmentView.as_view(), name='vpcattachment_detail'),
     path('vpc-attachments/<int:pk>/edit/', VPCAttachmentEditView.as_view(), name='vpcattachment_edit'),
     path('vpc-attachments/<int:pk>/delete/', VPCAttachmentDeleteView.as_view(), name='vpcattachment_delete'),
+    path('vpc-attachments/<int:pk>/changelog/', VPCAttachmentView.as_view(), name='vpcattachment_changelog'),
     
     # VPCPeering URLs
     path('vpc-peerings/', VPCPeeringListView.as_view(), name='vpcpeering_list'),
@@ -140,28 +146,32 @@ urlpatterns = [
     path('vpc-peerings/<int:pk>/', VPCPeeringView.as_view(), name='vpcpeering_detail'),
     path('vpc-peerings/<int:pk>/edit/', VPCPeeringEditView.as_view(), name='vpcpeering_edit'),
     path('vpc-peerings/<int:pk>/delete/', VPCPeeringDeleteView.as_view(), name='vpcpeering_delete'),
+    path('vpc-peerings/<int:pk>/changelog/', VPCPeeringView.as_view(), name='vpcpeering_changelog'),
     
     # Wiring API URLs
     # Connection URLs
     path('connections/', ConnectionListView.as_view(), name='connection_list'),
     path('connections/add/', ConnectionEditView.as_view(), name='connection_add'),
-    path('connections/<int:pk>/', ConnectionView.as_view(), name='connection_detail'),
+    path('connections/<int:pk>/', ConnectionView.as_view(), name='connection'),
     path('connections/<int:pk>/edit/', ConnectionEditView.as_view(), name='connection_edit'),
     path('connections/<int:pk>/delete/', ConnectionDeleteView.as_view(), name='connection_delete'),
+    path('connections/<int:pk>/changelog/', ConnectionView.as_view(), name='connection_changelog'),
     
     # Switch URLs
     path('switches/', SwitchListView.as_view(), name='switch_list'),
     path('switches/add/', SwitchEditView.as_view(), name='switch_add'),
-    path('switches/<int:pk>/', SwitchView.as_view(), name='switch_detail'),
+    path('switches/<int:pk>/', SwitchView.as_view(), name='switch'),
     path('switches/<int:pk>/edit/', SwitchEditView.as_view(), name='switch_edit'),
     path('switches/<int:pk>/delete/', SwitchDeleteView.as_view(), name='switch_delete'),
+    path('switches/<int:pk>/changelog/', SwitchView.as_view(), name='switch_changelog'),
     
     # Server URLs
     path('servers/', ServerListView.as_view(), name='server_list'),
     path('servers/add/', ServerEditView.as_view(), name='server_add'),
-    path('servers/<int:pk>/', ServerView.as_view(), name='server_detail'),
+    path('servers/<int:pk>/', ServerView.as_view(), name='server'),
     path('servers/<int:pk>/edit/', ServerEditView.as_view(), name='server_edit'),
     path('servers/<int:pk>/delete/', ServerDeleteView.as_view(), name='server_delete'),
+    path('servers/<int:pk>/changelog/', ServerView.as_view(), name='server_changelog'),
     
     # SwitchGroup URLs
     path('switch-groups/', SwitchGroupListView.as_view(), name='switchgroup_list'),
@@ -169,6 +179,7 @@ urlpatterns = [
     path('switch-groups/<int:pk>/', SwitchGroupView.as_view(), name='switchgroup_detail'),
     path('switch-groups/<int:pk>/edit/', SwitchGroupEditView.as_view(), name='switchgroup_edit'),
     path('switch-groups/<int:pk>/delete/', SwitchGroupDeleteView.as_view(), name='switchgroup_delete'),
+    path('switch-groups/<int:pk>/changelog/', SwitchGroupView.as_view(), name='switchgroup_changelog'),
     
     # VLANNamespace URLs
     path('vlan-namespaces/', VLANNamespaceListView.as_view(), name='vlannamespace_list'),
@@ -176,6 +187,7 @@ urlpatterns = [
     path('vlan-namespaces/<int:pk>/', VLANNamespaceView.as_view(), name='vlannamespace_detail'),
     path('vlan-namespaces/<int:pk>/edit/', VLANNamespaceEditView.as_view(), name='vlannamespace_edit'),
     path('vlan-namespaces/<int:pk>/delete/', VLANNamespaceDeleteView.as_view(), name='vlannamespace_delete'),
+    path('vlan-namespaces/<int:pk>/changelog/', VLANNamespaceView.as_view(), name='vlannamespace_changelog'),
     
     # Other URLs
     path('topology/', TopologyView.as_view(), name='topology'),

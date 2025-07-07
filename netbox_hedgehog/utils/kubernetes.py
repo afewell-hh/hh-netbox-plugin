@@ -413,6 +413,8 @@ class KubernetesSync:
             total_resources = sum(fetch_result['totals'].values())
             vpc_count = fetch_result['totals'].get('VPC', 0)
             connection_count = fetch_result['totals'].get('Connection', 0)
+            server_count = fetch_result['totals'].get('Server', 0)
+            switch_count = fetch_result['totals'].get('Switch', 0)
             
             # Prepare fabric update data
             from django.utils import timezone
@@ -420,6 +422,10 @@ class KubernetesSync:
                 'cached_crd_count': total_resources,
                 'cached_vpc_count': vpc_count,
                 'cached_connection_count': connection_count,
+                'connections_count': connection_count,
+                'servers_count': server_count,
+                'switches_count': switch_count,
+                'vpcs_count': vpc_count,
                 'last_sync': timezone.now()
             }
             

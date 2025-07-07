@@ -162,9 +162,15 @@
                                     <button id="sync-now-btn" class="btn btn-primary" data-fabric-id="{{ object.pk }}">
                                         <i class="mdi mdi-sync"></i> Sync Now
                                     </button>
-                                    <button class="btn btn-info" disabled title="CRD viewing temporarily disabled">
-                                        <i class="mdi mdi-eye"></i> View CRDs
+                                    {% if object.crd_count > 0 %}
+                                    <a href="{% url 'plugins:netbox_hedgehog:connection_list' %}" class="btn btn-info" title="View imported CRDs ({{ object.crd_count }} total)">
+                                        <i class="mdi mdi-eye"></i> View CRDs ({{ object.crd_count }})
+                                    </a>
+                                    {% else %}
+                                    <button class="btn btn-outline-info" disabled title="No CRDs imported yet. Run sync first.">
+                                        <i class="mdi mdi-eye"></i> View CRDs (0)
                                     </button>
+                                    {% endif %}
                                     <button class="btn btn-warning" disabled>
                                         <i class="mdi mdi-cog"></i> Configuration
                                     </button>

@@ -27,69 +27,9 @@
                         </div>
                     </div>
                     
-                    {% if servers %}
-                    <div class="table-responsive">
-                        <table class="table table-striped">
-                            <thead>
-                                <tr>
-                                    <th>Name</th>
-                                    <th>Fabric</th>
-                                    <th>Namespace</th>
-                                    <th>K8s Status</th>
-                                    <th>Created</th>
-                                    <th>Actions</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                {% for server in servers %}
-                                <tr>
-                                    <td>
-                                        <strong>{{ server.name }}</strong>
-                                        {% if server.description %}
-                                            <br><small class="text-muted">{{ server.description|truncatechars:40 }}</small>
-                                        {% endif %}
-                                    </td>
-                                    <td>
-                                        {% if server.fabric %}
-                                            <a href="{% url 'plugins:netbox_hedgehog:fabric_detail' pk=server.fabric.pk %}">
-                                                {{ server.fabric.name }}
-                                            </a>
-                                        {% else %}
-                                            <span class="text-muted">—</span>
-                                        {% endif %}
-                                    </td>
-                                    <td>
-                                        <code>{{ server.namespace|default:"default" }}</code>
-                                    </td>
-                                    <td>
-                                        <span class="badge bg-{% if server.kubernetes_status == 'live' %}success{% elif server.kubernetes_status == 'error' %}danger{% else %}secondary{% endif %}">
-                                            {{ server.get_kubernetes_status_display|default:"Unknown" }}
-                                        </span>
-                                    </td>
-                                    <td>
-                                        <span title="{{ server.created }}">{{ server.created|timesince }} ago</span>
-                                    </td>
-                                    <td>
-                                        <div class="btn-group btn-group-sm">
-                                            <a href="{% url 'plugins:netbox_hedgehog:server_detail' pk=server.pk %}" 
-                                               class="btn btn-outline-primary" title="View Details">
-                                                <i class="mdi mdi-eye"></i>
-                                            </a>
-                                            <a href="{% url 'plugins:netbox_hedgehog:server_edit' pk=server.pk %}" 
-                                               class="btn btn-outline-secondary" title="Edit">
-                                                <i class="mdi mdi-pencil"></i>
-                                            </a>
-                                            <button class="btn btn-outline-success" disabled title="Apply (Coming Soon)">
-                                                <i class="mdi mdi-play"></i>
-                                            </button>
-                                        </div>
-                                    </td>
-                                </tr>
-                                {% endfor %}
-                            </tbody>
-                        </table>
-                    </div>
-                    
+                    {% if table.rows %}
+                    {% load render_table from django_tables2 %}
+                    {% render_table table 'inc/table.html' %}
                     {% else %}
                     <div class="alert alert-info">
                         <h5><i class="mdi mdi-information"></i> No Servers Found</h5>

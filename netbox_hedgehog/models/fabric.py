@@ -107,6 +107,27 @@ class HedgehogFabric(NetBoxModel):
         help_text="Cached Connection count (updated during sync)"
     )
     
+    # Add specific count properties for the template
+    connections_count = models.PositiveIntegerField(
+        default=0,
+        help_text="Count of Connection CRDs"
+    )
+    
+    servers_count = models.PositiveIntegerField(
+        default=0,
+        help_text="Count of Server CRDs"  
+    )
+    
+    switches_count = models.PositiveIntegerField(
+        default=0,
+        help_text="Count of Switch CRDs"
+    )
+    
+    vpcs_count = models.PositiveIntegerField(
+        default=0,
+        help_text="Count of VPC CRDs"
+    )
+    
     class Meta:
         verbose_name = "Hedgehog Fabric"
         verbose_name_plural = "Hedgehog Fabrics"
@@ -116,7 +137,7 @@ class HedgehogFabric(NetBoxModel):
         return self.name
     
     def get_absolute_url(self):
-        return reverse('plugins:netbox_hedgehog:fabric', kwargs={'pk': self.pk})
+        return reverse('plugins:netbox_hedgehog:fabric_detail', kwargs={'pk': self.pk})
     
     @property
     def crd_count(self):
@@ -125,8 +146,10 @@ class HedgehogFabric(NetBoxModel):
         # Handle missing tables gracefully during development
         total = 0
         try:
-            from .vpc_api import VPC, External, ExternalAttachment, ExternalPeering, IPv4Namespace, VPCAttachment, VPCPeering
-            from .wiring_api import Connection, Server, Switch, SwitchGroup, VLANNamespace
+            from netbox_hedgehog.models import (
+                VPC, External, ExternalAttachment, ExternalPeering, IPv4Namespace, VPCAttachment, VPCPeering,
+                Connection, Server, Switch, SwitchGroup, VLANNamespace
+            )
             
             models = [VPC, External, ExternalAttachment, ExternalPeering, IPv4Namespace, VPCAttachment, VPCPeering,
                      Connection, Server, Switch, SwitchGroup, VLANNamespace]
@@ -148,8 +171,10 @@ class HedgehogFabric(NetBoxModel):
         total = 0
         try:
             from ..choices import KubernetesStatusChoices
-            from .vpc_api import VPC, External, ExternalAttachment, ExternalPeering, IPv4Namespace, VPCAttachment, VPCPeering
-            from .wiring_api import Connection, Server, Switch, SwitchGroup, VLANNamespace
+            from netbox_hedgehog.models import (
+                VPC, External, ExternalAttachment, ExternalPeering, IPv4Namespace, VPCAttachment, VPCPeering,
+                Connection, Server, Switch, SwitchGroup, VLANNamespace
+            )
             
             models = [VPC, External, ExternalAttachment, ExternalPeering, IPv4Namespace, VPCAttachment, VPCPeering,
                      Connection, Server, Switch, SwitchGroup, VLANNamespace]
@@ -174,8 +199,10 @@ class HedgehogFabric(NetBoxModel):
         total = 0
         try:
             from ..choices import KubernetesStatusChoices
-            from .vpc_api import VPC, External, ExternalAttachment, ExternalPeering, IPv4Namespace, VPCAttachment, VPCPeering
-            from .wiring_api import Connection, Server, Switch, SwitchGroup, VLANNamespace
+            from netbox_hedgehog.models import (
+                VPC, External, ExternalAttachment, ExternalPeering, IPv4Namespace, VPCAttachment, VPCPeering,
+                Connection, Server, Switch, SwitchGroup, VLANNamespace
+            )
             
             models = [VPC, External, ExternalAttachment, ExternalPeering, IPv4Namespace, VPCAttachment, VPCPeering,
                      Connection, Server, Switch, SwitchGroup, VLANNamespace]

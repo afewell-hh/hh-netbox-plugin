@@ -41,8 +41,7 @@ class ConnectionTable(NetBoxTable):
         fields = (
             'pk', 'id', 'name', 'fabric', 'namespace', 'connection_type',
             'kubernetes_status', 'status_display', 'last_applied',
-            'last_synced', 'auto_sync', 'created', 'last_updated',
-            'actions'
+            'last_synced', 'auto_sync', 'created', 'last_updated'
         )
         default_columns = (
             'name', 'fabric', 'namespace', 'connection_type', 
@@ -93,8 +92,7 @@ class SwitchTable(NetBoxTable):
         fields = (
             'pk', 'id', 'name', 'fabric', 'namespace', 'switch_role', 'asn',
             'kubernetes_status', 'status_display', 'last_applied',
-            'last_synced', 'auto_sync', 'created', 'last_updated',
-            'actions'
+            'last_synced', 'auto_sync', 'created', 'last_updated'
         )
         default_columns = (
             'name', 'fabric', 'namespace', 'switch_role', 'asn',
@@ -133,8 +131,7 @@ class ServerTable(NetBoxTable):
         fields = (
             'pk', 'id', 'name', 'fabric', 'namespace',
             'kubernetes_status', 'status_display', 'last_applied',
-            'last_synced', 'auto_sync', 'created', 'last_updated',
-            'actions'
+            'last_synced', 'auto_sync', 'created', 'last_updated'
         )
         default_columns = (
             'name', 'fabric', 'namespace', 'status_display',
@@ -173,8 +170,7 @@ class SwitchGroupTable(NetBoxTable):
         fields = (
             'pk', 'id', 'name', 'fabric', 'namespace',
             'kubernetes_status', 'status_display', 'last_applied',
-            'last_synced', 'auto_sync', 'created', 'last_updated',
-            'actions'
+            'last_synced', 'auto_sync', 'created', 'last_updated'
         )
         default_columns = (
             'name', 'fabric', 'namespace', 'status_display',
@@ -213,8 +209,7 @@ class VLANNamespaceTable(NetBoxTable):
         fields = (
             'pk', 'id', 'name', 'fabric', 'namespace',
             'kubernetes_status', 'status_display', 'last_applied',
-            'last_synced', 'auto_sync', 'created', 'last_updated',
-            'actions'
+            'last_synced', 'auto_sync', 'created', 'last_updated'
         )
         default_columns = (
             'name', 'fabric', 'namespace', 'status_display',

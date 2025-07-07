@@ -39,8 +39,7 @@ class VPCTable(NetBoxTable):
         fields = (
             'pk', 'id', 'name', 'fabric', 'namespace', 
             'kubernetes_status', 'status_display', 'last_applied',
-            'last_synced', 'auto_sync', 'created', 'last_updated',
-            'actions'
+            'last_synced', 'auto_sync', 'created', 'last_updated'
         )
         default_columns = (
             'name', 'fabric', 'namespace', 'status_display', 
@@ -79,8 +78,7 @@ class ExternalTable(NetBoxTable):
         fields = (
             'pk', 'id', 'name', 'fabric', 'namespace',
             'kubernetes_status', 'status_display', 'last_applied',
-            'last_synced', 'auto_sync', 'created', 'last_updated',
-            'actions'
+            'last_synced', 'auto_sync', 'created', 'last_updated'
         )
         default_columns = (
             'name', 'fabric', 'namespace', 'status_display',
@@ -119,8 +117,7 @@ class IPv4NamespaceTable(NetBoxTable):
         fields = (
             'pk', 'id', 'name', 'fabric', 'namespace',
             'kubernetes_status', 'status_display', 'last_applied',
-            'last_synced', 'auto_sync', 'created', 'last_updated',
-            'actions'
+            'last_synced', 'auto_sync', 'created', 'last_updated'
         )
         default_columns = (
             'name', 'fabric', 'namespace', 'status_display',
@@ -159,8 +156,7 @@ class ExternalAttachmentTable(NetBoxTable):
         fields = (
             'pk', 'id', 'name', 'fabric', 'namespace',
             'kubernetes_status', 'status_display', 'last_applied',
-            'last_synced', 'auto_sync', 'created', 'last_updated',
-            'actions'
+            'last_synced', 'auto_sync', 'created', 'last_updated'
         )
         default_columns = (
             'name', 'fabric', 'namespace', 'status_display',
@@ -199,8 +195,7 @@ class ExternalPeeringTable(NetBoxTable):
         fields = (
             'pk', 'id', 'name', 'fabric', 'namespace',
             'kubernetes_status', 'status_display', 'last_applied',
-            'last_synced', 'auto_sync', 'created', 'last_updated',
-            'actions'
+            'last_synced', 'auto_sync', 'created', 'last_updated'
         )
         default_columns = (
             'name', 'fabric', 'namespace', 'status_display',
@@ -239,8 +234,7 @@ class VPCAttachmentTable(NetBoxTable):
         fields = (
             'pk', 'id', 'name', 'fabric', 'namespace',
             'kubernetes_status', 'status_display', 'last_applied',
-            'last_synced', 'auto_sync', 'created', 'last_updated',
-            'actions'
+            'last_synced', 'auto_sync', 'created', 'last_updated'
         )
         default_columns = (
             'name', 'fabric', 'namespace', 'status_display',
@@ -279,8 +273,7 @@ class VPCPeeringTable(NetBoxTable):
         fields = (
             'pk', 'id', 'name', 'fabric', 'namespace',
             'kubernetes_status', 'status_display', 'last_applied',
-            'last_synced', 'auto_sync', 'created', 'last_updated',
-            'actions'
+            'last_synced', 'auto_sync', 'created', 'last_updated'
         )
         default_columns = (
             'name', 'fabric', 'namespace', 'status_display',

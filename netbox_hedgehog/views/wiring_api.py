@@ -63,6 +63,11 @@ class SwitchGroupListView(generic.ObjectListView):
     queryset = models.SwitchGroup.objects.all()
     table = tables.SwitchGroupTable
     template_name = 'netbox_hedgehog/switchgroup_list.html'
+    
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        context['switchgroups'] = context.get('object_list', [])
+        return context
 
 class SwitchGroupView(generic.ObjectView):
     queryset = models.SwitchGroup.objects.all()
@@ -82,6 +87,11 @@ class VLANNamespaceListView(generic.ObjectListView):
     queryset = models.VLANNamespace.objects.all()
     table = tables.VLANNamespaceTable
     template_name = 'netbox_hedgehog/vlannamespace_list.html'
+    
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        context['vlannamespaces'] = context.get('object_list', [])
+        return context
 
 class VLANNamespaceView(generic.ObjectView):
     queryset = models.VLANNamespace.objects.all()

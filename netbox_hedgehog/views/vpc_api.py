@@ -44,6 +44,11 @@ class IPv4NamespaceListView(generic.ObjectListView):
     queryset = models.IPv4Namespace.objects.all()
     table = tables.IPv4NamespaceTable
     template_name = 'netbox_hedgehog/ipv4namespace_list.html'
+    
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        context['ipv4namespaces'] = context.get('object_list', [])
+        return context
 
 class IPv4NamespaceView(generic.ObjectView):
     queryset = models.IPv4Namespace.objects.all()
