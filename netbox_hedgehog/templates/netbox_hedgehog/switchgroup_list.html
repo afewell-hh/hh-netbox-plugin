@@ -27,68 +27,9 @@
                         </div>
                     </div>
                     
-                    {% if switchgroups %}
-                    <div class="table-responsive">
-                        <table class="table table-striped">
-                            <thead>
-                                <tr>
-                                    <th>Name</th>
-                                    <th>Fabric</th>
-                                    <th>Namespace</th>
-                                    <th>K8s Status</th>
-                                    <th>Created</th>
-                                    <th>Actions</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                {% for group in switchgroups %}
-                                <tr>
-                                    <td>
-                                        <strong>{{ group.name }}</strong>
-                                        {% if group.description %}
-                                            <br><small class="text-muted">{{ group.description|truncatechars:40 }}</small>
-                                        {% endif %}
-                                    </td>
-                                    <td>
-                                        {% if group.fabric %}
-                                            <a href="{% url 'plugins:netbox_hedgehog:fabric_detail' pk=group.fabric.pk %}">
-                                                {{ group.fabric.name }}
-                                            </a>
-                                        {% else %}
-                                            <span class="text-muted">—</span>
-                                        {% endif %}
-                                    </td>
-                                    <td>
-                                        <code>{{ group.namespace|default:"default" }}</code>
-                                    </td>
-                                    <td>
-                                        <span class="badge bg-{% if group.kubernetes_status == 'live' %}success{% elif group.kubernetes_status == 'error' %}danger{% else %}secondary{% endif %}">
-                                            {{ group.get_kubernetes_status_display|default:"Unknown" }}
-                                        </span>
-                                    </td>
-                                    <td>
-                                        <span title="{{ group.created }}">{{ group.created|timesince }} ago</span>
-                                    </td>
-                                    <td>
-                                        <div class="btn-group btn-group-sm">
-                                            <a href="{% url 'plugins:netbox_hedgehog:switchgroup_detail' pk=group.pk %}" 
-                                               class="btn btn-outline-primary" title="View Details">
-                                                <i class="mdi mdi-eye"></i>
-                                            </a>
-                                            <a href="{% url 'plugins:netbox_hedgehog:switchgroup_edit' pk=group.pk %}" 
-                                               class="btn btn-outline-secondary" title="Edit">
-                                                <i class="mdi mdi-pencil"></i>
-                                            </a>
-                                            <button class="btn btn-outline-success" disabled title="Apply (Coming Soon)">
-                                                <i class="mdi mdi-play"></i>
-                                            </button>
-                                        </div>
-                                    </td>
-                                </tr>
-                                {% endfor %}
-                            </tbody>
-                        </table>
-                    </div>
+                    {% if table.rows %}
+                    {% load render_table from django_tables2 %}
+                    {% render_table table 'inc/table.html' %}
                     
                     {% else %}
                     <div class="alert alert-info">

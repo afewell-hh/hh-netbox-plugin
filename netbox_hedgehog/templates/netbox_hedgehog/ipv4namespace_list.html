@@ -59,8 +59,8 @@
                     </div>
                 </div>
                 <div class="card-body">
-                    {% if ipv4namespaces %}
-                        {% render_table table %}
+                    {% if table.rows %}
+                        {% render_table table 'inc/table.html' %}
                     {% else %}
                         <div class="text-center py-5">
                             <i class="mdi mdi-ip-network mdi-48px text-muted mb-3"></i>
@@ -80,7 +80,7 @@
         </div>
     </div>
     
-    {% if ipv4namespaces %}
+    {% if table.rows %}
     <div class="row mt-4">
         <div class="col-12">
             <div class="card">
