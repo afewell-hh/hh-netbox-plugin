@@ -111,7 +111,7 @@ urlpatterns = [
     # IPv4Namespace URLs
     path('ipv4namespaces/', IPv4NamespaceListView.as_view(), name='ipv4namespace_list'),
     path('ipv4namespaces/add/', IPv4NamespaceEditView.as_view(), name='ipv4namespace_add'),
-    path('ipv4namespaces/<int:pk>/', IPv4NamespaceView.as_view(), name='ipv4namespace_detail'),
+    path('ipv4namespaces/<int:pk>/', IPv4NamespaceView.as_view(), name='ipv4namespace'),
     path('ipv4namespaces/<int:pk>/edit/', IPv4NamespaceEditView.as_view(), name='ipv4namespace_edit'),
     path('ipv4namespaces/<int:pk>/delete/', IPv4NamespaceDeleteView.as_view(), name='ipv4namespace_delete'),
     path('ipv4namespaces/<int:pk>/changelog/', IPv4NamespaceView.as_view(), name='ipv4namespace_changelog'),
@@ -176,7 +176,7 @@ urlpatterns = [
     # SwitchGroup URLs
     path('switch-groups/', SwitchGroupListView.as_view(), name='switchgroup_list'),
     path('switch-groups/add/', SwitchGroupEditView.as_view(), name='switchgroup_add'),
-    path('switch-groups/<int:pk>/', SwitchGroupView.as_view(), name='switchgroup_detail'),
+    path('switch-groups/<int:pk>/', SwitchGroupView.as_view(), name='switchgroup'),
     path('switch-groups/<int:pk>/edit/', SwitchGroupEditView.as_view(), name='switchgroup_edit'),
     path('switch-groups/<int:pk>/delete/', SwitchGroupDeleteView.as_view(), name='switchgroup_delete'),
     path('switch-groups/<int:pk>/changelog/', SwitchGroupView.as_view(), name='switchgroup_changelog'),
@@ -184,7 +184,7 @@ urlpatterns = [
     # VLANNamespace URLs
     path('vlan-namespaces/', VLANNamespaceListView.as_view(), name='vlannamespace_list'),
     path('vlan-namespaces/add/', VLANNamespaceEditView.as_view(), name='vlannamespace_add'),
-    path('vlan-namespaces/<int:pk>/', VLANNamespaceView.as_view(), name='vlannamespace_detail'),
+    path('vlan-namespaces/<int:pk>/', VLANNamespaceView.as_view(), name='vlannamespace'),
     path('vlan-namespaces/<int:pk>/edit/', VLANNamespaceEditView.as_view(), name='vlannamespace_edit'),
     path('vlan-namespaces/<int:pk>/delete/', VLANNamespaceDeleteView.as_view(), name='vlannamespace_delete'),
     path('vlan-namespaces/<int:pk>/changelog/', VLANNamespaceView.as_view(), name='vlannamespace_changelog'),
