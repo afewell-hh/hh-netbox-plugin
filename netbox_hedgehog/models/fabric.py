@@ -331,3 +331,172 @@ class HedgehogFabric(NetBoxModel):
             return config
         
         return None  # Use default kubeconfig
+    
+    # GitOps functionality methods
+    def get_git_status(self):
+        """
+        Get current Git repository status.
+        Returns dict with Git repository information and status.
+        """
+        if not self.git_repository_url:
+            return {
+                'configured': False,
+                'message': 'No Git repository configured'
+            }
+        
+        try:
+            # Basic Git repository validation
+            # TODO: Implement actual Git repository status checking
+            return {
+                'configured': True,
+                'repository_url': self.git_repository_url,
+                'branch': self.git_branch,
+                'path': self.git_path,
+                'last_commit': self.desired_state_commit or 'Unknown',
+                'last_sync': self.last_git_sync,
+                'status': 'ready'
+            }
+        except Exception as e:
+            return {
+                'configured': True,
+                'status': 'error',
+                'error': str(e)
+            }
+    
+    def calculate_drift_status(self):
+        """
+        Calculate current drift status between desired and actual state.
+        Updates drift_status and drift_count fields.
+        """
+        try:
+            # TODO: Implement actual drift detection logic
+            # For now, return current status
+            return {
+                'drift_status': self.drift_status,
+                'drift_count': self.drift_count,
+                'last_calculated': self.last_git_sync,
+                'details': 'Drift detection not yet implemented'
+            }
+        except Exception as e:
+            return {
+                'drift_status': 'error',
+                'error': str(e)
+            }
+    
+    def get_gitops_tool_client(self):
+        """
+        Get GitOps tool client (ArgoCD/Flux) for this fabric.
+        Returns configured client or None if not configured.
+        """
+        if self.gitops_tool == 'none' or self.gitops_tool == 'manual':
+            return None
+        
+        try:
+            # TODO: Implement actual GitOps tool client creation
+            return {
+                'tool': self.gitops_tool,
+                'app_name': self.gitops_app_name,
+                'namespace': self.gitops_namespace,
+                'configured': bool(self.gitops_app_name),
+                'status': 'client_not_implemented'
+            }
+        except Exception as e:
+            return {
+                'tool': self.gitops_tool,
+                'status': 'error',
+                'error': str(e)
+            }
+    
+    def sync_desired_state(self):
+        """
+        Sync desired state from Git repository.
+        Updates desired_state_commit and last_git_sync fields.
+        """
+        if not self.git_repository_url:
+            return {
+                'success': False,
+                'error': 'No Git repository configured'
+            }
+        
+        try:
+            # TODO: Implement actual Git repository sync
+            # For now, update the sync timestamp
+            from django.utils import timezone
+            self.last_git_sync = timezone.now()
+            self.save(update_fields=['last_git_sync'])
+            
+            return {
+                'success': True,
+                'message': 'Git sync placeholder - implementation pending',
+                'repository_url': self.git_repository_url,
+                'branch': self.git_branch,
+                'sync_time': self.last_git_sync
+            }
+        except Exception as e:
+            return {
+                'success': False,
+                'error': str(e)
+            }
+    
+    def trigger_gitops_sync(self):
+        """
+        Trigger GitOps tool synchronization (ArgoCD/Flux).
+        Returns sync operation status.
+        """
+        if self.gitops_tool == 'none' or self.gitops_tool == 'manual':
+            return {
+                'success': False,
+                'message': f'GitOps tool is set to {self.gitops_tool} - manual sync required'
+            }
+        
+        if not self.gitops_app_name:
+            return {
+                'success': False,
+                'error': 'GitOps application name not configured'
+            }
+        
+        try:
+            # TODO: Implement actual GitOps tool sync triggering
+            return {
+                'success': True,
+                'message': f'{self.gitops_tool} sync placeholder - implementation pending',
+                'tool': self.gitops_tool,
+                'app_name': self.gitops_app_name,
+                'namespace': self.gitops_namespace
+            }
+        except Exception as e:
+            return {
+                'success': False,
+                'error': str(e)
+            }
+    
+    def get_gitops_summary(self):
+        """
+        Get comprehensive GitOps status summary for this fabric.
+        Returns complete GitOps configuration and status information.
+        """
+        return {
+            'git_config': {
+                'repository_url': self.git_repository_url,
+                'branch': self.git_branch,
+                'path': self.git_path,
+                'configured': bool(self.git_repository_url)
+            },
+            'drift_status': {
+                'status': self.drift_status,
+                'count': self.drift_count,
+                'last_sync': self.last_git_sync,
+                'desired_commit': self.desired_state_commit
+            },
+            'gitops_tool': {
+                'tool': self.gitops_tool,
+                'app_name': self.gitops_app_name,
+                'namespace': self.gitops_namespace,
+                'configured': bool(self.gitops_app_name) if self.gitops_tool not in ['none', 'manual'] else True
+            },
+            'capabilities': {
+                'git_sync': bool(self.git_repository_url),
+                'drift_detection': bool(self.git_repository_url),
+                'gitops_sync': bool(self.gitops_app_name) and self.gitops_tool not in ['none', 'manual']
+            }
+        }
