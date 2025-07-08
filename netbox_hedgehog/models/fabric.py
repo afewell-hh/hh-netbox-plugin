@@ -91,6 +91,93 @@ class HedgehogFabric(NetBoxModel):
         help_text="Last connection error message (if any)"
     )
     
+    # GitOps configuration
+    git_repository_url = models.URLField(
+        blank=True,
+        null=True,
+        help_text="Git repository containing desired Hedgehog CRD definitions"
+    )
+    
+    git_branch = models.CharField(
+        max_length=100,
+        default='main',
+        help_text="Git branch to track for desired state"
+    )
+    
+    git_path = models.CharField(
+        max_length=255,
+        default='hedgehog/',
+        help_text="Path within repo containing Hedgehog CRDs"
+    )
+    
+    git_username = models.CharField(
+        max_length=100,
+        blank=True,
+        help_text="Git username for authentication"
+    )
+    
+    git_token = models.CharField(
+        max_length=255,
+        blank=True,
+        help_text="Git access token for authentication"
+    )
+    
+    # GitOps state tracking
+    desired_state_commit = models.CharField(
+        max_length=40,
+        blank=True,
+        help_text="Git commit SHA of current desired state"
+    )
+    
+    drift_status = models.CharField(
+        max_length=20,
+        choices=[
+            ('in_sync', 'In Sync'),
+            ('drift_detected', 'Drift Detected'),
+            ('git_ahead', 'Git Ahead'),
+            ('cluster_ahead', 'Cluster Ahead'),
+            ('conflicts', 'Conflicts')
+        ],
+        default='in_sync',
+        help_text="Current drift status between desired and actual state"
+    )
+    
+    drift_count = models.PositiveIntegerField(
+        default=0,
+        help_text="Number of resources with detected drift"
+    )
+    
+    last_git_sync = models.DateTimeField(
+        null=True,
+        blank=True,
+        help_text="Timestamp of last Git repository sync"
+    )
+    
+    # GitOps tool integration
+    gitops_tool = models.CharField(
+        max_length=20,
+        choices=[
+            ('manual', 'Manual'),
+            ('argocd', 'ArgoCD'),
+            ('flux', 'Flux'),
+            ('none', 'None')
+        ],
+        default='manual',
+        help_text="GitOps tool used for deployments"
+    )
+    
+    gitops_app_name = models.CharField(
+        max_length=255,
+        blank=True,
+        help_text="GitOps application name (for ArgoCD/Flux integration)"
+    )
+    
+    gitops_namespace = models.CharField(
+        max_length=255,
+        blank=True,
+        help_text="GitOps application namespace"
+    )
+    
     # Cached CRD counts for dashboard display
     cached_crd_count = models.PositiveIntegerField(
         default=0,
