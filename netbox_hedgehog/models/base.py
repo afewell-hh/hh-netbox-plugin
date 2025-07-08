@@ -204,3 +204,127 @@ class BaseCRD(NetBoxModel):
     def get_full_name(self):
         """Return the full Kubernetes resource name (namespace/name)"""
         return f"{self.namespace}/{self.name}"
+    
+    # GitOps integration methods (added for MVP2)
+    def get_gitops_resource(self):
+        """
+        Get the corresponding HedgehogResource for GitOps tracking.
+        Returns None if no GitOps tracking exists.
+        """
+        try:
+            from .gitops import HedgehogResource
+            return HedgehogResource.objects.filter(
+                fabric=self.fabric,
+                name=self.name,
+                namespace=self.namespace,
+                kind=self.get_kind()
+            ).first()
+        except Exception:
+            return None
+    
+    def sync_to_gitops(self, commit_sha: str = None, file_path: str = None):
+        """
+        Sync this CRD to GitOps dual-state tracking.
+        Creates or updates corresponding HedgehogResource.
+        
+        Args:
+            commit_sha: Git commit SHA if this came from Git
+            file_path: Git file path if this came from Git
+            
+        Returns:
+            HedgehogResource instance or None if sync fails
+        """
+        try:
+            from ..utils.gitops_integration import CRDGitOpsIntegrator
+            integrator = CRDGitOpsIntegrator(self.fabric)
+            return integrator.sync_crd_to_gitops_resource(self, commit_sha, file_path)
+        except Exception as e:
+            # Log error but don't break existing functionality
+            import logging
+            logger = logging.getLogger(__name__)
+            logger.error(f"Failed to sync {self} to GitOps: {e}")
+            return None
+    
+    def get_gitops_status(self):
+        """
+        Get GitOps status for this CRD.
+        Returns dict with GitOps tracking information.
+        """
+        gitops_resource = self.get_gitops_resource()
+        if not gitops_resource:
+            return {
+                'tracked': False,
+                'message': 'Not tracked in GitOps system'
+            }
+        
+        return {
+            'tracked': True,
+            'drift_status': gitops_resource.drift_status,
+            'drift_score': gitops_resource.drift_score,
+            'has_drift': gitops_resource.has_drift,
+            'desired_commit': gitops_resource.desired_commit,
+            'git_file_url': gitops_resource.git_file_url,
+            'last_drift_check': gitops_resource.last_drift_check,
+            'summary': gitops_resource.get_drift_summary()
+        }
+    
+    def trigger_gitops_sync(self):
+        """
+        Trigger GitOps sync for this resource through the fabric's GitOps tool.
+        Returns sync operation result.
+        """
+        try:
+            # Get fabric's GitOps configuration
+            gitops_status = self.fabric.get_gitops_summary()
+            
+            if not gitops_status['capabilities']['gitops_sync']:
+                return {
+                    'success': False,
+                    'message': 'GitOps sync not configured for this fabric'
+                }
+            
+            # Trigger fabric-level sync (includes this resource)
+            return self.fabric.trigger_gitops_sync()
+            
+        except Exception as e:
+            return {
+                'success': False,
+                'error': str(e)
+            }
+    
+    def generate_gitops_yaml(self):
+        """
+        Generate GitOps-compatible YAML for this CRD.
+        Returns YAML string suitable for Git repository storage.
+        """
+        try:
+            gitops_resource = self.get_gitops_resource()
+            if gitops_resource:
+                return gitops_resource.generate_yaml_content()
+            
+            # If no GitOps tracking, generate from current CRD
+            import yaml
+            manifest = {
+                'apiVersion': self.get_api_version(),
+                'kind': self.get_kind(),
+                'metadata': {
+                    'name': self.name,
+                    'namespace': self.namespace,
+                    'labels': self.labels or {},
+                    'annotations': self.annotations or {}
+                },
+                'spec': self.spec
+            }
+            
+            # Add GitOps annotations
+            if 'annotations' not in manifest['metadata']:
+                manifest['metadata']['annotations'] = {}
+            manifest['metadata']['annotations']['managed-by'] = 'hedgehog-netbox-plugin'
+            
+            return yaml.dump(manifest, default_flow_style=False)
+            
+        except Exception as e:
+            import logging
+            logger = logging.getLogger(__name__)
+            logger.error(f"Failed to generate GitOps YAML for {self}: {e}")
+            return None
