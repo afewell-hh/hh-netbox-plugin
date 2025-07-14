@@ -40,7 +40,7 @@ echo ""
 # Test 1: ArgoCD API from host
 echo "Test 1: ArgoCD API Accessibility"
 echo -n "  From host: "
-if curl -k -s "https://localhost:30443/api/v1/version" | grep -q "Version"; then
+if curl -k -s "https://localhost:30444/api/v1/version" | grep -q "Version"; then
     echo -e "${GREEN}✅ Success${NC}"
 else
     echo -e "${RED}❌ Failed${NC}"
@@ -110,7 +110,7 @@ if [ -n "$ARGOCD_PASSWORD" ]; then
     # Test ArgoCD API with auth
     response=$(curl -k -s -o /dev/null -w "%{http_code}" \
         -H "Authorization: Bearer $ARGOCD_PASSWORD" \
-        "https://localhost:30443/api/v1/applications")
+        "https://localhost:30444/api/v1/applications")
     
     if [ "$response" = "200" ] || [ "$response" = "401" ]; then
         echo -e "${GREEN}✅ API responding${NC}"
@@ -139,7 +139,7 @@ echo "Integration Test Summary:"
 echo ""
 echo "Configuration file: $CONFIG_FILE"
 echo "For HNP integration, configure NetBox plugin with:"
-echo "  - ArgoCD endpoint: https://<your-host>:30443"
+echo "  - ArgoCD endpoint: https://<your-host>:30444"
 echo "  - Prometheus endpoint: http://<your-host>:30090"
 echo "  - Kubeconfig: $(pwd)/kubeconfig/kubeconfig.yaml"
 echo ""
