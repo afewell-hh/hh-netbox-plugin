@@ -27,6 +27,16 @@ warning() {
     echo -e "${YELLOW}[WARNING]${NC} $1" | tee -a "$LOG_FILE"
 }
 
+# Helper function for kubectl commands
+k3s_kubectl() {
+    $DOCKER_CMD exec hemk-poc-k3s sh -c "KUBECONFIG=/var/lib/rancher/k3s/server/cred/admin.kubeconfig kubectl $*"
+}
+
+# Helper function for kubectl apply with stdin
+k3s_kubectl_apply() {
+    $DOCKER_CMD exec -i hemk-poc-k3s sh -c "KUBECONFIG=/var/lib/rancher/k3s/server/cred/admin.kubeconfig kubectl apply -f -"
+}
+
 # Pre-flight checks
 log "Starting HEMK PoC Installation..."
 log "Log file: $LOG_FILE"
@@ -63,9 +73,9 @@ $DOCKER_CMD compose -f docker-compose.hemk-poc.yml up -d
 
 # Wait for k3s to be ready
 log "Waiting for k3s to be ready..."
-RETRIES=30
+RETRIES=60
 for i in $(seq 1 $RETRIES); do
-    if $DOCKER_CMD exec hemk-poc-k3s kubectl get nodes 2>/dev/null | grep -q "Ready"; then
+    if $DOCKER_CMD exec hemk-poc-k3s sh -c "KUBECONFIG=/var/lib/rancher/k3s/server/cred/admin.kubeconfig kubectl get nodes" 2>/dev/null | grep -q "Ready"; then
         log "k3s is ready!"
         break
     fi
@@ -73,13 +83,13 @@ for i in $(seq 1 $RETRIES); do
         error "k3s failed to become ready after $RETRIES attempts"
     fi
     echo -n "."
-    sleep 10
+    sleep 5
 done
 
 # Get kubeconfig
 log "Extracting kubeconfig..."
 mkdir -p "$SCRIPT_DIR/kubeconfig"
-$DOCKER_CMD exec hemk-poc-k3s cat /etc/rancher/k3s/k3s.yaml | sed "s/127.0.0.1/localhost/g" | sed "s/6443/16443/g" > "$SCRIPT_DIR/kubeconfig/kubeconfig.yaml"
+$DOCKER_CMD exec hemk-poc-k3s cat /var/lib/rancher/k3s/server/cred/admin.kubeconfig | sed "s/127.0.0.1/localhost/g" | sed "s/6443/16443/g" > "$SCRIPT_DIR/kubeconfig/kubeconfig.yaml"
 export KUBECONFIG="$SCRIPT_DIR/kubeconfig/kubeconfig.yaml"
 
 # Connect to NetBox network
@@ -92,17 +102,17 @@ log "NetBox IP: $NETBOX_IP"
 
 # Install cert-manager
 log "Installing cert-manager..."
-$DOCKER_CMD exec hemk-poc-k3s kubectl apply -f https://github.com/cert-manager/cert-manager/releases/download/v1.13.0/cert-manager.yaml
+k3s_kubectl apply -f https://github.com/cert-manager/cert-manager/releases/download/v1.13.0/cert-manager.yaml
 
 # Wait for cert-manager
 log "Waiting for cert-manager to be ready..."
-$DOCKER_CMD exec hemk-poc-k3s kubectl wait --for=condition=Available --timeout=300s deployment/cert-manager -n cert-manager
-$DOCKER_CMD exec hemk-poc-k3s kubectl wait --for=condition=Available --timeout=300s deployment/cert-manager-webhook -n cert-manager
-$DOCKER_CMD exec hemk-poc-k3s kubectl wait --for=condition=Available --timeout=300s deployment/cert-manager-cainjector -n cert-manager
+k3s_kubectl wait --for=condition=Available --timeout=300s deployment/cert-manager -n cert-manager
+k3s_kubectl wait --for=condition=Available --timeout=300s deployment/cert-manager-webhook -n cert-manager
+k3s_kubectl wait --for=condition=Available --timeout=300s deployment/cert-manager-cainjector -n cert-manager
 
 # Create self-signed issuer
 log "Creating self-signed certificate issuer..."
-$DOCKER_CMD exec hemk-poc-k3s kubectl apply -f - <<EOF
+cat <<EOF | k3s_kubectl_apply
 apiVersion: cert-manager.io/v1
 kind: ClusterIssuer
 metadata:
@@ -113,15 +123,15 @@ EOF
 
 # Install NGINX ingress
 log "Installing NGINX ingress controller..."
-$DOCKER_CMD exec hemk-poc-k3s kubectl apply -f https://raw.githubusercontent.com/kubernetes/ingress-nginx/controller-v1.8.1/deploy/static/provider/baremetal/deploy.yaml
+k3s_kubectl apply -f https://raw.githubusercontent.com/kubernetes/ingress-nginx/controller-v1.8.1/deploy/static/provider/baremetal/deploy.yaml
 
 # Wait for ingress
 log "Waiting for NGINX ingress to be ready..."
-$DOCKER_CMD exec hemk-poc-k3s kubectl wait --for=condition=Available --timeout=300s deployment/ingress-nginx-controller -n ingress-nginx
+k3s_kubectl wait --for=condition=Available --timeout=300s deployment/ingress-nginx-controller -n ingress-nginx
 
 # Patch ingress service to use NodePort on specific ports
 log "Configuring ingress NodePort services..."
-$DOCKER_CMD exec hemk-poc-k3s kubectl patch svc ingress-nginx-controller -n ingress-nginx --type='json' -p='[
+k3s_kubectl patch svc ingress-nginx-controller -n ingress-nginx --type='json' -p='[
   {"op": "replace", "path": "/spec/type", "value": "NodePort"},
   {"op": "add", "path": "/spec/ports/0/nodePort", "value": 30080},
   {"op": "add", "path": "/spec/ports/1/nodePort", "value": 30443}
@@ -129,26 +139,26 @@ $DOCKER_CMD exec hemk-poc-k3s kubectl patch svc ingress-nginx-controller -n ingr
 
 # Install ArgoCD
 log "Installing ArgoCD..."
-$DOCKER_CMD exec hemk-poc-k3s kubectl create namespace argocd || true
-$DOCKER_CMD exec hemk-poc-k3s kubectl apply -n argocd -f https://raw.githubusercontent.com/argoproj/argo-cd/v2.8.4/manifests/install.yaml
+k3s_kubectl create namespace argocd || true
+k3s_kubectl apply -n argocd -f https://raw.githubusercontent.com/argoproj/argo-cd/v2.8.4/manifests/install.yaml
 
 # Wait for ArgoCD
 log "Waiting for ArgoCD to be ready..."
-$DOCKER_CMD exec hemk-poc-k3s kubectl wait --for=condition=Available --timeout=300s deployment/argocd-server -n argocd
+k3s_kubectl wait --for=condition=Available --timeout=300s deployment/argocd-server -n argocd
 
 # Patch ArgoCD service to NodePort
 log "Configuring ArgoCD NodePort service..."
-$DOCKER_CMD exec hemk-poc-k3s kubectl patch svc argocd-server -n argocd --type='json' -p='[
+k3s_kubectl patch svc argocd-server -n argocd --type='json' -p='[
   {"op": "add", "path": "/spec/type", "value": "NodePort"},
   {"op": "add", "path": "/spec/ports/0/nodePort", "value": 30443}
 ]'
 
 # Install Prometheus (minimal configuration)
 log "Installing Prometheus..."
-$DOCKER_CMD exec hemk-poc-k3s kubectl create namespace monitoring || true
+k3s_kubectl create namespace monitoring || true
 
 # Create minimal Prometheus deployment
-$DOCKER_CMD exec hemk-poc-k3s kubectl apply -f - <<'EOF'
+k3s_kubectl apply -f - <<'EOF'
 apiVersion: v1
 kind: ConfigMap
 metadata:
@@ -282,7 +292,7 @@ EOF
 
 # Create HNP integration namespace and service account
 log "Creating HNP integration service account..."
-$DOCKER_CMD exec hemk-poc-k3s kubectl apply -f - <<'EOF'
+k3s_kubectl apply -f - <<'EOF'
 apiVersion: v1
 kind: Namespace
 metadata:
@@ -325,7 +335,7 @@ EOF
 
 # Get ArgoCD admin password
 log "Retrieving ArgoCD admin password..."
-ARGOCD_PASSWORD=$($DOCKER_CMD exec hemk-poc-k3s kubectl -n argocd get secret argocd-initial-admin-secret -o jsonpath="{.data.password}" | base64 -d)
+ARGOCD_PASSWORD=$(k3s_kubectl -n argocd get secret argocd-initial-admin-secret -o jsonpath="{.data.password}" | base64 -d)
 
 # Calculate installation time
 END_TIME=$(date +%s)
