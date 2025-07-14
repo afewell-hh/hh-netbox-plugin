@@ -23,9 +23,9 @@ hemk:
     url: "http://172.18.0.5:8080"
     api_url: "http://172.18.0.5:8080/api"
     # NetBox authentication - configure one of the following:
-    api_token: "YOUR_NETBOX_API_TOKEN_HERE"
+    # api_token: "YOUR_NETBOX_API_TOKEN_HERE"
     # OR username/password:
-    username: "admin"
-    password: "YOUR_NETBOX_PASSWORD_HERE"
+    username: "afewell"
+    password: "HHFab.Admin1!"
     
   kubeconfig: "/home/ubuntu/cc/hedgehog-netbox-plugin/hemk/poc_development/kubeconfig/kubeconfig.yaml"

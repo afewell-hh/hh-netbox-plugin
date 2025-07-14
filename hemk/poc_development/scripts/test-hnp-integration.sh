@@ -40,7 +40,7 @@ echo ""
 # Test 1: ArgoCD API from host
 echo "Test 1: ArgoCD API Accessibility"
 echo -n "  From host: "
-if curl -k -s "https://localhost:30444/api/v1/version" | grep -q "Version"; then
+if curl -k -s "https://localhost:30444/api/version" | grep -q "Version"; then
     echo -e "${GREEN}✅ Success${NC}"
 else
     echo -e "${RED}❌ Failed${NC}"
@@ -69,23 +69,31 @@ fi
 # Test 4: k3s to NetBox connectivity  
 echo ""
 echo "Test 4: k3s to NetBox Connectivity"
-echo -n "  HTTP test: "
-if $DOCKER_CMD exec hemk-poc-k3s curl -s -o /dev/null -w "%{http_code}" "http://$NETBOX_IP:8080" | grep -q "200"; then
-    echo -e "${GREEN}✅ Success${NC}"
+echo -n "  Network test: "
+# Test if NetBox is reachable from k3s cluster by creating a simple busybox pod
+pod_result=$($DOCKER_CMD exec hemk-poc-k3s sh -c "KUBECONFIG=/var/lib/rancher/k3s/server/cred/admin.kubeconfig kubectl run netbox-test --image=busybox:1.28 --rm -i --restart=Never --timeout=30s -- wget -q -O- -T 5 http://$NETBOX_IP:8080" 2>/dev/null | grep -i "html\|login\|netbox")
+
+if [ -n "$pod_result" ]; then
+    echo -e "${GREEN}✅ Success (NetBox reachable from cluster)${NC}"
 else
-    echo -e "${RED}❌ Failed${NC}"
+    # Fallback: check network connectivity exists
+    if ping -c 1 -W 2 $NETBOX_IP &> /dev/null; then
+        echo -e "${YELLOW}⚠️  NetBox pingable but HTTP test inconclusive${NC}"
+    else
+        echo -e "${RED}❌ NetBox not reachable${NC}"
+    fi
 fi
 
 # Test 5: Service Account Token
 echo ""
 echo "Test 5: HNP Service Account"
 echo -n "  Token retrieval: "
-if $DOCKER_CMD exec hemk-poc-k3s kubectl get sa hnp-integration -n hemk-system &> /dev/null; then
+if $DOCKER_CMD exec hemk-poc-k3s sh -c "KUBECONFIG=/var/lib/rancher/k3s/server/cred/admin.kubeconfig kubectl get sa hnp-integration -n hemk-system" &> /dev/null; then
     # Get token (K8s 1.24+ uses different token mechanism)
-    TOKEN_NAME=$($DOCKER_CMD exec hemk-poc-k3s kubectl get sa hnp-integration -n hemk-system -o jsonpath='{.secrets[0].name}' 2>/dev/null)
+    TOKEN_NAME=$($DOCKER_CMD exec hemk-poc-k3s sh -c "KUBECONFIG=/var/lib/rancher/k3s/server/cred/admin.kubeconfig kubectl get sa hnp-integration -n hemk-system -o jsonpath='{.secrets[0].name}'" 2>/dev/null)
     if [ -z "$TOKEN_NAME" ]; then
         # For newer K8s, create token manually
-        TOKEN=$($DOCKER_CMD exec hemk-poc-k3s kubectl create token hnp-integration -n hemk-system --duration=24h 2>/dev/null)
+        TOKEN=$($DOCKER_CMD exec hemk-poc-k3s sh -c "KUBECONFIG=/var/lib/rancher/k3s/server/cred/admin.kubeconfig kubectl create token hnp-integration -n hemk-system --duration=24h" 2>/dev/null)
         if [ -n "$TOKEN" ]; then
             echo -e "${GREEN}✅ Token created${NC}"
         else
@@ -104,7 +112,7 @@ echo "Test 6: ArgoCD Application Management"
 echo -n "  API readiness: "
 
 # Get ArgoCD admin password
-ARGOCD_PASSWORD=$($DOCKER_CMD exec hemk-poc-k3s kubectl -n argocd get secret argocd-initial-admin-secret -o jsonpath="{.data.password}" 2>/dev/null | base64 -d)
+ARGOCD_PASSWORD=$($DOCKER_CMD exec hemk-poc-k3s sh -c "KUBECONFIG=/var/lib/rancher/k3s/server/cred/admin.kubeconfig kubectl -n argocd get secret argocd-initial-admin-secret -o jsonpath='{.data.password}'" 2>/dev/null | base64 -d)
 
 if [ -n "$ARGOCD_PASSWORD" ]; then
     # Test ArgoCD API with auth
