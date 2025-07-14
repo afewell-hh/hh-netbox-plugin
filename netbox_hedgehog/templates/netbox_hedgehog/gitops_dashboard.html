@@ -1,0 +1,123 @@
+{% extends "base/layout.html" %}
+{% load static %}
+
+{% block title %}GitOps Dashboard - Week 6 UI Components{% endblock %}
+
+{% block header %}
+    {{ block.super }}
+    <link rel="stylesheet" href="{% static 'netbox_hedgehog/css/hedgehog.css' %}">
+{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+    <div class="row">
+        <div class="col-12">
+            <div class="card mb-4">
+                <div class="card-header">
+                    <h3><i class="mdi mdi-git"></i> GitOps Dashboard - Week 6 Progressive Disclosure UI</h3>
+                    <p class="text-muted mb-0">Revolutionary Git-first interface with six-state visualization and conflict resolution</p>
+                </div>
+                <div class="card-body">
+                    <div class="alert alert-info">
+                        <i class="mdi mdi-information"></i>
+                        <strong>Week 6 UI Components:</strong> This dashboard demonstrates all the Week 6 UI deliverables including
+                        six-state visualization, state transitions, alert queue, and conflict resolution interfaces.
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Six-State Visualization System -->
+    <div class="row mb-4">
+        <div class="col-12">
+            <h4 class="mb-3"><i class="mdi mdi-state-machine"></i> Six-State Visualization System</h4>
+            {% include 'netbox_hedgehog/components/six_state_indicators.html' with component_id='main' %}
+        </div>
+    </div>
+    
+    <!-- State Transition Workflow -->
+    <div class="row mb-4">
+        <div class="col-md-6">
+            <h4 class="mb-3"><i class="mdi mdi-arrow-right-bold"></i> State Transition Workflow</h4>
+            {% include 'netbox_hedgehog/components/state_transition_workflow.html' with component_id='transition' %}
+        </div>
+        
+        <!-- Alert Queue Dashboard -->
+        <div class="col-md-6">
+            <h4 class="mb-3"><i class="mdi mdi-alert"></i> Reconciliation Alert Queue</h4>
+            {% include 'netbox_hedgehog/components/alert_queue_dashboard.html' with component_id='alerts' %}
+        </div>
+    </div>
+    
+    <!-- Conflict Visualization -->
+    <div class="row mb-4">
+        <div class="col-12">
+            <h4 class="mb-3"><i class="mdi mdi-compare-horizontal"></i> Conflict Visualization</h4>
+            {% include 'netbox_hedgehog/components/conflict_visualization.html' with component_id='conflict' %}
+        </div>
+    </div>
+    
+    <!-- Integration Summary -->
+    <div class="row">
+        <div class="col-12">
+            <div class="card">
+                <div class="card-header">
+                    <h5><i class="mdi mdi-check-all"></i> Week 6 Deliverables Summary</h5>
+                </div>
+                <div class="card-body">
+                    <div class="row">
+                        <div class="col-md-6">
+                            <h6>✅ Completed Components:</h6>
+                            <ul>
+                                <li><strong>Git-First Onboarding:</strong> Multi-step wizard with authentication</li>
+                                <li><strong>Pre-Cluster Fabric Forms:</strong> Environment-aware configuration</li>
+                                <li><strong>YAML Discovery:</strong> Repository scanning with validation</li>
+                                <li><strong>Six-State Indicators:</strong> Visual state representation</li>
+                                <li><strong>State Transitions:</strong> Guided workflow system</li>
+                                <li><strong>Alert Queue:</strong> Priority-based management</li>
+                                <li><strong>Conflict Visualization:</strong> Before/after comparisons</li>
+                            </ul>
+                        </div>
+                        <div class="col-md-6">
+                            <h6>🎯 Key Features:</h6>
+                            <ul>
+                                <li><strong>Progressive Disclosure:</strong> Essential → Detailed → Expert views</li>
+                                <li><strong>Contextual Help:</strong> Tooltips and guidance throughout</li>
+                                <li><strong>Responsive Design:</strong> Mobile and desktop optimized</li>
+                                <li><strong>Accessibility:</strong> Screen reader compatible</li>
+                                <li><strong>Security:</strong> Proper credential handling</li>
+                                <li><strong>Integration:</strong> Works with Week 4-5 backend</li>
+                            </ul>
+                        </div>
+                    </div>
+                    
+                    <div class="mt-3">
+                        <h6>🚀 Quick Links:</h6>
+                        <div class="btn-group" role="group">
+                            <a href="{% url 'plugins:netbox_hedgehog:fabric_list' %}" class="btn btn-outline-primary">
+                                <i class="mdi mdi-server-network"></i> Fabrics
+                            </a>
+                            <a href="/plugins/hedgehog/gitops-onboarding/" class="btn btn-outline-primary">
+                                <i class="mdi mdi-git"></i> Git Onboarding
+                            </a>
+                            <a href="/plugins/hedgehog/pre-cluster-fabric/" class="btn btn-outline-primary">
+                                <i class="mdi mdi-plus"></i> Create Fabric
+                            </a>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block javascript %}
+{{ block.super }}
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    console.log('🎉 GitOps Dashboard loaded with all Week 6 UI components!');
+});
+</script>
+{% endblock %}

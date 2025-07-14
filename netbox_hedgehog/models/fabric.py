@@ -160,6 +160,8 @@ class HedgehogFabric(NetBoxModel):
             ('manual', 'Manual'),
             ('argocd', 'ArgoCD'),
             ('flux', 'Flux'),
+            ('tekton', 'Tekton'),
+            ('jenkins', 'Jenkins'),
             ('none', 'None')
         ],
         default='manual',
@@ -213,6 +215,83 @@ class HedgehogFabric(NetBoxModel):
     vpcs_count = models.PositiveIntegerField(
         default=0,
         help_text="Count of VPC CRDs"
+    )
+    
+    # ArgoCD tracking fields (Week 2 MVP2)
+    argocd_installed = models.BooleanField(
+        default=False,
+        help_text="Whether ArgoCD is installed and configured for this fabric"
+    )
+    
+    argocd_version = models.CharField(
+        max_length=50,
+        blank=True,
+        help_text="Version of ArgoCD installed"
+    )
+    
+    argocd_server_url = models.URLField(
+        blank=True,
+        help_text="ArgoCD server URL for this fabric"
+    )
+    
+    argocd_health_status = models.CharField(
+        max_length=20,
+        choices=[
+            ('unknown', 'Unknown'),
+            ('healthy', 'Healthy'),
+            ('unhealthy', 'Unhealthy'),
+            ('degraded', 'Degraded'),
+            ('installing', 'Installing'),
+            ('failed', 'Failed')
+        ],
+        default='unknown',
+        help_text="Current ArgoCD health status"
+    )
+    
+    argocd_installation_date = models.DateTimeField(
+        null=True,
+        blank=True,
+        help_text="When ArgoCD was installed for this fabric"
+    )
+    
+    argocd_admin_password = models.CharField(
+        max_length=255,
+        blank=True,
+        help_text="ArgoCD admin password (encrypted)"
+    )
+    
+    gitops_setup_status = models.CharField(
+        max_length=30,
+        choices=[
+            ('not_configured', 'Not Configured'),
+            ('manual', 'Manual'),
+            ('installing', 'Installing'),
+            ('configured', 'Configured'),
+            ('ready', 'Ready'),
+            ('error', 'Error')
+        ],
+        default='not_configured',
+        help_text="Overall GitOps setup status for this fabric"
+    )
+    
+    gitops_setup_error = models.TextField(
+        blank=True,
+        help_text="Last GitOps setup error message"
+    )
+    
+    auto_sync_enabled = models.BooleanField(
+        default=True,
+        help_text="Enable automatic synchronization for GitOps applications"
+    )
+    
+    prune_enabled = models.BooleanField(
+        default=False,
+        help_text="Enable resource pruning in GitOps applications"
+    )
+    
+    self_heal_enabled = models.BooleanField(
+        default=True,
+        help_text="Enable self-healing in GitOps applications"
     )
     
     class Meta:
@@ -345,16 +424,24 @@ class HedgehogFabric(NetBoxModel):
             }
         
         try:
-            # Basic Git repository validation
-            # TODO: Implement actual Git repository status checking
+            from ..utils.git_monitor import GitRepositoryMonitor
+            
+            # Create monitor to get repository status
+            monitor = GitRepositoryMonitor(self)
+            status = monitor.get_repository_status()
+            
             return {
-                'configured': True,
+                'configured': status.configured,
                 'repository_url': self.git_repository_url,
                 'branch': self.git_branch,
                 'path': self.git_path,
                 'last_commit': self.desired_state_commit or 'Unknown',
                 'last_sync': self.last_git_sync,
-                'status': 'ready'
+                'status': status.status,
+                'repository_exists': status.repository_exists,
+                'current_commit': status.current_commit,
+                'current_branch': status.current_branch,
+                'error': status.error
             }
         except Exception as e:
             return {
@@ -369,14 +456,48 @@ class HedgehogFabric(NetBoxModel):
         Updates drift_status and drift_count fields.
         """
         try:
-            # TODO: Implement actual drift detection logic
-            # For now, return current status
+            from ..models.gitops import HedgehogResource
+            from django.utils import timezone
+            
+            # Get all resources for this fabric
+            resources = HedgehogResource.objects.filter(fabric=self)
+            
+            # Count resources with drift
+            drift_count = 0
+            resource_details = {}
+            
+            for resource in resources:
+                # Trigger drift calculation for each resource
+                resource.calculate_drift()
+                
+                if resource.drift_status != 'in_sync':
+                    drift_count += 1
+                    resource_details[f"{resource.kind}/{resource.name}"] = {
+                        'status': resource.drift_status,
+                        'score': resource.drift_score,
+                        'summary': resource.get_drift_summary()
+                    }
+            
+            # Determine overall drift status
+            if drift_count == 0:
+                overall_status = 'in_sync'
+            else:
+                overall_status = 'drift_detected'
+            
+            # Update fabric drift information
+            self.drift_status = overall_status
+            self.drift_count = drift_count
+            self.save(update_fields=['drift_status', 'drift_count'])
+            
             return {
-                'drift_status': self.drift_status,
-                'drift_count': self.drift_count,
-                'last_calculated': self.last_git_sync,
-                'details': 'Drift detection not yet implemented'
+                'drift_status': overall_status,
+                'drift_count': drift_count,
+                'total_resources': resources.count(),
+                'last_calculated': timezone.now(),
+                'resource_details': resource_details,
+                'details': f'Calculated drift for {resources.count()} resources'
             }
+            
         except Exception as e:
             return {
                 'drift_status': 'error',
@@ -419,19 +540,30 @@ class HedgehogFabric(NetBoxModel):
             }
         
         try:
-            # TODO: Implement actual Git repository sync
-            # For now, update the sync timestamp
-            from django.utils import timezone
-            self.last_git_sync = timezone.now()
-            self.save(update_fields=['last_git_sync'])
+            import asyncio
+            from ..utils.git_monitor import GitRepositoryMonitor
+            
+            # Run the async sync operation
+            async def run_sync():
+                async with GitRepositoryMonitor(self) as monitor:
+                    return await monitor.sync_to_database()
+            
+            # Execute async operation
+            sync_result = asyncio.run(run_sync())
             
             return {
-                'success': True,
-                'message': 'Git sync placeholder - implementation pending',
+                'success': sync_result.success,
+                'message': sync_result.message,
                 'repository_url': self.git_repository_url,
                 'branch': self.git_branch,
+                'commit_sha': sync_result.commit_sha,
+                'files_processed': sync_result.files_processed,
+                'resources_created': sync_result.resources_created,
+                'resources_updated': sync_result.resources_updated,
+                'errors': sync_result.errors,
                 'sync_time': self.last_git_sync
             }
+            
         except Exception as e:
             return {
                 'success': False,
@@ -500,3 +632,333 @@ class HedgehogFabric(NetBoxModel):
                 'gitops_sync': bool(self.gitops_app_name) and self.gitops_tool not in ['none', 'manual']
             }
         }
+    
+    # ArgoCD-specific methods for MVP2 GitOps Setup Automation
+    
+    async def setup_argocd_gitops(self, repository_config=None):
+        """
+        Set up complete ArgoCD GitOps stack for this fabric.
+        
+        This is the main entry point for Phase 1 ArgoCD automation.
+        
+        Args:
+            repository_config: Optional repository configuration overrides
+            
+        Returns:
+            Setup result dict
+        """
+        try:
+            from ..utils.argocd_installer import ArgoCDIntegrationManager
+            
+            # Update setup status to installing
+            self.gitops_setup_status = 'installing'
+            self.save(update_fields=['gitops_setup_status'])
+            
+            # Create integration manager and set up complete stack
+            integration_manager = ArgoCDIntegrationManager(self)
+            result = await integration_manager.setup_complete_gitops_stack(repository_config)
+            
+            # Update fabric based on results
+            if result['overall_success']:
+                self.gitops_setup_status = 'ready'
+                self.gitops_setup_error = ''
+                
+                # Extract ArgoCD status if available
+                if result.get('argocd_status'):
+                    argocd_status = result['argocd_status']
+                    self.argocd_installed = argocd_status.installed
+                    self.argocd_version = argocd_status.version
+                    self.argocd_server_url = argocd_status.server_url
+                    self.argocd_health_status = argocd_status.health_status
+                    if argocd_status.installed and not self.argocd_installation_date:
+                        from django.utils import timezone
+                        self.argocd_installation_date = timezone.now()
+            else:
+                self.gitops_setup_status = 'error'
+                failed_steps = [step['step'] for step in result.get('steps_failed', [])]
+                self.gitops_setup_error = f"Setup failed at: {', '.join(failed_steps)}"
+            
+            self.save()
+            
+            return result
+            
+        except Exception as e:
+            self.gitops_setup_status = 'error'
+            self.gitops_setup_error = str(e)
+            self.save(update_fields=['gitops_setup_status', 'gitops_setup_error'])
+            
+            return {
+                'overall_success': False,
+                'fabric_name': self.name,
+                'steps_failed': [{'step': 'setup_process', 'error': str(e)}],
+                'error': str(e)
+            }
+    
+    async def get_argocd_status(self):
+        """
+        Get current ArgoCD installation and health status for this fabric.
+        
+        Returns:
+            ArgoCD status dict
+        """
+        try:
+            from ..utils.argocd_installer import ArgoCDIntegrationManager
+            
+            integration_manager = ArgoCDIntegrationManager(self)
+            return await integration_manager.get_gitops_status()
+            
+        except Exception as e:
+            return {
+                'success': False,
+                'error': str(e),
+                'fabric_name': self.name,
+                'argocd_installed': False
+            }
+    
+    async def install_argocd_only(self):
+        """
+        Install only ArgoCD without application setup.
+        Useful for testing or manual configuration scenarios.
+        
+        Returns:
+            Installation result dict
+        """
+        try:
+            from ..utils.argocd_installer import ArgoCDInstaller
+            
+            # Update setup status
+            self.gitops_setup_status = 'installing'
+            self.save(update_fields=['gitops_setup_status'])
+            
+            installer = ArgoCDInstaller(self)
+            result = await installer.install_argocd()
+            
+            if result['success']:
+                self.gitops_setup_status = 'configured'
+                self.gitops_tool = 'argocd'
+                self.argocd_installed = True
+                
+                # Update ArgoCD-specific fields
+                if result.get('installation_status'):
+                    status = result['installation_status']
+                    self.argocd_version = status.version
+                    self.argocd_server_url = status.server_url
+                    self.argocd_health_status = status.health_status
+                    if not self.argocd_installation_date:
+                        from django.utils import timezone
+                        self.argocd_installation_date = timezone.now()
+                
+                self.gitops_setup_error = ''
+            else:
+                self.gitops_setup_status = 'error'
+                self.gitops_setup_error = result.get('error', 'Unknown installation error')
+            
+            self.save()
+            return result
+            
+        except Exception as e:
+            self.gitops_setup_status = 'error'
+            self.gitops_setup_error = str(e)
+            self.save(update_fields=['gitops_setup_status', 'gitops_setup_error'])
+            
+            return {
+                'success': False,
+                'error': str(e),
+                'message': 'ArgoCD installation failed'
+            }
+    
+    async def create_argocd_application(self, app_config=None):
+        """
+        Create ArgoCD application for this fabric's Hedgehog resources.
+        
+        Args:
+            app_config: Optional application configuration overrides
+            
+        Returns:
+            Application creation result dict
+        """
+        try:
+            from ..utils.argocd_installer import ArgoCDIntegrationManager, ArgoCDApplicationConfig
+            
+            # Validate prerequisites
+            if not self.argocd_installed:
+                return {
+                    'success': False,
+                    'error': 'ArgoCD is not installed for this fabric'
+                }
+            
+            if not self.git_repository_url:
+                return {
+                    'success': False,
+                    'error': 'Git repository not configured for this fabric'
+                }
+            
+            # Create application configuration
+            if not app_config:
+                app_config = ArgoCDApplicationConfig(
+                    name=f'hedgehog-{self.name}',
+                    namespace='argocd',  # ArgoCD namespace
+                    repository_url=self.git_repository_url,
+                    repository_branch=self.git_branch,
+                    repository_path=self.git_path,
+                    destination_namespace=self.kubernetes_namespace,
+                    auto_sync=self.auto_sync_enabled,
+                    prune=self.prune_enabled,
+                    self_heal=self.self_heal_enabled
+                )
+            
+            integration_manager = ArgoCDIntegrationManager(self)
+            result = await integration_manager.app_manager.create_hedgehog_application(app_config)
+            
+            if result['success']:
+                self.gitops_app_name = app_config.name
+                self.gitops_namespace = app_config.namespace
+                self.save(update_fields=['gitops_app_name', 'gitops_namespace'])
+            
+            return result
+            
+        except Exception as e:
+            return {
+                'success': False,
+                'error': str(e),
+                'message': 'Failed to create ArgoCD application'
+            }
+    
+    async def sync_argocd_application(self):
+        """
+        Trigger synchronization of ArgoCD application for this fabric.
+        
+        Returns:
+            Sync result dict
+        """
+        try:
+            from ..utils.argocd_installer import ArgoCDIntegrationManager
+            
+            if not self.gitops_app_name:
+                return {
+                    'success': False,
+                    'error': 'No ArgoCD application configured for this fabric'
+                }
+            
+            integration_manager = ArgoCDIntegrationManager(self)
+            return await integration_manager.app_manager.sync_application(self.gitops_app_name)
+            
+        except Exception as e:
+            return {
+                'success': False,
+                'error': str(e),
+                'message': 'Failed to sync ArgoCD application'
+            }
+    
+    async def get_argocd_application_status(self):
+        """
+        Get status of ArgoCD application for this fabric.
+        
+        Returns:
+            Application status dict
+        """
+        try:
+            from ..utils.argocd_installer import ArgoCDIntegrationManager
+            
+            if not self.gitops_app_name:
+                return {
+                    'success': False,
+                    'error': 'No ArgoCD application configured for this fabric'
+                }
+            
+            integration_manager = ArgoCDIntegrationManager(self)
+            return await integration_manager.app_manager.get_application_status(self.gitops_app_name)
+            
+        except Exception as e:
+            return {
+                'success': False,
+                'error': str(e),
+                'message': 'Failed to get ArgoCD application status'
+            }
+    
+    async def uninstall_argocd(self):
+        """
+        Uninstall ArgoCD from this fabric's cluster.
+        
+        Returns:
+            Uninstallation result dict
+        """
+        try:
+            from ..utils.argocd_installer import ArgoCDInstaller
+            
+            installer = ArgoCDInstaller(self)
+            result = await installer.uninstall_argocd()
+            
+            if result['success']:
+                # Reset ArgoCD-related fields
+                self.argocd_installed = False
+                self.argocd_version = ''
+                self.argocd_server_url = ''
+                self.argocd_health_status = 'unknown'
+                self.argocd_installation_date = None
+                self.argocd_admin_password = ''
+                self.gitops_setup_status = 'not_configured'
+                self.gitops_tool = 'manual'
+                self.gitops_app_name = ''
+                self.gitops_namespace = ''
+                self.gitops_setup_error = ''
+                self.save()
+            
+            return result
+            
+        except Exception as e:
+            return {
+                'success': False,
+                'error': str(e),
+                'message': 'ArgoCD uninstallation failed'
+            }
+    
+    def is_argocd_ready_for_uat(self):
+        """
+        Check if ArgoCD setup is ready for User Acceptance Testing.
+        
+        Returns:
+            bool: True if ready for UAT
+        """
+        return (
+            self.argocd_installed and
+            self.argocd_health_status == 'healthy' and
+            self.gitops_setup_status == 'ready' and
+            bool(self.git_repository_url) and
+            bool(self.gitops_app_name)
+        )
+    
+    def get_gitops_setup_summary(self):
+        """
+        Get comprehensive GitOps setup summary including ArgoCD status.
+        
+        Returns:
+            Complete setup status dict
+        """
+        base_summary = self.get_gitops_summary()
+        
+        # Add ArgoCD-specific information
+        argocd_info = {
+            'argocd': {
+                'installed': getattr(self, 'argocd_installed', False),
+                'version': getattr(self, 'argocd_version', ''),
+                'server_url': getattr(self, 'argocd_server_url', ''),
+                'health_status': getattr(self, 'argocd_health_status', 'unknown'),
+                'installation_date': getattr(self, 'argocd_installation_date', None),
+                'admin_password_set': bool(getattr(self, 'argocd_admin_password', '')),
+            },
+            'setup_status': {
+                'status': getattr(self, 'gitops_setup_status', 'not_configured'),
+                'error': getattr(self, 'gitops_setup_error', ''),
+                'ready_for_uat': self.is_argocd_ready_for_uat(),
+            },
+            'sync_policies': {
+                'auto_sync': getattr(self, 'auto_sync_enabled', True),
+                'prune': getattr(self, 'prune_enabled', False),
+                'self_heal': getattr(self, 'self_heal_enabled', True),
+            }
+        }
+        
+        # Merge with base summary
+        base_summary.update(argocd_info)
+        return base_summary

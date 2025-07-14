@@ -3,6 +3,11 @@
 
 {% block title %}Hedgehog Plugin Dashboard{% endblock %}
 
+{% block header %}
+    {{ block.super }}
+    <link rel="stylesheet" href="{% static 'netbox_hedgehog/css/hedgehog.css' %}">
+{% endblock %}
+
 {% block content %}
 <div class="container-fluid">
     <div class="row">
@@ -21,7 +26,8 @@
                             <div class="card bg-primary text-white">
                                 <div class="card-body text-center">
                                     <h2>{{ fabric_count }}</h2>
-                                    <p class="mb-0">Fabrics</p>
+                                    <p class="mb-0">Total Fabrics</p>
+                                    <small class="opacity-75">{{ gitops_stats.git_connected_count|default:0 }} with Git</small>
                                 </div>
                             </div>
                         </div>
@@ -30,26 +36,31 @@
                                 <div class="card-body text-center">
                                     <h2>{{ vpc_count }}</h2>
                                     <p class="mb-0">VPCs</p>
+                                    <small class="opacity-75">Network resources</small>
                                 </div>
                             </div>
                         </div>
                         <div class="col-md-3">
                             <div class="card bg-info text-white">
                                 <div class="card-body text-center">
-                                    <h2>{{ recent_fabrics|length }}</h2>
-                                    <p class="mb-0">Recent</p>
+                                    <h2>{{ gitops_stats.in_sync_count|default:0 }}</h2>
+                                    <p class="mb-0">In Sync</p>
+                                    <small class="opacity-75">Git ↔ Cluster</small>
                                 </div>
                             </div>
                         </div>
                         <div class="col-md-3">
                             <div class="card bg-warning text-white">
                                 <div class="card-body text-center">
-                                    <h2>0</h2>
-                                    <p class="mb-0">Alerts</p>
+                                    <h2>{{ gitops_stats.drift_detected_count|default:0 }}</h2>
+                                    <p class="mb-0">Drift Detected</p>
+                                    <small class="opacity-75">Needs attention</small>
                                 </div>
                             </div>
                         </div>
                     </div>
+                    
+                    
                     
                     <!-- Quick Access Row -->
                     <div class="row mt-4">
@@ -58,7 +69,12 @@
                                 <div class="card-body">
                                     <h5 class="card-title">🏗️ Fabric Management</h5>
                                     <p class="card-text">Manage {{ fabric_count }} Hedgehog fabric installation{{ fabric_count|pluralize }}.</p>
-                                    <a href="{% url 'plugins:netbox_hedgehog:fabric_list' %}" class="btn btn-primary">View Fabrics</a>
+                                    <div class="btn-group-vertical w-100">
+                                        <a href="{% url 'plugins:netbox_hedgehog:fabric_list' %}" class="btn btn-primary">View Fabrics</a>
+                                        <a href="{% url 'plugins:netbox_hedgehog:gitops_onboarding' %}" class="btn btn-outline-primary">
+                                            <i class="mdi mdi-git"></i> Add Git-First Fabric
+                                        </a>
+                                    </div>
                                 </div>
                             </div>
                         </div>

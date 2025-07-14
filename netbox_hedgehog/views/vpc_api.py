@@ -9,7 +9,7 @@ class VPCListView(generic.ObjectListView):
 
 class VPCView(generic.ObjectView):
     queryset = models.VPC.objects.all()
-    template_name = 'netbox_hedgehog/vpc.html'
+    template_name = 'netbox_hedgehog/vpc_detail.html'
 
 class VPCEditView(generic.ObjectEditView):
     queryset = models.VPC.objects.all()

@@ -3,6 +3,11 @@
 
 {% block title %}{{ object.name }} - VPC Details{% endblock %}
 
+{% block header %}
+    {{ block.super }}
+    <link rel="stylesheet" href="{% static 'netbox_hedgehog/css/hedgehog.css' %}">
+{% endblock %}
+
 {% block content %}
 <div class="container-fluid">
     <div class="row">
@@ -146,6 +151,122 @@
                     
                     <hr>
                     
+                    <!-- GitOps Desired vs Actual State (MVP2) -->
+                    <div class="gitops-detail-section">
+                        <h4><i class="mdi mdi-git"></i> <span data-gitops-concept="gitops">GitOps</span> State Comparison</h4>
+                        <div class="row">
+                            <div class="col-12">
+                                <div class="gitops-progressive-disclosure" data-resource-id="{{ object.pk }}">
+                                    <!-- Essential View -->
+                                    <div class="disclosure-essential">
+                                        <span class="status-indicator badge bg-secondary gitops-status-indicator" 
+                                              onclick="toggleDisclosure(this, 'detailed')"
+                                              data-bs-toggle="collapse" 
+                                              data-bs-target="#gitops-detailed-{{ object.pk }}">
+                                            <i class="mdi mdi-git"></i> GitOps Status ▼
+                                        </span>
+                                    </div>
+                                    
+                                    <!-- Detailed View -->
+                                    <div class="disclosure-detailed collapse" id="gitops-detailed-{{ object.pk }}">
+                                        <div class="row">
+                                            <div class="col-md-6">
+                                                <h5><i class="mdi mdi-target"></i> <span data-gitops-concept="desired-state">Desired State</span> (Git Repository)</h5>
+                                                <div class="gitops-state-box">
+                                                    <div class="state-header">
+                                                        <span class="badge bg-info">
+                                                            <i class="mdi mdi-git"></i> From Git Repository
+                                                        </span>
+                                                        <small class="text-muted">Commit: abc123ef</small>
+                                                    </div>
+                                                    <div class="state-content">
+                                                        <div class="alert alert-info small">
+                                                            <i class="mdi mdi-information"></i>
+                                                            <strong>GitOps Not Configured:</strong> This VPC is managed manually.
+                                                            Configure Git repository integration in the fabric settings to enable
+                                                            GitOps drift detection and automated synchronization.
+                                                        </div>
+                                                        <div class="text-center">
+                                                            <button class="btn btn-sm btn-outline-primary" disabled>
+                                                                <i class="mdi mdi-git"></i> Configure Git Repository
+                                                            </button>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                            
+                                            <div class="col-md-6">
+                                                <h5><i class="mdi mdi-kubernetes"></i> <span data-gitops-concept="actual-state">Actual State</span> (Kubernetes Cluster)</h5>
+                                                <div class="gitops-state-box">
+                                                    <div class="state-header">
+                                                        <span class="badge bg-success">
+                                                            <i class="mdi mdi-kubernetes"></i> From Kubernetes
+                                                        </span>
+                                                        <small class="text-muted">Resource Version: {{ object.resource_version|default:"Unknown" }}</small>
+                                                    </div>
+                                                    <div class="state-content">
+                                                        {% if object.spec %}
+                                                            <pre class="bg-light p-2 small">{{ object.spec|pprint }}</pre>
+                                                        {% else %}
+                                                            <div class="alert alert-warning small">
+                                                                <i class="mdi mdi-alert"></i>
+                                                                <strong>No Spec:</strong> This VPC has no specification configured.
+                                                            </div>
+                                                        {% endif %}
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                        
+                                        <!-- Expert View Toggle -->
+                                        <div class="mt-3">
+                                            <button class="btn btn-sm btn-link expert-toggle" 
+                                                    onclick="toggleDisclosure(this, 'expert')"
+                                                    data-bs-toggle="collapse" 
+                                                    data-bs-target="#gitops-expert-{{ object.pk }}">
+                                                <i class="mdi mdi-cog"></i> Show Expert Controls ▼
+                                            </button>
+                                        </div>
+                                    </div>
+                                    
+                                    <!-- Expert View -->
+                                    <div class="disclosure-expert collapse" id="gitops-expert-{{ object.pk }}">
+                                        <div class="expert-controls">
+                                            <div class="row">
+                                                <div class="col-md-6">
+                                                    <h6>GitOps Actions</h6>
+                                                    <div class="btn-group-vertical w-100">
+                                                        <button class="btn btn-outline-primary btn-sm" disabled>
+                                                            <i class="mdi mdi-sync"></i> <span data-gitops-concept="reconciliation">Sync from Git</span>
+                                                        </button>
+                                                        <button class="btn btn-outline-secondary btn-sm" disabled>
+                                                            <i class="mdi mdi-code-json"></i> View Raw Diff
+                                                        </button>
+                                                        <button class="btn btn-outline-info btn-sm" disabled>
+                                                            <i class="mdi mdi-open-in-new"></i> Open Git File
+                                                        </button>
+                                                    </div>
+                                                </div>
+                                                <div class="col-md-6">
+                                                    <h6>Diagnostics</h6>
+                                                    <div class="diagnostics-section">
+                                                        <small class="text-muted">
+                                                            Resource API: /api/plugins/hedgehog/vpcs/{{ object.pk }}/<br>
+                                                            GitOps API: /api/plugins/hedgehog/gitops-resources/?kind=VPC&name={{ object.name }}<br>
+                                                            Fabric: {{ object.fabric.name }}
+                                                        </small>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <hr>
+                    
                     <div class="alert alert-info">
                         <h5><i class="mdi mdi-information"></i> Demo Mode</h5>
                         <p>In the full version, this section would show:</p>
@@ -161,4 +282,220 @@
         </div>
     </div>
 </div>
+{% endblock %}
+
+{% block javascript %}
+{{ block.super }}
+<script type="text/javascript">
+document.addEventListener('DOMContentLoaded', function() {
+    console.log('🚀 GitOps Progressive Disclosure loading...');
+    
+    // Progressive Disclosure Framework
+    window.GitOpsDisclosure = {
+        userPreference: localStorage.getItem('gitops_disclosure_preference') || 'essential',
+        
+        init: function() {
+            this.setupEventListeners();
+            this.applyUserPreference();
+            this.setupTooltips();
+        },
+        
+        setupEventListeners: function() {
+            // Handle disclosure toggle clicks
+            document.querySelectorAll('.gitops-progressive-disclosure .status-indicator').forEach(element => {
+                element.addEventListener('click', (e) => {
+                    e.preventDefault();
+                    const level = element.dataset.level || 'detailed';
+                    this.toggleDisclosure(element, level);
+                });
+            });
+            
+            // Handle expert toggle clicks
+            document.querySelectorAll('.expert-toggle').forEach(element => {
+                element.addEventListener('click', (e) => {
+                    e.preventDefault();
+                    this.toggleDisclosure(element, 'expert');
+                });
+            });
+        },
+        
+        toggleDisclosure: function(element, level) {
+            const container = element.closest('.gitops-progressive-disclosure');
+            if (!container) return;
+            
+            const resourceId = container.dataset.resourceId;
+            const targetId = level === 'expert' ? 
+                `gitops-expert-${resourceId}` : 
+                `gitops-detailed-${resourceId}`;
+            
+            const target = document.getElementById(targetId);
+            if (!target) return;
+            
+            // Toggle Bootstrap collapse
+            const bsCollapse = new bootstrap.Collapse(target, {
+                toggle: true
+            });
+            
+            // Update arrow indicators
+            this.updateArrowIndicators(element, target);
+            
+            // Track user preference
+            this.trackUserPreference(level);
+        },
+        
+        updateArrowIndicators: function(element, target) {
+            const isExpanded = target.classList.contains('show');
+            const arrow = element.querySelector('.arrow') || element;
+            
+            if (isExpanded) {
+                arrow.innerHTML = arrow.innerHTML.replace('▼', '▲');
+            } else {
+                arrow.innerHTML = arrow.innerHTML.replace('▲', '▼');
+            }
+        },
+        
+        trackUserPreference: function(level) {
+            this.userPreference = level;
+            localStorage.setItem('gitops_disclosure_preference', level);
+        },
+        
+        applyUserPreference: function() {
+            if (this.userPreference === 'detailed' || this.userPreference === 'expert') {
+                // Auto-expand based on user preference
+                setTimeout(() => {
+                    document.querySelectorAll('.gitops-progressive-disclosure').forEach(container => {
+                        const resourceId = container.dataset.resourceId;
+                        const detailedTarget = document.getElementById(`gitops-detailed-${resourceId}`);
+                        
+                        if (detailedTarget && !detailedTarget.classList.contains('show')) {
+                            const bsCollapse = new bootstrap.Collapse(detailedTarget, {
+                                toggle: true
+                            });
+                        }
+                        
+                        if (this.userPreference === 'expert') {
+                            const expertTarget = document.getElementById(`gitops-expert-${resourceId}`);
+                            if (expertTarget && !expertTarget.classList.contains('show')) {
+                                const bsCollapse = new bootstrap.Collapse(expertTarget, {
+                                    toggle: true
+                                });
+                            }
+                        }
+                    });
+                }, 100);
+            }
+        },
+        
+        setupTooltips: function() {
+            // Initialize Bootstrap tooltips for GitOps help
+            const tooltipTriggerList = document.querySelectorAll('[data-bs-toggle="tooltip"]');
+            tooltipTriggerList.forEach(tooltipTriggerEl => {
+                new bootstrap.Tooltip(tooltipTriggerEl);
+            });
+        }
+    };
+    
+    // Contextual Help System
+    window.GitOpsHelp = {
+        concepts: {
+            'drift': 'Drift occurs when the actual state in Kubernetes differs from the desired state defined in Git.',
+            'desired-state': 'The desired state is the configuration defined in your Git repository.',
+            'actual-state': 'The actual state is the current configuration running in your Kubernetes cluster.',
+            'gitops': 'GitOps is a way of implementing Continuous Deployment where Git is the single source of truth.',
+            'reconciliation': 'Reconciliation is the process of bringing the actual state in line with the desired state.'
+        },
+        
+        init: function() {
+            this.createHelpIndicators();
+        },
+        
+        createHelpIndicators: function() {
+            // Add help indicators to GitOps concepts
+            const conceptElements = document.querySelectorAll('[data-gitops-concept]');
+            conceptElements.forEach(element => {
+                const concept = element.dataset.gitopsConcept;
+                if (this.concepts[concept]) {
+                    this.addHelpIndicator(element, concept);
+                }
+            });
+        },
+        
+        addHelpIndicator: function(element, concept) {
+            const helpIndicator = document.createElement('span');
+            helpIndicator.className = 'gitops-help-indicator';
+            helpIndicator.innerHTML = `
+                <i class="mdi mdi-help-circle help-icon"></i>
+                <div class="gitops-help-tooltip">${this.concepts[concept]}</div>
+            `;
+            element.appendChild(helpIndicator);
+        }
+    };
+    
+    // Drift Resolution Workflows
+    window.GitOpsDriftResolution = {
+        init: function() {
+            this.setupDriftActions();
+        },
+        
+        setupDriftActions: function() {
+            // Handle drift resolution button clicks
+            document.querySelectorAll('.drift-resolution-options .btn').forEach(button => {
+                button.addEventListener('click', (e) => {
+                    e.preventDefault();
+                    const action = button.dataset.action;
+                    this.handleDriftAction(action, button);
+                });
+            });
+        },
+        
+        handleDriftAction: function(action, button) {
+            const originalText = button.innerHTML;
+            button.innerHTML = '<i class="mdi mdi-loading mdi-spin"></i> Processing...';
+            button.disabled = true;
+            
+            // Simulate drift resolution action
+            setTimeout(() => {
+                this.showDriftResolutionResult(action, button, originalText);
+            }, 2000);
+        },
+        
+        showDriftResolutionResult: function(action, button, originalText) {
+            button.innerHTML = originalText;
+            button.disabled = false;
+            
+            // Show result notification
+            const notification = document.createElement('div');
+            notification.className = 'alert alert-success alert-dismissible fade show mt-2';
+            notification.innerHTML = `
+                <i class="mdi mdi-check-circle"></i>
+                <strong>Success:</strong> ${action} action completed successfully.
+                <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+            `;
+            
+            button.closest('.drift-resolution-section').appendChild(notification);
+            
+            // Auto-remove notification after 5 seconds
+            setTimeout(() => {
+                if (notification.parentNode) {
+                    notification.remove();
+                }
+            }, 5000);
+        }
+    };
+    
+    // Initialize all GitOps UI components
+    GitOpsDisclosure.init();
+    GitOpsHelp.init();
+    GitOpsDriftResolution.init();
+    
+    console.log('✅ GitOps Progressive Disclosure initialized successfully');
+});
+
+// Global function for template onclick handlers
+function toggleDisclosure(element, level) {
+    if (window.GitOpsDisclosure) {
+        window.GitOpsDisclosure.toggleDisclosure(element, level);
+    }
+}
+</script>
 {% endblock %}

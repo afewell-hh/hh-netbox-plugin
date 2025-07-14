@@ -430,3 +430,31 @@ class FabricBulkActionsView(View):
                 'success': False,
                 'error': f'Bulk action failed: {str(e)}'
             })
+
+
+@method_decorator(login_required, name='dispatch')
+class ArgoCDSetupWizardView(View):
+    """ArgoCD Setup Wizard view for GitOps integration"""
+    
+    template_name = 'netbox_hedgehog/argocd_setup_wizard.html'
+    
+    def get(self, request, pk):
+        """Display ArgoCD setup wizard"""
+        fabric = get_object_or_404(HedgehogFabric, pk=pk)
+        
+        # Check permissions
+        if not request.user.has_perm('netbox_hedgehog.change_hedgehogfabric'):
+            messages.error(request, 'Permission denied - you cannot modify fabrics')
+            return redirect('plugins:netbox_hedgehog:fabric_detail', pk=pk)
+        
+        # Check if ArgoCD is already installed
+        if getattr(fabric, 'argocd_installed', False):
+            messages.info(request, f'ArgoCD is already installed for fabric {fabric.name}')
+            return redirect('plugins:netbox_hedgehog:fabric_detail', pk=pk)
+        
+        context = {
+            'fabric': fabric,
+            'can_change': True,
+        }
+        
+        return render(request, self.template_name, context)

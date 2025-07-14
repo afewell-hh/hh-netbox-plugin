@@ -1,0 +1,223 @@
+<!-- State Transition Workflow Component -->
+<!-- Provides guided workflows for changing resource states -->
+
+<div class="state-transition-workflow" id="state-transition-{{ component_id|default:'default' }}">
+    <div class="card">
+        <div class="card-header">
+            <h6 class="mb-0">
+                <i class="mdi mdi-state-machine"></i> State Transition Workflow
+            </h6>
+        </div>
+        <div class="card-body">
+            <!-- Current State Display -->
+            <div class="current-state-section mb-3">
+                <div class="alert alert-info d-flex align-items-center">
+                    <i class="mdi mdi-information me-2"></i>
+                    <div>
+                        <strong>Current State:</strong> <span id="current-state-{{ component_id|default:'default' }}">DRAFT</span>
+                        <br>
+                        <small>Select an available transition to change the resource state</small>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Available Transitions -->
+            <div class="available-transitions mb-3">
+                <h6>Available Transitions</h6>
+                <div class="transition-options" id="transition-options-{{ component_id|default:'default' }}">
+                    <!-- Transitions will be populated based on current state -->
+                </div>
+            </div>
+            
+            <!-- Transition Form -->
+            <div class="transition-form" id="transition-form-{{ component_id|default:'default' }}" style="display: none;">
+                <div class="card border-primary">
+                    <div class="card-header bg-primary text-white">
+                        <h6 class="mb-0">Transition Details</h6>
+                    </div>
+                    <div class="card-body">
+                        <form id="state-transition-form-{{ component_id|default:'default' }}">
+                            <div class="mb-3">
+                                <label class="form-label">Transition</label>
+                                <input type="text" class="form-control" id="transition-name-{{ component_id|default:'default' }}" readonly>
+                            </div>
+                            <div class="mb-3">
+                                <label class="form-label">Reason/Comments</label>
+                                <textarea class="form-control" id="transition-reason-{{ component_id|default:'default' }}" rows="3" required></textarea>
+                            </div>
+                            <div class="d-flex justify-content-between">
+                                <button type="button" class="btn btn-secondary" onclick="cancelTransition('{{ component_id|default:'default' }}')">Cancel</button>
+                                <button type="submit" class="btn btn-primary">Execute Transition</button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<style>
+.state-transition-workflow {
+    margin-bottom: 1rem;
+}
+
+.transition-options {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+    gap: 1rem;
+}
+
+.transition-option {
+    border: 2px solid var(--bs-border-color);
+    border-radius: 0.5rem;
+    padding: 1rem;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    background: var(--bs-body-bg);
+}
+
+.transition-option:hover {
+    border-color: var(--bs-primary);
+    background: rgba(var(--bs-primary-rgb), 0.05);
+}
+
+.transition-option.recommended {
+    border-color: var(--bs-success);
+    background: rgba(var(--bs-success-rgb), 0.05);
+}
+
+.transition-icon {
+    font-size: 2rem;
+    margin-bottom: 0.5rem;
+}
+
+.transition-name {
+    font-weight: 600;
+    margin-bottom: 0.25rem;
+}
+
+.transition-description {
+    font-size: 0.875rem;
+    color: var(--bs-secondary);
+}
+</style>
+
+<script>
+(function() {
+    'use strict';
+    
+    const stateTransitions = {
+        'DRAFT': [
+            { to: 'COMMITTED', name: 'Commit to Git', icon: 'mdi-source-commit', description: 'Save changes to Git repository', recommended: true },
+            { to: 'ORPHANED', name: 'Abandon Draft', icon: 'mdi-delete', description: 'Discard draft changes' }
+        ],
+        'COMMITTED': [
+            { to: 'SYNCED', name: 'Deploy to Cluster', icon: 'mdi-rocket-launch', description: 'Apply configuration to cluster', recommended: true },
+            { to: 'DRAFT', name: 'Edit Again', icon: 'mdi-pencil', description: 'Make additional changes' }
+        ],
+        'SYNCED': [
+            { to: 'DRAFT', name: 'Edit Resource', icon: 'mdi-pencil', description: 'Modify configuration' },
+            { to: 'DRIFTED', name: 'Mark as Drifted', icon: 'mdi-alert', description: 'Manual drift detection' }
+        ],
+        'DRIFTED': [
+            { to: 'SYNCED', name: 'Sync from Git', icon: 'mdi-sync', description: 'Restore Git configuration', recommended: true },
+            { to: 'DRAFT', name: 'Import Changes', icon: 'mdi-import', description: 'Import cluster changes to Git' }
+        ],
+        'ORPHANED': [
+            { to: 'DRAFT', name: 'Create in Git', icon: 'mdi-plus', description: 'Add to Git repository', recommended: true },
+            { to: 'DELETED', name: 'Delete from Cluster', icon: 'mdi-delete', description: 'Remove orphaned resource' }
+        ],
+        'PENDING': [
+            { to: 'SYNCED', name: 'Complete Sync', icon: 'mdi-check', description: 'Mark sync as complete' },
+            { to: 'DRIFTED', name: 'Sync Failed', icon: 'mdi-alert', description: 'Mark sync as failed' }
+        ]
+    };
+    
+    document.addEventListener('DOMContentLoaded', function() {
+        initializeStateTransition('{{ component_id|default:"default" }}');
+    });
+    
+    function initializeStateTransition(componentId) {
+        loadCurrentState(componentId);
+        
+        // Set up form submission
+        const form = document.getElementById(`state-transition-form-${componentId}`);
+        if (form) {
+            form.addEventListener('submit', function(e) {
+                e.preventDefault();
+                executeTransition(componentId);
+            });
+        }
+    }
+    
+    function loadCurrentState(componentId) {
+        // In real implementation, this would fetch from API
+        const currentState = 'DRAFT';
+        document.getElementById(`current-state-${componentId}`).textContent = currentState;
+        
+        renderAvailableTransitions(componentId, currentState);
+    }
+    
+    function renderAvailableTransitions(componentId, currentState) {
+        const transitions = stateTransitions[currentState] || [];
+        const container = document.getElementById(`transition-options-${componentId}`);
+        
+        if (transitions.length === 0) {
+            container.innerHTML = '<div class="alert alert-warning">No transitions available from this state</div>';
+            return;
+        }
+        
+        container.innerHTML = transitions.map(transition => `
+            <div class="transition-option ${transition.recommended ? 'recommended' : ''}" 
+                 onclick="selectTransition('${componentId}', '${currentState}', '${transition.to}', '${transition.name}')">
+                <div class="text-center">
+                    <div class="transition-icon">
+                        <i class="mdi ${transition.icon}"></i>
+                    </div>
+                    <div class="transition-name">${transition.name}</div>
+                    <div class="transition-description">${transition.description}</div>
+                    ${transition.recommended ? '<span class="badge bg-success mt-2">Recommended</span>' : ''}
+                </div>
+            </div>
+        `).join('');
+    }
+    
+    window.selectTransition = function(componentId, from, to, name) {
+        document.getElementById(`transition-name-${componentId}`).value = `${from} → ${to}: ${name}`;
+        document.getElementById(`transition-form-${componentId}`).style.display = 'block';
+        
+        // Store transition details
+        window.pendingTransition = { from, to, name };
+    };
+    
+    window.cancelTransition = function(componentId) {
+        document.getElementById(`transition-form-${componentId}`).style.display = 'none';
+        document.getElementById(`transition-reason-${componentId}`).value = '';
+    };
+    
+    function executeTransition(componentId) {
+        const reason = document.getElementById(`transition-reason-${componentId}`).value;
+        
+        // Show loading state
+        const form = document.getElementById(`transition-form-${componentId}`);
+        form.innerHTML = '<div class="text-center"><i class="mdi mdi-loading mdi-spin"></i> Executing transition...</div>';
+        
+        // Simulate API call
+        setTimeout(() => {
+            // Update current state
+            document.getElementById(`current-state-${componentId}`).textContent = window.pendingTransition.to;
+            
+            // Re-render transitions
+            renderAvailableTransitions(componentId, window.pendingTransition.to);
+            
+            // Hide form
+            form.style.display = 'none';
+            
+            // Show success message
+            alert(`Transition completed successfully!\n\nFrom: ${window.pendingTransition.from}\nTo: ${window.pendingTransition.to}\nReason: ${reason}`);
+        }, 2000);
+    }
+    
+})();
+</script>

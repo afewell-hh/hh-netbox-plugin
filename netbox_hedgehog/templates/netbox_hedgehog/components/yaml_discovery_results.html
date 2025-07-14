@@ -1,0 +1,981 @@
+<!-- YAML Discovery and Validation Results Component -->
+<!-- This component displays discovered YAML files with validation results and progressive disclosure -->
+
+<div class="yaml-discovery-results" id="yaml-discovery-results-{{ component_id|default:'default' }}">
+    <div class="card">
+        <div class="card-header">
+            <div class="d-flex justify-content-between align-items-center">
+                <h6 class="mb-0">
+                    <i class="mdi mdi-file-document-outline"></i> YAML Discovery Results
+                    <span class="help-tooltip">
+                        <i class="mdi mdi-help-circle"></i>
+                        <span class="tooltip-content">Discovered YAML files and their validation status</span>
+                    </span>
+                </h6>
+                <div class="discovery-actions">
+                    <button type="button" class="btn btn-sm btn-outline-primary" onclick="refreshDiscovery('{{ component_id|default:'default' }}')">
+                        <i class="mdi mdi-refresh"></i> Refresh
+                    </button>
+                    <button type="button" class="btn btn-sm btn-outline-success" onclick="validateAllFiles('{{ component_id|default:'default' }}')">
+                        <i class="mdi mdi-check-all"></i> Validate All
+                    </button>
+                </div>
+            </div>
+        </div>
+        <div class="card-body">
+            <!-- Discovery Status -->
+            <div class="discovery-status" id="discovery-status-{{ component_id|default:'default' }}">
+                <div class="alert alert-info">
+                    <i class="mdi mdi-magnify"></i> Click "Discover YAML Files" to scan the repository
+                </div>
+            </div>
+            
+            <!-- Summary Statistics -->
+            <div class="discovery-summary" id="discovery-summary-{{ component_id|default:'default' }}" style="display: none;">
+                <div class="row">
+                    <div class="col-md-3">
+                        <div class="stat-card bg-primary text-white">
+                            <div class="stat-value" id="total-files-{{ component_id|default:'default' }}">0</div>
+                            <div class="stat-label">Total Files</div>
+                        </div>
+                    </div>
+                    <div class="col-md-3">
+                        <div class="stat-card bg-success text-white">
+                            <div class="stat-value" id="valid-files-{{ component_id|default:'default' }}">0</div>
+                            <div class="stat-label">Valid Files</div>
+                        </div>
+                    </div>
+                    <div class="col-md-3">
+                        <div class="stat-card bg-danger text-white">
+                            <div class="stat-value" id="invalid-files-{{ component_id|default:'default' }}">0</div>
+                            <div class="stat-label">Invalid Files</div>
+                        </div>
+                    </div>
+                    <div class="col-md-3">
+                        <div class="stat-card bg-warning text-white">
+                            <div class="stat-value" id="warning-files-{{ component_id|default:'default' }}">0</div>
+                            <div class="stat-label">Warnings</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Filter and View Controls -->
+            <div class="discovery-controls" id="discovery-controls-{{ component_id|default:'default' }}" style="display: none;">
+                <div class="row align-items-center">
+                    <div class="col-md-6">
+                        <div class="filter-controls">
+                            <div class="btn-group" role="group">
+                                <input type="radio" class="btn-check" name="filter-{{ component_id|default:'default' }}" id="filter-all-{{ component_id|default:'default' }}" value="all" checked>
+                                <label class="btn btn-outline-secondary btn-sm" for="filter-all-{{ component_id|default:'default' }}">All</label>
+                                
+                                <input type="radio" class="btn-check" name="filter-{{ component_id|default:'default' }}" id="filter-valid-{{ component_id|default:'default' }}" value="valid">
+                                <label class="btn btn-outline-success btn-sm" for="filter-valid-{{ component_id|default:'default' }}">Valid</label>
+                                
+                                <input type="radio" class="btn-check" name="filter-{{ component_id|default:'default' }}" id="filter-invalid-{{ component_id|default:'default' }}" value="invalid">
+                                <label class="btn btn-outline-danger btn-sm" for="filter-invalid-{{ component_id|default:'default' }}">Invalid</label>
+                                
+                                <input type="radio" class="btn-check" name="filter-{{ component_id|default:'default' }}" id="filter-warnings-{{ component_id|default:'default' }}" value="warnings">
+                                <label class="btn btn-outline-warning btn-sm" for="filter-warnings-{{ component_id|default:'default' }}">Warnings</label>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-6">
+                        <div class="view-controls">
+                            <div class="btn-group" role="group">
+                                <input type="radio" class="btn-check" name="view-{{ component_id|default:'default' }}" id="view-list-{{ component_id|default:'default' }}" value="list" checked>
+                                <label class="btn btn-outline-secondary btn-sm" for="view-list-{{ component_id|default:'default' }}">
+                                    <i class="mdi mdi-view-list"></i> List
+                                </label>
+                                
+                                <input type="radio" class="btn-check" name="view-{{ component_id|default:'default' }}" id="view-grid-{{ component_id|default:'default' }}" value="grid">
+                                <label class="btn btn-outline-secondary btn-sm" for="view-grid-{{ component_id|default:'default' }}">
+                                    <i class="mdi mdi-view-grid"></i> Grid
+                                </label>
+                                
+                                <input type="radio" class="btn-check" name="view-{{ component_id|default:'default' }}" id="view-tree-{{ component_id|default:'default' }}" value="tree">
+                                <label class="btn btn-outline-secondary btn-sm" for="view-tree-{{ component_id|default:'default' }}">
+                                    <i class="mdi mdi-file-tree"></i> Tree
+                                </label>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Files List -->
+            <div class="discovery-files" id="discovery-files-{{ component_id|default:'default' }}">
+                <!-- Files will be populated here -->
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Component Styles -->
+<style>
+.yaml-discovery-results {
+    margin-bottom: 1rem;
+}
+
+.discovery-summary {
+    margin: 1rem 0;
+}
+
+.stat-card {
+    border-radius: 0.375rem;
+    padding: 1rem;
+    text-align: center;
+    margin-bottom: 1rem;
+}
+
+.stat-value {
+    font-size: 2rem;
+    font-weight: bold;
+    line-height: 1;
+    margin-bottom: 0.25rem;
+}
+
+.stat-label {
+    font-size: 0.875rem;
+    opacity: 0.9;
+}
+
+.discovery-controls {
+    margin: 1rem 0;
+    padding: 1rem;
+    background: rgba(var(--bs-secondary-rgb), 0.1);
+    border-radius: 0.375rem;
+}
+
+.filter-controls,
+.view-controls {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.file-item {
+    border: 1px solid var(--bs-border-color);
+    border-radius: 0.375rem;
+    margin-bottom: 0.75rem;
+    background: var(--bs-body-bg);
+    transition: all 0.3s ease;
+}
+
+.file-item:hover {
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+}
+
+.file-item.valid {
+    border-left: 4px solid var(--bs-success);
+}
+
+.file-item.invalid {
+    border-left: 4px solid var(--bs-danger);
+}
+
+.file-item.warning {
+    border-left: 4px solid var(--bs-warning);
+}
+
+.file-header {
+    padding: 0.75rem 1rem;
+    background: rgba(var(--bs-secondary-rgb), 0.05);
+    border-bottom: 1px solid var(--bs-border-color);
+    cursor: pointer;
+    user-select: none;
+}
+
+.file-header:hover {
+    background: rgba(var(--bs-secondary-rgb), 0.1);
+}
+
+.file-header.expanded {
+    background: rgba(var(--bs-primary-rgb), 0.1);
+}
+
+.file-info {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+}
+
+.file-name {
+    font-family: monospace;
+    font-weight: 600;
+    color: var(--bs-primary);
+}
+
+.file-path {
+    font-size: 0.875rem;
+    color: var(--bs-secondary);
+    margin-left: 0.5rem;
+}
+
+.file-status {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.file-status-badge {
+    font-size: 0.8rem;
+    padding: 0.25rem 0.5rem;
+    border-radius: 0.25rem;
+    font-weight: 500;
+}
+
+.file-status-badge.valid {
+    background: var(--bs-success);
+    color: white;
+}
+
+.file-status-badge.invalid {
+    background: var(--bs-danger);
+    color: white;
+}
+
+.file-status-badge.warning {
+    background: var(--bs-warning);
+    color: white;
+}
+
+.file-size {
+    font-size: 0.875rem;
+    color: var(--bs-secondary);
+}
+
+.file-details {
+    display: none;
+    padding: 1rem;
+    border-top: 1px solid var(--bs-border-color);
+}
+
+.file-details.expanded {
+    display: block;
+    animation: slideDown 0.3s ease-out;
+}
+
+@keyframes slideDown {
+    from {
+        max-height: 0;
+        opacity: 0;
+    }
+    to {
+        max-height: 500px;
+        opacity: 1;
+    }
+}
+
+.validation-results {
+    margin-bottom: 1rem;
+}
+
+.validation-item {
+    display: flex;
+    align-items: flex-start;
+    margin-bottom: 0.5rem;
+    padding: 0.5rem;
+    border-radius: 0.25rem;
+    background: rgba(var(--bs-secondary-rgb), 0.05);
+}
+
+.validation-item.error {
+    background: rgba(var(--bs-danger-rgb), 0.1);
+    border-left: 3px solid var(--bs-danger);
+}
+
+.validation-item.warning {
+    background: rgba(var(--bs-warning-rgb), 0.1);
+    border-left: 3px solid var(--bs-warning);
+}
+
+.validation-item.success {
+    background: rgba(var(--bs-success-rgb), 0.1);
+    border-left: 3px solid var(--bs-success);
+}
+
+.validation-icon {
+    margin-right: 0.5rem;
+    margin-top: 0.25rem;
+    font-size: 1.1rem;
+}
+
+.validation-message {
+    flex: 1;
+    font-size: 0.875rem;
+}
+
+.validation-message .line-number {
+    color: var(--bs-secondary);
+    font-family: monospace;
+}
+
+.yaml-preview {
+    background: var(--bs-dark);
+    color: var(--bs-light);
+    padding: 1rem;
+    border-radius: 0.375rem;
+    font-family: monospace;
+    font-size: 0.85rem;
+    max-height: 300px;
+    overflow-y: auto;
+    margin-top: 1rem;
+}
+
+.yaml-preview .keyword {
+    color: #569cd6;
+}
+
+.yaml-preview .string {
+    color: #ce9178;
+}
+
+.yaml-preview .number {
+    color: #b5cea8;
+}
+
+.yaml-preview .comment {
+    color: #6a9955;
+}
+
+.file-actions {
+    display: flex;
+    gap: 0.5rem;
+    margin-top: 1rem;
+}
+
+.file-actions .btn {
+    font-size: 0.8rem;
+    padding: 0.25rem 0.5rem;
+}
+
+.grid-view {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+    gap: 1rem;
+}
+
+.grid-view .file-item {
+    margin-bottom: 0;
+}
+
+.tree-view {
+    margin-left: 1rem;
+}
+
+.tree-view .tree-node {
+    margin-bottom: 0.5rem;
+}
+
+.tree-view .tree-node.directory {
+    font-weight: 600;
+    color: var(--bs-primary);
+}
+
+.tree-view .tree-node.file {
+    margin-left: 1rem;
+}
+
+.tree-view .tree-node.file::before {
+    content: "├── ";
+    color: var(--bs-secondary);
+}
+
+.tree-view .tree-node.file:last-child::before {
+    content: "└── ";
+}
+
+.help-tooltip {
+    position: relative;
+    display: inline-block;
+    color: var(--bs-info);
+    cursor: help;
+    margin-left: 0.5rem;
+}
+
+.help-tooltip .tooltip-content {
+    visibility: hidden;
+    width: 200px;
+    background-color: var(--bs-dark);
+    color: white;
+    text-align: center;
+    border-radius: 0.375rem;
+    padding: 0.5rem;
+    position: absolute;
+    z-index: 1;
+    bottom: 125%;
+    left: 50%;
+    margin-left: -100px;
+    opacity: 0;
+    transition: opacity 0.3s;
+    font-size: 0.8rem;
+}
+
+.help-tooltip:hover .tooltip-content {
+    visibility: visible;
+    opacity: 1;
+}
+
+/* Responsive Design */
+@media (max-width: 768px) {
+    .discovery-controls .row {
+        flex-direction: column;
+        gap: 1rem;
+    }
+    
+    .file-info {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 0.5rem;
+    }
+    
+    .file-status {
+        align-self: flex-end;
+    }
+    
+    .grid-view {
+        grid-template-columns: 1fr;
+    }
+}
+</style>
+
+<!-- Component JavaScript -->
+<script>
+(function() {
+    'use strict';
+    
+    // Initialize component
+    document.addEventListener('DOMContentLoaded', function() {
+        initializeYAMLDiscovery('{{ component_id|default:"default" }}');
+    });
+    
+    function initializeYAMLDiscovery(componentId) {
+        const component = document.getElementById('yaml-discovery-results-' + componentId);
+        if (!component) return;
+        
+        // Set up filter controls
+        const filterInputs = component.querySelectorAll(`input[name="filter-${componentId}"]`);
+        filterInputs.forEach(input => {
+            input.addEventListener('change', function() {
+                filterFiles(componentId, this.value);
+            });
+        });
+        
+        // Set up view controls
+        const viewInputs = component.querySelectorAll(`input[name="view-${componentId}"]`);
+        viewInputs.forEach(input => {
+            input.addEventListener('change', function() {
+                changeView(componentId, this.value);
+            });
+        });
+        
+        // Store component state
+        window.yamlDiscoveryState = window.yamlDiscoveryState || {};
+        window.yamlDiscoveryState[componentId] = {
+            files: [],
+            filter: 'all',
+            view: 'list'
+        };
+    }
+    
+    window.refreshDiscovery = function(componentId) {
+        const statusDiv = document.getElementById('discovery-status-' + componentId);
+        statusDiv.innerHTML = `
+            <div class="alert alert-info">
+                <i class="mdi mdi-loading mdi-spin"></i> Refreshing YAML discovery...
+            </div>
+        `;
+        
+        // Simulate refresh
+        setTimeout(() => {
+            discoverYAMLFiles(componentId);
+        }, 1000);
+    };
+    
+    window.validateAllFiles = function(componentId) {
+        const state = window.yamlDiscoveryState[componentId];
+        if (!state || !state.files.length) {
+            return;
+        }
+        
+        const statusDiv = document.getElementById('discovery-status-' + componentId);
+        statusDiv.innerHTML = `
+            <div class="alert alert-info">
+                <i class="mdi mdi-loading mdi-spin"></i> Validating all YAML files...
+            </div>
+        `;
+        
+        // Simulate validation
+        setTimeout(() => {
+            state.files.forEach(file => {
+                if (!file.validated) {
+                    validateFile(componentId, file);
+                }
+            });
+            
+            updateSummary(componentId);
+            renderFiles(componentId);
+            
+            statusDiv.innerHTML = `
+                <div class="alert alert-success">
+                    <i class="mdi mdi-check-circle"></i> All files validated successfully!
+                </div>
+            `;
+        }, 2000);
+    };
+    
+    window.discoverYAMLFiles = function(componentId) {
+        const statusDiv = document.getElementById('discovery-status-' + componentId);
+        const summaryDiv = document.getElementById('discovery-summary-' + componentId);
+        const controlsDiv = document.getElementById('discovery-controls-' + componentId);
+        
+        statusDiv.innerHTML = `
+            <div class="alert alert-info">
+                <i class="mdi mdi-loading mdi-spin"></i> Discovering YAML files in repository...
+            </div>
+        `;
+        
+        // Simulate discovery
+        setTimeout(() => {
+            const mockFiles = [
+                {
+                    name: 'vpc-production.yaml',
+                    path: 'vpc/vpc-production.yaml',
+                    size: 1024,
+                    type: 'VPC',
+                    valid: true,
+                    validated: true,
+                    documents: 1,
+                    validationResults: [
+                        {
+                            type: 'success',
+                            message: 'Valid VPC configuration'
+                        }
+                    ]
+                },
+                {
+                    name: 'external-peers.yaml',
+                    path: 'external/external-peers.yaml',
+                    size: 2048,
+                    type: 'External',
+                    valid: true,
+                    validated: true,
+                    documents: 2,
+                    validationResults: [
+                        {
+                            type: 'success',
+                            message: 'Valid external peering configuration'
+                        }
+                    ]
+                },
+                {
+                    name: 'switch-config.yaml',
+                    path: 'switch/switch-config.yaml',
+                    size: 1536,
+                    type: 'Switch',
+                    valid: false,
+                    validated: true,
+                    documents: 1,
+                    validationResults: [
+                        {
+                            type: 'error',
+                            message: 'Invalid API version: expected "wiring.githedgehog.com/v1alpha2"',
+                            line: 2
+                        },
+                        {
+                            type: 'error',
+                            message: 'Missing required field: metadata.name',
+                            line: 5
+                        }
+                    ]
+                },
+                {
+                    name: 'connections.yaml',
+                    path: 'connection/connections.yaml',
+                    size: 3072,
+                    type: 'Connection',
+                    valid: true,
+                    validated: true,
+                    documents: 3,
+                    validationResults: [
+                        {
+                            type: 'success',
+                            message: 'Valid connection configuration'
+                        },
+                        {
+                            type: 'warning',
+                            message: 'Consider using more descriptive connection names',
+                            line: 15
+                        }
+                    ]
+                },
+                {
+                    name: 'namespace-config.yaml',
+                    path: 'namespace/namespace-config.yaml',
+                    size: 512,
+                    type: 'Namespace',
+                    valid: true,
+                    validated: false,
+                    documents: 1,
+                    validationResults: []
+                }
+            ];
+            
+            // Store files in component state
+            window.yamlDiscoveryState[componentId].files = mockFiles;
+            
+            // Update UI
+            updateSummary(componentId);
+            renderFiles(componentId);
+            
+            summaryDiv.style.display = 'block';
+            controlsDiv.style.display = 'block';
+            
+            statusDiv.innerHTML = `
+                <div class="alert alert-success">
+                    <i class="mdi mdi-check-circle"></i> Discovery completed! Found ${mockFiles.length} YAML files.
+                </div>
+            `;
+        }, 2000);
+    };
+    
+    function updateSummary(componentId) {
+        const state = window.yamlDiscoveryState[componentId];
+        const files = state.files;
+        
+        const totalFiles = files.length;
+        const validFiles = files.filter(f => f.valid).length;
+        const invalidFiles = files.filter(f => !f.valid).length;
+        const warningFiles = files.filter(f => f.validationResults.some(r => r.type === 'warning')).length;
+        
+        document.getElementById('total-files-' + componentId).textContent = totalFiles;
+        document.getElementById('valid-files-' + componentId).textContent = validFiles;
+        document.getElementById('invalid-files-' + componentId).textContent = invalidFiles;
+        document.getElementById('warning-files-' + componentId).textContent = warningFiles;
+    }
+    
+    function renderFiles(componentId) {
+        const state = window.yamlDiscoveryState[componentId];
+        const filesDiv = document.getElementById('discovery-files-' + componentId);
+        
+        const filteredFiles = filterFilesByType(state.files, state.filter);
+        
+        if (filteredFiles.length === 0) {
+            filesDiv.innerHTML = `
+                <div class="alert alert-info">
+                    <i class="mdi mdi-information"></i> No files match the current filter.
+                </div>
+            `;
+            return;
+        }
+        
+        let html = '';
+        
+        if (state.view === 'list') {
+            html = renderListView(filteredFiles, componentId);
+        } else if (state.view === 'grid') {
+            html = renderGridView(filteredFiles, componentId);
+        } else if (state.view === 'tree') {
+            html = renderTreeView(filteredFiles, componentId);
+        }
+        
+        filesDiv.innerHTML = html;
+        
+        // Apply view-specific CSS classes
+        filesDiv.className = 'discovery-files ' + state.view + '-view';
+    }
+    
+    function renderListView(files, componentId) {
+        return files.map(file => `
+            <div class="file-item ${file.valid ? 'valid' : 'invalid'}" data-file-id="${file.name}">
+                <div class="file-header" onclick="toggleFileDetails('${componentId}', '${file.name}')">
+                    <div class="file-info">
+                        <div>
+                            <span class="file-name">${file.name}</span>
+                            <span class="file-path">${file.path}</span>
+                        </div>
+                        <div class="file-status">
+                            <span class="file-status-badge ${file.valid ? 'valid' : 'invalid'}">
+                                <i class="mdi mdi-${file.valid ? 'check-circle' : 'alert-circle'}"></i>
+                                ${file.valid ? 'Valid' : 'Invalid'}
+                            </span>
+                            <span class="file-size">${formatFileSize(file.size)}</span>
+                            <i class="mdi mdi-chevron-down expand-icon"></i>
+                        </div>
+                    </div>
+                </div>
+                <div class="file-details" id="details-${componentId}-${file.name}">
+                    ${renderFileDetails(file, componentId)}
+                </div>
+            </div>
+        `).join('');
+    }
+    
+    function renderGridView(files, componentId) {
+        return files.map(file => `
+            <div class="file-item ${file.valid ? 'valid' : 'invalid'}" data-file-id="${file.name}">
+                <div class="file-header" onclick="toggleFileDetails('${componentId}', '${file.name}')">
+                    <div class="file-info">
+                        <div>
+                            <span class="file-name">${file.name}</span>
+                            <div class="file-path">${file.path}</div>
+                        </div>
+                        <div class="file-status">
+                            <span class="file-status-badge ${file.valid ? 'valid' : 'invalid'}">
+                                <i class="mdi mdi-${file.valid ? 'check-circle' : 'alert-circle'}"></i>
+                                ${file.valid ? 'Valid' : 'Invalid'}
+                            </span>
+                        </div>
+                    </div>
+                </div>
+                <div class="file-details" id="details-${componentId}-${file.name}">
+                    ${renderFileDetails(file, componentId)}
+                </div>
+            </div>
+        `).join('');
+    }
+    
+    function renderTreeView(files, componentId) {
+        const tree = buildFileTree(files);
+        return renderTreeNode(tree, componentId);
+    }
+    
+    function renderFileDetails(file, componentId) {
+        const validationHtml = file.validationResults.length > 0 ? `
+            <div class="validation-results">
+                <h6>Validation Results</h6>
+                ${file.validationResults.map(result => `
+                    <div class="validation-item ${result.type}">
+                        <div class="validation-icon">
+                            <i class="mdi mdi-${result.type === 'error' ? 'alert-circle' : result.type === 'warning' ? 'alert' : 'check-circle'}"></i>
+                        </div>
+                        <div class="validation-message">
+                            ${result.message}
+                            ${result.line ? `<span class="line-number">(Line ${result.line})</span>` : ''}
+                        </div>
+                    </div>
+                `).join('')}
+            </div>
+        ` : '';
+        
+        return `
+            <div class="row">
+                <div class="col-md-6">
+                    <h6>File Information</h6>
+                    <table class="table table-sm">
+                        <tr><th>Type:</th><td>${file.type}</td></tr>
+                        <tr><th>Size:</th><td>${formatFileSize(file.size)}</td></tr>
+                        <tr><th>Documents:</th><td>${file.documents}</td></tr>
+                        <tr><th>Validated:</th><td>${file.validated ? 'Yes' : 'No'}</td></tr>
+                    </table>
+                </div>
+                <div class="col-md-6">
+                    ${validationHtml}
+                </div>
+            </div>
+            <div class="file-actions">
+                <button class="btn btn-outline-primary" onclick="viewFileContent('${componentId}', '${file.name}')">
+                    <i class="mdi mdi-eye"></i> View Content
+                </button>
+                <button class="btn btn-outline-info" onclick="validateFile('${componentId}', '${file.name}')">
+                    <i class="mdi mdi-check"></i> Validate
+                </button>
+                <button class="btn btn-outline-warning" onclick="editFile('${componentId}', '${file.name}')">
+                    <i class="mdi mdi-pencil"></i> Edit
+                </button>
+            </div>
+        `;
+    }
+    
+    function buildFileTree(files) {
+        const tree = {};
+        
+        files.forEach(file => {
+            const parts = file.path.split('/');
+            let current = tree;
+            
+            parts.forEach((part, index) => {
+                if (!current[part]) {
+                    current[part] = index === parts.length - 1 ? file : {};
+                }
+                current = current[part];
+            });
+        });
+        
+        return tree;
+    }
+    
+    function renderTreeNode(node, componentId, level = 0) {
+        let html = '';
+        
+        Object.keys(node).forEach(key => {
+            const item = node[key];
+            const indent = '  '.repeat(level);
+            
+            if (item.name) {
+                // This is a file
+                html += `
+                    <div class="tree-node file">
+                        ${indent}<i class="mdi mdi-file-document"></i> ${item.name}
+                        <span class="file-status-badge ${item.valid ? 'valid' : 'invalid'}">
+                            ${item.valid ? 'Valid' : 'Invalid'}
+                        </span>
+                    </div>
+                `;
+            } else {
+                // This is a directory
+                html += `
+                    <div class="tree-node directory">
+                        ${indent}<i class="mdi mdi-folder"></i> ${key}/
+                    </div>
+                `;
+                html += renderTreeNode(item, componentId, level + 1);
+            }
+        });
+        
+        return html;
+    }
+    
+    function filterFilesByType(files, filter) {
+        switch (filter) {
+            case 'valid':
+                return files.filter(f => f.valid);
+            case 'invalid':
+                return files.filter(f => !f.valid);
+            case 'warnings':
+                return files.filter(f => f.validationResults.some(r => r.type === 'warning'));
+            default:
+                return files;
+        }
+    }
+    
+    function filterFiles(componentId, filter) {
+        const state = window.yamlDiscoveryState[componentId];
+        state.filter = filter;
+        renderFiles(componentId);
+    }
+    
+    function changeView(componentId, view) {
+        const state = window.yamlDiscoveryState[componentId];
+        state.view = view;
+        renderFiles(componentId);
+    }
+    
+    window.toggleFileDetails = function(componentId, fileName) {
+        const detailsDiv = document.getElementById(`details-${componentId}-${fileName}`);
+        const header = detailsDiv.previousElementSibling;
+        const icon = header.querySelector('.expand-icon');
+        
+        if (detailsDiv.classList.contains('expanded')) {
+            detailsDiv.classList.remove('expanded');
+            header.classList.remove('expanded');
+            icon.classList.remove('mdi-chevron-up');
+            icon.classList.add('mdi-chevron-down');
+        } else {
+            detailsDiv.classList.add('expanded');
+            header.classList.add('expanded');
+            icon.classList.remove('mdi-chevron-down');
+            icon.classList.add('mdi-chevron-up');
+        }
+    };
+    
+    window.viewFileContent = function(componentId, fileName) {
+        // Create modal to show file content
+        const modal = document.createElement('div');
+        modal.className = 'modal fade show';
+        modal.style.display = 'block';
+        modal.innerHTML = `
+            <div class="modal-dialog modal-lg">
+                <div class="modal-content">
+                    <div class="modal-header">
+                        <h5 class="modal-title">
+                            <i class="mdi mdi-file-document"></i> ${fileName}
+                        </h5>
+                        <button type="button" class="btn-close" onclick="this.closest('.modal').remove()"></button>
+                    </div>
+                    <div class="modal-body">
+                        <div class="yaml-preview">
+                            <div class="d-flex align-items-center justify-content-center" style="height: 200px;">
+                                <i class="mdi mdi-loading mdi-spin"></i> Loading file content...
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        `;
+        
+        document.body.appendChild(modal);
+        
+        // Simulate loading file content
+        setTimeout(() => {
+            const yamlContent = `apiVersion: vpc.githedgehog.com/v1alpha2
+kind: VPC
+metadata:
+  name: ${fileName.replace('.yaml', '')}
+  namespace: default
+spec:
+  ipv4Namespace: default
+  subnets:
+    - name: default
+      subnet: 10.1.0.0/24
+      vlan: 100`;
+            
+            modal.querySelector('.yaml-preview').innerHTML = highlightYAML(yamlContent);
+        }, 1000);
+    };
+    
+    window.validateFile = function(componentId, fileName) {
+        const state = window.yamlDiscoveryState[componentId];
+        const file = state.files.find(f => f.name === fileName);
+        
+        if (!file) return;
+        
+        // Simulate validation
+        setTimeout(() => {
+            file.validated = true;
+            file.valid = Math.random() > 0.3; // 70% chance of being valid
+            
+            if (file.valid) {
+                file.validationResults = [
+                    {
+                        type: 'success',
+                        message: 'YAML file is valid'
+                    }
+                ];
+            } else {
+                file.validationResults = [
+                    {
+                        type: 'error',
+                        message: 'Invalid YAML syntax',
+                        line: Math.floor(Math.random() * 20) + 1
+                    }
+                ];
+            }
+            
+            updateSummary(componentId);
+            renderFiles(componentId);
+        }, 1000);
+    };
+    
+    window.editFile = function(componentId, fileName) {
+        alert(`Edit functionality for ${fileName} would be implemented here`);
+    };
+    
+    function formatFileSize(bytes) {
+        const sizes = ['B', 'KB', 'MB', 'GB'];
+        if (bytes === 0) return '0 B';
+        const i = Math.floor(Math.log(bytes) / Math.log(1024));
+        return Math.round(bytes / Math.pow(1024, i) * 100) / 100 + ' ' + sizes[i];
+    }
+    
+    function highlightYAML(content) {
+        return content
+            .replace(/^(\s*[a-zA-Z_][a-zA-Z0-9_]*\s*):/gm, '<span class="keyword">$1</span>:')
+            .replace(/:\s*("[^"]*"|'[^']*')/g, ': <span class="string">$1</span>')
+            .replace(/:\s*(\d+)/g, ': <span class="number">$1</span>')
+            .replace(/^\s*#.*/gm, '<span class="comment">$&</span>');
+    }
+    
+})();
+</script>

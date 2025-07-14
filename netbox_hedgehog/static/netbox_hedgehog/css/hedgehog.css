@@ -392,6 +392,489 @@
     to { transform: translateX(0); }
 }
 
+/* GitOps Status Enhancement (MVP2) */
+.gitops-status-section {
+    border-top: 2px solid var(--bs-info);
+    padding-top: 1rem;
+    background: linear-gradient(135deg, rgba(var(--bs-info-rgb), 0.05) 0%, rgba(var(--bs-info-rgb), 0.02) 100%);
+    border-radius: 0.5rem;
+    margin-top: 1.5rem !important;
+}
+
+.gitops-status-card {
+    transition: all 0.3s ease;
+    cursor: pointer;
+    border: none;
+    box-shadow: 0 0.25rem 0.5rem rgba(0, 0, 0, 0.1);
+}
+
+.gitops-status-card:hover {
+    transform: translateY(-3px);
+    box-shadow: 0 0.5rem 1rem rgba(0, 0, 0, 0.15);
+}
+
+.gitops-status-card .card-body {
+    position: relative;
+    overflow: hidden;
+}
+
+.gitops-status-card .card-body::before {
+    content: '';
+    position: absolute;
+    top: -50%;
+    right: -50%;
+    width: 100%;
+    height: 100%;
+    background: linear-gradient(45deg, transparent 0%, rgba(255, 255, 255, 0.1) 50%, transparent 100%);
+    transform: rotate(45deg);
+    transition: all 0.3s ease;
+    opacity: 0;
+}
+
+.gitops-status-card:hover .card-body::before {
+    opacity: 1;
+    animation: shimmer 0.6s ease-in-out;
+}
+
+@keyframes shimmer {
+    0% {
+        transform: translateX(-100%) translateY(-100%) rotate(45deg);
+    }
+    100% {
+        transform: translateX(100%) translateY(100%) rotate(45deg);
+    }
+}
+
+.gitops-status-card h2 {
+    font-weight: 700;
+    margin-bottom: 0.5rem;
+    font-size: 2.5rem;
+}
+
+.gitops-status-card .mdi {
+    margin-right: 0.5rem;
+}
+
+.gitops-status-card small {
+    font-size: 0.75rem;
+    line-height: 1.2;
+    display: block;
+    margin-top: 0.25rem;
+}
+
+/* GitOps Detail Enhancement */
+.gitops-detail-section {
+    background: linear-gradient(135deg, rgba(var(--bs-info-rgb), 0.08) 0%, rgba(var(--bs-info-rgb), 0.03) 100%);
+    border-left: 4px solid var(--bs-info);
+    padding: 1.5rem;
+    border-radius: 0.5rem;
+    margin-top: 1.5rem;
+    position: relative;
+}
+
+.gitops-detail-section::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 2px;
+    background: linear-gradient(90deg, var(--bs-info) 0%, rgba(var(--bs-info-rgb), 0.3) 100%);
+    border-radius: 0.5rem 0.5rem 0 0;
+}
+
+.gitops-detail-section h4 {
+    color: var(--bs-info);
+    margin-bottom: 1rem;
+    font-weight: 600;
+}
+
+.gitops-detail-section .table th {
+    background-color: transparent;
+    border: none;
+    font-weight: 600;
+    color: var(--bs-secondary);
+    width: 30%;
+    vertical-align: middle;
+}
+
+.gitops-detail-section .table td {
+    border: none;
+    vertical-align: middle;
+}
+
+/* GitOps Status Indicators */
+.gitops-status-indicator {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.25rem;
+    transition: all 0.2s ease;
+}
+
+.gitops-status-indicator:hover {
+    transform: scale(1.05);
+}
+
+.gitops-status-indicator.has-drift::after {
+    content: '!';
+    position: absolute;
+    top: -8px;
+    right: -8px;
+    background: var(--bs-warning);
+    color: white;
+    border-radius: 50%;
+    width: 18px;
+    height: 18px;
+    font-size: 11px;
+    font-weight: bold;
+    text-align: center;
+    line-height: 18px;
+    animation: pulse 2s infinite;
+}
+
+@keyframes pulse {
+    0% {
+        transform: scale(1);
+        opacity: 1;
+    }
+    50% {
+        transform: scale(1.1);
+        opacity: 0.8;
+    }
+    100% {
+        transform: scale(1);
+        opacity: 1;
+    }
+}
+
+/* GitOps Progressive Disclosure */
+.gitops-progressive-disclosure {
+    position: relative;
+    margin: 0.25rem 0;
+}
+
+.disclosure-essential .status-indicator {
+    cursor: pointer;
+    transition: all 0.2s ease;
+    user-select: none;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.25rem;
+}
+
+.disclosure-essential .status-indicator:hover {
+    transform: scale(1.05);
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+}
+
+.disclosure-detailed {
+    background-color: rgba(var(--bs-info-rgb), 0.05);
+    border-left: 3px solid var(--bs-info);
+    padding: 0.75rem;
+    margin-top: 0.5rem;
+    border-radius: 0.25rem;
+    animation: fadeIn 0.3s ease-in;
+}
+
+.disclosure-expert {
+    background-color: rgba(var(--bs-warning-rgb), 0.05);
+    border-left: 3px solid var(--bs-warning);
+    padding: 0.75rem;
+    margin-top: 0.5rem;
+    border-radius: 0.25rem;
+    animation: fadeIn 0.3s ease-in;
+}
+
+/* GitOps Table Columns */
+.gitops-column {
+    min-width: 120px;
+    white-space: nowrap;
+}
+
+.gitops-column .badge {
+    font-size: 0.75em;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.25rem;
+}
+
+.gitops-column .mdi {
+    font-size: 1em;
+}
+
+/* Quick Actions */
+.git-sync-quick {
+    transition: all 0.2s ease;
+}
+
+.git-sync-quick:hover {
+    background-color: var(--bs-info);
+    color: white;
+    transform: scale(1.1);
+}
+
+.git-sync-quick.syncing {
+    animation: spin 1s linear infinite;
+}
+
+/* Responsive GitOps Columns */
+@media (max-width: 992px) {
+    .gitops-column {
+        min-width: 100px;
+        font-size: 0.9em;
+    }
+    
+    .gitops-column .badge {
+        font-size: 0.7em;
+        padding: 0.25em 0.4em;
+    }
+}
+
+@media (max-width: 768px) {
+    .gitops-column {
+        display: none;
+    }
+    
+    /* Show GitOps info in mobile view differently */
+    .table-responsive .gitops-mobile-indicator {
+        display: inline-block;
+        margin-left: 0.5rem;
+    }
+}
+
+/* Real-time Status Updates */
+.status-updating {
+    animation: pulse 1.5s ease-in-out infinite;
+}
+
+.status-updated {
+    animation: highlight 2s ease-in-out;
+}
+
+@keyframes highlight {
+    0% {
+        background-color: rgba(var(--bs-success-rgb), 0.3);
+    }
+    100% {
+        background-color: transparent;
+    }
+}
+
+/* GitOps State Comparison */
+.gitops-state-box {
+    border: 1px solid var(--bs-border-color);
+    border-radius: 0.375rem;
+    margin-bottom: 1rem;
+    background-color: var(--bs-body-bg);
+    transition: all 0.3s ease;
+}
+
+.gitops-state-box:hover {
+    box-shadow: 0 0.125rem 0.25rem rgba(0, 0, 0, 0.075);
+}
+
+.gitops-state-box .state-header {
+    background-color: var(--bs-light);
+    border-bottom: 1px solid var(--bs-border-color);
+    padding: 0.75rem 1rem;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    border-radius: 0.375rem 0.375rem 0 0;
+}
+
+.gitops-state-box .state-content {
+    padding: 1rem;
+}
+
+.gitops-state-box .state-content pre {
+    max-height: 200px;
+    overflow-y: auto;
+    font-size: 0.8rem;
+    margin-bottom: 0;
+}
+
+/* Progressive Disclosure Enhancements */
+.gitops-progressive-disclosure .disclosure-essential {
+    margin-bottom: 1rem;
+}
+
+.gitops-progressive-disclosure .status-indicator {
+    cursor: pointer;
+    transition: all 0.2s ease;
+    user-select: none;
+    padding: 0.5rem 1rem;
+    font-size: 0.9rem;
+    border-radius: 0.25rem;
+}
+
+.gitops-progressive-disclosure .status-indicator:hover {
+    transform: scale(1.02);
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+}
+
+.gitops-progressive-disclosure .disclosure-detailed {
+    animation: fadeIn 0.3s ease-in;
+}
+
+.gitops-progressive-disclosure .disclosure-expert {
+    animation: fadeIn 0.3s ease-in;
+}
+
+.gitops-progressive-disclosure .expert-toggle {
+    font-size: 0.85rem;
+    padding: 0.25rem 0.5rem;
+    text-decoration: none;
+    border: 1px solid var(--bs-border-color);
+    border-radius: 0.25rem;
+    transition: all 0.2s ease;
+}
+
+.gitops-progressive-disclosure .expert-toggle:hover {
+    background-color: var(--bs-light);
+    text-decoration: none;
+}
+
+/* Contextual Help System */
+.gitops-help-indicator {
+    position: relative;
+    display: inline-block;
+    margin-left: 0.5rem;
+}
+
+.gitops-help-indicator .help-icon {
+    color: var(--bs-info);
+    cursor: help;
+    font-size: 0.9rem;
+}
+
+.gitops-help-tooltip {
+    position: absolute;
+    bottom: 100%;
+    left: 50%;
+    transform: translateX(-50%);
+    background-color: var(--bs-dark);
+    color: white;
+    padding: 0.5rem 0.75rem;
+    border-radius: 0.25rem;
+    font-size: 0.75rem;
+    white-space: nowrap;
+    z-index: 1000;
+    opacity: 0;
+    visibility: hidden;
+    transition: all 0.2s ease;
+    margin-bottom: 0.5rem;
+}
+
+.gitops-help-tooltip::after {
+    content: '';
+    position: absolute;
+    top: 100%;
+    left: 50%;
+    transform: translateX(-50%);
+    border: 5px solid transparent;
+    border-top-color: var(--bs-dark);
+}
+
+.gitops-help-indicator:hover .gitops-help-tooltip {
+    opacity: 1;
+    visibility: visible;
+}
+
+/* Drift Resolution Workflows */
+.drift-resolution-section {
+    background-color: rgba(var(--bs-warning-rgb), 0.1);
+    border: 1px solid var(--bs-warning);
+    border-radius: 0.375rem;
+    padding: 1rem;
+    margin-top: 1rem;
+}
+
+.drift-resolution-section h5 {
+    color: var(--bs-warning);
+    margin-bottom: 0.75rem;
+}
+
+.drift-resolution-options {
+    display: flex;
+    gap: 0.5rem;
+    flex-wrap: wrap;
+}
+
+.drift-resolution-options .btn {
+    font-size: 0.85rem;
+    padding: 0.375rem 0.75rem;
+}
+
+/* GitOps Resource Creation Wizard */
+.gitops-wizard-section {
+    background: linear-gradient(135deg, rgba(var(--bs-primary-rgb), 0.1) 0%, rgba(var(--bs-primary-rgb), 0.05) 100%);
+    border: 1px solid var(--bs-primary);
+    border-radius: 0.375rem;
+    padding: 1.5rem;
+    margin-bottom: 1rem;
+}
+
+.gitops-wizard-section h5 {
+    color: var(--bs-primary);
+    margin-bottom: 1rem;
+}
+
+.gitops-wizard-steps {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    margin-bottom: 1rem;
+}
+
+.gitops-wizard-step {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.5rem 1rem;
+    background-color: var(--bs-light);
+    border-radius: 0.25rem;
+    font-size: 0.85rem;
+    transition: all 0.2s ease;
+}
+
+.gitops-wizard-step.active {
+    background-color: var(--bs-primary);
+    color: white;
+}
+
+.gitops-wizard-step.completed {
+    background-color: var(--bs-success);
+    color: white;
+}
+
+/* Responsive Design for GitOps Features */
+@media (max-width: 768px) {
+    .gitops-state-box .state-header {
+        flex-direction: column;
+        gap: 0.5rem;
+        text-align: center;
+    }
+    
+    .gitops-progressive-disclosure .expert-controls .row {
+        flex-direction: column;
+    }
+    
+    .gitops-progressive-disclosure .expert-controls .col-md-6 {
+        margin-bottom: 1rem;
+    }
+    
+    .drift-resolution-options {
+        flex-direction: column;
+    }
+    
+    .gitops-wizard-steps {
+        flex-direction: column;
+        align-items: stretch;
+    }
+}
+
 /* Utility Classes */
 .text-truncate-2 {
     overflow: hidden;

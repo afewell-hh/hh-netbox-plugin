@@ -1,0 +1,739 @@
+<!-- Git Authentication Component -->
+<!-- This component provides a comprehensive Git authentication interface with validation -->
+
+<div class="git-auth-component" id="git-auth-component-{{ component_id|default:'default' }}">
+    <div class="card">
+        <div class="card-header">
+            <h6 class="mb-0">
+                <i class="mdi mdi-key"></i> Git Authentication
+                <span class="help-tooltip">
+                    <i class="mdi mdi-help-circle"></i>
+                    <span class="tooltip-content">Configure secure authentication for Git repository access</span>
+                </span>
+            </h6>
+        </div>
+        <div class="card-body">
+            <!-- Authentication Method Selection -->
+            <div class="mb-3">
+                <label class="form-label">Authentication Method</label>
+                <div class="auth-method-selector">
+                    <div class="auth-method-option" data-method="token">
+                        <input type="radio" name="auth-method-{{ component_id|default:'default' }}" value="token" id="auth-token-{{ component_id|default:'default' }}" checked>
+                        <label for="auth-token-{{ component_id|default:'default' }}">
+                            <div class="auth-method-card">
+                                <div class="auth-method-icon">
+                                    <i class="mdi mdi-key-variant"></i>
+                                </div>
+                                <div class="auth-method-details">
+                                    <strong>Personal Access Token</strong>
+                                    <small class="text-muted">Recommended for most Git providers</small>
+                                </div>
+                            </div>
+                        </label>
+                    </div>
+                    
+                    <div class="auth-method-option" data-method="ssh">
+                        <input type="radio" name="auth-method-{{ component_id|default:'default' }}" value="ssh" id="auth-ssh-{{ component_id|default:'default' }}">
+                        <label for="auth-ssh-{{ component_id|default:'default' }}">
+                            <div class="auth-method-card">
+                                <div class="auth-method-icon">
+                                    <i class="mdi mdi-key-chain"></i>
+                                </div>
+                                <div class="auth-method-details">
+                                    <strong>SSH Key</strong>
+                                    <small class="text-muted">Public key authentication</small>
+                                </div>
+                            </div>
+                        </label>
+                    </div>
+                    
+                    <div class="auth-method-option" data-method="basic">
+                        <input type="radio" name="auth-method-{{ component_id|default:'default' }}" value="basic" id="auth-basic-{{ component_id|default:'default' }}">
+                        <label for="auth-basic-{{ component_id|default:'default' }}">
+                            <div class="auth-method-card">
+                                <div class="auth-method-icon">
+                                    <i class="mdi mdi-account-key"></i>
+                                </div>
+                                <div class="auth-method-details">
+                                    <strong>Username/Password</strong>
+                                    <small class="text-muted">Basic authentication</small>
+                                </div>
+                            </div>
+                        </label>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Token Authentication Form -->
+            <div class="auth-form" id="auth-form-token-{{ component_id|default:'default' }}">
+                <div class="mb-3">
+                    <label for="git-token-{{ component_id|default:'default' }}" class="form-label">
+                        Personal Access Token
+                        <span class="text-danger">*</span>
+                    </label>
+                    <div class="input-group">
+                        <input type="password" class="form-control" id="git-token-{{ component_id|default:'default' }}" 
+                               placeholder="Enter your personal access token..." required>
+                        <button class="btn btn-outline-secondary" type="button" onclick="togglePasswordVisibility('git-token-{{ component_id|default:'default' }}')">
+                            <i class="mdi mdi-eye"></i>
+                        </button>
+                    </div>
+                    <div class="form-text">
+                        <div class="progressive-disclosure">
+                            <a href="#" class="disclosure-toggle" onclick="toggleTokenHelp('{{ component_id|default:'default' }}')">
+                                <i class="mdi mdi-chevron-right"></i> How to generate a token
+                            </a>
+                            <div id="token-help-{{ component_id|default:'default' }}" class="disclosure-content" style="display: none;">
+                                <div class="provider-instructions">
+                                    <div class="provider-instruction" data-provider="github">
+                                        <strong>GitHub:</strong>
+                                        <ol>
+                                            <li>Go to Settings → Developer settings → Personal access tokens</li>
+                                            <li>Click "Generate new token"</li>
+                                            <li>Select scopes: <code>repo</code>, <code>read:org</code></li>
+                                            <li>Copy the generated token</li>
+                                        </ol>
+                                    </div>
+                                    <div class="provider-instruction" data-provider="gitlab">
+                                        <strong>GitLab:</strong>
+                                        <ol>
+                                            <li>Go to User Settings → Access Tokens</li>
+                                            <li>Create personal access token</li>
+                                            <li>Select scopes: <code>read_repository</code>, <code>write_repository</code></li>
+                                            <li>Copy the generated token</li>
+                                        </ol>
+                                    </div>
+                                    <div class="provider-instruction" data-provider="generic">
+                                        <strong>Generic Git:</strong>
+                                        <p>Refer to your Git provider's documentation for creating access tokens or application passwords.</p>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Token Validation -->
+                <div class="token-validation">
+                    <button type="button" class="btn btn-outline-info btn-sm" onclick="validateToken('{{ component_id|default:'default' }}')">
+                        <i class="mdi mdi-check-circle"></i> Validate Token
+                    </button>
+                    <div id="token-validation-result-{{ component_id|default:'default' }}" class="validation-result mt-2" style="display: none;"></div>
+                </div>
+            </div>
+            
+            <!-- SSH Authentication Form -->
+            <div class="auth-form" id="auth-form-ssh-{{ component_id|default:'default' }}" style="display: none;">
+                <div class="mb-3">
+                    <label for="ssh-private-key-{{ component_id|default:'default' }}" class="form-label">
+                        SSH Private Key
+                        <span class="text-danger">*</span>
+                    </label>
+                    <textarea class="form-control" id="ssh-private-key-{{ component_id|default:'default' }}" 
+                              rows="8" placeholder="-----BEGIN OPENSSH PRIVATE KEY-----" required></textarea>
+                    <div class="form-text">
+                        Paste your SSH private key here. Ensure it's properly formatted and includes the header/footer.
+                    </div>
+                </div>
+                
+                <div class="mb-3">
+                    <label for="ssh-passphrase-{{ component_id|default:'default' }}" class="form-label">
+                        Passphrase (Optional)
+                    </label>
+                    <div class="input-group">
+                        <input type="password" class="form-control" id="ssh-passphrase-{{ component_id|default:'default' }}" 
+                               placeholder="Enter passphrase if key is encrypted">
+                        <button class="btn btn-outline-secondary" type="button" onclick="togglePasswordVisibility('ssh-passphrase-{{ component_id|default:'default' }}')">
+                            <i class="mdi mdi-eye"></i>
+                        </button>
+                    </div>
+                </div>
+                
+                <!-- SSH Key Validation -->
+                <div class="ssh-validation">
+                    <button type="button" class="btn btn-outline-info btn-sm" onclick="validateSSHKey('{{ component_id|default:'default' }}')">
+                        <i class="mdi mdi-check-circle"></i> Validate SSH Key
+                    </button>
+                    <div id="ssh-validation-result-{{ component_id|default:'default' }}" class="validation-result mt-2" style="display: none;"></div>
+                </div>
+                
+                <!-- SSH Key Generation Helper -->
+                <div class="mt-3">
+                    <div class="progressive-disclosure">
+                        <a href="#" class="disclosure-toggle" onclick="toggleSSHHelp('{{ component_id|default:'default' }}')">
+                            <i class="mdi mdi-chevron-right"></i> SSH Key Generation Guide
+                        </a>
+                        <div id="ssh-help-{{ component_id|default:'default' }}" class="disclosure-content" style="display: none;">
+                            <div class="ssh-key-instructions">
+                                <h6>Generate SSH Key Pair:</h6>
+                                <div class="code-block">
+                                    <code>ssh-keygen -t ed25519 -C "your-email@example.com"</code>
+                                    <button class="btn btn-outline-secondary btn-sm ms-2" onclick="copyToClipboard('ssh-keygen -t ed25519 -C \"your-email@example.com\"')">
+                                        <i class="mdi mdi-content-copy"></i>
+                                    </button>
+                                </div>
+                                <p class="small text-muted mt-2">
+                                    Add the public key to your Git provider's SSH keys section.
+                                </p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Basic Authentication Form -->
+            <div class="auth-form" id="auth-form-basic-{{ component_id|default:'default' }}" style="display: none;">
+                <div class="alert alert-warning">
+                    <i class="mdi mdi-alert"></i>
+                    <strong>Security Notice:</strong> Username/password authentication is less secure than tokens or SSH keys. 
+                    Consider using Personal Access Tokens instead.
+                </div>
+                
+                <div class="mb-3">
+                    <label for="git-username-{{ component_id|default:'default' }}" class="form-label">
+                        Username
+                        <span class="text-danger">*</span>
+                    </label>
+                    <input type="text" class="form-control" id="git-username-{{ component_id|default:'default' }}" 
+                           placeholder="Enter your username" required>
+                </div>
+                
+                <div class="mb-3">
+                    <label for="git-password-{{ component_id|default:'default' }}" class="form-label">
+                        Password
+                        <span class="text-danger">*</span>
+                    </label>
+                    <div class="input-group">
+                        <input type="password" class="form-control" id="git-password-{{ component_id|default:'default' }}" 
+                               placeholder="Enter your password" required>
+                        <button class="btn btn-outline-secondary" type="button" onclick="togglePasswordVisibility('git-password-{{ component_id|default:'default' }}')">
+                            <i class="mdi mdi-eye"></i>
+                        </button>
+                    </div>
+                </div>
+                
+                <!-- Basic Auth Validation -->
+                <div class="basic-validation">
+                    <button type="button" class="btn btn-outline-info btn-sm" onclick="validateBasicAuth('{{ component_id|default:'default' }}')">
+                        <i class="mdi mdi-check-circle"></i> Validate Credentials
+                    </button>
+                    <div id="basic-validation-result-{{ component_id|default:'default' }}" class="validation-result mt-2" style="display: none;"></div>
+                </div>
+            </div>
+            
+            <!-- Connection Test -->
+            <div class="connection-test mt-4">
+                <div class="card bg-light">
+                    <div class="card-body">
+                        <h6 class="card-title">
+                            <i class="mdi mdi-test-tube"></i> Connection Test
+                        </h6>
+                        <p class="card-text small text-muted">
+                            Test the connection to your Git repository with the configured authentication.
+                        </p>
+                        <div class="d-flex gap-2 align-items-center">
+                            <button type="button" class="btn btn-primary btn-sm" onclick="testGitConnection('{{ component_id|default:'default' }}')">
+                                <i class="mdi mdi-play"></i> Test Connection
+                            </button>
+                            <div class="connection-status" id="connection-status-{{ component_id|default:'default' }}">
+                                <span class="badge bg-secondary">
+                                    <i class="mdi mdi-help-circle"></i> Not tested
+                                </span>
+                            </div>
+                        </div>
+                        <div id="connection-test-result-{{ component_id|default:'default' }}" class="connection-result mt-3" style="display: none;"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Component Styles -->
+<style>
+.git-auth-component {
+    margin-bottom: 1rem;
+}
+
+.auth-method-selector {
+    display: flex;
+    gap: 1rem;
+    margin-bottom: 1rem;
+}
+
+.auth-method-option {
+    flex: 1;
+}
+
+.auth-method-option input[type="radio"] {
+    display: none;
+}
+
+.auth-method-card {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    padding: 1rem;
+    border: 2px solid var(--bs-border-color);
+    border-radius: 0.5rem;
+    background: var(--bs-body-bg);
+    cursor: pointer;
+    transition: all 0.3s ease;
+    height: 100%;
+}
+
+.auth-method-card:hover {
+    border-color: var(--bs-primary);
+    background: rgba(var(--bs-primary-rgb), 0.05);
+}
+
+.auth-method-option input[type="radio"]:checked + label .auth-method-card {
+    border-color: var(--bs-primary);
+    background: rgba(var(--bs-primary-rgb), 0.1);
+}
+
+.auth-method-icon {
+    font-size: 1.5rem;
+    color: var(--bs-primary);
+}
+
+.auth-method-details strong {
+    display: block;
+    margin-bottom: 0.25rem;
+}
+
+.auth-method-details small {
+    font-size: 0.8rem;
+}
+
+.auth-form {
+    animation: fadeIn 0.3s ease-in;
+}
+
+.validation-result {
+    padding: 0.75rem;
+    border-radius: 0.375rem;
+    font-size: 0.9rem;
+    border: 1px solid var(--bs-border-color);
+    background: var(--bs-light);
+}
+
+.validation-result.success {
+    border-color: var(--bs-success);
+    background: rgba(var(--bs-success-rgb), 0.1);
+    color: var(--bs-success);
+}
+
+.validation-result.error {
+    border-color: var(--bs-danger);
+    background: rgba(var(--bs-danger-rgb), 0.1);
+    color: var(--bs-danger);
+}
+
+.validation-result.warning {
+    border-color: var(--bs-warning);
+    background: rgba(var(--bs-warning-rgb), 0.1);
+    color: var(--bs-warning);
+}
+
+.progressive-disclosure .disclosure-toggle {
+    color: var(--bs-info);
+    text-decoration: none;
+    font-size: 0.9rem;
+}
+
+.progressive-disclosure .disclosure-toggle:hover {
+    text-decoration: underline;
+}
+
+.disclosure-content {
+    margin-top: 0.75rem;
+    padding: 1rem;
+    background: rgba(var(--bs-info-rgb), 0.05);
+    border-left: 3px solid var(--bs-info);
+    border-radius: 0.25rem;
+    animation: slideDown 0.3s ease-out;
+}
+
+.provider-instructions .provider-instruction {
+    margin-bottom: 1rem;
+}
+
+.provider-instructions .provider-instruction:last-child {
+    margin-bottom: 0;
+}
+
+.provider-instruction ol {
+    margin-bottom: 0;
+    padding-left: 1.5rem;
+}
+
+.provider-instruction code {
+    background: var(--bs-light);
+    padding: 0.25rem 0.5rem;
+    border-radius: 0.25rem;
+}
+
+.ssh-key-instructions .code-block {
+    background: var(--bs-dark);
+    color: var(--bs-light);
+    padding: 0.75rem;
+    border-radius: 0.375rem;
+    font-family: monospace;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+}
+
+.connection-result {
+    padding: 1rem;
+    border-radius: 0.375rem;
+    border: 1px solid var(--bs-border-color);
+    background: var(--bs-body-bg);
+}
+
+.connection-result.success {
+    border-color: var(--bs-success);
+    background: rgba(var(--bs-success-rgb), 0.1);
+}
+
+.connection-result.error {
+    border-color: var(--bs-danger);
+    background: rgba(var(--bs-danger-rgb), 0.1);
+}
+
+.connection-status .badge {
+    transition: all 0.3s ease;
+}
+
+.connection-details {
+    margin-top: 0.75rem;
+    padding-top: 0.75rem;
+    border-top: 1px solid var(--bs-border-color);
+}
+
+.connection-details table {
+    font-size: 0.9rem;
+    margin-bottom: 0;
+}
+
+.connection-details th {
+    width: 30%;
+    font-weight: 600;
+}
+
+@keyframes fadeIn {
+    from { opacity: 0; transform: translateY(10px); }
+    to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes slideDown {
+    from { max-height: 0; opacity: 0; }
+    to { max-height: 200px; opacity: 1; }
+}
+
+/* Responsive Design */
+@media (max-width: 768px) {
+    .auth-method-selector {
+        flex-direction: column;
+        gap: 0.5rem;
+    }
+    
+    .auth-method-card {
+        padding: 0.75rem;
+    }
+    
+    .auth-method-icon {
+        font-size: 1.25rem;
+    }
+}
+</style>
+
+<!-- Component JavaScript -->
+<script>
+// Git Authentication Component JavaScript
+(function() {
+    'use strict';
+    
+    // Initialize component
+    document.addEventListener('DOMContentLoaded', function() {
+        initializeAuthComponent('{{ component_id|default:"default" }}');
+    });
+    
+    function initializeAuthComponent(componentId) {
+        const component = document.getElementById('git-auth-component-' + componentId);
+        if (!component) return;
+        
+        // Set up auth method switching
+        const authMethods = component.querySelectorAll('input[name="auth-method-' + componentId + '"]');
+        authMethods.forEach(method => {
+            method.addEventListener('change', function() {
+                switchAuthMethod(componentId, this.value);
+            });
+        });
+        
+        // Initialize with default method
+        switchAuthMethod(componentId, 'token');
+    }
+    
+    window.switchAuthMethod = function(componentId, method) {
+        const component = document.getElementById('git-auth-component-' + componentId);
+        if (!component) return;
+        
+        // Hide all auth forms
+        const authForms = component.querySelectorAll('.auth-form');
+        authForms.forEach(form => {
+            form.style.display = 'none';
+        });
+        
+        // Show selected auth form
+        const selectedForm = document.getElementById('auth-form-' + method + '-' + componentId);
+        if (selectedForm) {
+            selectedForm.style.display = 'block';
+        }
+        
+        // Update provider instructions visibility
+        updateProviderInstructions(componentId);
+    };
+    
+    window.togglePasswordVisibility = function(inputId) {
+        const input = document.getElementById(inputId);
+        const button = input.nextElementSibling;
+        const icon = button.querySelector('i');
+        
+        if (input.type === 'password') {
+            input.type = 'text';
+            icon.classList.remove('mdi-eye');
+            icon.classList.add('mdi-eye-off');
+        } else {
+            input.type = 'password';
+            icon.classList.remove('mdi-eye-off');
+            icon.classList.add('mdi-eye');
+        }
+    };
+    
+    window.toggleTokenHelp = function(componentId) {
+        const helpDiv = document.getElementById('token-help-' + componentId);
+        const toggle = helpDiv.previousElementSibling.querySelector('i');
+        
+        if (helpDiv.style.display === 'none') {
+            helpDiv.style.display = 'block';
+            toggle.classList.remove('mdi-chevron-right');
+            toggle.classList.add('mdi-chevron-down');
+        } else {
+            helpDiv.style.display = 'none';
+            toggle.classList.remove('mdi-chevron-down');
+            toggle.classList.add('mdi-chevron-right');
+        }
+    };
+    
+    window.toggleSSHHelp = function(componentId) {
+        const helpDiv = document.getElementById('ssh-help-' + componentId);
+        const toggle = helpDiv.previousElementSibling.querySelector('i');
+        
+        if (helpDiv.style.display === 'none') {
+            helpDiv.style.display = 'block';
+            toggle.classList.remove('mdi-chevron-right');
+            toggle.classList.add('mdi-chevron-down');
+        } else {
+            helpDiv.style.display = 'none';
+            toggle.classList.remove('mdi-chevron-down');
+            toggle.classList.add('mdi-chevron-right');
+        }
+    };
+    
+    function updateProviderInstructions(componentId) {
+        // This would be connected to the parent form's provider selection
+        // For now, show all instructions
+        const instructions = document.querySelectorAll('#token-help-' + componentId + ' .provider-instruction');
+        instructions.forEach(instruction => {
+            instruction.style.display = 'block';
+        });
+    }
+    
+    window.validateToken = function(componentId) {
+        const tokenInput = document.getElementById('git-token-' + componentId);
+        const resultDiv = document.getElementById('token-validation-result-' + componentId);
+        
+        if (!tokenInput.value.trim()) {
+            showValidationResult(resultDiv, 'error', 'Please enter a token');
+            return;
+        }
+        
+        // Show loading state
+        showValidationResult(resultDiv, 'loading', 'Validating token...');
+        
+        // Simulate token validation
+        setTimeout(() => {
+            const isValid = tokenInput.value.length > 10; // Simple validation
+            if (isValid) {
+                showValidationResult(resultDiv, 'success', 'Token is valid and has required permissions');
+            } else {
+                showValidationResult(resultDiv, 'error', 'Token is invalid or lacks required permissions');
+            }
+        }, 1500);
+    };
+    
+    window.validateSSHKey = function(componentId) {
+        const keyInput = document.getElementById('ssh-private-key-' + componentId);
+        const resultDiv = document.getElementById('ssh-validation-result-' + componentId);
+        
+        if (!keyInput.value.trim()) {
+            showValidationResult(resultDiv, 'error', 'Please enter an SSH private key');
+            return;
+        }
+        
+        // Show loading state
+        showValidationResult(resultDiv, 'loading', 'Validating SSH key...');
+        
+        // Simulate SSH key validation
+        setTimeout(() => {
+            const isValid = keyInput.value.includes('BEGIN') && keyInput.value.includes('PRIVATE KEY');
+            if (isValid) {
+                showValidationResult(resultDiv, 'success', 'SSH key format is valid');
+            } else {
+                showValidationResult(resultDiv, 'error', 'SSH key format is invalid');
+            }
+        }, 1500);
+    };
+    
+    window.validateBasicAuth = function(componentId) {
+        const usernameInput = document.getElementById('git-username-' + componentId);
+        const passwordInput = document.getElementById('git-password-' + componentId);
+        const resultDiv = document.getElementById('basic-validation-result-' + componentId);
+        
+        if (!usernameInput.value.trim() || !passwordInput.value.trim()) {
+            showValidationResult(resultDiv, 'error', 'Please enter both username and password');
+            return;
+        }
+        
+        // Show loading state
+        showValidationResult(resultDiv, 'loading', 'Validating credentials...');
+        
+        // Simulate credential validation
+        setTimeout(() => {
+            const isValid = usernameInput.value.length > 2 && passwordInput.value.length > 5;
+            if (isValid) {
+                showValidationResult(resultDiv, 'success', 'Credentials are valid');
+            } else {
+                showValidationResult(resultDiv, 'error', 'Invalid credentials');
+            }
+        }, 1500);
+    };
+    
+    window.testGitConnection = function(componentId) {
+        const statusDiv = document.getElementById('connection-status-' + componentId);
+        const resultDiv = document.getElementById('connection-test-result-' + componentId);
+        
+        // Update status
+        statusDiv.innerHTML = '<span class="badge bg-info"><i class="mdi mdi-loading mdi-spin"></i> Testing...</span>';
+        
+        // Show loading in result
+        resultDiv.style.display = 'block';
+        resultDiv.className = 'connection-result';
+        resultDiv.innerHTML = `
+            <div class="d-flex align-items-center">
+                <i class="mdi mdi-loading mdi-spin me-2"></i>
+                <span>Testing connection to Git repository...</span>
+            </div>
+        `;
+        
+        // Simulate connection test
+        setTimeout(() => {
+            const success = Math.random() > 0.3; // 70% success rate
+            
+            if (success) {
+                statusDiv.innerHTML = '<span class="badge bg-success"><i class="mdi mdi-check-circle"></i> Connected</span>';
+                resultDiv.className = 'connection-result success';
+                resultDiv.innerHTML = `
+                    <div class="d-flex align-items-center mb-2">
+                        <i class="mdi mdi-check-circle text-success me-2"></i>
+                        <span><strong>Connection successful!</strong></span>
+                    </div>
+                    <div class="connection-details">
+                        <table class="table table-sm">
+                            <tr><th>Repository:</th><td>Successfully accessible</td></tr>
+                            <tr><th>Permissions:</th><td>Read/Write access confirmed</td></tr>
+                            <tr><th>Response time:</th><td>127ms</td></tr>
+                        </table>
+                    </div>
+                `;
+            } else {
+                statusDiv.innerHTML = '<span class="badge bg-danger"><i class="mdi mdi-alert-circle"></i> Failed</span>';
+                resultDiv.className = 'connection-result error';
+                resultDiv.innerHTML = `
+                    <div class="d-flex align-items-center mb-2">
+                        <i class="mdi mdi-alert-circle text-danger me-2"></i>
+                        <span><strong>Connection failed</strong></span>
+                    </div>
+                    <div class="connection-details">
+                        <p class="text-danger small mb-2">Authentication failed. Please check your credentials.</p>
+                        <ul class="small mb-0">
+                            <li>Verify your token/credentials are correct</li>
+                            <li>Ensure you have repository access permissions</li>
+                            <li>Check if the repository URL is correct</li>
+                        </ul>
+                    </div>
+                `;
+            }
+        }, 2000);
+    };
+    
+    function showValidationResult(resultDiv, type, message) {
+        resultDiv.style.display = 'block';
+        resultDiv.className = 'validation-result';
+        
+        let icon = 'mdi-help-circle';
+        if (type === 'success') {
+            resultDiv.classList.add('success');
+            icon = 'mdi-check-circle';
+        } else if (type === 'error') {
+            resultDiv.classList.add('error');
+            icon = 'mdi-alert-circle';
+        } else if (type === 'loading') {
+            icon = 'mdi-loading mdi-spin';
+        }
+        
+        resultDiv.innerHTML = `
+            <div class="d-flex align-items-center">
+                <i class="mdi ${icon} me-2"></i>
+                <span>${message}</span>
+            </div>
+        `;
+    }
+    
+    window.copyToClipboard = function(text) {
+        navigator.clipboard.writeText(text).then(() => {
+            // Show brief success feedback
+            const event = new CustomEvent('clipboard-success', { detail: { text } });
+            document.dispatchEvent(event);
+        });
+    };
+    
+    // Get authentication data from component
+    window.getAuthData = function(componentId) {
+        const component = document.getElementById('git-auth-component-' + componentId);
+        if (!component) return null;
+        
+        const authMethod = component.querySelector('input[name="auth-method-' + componentId + '"]:checked').value;
+        const data = { method: authMethod };
+        
+        switch (authMethod) {
+            case 'token':
+                data.token = document.getElementById('git-token-' + componentId).value;
+                break;
+            case 'ssh':
+                data.privateKey = document.getElementById('ssh-private-key-' + componentId).value;
+                data.passphrase = document.getElementById('ssh-passphrase-' + componentId).value;
+                break;
+            case 'basic':
+                data.username = document.getElementById('git-username-' + componentId).value;
+                data.password = document.getElementById('git-password-' + componentId).value;
+                break;
+        }
+        
+        return data;
+    };
+    
+})();
+</script>

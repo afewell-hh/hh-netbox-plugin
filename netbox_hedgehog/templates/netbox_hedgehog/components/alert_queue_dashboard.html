@@ -1,0 +1,321 @@
+<!-- Reconciliation Alert Queue Dashboard -->
+<!-- Provides priority-based alert filtering and management -->
+
+<div class="alert-queue-dashboard" id="alert-queue-{{ component_id|default:'default' }}">
+    <div class="card">
+        <div class="card-header">
+            <div class="d-flex justify-content-between align-items-center">
+                <h6 class="mb-0">
+                    <i class="mdi mdi-alert"></i> Reconciliation Alert Queue
+                </h6>
+                <div class="alert-actions">
+                    <button class="btn btn-sm btn-outline-primary" onclick="refreshAlerts('{{ component_id|default:'default' }}')">
+                        <i class="mdi mdi-refresh"></i> Refresh
+                    </button>
+                    <button class="btn btn-sm btn-outline-success" onclick="resolveAllSelected('{{ component_id|default:'default' }}')">
+                        <i class="mdi mdi-check-all"></i> Resolve Selected
+                    </button>
+                </div>
+            </div>
+        </div>
+        <div class="card-body">
+            <!-- Alert Summary -->
+            <div class="alert-summary mb-3">
+                <div class="row">
+                    <div class="col-md-3">
+                        <div class="summary-card critical">
+                            <div class="summary-value">0</div>
+                            <div class="summary-label">Critical</div>
+                        </div>
+                    </div>
+                    <div class="col-md-3">
+                        <div class="summary-card high">
+                            <div class="summary-value">2</div>
+                            <div class="summary-label">High</div>
+                        </div>
+                    </div>
+                    <div class="col-md-3">
+                        <div class="summary-card medium">
+                            <div class="summary-value">5</div>
+                            <div class="summary-label">Medium</div>
+                        </div>
+                    </div>
+                    <div class="col-md-3">
+                        <div class="summary-card low">
+                            <div class="summary-value">3</div>
+                            <div class="summary-label">Low</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Filter Controls -->
+            <div class="alert-filters mb-3">
+                <div class="row">
+                    <div class="col-md-4">
+                        <select class="form-select form-select-sm" id="priority-filter-{{ component_id|default:'default' }}">
+                            <option value="">All Priorities</option>
+                            <option value="critical">Critical</option>
+                            <option value="high">High</option>
+                            <option value="medium">Medium</option>
+                            <option value="low">Low</option>
+                        </select>
+                    </div>
+                    <div class="col-md-4">
+                        <select class="form-select form-select-sm" id="type-filter-{{ component_id|default:'default' }}">
+                            <option value="">All Types</option>
+                            <option value="drift">Drift Detected</option>
+                            <option value="orphaned">Orphaned Resource</option>
+                            <option value="conflict">Merge Conflict</option>
+                            <option value="sync-failed">Sync Failed</option>
+                        </select>
+                    </div>
+                    <div class="col-md-4">
+                        <input type="text" class="form-control form-control-sm" placeholder="Search alerts..." id="search-filter-{{ component_id|default:'default' }}">
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Alert List -->
+            <div class="alert-list" id="alert-list-{{ component_id|default:'default' }}">
+                <!-- Alerts will be populated here -->
+            </div>
+        </div>
+    </div>
+</div>
+
+<style>
+.alert-queue-dashboard {
+    margin-bottom: 1rem;
+}
+
+.summary-card {
+    text-align: center;
+    padding: 1rem;
+    border-radius: 0.375rem;
+    color: white;
+}
+
+.summary-card.critical { background: #DC2626; }
+.summary-card.high { background: #EF4444; }
+.summary-card.medium { background: #F59E0B; }
+.summary-card.low { background: #3B82F6; }
+
+.summary-value {
+    font-size: 2rem;
+    font-weight: bold;
+}
+
+.summary-label {
+    font-size: 0.875rem;
+}
+
+.alert-item {
+    border: 1px solid var(--bs-border-color);
+    border-radius: 0.375rem;
+    padding: 1rem;
+    margin-bottom: 0.75rem;
+    background: var(--bs-body-bg);
+}
+
+.alert-item.critical { border-left: 4px solid #DC2626; }
+.alert-item.high { border-left: 4px solid #EF4444; }
+.alert-item.medium { border-left: 4px solid #F59E0B; }
+.alert-item.low { border-left: 4px solid #3B82F6; }
+
+.alert-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: start;
+    margin-bottom: 0.5rem;
+}
+
+.alert-title {
+    font-weight: 600;
+    font-size: 0.95rem;
+}
+
+.alert-meta {
+    display: flex;
+    gap: 1rem;
+    font-size: 0.875rem;
+    color: var(--bs-secondary);
+}
+
+.alert-description {
+    font-size: 0.875rem;
+    color: var(--bs-secondary);
+    margin-bottom: 0.75rem;
+}
+
+.alert-actions-group {
+    display: flex;
+    gap: 0.5rem;
+}
+
+.priority-badge {
+    font-size: 0.75rem;
+    padding: 0.25rem 0.5rem;
+    border-radius: 0.25rem;
+    font-weight: 600;
+    color: white;
+}
+
+.priority-badge.critical { background: #DC2626; }
+.priority-badge.high { background: #EF4444; }
+.priority-badge.medium { background: #F59E0B; }
+.priority-badge.low { background: #3B82F6; }
+</style>
+
+<script>
+(function() {
+    'use strict';
+    
+    const mockAlerts = [
+        {
+            id: 1,
+            priority: 'high',
+            type: 'drift',
+            title: 'VPC Configuration Drift Detected',
+            description: 'Production VPC configuration in cluster differs from Git repository',
+            resource: 'vpc/production-vpc',
+            created: '2 hours ago',
+            actions: ['IMPORT_TO_GIT', 'UPDATE_CLUSTER', 'IGNORE']
+        },
+        {
+            id: 2,
+            priority: 'high',
+            type: 'orphaned',
+            title: 'Orphaned Switch Configuration',
+            description: 'Switch sw-leaf-01 exists in cluster but not in Git',
+            resource: 'switch/sw-leaf-01',
+            created: '3 hours ago',
+            actions: ['IMPORT_TO_GIT', 'DELETE_FROM_CLUSTER', 'IGNORE']
+        },
+        {
+            id: 3,
+            priority: 'medium',
+            type: 'drift',
+            title: 'External Peering Configuration Changed',
+            description: 'BGP peer configuration modified outside of Git',
+            resource: 'external/bgp-peer-01',
+            created: '1 day ago',
+            actions: ['IMPORT_TO_GIT', 'UPDATE_CLUSTER', 'REVIEW']
+        }
+    ];
+    
+    document.addEventListener('DOMContentLoaded', function() {
+        initializeAlertQueue('{{ component_id|default:"default" }}');
+    });
+    
+    function initializeAlertQueue(componentId) {
+        renderAlerts(componentId, mockAlerts);
+        
+        // Set up filters
+        ['priority-filter', 'type-filter', 'search-filter'].forEach(filterId => {
+            const element = document.getElementById(`${filterId}-${componentId}`);
+            if (element) {
+                element.addEventListener('change', () => filterAlerts(componentId));
+                element.addEventListener('input', () => filterAlerts(componentId));
+            }
+        });
+    }
+    
+    function renderAlerts(componentId, alerts) {
+        const container = document.getElementById(`alert-list-${componentId}`);
+        
+        if (alerts.length === 0) {
+            container.innerHTML = '<div class="alert alert-success">No active alerts</div>';
+            return;
+        }
+        
+        container.innerHTML = alerts.map(alert => `
+            <div class="alert-item ${alert.priority}" data-alert-id="${alert.id}">
+                <div class="alert-header">
+                    <div>
+                        <input type="checkbox" class="form-check-input me-2" id="alert-check-${alert.id}">
+                        <span class="alert-title">${alert.title}</span>
+                        <span class="priority-badge ${alert.priority} ms-2">${alert.priority.toUpperCase()}</span>
+                    </div>
+                    <button class="btn btn-sm btn-outline-secondary" onclick="showAlertDetails(${alert.id})">
+                        <i class="mdi mdi-eye"></i>
+                    </button>
+                </div>
+                <div class="alert-description">${alert.description}</div>
+                <div class="alert-meta">
+                    <span><i class="mdi mdi-file-tree"></i> ${alert.resource}</span>
+                    <span><i class="mdi mdi-clock-outline"></i> ${alert.created}</span>
+                    <span><i class="mdi mdi-alert-circle"></i> ${alert.type}</span>
+                </div>
+                <div class="alert-actions-group mt-2">
+                    ${alert.actions.map(action => `
+                        <button class="btn btn-sm btn-outline-primary" onclick="resolveAlert(${alert.id}, '${action}')">
+                            ${getActionLabel(action)}
+                        </button>
+                    `).join('')}
+                </div>
+            </div>
+        `).join('');
+    }
+    
+    function getActionLabel(action) {
+        const labels = {
+            'IMPORT_TO_GIT': '<i class="mdi mdi-import"></i> Import to Git',
+            'UPDATE_CLUSTER': '<i class="mdi mdi-sync"></i> Update Cluster',
+            'DELETE_FROM_CLUSTER': '<i class="mdi mdi-delete"></i> Delete',
+            'IGNORE': '<i class="mdi mdi-eye-off"></i> Ignore',
+            'REVIEW': '<i class="mdi mdi-magnify"></i> Review'
+        };
+        return labels[action] || action;
+    }
+    
+    function filterAlerts(componentId) {
+        const priority = document.getElementById(`priority-filter-${componentId}`).value;
+        const type = document.getElementById(`type-filter-${componentId}`).value;
+        const search = document.getElementById(`search-filter-${componentId}`).value.toLowerCase();
+        
+        const filtered = mockAlerts.filter(alert => {
+            if (priority && alert.priority !== priority) return false;
+            if (type && alert.type !== type) return false;
+            if (search && !alert.title.toLowerCase().includes(search) && 
+                !alert.description.toLowerCase().includes(search)) return false;
+            return true;
+        });
+        
+        renderAlerts(componentId, filtered);
+    }
+    
+    window.refreshAlerts = function(componentId) {
+        // Simulate refresh
+        const container = document.getElementById(`alert-list-${componentId}`);
+        container.innerHTML = '<div class="text-center"><i class="mdi mdi-loading mdi-spin"></i> Refreshing alerts...</div>';
+        
+        setTimeout(() => {
+            renderAlerts(componentId, mockAlerts);
+        }, 1000);
+    };
+    
+    window.resolveAlert = function(alertId, action) {
+        if (confirm(`Are you sure you want to ${action} for this alert?`)) {
+            alert(`Resolving alert ${alertId} with action: ${action}`);
+        }
+    };
+    
+    window.resolveAllSelected = function(componentId) {
+        const selected = document.querySelectorAll(`#alert-list-${componentId} input[type="checkbox"]:checked`);
+        if (selected.length === 0) {
+            alert('No alerts selected');
+            return;
+        }
+        
+        if (confirm(`Resolve ${selected.length} selected alerts?`)) {
+            alert(`Resolving ${selected.length} alerts...`);
+        }
+    };
+    
+    window.showAlertDetails = function(alertId) {
+        alert(`Showing details for alert ${alertId}`);
+    };
+    
+})();
+</script>

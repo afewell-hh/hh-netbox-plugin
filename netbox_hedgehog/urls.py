@@ -5,6 +5,20 @@ from netbox.views.generic import ObjectView
 from .models import HedgehogFabric, VPC, External
 from .forms import HedgehogFabricForm, VPCForm, ExternalForm
 from .simple_sync import SimpleFabricSyncView, SimpleFabricTestConnectionView
+from .utils.webhook_handler import webhook_handler, webhook_status
+from .utils.environment_api import (
+    EnvironmentListView, EnvironmentHealthView, BranchComparisonView,
+    DriftDetectionView, PromotionPlanView, PipelineStatusView, FrontendDataView
+)
+from .utils.gitops_integration import GitOpsStatusView, GitOpsSyncView
+# Import GitOps onboarding views
+from .views.gitops_onboarding_views import (
+    GitOpsOnboardingWizardView, GitConnectionTestView, YAMLDiscoveryView,
+    RepositoryInitializeView, FabricCreationView, StateTransitionView,
+    ResourceStateHistoryView, ValidTransitionsView, BulkStateTransitionView
+)
+# Import fabric views
+from .views.fabric_views import ArgoCDSetupWizardView
 # Import VPC API views
 from .views.vpc_api import (
     VPCListView, VPCView, VPCEditView, VPCDeleteView,
@@ -40,6 +54,18 @@ class OverviewView(TemplateView):
         context['fabric_count'] = HedgehogFabric.objects.count()
         context['vpc_count'] = VPC.objects.count()
         context['recent_fabrics'] = HedgehogFabric.objects.order_by('-created')[:5]
+        
+        # GitOps statistics (MVP2)
+        fabrics = HedgehogFabric.objects.all()
+        git_connected = fabrics.exclude(git_repository_url__isnull=True).exclude(git_repository_url='')
+        
+        context['gitops_stats'] = {
+            'git_connected_count': git_connected.count(),
+            'in_sync_count': git_connected.filter(drift_status='in_sync').count(),
+            'drift_detected_count': git_connected.filter(drift_status='drift_detected').count(),
+            'manual_count': fabrics.filter(git_repository_url__isnull=True).count() + fabrics.filter(git_repository_url='').count(),
+        }
+        
         return context
 
 # Fabric Views
@@ -85,6 +111,9 @@ urlpatterns = [
     path('fabrics/<int:pk>/delete/', FabricDeleteView.as_view(), name='fabric_delete'),
     path('fabrics/<int:pk>/sync/', SimpleFabricSyncView.as_view(), name='fabric_sync'),
     path('fabrics/<int:pk>/test-connection/', SimpleFabricTestConnectionView.as_view(), name='fabric_test_connection'),
+    
+    # ArgoCD Setup Wizard (Week 2 MVP2)
+    path('fabrics/<int:pk>/argocd-setup/', ArgoCDSetupWizardView.as_view(), name='argocd_setup_wizard'),
     
     # CRD URLs - temporarily disabled
     # path('fabrics/<int:pk>/crds/', FabricCRDListView.as_view(), name='fabric_crds'),
@@ -188,6 +217,39 @@ urlpatterns = [
     path('vlan-namespaces/<int:pk>/edit/', VLANNamespaceEditView.as_view(), name='vlannamespace_edit'),
     path('vlan-namespaces/<int:pk>/delete/', VLANNamespaceDeleteView.as_view(), name='vlannamespace_delete'),
     path('vlan-namespaces/<int:pk>/changelog/', VLANNamespaceView.as_view(), name='vlannamespace_changelog'),
+    
+    # Webhook URLs
+    path('webhooks/git/', webhook_handler, name='git_webhook'),
+    path('webhooks/status/', webhook_status, name='webhook_status'),
+    
+    # GitOps UI Integration API URLs
+    path('api/fabrics/<int:fabric_id>/gitops/status/', GitOpsStatusView.as_view(), name='gitops_status'),
+    path('api/fabrics/<int:fabric_id>/gitops/sync/', GitOpsSyncView.as_view(), name='gitops_sync'),
+    
+    # Multi-Environment API URLs
+    path('api/fabrics/<int:fabric_id>/environments/', EnvironmentListView.as_view(), name='environment_list'),
+    path('api/fabrics/<int:fabric_id>/environments/health/', EnvironmentHealthView.as_view(), name='environment_health_all'),
+    path('api/fabrics/<int:fabric_id>/environments/<str:environment>/health/', EnvironmentHealthView.as_view(), name='environment_health'),
+    path('api/fabrics/<int:fabric_id>/environments/compare/', BranchComparisonView.as_view(), name='branch_comparison'),
+    path('api/fabrics/<int:fabric_id>/environments/drift/', DriftDetectionView.as_view(), name='drift_detection'),
+    path('api/fabrics/<int:fabric_id>/environments/promotion/', PromotionPlanView.as_view(), name='promotion_plan'),
+    path('api/fabrics/<int:fabric_id>/pipeline/', PipelineStatusView.as_view(), name='pipeline_status'),
+    path('api/fabrics/<int:fabric_id>/frontend-data/', FrontendDataView.as_view(), name='frontend_data'),
+    
+    # GitOps Integration (Week 6 - Backend Connected)
+    path('gitops-onboarding/', GitOpsOnboardingWizardView.as_view(), name='gitops_onboarding'),
+    
+    # GitOps Onboarding API Endpoints
+    path('api/gitops/test-connection/', GitConnectionTestView.as_view(), name='gitops_test_connection'),
+    path('api/gitops/discover-yaml/', YAMLDiscoveryView.as_view(), name='gitops_discover_yaml'),
+    path('api/gitops/initialize-repository/', RepositoryInitializeView.as_view(), name='gitops_initialize_repository'),
+    path('api/gitops/create-fabric/', FabricCreationView.as_view(), name='gitops_create_fabric'),
+    
+    # State Transition API Endpoints
+    path('api/gitops/state-transition/', StateTransitionView.as_view(), name='gitops_state_transition'),
+    path('api/gitops/resources/<int:resource_id>/history/', ResourceStateHistoryView.as_view(), name='gitops_resource_history'),
+    path('api/gitops/resources/<int:resource_id>/valid-transitions/', ValidTransitionsView.as_view(), name='gitops_valid_transitions'),
+    path('api/gitops/bulk-state-transition/', BulkStateTransitionView.as_view(), name='gitops_bulk_state_transition'),
     
     # Other URLs
     path('topology/', TopologyView.as_view(), name='topology'),

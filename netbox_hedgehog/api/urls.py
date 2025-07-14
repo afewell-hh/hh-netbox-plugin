@@ -9,7 +9,7 @@ router = NetBoxRouter()
 router.register('fabrics', views.FabricViewSet)
 
 # GitOps API (MVP2)
-router.register('gitops-fabrics', views.EnhancedFabricViewSet)
+router.register('gitops-fabrics', views.EnhancedFabricViewSet, basename='gitopsfabric')
 router.register('gitops-resources', views.HedgehogResourceViewSet)
 
 # VPC API CRDs
@@ -36,4 +36,14 @@ urlpatterns = router.urls + [
     # GitOps endpoints (MVP2)
     path('gitops/', views.GitOpsAPIView.as_view(), name='gitops-global'),
     path('gitops/drift-analysis/', views.DriftAnalysisAPIView.as_view(), name='gitops-drift-analysis'),
+    
+    # Git Authentication endpoints (MVP2)
+    path('git/auth/', views.GitAuthenticationAPIView.as_view(), name='git-authentication'),
+    path('git/validate/', views.GitRepositoryValidationAPIView.as_view(), name='git-repository-validation'),
+    
+    # ArgoCD Setup Wizard endpoints (Week 2 MVP2)
+    path('gitops/argocd/prerequisites/', views.ArgoCDPrerequisitesAPIView.as_view(), name='argocd-prerequisites'),
+    path('gitops/argocd/setup/', views.ArgoCDSetupAPIView.as_view(), name='argocd-setup'),
+    path('gitops/argocd/progress/<str:installation_id>/', views.ArgoCDProgressAPIView.as_view(), name='argocd-progress'),
+    path('gitops/test-connection/', views.GitOpsTestConnectionAPIView.as_view(), name='gitops-test-connection'),
 ]

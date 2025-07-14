@@ -1,0 +1,1288 @@
+{% extends "base/layout.html" %}
+{% load static %}
+
+{% block title %}ArgoCD GitOps Setup Wizard{% endblock %}
+
+{% block header %}
+    {{ block.super }}
+    <link rel="stylesheet" href="{% static 'netbox_hedgehog/css/hedgehog.css' %}">
+    <style>
+        .wizard-container {
+            max-width: 1000px;
+            margin: 0 auto;
+        }
+        .wizard-step {
+            display: none;
+            animation: fadeIn 0.4s ease-in;
+        }
+        .wizard-step.active {
+            display: block;
+        }
+        .wizard-progress {
+            background: linear-gradient(135deg, rgba(var(--bs-primary-rgb), 0.1) 0%, rgba(var(--bs-primary-rgb), 0.05) 100%);
+            border-radius: 0.5rem;
+            padding: 1.5rem;
+            margin-bottom: 2rem;
+        }
+        .wizard-progress .progress-steps {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 1rem;
+        }
+        .wizard-progress .step-item {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            color: var(--bs-secondary);
+            font-size: 0.9rem;
+            transition: all 0.3s ease;
+            position: relative;
+        }
+        .wizard-progress .step-item:not(:last-child)::after {
+            content: '';
+            position: absolute;
+            left: calc(100% + 1rem);
+            top: 1rem;
+            width: calc(100% - 2rem);
+            height: 2px;
+            background: var(--bs-secondary);
+            opacity: 0.3;
+        }
+        .wizard-progress .step-item.active {
+            color: var(--bs-primary);
+            font-weight: 600;
+        }
+        .wizard-progress .step-item.completed {
+            color: var(--bs-success);
+        }
+        .wizard-progress .step-item.completed::after {
+            background: var(--bs-success);
+            opacity: 0.6;
+        }
+        .wizard-progress .step-icon {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            width: 2rem;
+            height: 2rem;
+            border-radius: 50%;
+            background: var(--bs-light);
+            border: 2px solid var(--bs-secondary);
+            transition: all 0.3s ease;
+            min-width: 2rem;
+        }
+        .wizard-progress .step-item.active .step-icon {
+            background: var(--bs-primary);
+            border-color: var(--bs-primary);
+            color: white;
+        }
+        .wizard-progress .step-item.completed .step-icon {
+            background: var(--bs-success);
+            border-color: var(--bs-success);
+            color: white;
+        }
+        .validation-result {
+            margin-top: 1rem;
+            padding: 1rem;
+            border-radius: 0.375rem;
+            border: 1px solid var(--bs-border-color);
+            background: var(--bs-light);
+        }
+        .validation-result.success {
+            border-color: var(--bs-success);
+            background: rgba(var(--bs-success-rgb), 0.1);
+        }
+        .validation-result.error {
+            border-color: var(--bs-danger);
+            background: rgba(var(--bs-danger-rgb), 0.1);
+        }
+        .validation-result.warning {
+            border-color: var(--bs-warning);
+            background: rgba(var(--bs-warning-rgb), 0.1);
+        }
+        .argocd-config-option {
+            border: 2px solid var(--bs-border-color);
+            border-radius: 0.5rem;
+            padding: 1rem;
+            margin-bottom: 1rem;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            background: var(--bs-body-bg);
+        }
+        .argocd-config-option:hover {
+            border-color: var(--bs-primary);
+            background: rgba(var(--bs-primary-rgb), 0.05);
+        }
+        .argocd-config-option.selected {
+            border-color: var(--bs-primary);
+            background: rgba(var(--bs-primary-rgb), 0.1);
+        }
+        .progress-monitor {
+            background: var(--bs-dark);
+            color: var(--bs-light);
+            padding: 1rem;
+            border-radius: 0.375rem;
+            font-family: 'Fira Code', monospace;
+            font-size: 0.85rem;
+            margin-bottom: 1rem;
+            max-height: 400px;
+            overflow-y: auto;
+        }
+        .progress-step {
+            display: flex;
+            align-items: center;
+            margin-bottom: 0.5rem;
+            padding: 0.25rem;
+        }
+        .progress-step.running {
+            background: rgba(var(--bs-info-rgb), 0.2);
+        }
+        .progress-step.completed {
+            background: rgba(var(--bs-success-rgb), 0.2);
+        }
+        .progress-step.error {
+            background: rgba(var(--bs-danger-rgb), 0.2);
+        }
+        .status-indicator {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            margin-right: 0.5rem;
+            display: inline-block;
+        }
+        .status-indicator.pending {
+            background: var(--bs-secondary);
+        }
+        .status-indicator.running {
+            background: var(--bs-info);
+            animation: pulse 1s infinite;
+        }
+        .status-indicator.completed {
+            background: var(--bs-success);
+        }
+        .status-indicator.error {
+            background: var(--bs-danger);
+        }
+        @keyframes pulse {
+            0% { opacity: 1; }
+            50% { opacity: 0.5; }
+            100% { opacity: 1; }
+        }
+        .resource-preview {
+            border: 1px solid var(--bs-border-color);
+            border-radius: 0.375rem;
+            padding: 0.75rem;
+            margin-bottom: 0.5rem;
+            background: var(--bs-light);
+        }
+        .resource-preview.valid {
+            border-color: var(--bs-success);
+            background: rgba(var(--bs-success-rgb), 0.1);
+        }
+        .resource-preview.invalid {
+            border-color: var(--bs-danger);
+            background: rgba(var(--bs-danger-rgb), 0.1);
+        }
+        .help-tooltip {
+            position: relative;
+            display: inline-block;
+            color: var(--bs-info);
+            cursor: help;
+            margin-left: 0.5rem;
+        }
+        .argocd-status-card {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border-radius: 0.5rem;
+            padding: 1.5rem;
+            margin-bottom: 1rem;
+        }
+    </style>
+{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+    <div class="wizard-container">
+        <div class="card">
+            <div class="card-header">
+                <h3><i class="mdi mdi-kubernetes"></i> ArgoCD GitOps Setup Wizard</h3>
+                <p class="text-muted mb-0">Set up ArgoCD GitOps for fabric: <strong>{{ fabric.name }}</strong></p>
+            </div>
+            <div class="card-body">
+                <!-- Wizard Progress -->
+                <div class="wizard-progress">
+                    <div class="progress-steps">
+                        <div class="step-item active" data-step="1">
+                            <div class="step-icon">
+                                <i class="mdi mdi-check-circle"></i>
+                            </div>
+                            <span>Prerequisites</span>
+                        </div>
+                        <div class="step-item" data-step="2">
+                            <div class="step-icon">
+                                <i class="mdi mdi-kubernetes"></i>
+                            </div>
+                            <span>ArgoCD Config</span>
+                        </div>
+                        <div class="step-item" data-step="3">
+                            <div class="step-icon">
+                                <i class="mdi mdi-git"></i>
+                            </div>
+                            <span>Repository</span>
+                        </div>
+                        <div class="step-item" data-step="4">
+                            <div class="step-icon">
+                                <i class="mdi mdi-application"></i>
+                            </div>
+                            <span>Applications</span>
+                        </div>
+                        <div class="step-item" data-step="5">
+                            <div class="step-icon">
+                                <i class="mdi mdi-check-all"></i>
+                            </div>
+                            <span>Complete</span>
+                        </div>
+                    </div>
+                    <div class="progress">
+                        <div class="progress-bar" role="progressbar" style="width: 20%" aria-valuenow="20" aria-valuemin="0" aria-valuemax="100" id="wizard-progress-bar"></div>
+                    </div>
+                </div>
+
+                <!-- Step 1: Prerequisites -->
+                <div class="wizard-step active" id="step-1">
+                    <h4>Step 1: Prerequisites Check</h4>
+                    <p class="text-muted">Verify cluster connectivity, permissions, and requirements for ArgoCD installation.</p>
+                    
+                    <div class="row">
+                        <div class="col-md-8">
+                            <div class="card">
+                                <div class="card-header">
+                                    <h6><i class="mdi mdi-shield-check"></i> System Requirements</h6>
+                                </div>
+                                <div class="card-body">
+                                    <div id="prerequisites-list">
+                                        <div class="d-flex align-items-center mb-2">
+                                            <span class="status-indicator pending" id="status-cluster-connection"></span>
+                                            <span>Kubernetes cluster connectivity</span>
+                                        </div>
+                                        <div class="d-flex align-items-center mb-2">
+                                            <span class="status-indicator pending" id="status-cluster-permissions"></span>
+                                            <span>Cluster admin permissions</span>
+                                        </div>
+                                        <div class="d-flex align-items-center mb-2">
+                                            <span class="status-indicator pending" id="status-argocd-namespace"></span>
+                                            <span>ArgoCD namespace availability</span>
+                                        </div>
+                                        <div class="d-flex align-items-center mb-2">
+                                            <span class="status-indicator pending" id="status-resource-availability"></span>
+                                            <span>Sufficient cluster resources</span>
+                                        </div>
+                                        <div class="d-flex align-items-center mb-2">
+                                            <span class="status-indicator pending" id="status-network-policies"></span>
+                                            <span>Network policy compatibility</span>
+                                        </div>
+                                    </div>
+                                    
+                                    <div class="mt-3">
+                                        <button type="button" class="btn btn-primary" onclick="runPrerequisitesCheck()">
+                                            <i class="mdi mdi-play"></i> Check Prerequisites
+                                        </button>
+                                    </div>
+                                    
+                                    <div id="prerequisites-result" class="validation-result" style="display: none;">
+                                        <div class="d-flex align-items-center">
+                                            <i class="mdi mdi-loading mdi-spin me-2"></i>
+                                            <span>Checking prerequisites...</span>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-md-4">
+                            <div class="card">
+                                <div class="card-header">
+                                    <h6><i class="mdi mdi-information"></i> Cluster Information</h6>
+                                </div>
+                                <div class="card-body">
+                                    <table class="table table-sm">
+                                        <tr>
+                                            <th>Fabric:</th>
+                                            <td>{{ fabric.name }}</td>
+                                        </tr>
+                                        <tr>
+                                            <th>Namespace:</th>
+                                            <td><code>{{ fabric.kubernetes_namespace|default:"default" }}</code></td>
+                                        </tr>
+                                        <tr>
+                                            <th>Server:</th>
+                                            <td>{{ fabric.kubernetes_server|default:"Default kubeconfig"|truncatechars:30 }}</td>
+                                        </tr>
+                                        <tr>
+                                            <th>Current Status:</th>
+                                            <td>
+                                                <span class="badge bg-{% if fabric.connection_status == 'connected' %}success{% else %}secondary{% endif %}">
+                                                    {{ fabric.get_connection_status_display }}
+                                                </span>
+                                            </td>
+                                        </tr>
+                                    </table>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="d-flex justify-content-between mt-4">
+                        <a href="{{ fabric.get_absolute_url }}" class="btn btn-secondary">
+                            <i class="mdi mdi-arrow-left"></i> Back to Fabric
+                        </a>
+                        <button type="button" class="btn btn-primary" onclick="nextStep()" disabled id="next-step-1">
+                            Next <i class="mdi mdi-arrow-right"></i>
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Step 2: ArgoCD Configuration -->
+                <div class="wizard-step" id="step-2">
+                    <h4>Step 2: ArgoCD Configuration</h4>
+                    <p class="text-muted">Configure ArgoCD installation settings, namespace, and ingress options.</p>
+                    
+                    <div class="row">
+                        <div class="col-md-6">
+                            <div class="mb-3">
+                                <label for="argocd-namespace" class="form-label">ArgoCD Namespace</label>
+                                <input type="text" class="form-control" id="argocd-namespace" value="argocd" required>
+                                <div class="form-text">Kubernetes namespace for ArgoCD installation</div>
+                            </div>
+                            
+                            <div class="mb-3">
+                                <label for="argocd-version" class="form-label">ArgoCD Version</label>
+                                <select class="form-select" id="argocd-version">
+                                    <option value="stable">Stable (Recommended)</option>
+                                    <option value="v2.8.4">v2.8.4 (Latest)</option>
+                                    <option value="v2.7.14">v2.7.14 (LTS)</option>
+                                </select>
+                            </div>
+                            
+                            <div class="mb-3">
+                                <label class="form-label">Ingress Configuration</label>
+                                <div id="ingress-options">
+                                    <div class="argocd-config-option" data-ingress="none">
+                                        <div class="d-flex align-items-center">
+                                            <i class="mdi mdi-lan-disconnect fs-4 me-3"></i>
+                                            <div>
+                                                <strong>No Ingress</strong>
+                                                <p class="text-muted small mb-0">Access via port-forward only</p>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <div class="argocd-config-option selected" data-ingress="nodeport">
+                                        <div class="d-flex align-items-center">
+                                            <i class="mdi mdi-lan fs-4 me-3"></i>
+                                            <div>
+                                                <strong>NodePort</strong>
+                                                <p class="text-muted small mb-0">Expose via NodePort service</p>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <div class="argocd-config-option" data-ingress="loadbalancer">
+                                        <div class="d-flex align-items-center">
+                                            <i class="mdi mdi-cloud fs-4 me-3"></i>
+                                            <div>
+                                                <strong>LoadBalancer</strong>
+                                                <p class="text-muted small mb-0">Cloud LoadBalancer service</p>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="card">
+                                <div class="card-header">
+                                    <h6><i class="mdi mdi-security"></i> Security Settings</h6>
+                                </div>
+                                <div class="card-body">
+                                    <div class="form-check mb-3">
+                                        <input class="form-check-input" type="checkbox" id="enable-rbac" checked>
+                                        <label class="form-check-label" for="enable-rbac">
+                                            Enable RBAC
+                                        </label>
+                                    </div>
+                                    <div class="form-check mb-3">
+                                        <input class="form-check-input" type="checkbox" id="enable-ha" checked>
+                                        <label class="form-check-label" for="enable-ha">
+                                            High Availability Mode
+                                        </label>
+                                    </div>
+                                    <div class="form-check mb-3">
+                                        <input class="form-check-input" type="checkbox" id="enable-dex">
+                                        <label class="form-check-label" for="enable-dex">
+                                            Enable Dex OIDC
+                                        </label>
+                                    </div>
+                                    
+                                    <div class="mb-3">
+                                        <label for="admin-password" class="form-label">Admin Password</label>
+                                        <input type="password" class="form-control" id="admin-password" placeholder="Leave empty for auto-generated">
+                                        <div class="form-text">ArgoCD admin user password</div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="d-flex justify-content-between mt-4">
+                        <button type="button" class="btn btn-secondary" onclick="previousStep()">
+                            <i class="mdi mdi-arrow-left"></i> Previous
+                        </button>
+                        <button type="button" class="btn btn-primary" onclick="nextStep()">
+                            Next <i class="mdi mdi-arrow-right"></i>
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Step 3: Repository Connection -->
+                <div class="wizard-step" id="step-3">
+                    <h4>Step 3: Repository Connection</h4>
+                    <p class="text-muted">Configure Git repository connection for ArgoCD to track Hedgehog applications.</p>
+                    
+                    <div class="row">
+                        <div class="col-md-6">
+                            <div class="card">
+                                <div class="card-header">
+                                    <h6><i class="mdi mdi-git"></i> Repository Settings</h6>
+                                </div>
+                                <div class="card-body">
+                                    <div class="mb-3">
+                                        <label for="repo-url" class="form-label">Repository URL</label>
+                                        <input type="url" class="form-control" id="repo-url" value="{{ fabric.git_repository_url }}" required>
+                                        <div class="form-text">Git repository containing Hedgehog manifests</div>
+                                    </div>
+                                    <div class="mb-3">
+                                        <label for="repo-branch" class="form-label">Branch</label>
+                                        <input type="text" class="form-control" id="repo-branch" value="{{ fabric.git_branch|default:'main' }}" required>
+                                    </div>
+                                    <div class="mb-3">
+                                        <label for="repo-path" class="form-label">Path</label>
+                                        <input type="text" class="form-control" id="repo-path" value="{{ fabric.git_path|default:'hedgehog/' }}">
+                                        <div class="form-text">Path within repository for Hedgehog manifests</div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="card">
+                                <div class="card-header">
+                                    <h6><i class="mdi mdi-key"></i> Authentication</h6>
+                                </div>
+                                <div class="card-body">
+                                    <div class="mb-3">
+                                        <label for="auth-method" class="form-label">Authentication Method</label>
+                                        <select class="form-select" id="auth-method">
+                                            <option value="token">Personal Access Token</option>
+                                            <option value="ssh">SSH Key</option>
+                                            <option value="none">Public Repository</option>
+                                        </select>
+                                    </div>
+                                    
+                                    <div id="auth-token-section">
+                                        <div class="mb-3">
+                                            <label for="git-token" class="form-label">Access Token</label>
+                                            <input type="password" class="form-control" id="git-token" value="{{ fabric.git_token }}">
+                                        </div>
+                                        <div class="mb-3">
+                                            <label for="git-username" class="form-label">Username</label>
+                                            <input type="text" class="form-control" id="git-username" value="{{ fabric.git_username }}">
+                                        </div>
+                                    </div>
+                                    
+                                    <button type="button" class="btn btn-outline-info" onclick="testRepositoryConnection()">
+                                        <i class="mdi mdi-test-tube"></i> Test Connection
+                                    </button>
+                                    
+                                    <div id="repo-test-result" class="validation-result" style="display: none;">
+                                        <div class="d-flex align-items-center">
+                                            <i class="mdi mdi-loading mdi-spin me-2"></i>
+                                            <span>Testing repository connection...</span>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="d-flex justify-content-between mt-4">
+                        <button type="button" class="btn btn-secondary" onclick="previousStep()">
+                            <i class="mdi mdi-arrow-left"></i> Previous
+                        </button>
+                        <button type="button" class="btn btn-primary" onclick="nextStep()" disabled id="next-step-3">
+                            Next <i class="mdi mdi-arrow-right"></i>
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Step 4: Application Setup -->
+                <div class="wizard-step" id="step-4">
+                    <h4>Step 4: Application Setup</h4>
+                    <p class="text-muted">Configure initial Hedgehog applications in ArgoCD.</p>
+                    
+                    <div class="row">
+                        <div class="col-md-6">
+                            <div class="card">
+                                <div class="card-header">
+                                    <h6><i class="mdi mdi-application"></i> Application Configuration</h6>
+                                </div>
+                                <div class="card-body">
+                                    <div class="mb-3">
+                                        <label for="app-name" class="form-label">Application Name</label>
+                                        <input type="text" class="form-control" id="app-name" value="hedgehog-{{ fabric.name }}" required>
+                                        <div class="form-text">ArgoCD application name</div>
+                                    </div>
+                                    <div class="mb-3">
+                                        <label for="app-project" class="form-label">Project</label>
+                                        <select class="form-select" id="app-project">
+                                            <option value="default">default</option>
+                                            <option value="hedgehog">hedgehog</option>
+                                        </select>
+                                    </div>
+                                    <div class="mb-3">
+                                        <label for="destination-namespace" class="form-label">Destination Namespace</label>
+                                        <input type="text" class="form-control" id="destination-namespace" value="{{ fabric.kubernetes_namespace }}" required>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="card">
+                                <div class="card-header">
+                                    <h6><i class="mdi mdi-cog"></i> Sync Policies</h6>
+                                </div>
+                                <div class="card-body">
+                                    <div class="form-check mb-3">
+                                        <input class="form-check-input" type="checkbox" id="auto-sync" checked>
+                                        <label class="form-check-label" for="auto-sync">
+                                            Enable Auto Sync
+                                        </label>
+                                    </div>
+                                    <div class="form-check mb-3">
+                                        <input class="form-check-input" type="checkbox" id="prune-resources">
+                                        <label class="form-check-label" for="prune-resources">
+                                            Prune Resources
+                                        </label>
+                                    </div>
+                                    <div class="form-check mb-3">
+                                        <input class="form-check-input" type="checkbox" id="self-heal" checked>
+                                        <label class="form-check-label" for="self-heal">
+                                            Self Heal
+                                        </label>
+                                    </div>
+                                    
+                                    <div class="mb-3">
+                                        <label for="sync-timeout" class="form-label">Sync Timeout (seconds)</label>
+                                        <input type="number" class="form-control" id="sync-timeout" value="300" min="60" max="1800">
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="d-flex justify-content-between mt-4">
+                        <button type="button" class="btn btn-secondary" onclick="previousStep()">
+                            <i class="mdi mdi-arrow-left"></i> Previous
+                        </button>
+                        <button type="button" class="btn btn-primary" onclick="nextStep()">
+                            Next <i class="mdi mdi-arrow-right"></i>
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Step 5: Installation & Validation -->
+                <div class="wizard-step" id="step-5">
+                    <h4>Step 5: Installation & Validation</h4>
+                    <p class="text-muted">Deploy ArgoCD and validate the complete GitOps setup.</p>
+                    
+                    <div class="row">
+                        <div class="col-md-8">
+                            <div class="card">
+                                <div class="card-header">
+                                    <h6><i class="mdi mdi-monitor"></i> Installation Progress</h6>
+                                </div>
+                                <div class="card-body">
+                                    <div id="installation-progress" class="progress-monitor">
+                                        <div class="progress-step" id="step-validate-config">
+                                            <span class="status-indicator pending"></span>
+                                            <span>Validating configuration...</span>
+                                        </div>
+                                        <div class="progress-step" id="step-install-argocd">
+                                            <span class="status-indicator pending"></span>
+                                            <span>Installing ArgoCD...</span>
+                                        </div>
+                                        <div class="progress-step" id="step-wait-ready">
+                                            <span class="status-indicator pending"></span>
+                                            <span>Waiting for ArgoCD to be ready...</span>
+                                        </div>
+                                        <div class="progress-step" id="step-configure-repo">
+                                            <span class="status-indicator pending"></span>
+                                            <span>Configuring repository connection...</span>
+                                        </div>
+                                        <div class="progress-step" id="step-create-app">
+                                            <span class="status-indicator pending"></span>
+                                            <span>Creating Hedgehog application...</span>
+                                        </div>
+                                        <div class="progress-step" id="step-initial-sync">
+                                            <span class="status-indicator pending"></span>
+                                            <span>Performing initial sync...</span>
+                                        </div>
+                                        <div class="progress-step" id="step-validate-setup">
+                                            <span class="status-indicator pending"></span>
+                                            <span>Validating complete setup...</span>
+                                        </div>
+                                    </div>
+                                    
+                                    <div class="mt-3">
+                                        <button type="button" class="btn btn-success" onclick="startInstallation()" id="start-installation-btn">
+                                            <i class="mdi mdi-play"></i> Start Installation
+                                        </button>
+                                        <button type="button" class="btn btn-warning" onclick="retryInstallation()" id="retry-installation-btn" style="display: none;">
+                                            <i class="mdi mdi-refresh"></i> Retry Installation
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-md-4">
+                            <div id="argocd-status-card" class="argocd-status-card" style="display: none;">
+                                <h6><i class="mdi mdi-kubernetes"></i> ArgoCD Status</h6>
+                                <div id="argocd-status-info">
+                                    <!-- Status information will be populated here -->
+                                </div>
+                            </div>
+                            
+                            <div class="card" id="completion-card" style="display: none;">
+                                <div class="card-header">
+                                    <h6><i class="mdi mdi-check-circle"></i> Setup Complete</h6>
+                                </div>
+                                <div class="card-body">
+                                    <div class="alert alert-success">
+                                        <strong>Success!</strong> ArgoCD GitOps has been successfully set up for your fabric.
+                                    </div>
+                                    
+                                    <div class="d-grid gap-2">
+                                        <a href="#" id="argocd-ui-link" class="btn btn-primary" target="_blank">
+                                            <i class="mdi mdi-open-in-new"></i> Open ArgoCD UI
+                                        </a>
+                                        <a href="{{ fabric.get_absolute_url }}" class="btn btn-outline-primary">
+                                            <i class="mdi mdi-arrow-left"></i> Return to Fabric
+                                        </a>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="d-flex justify-content-between mt-4">
+                        <button type="button" class="btn btn-secondary" onclick="previousStep()" id="previous-step-5">
+                            <i class="mdi mdi-arrow-left"></i> Previous
+                        </button>
+                        <button type="button" class="btn btn-outline-secondary" onclick="resetWizard()">
+                            <i class="mdi mdi-refresh"></i> Start Over
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block javascript %}
+{{ block.super }}
+<script type="text/javascript">
+document.addEventListener('DOMContentLoaded', function() {
+    console.log('🧙 ArgoCD Setup Wizard loaded for fabric: {{ fabric.name }}');
+    
+    // Initialize wizard state
+    window.wizardState = {
+        currentStep: 1,
+        totalSteps: 5,
+        fabricId: {{ fabric.pk }},
+        formData: {
+            fabricName: '{{ fabric.name }}',
+            fabricId: {{ fabric.pk }}
+        },
+        validationResults: {},
+        installationId: null
+    };
+    
+    // Initialize ingress selection
+    initializeIngressOptions();
+    
+    // Initialize auth method handling
+    initializeAuthMethod();
+});
+
+function initializeIngressOptions() {
+    const options = document.querySelectorAll('.argocd-config-option[data-ingress]');
+    options.forEach(option => {
+        option.addEventListener('click', function() {
+            // Remove previous selection
+            options.forEach(o => o.classList.remove('selected'));
+            // Add selection to clicked option
+            this.classList.add('selected');
+            
+            // Update form data
+            window.wizardState.formData.ingressType = this.dataset.ingress;
+        });
+    });
+}
+
+function initializeAuthMethod() {
+    const authSelect = document.getElementById('auth-method');
+    const tokenSection = document.getElementById('auth-token-section');
+    
+    authSelect.addEventListener('change', function() {
+        if (this.value === 'none') {
+            tokenSection.style.display = 'none';
+        } else {
+            tokenSection.style.display = 'block';
+        }
+        window.wizardState.formData.authMethod = this.value;
+    });
+}
+
+function runPrerequisitesCheck() {
+    const button = event.target;
+    const resultDiv = document.getElementById('prerequisites-result');
+    const nextButton = document.getElementById('next-step-1');
+    
+    button.disabled = true;
+    resultDiv.style.display = 'block';
+    resultDiv.className = 'validation-result';
+    resultDiv.innerHTML = `
+        <div class="d-flex align-items-center">
+            <i class="mdi mdi-loading mdi-spin me-2"></i>
+            <span>Checking prerequisites...</span>
+        </div>
+    `;
+    
+    // Update indicators to running state
+    const indicators = ['cluster-connection', 'cluster-permissions', 'argocd-namespace', 'resource-availability', 'network-policies'];
+    indicators.forEach(id => {
+        document.getElementById(`status-${id}`).className = 'status-indicator running';
+    });
+    
+    // Make API call to check prerequisites
+    fetch(`/api/plugins/hedgehog/gitops/argocd/prerequisites/`, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'X-CSRFToken': getCookie('csrftoken')
+        },
+        body: JSON.stringify({
+            fabric_id: window.wizardState.fabricId
+        })
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            // Update each indicator based on results
+            const checks = data.checks || {};
+            let allPassed = true;
+            
+            indicators.forEach(id => {
+                const indicator = document.getElementById(`status-${id}`);
+                const checkKey = id.replace('-', '_');
+                
+                if (checks[checkKey] === true) {
+                    indicator.className = 'status-indicator completed';
+                } else {
+                    indicator.className = 'status-indicator error';
+                    allPassed = false;
+                }
+            });
+            
+            if (allPassed) {
+                resultDiv.className = 'validation-result success';
+                resultDiv.innerHTML = `
+                    <div class="d-flex align-items-center">
+                        <i class="mdi mdi-check-circle text-success me-2"></i>
+                        <span>All prerequisites check passed! Ready to proceed.</span>
+                    </div>
+                `;
+                nextButton.disabled = false;
+                window.wizardState.validationResults.prerequisites = true;
+            } else {
+                resultDiv.className = 'validation-result error';
+                resultDiv.innerHTML = `
+                    <div class="d-flex align-items-center">
+                        <i class="mdi mdi-alert-circle text-danger me-2"></i>
+                        <span>Some prerequisites failed. Please address the issues before proceeding.</span>
+                    </div>
+                    ${data.details ? `<div class="mt-2"><small>${data.details}</small></div>` : ''}
+                `;
+            }
+        } else {
+            // All indicators to error
+            indicators.forEach(id => {
+                document.getElementById(`status-${id}`).className = 'status-indicator error';
+            });
+            
+            resultDiv.className = 'validation-result error';
+            resultDiv.innerHTML = `
+                <div class="d-flex align-items-center">
+                    <i class="mdi mdi-alert-circle text-danger me-2"></i>
+                    <span>Prerequisites check failed: ${data.error}</span>
+                </div>
+            `;
+        }
+        
+        button.disabled = false;
+    })
+    .catch(error => {
+        console.error('Prerequisites check error:', error);
+        
+        // All indicators to error
+        indicators.forEach(id => {
+            document.getElementById(`status-${id}`).className = 'status-indicator error';
+        });
+        
+        resultDiv.className = 'validation-result error';
+        resultDiv.innerHTML = `
+            <div class="d-flex align-items-center">
+                <i class="mdi mdi-alert-circle text-danger me-2"></i>
+                <span>Prerequisites check failed. Please try again.</span>
+            </div>
+        `;
+        
+        button.disabled = false;
+    });
+}
+
+function testRepositoryConnection() {
+    const resultDiv = document.getElementById('repo-test-result');
+    const nextButton = document.getElementById('next-step-3');
+    
+    resultDiv.style.display = 'block';
+    resultDiv.className = 'validation-result';
+    
+    const connectionData = {
+        url: document.getElementById('repo-url').value,
+        branch: document.getElementById('repo-branch').value,
+        path: document.getElementById('repo-path').value,
+        auth_method: document.getElementById('auth-method').value,
+        token: document.getElementById('git-token').value,
+        username: document.getElementById('git-username').value
+    };
+    
+    resultDiv.innerHTML = `
+        <div class="d-flex align-items-center">
+            <i class="mdi mdi-loading mdi-spin me-2"></i>
+            <span>Testing repository connection...</span>
+        </div>
+    `;
+    
+    fetch(`/api/plugins/hedgehog/gitops/test-connection/`, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'X-CSRFToken': getCookie('csrftoken')
+        },
+        body: JSON.stringify(connectionData)
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            resultDiv.className = 'validation-result success';
+            resultDiv.innerHTML = `
+                <div class="d-flex align-items-center">
+                    <i class="mdi mdi-check-circle text-success me-2"></i>
+                    <span>Repository connection successful!</span>
+                </div>
+                <div class="mt-2">
+                    <small class="text-muted">
+                        Branch: ${data.branch} | Commit: ${data.latest_commit?.substring(0, 8)}
+                    </small>
+                </div>
+            `;
+            
+            // Save connection data
+            window.wizardState.formData.repositoryConnection = connectionData;
+            window.wizardState.validationResults.repository = true;
+            nextButton.disabled = false;
+        } else {
+            resultDiv.className = 'validation-result error';
+            resultDiv.innerHTML = `
+                <div class="d-flex align-items-center">
+                    <i class="mdi mdi-alert-circle text-danger me-2"></i>
+                    <span>Repository connection failed: ${data.error}</span>
+                </div>
+            `;
+            window.wizardState.validationResults.repository = false;
+        }
+    })
+    .catch(error => {
+        console.error('Repository test error:', error);
+        resultDiv.className = 'validation-result error';
+        resultDiv.innerHTML = `
+            <div class="d-flex align-items-center">
+                <i class="mdi mdi-alert-circle text-danger me-2"></i>
+                <span>Repository connection test failed. Please try again.</span>
+            </div>
+        `;
+        window.wizardState.validationResults.repository = false;
+    });
+}
+
+function startInstallation() {
+    const startButton = document.getElementById('start-installation-btn');
+    const retryButton = document.getElementById('retry-installation-btn');
+    const previousButton = document.getElementById('previous-step-5');
+    
+    // Disable navigation during installation
+    startButton.disabled = true;
+    retryButton.style.display = 'none';
+    previousButton.disabled = true;
+    
+    // Gather all configuration data
+    const installationConfig = {
+        fabric_id: window.wizardState.fabricId,
+        argocd: {
+            namespace: document.getElementById('argocd-namespace').value,
+            version: document.getElementById('argocd-version').value,
+            ingress_type: window.wizardState.formData.ingressType || 'nodeport',
+            enable_rbac: document.getElementById('enable-rbac').checked,
+            enable_ha: document.getElementById('enable-ha').checked,
+            enable_dex: document.getElementById('enable-dex').checked,
+            admin_password: document.getElementById('admin-password').value
+        },
+        repository: {
+            url: document.getElementById('repo-url').value,
+            branch: document.getElementById('repo-branch').value,
+            path: document.getElementById('repo-path').value,
+            auth_method: document.getElementById('auth-method').value,
+            token: document.getElementById('git-token').value,
+            username: document.getElementById('git-username').value
+        },
+        application: {
+            name: document.getElementById('app-name').value,
+            project: document.getElementById('app-project').value,
+            destination_namespace: document.getElementById('destination-namespace').value,
+            auto_sync: document.getElementById('auto-sync').checked,
+            prune_resources: document.getElementById('prune-resources').checked,
+            self_heal: document.getElementById('self-heal').checked,
+            sync_timeout: parseInt(document.getElementById('sync-timeout').value)
+        }
+    };
+    
+    // Start installation process
+    fetch(`/api/plugins/hedgehog/gitops/argocd/setup/`, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'X-CSRFToken': getCookie('csrftoken')
+        },
+        body: JSON.stringify(installationConfig)
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            // Store installation ID for progress monitoring
+            window.wizardState.installationId = data.installation_id;
+            
+            // Start monitoring installation progress
+            monitorInstallationProgress();
+        } else {
+            handleInstallationError(data.error);
+        }
+    })
+    .catch(error => {
+        console.error('Installation start error:', error);
+        handleInstallationError('Failed to start installation');
+    });
+}
+
+function monitorInstallationProgress() {
+    if (!window.wizardState.installationId) {
+        return;
+    }
+    
+    fetch(`/api/plugins/hedgehog/gitops/argocd/progress/${window.wizardState.installationId}/`, {
+        method: 'GET',
+        headers: {
+            'X-CSRFToken': getCookie('csrftoken')
+        }
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            updateProgressDisplay(data.progress);
+            
+            if (data.progress.status === 'completed') {
+                handleInstallationComplete(data.progress);
+            } else if (data.progress.status === 'error') {
+                handleInstallationError(data.progress.error);
+            } else {
+                // Continue monitoring
+                setTimeout(monitorInstallationProgress, 2000);
+            }
+        } else {
+            handleInstallationError(data.error);
+        }
+    })
+    .catch(error => {
+        console.error('Progress monitoring error:', error);
+        // Continue monitoring after error
+        setTimeout(monitorInstallationProgress, 5000);
+    });
+}
+
+function updateProgressDisplay(progress) {
+    const steps = [
+        'validate-config', 'install-argocd', 'wait-ready', 
+        'configure-repo', 'create-app', 'initial-sync', 'validate-setup'
+    ];
+    
+    // Update each step based on progress
+    steps.forEach((stepId, index) => {
+        const stepElement = document.getElementById(`step-${stepId}`);
+        const indicator = stepElement.querySelector('.status-indicator');
+        
+        if (progress.current_step === stepId) {
+            indicator.className = 'status-indicator running';
+            stepElement.classList.add('running');
+        } else if (progress.completed_steps && progress.completed_steps.includes(stepId)) {
+            indicator.className = 'status-indicator completed';
+            stepElement.classList.remove('running');
+            stepElement.classList.add('completed');
+        } else if (progress.failed_steps && progress.failed_steps.includes(stepId)) {
+            indicator.className = 'status-indicator error';
+            stepElement.classList.remove('running');
+            stepElement.classList.add('error');
+        }
+    });
+    
+    // Update ArgoCD status card if data available
+    if (progress.argocd_status) {
+        updateArgoCDStatusCard(progress.argocd_status);
+    }
+}
+
+function updateArgoCDStatusCard(status) {
+    const statusCard = document.getElementById('argocd-status-card');
+    const statusInfo = document.getElementById('argocd-status-info');
+    
+    statusCard.style.display = 'block';
+    statusInfo.innerHTML = `
+        <div class="mb-2">
+            <strong>Version:</strong> ${status.version || 'Unknown'}
+        </div>
+        <div class="mb-2">
+            <strong>Status:</strong> 
+            <span class="badge badge-light">${status.health_status || 'Deploying'}</span>
+        </div>
+        <div class="mb-2">
+            <strong>Server:</strong> ${status.server_url || 'Configuring...'}
+        </div>
+        ${status.admin_password ? `
+        <div class="mb-2">
+            <strong>Admin Password:</strong> 
+            <code style="background: rgba(255,255,255,0.2); padding: 0.25rem;">${status.admin_password}</code>
+        </div>
+        ` : ''}
+    `;
+}
+
+function handleInstallationComplete(progress) {
+    const completionCard = document.getElementById('completion-card');
+    const argoCDLink = document.getElementById('argocd-ui-link');
+    
+    // Show completion card
+    completionCard.style.display = 'block';
+    
+    // Update ArgoCD UI link
+    if (progress.argocd_status && progress.argocd_status.server_url) {
+        argoCDLink.href = progress.argocd_status.server_url;
+    }
+    
+    // Re-enable navigation
+    document.getElementById('previous-step-5').disabled = false;
+    
+    // Show success notification
+    showNotification('ArgoCD GitOps setup completed successfully!', 'success');
+}
+
+function handleInstallationError(error) {
+    const startButton = document.getElementById('start-installation-btn');
+    const retryButton = document.getElementById('retry-installation-btn');
+    const previousButton = document.getElementById('previous-step-5');
+    
+    // Re-enable navigation
+    startButton.disabled = false;
+    retryButton.style.display = 'inline-block';
+    previousButton.disabled = false;
+    
+    // Show error notification
+    showNotification(`Installation failed: ${error}`, 'error');
+}
+
+function retryInstallation() {
+    // Reset progress display
+    const steps = document.querySelectorAll('.progress-step');
+    steps.forEach(step => {
+        const indicator = step.querySelector('.status-indicator');
+        indicator.className = 'status-indicator pending';
+        step.classList.remove('running', 'completed', 'error');
+    });
+    
+    // Reset cards
+    document.getElementById('argocd-status-card').style.display = 'none';
+    document.getElementById('completion-card').style.display = 'none';
+    
+    // Start installation again
+    startInstallation();
+}
+
+function nextStep() {
+    const currentStep = window.wizardState.currentStep;
+    
+    // Save form data for current step
+    saveStepData(currentStep);
+    
+    // Move to next step
+    if (currentStep < window.wizardState.totalSteps) {
+        showStep(currentStep + 1);
+    }
+}
+
+function previousStep() {
+    const currentStep = window.wizardState.currentStep;
+    if (currentStep > 1) {
+        showStep(currentStep - 1);
+    }
+}
+
+function showStep(stepNumber) {
+    // Hide all steps
+    const steps = document.querySelectorAll('.wizard-step');
+    steps.forEach(step => step.classList.remove('active'));
+    
+    // Show target step
+    document.getElementById('step-' + stepNumber).classList.add('active');
+    
+    // Update progress
+    updateProgress(stepNumber);
+    
+    // Update step indicators
+    updateStepIndicators(stepNumber);
+    
+    // Update state
+    window.wizardState.currentStep = stepNumber;
+}
+
+function updateProgress(stepNumber) {
+    const progress = (stepNumber / window.wizardState.totalSteps) * 100;
+    document.getElementById('wizard-progress-bar').style.width = progress + '%';
+    document.getElementById('wizard-progress-bar').setAttribute('aria-valuenow', progress);
+}
+
+function updateStepIndicators(stepNumber) {
+    const indicators = document.querySelectorAll('.step-item');
+    indicators.forEach((indicator, index) => {
+        const step = index + 1;
+        indicator.classList.remove('active', 'completed');
+        
+        if (step === stepNumber) {
+            indicator.classList.add('active');
+        } else if (step < stepNumber) {
+            indicator.classList.add('completed');
+            indicator.querySelector('.step-icon').innerHTML = '<i class="mdi mdi-check"></i>';
+        } else {
+            // Reset icon for future steps
+            const icons = ['check-circle', 'kubernetes', 'git', 'application', 'check-all'];
+            indicator.querySelector('.step-icon').innerHTML = `<i class="mdi mdi-${icons[index]}"></i>`;
+        }
+    });
+}
+
+function saveStepData(stepNumber) {
+    const formData = window.wizardState.formData;
+    
+    switch(stepNumber) {
+        case 2:
+            formData.argoCDConfig = {
+                namespace: document.getElementById('argocd-namespace').value,
+                version: document.getElementById('argocd-version').value,
+                ingressType: window.wizardState.formData.ingressType,
+                enableRBAC: document.getElementById('enable-rbac').checked,
+                enableHA: document.getElementById('enable-ha').checked,
+                enableDex: document.getElementById('enable-dex').checked,
+                adminPassword: document.getElementById('admin-password').value
+            };
+            break;
+        case 3:
+            formData.repositoryConfig = {
+                url: document.getElementById('repo-url').value,
+                branch: document.getElementById('repo-branch').value,
+                path: document.getElementById('repo-path').value,
+                authMethod: document.getElementById('auth-method').value,
+                token: document.getElementById('git-token').value,
+                username: document.getElementById('git-username').value
+            };
+            break;
+        case 4:
+            formData.applicationConfig = {
+                name: document.getElementById('app-name').value,
+                project: document.getElementById('app-project').value,
+                destinationNamespace: document.getElementById('destination-namespace').value,
+                autoSync: document.getElementById('auto-sync').checked,
+                pruneResources: document.getElementById('prune-resources').checked,
+                selfHeal: document.getElementById('self-heal').checked,
+                syncTimeout: document.getElementById('sync-timeout').value
+            };
+            break;
+    }
+}
+
+function resetWizard() {
+    if (confirm('Are you sure you want to start over? This will reset all configuration.')) {
+        location.reload();
+    }
+}
+
+// Utility functions
+function showNotification(message, type) {
+    const notification = document.createElement('div');
+    notification.className = `alert alert-${type === 'success' ? 'success' : 'danger'} alert-dismissible fade show position-fixed`;
+    notification.style.cssText = 'top: 20px; right: 20px; z-index: 9999; min-width: 300px;';
+    notification.innerHTML = `
+        <i class="mdi mdi-${type === 'success' ? 'check-circle' : 'alert-circle'}"></i>
+        ${message}
+        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+    `;
+    
+    document.body.appendChild(notification);
+    
+    setTimeout(() => {
+        if (notification.parentNode) {
+            notification.remove();
+        }
+    }, 5000);
+}
+
+function getCookie(name) {
+    let cookieValue = null;
+    if (document.cookie && document.cookie !== '') {
+        const cookies = document.cookie.split(';');
+        for (let i = 0; i < cookies.length; i++) {
+            const cookie = cookies[i].trim();
+            if (cookie.substring(0, name.length + 1) === (name + '=')) {
+                cookieValue = decodeURIComponent(cookie.substring(name.length + 1));
+                break;
+            }
+        }
+    }
+    return cookieValue;
+}
+</script>
+{% endblock %}

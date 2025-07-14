@@ -1,0 +1,1280 @@
+{% extends "base/layout.html" %}
+{% load static %}
+
+{% block title %}Pre-Cluster Fabric Creation{% endblock %}
+
+{% block header %}
+    {{ block.super }}
+    <link rel="stylesheet" href="{% static 'netbox_hedgehog/css/hedgehog.css' %}">
+    <style>
+        .pre-cluster-form {
+            max-width: 1000px;
+            margin: 0 auto;
+        }
+        .form-section {
+            background: var(--bs-body-bg);
+            border: 1px solid var(--bs-border-color);
+            border-radius: 0.5rem;
+            padding: 1.5rem;
+            margin-bottom: 2rem;
+        }
+        .form-section h4 {
+            color: var(--bs-primary);
+            margin-bottom: 1rem;
+            padding-bottom: 0.5rem;
+            border-bottom: 2px solid var(--bs-primary);
+        }
+        .deployment-mode {
+            border: 2px solid var(--bs-border-color);
+            border-radius: 0.5rem;
+            padding: 1rem;
+            margin-bottom: 1rem;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            background: var(--bs-body-bg);
+        }
+        .deployment-mode:hover {
+            border-color: var(--bs-primary);
+            background: rgba(var(--bs-primary-rgb), 0.05);
+        }
+        .deployment-mode.selected {
+            border-color: var(--bs-primary);
+            background: rgba(var(--bs-primary-rgb), 0.1);
+        }
+        .deployment-mode input[type="radio"] {
+            display: none;
+        }
+        .deployment-mode-icon {
+            font-size: 2rem;
+            color: var(--bs-primary);
+            margin-bottom: 0.5rem;
+        }
+        .deployment-mode-details {
+            margin-top: 0.5rem;
+        }
+        .deployment-mode-details small {
+            color: var(--bs-secondary);
+        }
+        .gitops-tool-option {
+            display: flex;
+            align-items: center;
+            padding: 0.75rem;
+            border: 1px solid var(--bs-border-color);
+            border-radius: 0.375rem;
+            margin-bottom: 0.5rem;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+        .gitops-tool-option:hover {
+            border-color: var(--bs-primary);
+            background: rgba(var(--bs-primary-rgb), 0.05);
+        }
+        .gitops-tool-option.selected {
+            border-color: var(--bs-primary);
+            background: rgba(var(--bs-primary-rgb), 0.1);
+        }
+        .gitops-tool-option input[type="radio"] {
+            display: none;
+        }
+        .gitops-tool-icon {
+            font-size: 1.5rem;
+            margin-right: 0.75rem;
+            color: var(--bs-primary);
+        }
+        .environment-config {
+            background: rgba(var(--bs-info-rgb), 0.05);
+            border: 1px solid var(--bs-info);
+            border-radius: 0.375rem;
+            padding: 1rem;
+            margin-top: 1rem;
+        }
+        .environment-config h6 {
+            color: var(--bs-info);
+            margin-bottom: 0.75rem;
+        }
+        .namespace-suggestion {
+            background: rgba(var(--bs-warning-rgb), 0.1);
+            border: 1px solid var(--bs-warning);
+            border-radius: 0.375rem;
+            padding: 0.75rem;
+            margin-top: 0.5rem;
+        }
+        .namespace-suggestion small {
+            color: var(--bs-warning);
+        }
+        .validation-preview {
+            background: var(--bs-light);
+            border: 1px solid var(--bs-border-color);
+            border-radius: 0.375rem;
+            padding: 1rem;
+            margin-top: 1rem;
+        }
+        .validation-preview h6 {
+            color: var(--bs-secondary);
+            margin-bottom: 0.75rem;
+        }
+        .validation-item {
+            display: flex;
+            align-items: center;
+            margin-bottom: 0.5rem;
+        }
+        .validation-item .mdi {
+            margin-right: 0.5rem;
+            font-size: 1.1rem;
+        }
+        .validation-item.valid {
+            color: var(--bs-success);
+        }
+        .validation-item.invalid {
+            color: var(--bs-danger);
+        }
+        .validation-item.warning {
+            color: var(--bs-warning);
+        }
+        .fabric-preview {
+            background: var(--bs-dark);
+            color: var(--bs-light);
+            border-radius: 0.375rem;
+            padding: 1rem;
+            font-family: monospace;
+            font-size: 0.9rem;
+            margin-top: 1rem;
+            max-height: 400px;
+            overflow-y: auto;
+        }
+        .deployment-steps {
+            background: rgba(var(--bs-success-rgb), 0.05);
+            border: 1px solid var(--bs-success);
+            border-radius: 0.375rem;
+            padding: 1rem;
+            margin-top: 1rem;
+        }
+        .deployment-steps h6 {
+            color: var(--bs-success);
+            margin-bottom: 0.75rem;
+        }
+        .deployment-step {
+            display: flex;
+            align-items: flex-start;
+            margin-bottom: 0.75rem;
+        }
+        .deployment-step .step-number {
+            background: var(--bs-success);
+            color: white;
+            border-radius: 50%;
+            width: 1.5rem;
+            height: 1.5rem;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin-right: 0.75rem;
+            font-size: 0.8rem;
+            flex-shrink: 0;
+        }
+        .deployment-step .step-content {
+            flex: 1;
+        }
+        .deployment-step .step-content strong {
+            display: block;
+            margin-bottom: 0.25rem;
+        }
+        .deployment-step .step-content small {
+            color: var(--bs-secondary);
+        }
+        .help-tooltip {
+            position: relative;
+            display: inline-block;
+            color: var(--bs-info);
+            cursor: help;
+            margin-left: 0.5rem;
+        }
+        .help-tooltip .tooltip-content {
+            visibility: hidden;
+            width: 250px;
+            background-color: var(--bs-dark);
+            color: white;
+            text-align: center;
+            border-radius: 0.375rem;
+            padding: 0.5rem;
+            position: absolute;
+            z-index: 1;
+            bottom: 125%;
+            left: 50%;
+            margin-left: -125px;
+            opacity: 0;
+            transition: opacity 0.3s;
+            font-size: 0.8rem;
+        }
+        .help-tooltip:hover .tooltip-content {
+            visibility: visible;
+            opacity: 1;
+        }
+        .yaml-template-selector {
+            display: flex;
+            gap: 1rem;
+            margin-bottom: 1rem;
+        }
+        .yaml-template-option {
+            flex: 1;
+            border: 1px solid var(--bs-border-color);
+            border-radius: 0.375rem;
+            padding: 1rem;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            text-align: center;
+        }
+        .yaml-template-option:hover {
+            border-color: var(--bs-primary);
+            background: rgba(var(--bs-primary-rgb), 0.05);
+        }
+        .yaml-template-option.selected {
+            border-color: var(--bs-primary);
+            background: rgba(var(--bs-primary-rgb), 0.1);
+        }
+        .yaml-template-option input[type="radio"] {
+            display: none;
+        }
+        .yaml-template-icon {
+            font-size: 1.5rem;
+            color: var(--bs-primary);
+            margin-bottom: 0.5rem;
+        }
+    </style>
+{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+    <div class="pre-cluster-form">
+        <div class="card">
+            <div class="card-header">
+                <h3><i class="mdi mdi-server-network-outline"></i> Pre-Cluster Fabric Creation</h3>
+                <p class="text-muted mb-0">Create a Git-first Hedgehog fabric before cluster deployment</p>
+            </div>
+            <div class="card-body">
+                <form id="pre-cluster-fabric-form">
+                    {% csrf_token %}
+                    
+                    <!-- Basic Information Section -->
+                    <div class="form-section">
+                        <h4><i class="mdi mdi-information"></i> Basic Information</h4>
+                        <div class="row">
+                            <div class="col-md-6">
+                                <div class="mb-3">
+                                    <label for="fabric-name" class="form-label">
+                                        Fabric Name
+                                        <span class="text-danger">*</span>
+                                        <span class="help-tooltip">
+                                            <i class="mdi mdi-help-circle"></i>
+                                            <span class="tooltip-content">Unique identifier for your Hedgehog fabric. Must be DNS-compliant.</span>
+                                        </span>
+                                    </label>
+                                    <input type="text" class="form-control" id="fabric-name" name="fabric_name" required 
+                                           placeholder="my-production-fabric" 
+                                           pattern="^[a-z0-9-]+$"
+                                           oninput="validateFabricName(this)">
+                                    <div class="form-text">Must be lowercase, alphanumeric, and hyphens only</div>
+                                    <div id="fabric-name-validation" class="validation-feedback"></div>
+                                </div>
+                                
+                                <div class="mb-3">
+                                    <label for="fabric-description" class="form-label">Description</label>
+                                    <textarea class="form-control" id="fabric-description" name="fabric_description" rows="3" 
+                                              placeholder="Production network fabric for datacenter A"></textarea>
+                                </div>
+                                
+                                <div class="mb-3">
+                                    <label for="fabric-location" class="form-label">Location</label>
+                                    <input type="text" class="form-control" id="fabric-location" name="fabric_location" 
+                                           placeholder="US-East-1 Datacenter">
+                                </div>
+                            </div>
+                            
+                            <div class="col-md-6">
+                                <div class="mb-3">
+                                    <label for="fabric-environment" class="form-label">
+                                        Environment
+                                        <span class="help-tooltip">
+                                            <i class="mdi mdi-help-circle"></i>
+                                            <span class="tooltip-content">Environment type affects default configurations and security settings.</span>
+                                        </span>
+                                    </label>
+                                    <select class="form-select" id="fabric-environment" name="fabric_environment" onchange="updateEnvironmentConfig()">
+                                        <option value="production">Production</option>
+                                        <option value="staging">Staging</option>
+                                        <option value="development">Development</option>
+                                        <option value="testing">Testing</option>
+                                    </select>
+                                </div>
+                                
+                                <div class="mb-3">
+                                    <label for="fabric-size" class="form-label">Expected Fabric Size</label>
+                                    <select class="form-select" id="fabric-size" name="fabric_size" onchange="updateSizeRecommendations()">
+                                        <option value="small">Small (1-10 switches)</option>
+                                        <option value="medium">Medium (11-50 switches)</option>
+                                        <option value="large">Large (51-200 switches)</option>
+                                        <option value="xlarge">Extra Large (200+ switches)</option>
+                                    </select>
+                                </div>
+                                
+                                <div class="mb-3">
+                                    <label for="fabric-redundancy" class="form-label">Redundancy Level</label>
+                                    <select class="form-select" id="fabric-redundancy" name="fabric_redundancy">
+                                        <option value="high">High (Multi-spine, MCLAG)</option>
+                                        <option value="medium">Medium (Dual-spine)</option>
+                                        <option value="basic">Basic (Single-spine)</option>
+                                    </select>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- Deployment Mode Section -->
+                    <div class="form-section">
+                        <h4><i class="mdi mdi-rocket-launch"></i> Deployment Mode</h4>
+                        <div class="row">
+                            <div class="col-md-4">
+                                <div class="deployment-mode" data-mode="git-first">
+                                    <input type="radio" name="deployment_mode" value="git-first" id="mode-git-first" checked>
+                                    <label for="mode-git-first">
+                                        <div class="text-center">
+                                            <div class="deployment-mode-icon">
+                                                <i class="mdi mdi-git"></i>
+                                            </div>
+                                            <h6>Git-First</h6>
+                                            <div class="deployment-mode-details">
+                                                <small>Configuration managed in Git, deployed via GitOps</small>
+                                            </div>
+                                        </div>
+                                    </label>
+                                </div>
+                            </div>
+                            <div class="col-md-4">
+                                <div class="deployment-mode" data-mode="pre-cluster">
+                                    <input type="radio" name="deployment_mode" value="pre-cluster" id="mode-pre-cluster">
+                                    <label for="mode-pre-cluster">
+                                        <div class="text-center">
+                                            <div class="deployment-mode-icon">
+                                                <i class="mdi mdi-server-network-outline"></i>
+                                            </div>
+                                            <h6>Pre-Cluster</h6>
+                                            <div class="deployment-mode-details">
+                                                <small>Prepare configuration before cluster deployment</small>
+                                            </div>
+                                        </div>
+                                    </label>
+                                </div>
+                            </div>
+                            <div class="col-md-4">
+                                <div class="deployment-mode" data-mode="hybrid">
+                                    <input type="radio" name="deployment_mode" value="hybrid" id="mode-hybrid">
+                                    <label for="mode-hybrid">
+                                        <div class="text-center">
+                                            <div class="deployment-mode-icon">
+                                                <i class="mdi mdi-compare-horizontal"></i>
+                                            </div>
+                                            <h6>Hybrid</h6>
+                                            <div class="deployment-mode-details">
+                                                <small>Combine manual and GitOps approaches</small>
+                                            </div>
+                                        </div>
+                                    </label>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- Git Repository Configuration Section -->
+                    <div class="form-section" id="git-config-section">
+                        <h4><i class="mdi mdi-git"></i> Git Repository Configuration</h4>
+                        <div class="row">
+                            <div class="col-md-8">
+                                <!-- Include Git Auth Component -->
+                                <div id="git-auth-component-container"></div>
+                                
+                                <div class="mb-3">
+                                    <label for="git-repository-url" class="form-label">
+                                        Repository URL
+                                        <span class="text-danger">*</span>
+                                    </label>
+                                    <input type="url" class="form-control" id="git-repository-url" name="git_repository_url" required 
+                                           placeholder="https://github.com/your-org/hedgehog-config.git">
+                                </div>
+                                
+                                <div class="row">
+                                    <div class="col-md-6">
+                                        <div class="mb-3">
+                                            <label for="git-branch" class="form-label">Branch</label>
+                                            <input type="text" class="form-control" id="git-branch" name="git_branch" 
+                                                   value="main" placeholder="main">
+                                        </div>
+                                    </div>
+                                    <div class="col-md-6">
+                                        <div class="mb-3">
+                                            <label for="git-path" class="form-label">Path</label>
+                                            <input type="text" class="form-control" id="git-path" name="git_path" 
+                                                   value="hedgehog/" placeholder="hedgehog/">
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                            
+                            <div class="col-md-4">
+                                <div class="environment-config">
+                                    <h6><i class="mdi mdi-cog"></i> Repository Settings</h6>
+                                    <div class="form-check">
+                                        <input class="form-check-input" type="checkbox" id="auto-create-structure" checked>
+                                        <label class="form-check-label" for="auto-create-structure">
+                                            Auto-create directory structure
+                                        </label>
+                                    </div>
+                                    <div class="form-check">
+                                        <input class="form-check-input" type="checkbox" id="generate-samples">
+                                        <label class="form-check-label" for="generate-samples">
+                                            Generate sample YAML files
+                                        </label>
+                                    </div>
+                                    <div class="form-check">
+                                        <input class="form-check-input" type="checkbox" id="enable-validation" checked>
+                                        <label class="form-check-label" for="enable-validation">
+                                            Enable YAML validation
+                                        </label>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- Kubernetes Configuration Section -->
+                    <div class="form-section" id="k8s-config-section">
+                        <h4><i class="mdi mdi-kubernetes"></i> Kubernetes Configuration</h4>
+                        <div class="row">
+                            <div class="col-md-6">
+                                <div class="mb-3">
+                                    <label for="target-namespace" class="form-label">
+                                        Target Namespace
+                                        <span class="text-danger">*</span>
+                                    </label>
+                                    <input type="text" class="form-control" id="target-namespace" name="target_namespace" 
+                                           value="hedgehog-system" placeholder="hedgehog-system" required>
+                                    <div class="namespace-suggestion" id="namespace-suggestion" style="display: none;">
+                                        <small>
+                                            <i class="mdi mdi-lightbulb"></i>
+                                            <span id="namespace-suggestion-text"></span>
+                                        </small>
+                                    </div>
+                                </div>
+                                
+                                <div class="mb-3">
+                                    <label for="cluster-name" class="form-label">Target Cluster Name</label>
+                                    <input type="text" class="form-control" id="cluster-name" name="cluster_name" 
+                                           placeholder="production-cluster">
+                                    <div class="form-text">Leave empty if cluster doesn't exist yet</div>
+                                </div>
+                            </div>
+                            
+                            <div class="col-md-6">
+                                <div class="mb-3">
+                                    <label class="form-label">GitOps Tool</label>
+                                    <div class="gitops-tool-options">
+                                        <div class="gitops-tool-option selected" data-tool="argocd">
+                                            <input type="radio" name="gitops_tool" value="argocd" id="tool-argocd" checked>
+                                            <label for="tool-argocd">
+                                                <div class="gitops-tool-icon">
+                                                    <i class="mdi mdi-application-settings"></i>
+                                                </div>
+                                                <div>
+                                                    <strong>ArgoCD</strong>
+                                                    <small class="d-block">Declarative GitOps for Kubernetes</small>
+                                                </div>
+                                            </label>
+                                        </div>
+                                        <div class="gitops-tool-option" data-tool="flux">
+                                            <input type="radio" name="gitops_tool" value="flux" id="tool-flux">
+                                            <label for="tool-flux">
+                                                <div class="gitops-tool-icon">
+                                                    <i class="mdi mdi-vector-triangle"></i>
+                                                </div>
+                                                <div>
+                                                    <strong>Flux v2</strong>
+                                                    <small class="d-block">GitOps toolkit for Kubernetes</small>
+                                                </div>
+                                            </label>
+                                        </div>
+                                        <div class="gitops-tool-option" data-tool="manual">
+                                            <input type="radio" name="gitops_tool" value="manual" id="tool-manual">
+                                            <label for="tool-manual">
+                                                <div class="gitops-tool-icon">
+                                                    <i class="mdi mdi-hand-extended"></i>
+                                                </div>
+                                                <div>
+                                                    <strong>Manual</strong>
+                                                    <small class="d-block">Manual deployment with kubectl</small>
+                                                </div>
+                                            </label>
+                                        </div>
+                                    </div>
+                                </div>
+                                
+                                <div class="form-check">
+                                    <input class="form-check-input" type="checkbox" id="auto-create-namespace" checked>
+                                    <label class="form-check-label" for="auto-create-namespace">
+                                        Auto-create namespace if it doesn't exist
+                                    </label>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- YAML Template Selection Section -->
+                    <div class="form-section" id="yaml-template-section">
+                        <h4><i class="mdi mdi-file-document-outline"></i> YAML Template Selection</h4>
+                        <div class="yaml-template-selector">
+                            <div class="yaml-template-option selected" data-template="minimal">
+                                <input type="radio" name="yaml_template" value="minimal" id="template-minimal" checked>
+                                <label for="template-minimal">
+                                    <div class="yaml-template-icon">
+                                        <i class="mdi mdi-file-outline"></i>
+                                    </div>
+                                    <h6>Minimal</h6>
+                                    <small>Basic structure only</small>
+                                </label>
+                            </div>
+                            <div class="yaml-template-option" data-template="standard">
+                                <input type="radio" name="yaml_template" value="standard" id="template-standard">
+                                <label for="template-standard">
+                                    <div class="yaml-template-icon">
+                                        <i class="mdi mdi-file-document"></i>
+                                    </div>
+                                    <h6>Standard</h6>
+                                    <small>Common configurations</small>
+                                </label>
+                            </div>
+                            <div class="yaml-template-option" data-template="comprehensive">
+                                <input type="radio" name="yaml_template" value="comprehensive" id="template-comprehensive">
+                                <label for="template-comprehensive">
+                                    <div class="yaml-template-icon">
+                                        <i class="mdi mdi-file-document-multiple"></i>
+                                    </div>
+                                    <h6>Comprehensive</h6>
+                                    <small>Full feature set</small>
+                                </label>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- Validation Preview Section -->
+                    <div class="form-section" id="validation-section">
+                        <h4><i class="mdi mdi-check-all"></i> Configuration Validation</h4>
+                        <div class="validation-preview" id="validation-preview">
+                            <h6>Pre-flight Validation</h6>
+                            <div class="validation-item valid">
+                                <i class="mdi mdi-check-circle"></i>
+                                <span>Fabric name format is valid</span>
+                            </div>
+                            <div class="validation-item invalid">
+                                <i class="mdi mdi-alert-circle"></i>
+                                <span>Git repository access not validated</span>
+                            </div>
+                            <div class="validation-item warning">
+                                <i class="mdi mdi-alert"></i>
+                                <span>Kubernetes cluster not accessible (expected for pre-cluster)</span>
+                            </div>
+                        </div>
+                        
+                        <div class="fabric-preview" id="fabric-preview">
+                            <h6 class="text-light">Generated Fabric Configuration Preview</h6>
+                            <div id="fabric-config-preview">
+                                <!-- Configuration preview will be populated here -->
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- Deployment Steps Section -->
+                    <div class="form-section" id="deployment-steps-section">
+                        <h4><i class="mdi mdi-timeline"></i> Deployment Plan</h4>
+                        <div class="deployment-steps">
+                            <h6><i class="mdi mdi-check-all"></i> Next Steps After Creation</h6>
+                            <div id="deployment-steps-content">
+                                <!-- Steps will be populated based on selected options -->
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- Form Actions -->
+                    <div class="form-section">
+                        <div class="d-flex justify-content-between align-items-center">
+                            <div>
+                                <button type="button" class="btn btn-outline-secondary" onclick="validateConfiguration()">
+                                    <i class="mdi mdi-check-circle"></i> Validate Configuration
+                                </button>
+                            </div>
+                            <div>
+                                <button type="button" class="btn btn-outline-secondary me-2" onclick="resetForm()">
+                                    <i class="mdi mdi-refresh"></i> Reset
+                                </button>
+                                <button type="button" class="btn btn-primary" onclick="createFabric()">
+                                    <i class="mdi mdi-plus"></i> Create Fabric
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block javascript %}
+{{ block.super }}
+<script type="text/javascript">
+document.addEventListener('DOMContentLoaded', function() {
+    console.log('🏗️ Pre-Cluster Fabric Form loaded');
+    
+    // Initialize form state
+    window.fabricFormState = {
+        validated: false,
+        gitAuthenticated: false,
+        repositoryValidated: false
+    };
+    
+    // Initialize form components
+    initializeDeploymentModeSelector();
+    initializeGitOpsToolSelector();
+    initializeYamlTemplateSelector();
+    loadGitAuthComponent();
+    
+    // Set up form validation
+    setupFormValidation();
+    
+    // Update initial states
+    updateEnvironmentConfig();
+    updateDeploymentSteps();
+    generateConfigPreview();
+});
+
+function initializeDeploymentModeSelector() {
+    const modeOptions = document.querySelectorAll('.deployment-mode');
+    modeOptions.forEach(option => {
+        option.addEventListener('click', function() {
+            // Remove previous selection
+            modeOptions.forEach(opt => opt.classList.remove('selected'));
+            // Add selection to clicked option
+            this.classList.add('selected');
+            
+            // Update radio button
+            const radio = this.querySelector('input[type="radio"]');
+            radio.checked = true;
+            
+            // Update form sections based on mode
+            updateFormSections(radio.value);
+        });
+    });
+}
+
+function initializeGitOpsToolSelector() {
+    const toolOptions = document.querySelectorAll('.gitops-tool-option');
+    toolOptions.forEach(option => {
+        option.addEventListener('click', function() {
+            // Remove previous selection
+            toolOptions.forEach(opt => opt.classList.remove('selected'));
+            // Add selection to clicked option
+            this.classList.add('selected');
+            
+            // Update radio button
+            const radio = this.querySelector('input[type="radio"]');
+            radio.checked = true;
+            
+            // Update deployment steps
+            updateDeploymentSteps();
+        });
+    });
+}
+
+function initializeYamlTemplateSelector() {
+    const templateOptions = document.querySelectorAll('.yaml-template-option');
+    templateOptions.forEach(option => {
+        option.addEventListener('click', function() {
+            // Remove previous selection
+            templateOptions.forEach(opt => opt.classList.remove('selected'));
+            // Add selection to clicked option
+            this.classList.add('selected');
+            
+            // Update radio button
+            const radio = this.querySelector('input[type="radio"]');
+            radio.checked = true;
+            
+            // Update config preview
+            generateConfigPreview();
+        });
+    });
+}
+
+function loadGitAuthComponent() {
+    // Load the Git authentication component
+    const container = document.getElementById('git-auth-component-container');
+    fetch('/plugins/hedgehog/components/git-auth/')
+        .then(response => response.text())
+        .then(html => {
+            container.innerHTML = html;
+        })
+        .catch(error => {
+            console.error('Failed to load Git auth component:', error);
+            container.innerHTML = '<div class="alert alert-warning">Git authentication component failed to load</div>';
+        });
+}
+
+function setupFormValidation() {
+    const form = document.getElementById('pre-cluster-fabric-form');
+    
+    // Real-time validation
+    form.addEventListener('input', function(e) {
+        if (e.target.name === 'fabric_name') {
+            validateFabricName(e.target);
+        }
+        
+        updateValidationPreview();
+        generateConfigPreview();
+    });
+    
+    form.addEventListener('change', function(e) {
+        updateValidationPreview();
+        generateConfigPreview();
+        updateDeploymentSteps();
+    });
+}
+
+function validateFabricName(input) {
+    const name = input.value.trim();
+    const validationDiv = document.getElementById('fabric-name-validation');
+    
+    // Reset validation
+    input.classList.remove('is-valid', 'is-invalid');
+    validationDiv.innerHTML = '';
+    
+    if (name === '') {
+        return;
+    }
+    
+    // Check format
+    const formatValid = /^[a-z0-9-]+$/.test(name);
+    if (!formatValid) {
+        input.classList.add('is-invalid');
+        validationDiv.className = 'invalid-feedback';
+        validationDiv.innerHTML = '<i class="mdi mdi-alert-circle"></i> Must be lowercase, alphanumeric, and hyphens only';
+        return;
+    }
+    
+    // Check length
+    if (name.length < 3 || name.length > 63) {
+        input.classList.add('is-invalid');
+        validationDiv.className = 'invalid-feedback';
+        validationDiv.innerHTML = '<i class="mdi mdi-alert-circle"></i> Must be between 3 and 63 characters';
+        return;
+    }
+    
+    // Check for consecutive hyphens
+    if (name.includes('--')) {
+        input.classList.add('is-invalid');
+        validationDiv.className = 'invalid-feedback';
+        validationDiv.innerHTML = '<i class="mdi mdi-alert-circle"></i> Cannot contain consecutive hyphens';
+        return;
+    }
+    
+    // Check start/end characters
+    if (name.startsWith('-') || name.endsWith('-')) {
+        input.classList.add('is-invalid');
+        validationDiv.className = 'invalid-feedback';
+        validationDiv.innerHTML = '<i class="mdi mdi-alert-circle"></i> Cannot start or end with hyphen';
+        return;
+    }
+    
+    // Valid
+    input.classList.add('is-valid');
+    validationDiv.className = 'valid-feedback';
+    validationDiv.innerHTML = '<i class="mdi mdi-check-circle"></i> Valid fabric name';
+}
+
+function updateFormSections(mode) {
+    const gitConfigSection = document.getElementById('git-config-section');
+    const k8sConfigSection = document.getElementById('k8s-config-section');
+    
+    switch (mode) {
+        case 'git-first':
+            gitConfigSection.style.display = 'block';
+            k8sConfigSection.style.display = 'block';
+            break;
+        case 'pre-cluster':
+            gitConfigSection.style.display = 'block';
+            k8sConfigSection.style.display = 'none';
+            break;
+        case 'hybrid':
+            gitConfigSection.style.display = 'block';
+            k8sConfigSection.style.display = 'block';
+            break;
+        default:
+            gitConfigSection.style.display = 'block';
+            k8sConfigSection.style.display = 'block';
+    }
+}
+
+function updateEnvironmentConfig() {
+    const environment = document.getElementById('fabric-environment').value;
+    const namespaceInput = document.getElementById('target-namespace');
+    const suggestionDiv = document.getElementById('namespace-suggestion');
+    const suggestionText = document.getElementById('namespace-suggestion-text');
+    
+    // Update namespace suggestion based on environment
+    let suggestedNamespace = '';
+    switch (environment) {
+        case 'production':
+            suggestedNamespace = 'hedgehog-prod';
+            break;
+        case 'staging':
+            suggestedNamespace = 'hedgehog-staging';
+            break;
+        case 'development':
+            suggestedNamespace = 'hedgehog-dev';
+            break;
+        case 'testing':
+            suggestedNamespace = 'hedgehog-test';
+            break;
+        default:
+            suggestedNamespace = 'hedgehog-system';
+    }
+    
+    if (namespaceInput.value === 'hedgehog-system' || namespaceInput.value === '') {
+        suggestionDiv.style.display = 'block';
+        suggestionText.textContent = `Suggested namespace for ${environment}: ${suggestedNamespace}`;
+    } else {
+        suggestionDiv.style.display = 'none';
+    }
+}
+
+function updateSizeRecommendations() {
+    const size = document.getElementById('fabric-size').value;
+    const redundancySelect = document.getElementById('fabric-redundancy');
+    
+    // Update redundancy recommendations based on size
+    switch (size) {
+        case 'small':
+            redundancySelect.value = 'basic';
+            break;
+        case 'medium':
+            redundancySelect.value = 'medium';
+            break;
+        case 'large':
+        case 'xlarge':
+            redundancySelect.value = 'high';
+            break;
+    }
+}
+
+function updateValidationPreview() {
+    const preview = document.getElementById('validation-preview');
+    const fabricName = document.getElementById('fabric-name').value;
+    const gitRepo = document.getElementById('git-repository-url').value;
+    
+    let validationHtml = '<h6>Pre-flight Validation</h6>';
+    
+    // Fabric name validation
+    if (fabricName && /^[a-z0-9-]+$/.test(fabricName)) {
+        validationHtml += '<div class="validation-item valid"><i class="mdi mdi-check-circle"></i><span>Fabric name format is valid</span></div>';
+    } else {
+        validationHtml += '<div class="validation-item invalid"><i class="mdi mdi-alert-circle"></i><span>Fabric name format is invalid</span></div>';
+    }
+    
+    // Git repository validation
+    if (gitRepo && gitRepo.startsWith('https://')) {
+        if (window.fabricFormState.gitAuthenticated) {
+            validationHtml += '<div class="validation-item valid"><i class="mdi mdi-check-circle"></i><span>Git repository access validated</span></div>';
+        } else {
+            validationHtml += '<div class="validation-item warning"><i class="mdi mdi-alert"></i><span>Git repository access not validated</span></div>';
+        }
+    } else {
+        validationHtml += '<div class="validation-item invalid"><i class="mdi mdi-alert-circle"></i><span>Git repository URL is required</span></div>';
+    }
+    
+    // Kubernetes cluster validation
+    const mode = document.querySelector('input[name="deployment_mode"]:checked').value;
+    if (mode === 'pre-cluster') {
+        validationHtml += '<div class="validation-item valid"><i class="mdi mdi-check-circle"></i><span>Pre-cluster mode: Kubernetes cluster not required</span></div>';
+    } else {
+        validationHtml += '<div class="validation-item warning"><i class="mdi mdi-alert"></i><span>Kubernetes cluster connectivity not tested</span></div>';
+    }
+    
+    preview.innerHTML = validationHtml;
+}
+
+function generateConfigPreview() {
+    const previewDiv = document.getElementById('fabric-config-preview');
+    
+    // Gather form data
+    const fabricName = document.getElementById('fabric-name').value || 'my-fabric';
+    const environment = document.getElementById('fabric-environment').value;
+    const template = document.querySelector('input[name="yaml_template"]:checked').value;
+    const gitRepo = document.getElementById('git-repository-url').value;
+    const gitBranch = document.getElementById('git-branch').value;
+    const gitPath = document.getElementById('git-path').value;
+    const namespace = document.getElementById('target-namespace').value;
+    const gitopsTool = document.querySelector('input[name="gitops_tool"]:checked').value;
+    
+    // Generate configuration preview
+    const configPreview = `
+# Hedgehog Fabric Configuration
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: ${namespace}
+  labels:
+    hedgehog.githedgehog.com/fabric: ${fabricName}
+    hedgehog.githedgehog.com/environment: ${environment}
+---
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: ${fabricName}
+  namespace: argocd
+spec:
+  project: default
+  source:
+    repoURL: ${gitRepo || 'https://github.com/your-org/hedgehog-config.git'}
+    targetRevision: ${gitBranch || 'main'}
+    path: ${gitPath || 'hedgehog/'}
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: ${namespace}
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+---
+# Sample VPC Configuration (${template} template)
+apiVersion: vpc.githedgehog.com/v1alpha2
+kind: VPC
+metadata:
+  name: ${fabricName}-vpc
+  namespace: ${namespace}
+spec:
+  ipv4Namespace: default
+  ${template === 'comprehensive' ? `
+  subnets:
+    - name: web-tier
+      subnet: 10.1.1.0/24
+      vlan: 100
+    - name: app-tier
+      subnet: 10.1.2.0/24
+      vlan: 200
+    - name: db-tier
+      subnet: 10.1.3.0/24
+      vlan: 300
+  ` : template === 'standard' ? `
+  subnets:
+    - name: default
+      subnet: 10.1.0.0/24
+      vlan: 100
+  ` : `
+  # Minimal configuration - add subnets as needed
+  `}
+---
+# Environment-specific configuration
+# Environment: ${environment}
+# Expected size: ${document.getElementById('fabric-size').value}
+# Redundancy: ${document.getElementById('fabric-redundancy').value}
+# GitOps tool: ${gitopsTool}
+    `;
+    
+    previewDiv.textContent = configPreview;
+}
+
+function updateDeploymentSteps() {
+    const stepsDiv = document.getElementById('deployment-steps-content');
+    const mode = document.querySelector('input[name="deployment_mode"]:checked').value;
+    const gitopsTool = document.querySelector('input[name="gitops_tool"]:checked').value;
+    
+    let steps = [];
+    
+    if (mode === 'git-first') {
+        steps = [
+            {
+                title: 'Repository Setup',
+                description: 'Configure Git repository with initial structure and authentication'
+            },
+            {
+                title: 'GitOps Tool Configuration',
+                description: gitopsTool === 'argocd' ? 'Install and configure ArgoCD' : 
+                           gitopsTool === 'flux' ? 'Install and configure Flux v2' : 
+                           'Prepare manual deployment scripts'
+            },
+            {
+                title: 'Cluster Preparation',
+                description: 'Deploy Kubernetes cluster and install Hedgehog controller'
+            },
+            {
+                title: 'Fabric Deployment',
+                description: 'Deploy fabric configuration via GitOps synchronization'
+            },
+            {
+                title: 'Validation',
+                description: 'Verify fabric deployment and test connectivity'
+            }
+        ];
+    } else if (mode === 'pre-cluster') {
+        steps = [
+            {
+                title: 'Repository Setup',
+                description: 'Configure Git repository with fabric configuration'
+            },
+            {
+                title: 'YAML Generation',
+                description: 'Generate initial YAML templates and directory structure'
+            },
+            {
+                title: 'Configuration Review',
+                description: 'Review and customize fabric configuration in Git'
+            },
+            {
+                title: 'Cluster Deployment',
+                description: 'Deploy Kubernetes cluster (when ready)'
+            },
+            {
+                title: 'Hedgehog Installation',
+                description: 'Install Hedgehog controller and CRDs'
+            },
+            {
+                title: 'Configuration Sync',
+                description: 'Apply fabric configuration to cluster'
+            }
+        ];
+    } else { // hybrid
+        steps = [
+            {
+                title: 'Repository Setup',
+                description: 'Configure Git repository for GitOps workflows'
+            },
+            {
+                title: 'Manual Configuration',
+                description: 'Create initial fabric configuration manually'
+            },
+            {
+                title: 'GitOps Integration',
+                description: 'Integrate manual configuration with GitOps'
+            },
+            {
+                title: 'Automated Workflows',
+                description: 'Enable automated synchronization and drift detection'
+            }
+        ];
+    }
+    
+    stepsDiv.innerHTML = steps.map((step, index) => `
+        <div class="deployment-step">
+            <div class="step-number">${index + 1}</div>
+            <div class="step-content">
+                <strong>${step.title}</strong>
+                <small>${step.description}</small>
+            </div>
+        </div>
+    `).join('');
+}
+
+function validateConfiguration() {
+    const button = event.target;
+    const originalText = button.innerHTML;
+    
+    button.innerHTML = '<i class="mdi mdi-loading mdi-spin"></i> Validating...';
+    button.disabled = true;
+    
+    // Simulate validation
+    setTimeout(() => {
+        const isValid = Math.random() > 0.3; // 70% success rate
+        
+        if (isValid) {
+            button.innerHTML = '<i class="mdi mdi-check-circle"></i> Validation Passed';
+            button.className = 'btn btn-success';
+            window.fabricFormState.validated = true;
+            
+            // Update validation preview
+            updateValidationPreview();
+            
+            // Show success notification
+            showNotification('Configuration validation passed!', 'success');
+        } else {
+            button.innerHTML = '<i class="mdi mdi-alert-circle"></i> Validation Failed';
+            button.className = 'btn btn-danger';
+            
+            showNotification('Configuration validation failed. Please check your settings.', 'error');
+        }
+        
+        // Reset button after delay
+        setTimeout(() => {
+            button.innerHTML = originalText;
+            button.className = 'btn btn-outline-secondary';
+            button.disabled = false;
+        }, 3000);
+    }, 2000);
+}
+
+function createFabric() {
+    const button = event.target;
+    const originalText = button.innerHTML;
+    
+    // Validate form first
+    const form = document.getElementById('pre-cluster-fabric-form');
+    if (!form.checkValidity()) {
+        form.reportValidity();
+        return;
+    }
+    
+    button.innerHTML = '<i class="mdi mdi-loading mdi-spin"></i> Creating Fabric...';
+    button.disabled = true;
+    
+    // Collect form data
+    const formData = new FormData(form);
+    const fabricData = Object.fromEntries(formData.entries());
+    
+    // Add additional data
+    fabricData.git_auth_data = window.getAuthData ? window.getAuthData('default') : null;
+    fabricData.deployment_timestamp = new Date().toISOString();
+    
+    // Simulate fabric creation
+    setTimeout(() => {
+        const success = Math.random() > 0.2; // 80% success rate
+        
+        if (success) {
+            button.innerHTML = '<i class="mdi mdi-check-circle"></i> Fabric Created!';
+            button.className = 'btn btn-success';
+            
+            // Show success message
+            showNotification('Pre-cluster fabric created successfully!', 'success');
+            
+            // Show completion info
+            showCreationSuccess(fabricData);
+            
+            // Redirect after delay
+            setTimeout(() => {
+                window.location.href = '/plugins/hedgehog/fabrics/';
+            }, 5000);
+        } else {
+            button.innerHTML = '<i class="mdi mdi-alert-circle"></i> Creation Failed';
+            button.className = 'btn btn-danger';
+            
+            showNotification('Fabric creation failed. Please try again.', 'error');
+            
+            // Reset button after delay
+            setTimeout(() => {
+                button.innerHTML = originalText;
+                button.className = 'btn btn-primary';
+                button.disabled = false;
+            }, 3000);
+        }
+    }, 3000);
+}
+
+function showCreationSuccess(fabricData) {
+    const modal = document.createElement('div');
+    modal.className = 'modal fade show';
+    modal.style.display = 'block';
+    modal.innerHTML = `
+        <div class="modal-dialog modal-lg">
+            <div class="modal-content">
+                <div class="modal-header bg-success text-white">
+                    <h5 class="modal-title">
+                        <i class="mdi mdi-check-circle"></i> Fabric Created Successfully!
+                    </h5>
+                </div>
+                <div class="modal-body">
+                    <div class="alert alert-success">
+                        <h6><i class="mdi mdi-rocket"></i> Pre-cluster fabric "${fabricData.fabric_name}" has been created!</h6>
+                        <p>Your Git-first Hedgehog fabric configuration is ready for deployment.</p>
+                    </div>
+                    
+                    <div class="row">
+                        <div class="col-md-6">
+                            <h6>Configuration Summary:</h6>
+                            <ul>
+                                <li><strong>Name:</strong> ${fabricData.fabric_name}</li>
+                                <li><strong>Environment:</strong> ${fabricData.fabric_environment}</li>
+                                <li><strong>Mode:</strong> ${fabricData.deployment_mode}</li>
+                                <li><strong>GitOps Tool:</strong> ${fabricData.gitops_tool}</li>
+                            </ul>
+                        </div>
+                        <div class="col-md-6">
+                            <h6>Next Steps:</h6>
+                            <ol>
+                                <li>Review fabric configuration</li>
+                                <li>Deploy Kubernetes cluster</li>
+                                <li>Install Hedgehog controller</li>
+                                <li>Sync fabric configuration</li>
+                            </ol>
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-primary" onclick="window.location.href='/plugins/hedgehog/fabrics/'">
+                        <i class="mdi mdi-arrow-right"></i> View Fabric
+                    </button>
+                </div>
+            </div>
+        </div>
+    `;
+    
+    document.body.appendChild(modal);
+    
+    // Remove modal after 5 seconds
+    setTimeout(() => {
+        modal.remove();
+    }, 5000);
+}
+
+function resetForm() {
+    if (confirm('Are you sure you want to reset the form? All entered data will be lost.')) {
+        document.getElementById('pre-cluster-fabric-form').reset();
+        
+        // Reset custom selections
+        document.querySelectorAll('.deployment-mode').forEach(mode => mode.classList.remove('selected'));
+        document.querySelectorAll('.gitops-tool-option').forEach(tool => tool.classList.remove('selected'));
+        document.querySelectorAll('.yaml-template-option').forEach(template => template.classList.remove('selected'));
+        
+        // Reset to defaults
+        document.querySelector('.deployment-mode[data-mode="git-first"]').classList.add('selected');
+        document.querySelector('.gitops-tool-option[data-tool="argocd"]').classList.add('selected');
+        document.querySelector('.yaml-template-option[data-template="minimal"]').classList.add('selected');
+        
+        // Reset form state
+        window.fabricFormState = {
+            validated: false,
+            gitAuthenticated: false,
+            repositoryValidated: false
+        };
+        
+        // Update sections
+        updateFormSections('git-first');
+        updateEnvironmentConfig();
+        updateValidationPreview();
+        generateConfigPreview();
+        updateDeploymentSteps();
+    }
+}
+
+function showNotification(message, type) {
+    const notification = document.createElement('div');
+    notification.className = `alert alert-${type === 'success' ? 'success' : 'danger'} alert-dismissible fade show position-fixed`;
+    notification.style.cssText = 'top: 20px; right: 20px; z-index: 9999; min-width: 300px;';
+    notification.innerHTML = `
+        <i class="mdi mdi-${type === 'success' ? 'check-circle' : 'alert-circle'}"></i>
+        ${message}
+        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+    `;
+    
+    document.body.appendChild(notification);
+    
+    // Auto-remove after 5 seconds
+    setTimeout(() => {
+        if (notification.parentNode) {
+            notification.remove();
+        }
+    }, 5000);
+}
+</script>
+{% endblock %}

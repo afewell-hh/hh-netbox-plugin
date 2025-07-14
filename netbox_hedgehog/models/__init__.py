@@ -1,6 +1,7 @@
 from .fabric import HedgehogFabric
 from .base import BaseCRD
-from .gitops import HedgehogResource
+from .gitops import HedgehogResource, StateTransitionHistory
+from .reconciliation import ReconciliationAlert
 from .vpc_api import (
     VPC, External, ExternalAttachment, ExternalPeering,
     IPv4Namespace, VPCAttachment, VPCPeering
@@ -13,6 +14,8 @@ __all__ = [
     'HedgehogFabric',
     'BaseCRD',
     'HedgehogResource',
+    'StateTransitionHistory',
+    'ReconciliationAlert',
     # VPC API
     'VPC',
     'External', 

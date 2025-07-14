@@ -210,3 +210,169 @@ class EnhancedFabricSerializer(NetBoxModelSerializer):
         data['drift_status_info'] = instance.calculate_drift_status()
         
         return data
+
+
+# Week 5 Reconciliation API Serializers
+class ReconciliationAlertSerializer(NetBoxModelSerializer):
+    """Serializer for ReconciliationAlert model"""
+    fabric = serializers.PrimaryKeyRelatedField(queryset=models.HedgehogFabric.objects.all())
+    resource = serializers.PrimaryKeyRelatedField(queryset=models.HedgehogResource.objects.all())
+    suggested_actions = serializers.ReadOnlyField(source='get_suggested_actions')
+    age_hours = serializers.ReadOnlyField()
+    time_to_resolution = serializers.ReadOnlyField()
+    is_active = serializers.ReadOnlyField()
+    is_expired = serializers.ReadOnlyField()
+    
+    class Meta:
+        model = models.ReconciliationAlert
+        fields = '__all__'
+        
+    def to_representation(self, instance):
+        """Add computed fields to API response"""
+        data = super().to_representation(instance)
+        
+        # Add alert summary
+        data['alert_summary'] = instance.get_alert_summary()
+        
+        return data
+
+
+class AlertResolutionSerializer(serializers.Serializer):
+    """Serializer for alert resolution requests"""
+    action = serializers.ChoiceField(choices=[
+        ('import_to_git', 'Import to Git'),
+        ('delete_from_cluster', 'Delete from Cluster'),
+        ('update_git', 'Update Git'),
+        ('ignore', 'Ignore'),
+        ('manual_review', 'Manual Review'),
+    ])
+    dry_run = serializers.BooleanField(default=False)
+    metadata = serializers.DictField(required=False)
+
+
+class AlertResolutionResultSerializer(serializers.Serializer):
+    """Serializer for alert resolution results"""
+    success = serializers.BooleanField()
+    action = serializers.CharField()
+    message = serializers.CharField(required=False)
+    details = serializers.DictField(required=False)
+    dry_run = serializers.BooleanField()
+    resolved = serializers.DictField(required=False)
+    error = serializers.CharField(required=False)
+
+
+class BatchOperationSerializer(serializers.Serializer):
+    """Serializer for batch reconciliation operations"""
+    batch_id = serializers.CharField(read_only=True)
+    fabric_id = serializers.IntegerField()
+    strategy = serializers.ChoiceField(choices=[
+        ('sequential', 'Sequential'),
+        ('parallel', 'Parallel'),
+        ('dependency_aware', 'Dependency Aware'),
+        ('priority_based', 'Priority Based'),
+    ], default='sequential')
+    resource_ids = serializers.ListField(child=serializers.IntegerField(), required=False)
+    alert_types = serializers.ListField(child=serializers.CharField(), required=False)
+    metadata = serializers.DictField(required=False)
+
+
+class BatchOperationStatusSerializer(serializers.Serializer):
+    """Serializer for batch operation status"""
+    batch_id = serializers.CharField()
+    status = serializers.CharField()
+    strategy = serializers.CharField()
+    total_items = serializers.IntegerField()
+    processed_items = serializers.IntegerField()
+    successful_items = serializers.IntegerField()
+    failed_items = serializers.IntegerField()
+    processing_time = serializers.FloatField()
+    created_at = serializers.DateTimeField()
+    started_at = serializers.DateTimeField(required=False)
+    completed_at = serializers.DateTimeField(required=False)
+    errors = serializers.ListField(child=serializers.CharField(), required=False)
+    metadata = serializers.DictField(required=False)
+
+
+class GitFirstOnboardingSerializer(serializers.Serializer):
+    """Serializer for Git-first onboarding requests"""
+    name = serializers.CharField()
+    description = serializers.CharField(required=False)
+    repository_url = serializers.URLField()
+    branch = serializers.CharField(default='main')
+    path = serializers.CharField(default='hedgehog/')
+    access_token = serializers.CharField(required=False)
+    username = serializers.CharField(required=False)
+    validate_only = serializers.BooleanField(default=False)
+
+
+class GitFirstOnboardingResultSerializer(serializers.Serializer):
+    """Serializer for Git-first onboarding results"""
+    success = serializers.BooleanField()
+    fabric_id = serializers.IntegerField(required=False)
+    created_resources = serializers.IntegerField(required=False)
+    updated_resources = serializers.IntegerField(required=False)
+    validation_errors = serializers.ListField(child=serializers.CharField(), required=False)
+    warnings = serializers.ListField(child=serializers.CharField(), required=False)
+    processing_time = serializers.FloatField(required=False)
+    onboarding_metadata = serializers.DictField(required=False)
+
+
+class RepositoryValidationSerializer(serializers.Serializer):
+    """Serializer for repository validation requests"""
+    repository_url = serializers.URLField()
+    branch = serializers.CharField(default='main')
+    path = serializers.CharField(default='hedgehog/')
+    access_token = serializers.CharField(required=False)
+    username = serializers.CharField(required=False)
+
+
+class RepositoryValidationResultSerializer(serializers.Serializer):
+    """Serializer for repository validation results"""
+    is_accessible = serializers.BooleanField()
+    has_hedgehog_directory = serializers.BooleanField()
+    discovered_resources = serializers.ListField(child=serializers.CharField())
+    validation_errors = serializers.ListField(child=serializers.CharField())
+    repository_structure = serializers.DictField()
+
+
+class YAMLWorkflowSerializer(serializers.Serializer):
+    """Serializer for YAML-first workflow requests"""
+    yaml_content = serializers.CharField()
+    file_path = serializers.CharField(required=False)
+    fabric_id = serializers.IntegerField()
+    action = serializers.ChoiceField(choices=[
+        ('create', 'Create'),
+        ('validate', 'Validate'),
+    ], default='create')
+
+
+class YAMLWorkflowResultSerializer(serializers.Serializer):
+    """Serializer for YAML-first workflow results"""
+    success = serializers.BooleanField()
+    action = serializers.CharField()
+    resources_processed = serializers.ListField(child=serializers.CharField())
+    resources_created = serializers.ListField(child=serializers.IntegerField(), required=False)
+    resources_updated = serializers.ListField(child=serializers.IntegerField(), required=False)
+    validation_errors = serializers.ListField(child=serializers.CharField(), required=False)
+    warnings = serializers.ListField(child=serializers.CharField(), required=False)
+    yaml_content = serializers.CharField(required=False)
+    processing_time = serializers.FloatField(required=False)
+    metadata = serializers.DictField(required=False)
+
+
+class OrphanedResourceStatsSerializer(serializers.Serializer):
+    """Serializer for orphaned resource statistics"""
+    total_orphaned_alerts = serializers.IntegerField()
+    by_severity = serializers.DictField()
+    by_kind = serializers.DictField()
+    by_fabric = serializers.DictField()
+    oldest_orphaned = serializers.DictField(required=False)
+    newest_orphaned = serializers.DictField(required=False)
+
+
+class ConflictSummarySerializer(serializers.Serializer):
+    """Serializer for conflict summary"""
+    total_conflicts = serializers.IntegerField()
+    by_severity = serializers.DictField()
+    by_resource_kind = serializers.DictField()
+    recent_conflicts = serializers.ListField(child=serializers.DictField())

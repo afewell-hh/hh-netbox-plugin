@@ -1,17 +1,42 @@
 from django.db import models
 from django.urls import reverse
 from django.core.exceptions import ValidationError
+from django.contrib.auth import get_user_model
+from django.conf import settings
+from django.utils import timezone
+from django.contrib.contenttypes.models import ContentType
+from django.contrib.contenttypes.fields import GenericForeignKey
 from netbox.models import NetBoxModel
+from utilities.choices import ChoiceSet
 import json
 import yaml
 from datetime import datetime
 
 
+class ResourceStateChoices(ChoiceSet):
+    """Resource state choices for six-state model"""
+    DRAFT = 'draft'
+    COMMITTED = 'committed'
+    SYNCED = 'synced'
+    DRIFTED = 'drifted'
+    ORPHANED = 'orphaned'
+    PENDING = 'pending'
+    
+    CHOICES = [
+        (DRAFT, 'Draft'),
+        (COMMITTED, 'Committed'),
+        (SYNCED, 'Synced'),
+        (DRIFTED, 'Drifted'),
+        (ORPHANED, 'Orphaned'),
+        (PENDING, 'Pending'),
+    ]
+
+
 class HedgehogResource(NetBoxModel):
     """
-    Dual-state resource model for GitOps workflows.
-    Tracks both desired state (from Git) and actual state (from Kubernetes)
-    for individual Hedgehog CRD resources, enabling comprehensive drift detection.
+    Enhanced resource model with six-state management system.
+    Tracks desired state (from Git), actual state (from Kubernetes),
+    and draft state (uncommitted changes) for comprehensive GitOps workflows.
     """
     
     # Resource Identification
@@ -38,6 +63,29 @@ class HedgehogResource(NetBoxModel):
         help_text="Kubernetes resource kind (VPC, Connection, Server, etc.)"
     )
     
+    api_version = models.CharField(
+        max_length=100,
+        default='unknown/v1',
+        help_text="Kubernetes API version"
+    )
+    
+    # Link to actual CRD object
+    content_type = models.ForeignKey(
+        ContentType,
+        on_delete=models.CASCADE,
+        null=True,
+        blank=True,
+        help_text="Content type of the linked CRD object"
+    )
+    
+    object_id = models.PositiveIntegerField(
+        null=True,
+        blank=True,
+        help_text="ID of the linked CRD object"
+    )
+    
+    content_object = GenericForeignKey('content_type', 'object_id')
+    
     # Desired State (from Git repository)
     desired_spec = models.JSONField(
         null=True,
@@ -63,6 +111,28 @@ class HedgehogResource(NetBoxModel):
         help_text="When desired state was last updated from Git"
     )
     
+    # Draft State (uncommitted changes)
+    draft_spec = models.JSONField(
+        null=True,
+        blank=True,
+        help_text="Draft resource specification (uncommitted)"
+    )
+    
+    draft_updated = models.DateTimeField(
+        null=True,
+        blank=True,
+        help_text="When draft was last updated"
+    )
+    
+    draft_updated_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='draft_resources',
+        help_text="User who last updated draft"
+    )
+    
     # Actual State (from Kubernetes cluster)
     actual_spec = models.JSONField(
         null=True,
@@ -86,6 +156,24 @@ class HedgehogResource(NetBoxModel):
         null=True,
         blank=True,
         help_text="When actual state was last updated from Kubernetes"
+    )
+    
+    # State tracking
+    resource_state = models.CharField(
+        max_length=20,
+        choices=ResourceStateChoices,
+        default=ResourceStateChoices.DRAFT,
+        help_text="Current resource state"
+    )
+    
+    last_state_change = models.DateTimeField(
+        auto_now_add=True,
+        help_text="Timestamp of last state change"
+    )
+    
+    state_change_reason = models.TextField(
+        blank=True,
+        help_text="Reason for last state change"
     )
     
     # Drift Analysis
@@ -114,6 +202,67 @@ class HedgehogResource(NetBoxModel):
         help_text="Numerical drift score (0.0 = no drift, 1.0 = complete drift)"
     )
     
+    drift_severity = models.CharField(
+        max_length=20,
+        blank=True,
+        choices=[
+            ('none', 'No Drift'),
+            ('low', 'Low'),
+            ('medium', 'Medium'),
+            ('high', 'High'),
+            ('critical', 'Critical'),
+        ],
+        help_text="Drift severity level"
+    )
+    
+    last_reconciliation = models.DateTimeField(
+        null=True,
+        blank=True,
+        help_text="Timestamp of last reconciliation attempt"
+    )
+    
+    reconciliation_attempts = models.PositiveIntegerField(
+        default=0,
+        help_text="Number of reconciliation attempts"
+    )
+    
+    # Relationship tracking
+    dependent_resources = models.ManyToManyField(
+        'self',
+        symmetrical=False,
+        related_name='dependency_of',
+        blank=True,
+        help_text="Resources this resource depends on"
+    )
+    
+    dependency_score = models.FloatField(
+        default=0.0,
+        help_text="Calculated dependency complexity score"
+    )
+    
+    relationship_metadata = models.JSONField(
+        default=dict,
+        blank=True,
+        help_text="Relationship metadata and caching"
+    )
+    
+    # Sync tracking
+    last_synced_commit = models.CharField(
+        max_length=40,
+        blank=True,
+        help_text="Git commit SHA of last successful sync"
+    )
+    
+    sync_attempts = models.PositiveIntegerField(
+        default=0,
+        help_text="Number of sync attempts"
+    )
+    
+    last_sync_error = models.TextField(
+        blank=True,
+        help_text="Last sync error message"
+    )
+    
     # Metadata
     labels = models.JSONField(
         default=dict,
@@ -139,18 +288,40 @@ class HedgehogResource(NetBoxModel):
         help_text="When drift was last calculated for this resource"
     )
     
+    # User tracking
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='created_resources',
+        help_text="User who created this resource"
+    )
+    
+    last_modified_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='modified_resources',
+        help_text="User who last modified this resource"
+    )
+    
     class Meta:
-        verbose_name = "GitOps Resource"
-        verbose_name_plural = "GitOps Resources"
+        verbose_name = "Hedgehog Resource"
+        verbose_name_plural = "Hedgehog Resources"
         unique_together = [['fabric', 'namespace', 'name', 'kind']]
         ordering = ['fabric', 'namespace', 'kind', 'name']
         indexes = [
-            models.Index(fields=['fabric', 'drift_status']),
+            models.Index(fields=['fabric', 'resource_state']),
             models.Index(fields=['fabric', 'kind']),
+            models.Index(fields=['resource_state', 'last_state_change']),
             models.Index(fields=['desired_commit']),
             models.Index(fields=['actual_updated']),
             models.Index(fields=['drift_status', 'drift_score']),
             models.Index(fields=['fabric', 'kind', 'drift_status']),
+            models.Index(fields=['last_reconciliation']),
+            models.Index(fields=['fabric', 'kind', 'resource_state']),
         ]
     
     def __str__(self):
@@ -413,7 +584,14 @@ class HedgehogResource(NetBoxModel):
         self.save(update_fields=['desired_spec', 'desired_commit', 'desired_file_path', 'desired_updated'])
         
         # Recalculate drift after state update
-        return self.calculate_drift()
+        drift_result = self.calculate_drift()
+        
+        # Update state based on drift
+        if self.resource_state == ResourceStateChoices.SYNCED and drift_result.get('success'):
+            if self.drift_status != 'in_sync':
+                self.mark_as_drifted()
+        
+        return drift_result
     
     def update_actual_state(self, spec, status, resource_version):
         """Update actual state from Kubernetes cluster"""
@@ -426,7 +604,14 @@ class HedgehogResource(NetBoxModel):
         self.save(update_fields=['actual_spec', 'actual_status', 'actual_resource_version', 'actual_updated'])
         
         # Recalculate drift after state update
-        return self.calculate_drift()
+        drift_result = self.calculate_drift()
+        
+        # Update state based on drift
+        if self.resource_state == ResourceStateChoices.SYNCED and drift_result.get('success'):
+            if self.drift_status != 'in_sync':
+                self.mark_as_drifted()
+        
+        return drift_result
     
     def get_full_name(self):
         """Return the full Kubernetes resource name (namespace/kind/name)"""
@@ -462,5 +647,149 @@ class HedgehogResource(NetBoxModel):
                 'has_drift': self.has_drift,
                 'is_orphaned': self.is_orphaned,
                 'is_pending_creation': self.is_pending_creation
+            }
+        }
+
+
+class StateTransitionHistory(NetBoxModel):
+    """History of resource state transitions"""
+    
+    resource = models.ForeignKey(
+        HedgehogResource,
+        on_delete=models.CASCADE,
+        related_name='state_history',
+        help_text='Resource this transition belongs to'
+    )
+    
+    # Transition details
+    from_state = models.CharField(
+        max_length=20,
+        choices=ResourceStateChoices,
+        help_text='Previous state'
+    )
+    
+    to_state = models.CharField(
+        max_length=20,
+        choices=ResourceStateChoices,
+        help_text='New state'
+    )
+    
+    trigger = models.CharField(
+        max_length=50,
+        help_text='What triggered the transition'
+    )
+    
+    reason = models.TextField(
+        blank=True,
+        help_text='Reason for transition'
+    )
+    
+    # Context
+    context = models.JSONField(
+        default=dict,
+        blank=True,
+        help_text='Transition context'
+    )
+    
+    # Timestamps
+    timestamp = models.DateTimeField(
+        auto_now_add=True,
+        help_text='When transition occurred'
+    )
+    
+    # User
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        help_text='User who triggered transition'
+    )
+    
+    class Meta:
+        verbose_name = 'State Transition History'
+        verbose_name_plural = 'State Transition Histories'
+        ordering = ['-timestamp']
+        indexes = [
+            models.Index(fields=['resource', 'timestamp']),
+            models.Index(fields=['resource', 'to_state']),
+            models.Index(fields=['timestamp']),
+            models.Index(fields=['from_state', 'to_state']),
+        ]
+    
+    def __str__(self):
+        return f"{self.resource.name}: {self.from_state} → {self.to_state}"
+    
+    def get_absolute_url(self):
+        return reverse('plugins:netbox_hedgehog:state_history_detail', kwargs={'pk': self.pk})
+    
+    @property
+    def duration_display(self):
+        """Get human-readable duration since transition"""
+        if not self.timestamp:
+            return "Unknown"
+        
+        delta = timezone.now() - self.timestamp
+        
+        if delta.days > 0:
+            return f"{delta.days} day{'s' if delta.days != 1 else ''} ago"
+        elif delta.seconds > 3600:
+            hours = delta.seconds // 3600
+            return f"{hours} hour{'s' if hours != 1 else ''} ago"
+        elif delta.seconds > 60:
+            minutes = delta.seconds // 60
+            return f"{minutes} minute{'s' if minutes != 1 else ''} ago"
+        else:
+            return "Just now"
+    
+    @property
+    def is_successful_transition(self):
+        """Check if this was a successful transition"""
+        return self.from_state != self.to_state
+    
+    @property
+    def transition_direction(self):
+        """Get the direction of the transition"""
+        state_order = {
+            'draft': 1,
+            'committed': 2,
+            'pending': 3,
+            'synced': 4,
+            'drifted': 3,  # Drifted is a deviation from synced
+            'orphaned': 0  # Orphaned is outside the normal flow
+        }
+        
+        from_order = state_order.get(self.from_state, 0)
+        to_order = state_order.get(self.to_state, 0)
+        
+        if from_order < to_order:
+            return 'forward'
+        elif from_order > to_order:
+            return 'backward'
+        else:
+            return 'lateral'
+    
+    def get_transition_summary(self):
+        """Get comprehensive transition summary"""
+        return {
+            'resource': {
+                'name': self.resource.name,
+                'kind': self.resource.kind,
+                'namespace': self.resource.namespace,
+                'fabric': self.resource.fabric.name
+            },
+            'transition': {
+                'from_state': self.from_state,
+                'to_state': self.to_state,
+                'trigger': self.trigger,
+                'reason': self.reason,
+                'direction': self.transition_direction,
+                'successful': self.is_successful_transition
+            },
+            'metadata': {
+                'timestamp': self.timestamp,
+                'duration_display': self.duration_display,
+                'user': self.user.username if self.user else 'System',
+                'context': self.context
             }
         }

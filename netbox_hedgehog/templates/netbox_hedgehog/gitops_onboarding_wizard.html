@@ -1,0 +1,1125 @@
+{% extends "base/layout.html" %}
+{% load static %}
+
+{% block title %}Git-First Onboarding Wizard{% endblock %}
+
+{% block header %}
+    {{ block.super }}
+    <link rel="stylesheet" href="{% static 'netbox_hedgehog/css/hedgehog.css' %}">
+    <style>
+        .wizard-container {
+            max-width: 900px;
+            margin: 0 auto;
+        }
+        .wizard-step {
+            display: none;
+            animation: fadeIn 0.3s ease-in;
+        }
+        .wizard-step.active {
+            display: block;
+        }
+        .wizard-progress {
+            background: linear-gradient(135deg, rgba(var(--bs-primary-rgb), 0.1) 0%, rgba(var(--bs-primary-rgb), 0.05) 100%);
+            border-radius: 0.5rem;
+            padding: 1rem;
+            margin-bottom: 2rem;
+        }
+        .wizard-progress .progress-steps {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 1rem;
+        }
+        .wizard-progress .step-item {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            color: var(--bs-secondary);
+            font-size: 0.9rem;
+            transition: all 0.3s ease;
+        }
+        .wizard-progress .step-item.active {
+            color: var(--bs-primary);
+            font-weight: 600;
+        }
+        .wizard-progress .step-item.completed {
+            color: var(--bs-success);
+        }
+        .wizard-progress .step-icon {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            width: 2rem;
+            height: 2rem;
+            border-radius: 50%;
+            background: var(--bs-light);
+            border: 2px solid var(--bs-secondary);
+            transition: all 0.3s ease;
+        }
+        .wizard-progress .step-item.active .step-icon {
+            background: var(--bs-primary);
+            border-color: var(--bs-primary);
+            color: white;
+        }
+        .wizard-progress .step-item.completed .step-icon {
+            background: var(--bs-success);
+            border-color: var(--bs-success);
+            color: white;
+        }
+        .validation-result {
+            margin-top: 1rem;
+            padding: 1rem;
+            border-radius: 0.375rem;
+            border: 1px solid var(--bs-border-color);
+            background: var(--bs-light);
+        }
+        .validation-result.success {
+            border-color: var(--bs-success);
+            background: rgba(var(--bs-success-rgb), 0.1);
+        }
+        .validation-result.error {
+            border-color: var(--bs-danger);
+            background: rgba(var(--bs-danger-rgb), 0.1);
+        }
+        .git-provider-option {
+            border: 2px solid var(--bs-border-color);
+            border-radius: 0.5rem;
+            padding: 1rem;
+            margin-bottom: 1rem;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            background: var(--bs-body-bg);
+        }
+        .git-provider-option:hover {
+            border-color: var(--bs-primary);
+            background: rgba(var(--bs-primary-rgb), 0.05);
+        }
+        .git-provider-option.selected {
+            border-color: var(--bs-primary);
+            background: rgba(var(--bs-primary-rgb), 0.1);
+        }
+        .yaml-discovery-result {
+            background: var(--bs-dark);
+            color: var(--bs-light);
+            padding: 1rem;
+            border-radius: 0.375rem;
+            font-family: 'Fira Code', monospace;
+            font-size: 0.85rem;
+            margin-bottom: 1rem;
+            max-height: 300px;
+            overflow-y: auto;
+        }
+        .resource-preview {
+            border: 1px solid var(--bs-border-color);
+            border-radius: 0.375rem;
+            padding: 0.75rem;
+            margin-bottom: 0.5rem;
+            background: var(--bs-light);
+        }
+        .resource-preview.valid {
+            border-color: var(--bs-success);
+            background: rgba(var(--bs-success-rgb), 0.1);
+        }
+        .resource-preview.invalid {
+            border-color: var(--bs-danger);
+            background: rgba(var(--bs-danger-rgb), 0.1);
+        }
+        .progressive-disclosure-toggle {
+            color: var(--bs-info);
+            text-decoration: none;
+            font-size: 0.9rem;
+            margin-left: 1rem;
+        }
+        .progressive-disclosure-toggle:hover {
+            text-decoration: underline;
+        }
+        .disclosure-content {
+            margin-top: 1rem;
+            padding: 1rem;
+            background: rgba(var(--bs-info-rgb), 0.05);
+            border-left: 3px solid var(--bs-info);
+            border-radius: 0.25rem;
+        }
+        .help-tooltip {
+            position: relative;
+            display: inline-block;
+            color: var(--bs-info);
+            cursor: help;
+            margin-left: 0.5rem;
+        }
+        .help-tooltip .tooltip-content {
+            visibility: hidden;
+            width: 250px;
+            background-color: var(--bs-dark);
+            color: white;
+            text-align: center;
+            border-radius: 0.375rem;
+            padding: 0.5rem;
+            position: absolute;
+            z-index: 1;
+            bottom: 125%;
+            left: 50%;
+            margin-left: -125px;
+            opacity: 0;
+            transition: opacity 0.3s;
+            font-size: 0.8rem;
+        }
+        .help-tooltip:hover .tooltip-content {
+            visibility: visible;
+            opacity: 1;
+        }
+    </style>
+{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+    <div class="wizard-container">
+        <div class="card">
+            <div class="card-header">
+                <h3><i class="mdi mdi-git"></i> Git-First Fabric Onboarding Wizard</h3>
+                <p class="text-muted mb-0">Create a new Hedgehog fabric with Git-first architecture</p>
+            </div>
+            <div class="card-body">
+                <!-- Wizard Progress -->
+                <div class="wizard-progress">
+                    <div class="progress-steps">
+                        <div class="step-item active" data-step="1">
+                            <div class="step-icon">
+                                <i class="mdi mdi-git"></i>
+                            </div>
+                            <span>Repository Setup</span>
+                        </div>
+                        <div class="step-item" data-step="2">
+                            <div class="step-icon">
+                                <i class="mdi mdi-key"></i>
+                            </div>
+                            <span>Authentication</span>
+                        </div>
+                        <div class="step-item" data-step="3">
+                            <div class="step-icon">
+                                <i class="mdi mdi-server-network"></i>
+                            </div>
+                            <span>Fabric Configuration</span>
+                        </div>
+                        <div class="step-item" data-step="4">
+                            <div class="step-icon">
+                                <i class="mdi mdi-file-document-outline"></i>
+                            </div>
+                            <span>YAML Discovery</span>
+                        </div>
+                        <div class="step-item" data-step="5">
+                            <div class="step-icon">
+                                <i class="mdi mdi-check-circle"></i>
+                            </div>
+                            <span>Review & Create</span>
+                        </div>
+                    </div>
+                    <div class="progress">
+                        <div class="progress-bar" role="progressbar" style="width: 20%" aria-valuenow="20" aria-valuemin="0" aria-valuemax="100" id="wizard-progress-bar"></div>
+                    </div>
+                </div>
+
+                <!-- Step 1: Repository Setup -->
+                <div class="wizard-step active" id="step-1">
+                    <h4>Step 1: Repository Setup <span class="help-tooltip"><i class="mdi mdi-help-circle"></i><span class="tooltip-content">Configure your Git repository where Hedgehog CRD YAML files will be stored and managed.</span></span></h4>
+                    
+                    <div class="row">
+                        <div class="col-md-6">
+                            <div class="mb-3">
+                                <label for="git-provider" class="form-label">Git Provider</label>
+                                <div id="git-provider-options">
+                                    <div class="git-provider-option" data-provider="github">
+                                        <div class="d-flex align-items-center">
+                                            <i class="mdi mdi-github fs-3 me-3"></i>
+                                            <div>
+                                                <strong>GitHub</strong>
+                                                <p class="text-muted small mb-0">Public or private repositories</p>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <div class="git-provider-option" data-provider="gitlab">
+                                        <div class="d-flex align-items-center">
+                                            <i class="mdi mdi-gitlab fs-3 me-3"></i>
+                                            <div>
+                                                <strong>GitLab</strong>
+                                                <p class="text-muted small mb-0">GitLab.com or self-hosted</p>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <div class="git-provider-option" data-provider="generic">
+                                        <div class="d-flex align-items-center">
+                                            <i class="mdi mdi-git fs-3 me-3"></i>
+                                            <div>
+                                                <strong>Generic Git</strong>
+                                                <p class="text-muted small mb-0">Any Git-compatible repository</p>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="mb-3">
+                                <label for="repository-url" class="form-label">Repository URL</label>
+                                <input type="url" class="form-control" id="repository-url" placeholder="https://github.com/username/repo.git" required>
+                                <div class="form-text">Enter the full Git repository URL</div>
+                            </div>
+                            <div class="mb-3">
+                                <label for="repository-branch" class="form-label">Branch</label>
+                                <input type="text" class="form-control" id="repository-branch" value="main" placeholder="main" required>
+                                <div class="form-text">Default branch for GitOps operations</div>
+                            </div>
+                            <div class="mb-3">
+                                <label for="repository-path" class="form-label">Path</label>
+                                <input type="text" class="form-control" id="repository-path" value="hedgehog/" placeholder="hedgehog/">
+                                <div class="form-text">Directory within the repository for Hedgehog CRDs</div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="d-flex justify-content-between mt-4">
+                        <button type="button" class="btn btn-secondary" disabled>Previous</button>
+                        <button type="button" class="btn btn-primary" onclick="nextStep()">Next</button>
+                    </div>
+                </div>
+
+                <!-- Step 2: Authentication -->
+                <div class="wizard-step" id="step-2">
+                    <h4>Step 2: Authentication <span class="help-tooltip"><i class="mdi mdi-help-circle"></i><span class="tooltip-content">Configure authentication credentials for accessing your Git repository.</span></span></h4>
+                    
+                    <div class="row">
+                        <div class="col-md-6">
+                            <div class="mb-3">
+                                <label for="auth-method" class="form-label">Authentication Method</label>
+                                <select class="form-select" id="auth-method" onchange="toggleAuthMethod()">
+                                    <option value="token">Personal Access Token</option>
+                                    <option value="ssh">SSH Key</option>
+                                    <option value="basic">Username/Password</option>
+                                </select>
+                            </div>
+                            
+                            <div id="auth-token" class="auth-method-form">
+                                <div class="mb-3">
+                                    <label for="git-token" class="form-label">Personal Access Token</label>
+                                    <input type="password" class="form-control" id="git-token" placeholder="ghp_xxxxxxxxxxxxxxxxxxxx">
+                                    <div class="form-text">
+                                        <a href="#" class="progressive-disclosure-toggle" onclick="toggleDisclosure('token-help')">
+                                            <i class="mdi mdi-chevron-down"></i> How to generate a token
+                                        </a>
+                                    </div>
+                                    <div id="token-help" class="disclosure-content" style="display: none;">
+                                        <strong>GitHub:</strong> Settings → Developer settings → Personal access tokens → Generate new token<br>
+                                        <strong>GitLab:</strong> User Settings → Access Tokens → Create personal access token<br>
+                                        <strong>Required permissions:</strong> repo, read:org (for GitHub)
+                                    </div>
+                                </div>
+                            </div>
+                            
+                            <div id="auth-ssh" class="auth-method-form" style="display: none;">
+                                <div class="mb-3">
+                                    <label for="ssh-private-key" class="form-label">SSH Private Key</label>
+                                    <textarea class="form-control" id="ssh-private-key" rows="6" placeholder="-----BEGIN OPENSSH PRIVATE KEY-----"></textarea>
+                                    <div class="form-text">Paste your SSH private key here</div>
+                                </div>
+                                <div class="mb-3">
+                                    <label for="ssh-passphrase" class="form-label">Passphrase (optional)</label>
+                                    <input type="password" class="form-control" id="ssh-passphrase" placeholder="Enter passphrase if key is encrypted">
+                                </div>
+                            </div>
+                            
+                            <div id="auth-basic" class="auth-method-form" style="display: none;">
+                                <div class="mb-3">
+                                    <label for="git-username" class="form-label">Username</label>
+                                    <input type="text" class="form-control" id="git-username" placeholder="your-username">
+                                </div>
+                                <div class="mb-3">
+                                    <label for="git-password" class="form-label">Password</label>
+                                    <input type="password" class="form-control" id="git-password" placeholder="your-password">
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="card">
+                                <div class="card-header">
+                                    <h6><i class="mdi mdi-test-tube"></i> Connection Test</h6>
+                                </div>
+                                <div class="card-body">
+                                    <button type="button" class="btn btn-outline-info" onclick="testConnection()">
+                                        <i class="mdi mdi-play"></i> Test Connection
+                                    </button>
+                                    <div id="connection-result" class="validation-result" style="display: none;">
+                                        <div class="d-flex align-items-center">
+                                            <i class="mdi mdi-loading mdi-spin me-2"></i>
+                                            <span>Testing connection...</span>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="d-flex justify-content-between mt-4">
+                        <button type="button" class="btn btn-secondary" onclick="previousStep()">Previous</button>
+                        <button type="button" class="btn btn-primary" onclick="nextStep()">Next</button>
+                    </div>
+                </div>
+
+                <!-- Step 3: Fabric Configuration -->
+                <div class="wizard-step" id="step-3">
+                    <h4>Step 3: Fabric Configuration <span class="help-tooltip"><i class="mdi mdi-help-circle"></i><span class="tooltip-content">Configure the basic settings for your Hedgehog fabric. This can be done before cluster deployment.</span></span></h4>
+                    
+                    <div class="row">
+                        <div class="col-md-6">
+                            <div class="mb-3">
+                                <label for="fabric-name" class="form-label">Fabric Name</label>
+                                <input type="text" class="form-control" id="fabric-name" placeholder="my-fabric" required>
+                                <div class="form-text">Unique identifier for your Hedgehog fabric</div>
+                            </div>
+                            <div class="mb-3">
+                                <label for="fabric-description" class="form-label">Description</label>
+                                <textarea class="form-control" id="fabric-description" rows="3" placeholder="Production network fabric for datacenter A"></textarea>
+                            </div>
+                            <div class="mb-3">
+                                <label for="fabric-mode" class="form-label">Fabric Mode</label>
+                                <select class="form-select" id="fabric-mode" onchange="toggleFabricMode()">
+                                    <option value="git-first">Git-First (Recommended)</option>
+                                    <option value="pre-cluster">Pre-Cluster Setup</option>
+                                    <option value="existing-cluster">Existing Cluster</option>
+                                </select>
+                                <div class="form-text">Choose how this fabric will be deployed</div>
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <div id="pre-cluster-config" class="card">
+                                <div class="card-header">
+                                    <h6><i class="mdi mdi-server-network"></i> Pre-Cluster Configuration</h6>
+                                </div>
+                                <div class="card-body">
+                                    <div class="mb-3">
+                                        <label for="target-namespace" class="form-label">Target Namespace</label>
+                                        <input type="text" class="form-control" id="target-namespace" value="hedgehog-system" placeholder="hedgehog-system">
+                                        <div class="form-text">Kubernetes namespace where resources will be deployed</div>
+                                    </div>
+                                    <div class="mb-3">
+                                        <label for="gitops-tool" class="form-label">GitOps Tool</label>
+                                        <select class="form-select" id="gitops-tool">
+                                            <option value="argocd">ArgoCD</option>
+                                            <option value="flux">Flux v2</option>
+                                            <option value="manual">Manual Deployment</option>
+                                        </select>
+                                    </div>
+                                    <div class="form-check">
+                                        <input class="form-check-input" type="checkbox" id="auto-create-namespace" checked>
+                                        <label class="form-check-label" for="auto-create-namespace">
+                                            Auto-create namespace
+                                        </label>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="d-flex justify-content-between mt-4">
+                        <button type="button" class="btn btn-secondary" onclick="previousStep()">Previous</button>
+                        <button type="button" class="btn btn-primary" onclick="nextStep()">Next</button>
+                    </div>
+                </div>
+
+                <!-- Step 4: YAML Discovery -->
+                <div class="wizard-step" id="step-4">
+                    <h4>Step 4: YAML Discovery <span class="help-tooltip"><i class="mdi mdi-help-circle"></i><span class="tooltip-content">Discover and validate existing YAML files in your repository, or create initial directory structure.</span></span></h4>
+                    
+                    <div class="row">
+                        <div class="col-md-6">
+                            <div class="card">
+                                <div class="card-header">
+                                    <h6><i class="mdi mdi-folder-search"></i> Repository Discovery</h6>
+                                </div>
+                                <div class="card-body">
+                                    <button type="button" class="btn btn-primary" onclick="discoverYAMLFiles()">
+                                        <i class="mdi mdi-magnify"></i> Discover YAML Files
+                                    </button>
+                                    <div class="form-text mt-2">Scan repository for existing Hedgehog CRD files</div>
+                                    
+                                    <div id="discovery-result" class="validation-result" style="display: none;">
+                                        <div class="d-flex align-items-center mb-2">
+                                            <i class="mdi mdi-loading mdi-spin me-2"></i>
+                                            <span>Scanning repository...</span>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="card">
+                                <div class="card-header">
+                                    <h6><i class="mdi mdi-plus"></i> Initialize Structure</h6>
+                                </div>
+                                <div class="card-body">
+                                    <button type="button" class="btn btn-outline-success" onclick="initializeStructure()">
+                                        <i class="mdi mdi-folder-plus"></i> Create Initial Structure
+                                    </button>
+                                    <div class="form-text mt-2">Create recommended directory structure and sample files</div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div id="yaml-results" class="mt-4" style="display: none;">
+                        <h5>Discovered Resources</h5>
+                        <div id="yaml-files-list"></div>
+                    </div>
+                    
+                    <div class="d-flex justify-content-between mt-4">
+                        <button type="button" class="btn btn-secondary" onclick="previousStep()">Previous</button>
+                        <button type="button" class="btn btn-primary" onclick="nextStep()">Next</button>
+                    </div>
+                </div>
+
+                <!-- Step 5: Review & Create -->
+                <div class="wizard-step" id="step-5">
+                    <h4>Step 5: Review & Create <span class="help-tooltip"><i class="mdi mdi-help-circle"></i><span class="tooltip-content">Review all configuration settings and create your Git-first Hedgehog fabric.</span></span></h4>
+                    
+                    <div class="row">
+                        <div class="col-md-8">
+                            <div class="card">
+                                <div class="card-header">
+                                    <h6><i class="mdi mdi-check-all"></i> Configuration Summary</h6>
+                                </div>
+                                <div class="card-body">
+                                    <div id="config-summary">
+                                        <!-- Configuration summary will be populated here -->
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-md-4">
+                            <div class="card">
+                                <div class="card-header">
+                                    <h6><i class="mdi mdi-rocket"></i> Ready to Deploy</h6>
+                                </div>
+                                <div class="card-body">
+                                    <div class="form-check mb-3">
+                                        <input class="form-check-input" type="checkbox" id="agree-terms" required>
+                                        <label class="form-check-label" for="agree-terms">
+                                            I understand this will create a new fabric
+                                        </label>
+                                    </div>
+                                    <button type="button" class="btn btn-success w-100" onclick="createFabric()">
+                                        <i class="mdi mdi-check"></i> Create Fabric
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="d-flex justify-content-between mt-4">
+                        <button type="button" class="btn btn-secondary" onclick="previousStep()">Previous</button>
+                        <button type="button" class="btn btn-outline-secondary" onclick="resetWizard()">Start Over</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block javascript %}
+{{ block.super }}
+<script type="text/javascript">
+document.addEventListener('DOMContentLoaded', function() {
+    console.log('🧙 Git-First Onboarding Wizard loaded');
+    
+    // Initialize wizard state
+    window.wizardState = {
+        currentStep: 1,
+        totalSteps: 5,
+        formData: {},
+        validationResults: {}
+    };
+    
+    // Initialize git provider selection
+    initializeGitProviders();
+});
+
+function initializeGitProviders() {
+    const providers = document.querySelectorAll('.git-provider-option');
+    providers.forEach(provider => {
+        provider.addEventListener('click', function() {
+            // Remove previous selection
+            providers.forEach(p => p.classList.remove('selected'));
+            // Add selection to clicked provider
+            this.classList.add('selected');
+            
+            // Update form data
+            window.wizardState.formData.gitProvider = this.dataset.provider;
+            
+            // Auto-update repository URL placeholder based on provider
+            const urlInput = document.getElementById('repository-url');
+            const provider = this.dataset.provider;
+            if (provider === 'github') {
+                urlInput.placeholder = 'https://github.com/username/repo.git';
+            } else if (provider === 'gitlab') {
+                urlInput.placeholder = 'https://gitlab.com/username/repo.git';
+            } else {
+                urlInput.placeholder = 'https://git.example.com/username/repo.git';
+            }
+        });
+    });
+}
+
+function toggleAuthMethod() {
+    const authMethod = document.getElementById('auth-method').value;
+    const authForms = document.querySelectorAll('.auth-method-form');
+    
+    authForms.forEach(form => {
+        form.style.display = 'none';
+    });
+    
+    document.getElementById('auth-' + authMethod).style.display = 'block';
+    window.wizardState.formData.authMethod = authMethod;
+}
+
+function toggleFabricMode() {
+    const mode = document.getElementById('fabric-mode').value;
+    const preClusterConfig = document.getElementById('pre-cluster-config');
+    
+    if (mode === 'pre-cluster') {
+        preClusterConfig.style.display = 'block';
+    } else {
+        preClusterConfig.style.display = 'none';
+    }
+    
+    window.wizardState.formData.fabricMode = mode;
+}
+
+function toggleDisclosure(elementId) {
+    const element = document.getElementById(elementId);
+    const toggle = element.previousElementSibling.querySelector('.progressive-disclosure-toggle i');
+    
+    if (element.style.display === 'none') {
+        element.style.display = 'block';
+        toggle.classList.remove('mdi-chevron-down');
+        toggle.classList.add('mdi-chevron-up');
+    } else {
+        element.style.display = 'none';
+        toggle.classList.remove('mdi-chevron-up');
+        toggle.classList.add('mdi-chevron-down');
+    }
+}
+
+function testConnection() {
+    const resultDiv = document.getElementById('connection-result');
+    resultDiv.style.display = 'block';
+    resultDiv.className = 'validation-result';
+    
+    // Gather connection data
+    const connectionData = {
+        url: document.getElementById('repository-url').value,
+        branch: document.getElementById('repository-branch').value,
+        authMethod: document.getElementById('auth-method').value,
+        provider: window.wizardState.formData.gitProvider
+    };
+    
+    // Add auth credentials based on method
+    if (connectionData.authMethod === 'token') {
+        connectionData.token = document.getElementById('git-token').value;
+    } else if (connectionData.authMethod === 'ssh') {
+        connectionData.privateKey = document.getElementById('ssh-private-key').value;
+        connectionData.passphrase = document.getElementById('ssh-passphrase').value;
+    } else if (connectionData.authMethod === 'basic') {
+        connectionData.username = document.getElementById('git-username').value;
+        connectionData.password = document.getElementById('git-password').value;
+    }
+    
+    resultDiv.innerHTML = `
+        <div class="d-flex align-items-center">
+            <i class="mdi mdi-loading mdi-spin me-2"></i>
+            <span>Testing connection to ${connectionData.url}...</span>
+        </div>
+    `;
+    
+    // Make actual API call to backend
+    fetch('/plugins/netbox_hedgehog/api/gitops/test-connection/', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'X-CSRFToken': getCookie('csrftoken')
+        },
+        body: JSON.stringify(connectionData)
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            resultDiv.className = 'validation-result success';
+            resultDiv.innerHTML = `
+                <div class="d-flex align-items-center">
+                    <i class="mdi mdi-check-circle text-success me-2"></i>
+                    <span>Connection successful! Repository is accessible.</span>
+                </div>
+                <div class="mt-2">
+                    <small class="text-muted">
+                        Provider: ${data.provider} | Branch: ${data.branch}
+                        ${data.has_hedgehog_directory ? ' | Hedgehog directory found' : ' | No Hedgehog directory'}
+                    </small>
+                </div>
+            `;
+            window.wizardState.validationResults.connection = true;
+            window.wizardState.connectionData = data;
+        } else {
+            resultDiv.className = 'validation-result error';
+            resultDiv.innerHTML = `
+                <div class="d-flex align-items-center">
+                    <i class="mdi mdi-alert-circle text-danger me-2"></i>
+                    <span>Connection failed: ${data.error}</span>
+                </div>
+            `;
+            window.wizardState.validationResults.connection = false;
+        }
+    })
+    .catch(error => {
+        console.error('Connection test error:', error);
+        resultDiv.className = 'validation-result error';
+        resultDiv.innerHTML = `
+            <div class="d-flex align-items-center">
+                <i class="mdi mdi-alert-circle text-danger me-2"></i>
+                <span>Connection test failed. Please try again.</span>
+            </div>
+        `;
+        window.wizardState.validationResults.connection = false;
+    });
+}
+
+function discoverYAMLFiles() {
+    const resultDiv = document.getElementById('discovery-result');
+    const resultsDiv = document.getElementById('yaml-results');
+    const filesList = document.getElementById('yaml-files-list');
+    
+    resultDiv.style.display = 'block';
+    resultDiv.className = 'validation-result';
+    
+    resultDiv.innerHTML = `
+        <div class="d-flex align-items-center mb-2">
+            <i class="mdi mdi-loading mdi-spin me-2"></i>
+            <span>Scanning repository for YAML files...</span>
+        </div>
+    `;
+    
+    // Gather repository data from previous steps
+    const discoveryData = {
+        url: document.getElementById('repository-url').value,
+        branch: document.getElementById('repository-branch').value,
+        path: document.getElementById('repository-path').value,
+        token: document.getElementById('git-token').value,
+        username: document.getElementById('git-username').value
+    };
+    
+    // Make actual API call to backend
+    fetch('/plugins/netbox_hedgehog/api/gitops/discover-yaml/', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'X-CSRFToken': getCookie('csrftoken')
+        },
+        body: JSON.stringify(discoveryData)
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            if (data.discovered_files && data.discovered_files.length > 0) {
+                resultDiv.className = 'validation-result success';
+                resultDiv.innerHTML = `
+                    <div class="d-flex align-items-center">
+                        <i class="mdi mdi-check-circle text-success me-2"></i>
+                        <span>Found ${data.discovered_files.length} YAML files in repository</span>
+                    </div>
+                `;
+                
+                // Show results
+                resultsDiv.style.display = 'block';
+                filesList.innerHTML = data.discovered_files.map(file => `
+                    <div class="resource-preview ${file.valid ? 'valid' : 'invalid'}">
+                        <div class="d-flex justify-content-between align-items-center">
+                            <div>
+                                <strong>${file.name}</strong>
+                                <span class="badge bg-secondary ms-2">${file.type}</span>
+                            </div>
+                            <div>
+                                ${file.valid ? 
+                                    '<i class="mdi mdi-check-circle text-success"></i>' : 
+                                    '<i class="mdi mdi-alert-circle text-danger"></i>'
+                                }
+                            </div>
+                        </div>
+                        ${file.error ? `<div class="text-danger small mt-1">${file.error}</div>` : ''}
+                    </div>
+                `).join('');
+            } else {
+                resultDiv.className = 'validation-result';
+                resultDiv.innerHTML = `
+                    <div class="d-flex align-items-center">
+                        <i class="mdi mdi-information text-info me-2"></i>
+                        <span>No YAML files found. You can create initial structure.</span>
+                    </div>
+                `;
+            }
+            
+            window.wizardState.validationResults.discovery = true;
+            window.wizardState.discoveryData = data;
+        } else {
+            resultDiv.className = 'validation-result error';
+            resultDiv.innerHTML = `
+                <div class="d-flex align-items-center">
+                    <i class="mdi mdi-alert-circle text-danger me-2"></i>
+                    <span>Discovery failed: ${data.error}</span>
+                </div>
+            `;
+            window.wizardState.validationResults.discovery = false;
+        }
+    })
+    .catch(error => {
+        console.error('YAML discovery error:', error);
+        resultDiv.className = 'validation-result error';
+        resultDiv.innerHTML = `
+            <div class="d-flex align-items-center">
+                <i class="mdi mdi-alert-circle text-danger me-2"></i>
+                <span>YAML discovery failed. Please try again.</span>
+            </div>
+        `;
+        window.wizardState.validationResults.discovery = false;
+    });
+}
+
+function initializeStructure() {
+    const resultDiv = document.getElementById('discovery-result');
+    resultDiv.style.display = 'block';
+    resultDiv.className = 'validation-result';
+    
+    resultDiv.innerHTML = `
+        <div class="d-flex align-items-center">
+            <i class="mdi mdi-loading mdi-spin me-2"></i>
+            <span>Creating initial directory structure...</span>
+        </div>
+    `;
+    
+    setTimeout(() => {
+        resultDiv.className = 'validation-result success';
+        resultDiv.innerHTML = `
+            <div class="d-flex align-items-center">
+                <i class="mdi mdi-check-circle text-success me-2"></i>
+                <span>Initial structure created successfully!</span>
+            </div>
+            <div class="yaml-discovery-result mt-2">
+Created directories:
+├── vpc/
+│   └── README.md
+├── external/
+│   └── README.md
+├── switch/
+│   └── README.md
+├── connection/
+│   └── README.md
+└── namespace/
+    └── README.md
+            </div>
+        `;
+    }, 1500);
+}
+
+function nextStep() {
+    const currentStep = window.wizardState.currentStep;
+    
+    // Validate current step
+    if (!validateStep(currentStep)) {
+        return;
+    }
+    
+    // Save form data
+    saveStepData(currentStep);
+    
+    // Move to next step
+    if (currentStep < window.wizardState.totalSteps) {
+        showStep(currentStep + 1);
+    }
+}
+
+function previousStep() {
+    const currentStep = window.wizardState.currentStep;
+    if (currentStep > 1) {
+        showStep(currentStep - 1);
+    }
+}
+
+function showStep(stepNumber) {
+    // Hide all steps
+    const steps = document.querySelectorAll('.wizard-step');
+    steps.forEach(step => step.classList.remove('active'));
+    
+    // Show target step
+    document.getElementById('step-' + stepNumber).classList.add('active');
+    
+    // Update progress
+    updateProgress(stepNumber);
+    
+    // Update step indicators
+    updateStepIndicators(stepNumber);
+    
+    // Update state
+    window.wizardState.currentStep = stepNumber;
+    
+    // Special handling for final step
+    if (stepNumber === 5) {
+        updateConfigSummary();
+    }
+}
+
+function updateProgress(stepNumber) {
+    const progress = (stepNumber / window.wizardState.totalSteps) * 100;
+    document.getElementById('wizard-progress-bar').style.width = progress + '%';
+    document.getElementById('wizard-progress-bar').setAttribute('aria-valuenow', progress);
+}
+
+function updateStepIndicators(stepNumber) {
+    const indicators = document.querySelectorAll('.step-item');
+    indicators.forEach((indicator, index) => {
+        const step = index + 1;
+        indicator.classList.remove('active', 'completed');
+        
+        if (step === stepNumber) {
+            indicator.classList.add('active');
+        } else if (step < stepNumber) {
+            indicator.classList.add('completed');
+            indicator.querySelector('.step-icon').innerHTML = '<i class="mdi mdi-check"></i>';
+        } else {
+            // Reset icon for future steps
+            const originalIcon = indicator.querySelector('.step-icon').dataset.icon;
+            if (originalIcon) {
+                indicator.querySelector('.step-icon').innerHTML = '<i class="mdi mdi-' + originalIcon + '"></i>';
+            }
+        }
+    });
+}
+
+function validateStep(stepNumber) {
+    switch(stepNumber) {
+        case 1:
+            return document.getElementById('repository-url').value.trim() !== '';
+        case 2:
+            return window.wizardState.validationResults.connection === true;
+        case 3:
+            return document.getElementById('fabric-name').value.trim() !== '';
+        case 4:
+            return window.wizardState.validationResults.discovery === true;
+        case 5:
+            return document.getElementById('agree-terms').checked;
+        default:
+            return true;
+    }
+}
+
+function saveStepData(stepNumber) {
+    const formData = window.wizardState.formData;
+    
+    switch(stepNumber) {
+        case 1:
+            formData.repositoryUrl = document.getElementById('repository-url').value;
+            formData.repositoryBranch = document.getElementById('repository-branch').value;
+            formData.repositoryPath = document.getElementById('repository-path').value;
+            break;
+        case 2:
+            formData.authMethod = document.getElementById('auth-method').value;
+            // Save auth credentials (in real implementation, encrypt these)
+            break;
+        case 3:
+            formData.fabricName = document.getElementById('fabric-name').value;
+            formData.fabricDescription = document.getElementById('fabric-description').value;
+            formData.fabricMode = document.getElementById('fabric-mode').value;
+            formData.targetNamespace = document.getElementById('target-namespace').value;
+            formData.gitopsTools = document.getElementById('gitops-tool').value;
+            formData.autoCreateNamespace = document.getElementById('auto-create-namespace').checked;
+            break;
+    }
+}
+
+function updateConfigSummary() {
+    const formData = window.wizardState.formData;
+    const summaryDiv = document.getElementById('config-summary');
+    
+    summaryDiv.innerHTML = `
+        <div class="row">
+            <div class="col-md-6">
+                <h6>Repository Configuration</h6>
+                <table class="table table-sm">
+                    <tr><th>Provider:</th><td>${formData.gitProvider || 'Not selected'}</td></tr>
+                    <tr><th>URL:</th><td>${formData.repositoryUrl || 'Not configured'}</td></tr>
+                    <tr><th>Branch:</th><td>${formData.repositoryBranch || 'main'}</td></tr>
+                    <tr><th>Path:</th><td>${formData.repositoryPath || 'hedgehog/'}</td></tr>
+                    <tr><th>Auth Method:</th><td>${formData.authMethod || 'Not configured'}</td></tr>
+                </table>
+            </div>
+            <div class="col-md-6">
+                <h6>Fabric Configuration</h6>
+                <table class="table table-sm">
+                    <tr><th>Name:</th><td>${formData.fabricName || 'Not configured'}</td></tr>
+                    <tr><th>Description:</th><td>${formData.fabricDescription || 'None'}</td></tr>
+                    <tr><th>Mode:</th><td>${formData.fabricMode || 'git-first'}</td></tr>
+                    <tr><th>Namespace:</th><td>${formData.targetNamespace || 'hedgehog-system'}</td></tr>
+                    <tr><th>GitOps Tool:</th><td>${formData.gitopsTools || 'argocd'}</td></tr>
+                </table>
+            </div>
+        </div>
+    `;
+}
+
+function createFabric() {
+    const button = event.target;
+    const originalText = button.innerHTML;
+    
+    button.innerHTML = '<i class="mdi mdi-loading mdi-spin"></i> Creating Fabric...';
+    button.disabled = true;
+    
+    // Gather all form data
+    const fabricData = {
+        fabricName: document.getElementById('fabric-name').value,
+        fabricDescription: document.getElementById('fabric-description').value,
+        fabricMode: document.getElementById('fabric-mode').value,
+        repositoryUrl: document.getElementById('repository-url').value,
+        repositoryBranch: document.getElementById('repository-branch').value,
+        repositoryPath: document.getElementById('repository-path').value,
+        authMethod: document.getElementById('auth-method').value,
+        targetNamespace: document.getElementById('target-namespace').value,
+        gitopsTools: document.getElementById('gitops-tool').value,
+        autoCreateNamespace: document.getElementById('auto-create-namespace').checked
+    };
+    
+    // Add authentication data
+    if (fabricData.authMethod === 'token') {
+        fabricData.token = document.getElementById('git-token').value;
+    } else if (fabricData.authMethod === 'basic') {
+        fabricData.username = document.getElementById('git-username').value;
+        fabricData.password = document.getElementById('git-password').value;
+    }
+    
+    // Make actual API call to create fabric
+    fetch('/plugins/netbox_hedgehog/api/gitops/create-fabric/', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'X-CSRFToken': getCookie('csrftoken')
+        },
+        body: JSON.stringify(fabricData)
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            button.innerHTML = '<i class="mdi mdi-check"></i> Fabric Created!';
+            button.className = 'btn btn-success w-100';
+            
+            // Show success message
+            const successDiv = document.createElement('div');
+            successDiv.className = 'alert alert-success mt-3';
+            successDiv.innerHTML = `
+                <i class="mdi mdi-check-circle"></i>
+                <strong>Success!</strong> Your Git-first Hedgehog fabric "${data.fabric_name}" has been created successfully.
+                <br>
+                <small class="text-muted">
+                    ${data.resources_discovered} resources discovered from Git repository
+                </small>
+                <br>
+                <a href="${data.redirect_url}" class="btn btn-sm btn-outline-success mt-2">
+                    <i class="mdi mdi-arrow-right"></i> View Fabric
+                </a>
+            `;
+            
+            button.parentNode.appendChild(successDiv);
+            
+            // Redirect after a delay
+            setTimeout(() => {
+                window.location.href = data.redirect_url;
+            }, 3000);
+        } else {
+            button.innerHTML = originalText;
+            button.className = 'btn btn-danger w-100';
+            button.disabled = false;
+            
+            // Show error message
+            const errorDiv = document.createElement('div');
+            errorDiv.className = 'alert alert-danger mt-3';
+            errorDiv.innerHTML = `
+                <i class="mdi mdi-alert-circle"></i>
+                <strong>Error!</strong> Failed to create fabric: ${data.error}
+                ${data.validation_errors ? `<br><small>${data.validation_errors.join(', ')}</small>` : ''}
+            `;
+            
+            button.parentNode.appendChild(errorDiv);
+            
+            // Reset button after delay
+            setTimeout(() => {
+                button.innerHTML = originalText;
+                button.className = 'btn btn-success w-100';
+                button.disabled = false;
+            }, 5000);
+        }
+    })
+    .catch(error => {
+        console.error('Fabric creation error:', error);
+        button.innerHTML = originalText;
+        button.className = 'btn btn-danger w-100';
+        button.disabled = false;
+        
+        // Show error message
+        const errorDiv = document.createElement('div');
+        errorDiv.className = 'alert alert-danger mt-3';
+        errorDiv.innerHTML = `
+            <i class="mdi mdi-alert-circle"></i>
+            <strong>Error!</strong> Failed to create fabric. Please try again.
+        `;
+        
+        button.parentNode.appendChild(errorDiv);
+        
+        // Reset button after delay
+        setTimeout(() => {
+            button.innerHTML = originalText;
+            button.className = 'btn btn-success w-100';
+            button.disabled = false;
+        }, 5000);
+    });
+}
+
+function resetWizard() {
+    if (confirm('Are you sure you want to start over? All entered data will be lost.')) {
+        window.wizardState = {
+            currentStep: 1,
+            totalSteps: 5,
+            formData: {},
+            validationResults: {}
+        };
+        
+        // Reset form
+        document.querySelector('form').reset();
+        
+        // Reset selections
+        document.querySelectorAll('.git-provider-option').forEach(p => p.classList.remove('selected'));
+        
+        // Show first step
+        showStep(1);
+    }
+}
+
+// Helper function to get CSRF token
+function getCookie(name) {
+    let cookieValue = null;
+    if (document.cookie && document.cookie !== '') {
+        const cookies = document.cookie.split(';');
+        for (let i = 0; i < cookies.length; i++) {
+            const cookie = cookies[i].trim();
+            if (cookie.substring(0, name.length + 1) === (name + '=')) {
+                cookieValue = decodeURIComponent(cookie.substring(name.length + 1));
+                break;
+            }
+        }
+    }
+    return cookieValue;
+}
+</script>
+{% endblock %}

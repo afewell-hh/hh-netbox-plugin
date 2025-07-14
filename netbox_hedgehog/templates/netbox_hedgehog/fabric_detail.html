@@ -3,6 +3,11 @@
 
 {% block title %}{{ object.name }} - Fabric Details{% endblock %}
 
+{% block header %}
+    {{ block.super }}
+    <link rel="stylesheet" href="{% static 'netbox_hedgehog/css/hedgehog.css' %}">
+{% endblock %}
+
 {% block content %}
 {% csrf_token %}
 <div class="container-fluid">
@@ -113,6 +118,164 @@
                                     </td>
                                 </tr>
                                 {% endif %}
+                                
+                                <!-- GitOps Integration -->
+                                {% if object.git_repository_url %}
+                                <tr>
+                                    <th>Git Repository:</th>
+                                    <td>
+                                        <div class="d-flex align-items-center">
+                                            <i class="mdi mdi-git me-2"></i>
+                                            <a href="{{ object.git_repository_url }}" target="_blank" class="text-decoration-none">
+                                                {{ object.git_repository_url|truncatechars:50 }}
+                                            </a>
+                                        </div>
+                                    </td>
+                                </tr>
+                                <tr>
+                                    <th>Git Branch:</th>
+                                    <td><code>{{ object.git_branch|default:"main" }}</code></td>
+                                </tr>
+                                <tr>
+                                    <th>GitOps State:</th>
+                                    <td>
+                                        <div id="gitops-state-display">
+                                            {% if object.drift_status == 'in_sync' %}
+                                                <span class="badge bg-success">
+                                                    <i class="mdi mdi-check-circle"></i> SYNCED
+                                                </span>
+                                                <small class="text-muted ms-2">Git and cluster are aligned</small>
+                                            {% elif object.drift_status == 'drift_detected' %}
+                                                <span class="badge bg-warning">
+                                                    <i class="mdi mdi-alert-circle"></i> DRIFTED
+                                                </span>
+                                                <small class="text-muted ms-2">{{ object.drift_count }} resource(s) with drift</small>
+                                            {% else %}
+                                                <span class="badge bg-secondary">
+                                                    <i class="mdi mdi-help-circle"></i> UNKNOWN
+                                                </span>
+                                                <small class="text-muted ms-2">GitOps status unknown</small>
+                                            {% endif %}
+                                        </div>
+                                        
+                                        <button class="btn btn-sm btn-outline-info ms-2" onclick="refreshGitOpsStatus()">
+                                            <i class="mdi mdi-refresh"></i> Refresh
+                                        </button>
+                                    </td>
+                                </tr>
+                                <tr>
+                                    <th>GitOps Operations:</th>
+                                    <td>
+                                        <div class="btn-group" role="group">
+                                            <button class="btn btn-sm btn-outline-primary" onclick="triggerGitSync()">
+                                                <i class="mdi mdi-git"></i> Sync from Git
+                                            </button>
+                                            <button class="btn btn-sm btn-outline-success" onclick="showResourceStates()">
+                                                <i class="mdi mdi-view-list"></i> Resource States
+                                            </button>
+                                            <button class="btn btn-sm btn-outline-warning" onclick="showDriftDetails()">
+                                                <i class="mdi mdi-compare-horizontal"></i> Drift Details
+                                            </button>
+                                        </div>
+                                    </td>
+                                </tr>
+                                <tr>
+                                    <th>Last Git Sync:</th>
+                                    <td>
+                                        {% if object.last_git_sync %}
+                                            {{ object.last_git_sync }} ({{ object.last_git_sync|timesince }} ago)
+                                        {% else %}
+                                            <span class="text-muted">Never synchronized from Git</span>
+                                        {% endif %}
+                                    </td>
+                                </tr>
+                                <tr>
+                                    <th>Desired State Commit:</th>
+                                    <td>
+                                        {% if object.desired_state_commit %}
+                                            <code>{{ object.desired_state_commit|truncatechars:12 }}</code>
+                                        {% else %}
+                                            <span class="text-muted">No commit tracked</span>
+                                        {% endif %}
+                                    </td>
+                                </tr>
+                                {% else %}
+                                <tr>
+                                    <th>GitOps Status:</th>
+                                    <td>
+                                        <span class="badge bg-secondary">
+                                            <i class="mdi mdi-git"></i> Not Connected
+                                        </span>
+                                        <div class="mt-2">
+                                            <a href="{% url 'plugins:netbox_hedgehog:gitops_onboarding' %}" class="btn btn-sm btn-outline-primary">
+                                                <i class="mdi mdi-git"></i> Connect to Git Repository
+                                            </a>
+                                        </div>
+                                    </td>
+                                </tr>
+                                {% endif %}
+                                
+                                <!-- ArgoCD Setup Integration (Week 2 MVP2) -->
+                                <tr>
+                                    <th>ArgoCD GitOps:</th>
+                                    <td>
+                                        {% if object.argocd_installed %}
+                                            <span class="badge bg-success">
+                                                <i class="mdi mdi-kubernetes"></i> ArgoCD Installed
+                                            </span>
+                                            {% if object.argocd_server_url %}
+                                                <a href="{{ object.argocd_server_url }}" target="_blank" class="btn btn-sm btn-outline-success ms-2">
+                                                    <i class="mdi mdi-open-in-new"></i> Open ArgoCD UI
+                                                </a>
+                                            {% endif %}
+                                            <div class="mt-2">
+                                                <small class="text-muted">
+                                                    Version: {{ object.argocd_version|default:"Unknown" }} | 
+                                                    Status: {{ object.argocd_health_status|default:"Unknown" }}
+                                                    {% if object.argocd_installation_date %}
+                                                        | Installed: {{ object.argocd_installation_date|timesince }} ago
+                                                    {% endif %}
+                                                </small>
+                                            </div>
+                                        {% elif object.gitops_setup_status == 'installing' %}
+                                            <span class="badge bg-info">
+                                                <i class="mdi mdi-loading mdi-spin"></i> Installing ArgoCD...
+                                            </span>
+                                            <div class="mt-2">
+                                                <small class="text-muted">ArgoCD installation in progress</small>
+                                            </div>
+                                        {% elif object.gitops_setup_status == 'error' %}
+                                            <span class="badge bg-danger">
+                                                <i class="mdi mdi-alert-circle"></i> Setup Failed
+                                            </span>
+                                            <div class="mt-2">
+                                                <a href="{% url 'plugins:netbox_hedgehog:argocd_setup_wizard' pk=object.pk %}" class="btn btn-sm btn-warning">
+                                                    <i class="mdi mdi-refresh"></i> Retry ArgoCD Setup
+                                                </a>
+                                                {% if object.gitops_setup_error %}
+                                                    <div class="mt-1">
+                                                        <small class="text-danger">{{ object.gitops_setup_error|truncatechars:100 }}</small>
+                                                    </div>
+                                                {% endif %}
+                                            </div>
+                                        {% else %}
+                                            <span class="badge bg-secondary">
+                                                <i class="mdi mdi-kubernetes"></i> Not Configured
+                                            </span>
+                                            <div class="mt-2">
+                                                <a href="{% url 'plugins:netbox_hedgehog:argocd_setup_wizard' pk=object.pk %}" class="btn btn-sm btn-primary">
+                                                    <i class="mdi mdi-rocket"></i> Setup ArgoCD GitOps
+                                                </a>
+                                                <div class="mt-1">
+                                                    <small class="text-muted">
+                                                        <i class="mdi mdi-information"></i>
+                                                        Deploy ArgoCD for automated GitOps workflows
+                                                    </small>
+                                                </div>
+                                            </div>
+                                        {% endif %}
+                                    </td>
+                                </tr>
                             </table>
                         </div>
                         
@@ -171,9 +334,132 @@
                                         <i class="mdi mdi-eye"></i> View CRDs (0)
                                     </button>
                                     {% endif %}
+                                    <!-- ArgoCD Setup Action (Week 2 MVP2) -->
+                                    {% if not object.argocd_installed and object.gitops_setup_status != 'installing' %}
+                                        <a href="{% url 'plugins:netbox_hedgehog:argocd_setup_wizard' pk=object.pk %}" class="btn btn-success">
+                                            <i class="mdi mdi-rocket"></i> Setup ArgoCD
+                                        </a>
+                                    {% elif object.argocd_installed and object.argocd_server_url %}
+                                        <a href="{{ object.argocd_server_url }}" target="_blank" class="btn btn-info">
+                                            <i class="mdi mdi-open-in-new"></i> ArgoCD UI
+                                        </a>
+                                    {% elif object.gitops_setup_status == 'installing' %}
+                                        <button class="btn btn-info" disabled>
+                                            <i class="mdi mdi-loading mdi-spin"></i> Installing...
+                                        </button>
+                                    {% endif %}
+                                    
                                     <button class="btn btn-warning" disabled>
                                         <i class="mdi mdi-cog"></i> Configuration
                                     </button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- GitOps Configuration Section (MVP2 Enhancement) -->
+                    <div class="gitops-detail-section">
+                        <h4><i class="mdi mdi-git"></i> GitOps Configuration</h4>
+                        <div class="row">
+                            <div class="col-md-8">
+                                <table class="table table-borderless">
+                                    <tr>
+                                        <th>Git Repository:</th>
+                                        <td>
+                                            {% if object.git_repository_url %}
+                                                <a href="{{ object.git_repository_url }}" target="_blank" class="text-decoration-none">
+                                                    <i class="mdi mdi-open-in-new"></i> {{ object.git_repository_url }}
+                                                </a>
+                                            {% else %}
+                                                <span class="text-muted">
+                                                    <i class="mdi mdi-git"></i> Not configured
+                                                </span>
+                                                <a href="{% url 'plugins:netbox_hedgehog:fabric_edit' pk=object.pk %}" class="btn btn-sm btn-outline-primary ms-2">
+                                                    <i class="mdi mdi-plus"></i> Configure Git
+                                                </a>
+                                            {% endif %}
+                                        </td>
+                                    </tr>
+                                    {% if object.git_repository_url %}
+                                    <tr>
+                                        <th>Branch:</th>
+                                        <td><code class="bg-light px-2 py-1 rounded">{{ object.git_branch }}</code></td>
+                                    </tr>
+                                    <tr>
+                                        <th>Path:</th>
+                                        <td><code class="bg-light px-2 py-1 rounded">{{ object.git_path }}</code></td>
+                                    </tr>
+                                    <tr>
+                                        <th>Drift Status:</th>
+                                        <td>
+                                            <span class="gitops-status-indicator {% if object.drift_count > 0 %}has-drift{% endif %}">
+                                                <span class="badge bg-{% if object.drift_status == 'in_sync' %}success{% elif object.drift_status == 'drift_detected' %}warning{% else %}secondary{% endif %}">
+                                                    <i class="mdi mdi-{% if object.drift_status == 'in_sync' %}check-circle{% elif object.drift_status == 'drift_detected' %}alert-circle{% else %}help-circle{% endif %}"></i>
+                                                    {{ object.get_drift_status_display|default:object.drift_status|title }}
+                                                </span>
+                                            </span>
+                                            {% if object.drift_count > 0 %}
+                                                <small class="text-muted ms-2">{{ object.drift_count }} resource{{ object.drift_count|pluralize }} with drift</small>
+                                            {% endif %}
+                                        </td>
+                                    </tr>
+                                    <tr>
+                                        <th>Last Git Sync:</th>
+                                        <td>
+                                            {% if object.last_git_sync %}
+                                                <span title="{{ object.last_git_sync }}">
+                                                    <i class="mdi mdi-clock-outline"></i> {{ object.last_git_sync|timesince }} ago
+                                                </span>
+                                            {% else %}
+                                                <span class="text-muted">
+                                                    <i class="mdi mdi-sync-alert"></i> Never synchronized
+                                                </span>
+                                            {% endif %}
+                                        </td>
+                                    </tr>
+                                    <tr>
+                                        <th>Current Commit:</th>
+                                        <td>
+                                            {% if object.desired_state_commit %}
+                                                <code class="bg-light px-2 py-1 rounded">{{ object.desired_state_commit|truncatechars:12 }}</code>
+                                                {% if object.git_repository_url %}
+                                                    <a href="{{ object.git_repository_url|add:'/commit/'|add:object.desired_state_commit }}" target="_blank" class="btn btn-sm btn-outline-secondary ms-2">
+                                                        <i class="mdi mdi-open-in-new"></i> View Commit
+                                                    </a>
+                                                {% endif %}
+                                            {% else %}
+                                                <span class="text-muted">Unknown</span>
+                                            {% endif %}
+                                        </td>
+                                    </tr>
+                                    {% endif %}
+                                </table>
+                            </div>
+                            
+                            <div class="col-md-4">
+                                <h5>GitOps Actions</h5>
+                                <div class="d-grid gap-2">
+                                    {% if object.git_repository_url %}
+                                        <button id="git-sync-btn" class="btn btn-primary" data-fabric-id="{{ object.pk }}">
+                                            <i class="mdi mdi-sync"></i> Sync from Git
+                                        </button>
+                                        {% if object.drift_count > 0 %}
+                                            <button id="drift-report-btn" class="btn btn-warning" data-fabric-id="{{ object.pk }}">
+                                                <i class="mdi mdi-alert-circle"></i> View Drift Report
+                                            </button>
+                                        {% endif %}
+                                        <button id="git-status-btn" class="btn btn-info" data-fabric-id="{{ object.pk }}">
+                                            <i class="mdi mdi-information"></i> Git Status
+                                        </button>
+                                    {% else %}
+                                        <a href="{% url 'plugins:netbox_hedgehog:fabric_edit' pk=object.pk %}" class="btn btn-primary">
+                                            <i class="mdi mdi-git"></i> Configure Git Repository
+                                        </a>
+                                        <div class="alert alert-info mb-0 small">
+                                            <i class="mdi mdi-information"></i>
+                                            Configure a Git repository to enable GitOps features like drift detection and automated synchronization.
+                                        </div>
+                                    {% endif %}
                                 </div>
                             </div>
                         </div>
@@ -214,10 +500,19 @@ document.addEventListener('DOMContentLoaded', function() {
     }
     console.log('✅ CSRF token found');
     
-    // Get buttons
+    // Get buttons (MVP1 + MVP2)
     const testBtn = document.getElementById('test-connection-btn');
     const syncBtn = document.getElementById('sync-now-btn');
-    console.log('✅ Found buttons:', {testBtn: !!testBtn, syncBtn: !!syncBtn});
+    const gitSyncBtn = document.getElementById('git-sync-btn');
+    const driftReportBtn = document.getElementById('drift-report-btn');
+    const gitStatusBtn = document.getElementById('git-status-btn');
+    console.log('✅ Found buttons:', {
+        testBtn: !!testBtn, 
+        syncBtn: !!syncBtn, 
+        gitSyncBtn: !!gitSyncBtn,
+        driftReportBtn: !!driftReportBtn,
+        gitStatusBtn: !!gitStatusBtn
+    });
     
     // Test Connection functionality
     if (testBtn) {
@@ -345,7 +640,626 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     }
     
-    console.log('✅ Event listeners attached successfully');
+    // GitOps functionality (MVP2)
+    if (gitSyncBtn) {
+        gitSyncBtn.addEventListener('click', function(e) {
+            e.preventDefault();
+            
+            const fabricId = this.getAttribute('data-fabric-id');
+            console.log('🔄 Git Sync clicked for fabric:', fabricId);
+            
+            // Show loading state
+            const originalText = this.innerHTML;
+            this.innerHTML = '<i class="mdi mdi-loading mdi-spin"></i> Syncing from Git...';
+            this.disabled = true;
+            
+            // Make API call for Git sync
+            fetch(`/api/plugins/hedgehog/gitops-fabrics/${fabricId}/sync_desired_state/`, {
+                method: 'POST',
+                headers: {
+                    'X-CSRFToken': csrfToken.value,
+                    'Content-Type': 'application/json',
+                },
+                credentials: 'same-origin'
+            })
+            .then(response => {
+                console.log('📡 Git sync response status:', response.status);
+                return response.json();
+            })
+            .then(data => {
+                console.log('✅ Git sync response:', data);
+                if (data.success) {
+                    this.innerHTML = '<i class="mdi mdi-check"></i> Synced from Git!';
+                    this.className = 'btn btn-success';
+                    
+                    // Show success notification
+                    showNotification('Git sync completed successfully!', 'success');
+                    
+                    // Reload page to show updated status
+                    setTimeout(() => location.reload(), 2000);
+                } else {
+                    this.innerHTML = '<i class="mdi mdi-close"></i> Sync Failed';
+                    this.className = 'btn btn-danger';
+                    showNotification('Git sync failed: ' + (data.error || 'Unknown error'), 'error');
+                    
+                    // Reset button after delay
+                    setTimeout(() => {
+                        this.innerHTML = originalText;
+                        this.className = 'btn btn-primary';
+                        this.disabled = false;
+                    }, 3000);
+                }
+            })
+            .catch(error => {
+                console.error('❌ Git sync error:', error);
+                this.innerHTML = '<i class="mdi mdi-close"></i> Error';
+                this.className = 'btn btn-danger';
+                showNotification('Git sync failed: ' + error.message, 'error');
+                
+                // Reset button after delay
+                setTimeout(() => {
+                    this.innerHTML = originalText;
+                    this.className = 'btn btn-primary';
+                    this.disabled = false;
+                }, 3000);
+            });
+        });
+    }
+    
+    if (driftReportBtn) {
+        driftReportBtn.addEventListener('click', function(e) {
+            e.preventDefault();
+            
+            const fabricId = this.getAttribute('data-fabric-id');
+            console.log('📊 Drift Report clicked for fabric:', fabricId);
+            
+            // Make API call for drift report
+            fetch(`/api/plugins/hedgehog/gitops-fabrics/${fabricId}/drift_report/`, {
+                method: 'GET',
+                headers: {
+                    'X-CSRFToken': csrfToken.value,
+                },
+                credentials: 'same-origin'
+            })
+            .then(response => response.json())
+            .then(data => {
+                console.log('✅ Drift report response:', data);
+                showDriftModal(data);
+            })
+            .catch(error => {
+                console.error('❌ Drift report error:', error);
+                showNotification('Failed to load drift report: ' + error.message, 'error');
+            });
+        });
+    }
+    
+    if (gitStatusBtn) {
+        gitStatusBtn.addEventListener('click', function(e) {
+            e.preventDefault();
+            
+            const fabricId = this.getAttribute('data-fabric-id');
+            console.log('📈 Git Status clicked for fabric:', fabricId);
+            
+            // Make API call for Git status
+            fetch(`/api/plugins/hedgehog/gitops-fabrics/${fabricId}/git_status/`, {
+                method: 'GET',
+                headers: {
+                    'X-CSRFToken': csrfToken.value,
+                },
+                credentials: 'same-origin'
+            })
+            .then(response => response.json())
+            .then(data => {
+                console.log('✅ Git status response:', data);
+                showGitStatusModal(data);
+            })
+            .catch(error => {
+                console.error('❌ Git status error:', error);
+                showNotification('Failed to load Git status: ' + error.message, 'error');
+            });
+        });
+    }
+    
+    // Utility functions for GitOps features
+    function showNotification(message, type) {
+        // Create notification element
+        const notification = document.createElement('div');
+        notification.className = `alert alert-${type === 'success' ? 'success' : 'danger'} alert-dismissible fade show position-fixed`;
+        notification.style.cssText = 'top: 20px; right: 20px; z-index: 9999; min-width: 300px;';
+        notification.innerHTML = `
+            <i class="mdi mdi-${type === 'success' ? 'check-circle' : 'alert-circle'}"></i>
+            ${message}
+            <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+        `;
+        
+        document.body.appendChild(notification);
+        
+        // Auto-remove after 5 seconds
+        setTimeout(() => {
+            if (notification.parentNode) {
+                notification.remove();
+            }
+        }, 5000);
+    }
+    
+    function showDriftModal(data) {
+        // Create and show drift analysis modal
+        const modalHtml = `
+            <div class="modal fade" id="driftModal" tabindex="-1">
+                <div class="modal-dialog modal-lg">
+                    <div class="modal-content">
+                        <div class="modal-header">
+                            <h5 class="modal-title">
+                                <i class="mdi mdi-alert-circle text-warning"></i>
+                                Drift Analysis Report
+                            </h5>
+                            <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                        </div>
+                        <div class="modal-body">
+                            <div class="row mb-3">
+                                <div class="col-md-4 text-center">
+                                    <div class="card bg-warning text-white">
+                                        <div class="card-body">
+                                            <h3>${data.drift_count || 0}</h3>
+                                            <small>Resources with Drift</small>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="col-md-4 text-center">
+                                    <div class="card bg-info text-white">
+                                        <div class="card-body">
+                                            <h3>${data.total_resources || 0}</h3>
+                                            <small>Total Resources</small>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="col-md-4 text-center">
+                                    <div class="card bg-secondary text-white">
+                                        <div class="card-body">
+                                            <h3>${data.last_calculated ? 'Recent' : 'Never'}</h3>
+                                            <small>Last Check</small>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="mt-3">
+                                <h6>Detailed Analysis</h6>
+                                <p class="text-muted">${data.details || 'No detailed analysis available'}</p>
+                            </div>
+                        </div>
+                        <div class="modal-footer">
+                            <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                            <button type="button" class="btn btn-primary" onclick="location.reload()">Refresh Status</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        `;
+        
+        // Remove existing modal if present
+        const existingModal = document.getElementById('driftModal');
+        if (existingModal) {
+            existingModal.remove();
+        }
+        
+        // Add modal to body and show
+        document.body.insertAdjacentHTML('beforeend', modalHtml);
+        const modal = new bootstrap.Modal(document.getElementById('driftModal'));
+        modal.show();
+    }
+    
+    function showGitStatusModal(data) {
+        // Create and show Git status modal
+        const modalHtml = `
+            <div class="modal fade" id="gitStatusModal" tabindex="-1">
+                <div class="modal-dialog modal-lg">
+                    <div class="modal-content">
+                        <div class="modal-header">
+                            <h5 class="modal-title">
+                                <i class="mdi mdi-git text-info"></i>
+                                Git Repository Status
+                            </h5>
+                            <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                        </div>
+                        <div class="modal-body">
+                            <div class="row">
+                                <div class="col-md-6">
+                                    <h6>Repository Information</h6>
+                                    <table class="table table-sm">
+                                        <tr>
+                                            <th>URL:</th>
+                                            <td><small>${data.repository_url || 'Not configured'}</small></td>
+                                        </tr>
+                                        <tr>
+                                            <th>Branch:</th>
+                                            <td><code>${data.branch || 'main'}</code></td>
+                                        </tr>
+                                        <tr>
+                                            <th>Path:</th>
+                                            <td><code>${data.path || 'hedgehog/'}</code></td>
+                                        </tr>
+                                    </table>
+                                </div>
+                                <div class="col-md-6">
+                                    <h6>Status Information</h6>
+                                    <table class="table table-sm">
+                                        <tr>
+                                            <th>Status:</th>
+                                            <td>
+                                                <span class="badge bg-${data.status === 'connected' ? 'success' : 'warning'}">
+                                                    ${data.status || 'Unknown'}
+                                                </span>
+                                            </td>
+                                        </tr>
+                                        <tr>
+                                            <th>Last Sync:</th>
+                                            <td><small>${data.last_sync || 'Never'}</small></td>
+                                        </tr>
+                                        <tr>
+                                            <th>Current Commit:</th>
+                                            <td><code>${data.current_commit || 'Unknown'}</code></td>
+                                        </tr>
+                                    </table>
+                                </div>
+                            </div>
+                            ${data.error ? `<div class="alert alert-danger mt-3"><small>${data.error}</small></div>` : ''}
+                        </div>
+                        <div class="modal-footer">
+                            <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        `;
+        
+        // Remove existing modal if present
+        const existingModal = document.getElementById('gitStatusModal');
+        if (existingModal) {
+            existingModal.remove();
+        }
+        
+        // Add modal to body and show
+        document.body.insertAdjacentHTML('beforeend', modalHtml);
+        const modal = new bootstrap.Modal(document.getElementById('gitStatusModal'));
+        modal.show();
+    }
+    
+    console.log('✅ Event listeners attached successfully (MVP1 + MVP2)');
 });
+
+// GitOps Integration Functions for Backend Connection
+function refreshGitOpsStatus() {
+    const fabricId = {{ object.pk }};
+    const statusDisplay = document.getElementById('gitops-state-display');
+    
+    // Show loading state
+    statusDisplay.innerHTML = '<i class="mdi mdi-loading mdi-spin"></i> Refreshing GitOps status...';
+    
+    // Fetch GitOps status from backend
+    fetch(`/plugins/netbox_hedgehog/api/fabrics/${fabricId}/gitops/status/`, {
+        method: 'GET',
+        headers: {
+            'X-CSRFToken': getCookie('csrftoken'),
+            'Content-Type': 'application/json',
+        },
+        credentials: 'same-origin'
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            updateGitOpsDisplay(data);
+        } else {
+            statusDisplay.innerHTML = '<span class="badge bg-danger">Error</span> <small class="text-muted">Failed to refresh status</small>';
+        }
+    })
+    .catch(error => {
+        console.error('GitOps status refresh error:', error);
+        statusDisplay.innerHTML = '<span class="badge bg-danger">Error</span> <small class="text-muted">Failed to refresh status</small>';
+    });
+}
+
+function triggerGitSync() {
+    const fabricId = {{ object.pk }};
+    
+    if (!confirm('This will sync the latest changes from the Git repository. Continue?')) {
+        return;
+    }
+    
+    // Show loading notification
+    showNotification('Syncing from Git repository...', 'info');
+    
+    // Trigger Git sync
+    fetch(`/plugins/netbox_hedgehog/api/fabrics/${fabricId}/gitops/sync/`, {
+        method: 'POST',
+        headers: {
+            'X-CSRFToken': getCookie('csrftoken'),
+            'Content-Type': 'application/json',
+        },
+        credentials: 'same-origin'
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            showNotification('Git sync completed successfully!', 'success');
+            setTimeout(() => location.reload(), 2000);
+        } else {
+            showNotification('Git sync failed: ' + (data.error || 'Unknown error'), 'error');
+        }
+    })
+    .catch(error => {
+        console.error('Git sync error:', error);
+        showNotification('Git sync failed: ' + error.message, 'error');
+    });
+}
+
+function showResourceStates() {
+    const fabricId = {{ object.pk }};
+    
+    // Fetch resource states
+    fetch(`/plugins/netbox_hedgehog/api/fabrics/${fabricId}/gitops/status/`, {
+        method: 'GET',
+        headers: {
+            'X-CSRFToken': getCookie('csrftoken'),
+            'Content-Type': 'application/json',
+        },
+        credentials: 'same-origin'
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            showResourceStatesModal(data.resource_stats);
+        } else {
+            showNotification('Failed to load resource states', 'error');
+        }
+    })
+    .catch(error => {
+        console.error('Resource states error:', error);
+        showNotification('Failed to load resource states', 'error');
+    });
+}
+
+function showDriftDetails() {
+    const fabricId = {{ object.pk }};
+    
+    // Fetch drift details
+    fetch(`/plugins/netbox_hedgehog/api/fabrics/${fabricId}/gitops/status/`, {
+        method: 'GET',
+        headers: {
+            'X-CSRFToken': getCookie('csrftoken'),
+            'Content-Type': 'application/json',
+        },
+        credentials: 'same-origin'
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            showDriftDetailsModal(data.drift_status);
+        } else {
+            showNotification('Failed to load drift details', 'error');
+        }
+    })
+    .catch(error => {
+        console.error('Drift details error:', error);
+        showNotification('Failed to load drift details', 'error');
+    });
+}
+
+function updateGitOpsDisplay(data) {
+    const statusDisplay = document.getElementById('gitops-state-display');
+    const driftStatus = data.drift_status.drift_status || 'unknown';
+    const driftCount = data.drift_status.drift_count || 0;
+    
+    let badgeClass = 'secondary';
+    let icon = 'help-circle';
+    let message = 'Status unknown';
+    
+    if (driftStatus === 'in_sync') {
+        badgeClass = 'success';
+        icon = 'check-circle';
+        message = 'Git and cluster are aligned';
+    } else if (driftStatus === 'drift_detected') {
+        badgeClass = 'warning';
+        icon = 'alert-circle';
+        message = `${driftCount} resource(s) with drift`;
+    }
+    
+    statusDisplay.innerHTML = `
+        <span class="badge bg-${badgeClass}">
+            <i class="mdi mdi-${icon}"></i> ${driftStatus.toUpperCase().replace('_', ' ')}
+        </span>
+        <small class="text-muted ms-2">${message}</small>
+    `;
+}
+
+function showResourceStatesModal(resourceStats) {
+    const modalHtml = `
+        <div class="modal fade" id="resourceStatesModal" tabindex="-1">
+            <div class="modal-dialog modal-lg">
+                <div class="modal-content">
+                    <div class="modal-header">
+                        <h5 class="modal-title">
+                            <i class="mdi mdi-view-list text-info"></i>
+                            Resource States Overview
+                        </h5>
+                        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                    </div>
+                    <div class="modal-body">
+                        <div class="row">
+                            <div class="col-md-4">
+                                <div class="card text-center">
+                                    <div class="card-body">
+                                        <h3 class="text-primary">${resourceStats.total}</h3>
+                                        <small>Total Resources</small>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="col-md-4">
+                                <div class="card text-center">
+                                    <div class="card-body">
+                                        <h3 class="text-success">${resourceStats.synced}</h3>
+                                        <small>Synced</small>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="col-md-4">
+                                <div class="card text-center">
+                                    <div class="card-body">
+                                        <h3 class="text-warning">${resourceStats.drifted}</h3>
+                                        <small>Drifted</small>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="row mt-3">
+                            <div class="col-md-3">
+                                <div class="card text-center">
+                                    <div class="card-body">
+                                        <h4 class="text-secondary">${resourceStats.draft}</h4>
+                                        <small>Draft</small>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="col-md-3">
+                                <div class="card text-center">
+                                    <div class="card-body">
+                                        <h4 class="text-info">${resourceStats.committed}</h4>
+                                        <small>Committed</small>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="col-md-3">
+                                <div class="card text-center">
+                                    <div class="card-body">
+                                        <h4 class="text-warning">${resourceStats.pending}</h4>
+                                        <small>Pending</small>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="col-md-3">
+                                <div class="card text-center">
+                                    <div class="card-body">
+                                        <h4 class="text-danger">${resourceStats.orphaned}</h4>
+                                        <small>Orphaned</small>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    `;
+    
+    document.body.insertAdjacentHTML('beforeend', modalHtml);
+    const modal = new bootstrap.Modal(document.getElementById('resourceStatesModal'));
+    modal.show();
+}
+
+function showDriftDetailsModal(driftStatus) {
+    const modalHtml = `
+        <div class="modal fade" id="driftDetailsModal" tabindex="-1">
+            <div class="modal-dialog modal-lg">
+                <div class="modal-content">
+                    <div class="modal-header">
+                        <h5 class="modal-title">
+                            <i class="mdi mdi-compare-horizontal text-warning"></i>
+                            Drift Analysis Details
+                        </h5>
+                        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                    </div>
+                    <div class="modal-body">
+                        <div class="row mb-3">
+                            <div class="col-md-6">
+                                <h6>Overall Status</h6>
+                                <p><strong>Drift Status:</strong> ${driftStatus.drift_status || 'unknown'}</p>
+                                <p><strong>Drift Count:</strong> ${driftStatus.drift_count || 0}</p>
+                                <p><strong>Total Resources:</strong> ${driftStatus.total_resources || 0}</p>
+                            </div>
+                            <div class="col-md-6">
+                                <h6>Last Analysis</h6>
+                                <p><strong>Last Calculated:</strong> ${driftStatus.last_calculated || 'Never'}</p>
+                                <p><strong>Details:</strong> ${driftStatus.details || 'No details available'}</p>
+                            </div>
+                        </div>
+                        ${driftStatus.resource_details ? `
+                        <div class="mt-3">
+                            <h6>Resource Details</h6>
+                            <div class="table-responsive">
+                                <table class="table table-sm">
+                                    <thead>
+                                        <tr>
+                                            <th>Resource</th>
+                                            <th>Status</th>
+                                            <th>Score</th>
+                                            <th>Summary</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        ${Object.entries(driftStatus.resource_details).map(([name, details]) => `
+                                            <tr>
+                                                <td><code>${name}</code></td>
+                                                <td><span class="badge bg-warning">${details.status}</span></td>
+                                                <td>${details.score.toFixed(2)}</td>
+                                                <td>${details.summary}</td>
+                                            </tr>
+                                        `).join('')}
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                        ` : ''}
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                        <button type="button" class="btn btn-primary" onclick="refreshGitOpsStatus()">Refresh Status</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    `;
+    
+    document.body.insertAdjacentHTML('beforeend', modalHtml);
+    const modal = new bootstrap.Modal(document.getElementById('driftDetailsModal'));
+    modal.show();
+}
+
+// Helper function to get CSRF token
+function getCookie(name) {
+    let cookieValue = null;
+    if (document.cookie && document.cookie !== '') {
+        const cookies = document.cookie.split(';');
+        for (let i = 0; i < cookies.length; i++) {
+            const cookie = cookies[i].trim();
+            if (cookie.substring(0, name.length + 1) === (name + '=')) {
+                cookieValue = decodeURIComponent(cookie.substring(name.length + 1));
+                break;
+            }
+        }
+    }
+    return cookieValue;
+}
+
+// Utility function for notifications
+function showNotification(message, type) {
+    const notification = document.createElement('div');
+    notification.className = `alert alert-${type === 'success' ? 'success' : type === 'info' ? 'info' : 'danger'} alert-dismissible fade show position-fixed`;
+    notification.style.cssText = 'top: 20px; right: 20px; z-index: 9999; min-width: 300px;';
+    notification.innerHTML = `
+        <i class="mdi mdi-${type === 'success' ? 'check-circle' : type === 'info' ? 'information' : 'alert-circle'}"></i>
+        ${message}
+        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+    `;
+    
+    document.body.appendChild(notification);
+    
+    setTimeout(() => {
+        if (notification.parentNode) {
+            notification.remove();
+        }
+    }, 5000);
+}
 </script>
 {% endblock %}

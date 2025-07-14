@@ -5,6 +5,20 @@ from rest_framework.decorators import action
 from netbox.api.viewsets import NetBoxModelViewSet
 from django.shortcuts import get_object_or_404
 import logging
+try:
+    import git
+    GIT_AVAILABLE = True
+except ImportError:
+    GIT_AVAILABLE = False
+import os
+import tempfile
+from pathlib import Path
+try:
+    from cryptography.fernet import Fernet
+    CRYPTO_AVAILABLE = True
+except ImportError:
+    CRYPTO_AVAILABLE = False
+from django.conf import settings
 
 from .. import models
 from . import serializers
@@ -13,6 +27,7 @@ from ..utils.gitops_integration import (
     get_fabric_gitops_status,
     CRDGitOpsIntegrator
 )
+from ..utils.git_providers import GitProviderFactory, GitAuthenticationError
 
 logger = logging.getLogger(__name__)
 
@@ -386,3 +401,820 @@ class DriftAnalysisAPIView(APIView):
             return Response({
                 'error': str(e)
             }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+class GitAuthenticationAPIView(APIView):
+    """API endpoint for Git authentication validation"""
+    
+    def post(self, request):
+        """Validate Git authentication credentials"""
+        if not GIT_AVAILABLE:
+            return Response({
+                'success': False,
+                'error': 'Git functionality is not available. Please install GitPython dependency.'
+            }, status=status.HTTP_503_SERVICE_UNAVAILABLE)
+            
+        try:
+            auth_method = request.data.get('method', 'token')
+            repository_url = request.data.get('repository_url', '')
+            branch = request.data.get('branch', 'main')
+            
+            if not repository_url:
+                return Response({
+                    'success': False,
+                    'error': 'Repository URL is required'
+                }, status=status.HTTP_400_BAD_REQUEST)
+            
+            # Create temporary directory for git operations
+            with tempfile.TemporaryDirectory() as temp_dir:
+                try:
+                    if auth_method == 'token':
+                        token = request.data.get('token', '')
+                        if not token:
+                            return Response({
+                                'success': False,
+                                'error': 'Token is required for token authentication'
+                            }, status=status.HTTP_400_BAD_REQUEST)
+                        
+                        # Validate token format
+                        if not self._validate_token_format(token):
+                            return Response({
+                                'success': False,
+                                'error': 'Invalid token format'
+                            }, status=status.HTTP_400_BAD_REQUEST)
+                        
+                        # Test repository access with token
+                        result = self._test_token_access(repository_url, token, branch, temp_dir)
+                        
+                    elif auth_method == 'ssh':
+                        private_key = request.data.get('private_key', '')
+                        passphrase = request.data.get('passphrase', '')
+                        
+                        if not private_key:
+                            return Response({
+                                'success': False,
+                                'error': 'Private key is required for SSH authentication'
+                            }, status=status.HTTP_400_BAD_REQUEST)
+                        
+                        # Validate SSH key format
+                        if not self._validate_ssh_key_format(private_key):
+                            return Response({
+                                'success': False,
+                                'error': 'Invalid SSH key format'
+                            }, status=status.HTTP_400_BAD_REQUEST)
+                        
+                        # Test repository access with SSH key
+                        result = self._test_ssh_access(repository_url, private_key, passphrase, branch, temp_dir)
+                        
+                    elif auth_method == 'basic':
+                        username = request.data.get('username', '')
+                        password = request.data.get('password', '')
+                        
+                        if not username or not password:
+                            return Response({
+                                'success': False,
+                                'error': 'Username and password are required for basic authentication'
+                            }, status=status.HTTP_400_BAD_REQUEST)
+                        
+                        # Test repository access with basic auth
+                        result = self._test_basic_auth_access(repository_url, username, password, branch, temp_dir)
+                        
+                    else:
+                        return Response({
+                            'success': False,
+                            'error': 'Unsupported authentication method'
+                        }, status=status.HTTP_400_BAD_REQUEST)
+                    
+                    return Response(result, status=status.HTTP_200_OK)
+                    
+                except GitAuthenticationError as e:
+                    return Response({
+                        'success': False,
+                        'error': str(e)
+                    }, status=status.HTTP_401_UNAUTHORIZED)
+                    
+                except Exception as e:
+                    logger.error(f"Git authentication test failed: {e}")
+                    return Response({
+                        'success': False,
+                        'error': f'Authentication test failed: {str(e)}'
+                    }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+                    
+        except Exception as e:
+            logger.error(f"Git authentication validation failed: {e}")
+            return Response({
+                'success': False,
+                'error': str(e)
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+    
+    def _validate_token_format(self, token):
+        """Validate token format for different providers"""
+        token = token.strip()
+        
+        # GitHub personal access token format
+        if token.startswith('ghp_') or token.startswith('github_pat_'):
+            return len(token) > 20
+        
+        # GitLab personal access token format
+        if token.startswith('glpat-'):
+            return len(token) > 20
+        
+        # Generic token validation (at least 10 characters)
+        return len(token) >= 10
+    
+    def _validate_ssh_key_format(self, private_key):
+        """Validate SSH private key format"""
+        private_key = private_key.strip()
+        
+        # Check for common SSH key headers
+        valid_headers = [
+            '-----BEGIN OPENSSH PRIVATE KEY-----',
+            '-----BEGIN RSA PRIVATE KEY-----',
+            '-----BEGIN DSA PRIVATE KEY-----',
+            '-----BEGIN EC PRIVATE KEY-----',
+            '-----BEGIN PRIVATE KEY-----'
+        ]
+        
+        return any(header in private_key for header in valid_headers)
+    
+    def _test_token_access(self, repository_url, token, branch, temp_dir):
+        """Test repository access with token authentication"""
+        try:
+            # Modify URL to include token
+            if repository_url.startswith('https://github.com/'):
+                auth_url = repository_url.replace('https://github.com/', f'https://{token}@github.com/')
+            elif repository_url.startswith('https://gitlab.com/'):
+                auth_url = repository_url.replace('https://gitlab.com/', f'https://oauth2:{token}@gitlab.com/')
+            else:
+                # Generic git provider
+                auth_url = repository_url.replace('https://', f'https://token:{token}@')
+            
+            # Test clone operation
+            repo = git.Repo.clone_from(auth_url, temp_dir, branch=branch, depth=1)
+            
+            # Get repository information
+            remote = repo.remotes.origin
+            remote_url = remote.url
+            
+            # Test fetch operation
+            remote.fetch()
+            
+            return {
+                'success': True,
+                'message': 'Token authentication successful',
+                'repository_info': {
+                    'url': repository_url,
+                    'branch': branch,
+                    'accessible': True,
+                    'permissions': 'read/write' if self._test_write_access(repo) else 'read-only'
+                }
+            }
+            
+        except git.exc.GitCommandError as e:
+            if 'Authentication failed' in str(e) or 'access denied' in str(e).lower():
+                raise GitAuthenticationError('Token authentication failed - check token permissions')
+            elif 'Repository not found' in str(e):
+                raise GitAuthenticationError('Repository not found or no access')
+            else:
+                raise GitAuthenticationError(f'Git operation failed: {str(e)}')
+    
+    def _test_ssh_access(self, repository_url, private_key, passphrase, branch, temp_dir):
+        """Test repository access with SSH key authentication"""
+        try:
+            # Create temporary SSH key file
+            ssh_key_file = os.path.join(temp_dir, 'id_rsa')
+            with open(ssh_key_file, 'w') as f:
+                f.write(private_key)
+            os.chmod(ssh_key_file, 0o600)
+            
+            # Set up SSH command with key
+            ssh_cmd = f'ssh -i {ssh_key_file} -o StrictHostKeyChecking=no'
+            if passphrase:
+                # Note: In production, use proper SSH agent or key management
+                ssh_cmd += f' -o PasswordAuthentication=yes'
+            
+            # Set up git environment
+            env = os.environ.copy()
+            env['GIT_SSH_COMMAND'] = ssh_cmd
+            
+            # Test clone operation
+            repo = git.Repo.clone_from(repository_url, temp_dir, branch=branch, depth=1, env=env)
+            
+            # Test fetch operation
+            remote = repo.remotes.origin
+            remote.fetch()
+            
+            return {
+                'success': True,
+                'message': 'SSH key authentication successful',
+                'repository_info': {
+                    'url': repository_url,
+                    'branch': branch,
+                    'accessible': True,
+                    'permissions': 'read/write' if self._test_write_access(repo) else 'read-only'
+                }
+            }
+            
+        except git.exc.GitCommandError as e:
+            if 'Permission denied' in str(e) or 'Authentication failed' in str(e):
+                raise GitAuthenticationError('SSH key authentication failed - check key and permissions')
+            elif 'Repository not found' in str(e):
+                raise GitAuthenticationError('Repository not found or no access')
+            else:
+                raise GitAuthenticationError(f'Git operation failed: {str(e)}')
+    
+    def _test_basic_auth_access(self, repository_url, username, password, branch, temp_dir):
+        """Test repository access with basic authentication"""
+        try:
+            # Modify URL to include credentials
+            if repository_url.startswith('https://'):
+                auth_url = repository_url.replace('https://', f'https://{username}:{password}@')
+            else:
+                raise GitAuthenticationError('Basic authentication requires HTTPS URL')
+            
+            # Test clone operation
+            repo = git.Repo.clone_from(auth_url, temp_dir, branch=branch, depth=1)
+            
+            # Test fetch operation
+            remote = repo.remotes.origin
+            remote.fetch()
+            
+            return {
+                'success': True,
+                'message': 'Basic authentication successful',
+                'repository_info': {
+                    'url': repository_url,
+                    'branch': branch,
+                    'accessible': True,
+                    'permissions': 'read/write' if self._test_write_access(repo) else 'read-only'
+                }
+            }
+            
+        except git.exc.GitCommandError as e:
+            if 'Authentication failed' in str(e) or 'access denied' in str(e).lower():
+                raise GitAuthenticationError('Basic authentication failed - check username and password')
+            elif 'Repository not found' in str(e):
+                raise GitAuthenticationError('Repository not found or no access')
+            else:
+                raise GitAuthenticationError(f'Git operation failed: {str(e)}')
+    
+    def _test_write_access(self, repo):
+        """Test if we have write access to the repository"""
+        try:
+            # Create a test file
+            test_file = os.path.join(repo.working_dir, '.hedgehog_test')
+            with open(test_file, 'w') as f:
+                f.write('test')
+            
+            # Stage and commit the test file
+            repo.index.add([test_file])
+            repo.index.commit('Test commit for permission check')
+            
+            # Try to push (this will fail if no write access)
+            origin = repo.remotes.origin
+            origin.push()
+            
+            return True
+            
+        except Exception:
+            return False
+
+
+class GitRepositoryValidationAPIView(APIView):
+    """API endpoint for validating Git repository structure and content"""
+    
+    def post(self, request):
+        """Validate Git repository structure and discover YAML files"""
+        if not GIT_AVAILABLE:
+            return Response({
+                'success': False,
+                'error': 'Git functionality is not available. Please install GitPython dependency.'
+            }, status=status.HTTP_503_SERVICE_UNAVAILABLE)
+            
+        try:
+            repository_url = request.data.get('repository_url', '')
+            branch = request.data.get('branch', 'main')
+            path = request.data.get('path', 'hedgehog/')
+            auth_data = request.data.get('auth_data', {})
+            
+            if not repository_url:
+                return Response({
+                    'success': False,
+                    'error': 'Repository URL is required'
+                }, status=status.HTTP_400_BAD_REQUEST)
+            
+            with tempfile.TemporaryDirectory() as temp_dir:
+                try:
+                    # Clone repository with authentication
+                    repo = self._clone_with_auth(repository_url, branch, temp_dir, auth_data)
+                    
+                    # Discover YAML files
+                    yaml_files = self._discover_yaml_files(repo, path)
+                    
+                    # Validate YAML files
+                    validation_results = self._validate_yaml_files(yaml_files)
+                    
+                    # Check directory structure
+                    structure_analysis = self._analyze_directory_structure(repo, path)
+                    
+                    return Response({
+                        'success': True,
+                        'repository_info': {
+                            'url': repository_url,
+                            'branch': branch,
+                            'path': path,
+                            'total_files': len(yaml_files),
+                            'valid_files': len([f for f in validation_results if f['valid']]),
+                            'invalid_files': len([f for f in validation_results if not f['valid']])
+                        },
+                        'yaml_files': validation_results,
+                        'structure_analysis': structure_analysis
+                    }, status=status.HTTP_200_OK)
+                    
+                except Exception as e:
+                    logger.error(f"Repository validation failed: {e}")
+                    return Response({
+                        'success': False,
+                        'error': str(e)
+                    }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+                    
+        except Exception as e:
+            logger.error(f"Git repository validation failed: {e}")
+            return Response({
+                'success': False,
+                'error': str(e)
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+    
+    def _clone_with_auth(self, repository_url, branch, temp_dir, auth_data):
+        """Clone repository with appropriate authentication"""
+        auth_method = auth_data.get('method', 'token')
+        
+        if auth_method == 'token':
+            token = auth_data.get('token', '')
+            if repository_url.startswith('https://github.com/'):
+                auth_url = repository_url.replace('https://github.com/', f'https://{token}@github.com/')
+            elif repository_url.startswith('https://gitlab.com/'):
+                auth_url = repository_url.replace('https://gitlab.com/', f'https://oauth2:{token}@gitlab.com/')
+            else:
+                auth_url = repository_url.replace('https://', f'https://token:{token}@')
+            
+            return git.Repo.clone_from(auth_url, temp_dir, branch=branch)
+            
+        elif auth_method == 'ssh':
+            private_key = auth_data.get('private_key', '')
+            ssh_key_file = os.path.join(temp_dir, 'id_rsa')
+            with open(ssh_key_file, 'w') as f:
+                f.write(private_key)
+            os.chmod(ssh_key_file, 0o600)
+            
+            env = os.environ.copy()
+            env['GIT_SSH_COMMAND'] = f'ssh -i {ssh_key_file} -o StrictHostKeyChecking=no'
+            
+            return git.Repo.clone_from(repository_url, temp_dir, branch=branch, env=env)
+            
+        elif auth_method == 'basic':
+            username = auth_data.get('username', '')
+            password = auth_data.get('password', '')
+            auth_url = repository_url.replace('https://', f'https://{username}:{password}@')
+            
+            return git.Repo.clone_from(auth_url, temp_dir, branch=branch)
+            
+        else:
+            raise ValueError(f'Unsupported authentication method: {auth_method}')
+    
+    def _discover_yaml_files(self, repo, path):
+        """Discover YAML files in the repository"""
+        yaml_files = []
+        search_path = os.path.join(repo.working_dir, path)
+        
+        if os.path.exists(search_path):
+            for root, dirs, files in os.walk(search_path):
+                for file in files:
+                    if file.endswith(('.yaml', '.yml')):
+                        file_path = os.path.join(root, file)
+                        relative_path = os.path.relpath(file_path, repo.working_dir)
+                        yaml_files.append({
+                            'path': relative_path,
+                            'name': file,
+                            'size': os.path.getsize(file_path)
+                        })
+        
+        return yaml_files
+    
+    def _validate_yaml_files(self, yaml_files):
+        """Validate YAML files for Hedgehog CRD compatibility"""
+        import yaml
+        
+        validation_results = []
+        
+        for file_info in yaml_files:
+            try:
+                with open(file_info['path'], 'r') as f:
+                    content = f.read()
+                
+                # Parse YAML
+                docs = list(yaml.safe_load_all(content))
+                
+                # Validate each document
+                valid_docs = []
+                invalid_docs = []
+                
+                for doc in docs:
+                    if doc and isinstance(doc, dict):
+                        # Check for Kubernetes resource structure
+                        if 'apiVersion' in doc and 'kind' in doc:
+                            # Check if it's a Hedgehog CRD
+                            if self._is_hedgehog_crd(doc):
+                                valid_docs.append(doc)
+                            else:
+                                invalid_docs.append({
+                                    'doc': doc,
+                                    'error': 'Not a Hedgehog CRD'
+                                })
+                        else:
+                            invalid_docs.append({
+                                'doc': doc,
+                                'error': 'Missing required fields (apiVersion, kind)'
+                            })
+                    else:
+                        invalid_docs.append({
+                            'doc': doc,
+                            'error': 'Invalid YAML document structure'
+                        })
+                
+                validation_results.append({
+                    'file': file_info['name'],
+                    'path': file_info['path'],
+                    'valid': len(invalid_docs) == 0,
+                    'total_documents': len(docs),
+                    'valid_documents': len(valid_docs),
+                    'invalid_documents': len(invalid_docs),
+                    'errors': [doc['error'] for doc in invalid_docs]
+                })
+                
+            except yaml.YAMLError as e:
+                validation_results.append({
+                    'file': file_info['name'],
+                    'path': file_info['path'],
+                    'valid': False,
+                    'error': f'YAML parsing error: {str(e)}'
+                })
+            except Exception as e:
+                validation_results.append({
+                    'file': file_info['name'],
+                    'path': file_info['path'],
+                    'valid': False,
+                    'error': f'File validation error: {str(e)}'
+                })
+        
+        return validation_results
+    
+    def _is_hedgehog_crd(self, doc):
+        """Check if a document is a Hedgehog CRD"""
+        hedgehog_kinds = [
+            'VPC', 'External', 'ExternalAttachment', 'ExternalPeering', 
+            'IPv4Namespace', 'VPCAttachment', 'VPCPeering',
+            'Connection', 'Server', 'Switch', 'SwitchGroup', 'VLANNamespace'
+        ]
+        
+        api_version = doc.get('apiVersion', '')
+        kind = doc.get('kind', '')
+        
+        # Check for Hedgehog API versions
+        if any(api in api_version for api in ['vpc.githedgehog.com', 'wiring.githedgehog.com']):
+            return kind in hedgehog_kinds
+        
+        return False
+    
+    def _analyze_directory_structure(self, repo, path):
+        """Analyze directory structure for recommended organization"""
+        search_path = os.path.join(repo.working_dir, path)
+        
+        recommended_dirs = [
+            'vpc', 'external', 'switch', 'connection', 'server', 'namespace'
+        ]
+        
+        analysis = {
+            'path_exists': os.path.exists(search_path),
+            'recommended_structure': {},
+            'custom_directories': [],
+            'suggestions': []
+        }
+        
+        if analysis['path_exists']:
+            # Check for recommended directories
+            for dir_name in recommended_dirs:
+                dir_path = os.path.join(search_path, dir_name)
+                analysis['recommended_structure'][dir_name] = {
+                    'exists': os.path.exists(dir_path),
+                    'file_count': len([f for f in os.listdir(dir_path) if f.endswith(('.yaml', '.yml'))]) if os.path.exists(dir_path) else 0
+                }
+            
+            # Find custom directories
+            if os.path.exists(search_path):
+                for item in os.listdir(search_path):
+                    item_path = os.path.join(search_path, item)
+                    if os.path.isdir(item_path) and item not in recommended_dirs:
+                        analysis['custom_directories'].append(item)
+        
+        # Generate suggestions
+        if not analysis['path_exists']:
+            analysis['suggestions'].append(f'Create base directory: {path}')
+        
+        for dir_name, info in analysis['recommended_structure'].items():
+            if not info['exists']:
+                analysis['suggestions'].append(f'Create recommended directory: {path}/{dir_name}')
+        
+        return analysis
+
+
+# ArgoCD Setup Wizard API Views (Week 2 MVP2)
+class ArgoCDPrerequisitesAPIView(APIView):
+    """API endpoint for ArgoCD prerequisites checking"""
+    
+    def post(self, request):
+        """Check ArgoCD installation prerequisites for a fabric"""
+        try:
+            fabric_id = request.data.get('fabric_id')
+            if not fabric_id:
+                return Response({
+                    'success': False,
+                    'error': 'fabric_id is required'
+                }, status=status.HTTP_400_BAD_REQUEST)
+            
+            fabric = get_object_or_404(models.HedgehogFabric, id=fabric_id)
+            
+            # Run async prerequisites check
+            import asyncio
+            
+            async def run_prerequisites_check():
+                try:
+                    from ..utils.argocd_installer import ArgoCDIntegrationManager
+                    integration_manager = ArgoCDIntegrationManager(fabric)
+                    return await integration_manager.check_prerequisites()
+                except Exception as e:
+                    logger.error(f"Prerequisites check failed for fabric {fabric_id}: {e}")
+                    return {
+                        'success': False,
+                        'error': str(e)
+                    }
+            
+            result = asyncio.run(run_prerequisites_check())
+            
+            if result.get('success'):
+                return Response({
+                    'success': True,
+                    'checks': {
+                        'cluster_connection': result.get('cluster_accessible', False),
+                        'cluster_permissions': result.get('cluster_admin', False),
+                        'argocd_namespace': result.get('namespace_available', False),
+                        'resource_availability': result.get('sufficient_resources', False),
+                        'network_policies': result.get('network_compatible', False)
+                    },
+                    'details': result.get('details', 'Prerequisites check completed')
+                }, status=status.HTTP_200_OK)
+            else:
+                return Response({
+                    'success': False,
+                    'error': result.get('error', 'Prerequisites check failed'),
+                    'checks': {
+                        'cluster_connection': False,
+                        'cluster_permissions': False,
+                        'argocd_namespace': False,
+                        'resource_availability': False,
+                        'network_policies': False
+                    }
+                }, status=status.HTTP_400_BAD_REQUEST)
+                
+        except Exception as e:
+            logger.error(f"Prerequisites API failed: {e}")
+            return Response({
+                'success': False,
+                'error': str(e)
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+class ArgoCDSetupAPIView(APIView):
+    """API endpoint for starting ArgoCD setup process"""
+    
+    def post(self, request):
+        """Start ArgoCD setup process for a fabric"""
+        try:
+            fabric_id = request.data.get('fabric_id')
+            if not fabric_id:
+                return Response({
+                    'success': False,
+                    'error': 'fabric_id is required'
+                }, status=status.HTTP_400_BAD_REQUEST)
+            
+            fabric = get_object_or_404(models.HedgehogFabric, id=fabric_id)
+            
+            # Extract configuration from request
+            argocd_config = request.data.get('argocd', {})
+            repository_config = request.data.get('repository', {})
+            application_config = request.data.get('application', {})
+            
+            # Update fabric with repository configuration
+            if repository_config.get('url'):
+                fabric.git_repository_url = repository_config['url']
+                fabric.git_branch = repository_config.get('branch', 'main')
+                fabric.git_path = repository_config.get('path', 'hedgehog/')
+                fabric.git_token = repository_config.get('token', '')
+                fabric.git_username = repository_config.get('username', '')
+                fabric.save()
+            
+            # Store installation configuration
+            installation_id = f"argocd-setup-{fabric_id}-{int(time.time())}"
+            installation_config = {
+                'installation_id': installation_id,
+                'fabric_id': fabric_id,
+                'argocd_config': argocd_config,
+                'repository_config': repository_config,
+                'application_config': application_config,
+                'status': 'started',
+                'current_step': 'validate-config',
+                'completed_steps': [],
+                'failed_steps': []
+            }
+            
+            # Store installation state (in production, use Redis or database)
+            if not hasattr(request, 'session'):
+                request.session = {}
+            if 'argocd_installations' not in request.session:
+                request.session['argocd_installations'] = {}
+            request.session['argocd_installations'][installation_id] = installation_config
+            request.session.save()
+            
+            # Start async installation process
+            import asyncio
+            import threading
+            
+            def start_installation():
+                """Start installation in background thread"""
+                try:
+                    async def run_installation():
+                        try:
+                            result = await fabric.setup_argocd_gitops(repository_config)
+                            
+                            # Update installation status
+                            if installation_id in request.session.get('argocd_installations', {}):
+                                request.session['argocd_installations'][installation_id].update({
+                                    'status': 'completed' if result.get('overall_success') else 'error',
+                                    'current_step': 'validate-setup',
+                                    'completed_steps': ['validate-config', 'install-argocd', 'wait-ready', 'configure-repo', 'create-app', 'initial-sync', 'validate-setup'],
+                                    'result': result,
+                                    'argocd_status': result.get('argocd_status')
+                                })
+                                request.session.save()
+                                
+                        except Exception as e:
+                            logger.error(f"Installation failed for {installation_id}: {e}")
+                            if installation_id in request.session.get('argocd_installations', {}):
+                                request.session['argocd_installations'][installation_id].update({
+                                    'status': 'error',
+                                    'error': str(e),
+                                    'failed_steps': [request.session['argocd_installations'][installation_id].get('current_step', 'unknown')]
+                                })
+                                request.session.save()
+                    
+                    asyncio.run(run_installation())
+                    
+                except Exception as e:
+                    logger.error(f"Installation thread failed for {installation_id}: {e}")
+            
+            # Start installation in background thread
+            installation_thread = threading.Thread(target=start_installation)
+            installation_thread.daemon = True
+            installation_thread.start()
+            
+            return Response({
+                'success': True,
+                'installation_id': installation_id,
+                'message': 'ArgoCD setup process started',
+                'fabric_name': fabric.name
+            }, status=status.HTTP_200_OK)
+            
+        except Exception as e:
+            logger.error(f"ArgoCD setup API failed: {e}")
+            return Response({
+                'success': False,
+                'error': str(e)
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+class ArgoCDProgressAPIView(APIView):
+    """API endpoint for monitoring ArgoCD setup progress"""
+    
+    def get(self, request, installation_id):
+        """Get installation progress for a specific installation ID"""
+        try:
+            # Retrieve installation state
+            installations = request.session.get('argocd_installations', {})
+            installation = installations.get(installation_id)
+            
+            if not installation:
+                return Response({
+                    'success': False,
+                    'error': 'Installation not found'
+                }, status=status.HTTP_404_NOT_FOUND)
+            
+            # Build progress response
+            progress_data = {
+                'installation_id': installation_id,
+                'status': installation.get('status', 'unknown'),
+                'current_step': installation.get('current_step'),
+                'completed_steps': installation.get('completed_steps', []),
+                'failed_steps': installation.get('failed_steps', []),
+                'fabric_id': installation.get('fabric_id'),
+            }
+            
+            # Add result data if available
+            if installation.get('result'):
+                progress_data['result'] = installation['result']
+            
+            # Add ArgoCD status if available
+            if installation.get('argocd_status'):
+                progress_data['argocd_status'] = installation['argocd_status']
+            
+            # Add error if available
+            if installation.get('error'):
+                progress_data['error'] = installation['error']
+            
+            return Response({
+                'success': True,
+                'progress': progress_data
+            }, status=status.HTTP_200_OK)
+            
+        except Exception as e:
+            logger.error(f"Progress monitoring failed for {installation_id}: {e}")
+            return Response({
+                'success': False,
+                'error': str(e)
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+class GitOpsTestConnectionAPIView(APIView):
+    """API endpoint for testing Git repository connections (simplified for ArgoCD wizard)"""
+    
+    def post(self, request):
+        """Test Git repository connection with simplified response"""
+        try:
+            url = request.data.get('url', '')
+            branch = request.data.get('branch', 'main')
+            auth_method = request.data.get('auth_method', 'token')
+            token = request.data.get('token', '')
+            username = request.data.get('username', '')
+            
+            if not url:
+                return Response({
+                    'success': False,
+                    'error': 'Repository URL is required'
+                }, status=status.HTTP_400_BAD_REQUEST)
+            
+            # Use existing GitAuthenticationAPIView logic
+            auth_view = GitAuthenticationAPIView()
+            auth_request_data = {
+                'method': auth_method,
+                'repository_url': url,
+                'branch': branch,
+                'token': token,
+                'username': username
+            }
+            
+            # Create mock request for auth validation
+            from django.http import HttpRequest
+            mock_request = HttpRequest()
+            mock_request.data = auth_request_data
+            
+            auth_response = auth_view.post(mock_request)
+            auth_data = auth_response.data
+            
+            if auth_data.get('success'):
+                # Get additional repository information
+                repo_info = auth_data.get('repository_info', {})
+                
+                return Response({
+                    'success': True,
+                    'message': 'Repository connection successful',
+                    'branch': branch,
+                    'url': url,
+                    'accessible': repo_info.get('accessible', True),
+                    'permissions': repo_info.get('permissions', 'unknown'),
+                    'latest_commit': 'abcd1234'  # Placeholder - in real implementation, get actual commit
+                }, status=status.HTTP_200_OK)
+            else:
+                return Response({
+                    'success': False,
+                    'error': auth_data.get('error', 'Connection test failed')
+                }, status=status.HTTP_400_BAD_REQUEST)
+                
+        except Exception as e:
+            logger.error(f"Git connection test failed: {e}")
+            return Response({
+                'success': False,
+                'error': str(e)
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+# Add time import for installation ID generation
+import time

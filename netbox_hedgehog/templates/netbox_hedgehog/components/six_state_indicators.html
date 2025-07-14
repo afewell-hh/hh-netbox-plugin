@@ -1,0 +1,961 @@
+<!-- Six-State Visualization System -->
+<!-- This component provides comprehensive visualization for all six GitOps states with progressive disclosure -->
+
+<div class="six-state-indicators" id="six-state-indicators-{{ component_id|default:'default' }}">
+    <!-- State Indicator Badges -->
+    <div class="state-badges-container">
+        <div class="state-badge draft" data-state="draft">
+            <div class="state-icon">
+                <i class="mdi mdi-pencil-outline"></i>
+            </div>
+            <div class="state-info">
+                <div class="state-name">DRAFT</div>
+                <div class="state-description">Resource being created</div>
+            </div>
+            <div class="state-help">
+                <i class="mdi mdi-help-circle"></i>
+                <div class="state-tooltip">
+                    <strong>DRAFT State</strong><br>
+                    Resource is being created or modified locally but not yet committed to Git.
+                    <br><br>
+                    <strong>Next Steps:</strong><br>
+                    • Review configuration<br>
+                    • Test locally<br>
+                    • Commit to Git repository
+                </div>
+            </div>
+        </div>
+        
+        <div class="state-badge committed" data-state="committed">
+            <div class="state-icon">
+                <i class="mdi mdi-source-commit"></i>
+            </div>
+            <div class="state-info">
+                <div class="state-name">COMMITTED</div>
+                <div class="state-description">Committed to Git</div>
+            </div>
+            <div class="state-help">
+                <i class="mdi mdi-help-circle"></i>
+                <div class="state-tooltip">
+                    <strong>COMMITTED State</strong><br>
+                    Resource configuration is committed to Git repository but not yet synchronized to the cluster.
+                    <br><br>
+                    <strong>Next Steps:</strong><br>
+                    • Wait for GitOps sync<br>
+                    • Monitor sync status<br>
+                    • Verify cluster deployment
+                </div>
+            </div>
+        </div>
+        
+        <div class="state-badge synced" data-state="synced">
+            <div class="state-icon">
+                <i class="mdi mdi-check-circle"></i>
+            </div>
+            <div class="state-info">
+                <div class="state-name">SYNCED</div>
+                <div class="state-description">Synchronized with cluster</div>
+            </div>
+            <div class="state-help">
+                <i class="mdi mdi-help-circle"></i>
+                <div class="state-tooltip">
+                    <strong>SYNCED State</strong><br>
+                    Resource is successfully synchronized between Git and Kubernetes cluster.
+                    <br><br>
+                    <strong>Status:</strong><br>
+                    • Git and cluster are aligned<br>
+                    • Resource is operational<br>
+                    • No action required
+                </div>
+            </div>
+        </div>
+        
+        <div class="state-badge drifted" data-state="drifted">
+            <div class="state-icon">
+                <i class="mdi mdi-alert-circle"></i>
+            </div>
+            <div class="state-info">
+                <div class="state-name">DRIFTED</div>
+                <div class="state-description">Cluster differs from Git</div>
+            </div>
+            <div class="state-help">
+                <i class="mdi mdi-help-circle"></i>
+                <div class="state-tooltip">
+                    <strong>DRIFTED State</strong><br>
+                    Cluster configuration differs from Git repository. Manual changes or sync issues detected.
+                    <br><br>
+                    <strong>Resolution Options:</strong><br>
+                    • Sync from Git (overwrites cluster)<br>
+                    • Import cluster changes to Git<br>
+                    • Manual conflict resolution
+                </div>
+            </div>
+        </div>
+        
+        <div class="state-badge orphaned" data-state="orphaned">
+            <div class="state-icon">
+                <i class="mdi mdi-help-circle-outline"></i>
+            </div>
+            <div class="state-info">
+                <div class="state-name">ORPHANED</div>
+                <div class="state-description">Exists in cluster only</div>
+            </div>
+            <div class="state-help">
+                <i class="mdi mdi-help-circle"></i>
+                <div class="state-tooltip">
+                    <strong>ORPHANED State</strong><br>
+                    Resource exists in cluster but has no corresponding Git configuration.
+                    <br><br>
+                    <strong>Resolution Options:</strong><br>
+                    • Export to Git repository<br>
+                    • Delete from cluster<br>
+                    • Ignore (mark as external)
+                </div>
+            </div>
+        </div>
+        
+        <div class="state-badge pending" data-state="pending">
+            <div class="state-icon">
+                <i class="mdi mdi-clock-outline"></i>
+            </div>
+            <div class="state-info">
+                <div class="state-name">PENDING</div>
+                <div class="state-description">Sync operation in progress</div>
+            </div>
+            <div class="state-help">
+                <i class="mdi mdi-help-circle"></i>
+                <div class="state-tooltip">
+                    <strong>PENDING State</strong><br>
+                    Synchronization operation is currently in progress.
+                    <br><br>
+                    <strong>Status:</strong><br>
+                    • GitOps tool is processing changes<br>
+                    • Monitor progress<br>
+                    • Wait for completion
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- State Overview Card -->
+    <div class="state-overview-card" id="state-overview-{{ component_id|default:'default' }}">
+        <div class="card">
+            <div class="card-header">
+                <h6 class="mb-0">
+                    <i class="mdi mdi-state-machine"></i> Resource State Overview
+                    <div class="state-overview-controls">
+                        <div class="btn-group btn-group-sm" role="group">
+                            <input type="radio" class="btn-check" name="disclosure-{{ component_id|default:'default' }}" id="essential-{{ component_id|default:'default' }}" value="essential" checked>
+                            <label class="btn btn-outline-primary" for="essential-{{ component_id|default:'default' }}">Essential</label>
+                            
+                            <input type="radio" class="btn-check" name="disclosure-{{ component_id|default:'default' }}" id="detailed-{{ component_id|default:'default' }}" value="detailed">
+                            <label class="btn btn-outline-primary" for="detailed-{{ component_id|default:'default' }}">Detailed</label>
+                            
+                            <input type="radio" class="btn-check" name="disclosure-{{ component_id|default:'default' }}" id="expert-{{ component_id|default:'default' }}" value="expert">
+                            <label class="btn btn-outline-primary" for="expert-{{ component_id|default:'default' }}">Expert</label>
+                        </div>
+                    </div>
+                </h6>
+            </div>
+            <div class="card-body">
+                <!-- Essential View -->
+                <div class="disclosure-view essential-view" id="essential-view-{{ component_id|default:'default' }}">
+                    <div class="current-state-display">
+                        <div class="state-badge-large" id="current-state-badge-{{ component_id|default:'default' }}">
+                            <div class="state-icon">
+                                <i class="mdi mdi-check-circle"></i>
+                            </div>
+                            <div class="state-info">
+                                <div class="state-name">SYNCED</div>
+                                <div class="state-description">Everything is working correctly</div>
+                            </div>
+                        </div>
+                        <div class="state-actions-essential">
+                            <button class="btn btn-sm btn-primary" onclick="refreshState('{{ component_id|default:'default' }}')">
+                                <i class="mdi mdi-refresh"></i> Refresh
+                            </button>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Detailed View -->
+                <div class="disclosure-view detailed-view" id="detailed-view-{{ component_id|default:'default' }}" style="display: none;">
+                    <div class="row">
+                        <div class="col-md-6">
+                            <div class="state-details">
+                                <h6>Current State Information</h6>
+                                <table class="table table-sm">
+                                    <tr>
+                                        <th>State:</th>
+                                        <td id="detailed-state-{{ component_id|default:'default' }}">SYNCED</td>
+                                    </tr>
+                                    <tr>
+                                        <th>Last Changed:</th>
+                                        <td id="detailed-last-changed-{{ component_id|default:'default' }}">2 hours ago</td>
+                                    </tr>
+                                    <tr>
+                                        <th>Git Commit:</th>
+                                        <td id="detailed-git-commit-{{ component_id|default:'default' }}">abc123...</td>
+                                    </tr>
+                                    <tr>
+                                        <th>Cluster Status:</th>
+                                        <td id="detailed-cluster-status-{{ component_id|default:'default' }}">Healthy</td>
+                                    </tr>
+                                </table>
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="state-actions-detailed">
+                                <h6>Available Actions</h6>
+                                <div class="d-grid gap-2">
+                                    <button class="btn btn-outline-primary btn-sm" onclick="syncFromGit('{{ component_id|default:'default' }}')">
+                                        <i class="mdi mdi-sync"></i> Sync from Git
+                                    </button>
+                                    <button class="btn btn-outline-warning btn-sm" onclick="checkDrift('{{ component_id|default:'default' }}')">
+                                        <i class="mdi mdi-compare-horizontal"></i> Check Drift
+                                    </button>
+                                    <button class="btn btn-outline-info btn-sm" onclick="viewHistory('{{ component_id|default:'default' }}')">
+                                        <i class="mdi mdi-history"></i> View History
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Expert View -->
+                <div class="disclosure-view expert-view" id="expert-view-{{ component_id|default:'default' }}" style="display: none;">
+                    <div class="row">
+                        <div class="col-md-4">
+                            <div class="state-technical-info">
+                                <h6>Technical Details</h6>
+                                <div class="technical-details">
+                                    <div class="detail-item">
+                                        <strong>Resource UID:</strong>
+                                        <code id="expert-uid-{{ component_id|default:'default' }}">12345678-1234-1234-1234-123456789abc</code>
+                                    </div>
+                                    <div class="detail-item">
+                                        <strong>Git SHA:</strong>
+                                        <code id="expert-git-sha-{{ component_id|default:'default' }}">abc123def456...</code>
+                                    </div>
+                                    <div class="detail-item">
+                                        <strong>Cluster SHA:</strong>
+                                        <code id="expert-cluster-sha-{{ component_id|default:'default' }}">abc123def456...</code>
+                                    </div>
+                                    <div class="detail-item">
+                                        <strong>State Machine:</strong>
+                                        <code id="expert-state-machine-{{ component_id|default:'default' }}">v1.0.0</code>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-md-4">
+                            <div class="state-transitions">
+                                <h6>State Transitions</h6>
+                                <div class="transition-history" id="transition-history-{{ component_id|default:'default' }}">
+                                    <div class="transition-item">
+                                        <div class="transition-time">2h ago</div>
+                                        <div class="transition-change">COMMITTED → SYNCED</div>
+                                        <div class="transition-reason">GitOps sync completed</div>
+                                    </div>
+                                    <div class="transition-item">
+                                        <div class="transition-time">3h ago</div>
+                                        <div class="transition-change">DRAFT → COMMITTED</div>
+                                        <div class="transition-reason">Git commit: abc123</div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-md-4">
+                            <div class="state-actions-expert">
+                                <h6>Expert Actions</h6>
+                                <div class="d-grid gap-2">
+                                    <button class="btn btn-outline-primary btn-sm" onclick="forceSync('{{ component_id|default:'default' }}')">
+                                        <i class="mdi mdi-sync-alert"></i> Force Sync
+                                    </button>
+                                    <button class="btn btn-outline-warning btn-sm" onclick="calculateDrift('{{ component_id|default:'default' }}')">
+                                        <i class="mdi mdi-calculator"></i> Calculate Drift
+                                    </button>
+                                    <button class="btn btn-outline-danger btn-sm" onclick="resetState('{{ component_id|default:'default' }}')">
+                                        <i class="mdi mdi-restore"></i> Reset State
+                                    </button>
+                                    <button class="btn btn-outline-secondary btn-sm" onclick="exportLogs('{{ component_id|default:'default' }}')">
+                                        <i class="mdi mdi-download"></i> Export Logs
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- Raw State Data -->
+                    <div class="mt-3">
+                        <h6>Raw State Data</h6>
+                        <div class="state-raw-data">
+                            <pre id="raw-state-data-{{ component_id|default:'default' }}">
+{
+  "resource_state": "SYNCED",
+  "git_commit": "abc123def456",
+  "cluster_status": "Healthy",
+  "last_sync": "2023-07-09T12:00:00Z",
+  "drift_detected": false,
+  "state_history": [
+    {
+      "from": "COMMITTED",
+      "to": "SYNCED",
+      "timestamp": "2023-07-09T12:00:00Z",
+      "reason": "GitOps sync completed"
+    }
+  ]
+}
+                            </pre>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Component Styles -->
+<style>
+.six-state-indicators {
+    margin-bottom: 2rem;
+}
+
+.state-badges-container {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+    gap: 1rem;
+    margin-bottom: 2rem;
+}
+
+.state-badge {
+    display: flex;
+    align-items: center;
+    padding: 0.75rem;
+    border-radius: 0.5rem;
+    border: 2px solid var(--bs-border-color);
+    background: var(--bs-body-bg);
+    transition: all 0.3s ease;
+    cursor: pointer;
+    position: relative;
+}
+
+.state-badge:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+}
+
+.state-badge.draft {
+    border-color: #6B7280;
+    background: linear-gradient(135deg, rgba(107, 114, 128, 0.1) 0%, rgba(107, 114, 128, 0.05) 100%);
+}
+
+.state-badge.committed {
+    border-color: #3B82F6;
+    background: linear-gradient(135deg, rgba(59, 130, 246, 0.1) 0%, rgba(59, 130, 246, 0.05) 100%);
+}
+
+.state-badge.synced {
+    border-color: #10B981;
+    background: linear-gradient(135deg, rgba(16, 185, 129, 0.1) 0%, rgba(16, 185, 129, 0.05) 100%);
+}
+
+.state-badge.drifted {
+    border-color: #F59E0B;
+    background: linear-gradient(135deg, rgba(245, 158, 11, 0.1) 0%, rgba(245, 158, 11, 0.05) 100%);
+}
+
+.state-badge.orphaned {
+    border-color: #EF4444;
+    background: linear-gradient(135deg, rgba(239, 68, 68, 0.1) 0%, rgba(239, 68, 68, 0.05) 100%);
+}
+
+.state-badge.pending {
+    border-color: #8B5CF6;
+    background: linear-gradient(135deg, rgba(139, 92, 246, 0.1) 0%, rgba(139, 92, 246, 0.05) 100%);
+}
+
+.state-icon {
+    font-size: 1.5rem;
+    margin-right: 0.75rem;
+    color: currentColor;
+}
+
+.state-badge.draft .state-icon { color: #6B7280; }
+.state-badge.committed .state-icon { color: #3B82F6; }
+.state-badge.synced .state-icon { color: #10B981; }
+.state-badge.drifted .state-icon { color: #F59E0B; }
+.state-badge.orphaned .state-icon { color: #EF4444; }
+.state-badge.pending .state-icon { color: #8B5CF6; }
+
+.state-info {
+    flex: 1;
+}
+
+.state-name {
+    font-weight: 600;
+    font-size: 0.875rem;
+    letter-spacing: 0.05em;
+    margin-bottom: 0.25rem;
+}
+
+.state-description {
+    font-size: 0.75rem;
+    color: var(--bs-secondary);
+    line-height: 1.2;
+}
+
+.state-help {
+    position: relative;
+    color: var(--bs-info);
+    cursor: help;
+}
+
+.state-tooltip {
+    position: absolute;
+    bottom: 100%;
+    right: 0;
+    background: var(--bs-dark);
+    color: white;
+    padding: 0.75rem;
+    border-radius: 0.375rem;
+    font-size: 0.8rem;
+    width: 250px;
+    z-index: 1000;
+    visibility: hidden;
+    opacity: 0;
+    transition: all 0.3s ease;
+    box-shadow: 0 4px 8px rgba(0,0,0,0.2);
+}
+
+.state-help:hover .state-tooltip {
+    visibility: visible;
+    opacity: 1;
+}
+
+.state-overview-card {
+    margin-top: 2rem;
+}
+
+.state-overview-controls {
+    float: right;
+}
+
+.current-state-display {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 1rem;
+    background: rgba(var(--bs-success-rgb), 0.05);
+    border-radius: 0.5rem;
+    border: 1px solid var(--bs-success);
+}
+
+.state-badge-large {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+}
+
+.state-badge-large .state-icon {
+    font-size: 2rem;
+    color: var(--bs-success);
+}
+
+.state-badge-large .state-name {
+    font-size: 1.25rem;
+    font-weight: 600;
+    color: var(--bs-success);
+}
+
+.state-badge-large .state-description {
+    font-size: 0.875rem;
+    color: var(--bs-secondary);
+}
+
+.disclosure-view {
+    animation: fadeIn 0.3s ease-in;
+}
+
+.state-details .table th {
+    width: 30%;
+    font-weight: 600;
+    border: none;
+    padding: 0.5rem 0;
+}
+
+.state-details .table td {
+    border: none;
+    padding: 0.5rem 0;
+}
+
+.technical-details {
+    background: var(--bs-light);
+    padding: 1rem;
+    border-radius: 0.375rem;
+    border: 1px solid var(--bs-border-color);
+}
+
+.detail-item {
+    margin-bottom: 0.75rem;
+}
+
+.detail-item:last-child {
+    margin-bottom: 0;
+}
+
+.detail-item strong {
+    display: block;
+    margin-bottom: 0.25rem;
+    font-size: 0.875rem;
+}
+
+.detail-item code {
+    background: var(--bs-body-bg);
+    padding: 0.25rem 0.5rem;
+    border-radius: 0.25rem;
+    font-size: 0.8rem;
+    word-break: break-all;
+}
+
+.transition-history {
+    max-height: 300px;
+    overflow-y: auto;
+    border: 1px solid var(--bs-border-color);
+    border-radius: 0.375rem;
+    padding: 0.5rem;
+}
+
+.transition-item {
+    padding: 0.5rem;
+    margin-bottom: 0.5rem;
+    background: var(--bs-light);
+    border-radius: 0.25rem;
+    border-left: 3px solid var(--bs-primary);
+}
+
+.transition-item:last-child {
+    margin-bottom: 0;
+}
+
+.transition-time {
+    font-size: 0.75rem;
+    color: var(--bs-secondary);
+}
+
+.transition-change {
+    font-weight: 600;
+    font-size: 0.875rem;
+    margin: 0.25rem 0;
+}
+
+.transition-reason {
+    font-size: 0.8rem;
+    color: var(--bs-secondary);
+}
+
+.state-raw-data {
+    background: var(--bs-dark);
+    border-radius: 0.375rem;
+    padding: 1rem;
+    max-height: 400px;
+    overflow-y: auto;
+}
+
+.state-raw-data pre {
+    color: var(--bs-light);
+    margin: 0;
+    font-size: 0.8rem;
+    line-height: 1.4;
+}
+
+.state-actions-essential,
+.state-actions-detailed,
+.state-actions-expert {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+}
+
+.state-actions-essential {
+    flex-direction: row;
+    gap: 1rem;
+}
+
+/* Responsive Design */
+@media (max-width: 768px) {
+    .state-badges-container {
+        grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+        gap: 0.75rem;
+    }
+    
+    .state-badge {
+        flex-direction: column;
+        text-align: center;
+        padding: 1rem;
+    }
+    
+    .state-icon {
+        margin-right: 0;
+        margin-bottom: 0.5rem;
+    }
+    
+    .current-state-display {
+        flex-direction: column;
+        gap: 1rem;
+    }
+    
+    .state-overview-controls {
+        float: none;
+        margin-top: 1rem;
+    }
+    
+    .state-tooltip {
+        right: -50px;
+        width: 200px;
+    }
+}
+
+/* Animation */
+@keyframes fadeIn {
+    from { opacity: 0; transform: translateY(10px); }
+    to { opacity: 1; transform: translateY(0); }
+}
+
+/* State-specific colors for active states */
+.state-badge.active.draft { border-color: #6B7280; box-shadow: 0 0 0 3px rgba(107, 114, 128, 0.2); }
+.state-badge.active.committed { border-color: #3B82F6; box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.2); }
+.state-badge.active.synced { border-color: #10B981; box-shadow: 0 0 0 3px rgba(16, 185, 129, 0.2); }
+.state-badge.active.drifted { border-color: #F59E0B; box-shadow: 0 0 0 3px rgba(245, 158, 11, 0.2); }
+.state-badge.active.orphaned { border-color: #EF4444; box-shadow: 0 0 0 3px rgba(239, 68, 68, 0.2); }
+.state-badge.active.pending { border-color: #8B5CF6; box-shadow: 0 0 0 3px rgba(139, 92, 246, 0.2); }
+</style>
+
+<!-- Component JavaScript -->
+<script>
+(function() {
+    'use strict';
+    
+    // Initialize component
+    document.addEventListener('DOMContentLoaded', function() {
+        initializeSixStateIndicators('{{ component_id|default:"default" }}');
+    });
+    
+    function initializeSixStateIndicators(componentId) {
+        const component = document.getElementById('six-state-indicators-' + componentId);
+        if (!component) return;
+        
+        // Set up disclosure controls
+        const disclosureInputs = component.querySelectorAll(`input[name="disclosure-${componentId}"]`);
+        disclosureInputs.forEach(input => {
+            input.addEventListener('change', function() {
+                switchDisclosureView(componentId, this.value);
+            });
+        });
+        
+        // Set up state badge interactions
+        const stateBadges = component.querySelectorAll('.state-badge');
+        stateBadges.forEach(badge => {
+            badge.addEventListener('click', function() {
+                const state = this.dataset.state;
+                showStateDetails(componentId, state);
+            });
+        });
+        
+        // Initialize component state
+        window.sixStateState = window.sixStateState || {};
+        window.sixStateState[componentId] = {
+            currentState: 'SYNCED',
+            disclosure: 'essential',
+            resourceData: null
+        };
+        
+        // Load initial state
+        loadResourceState(componentId);
+    }
+    
+    function switchDisclosureView(componentId, level) {
+        const component = document.getElementById('six-state-indicators-' + componentId);
+        
+        // Hide all views
+        const views = component.querySelectorAll('.disclosure-view');
+        views.forEach(view => {
+            view.style.display = 'none';
+        });
+        
+        // Show selected view
+        const selectedView = component.querySelector(`#${level}-view-${componentId}`);
+        if (selectedView) {
+            selectedView.style.display = 'block';
+        }
+        
+        // Update component state
+        window.sixStateState[componentId].disclosure = level;
+        
+        // Load appropriate data for the view
+        if (level === 'expert') {
+            loadExpertData(componentId);
+        } else if (level === 'detailed') {
+            loadDetailedData(componentId);
+        }
+    }
+    
+    function loadResourceState(componentId) {
+        // Simulate loading resource state
+        const mockResourceData = {
+            resource_state: 'SYNCED',
+            git_commit: 'abc123def456',
+            cluster_status: 'Healthy',
+            last_sync: '2023-07-09T12:00:00Z',
+            last_changed: '2 hours ago',
+            drift_detected: false,
+            resource_uid: '12345678-1234-1234-1234-123456789abc',
+            state_history: [
+                {
+                    from: 'COMMITTED',
+                    to: 'SYNCED',
+                    timestamp: '2023-07-09T12:00:00Z',
+                    reason: 'GitOps sync completed'
+                },
+                {
+                    from: 'DRAFT',
+                    to: 'COMMITTED',
+                    timestamp: '2023-07-09T11:00:00Z',
+                    reason: 'Git commit: abc123'
+                }
+            ]
+        };
+        
+        window.sixStateState[componentId].resourceData = mockResourceData;
+        updateStateDisplay(componentId, mockResourceData);
+    }
+    
+    function updateStateDisplay(componentId, resourceData) {
+        const state = resourceData.resource_state;
+        
+        // Update current state badge
+        const currentBadge = document.getElementById(`current-state-badge-${componentId}`);
+        if (currentBadge) {
+            updateCurrentStateBadge(currentBadge, state);
+        }
+        
+        // Update detailed view
+        updateDetailedView(componentId, resourceData);
+        
+        // Update expert view
+        updateExpertView(componentId, resourceData);
+        
+        // Highlight active state badge
+        highlightActiveState(componentId, state);
+    }
+    
+    function updateCurrentStateBadge(badge, state) {
+        const stateConfig = getStateConfig(state);
+        
+        const icon = badge.querySelector('.state-icon i');
+        const name = badge.querySelector('.state-name');
+        const description = badge.querySelector('.state-description');
+        
+        icon.className = `mdi ${stateConfig.icon}`;
+        icon.style.color = stateConfig.color;
+        name.textContent = state;
+        name.style.color = stateConfig.color;
+        description.textContent = stateConfig.description;
+        
+        // Update container styling
+        const container = badge.closest('.current-state-display');
+        container.style.background = stateConfig.background;
+        container.style.borderColor = stateConfig.color;
+    }
+    
+    function updateDetailedView(componentId, resourceData) {
+        document.getElementById(`detailed-state-${componentId}`).textContent = resourceData.resource_state;
+        document.getElementById(`detailed-last-changed-${componentId}`).textContent = resourceData.last_changed;
+        document.getElementById(`detailed-git-commit-${componentId}`).textContent = resourceData.git_commit.substring(0, 8) + '...';
+        document.getElementById(`detailed-cluster-status-${componentId}`).textContent = resourceData.cluster_status;
+    }
+    
+    function updateExpertView(componentId, resourceData) {
+        document.getElementById(`expert-uid-${componentId}`).textContent = resourceData.resource_uid;
+        document.getElementById(`expert-git-sha-${componentId}`).textContent = resourceData.git_commit;
+        document.getElementById(`expert-cluster-sha-${componentId}`).textContent = resourceData.git_commit;
+        document.getElementById(`expert-state-machine-${componentId}`).textContent = 'v1.0.0';
+        
+        // Update transition history
+        const historyDiv = document.getElementById(`transition-history-${componentId}`);
+        historyDiv.innerHTML = resourceData.state_history.map(transition => `
+            <div class="transition-item">
+                <div class="transition-time">${formatTime(transition.timestamp)}</div>
+                <div class="transition-change">${transition.from} → ${transition.to}</div>
+                <div class="transition-reason">${transition.reason}</div>
+            </div>
+        `).join('');
+        
+        // Update raw data
+        const rawData = document.getElementById(`raw-state-data-${componentId}`);
+        rawData.textContent = JSON.stringify(resourceData, null, 2);
+    }
+    
+    function highlightActiveState(componentId, state) {
+        const component = document.getElementById('six-state-indicators-' + componentId);
+        const badges = component.querySelectorAll('.state-badge');
+        
+        badges.forEach(badge => {
+            badge.classList.remove('active');
+            if (badge.dataset.state === state.toLowerCase()) {
+                badge.classList.add('active');
+            }
+        });
+    }
+    
+    function getStateConfig(state) {
+        const configs = {
+            'DRAFT': {
+                icon: 'mdi-pencil-outline',
+                color: '#6B7280',
+                background: 'rgba(107, 114, 128, 0.1)',
+                description: 'Resource is being created or modified'
+            },
+            'COMMITTED': {
+                icon: 'mdi-source-commit',
+                color: '#3B82F6',
+                background: 'rgba(59, 130, 246, 0.1)',
+                description: 'Committed to Git repository'
+            },
+            'SYNCED': {
+                icon: 'mdi-check-circle',
+                color: '#10B981',
+                background: 'rgba(16, 185, 129, 0.1)',
+                description: 'Everything is working correctly'
+            },
+            'DRIFTED': {
+                icon: 'mdi-alert-circle',
+                color: '#F59E0B',
+                background: 'rgba(245, 158, 11, 0.1)',
+                description: 'Cluster differs from Git repository'
+            },
+            'ORPHANED': {
+                icon: 'mdi-help-circle-outline',
+                color: '#EF4444',
+                background: 'rgba(239, 68, 68, 0.1)',
+                description: 'Exists in cluster but not in Git'
+            },
+            'PENDING': {
+                icon: 'mdi-clock-outline',
+                color: '#8B5CF6',
+                background: 'rgba(139, 92, 246, 0.1)',
+                description: 'Synchronization in progress'
+            }
+        };
+        
+        return configs[state] || configs['DRAFT'];
+    }
+    
+    function showStateDetails(componentId, state) {
+        // Create modal to show detailed state information
+        const modal = document.createElement('div');
+        modal.className = 'modal fade show';
+        modal.style.display = 'block';
+        modal.innerHTML = `
+            <div class="modal-dialog modal-lg">
+                <div class="modal-content">
+                    <div class="modal-header">
+                        <h5 class="modal-title">
+                            <i class="mdi ${getStateConfig(state.toUpperCase()).icon}"></i>
+                            ${state.toUpperCase()} State Details
+                        </h5>
+                        <button type="button" class="btn-close" onclick="this.closest('.modal').remove()"></button>
+                    </div>
+                    <div class="modal-body">
+                        <div class="alert alert-info">
+                            <strong>State:</strong> ${state.toUpperCase()}<br>
+                            <strong>Description:</strong> ${getStateConfig(state.toUpperCase()).description}
+                        </div>
+                        <div class="row">
+                            <div class="col-md-6">
+                                <h6>Common Scenarios</h6>
+                                <ul>
+                                    <li>Normal workflow progression</li>
+                                    <li>Manual intervention needed</li>
+                                    <li>Automated resolution available</li>
+                                </ul>
+                            </div>
+                            <div class="col-md-6">
+                                <h6>Recommended Actions</h6>
+                                <div class="d-grid gap-2">
+                                    <button class="btn btn-sm btn-primary">Primary Action</button>
+                                    <button class="btn btn-sm btn-outline-secondary">Secondary Action</button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        `;
+        
+        document.body.appendChild(modal);
+    }
+    
+    function loadDetailedData(componentId) {
+        // Simulate loading detailed data
+        console.log('Loading detailed data for component:', componentId);
+    }
+    
+    function loadExpertData(componentId) {
+        // Simulate loading expert data
+        console.log('Loading expert data for component:', componentId);
+    }
+    
+    function formatTime(timestamp) {
+        const date = new Date(timestamp);
+        const now = new Date();
+        const diffMs = now - date;
+        const diffHours = Math.floor(diffMs / (1000 * 60 * 60));
+        
+        if (diffHours < 1) {
+            return 'Just now';
+        } else if (diffHours < 24) {
+            return `${diffHours}h ago`;
+        } else {
+            return `${Math.floor(diffHours / 24)}d ago`;
+        }
+    }
+    
+    // Export functions for external use
+    window.refreshState = function(componentId) {
+        loadResourceState(componentId);
+    };
+    
+    window.syncFromGit = function(componentId) {
+        alert('Sync from Git functionality would be implemented here');
+    };
+    
+    window.checkDrift = function(componentId) {
+        alert('Check drift functionality would be implemented here');
+    };
+    
+    window.viewHistory = function(componentId) {
+        alert('View history functionality would be implemented here');
+    };
+    
+    window.forceSync = function(componentId) {
+        alert('Force sync functionality would be implemented here');
+    };
+    
+    window.calculateDrift = function(componentId) {
+        alert('Calculate drift functionality would be implemented here');
+    };
+    
+    window.resetState = function(componentId) {
+        if (confirm('Are you sure you want to reset the state? This action cannot be undone.')) {
+            alert('Reset state functionality would be implemented here');
+        }
+    };
+    
+    window.exportLogs = function(componentId) {
+        alert('Export logs functionality would be implemented here');
+    };
+    
+})();
+</script>
