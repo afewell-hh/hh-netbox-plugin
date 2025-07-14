@@ -175,6 +175,7 @@ start_k3s_container() {
 setup_kubeconfig() {
     log "Setting up kubeconfig access..."
     mkdir -p "$SCRIPT_DIR/kubeconfig"
+    chmod 755 "$SCRIPT_DIR/kubeconfig"
     
     if ! $DOCKER_CMD exec hemk-poc-k3s cat /var/lib/rancher/k3s/server/cred/admin.kubeconfig > "$SCRIPT_DIR/kubeconfig/kubeconfig.yaml.tmp"; then
         error "Failed to extract kubeconfig from container"
