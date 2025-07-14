@@ -16,6 +16,12 @@ YELLOW='\033[1;33m'
 BLUE='\033[0;34m'
 NC='\033[0m' # No Color
 
+# Port configuration with fallback logic
+INGRESS_HTTP_PORT=30080
+INGRESS_HTTPS_PORT=30443
+ARGOCD_PORT=30444  # Changed to avoid conflict with ingress
+PROMETHEUS_PORT=30090
+
 log() {
     echo -e "${GREEN}[$(date '+%Y-%m-%d %H:%M:%S')]${NC} $1" | tee -a "$LOG_FILE"
 }
@@ -43,6 +49,65 @@ handle_error() {
 }
 
 trap 'handle_error $LINENO' ERR
+
+# Port management functions
+check_port_available() {
+    local port=$1
+    if ss -tuln | grep -q ":$port "; then
+        return 1  # Port is in use
+    fi
+    return 0  # Port is available
+}
+
+find_available_port() {
+    local base_port=$1
+    local max_attempts=50
+    
+    for i in $(seq 0 $max_attempts); do
+        local test_port=$((base_port + i))
+        if check_port_available $test_port; then
+            echo $test_port
+            return 0
+        fi
+    done
+    
+    error "Could not find available port starting from $base_port"
+    return 1
+}
+
+validate_and_assign_ports() {
+    log "Validating port availability..."
+    
+    # Check and assign ingress HTTP port
+    if ! check_port_available $INGRESS_HTTP_PORT; then
+        warning "Port $INGRESS_HTTP_PORT is in use, finding alternative..."
+        INGRESS_HTTP_PORT=$(find_available_port $INGRESS_HTTP_PORT)
+        log "Using alternative HTTP port: $INGRESS_HTTP_PORT"
+    fi
+    
+    # Check and assign ingress HTTPS port
+    if ! check_port_available $INGRESS_HTTPS_PORT; then
+        warning "Port $INGRESS_HTTPS_PORT is in use, finding alternative..."
+        INGRESS_HTTPS_PORT=$(find_available_port $INGRESS_HTTPS_PORT)
+        log "Using alternative HTTPS port: $INGRESS_HTTPS_PORT"
+    fi
+    
+    # Check and assign ArgoCD port
+    if ! check_port_available $ARGOCD_PORT; then
+        warning "Port $ARGOCD_PORT is in use, finding alternative..."
+        ARGOCD_PORT=$(find_available_port $ARGOCD_PORT)
+        log "Using alternative ArgoCD port: $ARGOCD_PORT"
+    fi
+    
+    # Check and assign Prometheus port
+    if ! check_port_available $PROMETHEUS_PORT; then
+        warning "Port $PROMETHEUS_PORT is in use, finding alternative..."
+        PROMETHEUS_PORT=$(find_available_port $PROMETHEUS_PORT)
+        log "Using alternative Prometheus port: $PROMETHEUS_PORT"
+    fi
+    
+    log "✅ Port assignments: HTTP=$INGRESS_HTTP_PORT, HTTPS=$INGRESS_HTTPS_PORT, ArgoCD=$ARGOCD_PORT, Prometheus=$PROMETHEUS_PORT"
+}
 
 # Helper function for kubectl commands with proper error handling
 k3s_kubectl() {
@@ -124,13 +189,29 @@ run_preflight_checks() {
 
     log "✅ System resources check passed"
 
-    # Check for existing HEMK container
+    # Check for existing HEMK container and clean up thoroughly
     if $DOCKER_CMD ps -a | grep -q hemk-poc-k3s; then
         warning "Existing HEMK container found. Cleaning up..."
         $DOCKER_CMD compose -f docker-compose.hemk-poc.yml down -v || true
-        sleep 2
+        
+        # Additional cleanup - remove any orphaned containers
+        $DOCKER_CMD container prune -f || true
+        
+        # Wait for ports to be released
+        info "Waiting for ports to be released..."
+        sleep 5
+        
+        # Verify cleanup was successful
+        if $DOCKER_CMD ps -a | grep -q hemk-poc-k3s; then
+            warning "Container still exists, forcing removal..."
+            $DOCKER_CMD rm -f hemk-poc-k3s || true
+            sleep 2
+        fi
     fi
 
+    # Validate and assign ports
+    validate_and_assign_ports
+    
     log "✅ Pre-flight checks completed successfully"
 }
 
@@ -174,8 +255,8 @@ start_k3s_container() {
 # Extract kubeconfig with embedded certificates for external access
 setup_kubeconfig() {
     log "Setting up kubeconfig access..."
-    mkdir -p "$SCRIPT_DIR/kubeconfig"
-    chmod 755 "$SCRIPT_DIR/kubeconfig"
+    mkdir -p "$SCRIPT_DIR/kubeconfig" || true
+    chmod 755 "$SCRIPT_DIR/kubeconfig" || true
     
     # Extract certificates and create kubeconfig with embedded certificate data
     info "Extracting certificates from container..."
@@ -287,11 +368,11 @@ install_nginx_ingress() {
 
     log "✅ NGINX ingress controller installed and ready"
 
-    # Configure NodePort services with proper JSON escaping
+    # Configure NodePort services with dynamic port assignment
     local patch='[
         {"op": "replace", "path": "/spec/type", "value": "NodePort"},
-        {"op": "add", "path": "/spec/ports/0/nodePort", "value": 30080},
-        {"op": "add", "path": "/spec/ports/1/nodePort", "value": 30443}
+        {"op": "add", "path": "/spec/ports/0/nodePort", "value": '$INGRESS_HTTP_PORT'},
+        {"op": "add", "path": "/spec/ports/1/nodePort", "value": '$INGRESS_HTTPS_PORT'}
     ]'
     
     k3s_kubectl_patch "svc ingress-nginx-controller -n ingress-nginx" "$patch" "ingress controller for NodePort access"
@@ -314,10 +395,10 @@ install_argocd() {
 
     log "✅ ArgoCD installed and ready"
 
-    # Configure ArgoCD for external access
+    # Configure ArgoCD for external access with dynamic port
     local patch='[
         {"op": "add", "path": "/spec/type", "value": "NodePort"},
-        {"op": "add", "path": "/spec/ports/0/nodePort", "value": 30443}
+        {"op": "add", "path": "/spec/ports/0/nodePort", "value": '$ARGOCD_PORT'}
     ]'
     
     k3s_kubectl_patch "svc argocd-server -n argocd" "$patch" "ArgoCD server for external access"
@@ -437,7 +518,7 @@ spec:
   ports:
   - port: 9090
     targetPort: 9090
-    nodePort: 30090
+    nodePort: $PROMETHEUS_PORT
   selector:
     app: prometheus"
 
@@ -525,13 +606,13 @@ hemk:
     
   services:
     argocd:
-      endpoint: "https://localhost:30443"
+      endpoint: "https://localhost:${ARGOCD_PORT}"
       admin_username: "admin"
       admin_password: "${argocd_password}"
       health_check: "/api/v1/version"
       
     prometheus:
-      endpoint: "http://localhost:30090"
+      endpoint: "http://localhost:${PROMETHEUS_PORT}"
       api_path: "/api/v1"
       health_check: "/api/v1/status/config"
       
@@ -558,9 +639,11 @@ EOF
     log "==============================================="
     echo ""
     log "Access points:"
-    log "  📊 ArgoCD UI: https://localhost:30443"
+    log "  📊 ArgoCD UI: https://localhost:${ARGOCD_PORT}"
     log "  🔑 ArgoCD Admin Password: ${argocd_password}"
-    log "  📈 Prometheus: http://localhost:30090"
+    log "  📈 Prometheus: http://localhost:${PROMETHEUS_PORT}"
+    log "  🌐 Ingress HTTP: http://localhost:${INGRESS_HTTP_PORT}"
+    log "  🔒 Ingress HTTPS: https://localhost:${INGRESS_HTTPS_PORT}"
     log "  ⚙️  Kubeconfig: ${SCRIPT_DIR}/kubeconfig/kubeconfig.yaml"
     echo ""
     log "Next steps:"

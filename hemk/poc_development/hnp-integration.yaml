@@ -1,0 +1,26 @@
+# HNP Integration Configuration
+# Generated: Mon Jul 14 22:14:50 UTC 2025
+# Installation time: 1m 47s
+
+hemk:
+  cluster:
+    endpoint: "https://localhost:16443"
+    container_ip: "172.18.0.8"
+    
+  services:
+    argocd:
+      endpoint: "https://localhost:30444"
+      admin_username: "admin"
+      admin_password: "zSXMusmfc8tXCie4"
+      health_check: "/api/v1/version"
+      
+    prometheus:
+      endpoint: "http://localhost:30090"
+      api_path: "/api/v1"
+      health_check: "/api/v1/status/config"
+      
+  netbox:
+    url: "http://unknown:8080"
+    api_url: "http://unknown:8080/api"
+    
+  kubeconfig: "/home/ubuntu/cc/hedgehog-netbox-plugin/hemk/poc_development/kubeconfig/kubeconfig.yaml"
