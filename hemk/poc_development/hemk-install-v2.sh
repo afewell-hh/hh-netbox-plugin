@@ -171,23 +171,59 @@ start_k3s_container() {
     done
 }
 
-# Extract kubeconfig with validation
+# Extract kubeconfig with embedded certificates for external access
 setup_kubeconfig() {
     log "Setting up kubeconfig access..."
     mkdir -p "$SCRIPT_DIR/kubeconfig"
     chmod 755 "$SCRIPT_DIR/kubeconfig"
     
-    if ! $DOCKER_CMD exec hemk-poc-k3s cat /var/lib/rancher/k3s/server/cred/admin.kubeconfig > "$SCRIPT_DIR/kubeconfig/kubeconfig.yaml.tmp"; then
-        error "Failed to extract kubeconfig from container"
+    # Extract certificates and create kubeconfig with embedded certificate data
+    info "Extracting certificates from container..."
+    
+    local ca_cert
+    local client_cert
+    local client_key
+    
+    if ! ca_cert=$($DOCKER_CMD exec hemk-poc-k3s cat /var/lib/rancher/k3s/server/tls/server-ca.crt | base64 -w 0); then
+        error "Failed to extract CA certificate from container"
         exit 1
     fi
     
-    # Modify kubeconfig for external access
-    sed 's/127\.0\.0\.1/localhost/g; s/:6443/:16443/g' "$SCRIPT_DIR/kubeconfig/kubeconfig.yaml.tmp" > "$SCRIPT_DIR/kubeconfig/kubeconfig.yaml"
-    rm "$SCRIPT_DIR/kubeconfig/kubeconfig.yaml.tmp"
+    if ! client_cert=$($DOCKER_CMD exec hemk-poc-k3s cat /var/lib/rancher/k3s/server/tls/client-admin.crt | base64 -w 0); then
+        error "Failed to extract client certificate from container"
+        exit 1
+    fi
+    
+    if ! client_key=$($DOCKER_CMD exec hemk-poc-k3s cat /var/lib/rancher/k3s/server/tls/client-admin.key | base64 -w 0); then
+        error "Failed to extract client key from container"
+        exit 1
+    fi
+    
+    # Create kubeconfig with embedded certificates for external access
+    cat > "$SCRIPT_DIR/kubeconfig/kubeconfig.yaml" <<EOF
+apiVersion: v1
+clusters:
+- cluster:
+    certificate-authority-data: $ca_cert
+    server: https://localhost:16443
+  name: default
+contexts:
+- context:
+    cluster: default
+    user: default
+  name: default
+current-context: default
+kind: Config
+preferences: {}
+users:
+- name: default
+  user:
+    client-certificate-data: $client_cert
+    client-key-data: $client_key
+EOF
     
     export KUBECONFIG="$SCRIPT_DIR/kubeconfig/kubeconfig.yaml"
-    log "✅ Kubeconfig configured for external access"
+    log "✅ Kubeconfig configured for external access with embedded certificates"
 }
 
 # Connect to NetBox network with error handling
