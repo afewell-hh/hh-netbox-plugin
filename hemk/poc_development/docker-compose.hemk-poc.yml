@@ -1,0 +1,46 @@
+version: '3.8'
+
+services:
+  k3s-server:
+    image: rancher/k3s:v1.27.3-k3s1
+    container_name: hemk-poc-k3s
+    privileged: true
+    networks:
+      - netbox-docker_default
+    volumes:
+      - k3s-server:/var/lib/rancher/k3s
+      - ./kubeconfig:/output
+      - ./scripts:/scripts:ro
+    environment:
+      - K3S_NODE_NAME=hemk-poc
+      - K3S_KUBECONFIG_OUTPUT=/output/kubeconfig.yaml
+      - K3S_KUBECONFIG_MODE=666
+    command: server --disable traefik --disable servicelb
+    ports:
+      - "16443:6443"
+      - "30080:30080"
+      - "30443:30443"
+      - "30090:30090"
+      - "30300:30300"
+    healthcheck:
+      test: ["CMD", "kubectl", "get", "nodes"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: '2'
+          memory: 4G
+        reservations:
+          cpus: '1'
+          memory: 2G
+
+volumes:
+  k3s-server:
+    driver: local
+
+networks:
+  netbox-docker_default:
+    external: true
