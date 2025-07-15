@@ -91,35 +91,51 @@ class HedgehogFabric(NetBoxModel):
         help_text="Last connection error message (if any)"
     )
     
-    # GitOps configuration
+    # GitOps configuration (NEW ARCHITECTURE - Separated Concerns)
+    git_repository = models.ForeignKey(
+        'GitRepository',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        help_text="Reference to authenticated git repository (separated architecture)"
+    )
+    
+    gitops_directory = models.CharField(
+        max_length=500,
+        default='/',
+        help_text="Directory path within repository for this fabric's CRDs"
+    )
+    
+    # Legacy GitOps configuration (DEPRECATED - will be migrated)
+    # These fields are kept temporarily for migration compatibility
     git_repository_url = models.URLField(
         blank=True,
         null=True,
-        help_text="Git repository containing desired Hedgehog CRD definitions"
+        help_text="[DEPRECATED] Git repository URL - use git_repository field instead"
     )
     
     git_branch = models.CharField(
         max_length=100,
         default='main',
-        help_text="Git branch to track for desired state"
+        help_text="[DEPRECATED] Git branch - managed by GitRepository"
     )
     
     git_path = models.CharField(
         max_length=255,
         default='hedgehog/',
-        help_text="Path within repo containing Hedgehog CRDs"
+        help_text="[DEPRECATED] Git path - use gitops_directory field instead"
     )
     
     git_username = models.CharField(
         max_length=100,
         blank=True,
-        help_text="Git username for authentication"
+        help_text="[DEPRECATED] Git username - managed by GitRepository"
     )
     
     git_token = models.CharField(
         max_length=255,
         blank=True,
-        help_text="Git access token for authentication"
+        help_text="[DEPRECATED] Git token - managed by GitRepository"
     )
     
     # GitOps state tracking
@@ -298,6 +314,7 @@ class HedgehogFabric(NetBoxModel):
         verbose_name = "Hedgehog Fabric"
         verbose_name_plural = "Hedgehog Fabrics"
         ordering = ['name']
+        unique_together = [['git_repository', 'gitops_directory']]
     
     def __str__(self):
         return self.name
