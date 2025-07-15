@@ -1,4 +1,5 @@
 from .fabric import HedgehogFabric
+from .git_repository import GitRepository
 from .base import BaseCRD
 from .gitops import HedgehogResource, StateTransitionHistory
 from .reconciliation import ReconciliationAlert
@@ -12,6 +13,7 @@ from .wiring_api import (
 
 __all__ = [
     'HedgehogFabric',
+    'GitRepository',
     'BaseCRD',
     'HedgehogResource',
     'StateTransitionHistory',

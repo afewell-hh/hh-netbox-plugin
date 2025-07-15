@@ -122,3 +122,50 @@ class ConnectionTypeChoices(ChoiceSet):
         (VPC_LOOPBACK, 'VPC Loopback'),
         (EXTERNAL, 'External'),
     ]
+
+class GitRepositoryProviderChoices(ChoiceSet):
+    """Git repository provider choices"""
+    
+    GITHUB = 'github'
+    GITLAB = 'gitlab'
+    BITBUCKET = 'bitbucket'
+    AZURE = 'azure'
+    GENERIC = 'generic'
+    
+    CHOICES = [
+        (GITHUB, 'GitHub'),
+        (GITLAB, 'GitLab'),
+        (BITBUCKET, 'Bitbucket'),
+        (AZURE, 'Azure DevOps'),
+        (GENERIC, 'Generic Git'),
+    ]
+
+class GitAuthenticationTypeChoices(ChoiceSet):
+    """Git authentication type choices"""
+    
+    TOKEN = 'token'
+    SSH_KEY = 'ssh_key'
+    OAUTH = 'oauth'
+    BASIC = 'basic'
+    
+    CHOICES = [
+        (TOKEN, 'Personal Access Token'),
+        (SSH_KEY, 'SSH Key'),
+        (OAUTH, 'OAuth Token'),
+        (BASIC, 'Username/Password'),
+    ]
+
+class GitConnectionStatusChoices(ChoiceSet):
+    """Git repository connection status choices"""
+    
+    PENDING = 'pending'
+    TESTING = 'testing'
+    CONNECTED = 'connected'
+    FAILED = 'failed'
+    
+    CHOICES = [
+        (PENDING, 'Pending Validation'),
+        (TESTING, 'Testing Connection'),
+        (CONNECTED, 'Connected'),
+        (FAILED, 'Connection Failed'),
+    ]
