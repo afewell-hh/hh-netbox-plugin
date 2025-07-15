@@ -8,6 +8,9 @@ router = NetBoxRouter()
 # Fabric API
 router.register('fabrics', views.FabricViewSet)
 
+# Git Repository API (Week 1 GitOps Architecture)
+router.register('git-repositories', views.GitRepositoryViewSet)
+
 # GitOps API (MVP2)
 router.register('gitops-fabrics', views.EnhancedFabricViewSet, basename='gitopsfabric')
 router.register('gitops-resources', views.HedgehogResourceViewSet)

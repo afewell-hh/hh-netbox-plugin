@@ -25,6 +25,179 @@ class HedgehogFabricSerializer(NetBoxModelSerializer):
         model = models.HedgehogFabric
         fields = '__all__'
 
+# Git Repository Management Serializers (Week 1 GitOps Architecture)
+class GitRepositorySerializer(NetBoxModelSerializer):
+    """Serializer for GitRepository model with encrypted credential handling"""
+    
+    # Read-only computed fields
+    connection_summary = serializers.ReadOnlyField(source='get_connection_summary')
+    dependent_fabrics_count = serializers.ReadOnlyField(source='fabric_count')
+    can_delete_info = serializers.SerializerMethodField()
+    repository_info = serializers.ReadOnlyField(source='get_repository_info')
+    
+    # Write-only credentials field for secure credential setting
+    credentials = serializers.DictField(write_only=True, required=False)
+    
+    class Meta:
+        model = models.GitRepository
+        fields = [
+            'id', 'url', 'name', 'provider', 'authentication_type', 'description',
+            'connection_status', 'last_validated', 'validation_error',
+            'default_branch', 'is_private', 'fabric_count', 'created_by',
+            'validate_ssl', 'timeout_seconds', 'created', 'last_updated',
+            'connection_summary', 'dependent_fabrics_count', 'can_delete_info',
+            'repository_info', 'credentials'
+        ]
+        read_only_fields = [
+            'connection_status', 'last_validated', 'validation_error',
+            'fabric_count', 'created_by', 'created', 'last_updated'
+        ]
+    
+    def get_can_delete_info(self, obj):
+        """Get deletion safety information"""
+        can_delete, reason = obj.can_delete()
+        return {'can_delete': can_delete, 'reason': reason}
+    
+    def create(self, validated_data):
+        """Create GitRepository with encrypted credentials"""
+        credentials = validated_data.pop('credentials', {})
+        validated_data['created_by'] = self.context['request'].user
+        
+        instance = super().create(validated_data)
+        
+        if credentials:
+            instance.set_credentials(credentials)
+            instance.save()
+        
+        return instance
+    
+    def update(self, instance, validated_data):
+        """Update GitRepository with optional credential updates"""
+        credentials = validated_data.pop('credentials', None)
+        
+        instance = super().update(instance, validated_data)
+        
+        if credentials is not None:
+            instance.set_credentials(credentials)
+            instance.save()
+        
+        return instance
+    
+    def to_representation(self, instance):
+        """Add computed fields to API response without exposing credentials"""
+        data = super().to_representation(instance)
+        
+        # Add credential indicator (without exposing actual credentials)
+        data['has_credentials'] = bool(instance.encrypted_credentials)
+        
+        # Add dependent fabrics list
+        dependent_fabrics = instance.get_dependent_fabrics()
+        data['dependent_fabrics'] = [
+            {'id': fabric.id, 'name': fabric.name}
+            for fabric in dependent_fabrics[:10]  # Limit to first 10
+        ]
+        
+        return data
+
+
+class GitRepositoryCreateSerializer(serializers.ModelSerializer):
+    """Specialized serializer for creating git repositories with required credentials"""
+    
+    credentials = serializers.DictField(required=True, write_only=True)
+    
+    class Meta:
+        model = models.GitRepository
+        fields = [
+            'name', 'url', 'provider', 'authentication_type', 'description',
+            'default_branch', 'is_private', 'validate_ssl', 'timeout_seconds',
+            'credentials'
+        ]
+    
+    def validate_credentials(self, value):
+        """Validate credentials based on authentication type"""
+        auth_type = self.initial_data.get('authentication_type', 'token')
+        
+        if auth_type == 'token':
+            if 'token' not in value or not value['token']:
+                raise serializers.ValidationError("Token is required for token authentication")
+        elif auth_type == 'basic':
+            if 'username' not in value or not value['username']:
+                raise serializers.ValidationError("Username is required for basic authentication")
+            if 'password' not in value or not value['password']:
+                raise serializers.ValidationError("Password is required for basic authentication")
+        elif auth_type == 'ssh_key':
+            if 'private_key' not in value or not value['private_key']:
+                raise serializers.ValidationError("Private key is required for SSH key authentication")
+        
+        return value
+    
+    def create(self, validated_data):
+        """Create repository with encrypted credentials"""
+        credentials = validated_data.pop('credentials')
+        validated_data['created_by'] = self.context['request'].user
+        
+        instance = super().create(validated_data)
+        instance.set_credentials(credentials)
+        instance.save()
+        
+        return instance
+
+
+class GitRepositoryUpdateSerializer(serializers.ModelSerializer):
+    """Specialized serializer for updating git repositories"""
+    
+    credentials = serializers.DictField(required=False, write_only=True)
+    
+    class Meta:
+        model = models.GitRepository
+        fields = [
+            'name', 'description', 'default_branch', 'validate_ssl', 
+            'timeout_seconds', 'credentials'
+        ]
+    
+    def update(self, instance, validated_data):
+        """Update repository with optional credential updates"""
+        credentials = validated_data.pop('credentials', None)
+        
+        instance = super().update(instance, validated_data)
+        
+        if credentials is not None:
+            instance.set_credentials(credentials)
+            instance.save()
+        
+        return instance
+
+
+class GitRepositoryTestConnectionSerializer(serializers.Serializer):
+    """Serializer for git repository connection test results"""
+    success = serializers.BooleanField()
+    message = serializers.CharField(required=False)
+    repository_url = serializers.URLField(required=False)
+    default_branch = serializers.CharField(required=False)
+    current_commit = serializers.CharField(required=False)
+    authenticated = serializers.BooleanField(required=False)
+    last_validated = serializers.DateTimeField(required=False)
+    error = serializers.CharField(required=False)
+
+
+class GitRepositoryCloneSerializer(serializers.Serializer):
+    """Serializer for git repository clone operation requests"""
+    target_directory = serializers.CharField(required=True)
+    branch = serializers.CharField(required=False)
+
+
+class GitRepositoryCloneResultSerializer(serializers.Serializer):
+    """Serializer for git repository clone operation results"""
+    success = serializers.BooleanField()
+    message = serializers.CharField(required=False)
+    repository_path = serializers.CharField(required=False)
+    branch = serializers.CharField(required=False)
+    commit_sha = serializers.CharField(required=False)
+    commit_message = serializers.CharField(required=False)
+    error = serializers.CharField(required=False)
+    repository_url = serializers.URLField(required=False)
+    target_directory = serializers.CharField(required=False)
+
 # VPC API Serializers
 class VPCSerializer(BaseCRDSerializer):
     class Meta:

@@ -36,6 +36,213 @@ class FabricViewSet(NetBoxModelViewSet):
     queryset = models.HedgehogFabric.objects.all()
     serializer_class = serializers.FabricSerializer
 
+# Git Repository ViewSet (Week 1 GitOps Architecture)
+class GitRepositoryViewSet(NetBoxModelViewSet):
+    """
+    API ViewSet for GitRepository management with encrypted credential handling.
+    
+    Provides CRUD operations for git repositories with secure credential storage,
+    connection testing, and repository management functionality.
+    """
+    queryset = models.GitRepository.objects.all()
+    serializer_class = serializers.GitRepositorySerializer
+    filterset_fields = [
+        'provider', 'authentication_type', 'connection_status', 
+        'is_private', 'created_by'
+    ]
+    
+    def get_serializer_class(self):
+        """Use specialized serializers for create/update operations"""
+        if self.action == 'create':
+            return serializers.GitRepositoryCreateSerializer
+        elif self.action in ['update', 'partial_update']:
+            return serializers.GitRepositoryUpdateSerializer
+        return self.serializer_class
+    
+    def get_queryset(self):
+        """Filter repositories by user to prevent unauthorized access"""
+        queryset = super().get_queryset()
+        # Users can only see repositories they created
+        if not self.request.user.is_superuser:
+            queryset = queryset.filter(created_by=self.request.user)
+        return queryset
+    
+    def perform_create(self, serializer):
+        """Set created_by field and update fabric count"""
+        instance = serializer.save(created_by=self.request.user)
+        instance.update_fabric_count()
+    
+    def perform_update(self, serializer):
+        """Update fabric count after repository update"""
+        instance = serializer.save()
+        instance.update_fabric_count()
+    
+    def perform_destroy(self, instance):
+        """Check deletion safety before removing repository"""
+        can_delete, reason = instance.can_delete()
+        if not can_delete:
+            return Response({
+                'error': f'Cannot delete repository: {reason}',
+                'can_delete': False,
+                'reason': reason
+            }, status=status.HTTP_400_BAD_REQUEST)
+        
+        super().perform_destroy(instance)
+    
+    @action(detail=True, methods=['post'])
+    def test_connection(self, request, pk=None):
+        """
+        Test connection to git repository with current credentials.
+        
+        POST /api/plugins/hedgehog/git-repositories/{id}/test/
+        """
+        repository = self.get_object()
+        
+        try:
+            result = repository.test_connection()
+            serializer = serializers.GitRepositoryTestConnectionSerializer(result)
+            
+            if result.get('success'):
+                return Response(serializer.data, status=status.HTTP_200_OK)
+            else:
+                return Response(serializer.data, status=status.HTTP_400_BAD_REQUEST)
+                
+        except Exception as e:
+            logger.error(f"Connection test failed for repository {pk}: {e}")
+            return Response({
+                'success': False,
+                'error': str(e),
+                'repository_url': repository.url
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+    
+    @action(detail=True, methods=['post'])
+    def clone(self, request, pk=None):
+        """
+        Clone repository to specified directory.
+        
+        POST /api/plugins/hedgehog/git-repositories/{id}/clone/
+        Body: {"target_directory": "/path/to/clone", "branch": "optional"}
+        """
+        repository = self.get_object()
+        serializer = serializers.GitRepositoryCloneSerializer(data=request.data)
+        
+        if not serializer.is_valid():
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+        
+        try:
+            target_directory = serializer.validated_data['target_directory']
+            branch = serializer.validated_data.get('branch')
+            
+            result = repository.clone_repository(target_directory, branch)
+            result_serializer = serializers.GitRepositoryCloneResultSerializer(result)
+            
+            if result.get('success'):
+                return Response(result_serializer.data, status=status.HTTP_200_OK)
+            else:
+                return Response(result_serializer.data, status=status.HTTP_400_BAD_REQUEST)
+                
+        except Exception as e:
+            logger.error(f"Clone operation failed for repository {pk}: {e}")
+            return Response({
+                'success': False,
+                'error': str(e),
+                'repository_url': repository.url
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+    
+    @action(detail=True, methods=['get'])
+    def dependent_fabrics(self, request, pk=None):
+        """
+        Get list of fabrics that depend on this repository.
+        
+        GET /api/plugins/hedgehog/git-repositories/{id}/dependent-fabrics/
+        """
+        repository = self.get_object()
+        dependent_fabrics = repository.get_dependent_fabrics()
+        
+        # Serialize fabric data
+        fabric_data = []
+        for fabric in dependent_fabrics:
+            fabric_data.append({
+                'id': fabric.id,
+                'name': fabric.name,
+                'description': fabric.description,
+                'gitops_directory': getattr(fabric, 'gitops_directory', '/'),
+                'status': fabric.status,
+                'connection_status': fabric.connection_status
+            })
+        
+        return Response({
+            'repository_id': repository.id,
+            'repository_name': repository.name,
+            'dependent_fabrics_count': len(fabric_data),
+            'dependent_fabrics': fabric_data
+        }, status=status.HTTP_200_OK)
+    
+    @action(detail=True, methods=['get'])
+    def connection_summary(self, request, pk=None):
+        """
+        Get comprehensive connection status summary.
+        
+        GET /api/plugins/hedgehog/git-repositories/{id}/connection-summary/
+        """
+        repository = self.get_object()
+        summary = repository.get_connection_summary()
+        
+        return Response(summary, status=status.HTTP_200_OK)
+    
+    @action(detail=True, methods=['get'])
+    def repository_info(self, request, pk=None):
+        """
+        Get comprehensive repository information.
+        
+        GET /api/plugins/hedgehog/git-repositories/{id}/repository-info/
+        """
+        repository = self.get_object()
+        info = repository.get_repository_info()
+        
+        return Response(info, status=status.HTTP_200_OK)
+    
+    @action(detail=False, methods=['get'])
+    def my_repositories(self, request):
+        """
+        Get repositories created by current user.
+        
+        GET /api/plugins/hedgehog/git-repositories/my-repositories/
+        """
+        user_repos = self.get_queryset().filter(created_by=request.user)
+        serializer = self.get_serializer(user_repos, many=True)
+        
+        return Response({
+            'count': user_repos.count(),
+            'results': serializer.data
+        }, status=status.HTTP_200_OK)
+    
+    @action(detail=False, methods=['get'])
+    def connection_status_summary(self, request):
+        """
+        Get summary of connection statuses across all user repositories.
+        
+        GET /api/plugins/hedgehog/git-repositories/connection-status-summary/
+        """
+        user_repos = self.get_queryset().filter(created_by=request.user)
+        
+        status_summary = {}
+        for choice in models.GitRepository._meta.get_field('connection_status').choices:
+            status_value = choice[0]
+            status_summary[status_value] = user_repos.filter(connection_status=status_value).count()
+        
+        total_repos = user_repos.count()
+        connected_repos = status_summary.get('connected', 0)
+        
+        return Response({
+            'total_repositories': total_repos,
+            'connection_status_counts': status_summary,
+            'connection_health': {
+                'connected_percentage': (connected_repos / total_repos * 100) if total_repos > 0 else 0,
+                'needs_attention': status_summary.get('failed', 0) + status_summary.get('pending', 0)
+            }
+        }, status=status.HTTP_200_OK)
+
 # VPC API ViewSets
 class VPCViewSet(NetBoxModelViewSet):
     queryset = models.VPC.objects.all()
