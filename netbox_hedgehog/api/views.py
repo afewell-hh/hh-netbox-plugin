@@ -31,10 +31,486 @@ from ..utils.git_providers import GitProviderFactory, GitAuthenticationError
 
 logger = logging.getLogger(__name__)
 
-# Fabric ViewSet
+# Enhanced Fabric ViewSet with GitRepository Integration (Week 3)
 class FabricViewSet(NetBoxModelViewSet):
+    """
+    Enhanced fabric management using separated GitRepository architecture.
+    
+    Provides CRUD operations for fabrics with integrated GitRepository support,
+    unified creation workflows, and comprehensive validation.
+    """
     queryset = models.HedgehogFabric.objects.all()
     serializer_class = serializers.FabricSerializer
+    
+    def get_serializer_class(self):
+        """Use specialized serializers for different operations"""
+        if self.action in ['create_with_git_repository', 'update_git_configuration']:
+            return serializers.EnhancedFabricSerializer
+        return self.serializer_class
+    
+    @action(detail=False, methods=['post'])
+    def create_with_git_repository(self, request):
+        """
+        Create fabric with GitRepository selection and directory validation.
+        
+        POST /api/plugins/hedgehog/fabrics/create-with-git-repository/
+        Body: {
+            "fabric_data": {...},
+            "git_repository_id": 123,
+            "gitops_directory": "/my-fabric/",
+            "validate_directory": true
+        }
+        """
+        try:
+            from ..utils.fabric_creation_workflow import UnifiedFabricCreationWorkflow
+            from ..utils.gitops_directory_validator import GitOpsDirectoryValidator
+            
+            # Extract request data
+            fabric_data = request.data.get('fabric_data', {})
+            git_repository_id = request.data.get('git_repository_id')
+            gitops_directory = request.data.get('gitops_directory', '/')
+            validate_directory = request.data.get('validate_directory', True)
+            
+            if not git_repository_id:
+                return Response({
+                    'success': False,
+                    'error': 'git_repository_id is required'
+                }, status=status.HTTP_400_BAD_REQUEST)
+            
+            # Verify git repository exists and user has access
+            try:
+                git_repository = models.GitRepository.objects.get(
+                    id=git_repository_id,
+                    created_by=request.user
+                )
+            except models.GitRepository.DoesNotExist:
+                return Response({
+                    'success': False,
+                    'error': 'Git repository not found or access denied'
+                }, status=status.HTTP_404_NOT_FOUND)
+            
+            # Validate directory if requested
+            if validate_directory:
+                validator = GitOpsDirectoryValidator()
+                directory_result = validator.validate_gitops_directory_assignment(
+                    git_repository_id, gitops_directory
+                )
+                
+                if not directory_result.is_valid:
+                    return Response({
+                        'success': False,
+                        'error': 'Directory validation failed',
+                        'validation_errors': directory_result.errors,
+                        'suggestions': directory_result.suggestions
+                    }, status=status.HTTP_400_BAD_REQUEST)
+            
+            # Create fabric using unified workflow
+            workflow = UnifiedFabricCreationWorkflow(request.user)
+            creation_result = workflow.create_fabric_with_git_repository(
+                fabric_data, git_repository_id, gitops_directory
+            )
+            
+            if creation_result.success:
+                # Serialize the created fabric
+                fabric_serializer = serializers.EnhancedFabricSerializer(
+                    creation_result.fabric, context={'request': request}
+                )
+                
+                return Response({
+                    'success': True,
+                    'fabric': fabric_serializer.data,
+                    'git_repository_info': {
+                        'id': git_repository.id,
+                        'name': git_repository.name,
+                        'url': git_repository.url
+                    },
+                    'gitops_directory': gitops_directory,
+                    'creation_details': creation_result.details
+                }, status=status.HTTP_201_CREATED)
+            else:
+                return Response({
+                    'success': False,
+                    'error': creation_result.error,
+                    'details': creation_result.details
+                }, status=status.HTTP_400_BAD_REQUEST)
+                
+        except Exception as e:
+            logger.error(f"Fabric creation with git repository failed: {e}")
+            return Response({
+                'success': False,
+                'error': str(e)
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+    
+    @action(detail=True, methods=['put'])
+    def update_git_configuration(self, request, pk=None):
+        """
+        Update fabric git configuration with validation.
+        
+        PUT /api/plugins/hedgehog/fabrics/{id}/update-git-configuration/
+        Body: {
+            "git_repository_id": 123,
+            "gitops_directory": "/new-path/",
+            "validate_changes": true
+        }
+        """
+        try:
+            fabric = self.get_object()
+            
+            git_repository_id = request.data.get('git_repository_id')
+            gitops_directory = request.data.get('gitops_directory')
+            validate_changes = request.data.get('validate_changes', True)
+            
+            # Validate git repository if provided
+            if git_repository_id:
+                try:
+                    git_repository = models.GitRepository.objects.get(
+                        id=git_repository_id,
+                        created_by=request.user
+                    )
+                except models.GitRepository.DoesNotExist:
+                    return Response({
+                        'success': False,
+                        'error': 'Git repository not found or access denied'
+                    }, status=status.HTTP_404_NOT_FOUND)
+            else:
+                git_repository = fabric.git_repository
+            
+            # Validate directory changes
+            if validate_changes and git_repository and gitops_directory:
+                from ..utils.gitops_directory_validator import GitOpsDirectoryValidator
+                
+                validator = GitOpsDirectoryValidator()
+                directory_result = validator.validate_gitops_directory_assignment(
+                    git_repository.id, gitops_directory, exclude_fabric_id=fabric.id
+                )
+                
+                if not directory_result.is_valid:
+                    return Response({
+                        'success': False,
+                        'error': 'Directory validation failed',
+                        'validation_errors': directory_result.errors,
+                        'suggestions': directory_result.suggestions
+                    }, status=status.HTTP_400_BAD_REQUEST)
+            
+            # Update fabric configuration
+            update_fields = []
+            if git_repository_id and git_repository:
+                fabric.git_repository = git_repository
+                update_fields.append('git_repository')
+            
+            if gitops_directory is not None:
+                fabric.gitops_directory = gitops_directory
+                update_fields.append('gitops_directory')
+            
+            if update_fields:
+                fabric.save(update_fields=update_fields)
+                
+                # Update git repository fabric count
+                if git_repository:
+                    git_repository.update_fabric_count()
+            
+            # Get updated fabric data
+            fabric_serializer = serializers.EnhancedFabricSerializer(
+                fabric, context={'request': request}
+            )
+            
+            return Response({
+                'success': True,
+                'fabric': fabric_serializer.data,
+                'updated_fields': update_fields,
+                'message': 'Git configuration updated successfully'
+            }, status=status.HTTP_200_OK)
+            
+        except Exception as e:
+            logger.error(f"Git configuration update failed for fabric {pk}: {e}")
+            return Response({
+                'success': False,
+                'error': str(e)
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+    
+    @action(detail=True, methods=['post'])
+    def validate_git_configuration(self, request, pk=None):
+        """
+        Validate fabric git configuration before applying.
+        
+        POST /api/plugins/hedgehog/fabrics/{id}/validate-git-configuration/
+        Body: {
+            "git_repository_id": 123,
+            "gitops_directory": "/path/",
+            "check_connectivity": true,
+            "check_permissions": true
+        }
+        """
+        try:
+            fabric = self.get_object()
+            
+            git_repository_id = request.data.get('git_repository_id', fabric.git_repository_id)
+            gitops_directory = request.data.get('gitops_directory', fabric.gitops_directory)
+            check_connectivity = request.data.get('check_connectivity', True)
+            check_permissions = request.data.get('check_permissions', True)
+            
+            validation_results = {
+                'fabric_id': fabric.id,
+                'fabric_name': fabric.name,
+                'validation_timestamp': timezone.now().isoformat(),
+                'overall_valid': True,
+                'checks': {}
+            }
+            
+            # Validate git repository
+            if git_repository_id:
+                try:
+                    git_repository = models.GitRepository.objects.get(
+                        id=git_repository_id,
+                        created_by=request.user
+                    )
+                    
+                    validation_results['checks']['repository_access'] = {
+                        'valid': True,
+                        'message': 'Repository accessible',
+                        'repository_name': git_repository.name
+                    }
+                    
+                    # Test connectivity if requested
+                    if check_connectivity:
+                        connection_result = git_repository.test_connection()
+                        validation_results['checks']['connectivity'] = {
+                            'valid': connection_result['success'],
+                            'message': connection_result.get('message', connection_result.get('error', '')),
+                            'details': connection_result
+                        }
+                        
+                        if not connection_result['success']:
+                            validation_results['overall_valid'] = False
+                    
+                    # Check permissions if requested
+                    if check_permissions:
+                        permission_result = git_repository.validate_permission_scope()
+                        validation_results['checks']['permissions'] = {
+                            'valid': permission_result.get('success', False),
+                            'message': permission_result.get('message', ''),
+                            'details': permission_result
+                        }
+                        
+                        if not permission_result.get('success', False):
+                            validation_results['overall_valid'] = False
+                    
+                except models.GitRepository.DoesNotExist:
+                    validation_results['checks']['repository_access'] = {
+                        'valid': False,
+                        'message': 'Git repository not found or access denied'
+                    }
+                    validation_results['overall_valid'] = False
+            
+            # Validate directory
+            if git_repository_id and gitops_directory:
+                from ..utils.gitops_directory_validator import GitOpsDirectoryValidator
+                
+                validator = GitOpsDirectoryValidator()
+                directory_result = validator.validate_gitops_directory_assignment(
+                    git_repository_id, gitops_directory, exclude_fabric_id=fabric.id
+                )
+                
+                validation_results['checks']['directory'] = {
+                    'valid': directory_result.is_valid,
+                    'message': 'Directory validation passed' if directory_result.is_valid else 'Directory conflicts detected',
+                    'errors': directory_result.errors,
+                    'suggestions': directory_result.suggestions
+                }
+                
+                if not directory_result.is_valid:
+                    validation_results['overall_valid'] = False
+            
+            # Validate fabric-specific constraints
+            from ..validators.fabric_git_validator import FabricGitValidator
+            
+            fabric_validator = FabricGitValidator()
+            fabric_validation = fabric_validator.validate_fabric_git_configuration(
+                fabric, git_repository_id, gitops_directory
+            )
+            
+            validation_results['checks']['fabric_constraints'] = {
+                'valid': fabric_validation.is_valid,
+                'message': fabric_validation.message,
+                'details': fabric_validation.details
+            }
+            
+            if not fabric_validation.is_valid:
+                validation_results['overall_valid'] = False
+            
+            return Response(validation_results, status=status.HTTP_200_OK)
+            
+        except Exception as e:
+            logger.error(f"Git configuration validation failed for fabric {pk}: {e}")
+            return Response({
+                'success': False,
+                'error': str(e)
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+    
+    @action(detail=True, methods=['get'])
+    def git_health_status(self, request, pk=None):
+        """
+        Get git repository health status for this fabric.
+        
+        GET /api/plugins/hedgehog/fabrics/{id}/git-health-status/
+        """
+        try:
+            fabric = self.get_object()
+            
+            if not fabric.git_repository:
+                return Response({
+                    'fabric_id': fabric.id,
+                    'git_configured': False,
+                    'message': 'No git repository configured for this fabric'
+                }, status=status.HTTP_200_OK)
+            
+            # Get git repository health
+            from ..utils.git_health_monitor import GitHealthMonitor
+            
+            monitor = GitHealthMonitor(fabric.git_repository)
+            health_report = monitor.generate_health_report()
+            
+            # Get credential health
+            from ..utils.credential_manager import CredentialManager
+            
+            credential_manager = CredentialManager()
+            credential_health = credential_manager.get_credential_health(fabric.git_repository)
+            
+            health_status = {
+                'fabric_id': fabric.id,
+                'fabric_name': fabric.name,
+                'git_configured': True,
+                'repository': {
+                    'id': fabric.git_repository.id,
+                    'name': fabric.git_repository.name,
+                    'url': fabric.git_repository.url,
+                    'provider': fabric.git_repository.provider
+                },
+                'gitops_directory': fabric.gitops_directory,
+                'health_report': health_report.to_dict(),
+                'credential_health': credential_health,
+                'last_updated': timezone.now().isoformat()
+            }
+            
+            return Response(health_status, status=status.HTTP_200_OK)
+            
+        except Exception as e:
+            logger.error(f"Git health status failed for fabric {pk}: {e}")
+            return Response({
+                'success': False,
+                'error': str(e)
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+    
+    @action(detail=True, methods=['post'])
+    def migrate_to_new_architecture(self, request, pk=None):
+        """
+        Migrate individual fabric from legacy to new architecture.
+        
+        POST /api/plugins/hedgehog/fabrics/{id}/migrate-to-new-architecture/
+        Body: {
+            "create_git_repository": true,
+            "repository_name": "My Fabric Repo",
+            "dry_run": false
+        }
+        """
+        try:
+            fabric = self.get_object()
+            
+            create_git_repository = request.data.get('create_git_repository', True)
+            repository_name = request.data.get('repository_name', f"{fabric.name} Repository")
+            dry_run = request.data.get('dry_run', False)
+            
+            # Check if already migrated
+            if fabric.git_repository:
+                return Response({
+                    'success': False,
+                    'error': 'Fabric already uses new GitRepository architecture',
+                    'current_repository': {
+                        'id': fabric.git_repository.id,
+                        'name': fabric.git_repository.name
+                    }
+                }, status=status.HTTP_400_BAD_REQUEST)
+            
+            # Check if legacy configuration exists
+            if not fabric.git_repository_url:
+                return Response({
+                    'success': False,
+                    'error': 'No legacy git configuration found - nothing to migrate'
+                }, status=status.HTTP_400_BAD_REQUEST)
+            
+            if dry_run:
+                # Perform dry run analysis
+                migration_analysis = {
+                    'fabric_id': fabric.id,
+                    'fabric_name': fabric.name,
+                    'migration_possible': True,
+                    'legacy_config': {
+                        'git_repository_url': fabric.git_repository_url,
+                        'git_branch': fabric.git_branch,
+                        'git_path': fabric.git_path,
+                        'has_credentials': bool(fabric.git_username or fabric.git_token)
+                    },
+                    'planned_changes': {
+                        'create_git_repository': create_git_repository,
+                        'repository_name': repository_name,
+                        'gitops_directory': fabric.git_path or '/',
+                        'authentication_type': 'token' if fabric.git_token else 'basic'
+                    },
+                    'warnings': [],
+                    'requirements': []
+                }
+                
+                # Add warnings and requirements
+                if not fabric.git_token and not fabric.git_username:
+                    migration_analysis['warnings'].append(
+                        'No credentials found in legacy configuration - you will need to provide them'
+                    )
+                    migration_analysis['requirements'].append(
+                        'Provide git credentials for the new repository'
+                    )
+                
+                return Response({
+                    'dry_run': True,
+                    'migration_analysis': migration_analysis
+                }, status=status.HTTP_200_OK)
+            
+            # Perform actual migration
+            from ..utils.legacy_migration_manager import LegacyArchitectureMigrationManager
+            
+            migration_manager = LegacyArchitectureMigrationManager()
+            migration_result = migration_manager.migrate_fabric_configuration(fabric.id)
+            
+            if migration_result.success:
+                # Reload fabric to get updated data
+                fabric.refresh_from_db()
+                
+                fabric_serializer = serializers.EnhancedFabricSerializer(
+                    fabric, context={'request': request}
+                )
+                
+                return Response({
+                    'success': True,
+                    'message': 'Migration completed successfully',
+                    'fabric': fabric_serializer.data,
+                    'migration_details': migration_result.details,
+                    'new_repository': {
+                        'id': fabric.git_repository.id if fabric.git_repository else None,
+                        'name': fabric.git_repository.name if fabric.git_repository else None
+                    }
+                }, status=status.HTTP_200_OK)
+            else:
+                return Response({
+                    'success': False,
+                    'error': migration_result.error,
+                    'details': migration_result.details
+                }, status=status.HTTP_400_BAD_REQUEST)
+                
+        except Exception as e:
+            logger.error(f"Migration failed for fabric {pk}: {e}")
+            return Response({
+                'success': False,
+                'error': str(e)
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 # Git Repository ViewSet (Week 1 GitOps Architecture)
 class GitRepositoryViewSet(NetBoxModelViewSet):
