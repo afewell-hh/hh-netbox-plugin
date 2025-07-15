@@ -362,25 +362,226 @@ class FabricGitOpsStatusSerializer(serializers.Serializer):
     gitops_tool = serializers.DictField()
 
 
-# Enhanced Fabric Serializer with GitOps fields
+# Enhanced Fabric Serializer with GitRepository Integration (Week 3)
 class EnhancedFabricSerializer(NetBoxModelSerializer):
-    """Enhanced fabric serializer including GitOps fields and computed properties"""
+    """Enhanced fabric serializer with complete GitRepository integration"""
+    
+    # Read-only computed fields
     gitops_summary = serializers.ReadOnlyField(source='get_gitops_summary')
     crd_count = serializers.ReadOnlyField()
     active_crd_count = serializers.ReadOnlyField()
     error_crd_count = serializers.ReadOnlyField()
     
+    # GitRepository integration fields
+    git_repository_info = serializers.SerializerMethodField()
+    gitops_directory_validation = serializers.SerializerMethodField()
+    git_health_status = serializers.SerializerMethodField()
+    available_repositories = serializers.SerializerMethodField()
+    
+    # Legacy migration fields
+    migration_status = serializers.SerializerMethodField()
+    
     class Meta:
         model = models.HedgehogFabric
         fields = '__all__'
         
+    def get_git_repository_info(self, obj):
+        """Get detailed git repository information"""
+        if not obj.git_repository:
+            return {
+                'configured': False,
+                'using_legacy': bool(obj.git_repository_url),
+                'legacy_url': obj.git_repository_url if obj.git_repository_url else None
+            }
+        
+        return {
+            'configured': True,
+            'repository': {
+                'id': obj.git_repository.id,
+                'name': obj.git_repository.name,
+                'url': obj.git_repository.url,
+                'provider': obj.git_repository.provider,
+                'authentication_type': obj.git_repository.authentication_type,
+                'connection_status': obj.git_repository.connection_status,
+                'last_validated': obj.git_repository.last_validated.isoformat() if obj.git_repository.last_validated else None
+            },
+            'gitops_directory': obj.gitops_directory,
+            'fabric_count': obj.git_repository.fabric_count if obj.git_repository else 0
+        }
+    
+    def get_gitops_directory_validation(self, obj):
+        """Get GitOps directory validation status"""
+        if not obj.git_repository or not obj.gitops_directory:
+            return {'valid': True, 'message': 'No validation needed'}
+        
+        try:
+            from netbox_hedgehog.utils.gitops_directory_validator import GitOpsDirectoryValidator
+            
+            validator = GitOpsDirectoryValidator()
+            result = validator.validate_gitops_directory_assignment(
+                obj.git_repository.id, obj.gitops_directory, exclude_fabric_id=obj.id
+            )
+            
+            return {
+                'valid': result.is_valid,
+                'errors': result.errors,
+                'suggestions': result.suggestions,
+                'conflicts': result.conflicts
+            }
+        except Exception as e:
+            return {'valid': False, 'error': str(e)}
+    
+    def get_git_health_status(self, obj):
+        """Get git repository health status"""
+        if not obj.git_repository:
+            return {'available': False, 'message': 'No git repository configured'}
+        
+        try:
+            from netbox_hedgehog.utils.git_health_monitor import GitHealthMonitor
+            
+            monitor = GitHealthMonitor(obj.git_repository)
+            health_report = monitor.generate_health_report()
+            
+            return {
+                'available': True,
+                'status': health_report.overall_status,
+                'connection_healthy': health_report.overall_status in ['healthy', 'degraded'],
+                'last_check': health_report.check_timestamp.isoformat() if health_report.check_timestamp else None,
+                'details': health_report.to_dict()
+            }
+        except Exception as e:
+            return {'available': False, 'error': str(e)}
+    
+    def get_available_repositories(self, obj):
+        """Get repositories available to current user"""
+        request = self.context.get('request')
+        if not request or not request.user:
+            return []
+        
+        try:
+            repositories = models.GitRepository.objects.filter(
+                created_by=request.user
+            ).values('id', 'name', 'url', 'provider', 'connection_status')
+            
+            return list(repositories)
+        except Exception:
+            return []
+    
+    def get_migration_status(self, obj):
+        """Get migration status for legacy fabrics"""
+        if obj.git_repository:
+            return {
+                'migrated': True,
+                'using_new_architecture': True,
+                'message': 'Using new GitRepository architecture'
+            }
+        
+        if obj.git_repository_url:
+            return {
+                'migrated': False,
+                'using_legacy_architecture': True,
+                'migration_possible': True,
+                'legacy_config': {
+                    'url': obj.git_repository_url,
+                    'branch': obj.git_branch,
+                    'path': obj.git_path,
+                    'has_credentials': bool(obj.git_username or obj.git_token)
+                },
+                'message': 'Ready for migration to new architecture'
+            }
+        
+        return {
+            'migrated': False,
+            'using_legacy_architecture': False,
+            'migration_possible': False,
+            'message': 'No git configuration found'
+        }
+    
+    def validate_gitops_directory(self, value):
+        """Validate GitOps directory with conflict detection"""
+        if not value:
+            return value
+        
+        # Basic path validation
+        if not value.startswith('/'):
+            raise serializers.ValidationError("GitOps directory must start with '/'")
+        
+        if '..' in value:
+            raise serializers.ValidationError("GitOps directory cannot contain '..' path segments")
+        
+        # Normalize path
+        from pathlib import Path
+        normalized = str(Path(value)).replace('\\', '/')
+        if not normalized.startswith('/'):
+            normalized = '/' + normalized
+        
+        return normalized
+    
+    def validate_git_repository_assignment(self, attrs):
+        """Validate git repository and directory combination"""
+        git_repository = attrs.get('git_repository')
+        gitops_directory = attrs.get('gitops_directory', '/')
+        
+        if not git_repository:
+            return attrs
+        
+        # Check if user has access to repository
+        request = self.context.get('request')
+        if request and request.user:
+            if git_repository.created_by != request.user:
+                raise serializers.ValidationError(
+                    "You don't have permission to use this git repository"
+                )
+        
+        # Validate directory assignment
+        try:
+            from netbox_hedgehog.utils.gitops_directory_validator import GitOpsDirectoryValidator
+            
+            validator = GitOpsDirectoryValidator()
+            exclude_fabric_id = self.instance.id if self.instance else None
+            
+            result = validator.validate_gitops_directory_assignment(
+                git_repository.id, gitops_directory, exclude_fabric_id=exclude_fabric_id
+            )
+            
+            if not result.is_valid:
+                raise serializers.ValidationError({
+                    'gitops_directory': result.errors,
+                    'suggestions': result.suggestions
+                })
+                
+        except Exception as e:
+            raise serializers.ValidationError(f"Directory validation failed: {str(e)}")
+        
+        return attrs
+    
+    def validate(self, attrs):
+        """Perform comprehensive validation"""
+        attrs = super().validate(attrs)
+        
+        # Validate git repository assignment
+        if 'git_repository' in attrs or 'gitops_directory' in attrs:
+            attrs = self.validate_git_repository_assignment(attrs)
+        
+        return attrs
+    
     def to_representation(self, instance):
         """Add computed GitOps information to API response"""
         data = super().to_representation(instance)
         
-        # Add GitOps status
+        # Add legacy GitOps status for backward compatibility
         data['git_status'] = instance.get_git_status()
         data['drift_status_info'] = instance.calculate_drift_status()
+        
+        # Add enhanced capabilities information
+        data['capabilities'] = {
+            'git_repository_management': bool(instance.git_repository),
+            'legacy_git_support': bool(instance.git_repository_url and not instance.git_repository),
+            'migration_available': bool(instance.git_repository_url and not instance.git_repository),
+            'health_monitoring': bool(instance.git_repository),
+            'directory_validation': bool(instance.git_repository),
+            'credential_management': bool(instance.git_repository)
+        }
         
         return data
 
