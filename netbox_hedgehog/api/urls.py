@@ -2,6 +2,10 @@ from django.urls import path, include
 from netbox.api.routers import NetBoxRouter
 
 from . import views
+from .git_health_views import (
+    GitHealthSummaryView, GitRepositoryHealthDetailView, 
+    GitRepositoryHealthHistoryView, GitConnectionMetricsView, force_health_check
+)
 
 router = NetBoxRouter()
 
@@ -49,4 +53,11 @@ urlpatterns = router.urls + [
     path('gitops/argocd/setup/', views.ArgoCDSetupAPIView.as_view(), name='argocd-setup'),
     path('gitops/argocd/progress/<str:installation_id>/', views.ArgoCDProgressAPIView.as_view(), name='argocd-progress'),
     path('gitops/test-connection/', views.GitOpsTestConnectionAPIView.as_view(), name='gitops-test-connection'),
+    
+    # Git Repository Health Monitoring endpoints (Week 2 Integration)
+    path('git-repositories/health-summary/', GitHealthSummaryView.as_view(), name='git-health-summary'),
+    path('git-repositories/<int:pk>/health-details/', GitRepositoryHealthDetailView.as_view(), name='git-health-details'),
+    path('git-repositories/<int:pk>/health-history/', GitRepositoryHealthHistoryView.as_view(), name='git-health-history'),
+    path('git-repositories/connection-metrics/', GitConnectionMetricsView.as_view(), name='git-connection-metrics'),
+    path('git-repositories/<int:pk>/force-health-check/', force_health_check, name='git-force-health-check'),
 ]
