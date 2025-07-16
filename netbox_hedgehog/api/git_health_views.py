@@ -18,7 +18,7 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from ..models import GitRepository
-from ..utils.git_health_monitor import GitHealthMonitor, HealthStatus
+# from ..utils.git_health_monitor import GitHealthMonitor, HealthStatus  # Temporarily disabled
 from ..utils.credential_manager import CredentialManager
 from ..utils.git_error_handler import GitErrorHandler, handle_git_error
 from ..logging.git_operations_logger import (
