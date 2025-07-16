@@ -21,12 +21,6 @@ class FabricTable(NetBoxTable):
         orderable=False
     )
     
-    active_crd_count = tables.Column(
-        accessor='active_crd_count', 
-        verbose_name='Active CRDs',
-        orderable=False
-    )
-    
     error_crd_count = tables.Column(
         accessor='error_crd_count',
         verbose_name='Error CRDs', 
@@ -41,11 +35,11 @@ class FabricTable(NetBoxTable):
         model = HedgehogFabric
         fields = (
             'pk', 'id', 'name', 'description', 'status', 
-            'crd_count', 'active_crd_count', 'error_crd_count',
+            'crd_count', 'error_crd_count',
             'sync_enabled', 'last_sync', 'created', 'last_updated',
             'actions'
         )
         default_columns = (
             'name', 'description', 'status', 'crd_count', 
-            'active_crd_count', 'error_crd_count', 'last_sync'
+            'error_crd_count', 'last_sync'
         )
