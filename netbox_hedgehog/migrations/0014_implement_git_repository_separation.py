@@ -20,7 +20,7 @@ def migrate_git_configurations_forward(apps, schema_editor):
     """
     HedgehogFabric = apps.get_model('netbox_hedgehog', 'HedgehogFabric')
     GitRepository = apps.get_model('netbox_hedgehog', 'GitRepository')
-    User = apps.get_model('auth', 'User')
+    User = apps.get_model('users', 'User')
     
     # Get encryption key for credential migration
     def get_encryption_key():
@@ -152,7 +152,9 @@ def migrate_git_configurations_forward(apps, schema_editor):
     
     # Update fabric counts for all created repositories
     for git_repository in repository_mapping.values():
-        git_repository.update_fabric_count()
+        fabric_count = HedgehogFabric.objects.filter(git_repository=git_repository).count()
+        git_repository.fabric_count = fabric_count
+        git_repository.save(update_fields=['fabric_count'])
     
     # Print migration summary
     print(f"Git Repository Migration Summary:")
@@ -363,7 +365,7 @@ class Migration(migrations.Migration):
                 # User association
                 ('created_by', models.ForeignKey(
                     on_delete=django.db.models.deletion.CASCADE,
-                    to='auth.user',
+                    to=settings.AUTH_USER_MODEL,
                     help_text='User who created this repository configuration'
                 )),
             ],
