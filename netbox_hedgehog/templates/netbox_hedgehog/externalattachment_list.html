@@ -1,0 +1,52 @@
+{% extends "base/layout.html" %}
+{% load static %}
+
+{% block title %}External Attachments{% endblock %}
+
+{% block header %}
+    {{ block.super }}
+    <link rel="stylesheet" href="{% static 'netbox_hedgehog/css/hedgehog.css' %}">
+{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+    <div class="row">
+        <div class="col-12">
+            <div class="card">
+                <div class="card-header d-flex justify-content-between">
+                    <h3><i class="mdi mdi-connection"></i> External Attachments</h3>
+                    <a href="{% url 'plugins:netbox_hedgehog:overview' %}" class="btn btn-outline-secondary">
+                        <i class="mdi mdi-arrow-left"></i> Back to Dashboard
+                    </a>
+                </div>
+                <div class="card-body">
+                    <div class="d-flex justify-content-between align-items-center mb-3">
+                        <div>
+                            <h4>External Attachments</h4>
+                            <p>Manage external connections and attachments in your Hedgehog fabric.</p>
+                        </div>
+                        <div>
+                            <a href="{% url 'plugins:netbox_hedgehog:externalattachment_add' %}" class="btn btn-success">
+                                <i class="mdi mdi-plus"></i> Create External Attachment
+                            </a>
+                        </div>
+                    </div>
+                    
+                    {% if table.rows %}
+                    {% load render_table from django_tables2 %}
+                    {% render_table table 'inc/table.html' %}
+                    {% else %}
+                    <div class="alert alert-info">
+                        <h5><i class="mdi mdi-information"></i> No External Attachments Found</h5>
+                        <p>No external attachments have been configured yet. Create your first external attachment to get started.</p>
+                        <a href="{% url 'plugins:netbox_hedgehog:externalattachment_add' %}" class="btn btn-success">
+                            <i class="mdi mdi-plus"></i> Create First External Attachment
+                        </a>
+                    </div>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

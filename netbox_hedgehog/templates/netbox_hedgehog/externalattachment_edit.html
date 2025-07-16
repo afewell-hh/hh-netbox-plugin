@@ -6,15 +6,15 @@
     {% if object %}
         Edit {{ object }}
     {% else %}
-        Add VPC
+        Add External Attachment
     {% endif %}
 {% endblock %}
 
 {% block content_title %}
     {% if object %}
-        <i class="mdi mdi-pencil"></i> Edit VPC: {{ object }}
+        <i class="mdi mdi-pencil"></i> Edit External Attachment: {{ object }}
     {% else %}
-        <i class="mdi mdi-plus-thick"></i> Add Virtual Private Cloud
+        <i class="mdi mdi-plus-thick"></i> Add External Attachment
     {% endif %}
 {% endblock %}
 
@@ -22,19 +22,10 @@
     <div class="row">
         <div class="col col-md-6">
             <div class="card">
-                <h5 class="card-header">VPC Information</h5>
+                <h5 class="card-header">External Attachment Information</h5>
                 <div class="card-body">
                     {% render_field form.name %}
                     {% render_field form.fabric %}
-                    {% if not form.fabric.queryset %}
-                    <div class="alert alert-warning mt-2">
-                        <i class="mdi mdi-alert"></i> 
-                        <strong>No fabrics available:</strong> You need to create a fabric first before creating VPCs.
-                        <a href="{% url 'plugins:netbox_hedgehog:fabric_add' %}" class="btn btn-sm btn-primary ms-2">
-                            <i class="mdi mdi-plus"></i> Create Fabric
-                        </a>
-                    </div>
-                    {% endif %}
                     {% render_field form.namespace %}
                 </div>
             </div>
