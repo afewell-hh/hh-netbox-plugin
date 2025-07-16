@@ -48,6 +48,20 @@ class ExternalEditView(generic.ObjectEditView):
     queryset = models.External.objects.all()
     form = forms.ExternalForm
     template_name = 'netbox_hedgehog/external_edit.html'
+    
+    def get(self, request, *args, **kwargs):
+        # Check if any fabrics exist before showing the form
+        if not models.HedgehogFabric.objects.exists():
+            from django.contrib import messages
+            messages.error(request, 
+                'No fabrics available. You must create a fabric before creating external systems. '
+                '<a href="/plugins/hedgehog/fabrics/add/">Create a fabric now</a>.',
+                extra_tags='safe'
+            )
+            from django.shortcuts import redirect
+            return redirect('plugins:netbox_hedgehog:fabric_list')
+        
+        return super().get(request, *args, **kwargs)
 
 class ExternalDeleteView(generic.ObjectDeleteView):
     queryset = models.External.objects.all()
@@ -72,6 +86,20 @@ class IPv4NamespaceEditView(generic.ObjectEditView):
     queryset = models.IPv4Namespace.objects.all()
     form = forms.IPv4NamespaceForm
     template_name = 'netbox_hedgehog/ipv4namespace_edit.html'
+    
+    def get(self, request, *args, **kwargs):
+        # Check if any fabrics exist before showing the form
+        if not models.HedgehogFabric.objects.exists():
+            from django.contrib import messages
+            messages.error(request, 
+                'No fabrics available. You must create a fabric before creating IPv4 namespaces. '
+                '<a href="/plugins/hedgehog/fabrics/add/">Create a fabric now</a>.',
+                extra_tags='safe'
+            )
+            from django.shortcuts import redirect
+            return redirect('plugins:netbox_hedgehog:fabric_list')
+        
+        return super().get(request, *args, **kwargs)
 
 class IPv4NamespaceDeleteView(generic.ObjectDeleteView):
     queryset = models.IPv4Namespace.objects.all()
@@ -91,6 +119,20 @@ class ExternalAttachmentEditView(generic.ObjectEditView):
     queryset = models.ExternalAttachment.objects.all()
     form = forms.ExternalAttachmentForm
     template_name = 'netbox_hedgehog/externalattachment_edit.html'
+    
+    def get(self, request, *args, **kwargs):
+        # Check if any fabrics exist before showing the form
+        if not models.HedgehogFabric.objects.exists():
+            from django.contrib import messages
+            messages.error(request, 
+                'No fabrics available. You must create a fabric before creating external attachments. '
+                '<a href="/plugins/hedgehog/fabrics/add/">Create a fabric now</a>.',
+                extra_tags='safe'
+            )
+            from django.shortcuts import redirect
+            return redirect('plugins:netbox_hedgehog:fabric_list')
+        
+        return super().get(request, *args, **kwargs)
 
 class ExternalAttachmentDeleteView(generic.ObjectDeleteView):
     queryset = models.ExternalAttachment.objects.all()
@@ -110,6 +152,20 @@ class ExternalPeeringEditView(generic.ObjectEditView):
     queryset = models.ExternalPeering.objects.all()
     form = forms.ExternalPeeringForm
     template_name = 'netbox_hedgehog/externalpeering_edit.html'
+    
+    def get(self, request, *args, **kwargs):
+        # Check if any fabrics exist before showing the form
+        if not models.HedgehogFabric.objects.exists():
+            from django.contrib import messages
+            messages.error(request, 
+                'No fabrics available. You must create a fabric before creating external peerings. '
+                '<a href="/plugins/hedgehog/fabrics/add/">Create a fabric now</a>.',
+                extra_tags='safe'
+            )
+            from django.shortcuts import redirect
+            return redirect('plugins:netbox_hedgehog:fabric_list')
+        
+        return super().get(request, *args, **kwargs)
 
 class ExternalPeeringDeleteView(generic.ObjectDeleteView):
     queryset = models.ExternalPeering.objects.all()
@@ -129,6 +185,20 @@ class VPCAttachmentEditView(generic.ObjectEditView):
     queryset = models.VPCAttachment.objects.all()
     form = forms.VPCAttachmentForm
     template_name = 'netbox_hedgehog/vpcattachment_edit.html'
+    
+    def get(self, request, *args, **kwargs):
+        # Check if any fabrics exist before showing the form
+        if not models.HedgehogFabric.objects.exists():
+            from django.contrib import messages
+            messages.error(request, 
+                'No fabrics available. You must create a fabric before creating VPC attachments. '
+                '<a href="/plugins/hedgehog/fabrics/add/">Create a fabric now</a>.',
+                extra_tags='safe'
+            )
+            from django.shortcuts import redirect
+            return redirect('plugins:netbox_hedgehog:fabric_list')
+        
+        return super().get(request, *args, **kwargs)
 
 class VPCAttachmentDeleteView(generic.ObjectDeleteView):
     queryset = models.VPCAttachment.objects.all()
@@ -148,6 +218,20 @@ class VPCPeeringEditView(generic.ObjectEditView):
     queryset = models.VPCPeering.objects.all()
     form = forms.VPCPeeringForm
     template_name = 'netbox_hedgehog/vpcpeering_edit.html'
+    
+    def get(self, request, *args, **kwargs):
+        # Check if any fabrics exist before showing the form
+        if not models.HedgehogFabric.objects.exists():
+            from django.contrib import messages
+            messages.error(request, 
+                'No fabrics available. You must create a fabric before creating VPC peerings. '
+                '<a href="/plugins/hedgehog/fabrics/add/">Create a fabric now</a>.',
+                extra_tags='safe'
+            )
+            from django.shortcuts import redirect
+            return redirect('plugins:netbox_hedgehog:fabric_list')
+        
+        return super().get(request, *args, **kwargs)
 
 class VPCPeeringDeleteView(generic.ObjectDeleteView):
     queryset = models.VPCPeering.objects.all()
