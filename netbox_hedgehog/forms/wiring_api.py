@@ -23,6 +23,30 @@ class ConnectionForm(NetBoxModelForm):
         help_text='Kubernetes annotations as JSON (optional)'
     )
     
+    def clean(self):
+        cleaned_data = super().clean()
+        
+        # If parent validation failed, return early
+        if cleaned_data is None:
+            return cleaned_data
+        
+        # Import here to avoid circular imports
+        from ..models import HedgehogFabric
+        
+        # Check if any fabrics exist
+        if not HedgehogFabric.objects.exists():
+            raise forms.ValidationError(
+                "No fabrics available. Please create a fabric first before creating a connection."
+            )
+        
+        # Ensure fabric is selected
+        if not cleaned_data.get('fabric'):
+            raise forms.ValidationError(
+                "Please select a fabric for this connection. A fabric is required for connection creation."
+            )
+        
+        return cleaned_data
+    
     class Meta:
         model = Connection
         fields = [
@@ -49,6 +73,30 @@ class SwitchForm(NetBoxModelForm):
         widget=forms.Textarea(attrs={'rows': 3, 'class': 'font-monospace'}),
         help_text='Kubernetes annotations as JSON (optional)'
     )
+    
+    def clean(self):
+        cleaned_data = super().clean()
+        
+        # If parent validation failed, return early
+        if cleaned_data is None:
+            return cleaned_data
+        
+        # Import here to avoid circular imports
+        from ..models import HedgehogFabric
+        
+        # Check if any fabrics exist
+        if not HedgehogFabric.objects.exists():
+            raise forms.ValidationError(
+                "No fabrics available. Please create a fabric first before creating a switch."
+            )
+        
+        # Ensure fabric is selected
+        if not cleaned_data.get('fabric'):
+            raise forms.ValidationError(
+                "Please select a fabric for this switch. A fabric is required for switch creation."
+            )
+        
+        return cleaned_data
     
     class Meta:
         model = Switch
@@ -77,6 +125,30 @@ class ServerForm(NetBoxModelForm):
         help_text='Kubernetes annotations as JSON (optional)'
     )
     
+    def clean(self):
+        cleaned_data = super().clean()
+        
+        # If parent validation failed, return early
+        if cleaned_data is None:
+            return cleaned_data
+        
+        # Import here to avoid circular imports
+        from ..models import HedgehogFabric
+        
+        # Check if any fabrics exist
+        if not HedgehogFabric.objects.exists():
+            raise forms.ValidationError(
+                "No fabrics available. Please create a fabric first before creating a server."
+            )
+        
+        # Ensure fabric is selected
+        if not cleaned_data.get('fabric'):
+            raise forms.ValidationError(
+                "Please select a fabric for this server. A fabric is required for server creation."
+            )
+        
+        return cleaned_data
+    
     class Meta:
         model = Server
         fields = [
@@ -104,6 +176,30 @@ class SwitchGroupForm(NetBoxModelForm):
         help_text='Kubernetes annotations as JSON (optional)'
     )
     
+    def clean(self):
+        cleaned_data = super().clean()
+        
+        # If parent validation failed, return early
+        if cleaned_data is None:
+            return cleaned_data
+        
+        # Import here to avoid circular imports
+        from ..models import HedgehogFabric
+        
+        # Check if any fabrics exist
+        if not HedgehogFabric.objects.exists():
+            raise forms.ValidationError(
+                "No fabrics available. Please create a fabric first before creating a switch group."
+            )
+        
+        # Ensure fabric is selected
+        if not cleaned_data.get('fabric'):
+            raise forms.ValidationError(
+                "Please select a fabric for this switch group. A fabric is required for switch group creation."
+            )
+        
+        return cleaned_data
+    
     class Meta:
         model = SwitchGroup
         fields = [
@@ -130,6 +226,30 @@ class VLANNamespaceForm(NetBoxModelForm):
         widget=forms.Textarea(attrs={'rows': 3, 'class': 'font-monospace'}),
         help_text='Kubernetes annotations as JSON (optional)'
     )
+    
+    def clean(self):
+        cleaned_data = super().clean()
+        
+        # If parent validation failed, return early
+        if cleaned_data is None:
+            return cleaned_data
+        
+        # Import here to avoid circular imports
+        from ..models import HedgehogFabric
+        
+        # Check if any fabrics exist
+        if not HedgehogFabric.objects.exists():
+            raise forms.ValidationError(
+                "No fabrics available. Please create a fabric first before creating a VLAN namespace."
+            )
+        
+        # Ensure fabric is selected
+        if not cleaned_data.get('fabric'):
+            raise forms.ValidationError(
+                "Please select a fabric for this VLAN namespace. A fabric is required for VLAN namespace creation."
+            )
+        
+        return cleaned_data
     
     class Meta:
         model = VLANNamespace

@@ -23,6 +23,40 @@ class VPCForm(NetBoxModelForm):
         help_text='Kubernetes annotations as JSON (optional)'
     )
     
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        # Import here to avoid circular imports
+        from ..models import HedgehogFabric
+        
+        # If no fabrics exist, show helpful message
+        if not HedgehogFabric.objects.exists():
+            self.fields['fabric'].empty_label = 'No fabrics available - create a fabric first'
+            # Keep field required so validation fails with helpful message
+    
+    def clean(self):
+        cleaned_data = super().clean()
+        
+        # If parent validation failed, return early
+        if cleaned_data is None:
+            return cleaned_data
+        
+        # Import here to avoid circular imports
+        from ..models import HedgehogFabric
+        
+        # Check if any fabrics exist
+        if not HedgehogFabric.objects.exists():
+            raise forms.ValidationError(
+                "No fabrics available. Please create a fabric first before creating a VPC."
+            )
+        
+        # If fabrics exist but none selected, show different message
+        if not cleaned_data.get('fabric'):
+            raise forms.ValidationError(
+                "Please select a fabric for this VPC. A fabric is required for VPC creation."
+            )
+        
+        return cleaned_data
+    
     class Meta:
         model = VPC
         fields = [
@@ -49,6 +83,30 @@ class ExternalForm(NetBoxModelForm):
         widget=forms.Textarea(attrs={'rows': 3, 'class': 'font-monospace'}),
         help_text='Kubernetes annotations as JSON (optional)'
     )
+    
+    def clean(self):
+        cleaned_data = super().clean()
+        
+        # If parent validation failed, return early
+        if cleaned_data is None:
+            return cleaned_data
+        
+        # Import here to avoid circular imports
+        from ..models import HedgehogFabric
+        
+        # Check if any fabrics exist
+        if not HedgehogFabric.objects.exists():
+            raise forms.ValidationError(
+                "No fabrics available. Please create a fabric first before creating an external system."
+            )
+        
+        # Ensure fabric is selected
+        if not cleaned_data.get('fabric'):
+            raise forms.ValidationError(
+                "Please select a fabric for this external system. A fabric is required for external system creation."
+            )
+        
+        return cleaned_data
     
     class Meta:
         model = External
@@ -103,6 +161,30 @@ class ExternalAttachmentForm(NetBoxModelForm):
         widget=forms.Textarea(attrs={'rows': 3, 'class': 'font-monospace'}),
         help_text='Kubernetes annotations as JSON (optional)'
     )
+    
+    def clean(self):
+        cleaned_data = super().clean()
+        
+        # If parent validation failed, return early
+        if cleaned_data is None:
+            return cleaned_data
+        
+        # Import here to avoid circular imports
+        from ..models import HedgehogFabric
+        
+        # Check if any fabrics exist
+        if not HedgehogFabric.objects.exists():
+            raise forms.ValidationError(
+                "No fabrics available. Please create a fabric first before creating an external attachment."
+            )
+        
+        # Ensure fabric is selected
+        if not cleaned_data.get('fabric'):
+            raise forms.ValidationError(
+                "Please select a fabric for this external attachment. A fabric is required for external attachment creation."
+            )
+        
+        return cleaned_data
     
     class Meta:
         model = ExternalAttachment
