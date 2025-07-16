@@ -20,11 +20,12 @@ from utilities.permissions import get_permission_for_model
 
 # Plugin imports  
 from ..models import HedgehogFabric
-from ..models.vpc_api import VPC, IPv4Namespace, VLANNamespace
-from ..models.wiring_api import Switch, Connection
+from ..models.vpc_api import VPC, IPv4Namespace
+from ..models.wiring_api import Switch, Connection, VLANNamespace
 from ..utils.fabric_onboarding import FabricOnboardingManager
 from ..utils.reconciliation import ReconciliationManager
 from ..choices import KubernetesStatusChoices
+from ..tables import FabricTable
 
 
 @method_decorator(login_required, name='dispatch')
@@ -314,19 +315,7 @@ class FabricOnboardingView(View):
 class FabricListView(generic.ObjectListView):
     """List view for fabrics using NetBox generic view"""
     queryset = HedgehogFabric.objects.all()
-    table = None  # Will need to create table class
-    template_name = 'netbox_hedgehog/fabric_list.html'
-    
-    def get_extra_context(self, request, instance):
-        """Add extra context for fabric list"""
-        context = super().get_extra_context(request, instance)
-        
-        # Add summary statistics
-        context['fabric_count'] = self.queryset.count()
-        context['healthy_count'] = self.queryset.filter(sync_status='synced').count()
-        context['error_count'] = self.queryset.filter(sync_status='error').count()
-        
-        return context
+    table = FabricTable
 
 
 class FabricCreateView(generic.ObjectEditView):
@@ -344,9 +333,64 @@ class FabricEditView(generic.ObjectEditView):
 
 
 class FabricDeleteView(generic.ObjectDeleteView):
-    """Delete view for fabrics"""
+    """Delete view for fabrics with cascade warnings"""
     queryset = HedgehogFabric.objects.all()
-    template_name = 'netbox_hedgehog/fabric_delete.html'
+    template_name = 'netbox_hedgehog/fabric_confirm_delete.html'
+    
+    def get_context_data(self, **kwargs):
+        """Add cascade deletion summary to context"""
+        context = super().get_context_data(**kwargs)
+        fabric = self.get_object()
+        
+        # Get counts of all related objects that will be deleted
+        from ..models.vpc_api import VPC, External, IPv4Namespace, VPCAttachment, VPCPeering, ExternalAttachment, ExternalPeering
+        from ..models.wiring_api import Switch, Connection, VLANNamespace, Server, SwitchGroup
+        
+        deletion_summary = {
+            'switches': Switch.objects.filter(fabric=fabric).count(),
+            'connections': Connection.objects.filter(fabric=fabric).count(),
+            'vpcs': VPC.objects.filter(fabric=fabric).count(),
+            'externals': External.objects.filter(fabric=fabric).count(),
+            'ipv4_namespaces': IPv4Namespace.objects.filter(fabric=fabric).count(),
+            'vlan_namespaces': VLANNamespace.objects.filter(fabric=fabric).count(),
+            'vpc_attachments': VPCAttachment.objects.filter(fabric=fabric).count(),
+            'vpc_peerings': VPCPeering.objects.filter(fabric=fabric).count(),
+            'external_attachments': ExternalAttachment.objects.filter(fabric=fabric).count(),
+            'external_peerings': ExternalPeering.objects.filter(fabric=fabric).count(),
+            'servers': Server.objects.filter(fabric=fabric).count(),
+            'switch_groups': SwitchGroup.objects.filter(fabric=fabric).count(),
+        }
+        
+        # Calculate total count
+        total_crd_count = sum(deletion_summary.values())
+        
+        # Get sample critical items to show (first 5 of each type)
+        critical_items = {}
+        has_more_items = {}
+        
+        if deletion_summary['switches'] > 0:
+            switches = Switch.objects.filter(fabric=fabric)[:5]
+            critical_items['switches'] = switches
+            has_more_items['switches'] = deletion_summary['switches'] > 5
+            
+        if deletion_summary['connections'] > 0:
+            connections = Connection.objects.filter(fabric=fabric)[:5]
+            critical_items['connections'] = connections
+            has_more_items['connections'] = deletion_summary['connections'] > 5
+            
+        if deletion_summary['vpcs'] > 0:
+            vpcs = VPC.objects.filter(fabric=fabric)[:5]
+            critical_items['vpcs'] = vpcs
+            has_more_items['vpcs'] = deletion_summary['vpcs'] > 5
+        
+        context.update({
+            'deletion_summary': deletion_summary,
+            'total_crd_count': total_crd_count,
+            'critical_items': critical_items,
+            'has_more_items': has_more_items,
+        })
+        
+        return context
 
 
 @method_decorator(login_required, name='dispatch')

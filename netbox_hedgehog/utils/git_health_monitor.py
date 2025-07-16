@@ -11,7 +11,11 @@ from typing import Dict, List, Optional, Any, Tuple
 from dataclasses import dataclass, asdict
 from enum import Enum
 
-import git
+try:
+    import git
+    GIT_AVAILABLE = True
+except ImportError:
+    GIT_AVAILABLE = False
 from django.utils import timezone
 from django.db import transaction
 from urllib.parse import urlparse
