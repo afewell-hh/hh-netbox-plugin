@@ -20,6 +20,7 @@ class GitRepositoryListView(generic.ObjectListView):
     queryset = GitRepository.objects.all()
     table = GitRepositoryTable
     template_name = 'netbox_hedgehog/git_repository_list.html'
+    
 
 
 class GitRepositoryView(generic.ObjectView):

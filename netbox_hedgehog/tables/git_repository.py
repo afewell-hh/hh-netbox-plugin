@@ -29,10 +29,6 @@ class GitRepositoryTable(NetBoxTable):
         verbose_name='Connection'
     )
     
-    fabric_count = tables.Column(
-        verbose_name='Fabrics'
-    )
-    
     last_validated = columns.DateTimeColumn(
         verbose_name='Last Validated'
     )
@@ -41,27 +37,14 @@ class GitRepositoryTable(NetBoxTable):
         verbose_name='Owner'
     )
     
-    test_connection = tables.TemplateColumn(
-        template_code="""
-        <form method="post" action="{% url 'plugins:netbox_hedgehog:git_repository_test_connection' pk=record.pk %}" style="display: inline;">
-            {% csrf_token %}
-            <button type="submit" class="btn btn-sm btn-outline-primary" title="Test Connection">
-                <i class="mdi mdi-connection"></i>
-            </button>
-        </form>
-        """,
-        verbose_name='',
-        orderable=False
-    )
-    
     class Meta(NetBoxTable.Meta):
         model = GitRepository
         fields = (
             'pk', 'id', 'name', 'url', 'provider', 'authentication_type',
-            'connection_status', 'fabric_count', 'last_validated', 'created_by',
-            'test_connection', 'tags', 'created', 'last_updated'
+            'connection_status', 'last_validated', 'created_by',
+            'tags', 'created', 'last_updated'
         )
         default_columns = (
             'name', 'url', 'provider', 'authentication_type', 'connection_status',
-            'fabric_count', 'last_validated', 'test_connection'
+            'last_validated', 'created_by'
         )

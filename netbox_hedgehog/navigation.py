@@ -31,11 +31,11 @@ menu = PluginMenu(
                 )
             ),
             PluginMenuItem(
-                link='plugins:netbox_hedgehog:git_repository_list',
+                link='plugins:netbox_hedgehog:gitrepository_list',
                 link_text='Git Repositories',
                 buttons=(
                     PluginMenuButton(
-                        link='plugins:netbox_hedgehog:git_repository_add',
+                        link='plugins:netbox_hedgehog:gitrepository_add',
                         title='Add Git Repository',
                         icon_class='mdi mdi-plus-thick',
                         color=ButtonColorChoices.GREEN

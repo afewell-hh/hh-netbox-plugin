@@ -123,12 +123,13 @@ urlpatterns = [
     path('fabrics/<int:pk>/argocd-setup/', ArgoCDSetupWizardView.as_view(), name='argocd_setup_wizard'),
     
     # Git Repository Management URLs
-    path('git-repositories/', GitRepositoryListView.as_view(), name='git_repository_list'),
-    path('git-repositories/add/', GitRepositoryEditView.as_view(), name='git_repository_add'),
-    path('git-repositories/<int:pk>/', GitRepositoryView.as_view(), name='git_repository_detail'),
-    path('git-repositories/<int:pk>/edit/', GitRepositoryEditView.as_view(), name='git_repository_edit'),
-    path('git-repositories/<int:pk>/delete/', GitRepositoryDeleteView.as_view(), name='git_repository_delete'),
-    path('git-repositories/<int:pk>/test-connection/', GitRepositoryTestConnectionView.as_view(), name='git_repository_test_connection'),
+    path('git-repositories/', GitRepositoryListView.as_view(), name='gitrepository_list'),
+    path('git-repositories/add/', GitRepositoryEditView.as_view(), name='gitrepository_add'),
+    path('git-repositories/<int:pk>/', GitRepositoryView.as_view(), name='gitrepository_detail'),
+    path('git-repositories/<int:pk>/edit/', GitRepositoryEditView.as_view(), name='gitrepository_edit'),
+    path('git-repositories/<int:pk>/delete/', GitRepositoryDeleteView.as_view(), name='gitrepository_delete'),
+    path('git-repositories/<int:pk>/changelog/', GitRepositoryView.as_view(), name='gitrepository_changelog'),
+    path('git-repositories/<int:pk>/test-connection/', GitRepositoryTestConnectionView.as_view(), name='gitrepository_test_connection'),
     
     # CRD URLs - temporarily disabled
     # path('fabrics/<int:pk>/crds/', FabricCRDListView.as_view(), name='fabric_crds'),

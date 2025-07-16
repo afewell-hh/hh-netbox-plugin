@@ -128,7 +128,7 @@ class GitRepository(NetBoxModel):
         return f"{self.name} ({self.url})"
     
     def get_absolute_url(self):
-        return reverse('netbox_hedgehog:git_repository_detail', args=[self.pk])
+        return reverse('plugins:netbox_hedgehog:gitrepository_detail', args=[self.pk])
     
     @property
     def _encryption_key(self) -> bytes:
