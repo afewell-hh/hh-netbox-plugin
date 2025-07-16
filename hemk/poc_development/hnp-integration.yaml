@@ -1,6 +1,6 @@
 # HNP Integration Configuration
-# Generated: Mon Jul 14 22:22:57 UTC 2025
-# Installation time: 1m 47s
+# Generated: Wed Jul 16 08:30:58 UTC 2025
+# Installation time: 1m 51s
 
 hemk:
   cluster:
@@ -11,7 +11,7 @@ hemk:
     argocd:
       endpoint: "https://localhost:30444"
       admin_username: "admin"
-      admin_password: "zSXMusmfc8tXCie4"
+      admin_password: "FMQx51F0FAcaVKkI"
       health_check: "/api/v1/version"
       
     prometheus:
@@ -20,12 +20,7 @@ hemk:
       health_check: "/api/v1/status/config"
       
   netbox:
-    url: "http://172.18.0.5:8080"
-    api_url: "http://172.18.0.5:8080/api"
-    # NetBox authentication - configure one of the following:
-    # api_token: "YOUR_NETBOX_API_TOKEN_HERE"
-    # OR username/password:
-    username: "afewell"
-    password: "HHFab.Admin1!"
+    url: "http://unknown:8080"
+    api_url: "http://unknown:8080/api"
     
   kubeconfig: "/home/ubuntu/cc/hedgehog-netbox-plugin/hemk/poc_development/kubeconfig/kubeconfig.yaml"
