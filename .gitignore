@@ -62,3 +62,12 @@ node_modules
 .claude/
 .roomodes
 
+# Temporary development and debug files
+check_errors.py
+check_namespace.py
+cookies.txt
+create_test_fabrics.py
+debug_*.py
+fix_*.py
+hoss/
+
