@@ -15,6 +15,20 @@ class VPCEditView(generic.ObjectEditView):
     queryset = models.VPC.objects.all()
     form = forms.VPCForm
     template_name = 'netbox_hedgehog/vpc_edit.html'
+    
+    def get(self, request, *args, **kwargs):
+        # Check if any fabrics exist before showing the form
+        if not models.HedgehogFabric.objects.exists():
+            from django.contrib import messages
+            messages.error(request, 
+                'No fabrics available. You must create a fabric before creating VPCs. '
+                '<a href="/plugins/hedgehog/fabrics/add/">Create a fabric now</a>.',
+                extra_tags='safe'
+            )
+            from django.shortcuts import redirect
+            return redirect('plugins:netbox_hedgehog:fabric_list')
+        
+        return super().get(request, *args, **kwargs)
 
 class VPCDeleteView(generic.ObjectDeleteView):
     queryset = models.VPC.objects.all()
