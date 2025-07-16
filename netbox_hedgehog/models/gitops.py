@@ -328,7 +328,8 @@ class HedgehogResource(NetBoxModel):
         return f"{self.kind}/{self.name} ({self.fabric.name})"
     
     def get_absolute_url(self):
-        return reverse('plugins:netbox_hedgehog:gitops_resource_detail', kwargs={'pk': self.pk})
+        # TODO: Add proper URL when gitops resource detail view is implemented
+        return f"/plugins/hedgehog/gitops/resources/{self.pk}/"
     
     def clean(self):
         """Validate the GitOps resource before saving"""
@@ -721,7 +722,8 @@ class StateTransitionHistory(NetBoxModel):
         return f"{self.resource.name}: {self.from_state} → {self.to_state}"
     
     def get_absolute_url(self):
-        return reverse('plugins:netbox_hedgehog:state_history_detail', kwargs={'pk': self.pk})
+        # TODO: Add proper URL when state history detail view is implemented  
+        return f"/plugins/hedgehog/gitops/history/{self.pk}/"
     
     @property
     def duration_display(self):

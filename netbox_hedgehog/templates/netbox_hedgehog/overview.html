@@ -69,12 +69,21 @@
                                 <div class="card-body">
                                     <h5 class="card-title">🏗️ Fabric Management</h5>
                                     <p class="card-text">Manage {{ fabric_count }} Hedgehog fabric installation{{ fabric_count|pluralize }}.</p>
-                                    <div class="btn-group-vertical w-100">
-                                        <a href="{% url 'plugins:netbox_hedgehog:fabric_list' %}" class="btn btn-primary">View Fabrics</a>
-                                        <a href="{% url 'plugins:netbox_hedgehog:gitops_onboarding' %}" class="btn btn-outline-primary">
-                                            <i class="mdi mdi-git"></i> Add Git-First Fabric
-                                        </a>
-                                    </div>
+                                    <a href="{% url 'plugins:netbox_hedgehog:fabric_list' %}" class="btn btn-primary btn-block">
+                                        <i class="mdi mdi-server-network"></i> Manage Fabrics
+                                    </a>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div class="col-md-4">
+                            <div class="card border-warning">
+                                <div class="card-body">
+                                    <h5 class="card-title">🔑 Git Repositories</h5>
+                                    <p class="card-text">Manage Git repository authentication and connections.</p>
+                                    <a href="{% url 'plugins:netbox_hedgehog:git_repository_list' %}" class="btn btn-warning">
+                                        <i class="mdi mdi-git"></i> Manage Repositories
+                                    </a>
                                 </div>
                             </div>
                         </div>
@@ -88,7 +97,9 @@
                                 </div>
                             </div>
                         </div>
-                        
+                    </div>
+                    
+                    <div class="row mt-4">
                         <div class="col-md-4">
                             <div class="card border-info">
                                 <div class="card-body">

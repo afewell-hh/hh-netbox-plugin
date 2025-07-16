@@ -27,11 +27,11 @@
                         </div>
                         <div>
                             <div class="btn-group">
-                                <a href="{% url 'plugins:netbox_hedgehog:fabric_add' %}" class="btn btn-primary">
+                                <a href="{% url 'plugins:netbox_hedgehog:gitops_onboarding' %}" class="btn btn-primary">
                                     <i class="mdi mdi-plus"></i> Add Fabric
                                 </a>
-                                <a href="{% url 'plugins:netbox_hedgehog:gitops_onboarding' %}" class="btn btn-outline-primary">
-                                    <i class="mdi mdi-git"></i> Add Git-First Fabric
+                                <a href="{% url 'plugins:netbox_hedgehog:git_repository_list' %}" class="btn btn-outline-secondary">
+                                    <i class="mdi mdi-git"></i> Git Repositories
                                 </a>
                             </div>
                         </div>
@@ -196,8 +196,8 @@
                     <div class="alert alert-info">
                         <h5><i class="mdi mdi-information"></i> No Fabrics Found</h5>
                         <p>No Hedgehog fabrics have been configured yet. Create your first fabric to get started.</p>
-                        <a href="{% url 'plugins:netbox_hedgehog:fabric_add' %}" class="btn btn-primary">
-                            <i class="mdi mdi-plus"></i> Create First Fabric
+                        <a href="{% url 'plugins:netbox_hedgehog:gitops_onboarding' %}" class="btn btn-primary">
+                            <i class="mdi mdi-plus"></i> Add Fabric
                         </a>
                     </div>
                     {% endif %}

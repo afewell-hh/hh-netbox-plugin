@@ -257,7 +257,8 @@ class ReconciliationAlert(NetBoxModel):
         return f"{self.alert_type}: {self.resource.name} ({self.severity})"
     
     def get_absolute_url(self):
-        return reverse('plugins:netbox_hedgehog:reconciliation_alert_detail', kwargs={'pk': self.pk})
+        # TODO: Add proper URL when reconciliation alert detail view is implemented
+        return f"/plugins/hedgehog/reconciliation/alerts/{self.pk}/"
     
     def clean(self):
         """Validate reconciliation alert before saving"""

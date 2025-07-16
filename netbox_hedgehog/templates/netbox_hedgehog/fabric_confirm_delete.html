@@ -16,22 +16,156 @@
                 </div>
                 <div class="card-body">
                     <div class="alert alert-danger">
-                        <h5><i class="mdi mdi-alert"></i> Confirm Deletion</h5>
-                        <p>Are you sure you want to delete the fabric <strong>{{ object.name }}</strong>?</p>
-                        <p>This action cannot be undone and will remove:</p>
-                        <ul>
-                            <li>The fabric configuration</li>
-                            <li>All associated CRDs ({{ object.crd_count }} objects)</li>
-                            <li>Kubernetes connection settings</li>
-                            <li>Sync history and logs</li>
-                        </ul>
+                        <h5><i class="mdi mdi-alert"></i> Warning: Permanent Deletion</h5>
+                        <p class="mb-2">You are about to permanently delete the fabric <strong>{{ object.name }}</strong>.</p>
+                        <p class="mb-0"><strong>This action cannot be undone!</strong></p>
                     </div>
                     
-                    <form method="post">
+                    {% if total_crd_count > 0 %}
+                    <div class="alert alert-warning">
+                        <h5><i class="mdi mdi-alert-circle"></i> {{ total_crd_count }} Resources Will Be Deleted</h5>
+                        <p>The following resources will be permanently deleted along with this fabric:</p>
+                        
+                        <div class="table-responsive">
+                            <table class="table table-sm mb-0">
+                                <thead>
+                                    <tr>
+                                        <th>Resource Type</th>
+                                        <th>Count</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {% if deletion_summary.switches > 0 %}
+                                    <tr>
+                                        <td><i class="mdi mdi-switch"></i> Switches</td>
+                                        <td><span class="badge bg-danger">{{ deletion_summary.switches }}</span></td>
+                                    </tr>
+                                    {% endif %}
+                                    {% if deletion_summary.connections > 0 %}
+                                    <tr>
+                                        <td><i class="mdi mdi-lan-connect"></i> Connections</td>
+                                        <td><span class="badge bg-danger">{{ deletion_summary.connections }}</span></td>
+                                    </tr>
+                                    {% endif %}
+                                    {% if deletion_summary.vpcs > 0 %}
+                                    <tr>
+                                        <td><i class="mdi mdi-cloud-outline"></i> VPCs</td>
+                                        <td><span class="badge bg-danger">{{ deletion_summary.vpcs }}</span></td>
+                                    </tr>
+                                    {% endif %}
+                                    {% if deletion_summary.externals > 0 %}
+                                    <tr>
+                                        <td><i class="mdi mdi-earth"></i> Externals</td>
+                                        <td><span class="badge bg-danger">{{ deletion_summary.externals }}</span></td>
+                                    </tr>
+                                    {% endif %}
+                                    {% if deletion_summary.vlan_namespaces > 0 %}
+                                    <tr>
+                                        <td><i class="mdi mdi-tag-multiple"></i> VLAN Namespaces</td>
+                                        <td><span class="badge bg-warning">{{ deletion_summary.vlan_namespaces }}</span></td>
+                                    </tr>
+                                    {% endif %}
+                                    {% if deletion_summary.ipv4_namespaces > 0 %}
+                                    <tr>
+                                        <td><i class="mdi mdi-ip-network"></i> IPv4 Namespaces</td>
+                                        <td><span class="badge bg-warning">{{ deletion_summary.ipv4_namespaces }}</span></td>
+                                    </tr>
+                                    {% endif %}
+                                    {% if deletion_summary.ipv6_namespaces > 0 %}
+                                    <tr>
+                                        <td><i class="mdi mdi-ip-network-outline"></i> IPv6 Namespaces</td>
+                                        <td><span class="badge bg-warning">{{ deletion_summary.ipv6_namespaces }}</span></td>
+                                    </tr>
+                                    {% endif %}
+                                    {% if deletion_summary.vpc_attachments > 0 %}
+                                    <tr>
+                                        <td><i class="mdi mdi-link"></i> VPC Attachments</td>
+                                        <td><span class="badge bg-info">{{ deletion_summary.vpc_attachments }}</span></td>
+                                    </tr>
+                                    {% endif %}
+                                    {% if deletion_summary.vpc_peerings > 0 %}
+                                    <tr>
+                                        <td><i class="mdi mdi-transit-connection-variant"></i> VPC Peerings</td>
+                                        <td><span class="badge bg-info">{{ deletion_summary.vpc_peerings }}</span></td>
+                                    </tr>
+                                    {% endif %}
+                                    {% if deletion_summary.external_attachments > 0 %}
+                                    <tr>
+                                        <td><i class="mdi mdi-link-variant"></i> External Attachments</td>
+                                        <td><span class="badge bg-info">{{ deletion_summary.external_attachments }}</span></td>
+                                    </tr>
+                                    {% endif %}
+                                    {% if deletion_summary.external_peerings > 0 %}
+                                    <tr>
+                                        <td><i class="mdi mdi-transit-connection"></i> External Peerings</td>
+                                        <td><span class="badge bg-info">{{ deletion_summary.external_peerings }}</span></td>
+                                    </tr>
+                                    {% endif %}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                    
+                    <!-- Critical Items Details -->
+                    {% if critical_items.switches or critical_items.connections or critical_items.vpcs %}
+                    <div class="card mb-3">
+                        <div class="card-header">
+                            <h6 class="mb-0">Critical Infrastructure to be Deleted</h6>
+                        </div>
+                        <div class="card-body">
+                            {% if critical_items.switches %}
+                            <h6><i class="mdi mdi-switch"></i> Switches</h6>
+                            <ul class="mb-3">
+                                {% for switch in critical_items.switches %}
+                                <li>{{ switch.name }} (ASN: {{ switch.asn }})</li>
+                                {% endfor %}
+                                {% if has_more_items.switches %}
+                                <li class="text-muted"><em>... and {{ deletion_summary.switches|add:"-5" }} more</em></li>
+                                {% endif %}
+                            </ul>
+                            {% endif %}
+                            
+                            {% if critical_items.connections %}
+                            <h6><i class="mdi mdi-lan-connect"></i> Connections</h6>
+                            <ul class="mb-3">
+                                {% for connection in critical_items.connections %}
+                                <li>{{ connection.name }}</li>
+                                {% endfor %}
+                                {% if has_more_items.connections %}
+                                <li class="text-muted"><em>... and {{ deletion_summary.connections|add:"-5" }} more</em></li>
+                                {% endif %}
+                            </ul>
+                            {% endif %}
+                            
+                            {% if critical_items.vpcs %}
+                            <h6><i class="mdi mdi-cloud-outline"></i> VPCs</h6>
+                            <ul class="mb-0">
+                                {% for vpc in critical_items.vpcs %}
+                                <li>{{ vpc.name }}</li>
+                                {% endfor %}
+                                {% if has_more_items.vpcs %}
+                                <li class="text-muted"><em>... and {{ deletion_summary.vpcs|add:"-5" }} more</em></li>
+                                {% endif %}
+                            </ul>
+                            {% endif %}
+                        </div>
+                    </div>
+                    {% endif %}
+                    {% endif %}
+                    
+                    <form method="post" id="delete-form">
                         {% csrf_token %}
+                        
+                        <div class="form-check mb-3">
+                            <input class="form-check-input" type="checkbox" id="confirm-understand" required>
+                            <label class="form-check-label" for="confirm-understand">
+                                <strong>I understand this will permanently delete the fabric "{{ object.name }}" and ALL {{ total_crd_count }} associated resources</strong>
+                            </label>
+                        </div>
+                        
                         <div class="d-flex gap-2">
-                            <button type="submit" class="btn btn-danger">
-                                <i class="mdi mdi-delete"></i> Yes, Delete Fabric
+                            <button type="submit" class="btn btn-danger" id="delete-button" disabled>
+                                <i class="mdi mdi-delete"></i> <span id="delete-button-text">Delete Fabric</span>
                             </button>
                             <a href="{% url 'plugins:netbox_hedgehog:fabric_detail' pk=object.pk %}" class="btn btn-secondary">
                                 <i class="mdi mdi-close"></i> Cancel
@@ -43,4 +177,68 @@
         </div>
     </div>
 </div>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const confirmCheckbox = document.getElementById('confirm-understand');
+    const deleteButton = document.getElementById('delete-button');
+    const deleteButtonText = document.getElementById('delete-button-text');
+    const deleteForm = document.getElementById('delete-form');
+    let countdownInterval = null;
+    
+    confirmCheckbox.addEventListener('change', function() {
+        if (this.checked) {
+            // Start countdown
+            let countdown = 3;
+            deleteButtonText.textContent = `Delete in ${countdown}...`;
+            deleteButton.classList.add('btn-pulse');
+            
+            countdownInterval = setInterval(function() {
+                countdown--;
+                if (countdown > 0) {
+                    deleteButtonText.textContent = `Delete in ${countdown}...`;
+                } else {
+                    clearInterval(countdownInterval);
+                    deleteButtonText.textContent = 'Delete Fabric';
+                    deleteButton.disabled = false;
+                    deleteButton.classList.remove('btn-pulse');
+                }
+            }, 1000);
+        } else {
+            // Reset if unchecked
+            if (countdownInterval) {
+                clearInterval(countdownInterval);
+            }
+            deleteButtonText.textContent = 'Delete Fabric';
+            deleteButton.disabled = true;
+            deleteButton.classList.remove('btn-pulse');
+        }
+    });
+    
+    // Add double-confirmation on submit
+    deleteForm.addEventListener('submit', function(e) {
+        if (!confirm('This is your final warning! Delete fabric "{{ object.name }}" and all {{ total_crd_count }} associated resources?')) {
+            e.preventDefault();
+        }
+    });
+});
+</script>
+
+<style>
+.btn-pulse {
+    animation: pulse 1s infinite;
+}
+
+@keyframes pulse {
+    0% {
+        box-shadow: 0 0 0 0 rgba(220, 53, 69, 0.7);
+    }
+    70% {
+        box-shadow: 0 0 0 10px rgba(220, 53, 69, 0);
+    }
+    100% {
+        box-shadow: 0 0 0 0 rgba(220, 53, 69, 0);
+    }
+}
+</style>
 {% endblock %}
