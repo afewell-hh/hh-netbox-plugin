@@ -483,6 +483,159 @@ class GitRepository(NetBoxModel):
         elif self.authentication_type == GitAuthenticationTypeChoices.BASIC:
             if not credentials.get('username') or not credentials.get('password'):
                 raise ValidationError("Username and password are required for basic authentication")
+    
+    # Enhanced credential management methods for Week 2
+    
+    def rotate_credentials(self, new_credentials: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Rotate credentials using the CredentialManager.
+        
+        Args:
+            new_credentials: New credentials to set
+            
+        Returns:
+            RotationResult dictionary
+        """
+        from ..utils.credential_manager import CredentialManager
+        
+        manager = CredentialManager()
+        result = manager.rotate_credentials(
+            self,
+            new_credentials,
+            rotation_reason="Manual rotation"
+        )
+        return result.to_dict()
+    
+    def validate_credential_strength(self) -> Dict[str, Any]:
+        """
+        Validate the strength of current credentials.
+        
+        Returns:
+            ValidationResult dictionary
+        """
+        from ..utils.credential_manager import CredentialManager
+        
+        manager = CredentialManager()
+        result = manager.validate_credential_strength(self)
+        return result.to_dict()
+    
+    def schedule_credential_rotation(self, rotation_date: datetime) -> None:
+        """
+        Schedule automatic credential rotation.
+        
+        Args:
+            rotation_date: When to rotate credentials
+        """
+        from ..utils.credential_manager import CredentialManager
+        
+        manager = CredentialManager()
+        return manager.schedule_credential_rotation(self, rotation_date)
+    
+    def get_credential_health(self) -> Dict[str, Any]:
+        """
+        Get comprehensive credential health status.
+        
+        Returns:
+            CredentialHealthStatus dictionary
+        """
+        from ..utils.credential_manager import CredentialManager
+        
+        manager = CredentialManager()
+        result = manager.get_credential_health(self)
+        return result.to_dict()
+    
+    def backup_credentials(self) -> Dict[str, Any]:
+        """
+        Create a backup of current credentials.
+        
+        Returns:
+            CredentialBackup dictionary
+        """
+        from ..utils.credential_manager import CredentialManager
+        
+        manager = CredentialManager()
+        backup = manager.backup_credentials(self)
+        return backup.to_dict()
+    
+    def restore_credentials(self, backup: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Restore credentials from backup.
+        
+        Args:
+            backup: CredentialBackup dictionary
+            
+        Returns:
+            RestoreResult dictionary
+        """
+        from ..utils.credential_manager import CredentialManager, CredentialBackup
+        
+        # Convert dict back to CredentialBackup
+        backup_obj = CredentialBackup(
+            repository_id=backup['repository_id'],
+            encrypted_credentials=backup.get('encrypted_credentials', ''),
+            authentication_type=backup['authentication_type'],
+            backed_up_at=datetime.fromisoformat(backup['backed_up_at']),
+            backup_reason=backup['backup_reason']
+        )
+        
+        manager = CredentialManager()
+        result = manager.restore_credentials(self, backup_obj)
+        return result.to_dict()
+    
+    def test_credentials_thoroughly(self) -> Dict[str, Any]:
+        """
+        Perform thorough credential testing including permissions.
+        
+        Returns:
+            ThoroughTestResult dictionary
+        """
+        from ..utils.credential_manager import CredentialManager
+        
+        manager = CredentialManager()
+        result = manager.test_credentials_thoroughly(self)
+        return result.to_dict()
+    
+    def validate_permission_scope(self) -> Dict[str, Any]:
+        """
+        Validate the permission scope of credentials.
+        
+        Returns:
+            PermissionScopeResult dictionary
+        """
+        from ..utils.credential_manager import CredentialManager
+        
+        manager = CredentialManager()
+        result = manager.validate_permission_scope(self)
+        return result.to_dict()
+    
+    def get_enhanced_repository_info(self) -> Dict[str, Any]:
+        """
+        Get comprehensive repository information including health and credentials.
+        
+        Returns:
+            Extended repository information dictionary
+        """
+        base_info = self.get_repository_info()
+        
+        # Add credential health
+        credential_health = self.get_credential_health()
+        
+        # Add enhanced health monitoring
+        try:
+            from ..utils.git_health_monitor import GitHealthMonitor
+            monitor = GitHealthMonitor(self)
+            health_report = monitor.generate_health_report()
+            
+            base_info['health_monitoring'] = health_report.to_dict()
+        except Exception as e:
+            base_info['health_monitoring'] = {
+                'error': str(e),
+                'available': False
+            }
+        
+        base_info['credential_health'] = credential_health
+        
+        return base_info
 
 
 # Import timezone here to avoid circular imports

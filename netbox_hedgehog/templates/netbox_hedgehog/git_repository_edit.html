@@ -1,0 +1,142 @@
+{% extends "generic/object_edit.html" %}
+{% load static %}
+{% load form_helpers %}
+
+{% block title %}
+    {% if object.pk %}Edit Git Repository{% else %}Add Git Repository{% endif %}
+{% endblock %}
+
+{% block form %}
+<div class="row">
+    <div class="col-md-8">
+        <div class="card">
+            <div class="card-header">
+                <h5>Repository Information</h5>
+            </div>
+            <div class="card-body">
+                {% render_field form.name %}
+                {% render_field form.url %}
+                
+                <div class="row">
+                    <div class="col-md-6">
+                        {% render_field form.provider %}
+                    </div>
+                    <div class="col-md-6">
+                        {% render_field form.default_branch %}
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <div class="card mt-3">
+            <div class="card-header">
+                <h5>Authentication</h5>
+            </div>
+            <div class="card-body">
+                {% render_field form.authentication_type %}
+                
+                <div id="auth-fields">
+                    <!-- Basic Authentication Fields -->
+                    <div id="basic-auth-fields" class="auth-type-fields" style="display: none;">
+                        {% render_field form.username %}
+                        {% render_field form.password %}
+                    </div>
+                    
+                    <!-- Token Authentication Fields -->
+                    <div id="token-auth-fields" class="auth-type-fields" style="display: none;">
+                        {% render_field form.token %}
+                    </div>
+                    
+                    <!-- SSH Authentication Fields -->
+                    <div id="ssh-auth-fields" class="auth-type-fields" style="display: none;">
+                        {% render_field form.ssh_private_key %}
+                        {% render_field form.ssh_passphrase %}
+                    </div>
+                </div>
+                
+                {% if object.pk %}
+                <div class="alert alert-info mt-3">
+                    <i class="mdi mdi-information"></i>
+                    Leave credential fields empty to keep existing credentials unchanged.
+                </div>
+                {% endif %}
+            </div>
+        </div>
+        
+        <div class="card mt-3">
+            <div class="card-header">
+                <h5>Tags</h5>
+            </div>
+            <div class="card-body">
+                {% render_field form.tags %}
+            </div>
+        </div>
+    </div>
+    
+    <div class="col-md-4">
+        <div class="card">
+            <div class="card-header">
+                <h5>Test Connection</h5>
+            </div>
+            <div class="card-body">
+                <p>Click the button below to test the connection to the Git repository with the provided credentials.</p>
+                <button type="submit" name="_test_connection" class="btn btn-info w-100">
+                    <i class="mdi mdi-connection"></i> Test Connection
+                </button>
+            </div>
+        </div>
+        
+        <div class="card mt-3">
+            <div class="card-header">
+                <h5>Help</h5>
+            </div>
+            <div class="card-body">
+                <h6>Authentication Types:</h6>
+                <ul class="small">
+                    <li><strong>Token:</strong> Personal access token or API token (recommended)</li>
+                    <li><strong>Basic:</strong> Username and password authentication</li>
+                    <li><strong>SSH:</strong> SSH private key authentication</li>
+                </ul>
+                
+                <h6>Provider-Specific Notes:</h6>
+                <ul class="small">
+                    <li><strong>GitHub:</strong> Use personal access tokens, not passwords</li>
+                    <li><strong>GitLab:</strong> Create project or personal access tokens</li>
+                    <li><strong>Generic:</strong> Works with any Git server</li>
+                </ul>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const authTypeField = document.getElementById('id_authentication_type');
+    const authFields = {
+        'basic': document.getElementById('basic-auth-fields'),
+        'token': document.getElementById('token-auth-fields'),
+        'ssh': document.getElementById('ssh-auth-fields')
+    };
+    
+    function showAuthFields() {
+        const selectedType = authTypeField.value;
+        
+        // Hide all auth fields
+        Object.values(authFields).forEach(field => {
+            if (field) field.style.display = 'none';
+        });
+        
+        // Show selected auth fields
+        if (authFields[selectedType]) {
+            authFields[selectedType].style.display = 'block';
+        }
+    }
+    
+    // Show fields on load
+    showAuthFields();
+    
+    // Show fields on change
+    authTypeField.addEventListener('change', showAuthFields);
+});
+</script>
+{% endblock %}

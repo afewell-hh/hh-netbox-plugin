@@ -32,7 +32,7 @@ class External(BaseCRD):
         verbose_name_plural = "Externals"
     
     def get_absolute_url(self):
-        return reverse('plugins:netbox_hedgehog:external', kwargs={'pk': self.pk})
+        return reverse('plugins:netbox_hedgehog:external_detail', kwargs={'pk': self.pk})
     
     def get_api_version(self):
         return 'vpc.githedgehog.com/v1beta1'
@@ -51,7 +51,7 @@ class ExternalAttachment(BaseCRD):
         verbose_name_plural = "External Attachments"
     
     def get_absolute_url(self):
-        return reverse('plugins:netbox_hedgehog:externalattachment', kwargs={'pk': self.pk})
+        return reverse('plugins:netbox_hedgehog:externalattachment_detail', kwargs={'pk': self.pk})
     
     def get_api_version(self):
         return 'vpc.githedgehog.com/v1beta1'
@@ -70,7 +70,7 @@ class ExternalPeering(BaseCRD):
         verbose_name_plural = "External Peerings"
     
     def get_absolute_url(self):
-        return reverse('plugins:netbox_hedgehog:externalpeering', kwargs={'pk': self.pk})
+        return reverse('plugins:netbox_hedgehog:externalpeering_detail', kwargs={'pk': self.pk})
     
     def get_api_version(self):
         return 'vpc.githedgehog.com/v1beta1'
@@ -108,7 +108,7 @@ class VPCAttachment(BaseCRD):
         verbose_name_plural = "VPC Attachments"
     
     def get_absolute_url(self):
-        return reverse('plugins:netbox_hedgehog:vpcattachment', kwargs={'pk': self.pk})
+        return reverse('plugins:netbox_hedgehog:vpcattachment_detail', kwargs={'pk': self.pk})
     
     def get_api_version(self):
         return 'vpc.githedgehog.com/v1beta1'
@@ -127,7 +127,7 @@ class VPCPeering(BaseCRD):
         verbose_name_plural = "VPC Peerings"
     
     def get_absolute_url(self):
-        return reverse('plugins:netbox_hedgehog:vpcpeering', kwargs={'pk': self.pk})
+        return reverse('plugins:netbox_hedgehog:vpcpeering_detail', kwargs={'pk': self.pk})
     
     def get_api_version(self):
         return 'vpc.githedgehog.com/v1beta1'

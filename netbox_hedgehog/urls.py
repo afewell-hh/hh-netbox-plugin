@@ -19,6 +19,12 @@ from .views.gitops_onboarding_views import (
 )
 # Import fabric views
 from .views.fabric_views import ArgoCDSetupWizardView
+from .views.fabric_delete import FabricDeleteView as ImprovedFabricDeleteView, SafeFabricDeleteView
+# Import Git Repository views
+from .views.git_repository_views import (
+    GitRepositoryListView, GitRepositoryView, GitRepositoryEditView, 
+    GitRepositoryDeleteView, GitRepositoryTestConnectionView
+)
 # Import VPC API views
 from .views.vpc_api import (
     VPCListView, VPCView, VPCEditView, VPCDeleteView,
@@ -83,18 +89,18 @@ class FabricCreateView(CreateView):
     model = HedgehogFabric
     form_class = HedgehogFabricForm
     template_name = 'netbox_hedgehog/fabric_edit.html'
-    success_url = '/plugins/netbox_hedgehog/fabrics/'
+    success_url = '/plugins/hedgehog/fabrics/'
 
 class FabricEditView(UpdateView):
     model = HedgehogFabric
     form_class = HedgehogFabricForm
     template_name = 'netbox_hedgehog/fabric_edit.html'
-    success_url = '/plugins/netbox_hedgehog/fabrics/'
+    success_url = '/plugins/hedgehog/fabrics/'
 
 class FabricDeleteView(DeleteView):
     model = HedgehogFabric
     template_name = 'netbox_hedgehog/fabric_confirm_delete.html'
-    success_url = '/plugins/netbox_hedgehog/fabrics/'
+    success_url = '/plugins/hedgehog/fabrics/'
 
 # Other Views
 class TopologyView(TemplateView):
@@ -108,12 +114,21 @@ urlpatterns = [
     path('fabrics/add/', FabricCreateView.as_view(), name='fabric_add'),
     path('fabrics/<int:pk>/', FabricDetailView.as_view(), name='fabric_detail'),
     path('fabrics/<int:pk>/edit/', FabricEditView.as_view(), name='fabric_edit'),
-    path('fabrics/<int:pk>/delete/', FabricDeleteView.as_view(), name='fabric_delete'),
+    path('fabrics/<int:pk>/delete/', ImprovedFabricDeleteView.as_view(), name='fabric_delete'),
+    path('fabrics/<int:pk>/delete-safe/', SafeFabricDeleteView.as_view(), name='fabric_delete_safe'),
     path('fabrics/<int:pk>/sync/', SimpleFabricSyncView.as_view(), name='fabric_sync'),
     path('fabrics/<int:pk>/test-connection/', SimpleFabricTestConnectionView.as_view(), name='fabric_test_connection'),
     
     # ArgoCD Setup Wizard (Week 2 MVP2)
     path('fabrics/<int:pk>/argocd-setup/', ArgoCDSetupWizardView.as_view(), name='argocd_setup_wizard'),
+    
+    # Git Repository Management URLs
+    path('git-repositories/', GitRepositoryListView.as_view(), name='git_repository_list'),
+    path('git-repositories/add/', GitRepositoryEditView.as_view(), name='git_repository_add'),
+    path('git-repositories/<int:pk>/', GitRepositoryView.as_view(), name='git_repository_detail'),
+    path('git-repositories/<int:pk>/edit/', GitRepositoryEditView.as_view(), name='git_repository_edit'),
+    path('git-repositories/<int:pk>/delete/', GitRepositoryDeleteView.as_view(), name='git_repository_delete'),
+    path('git-repositories/<int:pk>/test-connection/', GitRepositoryTestConnectionView.as_view(), name='git_repository_test_connection'),
     
     # CRD URLs - temporarily disabled
     # path('fabrics/<int:pk>/crds/', FabricCRDListView.as_view(), name='fabric_crds'),

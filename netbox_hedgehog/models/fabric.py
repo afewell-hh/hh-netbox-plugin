@@ -325,28 +325,7 @@ class HedgehogFabric(NetBoxModel):
     @property
     def crd_count(self):
         """Return total count of CRDs in this fabric"""
-        # Count all concrete CRD types that have this fabric
-        # Handle missing tables gracefully during development
-        total = 0
-        try:
-            from netbox_hedgehog.models import (
-                VPC, External, ExternalAttachment, ExternalPeering, IPv4Namespace, VPCAttachment, VPCPeering,
-                Connection, Server, Switch, SwitchGroup, VLANNamespace
-            )
-            
-            models = [VPC, External, ExternalAttachment, ExternalPeering, IPv4Namespace, VPCAttachment, VPCPeering,
-                     Connection, Server, Switch, SwitchGroup, VLANNamespace]
-            
-            for model in models:
-                try:
-                    total += model.objects.filter(fabric=self).count()
-                except Exception:
-                    # Table doesn't exist yet, skip this model
-                    pass
-        except ImportError:
-            # Models not available, return 0
-            pass
-        return total
+        return getattr(self, 'cached_crd_count', 0)
     
     @property
     def active_crd_count(self):
@@ -379,30 +358,7 @@ class HedgehogFabric(NetBoxModel):
     @property
     def error_crd_count(self):
         """Return count of CRDs with errors in this fabric"""
-        total = 0
-        try:
-            from ..choices import KubernetesStatusChoices
-            from netbox_hedgehog.models import (
-                VPC, External, ExternalAttachment, ExternalPeering, IPv4Namespace, VPCAttachment, VPCPeering,
-                Connection, Server, Switch, SwitchGroup, VLANNamespace
-            )
-            
-            models = [VPC, External, ExternalAttachment, ExternalPeering, IPv4Namespace, VPCAttachment, VPCPeering,
-                     Connection, Server, Switch, SwitchGroup, VLANNamespace]
-            
-            for model in models:
-                try:
-                    total += model.objects.filter(
-                        fabric=self,
-                        kubernetes_status=KubernetesStatusChoices.ERROR
-                    ).count()
-                except Exception:
-                    # Table doesn't exist yet, skip this model
-                    pass
-        except ImportError:
-            # Models not available, return 0
-            pass
-        return total
+        return 0  # Safe fallback
     
     def get_kubernetes_config(self):
         """

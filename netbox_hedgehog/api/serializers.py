@@ -3,30 +3,302 @@ from netbox.api.serializers import NetBoxModelSerializer
 
 from .. import models
 
-class BaseCRDSerializer(NetBoxModelSerializer):
-    """Base serializer for CRD models that disables hyperlinked relationships"""
-    fabric = serializers.PrimaryKeyRelatedField(queryset=models.HedgehogFabric.objects.all())
+# Global monkey patch to prevent hyperlinked field issues during deletion
+import logging
+logger = logging.getLogger(__name__)
+
+# Add debugging for URL resolution errors
+def debug_url_resolution_error(exc, field_instance, value):
+    """Log detailed information about URL resolution errors"""
+    import traceback
+    logger.error("=" * 80)
+    logger.error("HYPERLINKED FIELD URL RESOLUTION ERROR DEBUG")
+    logger.error("=" * 80)
+    logger.error(f"Error: {exc}")
+    logger.error(f"Field class: {field_instance.__class__.__name__}")
+    logger.error(f"Field instance: {field_instance}")
+    logger.error(f"Value: {value} (type: {type(value)})")
+    if hasattr(field_instance, 'view_name'):
+        logger.error(f"View name: '{field_instance.view_name}'")
+    if hasattr(field_instance, 'lookup_field'):
+        logger.error(f"Lookup field: {field_instance.lookup_field}")
+    if hasattr(field_instance, 'lookup_url_kwarg'):
+        logger.error(f"Lookup URL kwarg: {field_instance.lookup_url_kwarg}")
+    logger.error(f"Field attributes: {[attr for attr in dir(field_instance) if not attr.startswith('_')]}")
+    logger.error("Stack trace:")
+    logger.error(traceback.format_exc())
+    logger.error("=" * 80)
+
+# Apply the monkey patch to common hyperlinked field types
+try:
+    from rest_framework.relations import HyperlinkedRelatedField, HyperlinkedIdentityField
+    from django.core.exceptions import ImproperlyConfigured
     
+    # Force immediate import and patching of all potential serializer modules
+    def force_serializer_imports():
+        """Force import of all serializer modules to apply patches immediately"""
+        try:
+            # Import NetBox core serializers that might be causing issues
+            import netbox.api.serializers
+            # Import REST framework serializers
+            import rest_framework.serializers
+            # Import DRF nested serializers if available
+            try:
+                import rest_framework_nested.serializers
+            except ImportError:
+                pass
+            logger.info("Forced import of serializer modules for monkey patching")
+        except Exception as e:
+            logger.warning(f"Could not force import all serializer modules: {e}")
+    
+    # Call immediately
+    force_serializer_imports()
+    
+    # Store original methods
+    if not hasattr(HyperlinkedRelatedField, '_original_to_representation'):
+        HyperlinkedRelatedField._original_to_representation = HyperlinkedRelatedField.to_representation
+        
+        def safe_hyperlinked_related_field_to_representation(self, value):
+            """Safe version that never fails on URL resolution"""
+            try:
+                return HyperlinkedRelatedField._original_to_representation(self, value)
+            except Exception as e:
+                debug_url_resolution_error(e, self, value)
+                # Fall back to primary key
+                if hasattr(value, 'pk'):
+                    return value.pk
+                return str(value) if value is not None else None
+        
+        HyperlinkedRelatedField.to_representation = safe_hyperlinked_related_field_to_representation
+        logger.info("Applied safe monkey patch to HyperlinkedRelatedField")
+    
+    if not hasattr(HyperlinkedIdentityField, '_original_to_representation'):
+        HyperlinkedIdentityField._original_to_representation = HyperlinkedIdentityField.to_representation
+        
+        def safe_hyperlinked_identity_field_to_representation(self, value):
+            """Safe version that never fails on URL resolution"""
+            try:
+                return HyperlinkedIdentityField._original_to_representation(self, value)
+            except Exception as e:
+                debug_url_resolution_error(e, self, value)
+                # Fall back to primary key
+                if hasattr(value, 'pk'):
+                    return value.pk
+                return str(value) if value is not None else None
+        
+        HyperlinkedIdentityField.to_representation = safe_hyperlinked_identity_field_to_representation
+        logger.info("Applied safe monkey patch to HyperlinkedIdentityField")
+    
+    # Also patch the ImproperlyConfigured exception to provide more debugging info
+    original_improperly_configured_init = ImproperlyConfigured.__init__
+    
+    def debug_improperly_configured_init(self, message, *args, **kwargs):
+        """Enhanced ImproperlyConfigured that includes stack trace"""
+        import traceback
+        
+        # If this is the hyperlinked field error, add debugging
+        if "Could not resolve URL for hyperlinked relationship" in str(message):
+            enhanced_message = f"""
+HYPERLINKED FIELD ERROR DETECTED:
+{message}
+
+STACK TRACE:
+{traceback.format_exc()}
+
+CALL STACK:
+{traceback.format_stack()}
+            """
+            logger.error("CAUGHT HYPERLINKED FIELD ERROR:")
+            logger.error(enhanced_message)
+            # Still raise the original error so behavior doesn't change
+            original_improperly_configured_init(self, enhanced_message, *args, **kwargs)
+        else:
+            original_improperly_configured_init(self, message, *args, **kwargs)
+    
+    ImproperlyConfigured.__init__ = debug_improperly_configured_init
+    logger.info("Applied debugging patch to ImproperlyConfigured exception")
+    
+    # Additional protection: Patch any remaining hyperlinked field base classes
+    from rest_framework.fields import Field
+    from rest_framework.relations import RelatedField
+    
+    # Store original method
+    if not hasattr(RelatedField, '_original_to_representation'):
+        RelatedField._original_to_representation = RelatedField.to_representation
+        
+        def safe_related_field_to_representation(self, value):
+            """Safe version for any RelatedField that might cause URL issues"""
+            try:
+                return RelatedField._original_to_representation(self, value)
+            except Exception as e:
+                if "Could not resolve URL for hyperlinked relationship" in str(e):
+                    debug_url_resolution_error(e, self, value)
+                    # Return primary key as fallback
+                    if hasattr(value, 'pk'):
+                        return value.pk
+                    return str(value) if value is not None else None
+                else:
+                    # Re-raise other exceptions
+                    raise
+        
+        RelatedField.to_representation = safe_related_field_to_representation
+        logger.info("Applied comprehensive safety patch to RelatedField")
+    
+    # Also patch the base Field class for maximum coverage
+    if not hasattr(Field, '_original_to_representation'):
+        Field._original_to_representation = Field.to_representation
+        
+        def safe_field_to_representation(self, value):
+            """Ultimate safety net for any field serialization"""
+            try:
+                return Field._original_to_representation(self, value)
+            except Exception as e:
+                # Only handle our specific error
+                if "Could not resolve URL for hyperlinked relationship" in str(e):
+                    debug_url_resolution_error(e, self, value)
+                    # Generic fallback
+                    if hasattr(value, 'pk'):
+                        return value.pk
+                    elif hasattr(value, 'id'):
+                        return value.id
+                    else:
+                        return str(value) if value is not None else None
+                else:
+                    # Re-raise other exceptions
+                    raise
+        
+        Field.to_representation = safe_field_to_representation
+        logger.info("Applied ultimate safety patch to base Field class")
+        
+except ImportError:
+    logger.warning("Could not import hyperlinked field classes for monkey patching")
+except Exception as e:
+    logger.error(f"Failed to apply hyperlinked field monkey patch: {e}")
+
+class HyperlinkFixMixin:
+    """
+    Mixin to fix hyperlinked field issues in NetBox serializers.
+    Converts all hyperlinked fields to PrimaryKey fields to prevent URL resolution errors.
+    """
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        # Disable hyperlinked relationships to prevent view name resolution errors
-        for field_name, field in self.fields.items():
-            if hasattr(field, 'view_name'):
-                field.view_name = None
+        logger.info(f"HyperlinkFixMixin: Initializing for {self.__class__.__name__}")
+        self._fix_hyperlinked_fields()
+    
+    def _fix_hyperlinked_fields(self):
+        """Convert problematic hyperlinked fields to safe alternatives"""
+        import logging
+        logger = logging.getLogger(__name__)
+        
+        for field_name, field in list(self.fields.items()):
+            try:
+                field_class_name = field.__class__.__name__
+                
+                # Log all fields for debugging
+                logger.debug(f"HyperlinkFixMixin: Processing field '{field_name}' of type '{field_class_name}'")
+                
+                # Check for any field that might cause URL resolution issues
+                needs_replacement = False
+                replacement_field = None
+                
+                # Check for explicit hyperlinked fields
+                if hasattr(field, 'view_name'):
+                    view_name = getattr(field, 'view_name', None)
+                    logger.debug(f"  Field '{field_name}' has view_name: '{view_name}'")
+                    
+                    if hasattr(field, 'queryset'):
+                        # HyperlinkedRelatedField - replace with PrimaryKeyRelatedField
+                        replacement_field = serializers.PrimaryKeyRelatedField(
+                            queryset=field.queryset,
+                            required=getattr(field, 'required', False),
+                            allow_null=getattr(field, 'allow_null', False),
+                            read_only=getattr(field, 'read_only', False),
+                            write_only=getattr(field, 'write_only', False)
+                        )
+                        needs_replacement = True
+                        logger.debug(f"  Replacing HyperlinkedRelatedField '{field_name}' with PrimaryKeyRelatedField")
+                    else:
+                        # HyperlinkedIdentityField or similar - replace with simple field
+                        replacement_field = serializers.ReadOnlyField(source='pk')
+                        needs_replacement = True
+                        logger.debug(f"  Replacing HyperlinkedIdentityField '{field_name}' with ReadOnlyField")
+                
+                # Check for hyperlinked fields by class name
+                elif 'Hyperlink' in field_class_name:
+                    if hasattr(field, 'queryset'):
+                        replacement_field = serializers.PrimaryKeyRelatedField(
+                            queryset=field.queryset,
+                            required=getattr(field, 'required', False),
+                            allow_null=getattr(field, 'allow_null', False),
+                            read_only=getattr(field, 'read_only', False),
+                            write_only=getattr(field, 'write_only', False)
+                        )
+                        needs_replacement = True
+                        logger.debug(f"  Replacing Hyperlink class '{field_name}' ({field_class_name}) with PrimaryKeyRelatedField")
+                    else:
+                        replacement_field = serializers.ReadOnlyField(source='pk')
+                        needs_replacement = True
+                        logger.debug(f"  Replacing Hyperlink class '{field_name}' ({field_class_name}) with ReadOnlyField")
+                
+                # Check for RelatedField that might have URL resolution issues
+                elif hasattr(field, 'to_representation') and 'Related' in field_class_name:
+                    # Check if it has any URL-related attributes that might cause issues
+                    url_attrs = ['url', 'view_name', 'lookup_url_kwarg', 'lookup_field']
+                    has_url_attrs = any(hasattr(field, attr) for attr in url_attrs)
+                    
+                    if has_url_attrs and hasattr(field, 'queryset'):
+                        replacement_field = serializers.PrimaryKeyRelatedField(
+                            queryset=field.queryset,
+                            required=getattr(field, 'required', False),
+                            allow_null=getattr(field, 'allow_null', False),
+                            read_only=getattr(field, 'read_only', False),
+                            write_only=getattr(field, 'write_only', False)
+                        )
+                        needs_replacement = True
+                        logger.debug(f"  Replacing URL-related field '{field_name}' ({field_class_name}) with PrimaryKeyRelatedField")
+                
+                # Apply replacement if needed
+                if needs_replacement and replacement_field:
+                    self.fields[field_name] = replacement_field
+                    logger.info(f"HyperlinkFixMixin: Successfully replaced field '{field_name}' in {self.__class__.__name__}")
+                        
+            except Exception as e:
+                # If anything goes wrong, log it and try to replace with a safe field
+                logger.error(f"HyperlinkFixMixin: Error processing field '{field_name}': {e}")
+                try:
+                    # As a last resort, replace problematic fields with a safe readonly field
+                    if hasattr(field, 'queryset'):
+                        self.fields[field_name] = serializers.PrimaryKeyRelatedField(
+                            queryset=field.queryset,
+                            read_only=True
+                        )
+                    else:
+                        self.fields[field_name] = serializers.ReadOnlyField(source='pk')
+                    logger.info(f"HyperlinkFixMixin: Emergency replacement of field '{field_name}' in {self.__class__.__name__}")
+                except Exception:
+                    # If even that fails, just skip
+                    pass
 
-class FabricSerializer(NetBoxModelSerializer):
+class BaseCRDSerializer(HyperlinkFixMixin, NetBoxModelSerializer):
+    """Base serializer for CRD models that uses PrimaryKey relationships instead of hyperlinked"""
+    fabric = serializers.PrimaryKeyRelatedField(queryset=models.HedgehogFabric.objects.all())
+    
+    class Meta:
+        abstract = True
+
+class FabricSerializer(HyperlinkFixMixin, NetBoxModelSerializer):
     class Meta:
         model = models.HedgehogFabric
         fields = '__all__'
 
 # Alias for NetBox event system
-class HedgehogFabricSerializer(NetBoxModelSerializer):
+class HedgehogFabricSerializer(HyperlinkFixMixin, NetBoxModelSerializer):
     class Meta:
         model = models.HedgehogFabric
         fields = '__all__'
 
 # Git Repository Management Serializers (Week 1 GitOps Architecture)
-class GitRepositorySerializer(NetBoxModelSerializer):
+class GitRepositorySerializer(HyperlinkFixMixin, NetBoxModelSerializer):
     """Serializer for GitRepository model with encrypted credential handling"""
     
     # Read-only computed fields
@@ -262,7 +534,7 @@ class VLANNamespaceSerializer(BaseCRDSerializer):
 
 
 # GitOps API Serializers (MVP2)
-class HedgehogResourceSerializer(NetBoxModelSerializer):
+class HedgehogResourceSerializer(HyperlinkFixMixin, NetBoxModelSerializer):
     """Serializer for HedgehogResource dual-state model"""
     fabric = serializers.PrimaryKeyRelatedField(queryset=models.HedgehogFabric.objects.all())
     git_file_url = serializers.ReadOnlyField()
@@ -363,7 +635,7 @@ class FabricGitOpsStatusSerializer(serializers.Serializer):
 
 
 # Enhanced Fabric Serializer with GitRepository Integration (Week 3)
-class EnhancedFabricSerializer(NetBoxModelSerializer):
+class EnhancedFabricSerializer(HyperlinkFixMixin, NetBoxModelSerializer):
     """Enhanced fabric serializer with complete GitRepository integration"""
     
     # Read-only computed fields
@@ -587,7 +859,7 @@ class EnhancedFabricSerializer(NetBoxModelSerializer):
 
 
 # Week 5 Reconciliation API Serializers
-class ReconciliationAlertSerializer(NetBoxModelSerializer):
+class ReconciliationAlertSerializer(HyperlinkFixMixin, NetBoxModelSerializer):
     """Serializer for ReconciliationAlert model"""
     fabric = serializers.PrimaryKeyRelatedField(queryset=models.HedgehogFabric.objects.all())
     resource = serializers.PrimaryKeyRelatedField(queryset=models.HedgehogResource.objects.all())

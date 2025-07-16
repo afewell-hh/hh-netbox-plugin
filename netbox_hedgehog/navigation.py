@@ -23,8 +23,20 @@ menu = PluginMenu(
                 link_text='Fabrics',
                 buttons=(
                     PluginMenuButton(
-                        link='plugins:netbox_hedgehog:fabric_add',
+                        link='plugins:netbox_hedgehog:gitops_onboarding',
                         title='Add Fabric',
+                        icon_class='mdi mdi-plus-thick',
+                        color=ButtonColorChoices.GREEN
+                    ),
+                )
+            ),
+            PluginMenuItem(
+                link='plugins:netbox_hedgehog:git_repository_list',
+                link_text='Git Repositories',
+                buttons=(
+                    PluginMenuButton(
+                        link='plugins:netbox_hedgehog:git_repository_add',
+                        title='Add Git Repository',
                         icon_class='mdi mdi-plus-thick',
                         color=ButtonColorChoices.GREEN
                     ),

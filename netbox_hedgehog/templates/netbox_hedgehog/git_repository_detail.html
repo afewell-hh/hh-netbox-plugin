@@ -1,0 +1,198 @@
+{% extends "generic/object.html" %}
+{% load static %}
+{% load helpers %}
+
+{% block title %}{{ object.name }}{% endblock %}
+
+{% block breadcrumbs %}
+<li class="breadcrumb-item"><a href="{% url 'plugins:netbox_hedgehog:overview' %}">Hedgehog</a></li>
+<li class="breadcrumb-item"><a href="{% url 'plugins:netbox_hedgehog:git_repository_list' %}">Git Repositories</a></li>
+<li class="breadcrumb-item active">{{ object.name }}</li>
+{% endblock %}
+
+{% block content %}
+<div class="row">
+    <div class="col-md-8">
+        <div class="card">
+            <div class="card-header">
+                <h5>Repository Information</h5>
+            </div>
+            <div class="card-body">
+                <table class="table table-borderless">
+                    <tr>
+                        <th scope="row" class="text-nowrap">Name</th>
+                        <td>{{ object.name }}</td>
+                    </tr>
+                    <tr>
+                        <th scope="row">URL</th>
+                        <td><code>{{ object.url }}</code></td>
+                    </tr>
+                    <tr>
+                        <th scope="row">Provider</th>
+                        <td>{{ object.get_provider_display }}</td>
+                    </tr>
+                    <tr>
+                        <th scope="row">Authentication Type</th>
+                        <td>{{ object.get_authentication_type_display }}</td>
+                    </tr>
+                    <tr>
+                        <th scope="row">Default Branch</th>
+                        <td><code>{{ object.default_branch }}</code></td>
+                    </tr>
+                    <tr>
+                        <th scope="row">Repository Type</th>
+                        <td>
+                            {% if object.is_private %}
+                                <span class="badge bg-warning">Private</span>
+                            {% else %}
+                                <span class="badge bg-info">Public</span>
+                            {% endif %}
+                        </td>
+                    </tr>
+                    <tr>
+                        <th scope="row">Created By</th>
+                        <td>{{ object.created_by }}</td>
+                    </tr>
+                    <tr>
+                        <th scope="row">Created</th>
+                        <td>{{ object.created }}</td>
+                    </tr>
+                    <tr>
+                        <th scope="row">Last Updated</th>
+                        <td>{{ object.last_updated }}</td>
+                    </tr>
+                </table>
+            </div>
+        </div>
+        
+        <!-- Connection Status -->
+        <div class="card mt-3">
+            <div class="card-header">
+                <h5>Connection Status</h5>
+            </div>
+            <div class="card-body">
+                <table class="table table-borderless">
+                    <tr>
+                        <th scope="row">Status</th>
+                        <td>
+                            {% if object.connection_status == 'connected' %}
+                                <span class="badge bg-success">{{ object.get_connection_status_display }}</span>
+                            {% elif object.connection_status == 'failed' %}
+                                <span class="badge bg-danger">{{ object.get_connection_status_display }}</span>
+                            {% else %}
+                                <span class="badge bg-secondary">{{ object.get_connection_status_display }}</span>
+                            {% endif %}
+                        </td>
+                    </tr>
+                    <tr>
+                        <th scope="row">Last Validated</th>
+                        <td>
+                            {% if object.last_validated %}
+                                {{ object.last_validated }} ({{ object.last_validated|timesince }} ago)
+                            {% else %}
+                                <span class="text-muted">Never</span>
+                            {% endif %}
+                        </td>
+                    </tr>
+                    {% if object.validation_error %}
+                    <tr>
+                        <th scope="row">Last Error</th>
+                        <td>
+                            <div class="alert alert-danger mb-0">
+                                <small>{{ object.validation_error }}</small>
+                            </div>
+                        </td>
+                    </tr>
+                    {% endif %}
+                </table>
+                
+                <form method="post" action="{% url 'plugins:netbox_hedgehog:git_repository_test_connection' pk=object.pk %}" class="mt-3">
+                    {% csrf_token %}
+                    <button type="submit" class="btn btn-primary">
+                        <i class="mdi mdi-connection"></i> Test Connection
+                    </button>
+                </form>
+            </div>
+        </div>
+    </div>
+    
+    <div class="col-md-4">
+        <!-- Actions -->
+        <div class="card">
+            <div class="card-header">
+                <h5>Actions</h5>
+            </div>
+            <div class="card-body">
+                <a href="{% url 'plugins:netbox_hedgehog:git_repository_edit' pk=object.pk %}" class="btn btn-warning w-100 mb-2">
+                    <i class="mdi mdi-pencil"></i> Edit
+                </a>
+                {% if can_delete %}
+                    <a href="{% url 'plugins:netbox_hedgehog:git_repository_delete' pk=object.pk %}" class="btn btn-danger w-100">
+                        <i class="mdi mdi-delete"></i> Delete
+                    </a>
+                {% else %}
+                    <button class="btn btn-danger w-100" disabled title="{{ delete_reason }}">
+                        <i class="mdi mdi-delete"></i> Delete
+                    </button>
+                    <small class="text-muted">{{ delete_reason }}</small>
+                {% endif %}
+            </div>
+        </div>
+        
+        <!-- Usage Statistics -->
+        <div class="card mt-3">
+            <div class="card-header">
+                <h5>Usage Statistics</h5>
+            </div>
+            <div class="card-body">
+                <p><strong>Fabrics Using This Repository:</strong> {{ object.fabric_count }}</p>
+                
+                {% if dependent_fabrics %}
+                    <h6>Dependent Fabrics:</h6>
+                    <ul class="list-unstyled">
+                        {% for fabric in dependent_fabrics %}
+                            <li>
+                                <a href="{% url 'plugins:netbox_hedgehog:fabric_detail' pk=fabric.pk %}">
+                                    {{ fabric.name }}
+                                </a>
+                                <small class="text-muted">({{ fabric.gitops_directory }})</small>
+                            </li>
+                        {% endfor %}
+                    </ul>
+                {% endif %}
+            </div>
+        </div>
+        
+        <!-- Connection Summary -->
+        {% if connection_summary %}
+        <div class="card mt-3">
+            <div class="card-header">
+                <h5>Connection Summary</h5>
+            </div>
+            <div class="card-body">
+                <dl>
+                    <dt>Provider</dt>
+                    <dd>{{ connection_summary.provider }}</dd>
+                    
+                    <dt>Authentication</dt>
+                    <dd>{{ connection_summary.authentication_type }}</dd>
+                    
+                    <dt>Status</dt>
+                    <dd>{{ connection_summary.connection_status }}</dd>
+                    
+                    {% if connection_summary.last_successful_connection %}
+                    <dt>Last Success</dt>
+                    <dd>{{ connection_summary.last_successful_connection }}</dd>
+                    {% endif %}
+                    
+                    {% if connection_summary.health_status %}
+                    <dt>Health</dt>
+                    <dd>{{ connection_summary.health_status }}</dd>
+                    {% endif %}
+                </dl>
+            </div>
+        </div>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}

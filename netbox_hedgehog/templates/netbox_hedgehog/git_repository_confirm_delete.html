@@ -1,0 +1,58 @@
+{% extends "generic/object_delete.html" %}
+{% load static %}
+
+{% block title %}Delete Git Repository{% endblock %}
+
+{% block breadcrumbs %}
+<li class="breadcrumb-item"><a href="{% url 'plugins:netbox_hedgehog:overview' %}">Hedgehog</a></li>
+<li class="breadcrumb-item"><a href="{% url 'plugins:netbox_hedgehog:git_repository_list' %}">Git Repositories</a></li>
+<li class="breadcrumb-item"><a href="{% url 'plugins:netbox_hedgehog:git_repository_detail' pk=object.pk %}">{{ object.name }}</a></li>
+<li class="breadcrumb-item active">Delete</li>
+{% endblock %}
+
+{% block content %}
+<div class="row">
+    <div class="col-md-8 offset-md-2">
+        <div class="card">
+            <div class="card-header bg-danger text-white">
+                <h5><i class="mdi mdi-alert"></i> Confirm Deletion</h5>
+            </div>
+            <div class="card-body">
+                <p>Are you sure you want to delete the Git repository <strong>{{ object.name }}</strong>?</p>
+                
+                <div class="alert alert-warning">
+                    <h6>Repository Details:</h6>
+                    <ul class="mb-0">
+                        <li><strong>URL:</strong> {{ object.url }}</li>
+                        <li><strong>Provider:</strong> {{ object.get_provider_display }}</li>
+                        <li><strong>Authentication Type:</strong> {{ object.get_authentication_type_display }}</li>
+                        <li><strong>Fabrics Using This Repository:</strong> {{ object.fabric_count }}</li>
+                    </ul>
+                </div>
+                
+                {% if object.fabric_count > 0 %}
+                <div class="alert alert-danger">
+                    <i class="mdi mdi-alert-circle"></i>
+                    <strong>Warning:</strong> This repository is being used by {{ object.fabric_count }} fabric{{ object.fabric_count|pluralize }}.
+                    Deleting it will remove the Git configuration from these fabrics.
+                </div>
+                {% endif %}
+                
+                <p>This action cannot be undone.</p>
+                
+                <form method="post">
+                    {% csrf_token %}
+                    <div class="d-flex justify-content-between">
+                        <a href="{% url 'plugins:netbox_hedgehog:git_repository_detail' pk=object.pk %}" class="btn btn-secondary">
+                            Cancel
+                        </a>
+                        <button type="submit" class="btn btn-danger">
+                            <i class="mdi mdi-delete"></i> Delete Repository
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
