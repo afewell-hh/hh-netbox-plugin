@@ -1,34 +1,59 @@
-{% extends "generic/object_list.html" %}
+{% extends "base/layout.html" %}
 {% load static %}
-{% load helpers %}
 
 {% block title %}Git Repositories{% endblock %}
 
+{% block header %}
+    {{ block.super }}
+    <link rel="stylesheet" href="{% static 'netbox_hedgehog/css/hedgehog.css' %}">
+{% endblock %}
+
 {% block content %}
-<div class="d-flex justify-content-between align-items-center">
-    <h1>Git Repository Management</h1>
-    <div>
-        <a href="{% url 'plugins:netbox_hedgehog:git_repository_add' %}" class="btn btn-primary">
-            <i class="mdi mdi-plus"></i> Add Repository
-        </a>
-    </div>
-</div>
-
-<div class="card mt-3">
-    <div class="card-body">
-        <p>
-            Manage Git repository authentication and connections for your Hedgehog fabrics. 
-            Each repository can be used by multiple fabrics with different directories.
-        </p>
-        
-        {% if not request.user.is_superuser %}
-        <div class="alert alert-info">
-            <i class="mdi mdi-information"></i>
-            You are viewing repositories created by you. Repositories are private to each user.
+<div class="container-fluid">
+    <div class="row">
+        <div class="col-12">
+            <div class="card">
+                <div class="card-header d-flex justify-content-between">
+                    <h3><i class="mdi mdi-git"></i> Git Repository Management</h3>
+                    <a href="{% url 'plugins:netbox_hedgehog:overview' %}" class="btn btn-outline-secondary">
+                        <i class="mdi mdi-arrow-left"></i> Back to Dashboard
+                    </a>
+                </div>
+                <div class="card-body">
+                    <div class="d-flex justify-content-between align-items-center mb-3">
+                        <div>
+                            <h4>Git Repositories</h4>
+                            <p>Manage Git repository authentication and connections for your Hedgehog fabrics. Each repository can be used by multiple fabrics with different directories.</p>
+                        </div>
+                        <div>
+                            <a href="{% url 'plugins:netbox_hedgehog:git_repository_add' %}" class="btn btn-success">
+                                <i class="mdi mdi-plus"></i> Add Repository
+                            </a>
+                        </div>
+                    </div>
+                    
+                    {% if not request.user.is_superuser %}
+                    <div class="alert alert-info">
+                        <i class="mdi mdi-information"></i>
+                        You are viewing repositories created by you. Repositories are private to each user.
+                    </div>
+                    {% endif %}
+                    
+                    {% if table.rows %}
+                    {% load render_table from django_tables2 %}
+                    {% render_table table 'inc/table.html' %}
+                    {% else %}
+                    <div class="alert alert-info">
+                        <h5><i class="mdi mdi-information"></i> No Git Repositories Found</h5>
+                        <p>No Git repositories have been configured yet. Create your first repository to get started.</p>
+                        <a href="{% url 'plugins:netbox_hedgehog:git_repository_add' %}" class="btn btn-success">
+                            <i class="mdi mdi-plus"></i> Create First Repository
+                        </a>
+                    </div>
+                    {% endif %}
+                </div>
+            </div>
         </div>
-        {% endif %}
     </div>
 </div>
-
-{{ block.super }}
 {% endblock %}
