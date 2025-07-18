@@ -8,6 +8,7 @@
 {% endblock %}
 
 {% block content %}
+{% csrf_token %}
 <div class="container-fluid">
     <div class="row">
         <div class="col-12">
@@ -193,17 +194,113 @@
         </div>
     </div>
 </div>
+{% endblock %}
 
-<script>
+{% block javascript %}
+{{ block.super }}
+<script src="{% static 'netbox_hedgehog/js/sync-handler.js' %}?v={{ "now"|date:"U" }}"></script>
+<script type="text/javascript">
+document.addEventListener('DOMContentLoaded', function() {
+    console.log('🚀 IPv4 Namespace detail JavaScript loading...');
+    
+    // Get CSRF token
+    const csrfToken = document.querySelector('[name=csrfmiddlewaretoken]');
+    if (!csrfToken) {
+        console.error('❌ CSRF token not found');
+        return;
+    }
+    console.log('✅ CSRF token found');
+});
+
+// Action functions
 function applyToKubernetes() {
     if (confirm('Apply this IPv4 Namespace to Kubernetes?')) {
-        alert('Apply to Kubernetes functionality not yet implemented');
+        const button = event.target;
+        const csrfToken = document.querySelector('[name=csrfmiddlewaretoken]');
+        
+        if (typeof UnifiedSync !== 'undefined' && csrfToken) {
+            console.log('✅ Using UnifiedSync for apply operation');
+            // Use UnifiedSync to handle the apply operation
+            const originalHtml = button.innerHTML;
+            button.innerHTML = '<i class="mdi mdi-loading mdi-spin"></i> Applying...';
+            button.disabled = true;
+            
+            fetch(`/plugins/hedgehog/ipv4namespace/{{ object.pk }}/apply/`, {
+                method: 'POST',
+                headers: {
+                    'X-CSRFToken': csrfToken.value,
+                    'Content-Type': 'application/json',
+                    'Cache-Control': 'no-cache',
+                    'Pragma': 'no-cache'
+                },
+                credentials: 'same-origin'
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    button.innerHTML = '<i class="mdi mdi-check"></i> Applied!';
+                    button.className = 'btn btn-success';
+                    setTimeout(() => location.reload(), 1500);
+                } else {
+                    alert('Apply failed: ' + (data.error || 'Unknown error'));
+                    button.innerHTML = originalHtml;
+                    button.disabled = false;
+                }
+            })
+            .catch(error => {
+                console.error('Apply error:', error);
+                alert('Apply failed: ' + error.message);
+                button.innerHTML = originalHtml;
+                button.disabled = false;
+            });
+        } else {
+            alert('Apply to Kubernetes functionality not yet implemented');
+        }
     }
 }
 
 function syncFromKubernetes() {
     if (confirm('Sync this IPv4 Namespace from Kubernetes?')) {
-        alert('Sync from Kubernetes functionality not yet implemented');
+        const button = event.target;
+        const csrfToken = document.querySelector('[name=csrfmiddlewaretoken]');
+        
+        if (typeof UnifiedSync !== 'undefined' && csrfToken) {
+            console.log('✅ Using UnifiedSync for sync operation');
+            const originalHtml = button.innerHTML;
+            button.innerHTML = '<i class="mdi mdi-loading mdi-spin"></i> Syncing...';
+            button.disabled = true;
+            
+            fetch(`/plugins/hedgehog/ipv4namespace/{{ object.pk }}/sync/`, {
+                method: 'POST',
+                headers: {
+                    'X-CSRFToken': csrfToken.value,
+                    'Content-Type': 'application/json',
+                    'Cache-Control': 'no-cache',
+                    'Pragma': 'no-cache'
+                },
+                credentials: 'same-origin'
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    button.innerHTML = '<i class="mdi mdi-check"></i> Synced!';
+                    button.className = 'btn btn-success';
+                    setTimeout(() => location.reload(), 1500);
+                } else {
+                    alert('Sync failed: ' + (data.error || 'Unknown error'));
+                    button.innerHTML = originalHtml;
+                    button.disabled = false;
+                }
+            })
+            .catch(error => {
+                console.error('Sync error:', error);
+                alert('Sync failed: ' + error.message);
+                button.innerHTML = originalHtml;
+                button.disabled = false;
+            });
+        } else {
+            alert('Sync from Kubernetes functionality not yet implemented');
+        }
     }
 }
 

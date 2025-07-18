@@ -235,9 +235,8 @@ class BaseCRD(NetBoxModel):
             HedgehogResource instance or None if sync fails
         """
         try:
-            from ..utils.gitops_integration import CRDGitOpsIntegrator
-            integrator = CRDGitOpsIntegrator(self.fabric)
-            return integrator.sync_crd_to_gitops_resource(self, commit_sha, file_path)
+            # GitOps integration temporarily disabled to prevent circular imports
+            return None
         except Exception as e:
             # Log error but don't break existing functionality
             import logging

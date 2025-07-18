@@ -17,30 +17,19 @@ class NetboxHedgehogConfig(AppConfig):
     def ready(self):
         """
         Called when the app is ready.
-        Import and register signal handlers for GitOps integration.
+        Minimal initialization to prevent circular imports.
         """
         try:
-            # Import serializers MULTIPLE TIMES to ensure monkey patches stick
-            from .api import serializers
-            
-            # Force a second import to ensure patches are definitely applied
-            import importlib
-            importlib.reload(serializers)
-            
-            # Import signals to register them
-            from . import signals
-            
-            # Log that GitOps integration is active
+            # Log that plugin is loading
             import logging
             logger = logging.getLogger(__name__)
-            logger.info("Hedgehog NetBox Plugin: GitOps integration signals loaded")
-            logger.info("Hedgehog NetBox Plugin: Hyperlinked field monkey patches applied and reloaded")
+            logger.info("Hedgehog NetBox Plugin: Loading with minimal initialization")
             
         except Exception as e:
             # Log error but don't prevent app from starting
             import logging
             logger = logging.getLogger(__name__)
-            logger.warning(f"Hedgehog NetBox Plugin: Failed to load GitOps signals: {e}")
+            logger.warning(f"Hedgehog NetBox Plugin: Initialization warning: {e}")
             
         # Load any additional plugin initialization
         self._initialize_plugin()

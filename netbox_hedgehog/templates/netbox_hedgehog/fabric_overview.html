@@ -17,6 +17,7 @@
 {% endblock %}
 
 {% block hedgehog_content %}
+    {% csrf_token %}
     <!-- Summary Statistics -->
     <div class="row mb-4">
         <div class="col-md-3">
@@ -228,41 +229,73 @@
 {% endblock %}
 
 {% block hedgehog_javascript %}
+<script src="{% static 'netbox_hedgehog/js/sync-handler.js' %}?v={{ "now"|date:"U" }}"></script>
 <script>
 document.addEventListener('DOMContentLoaded', function() {
-    // Sync fabric buttons
-    document.querySelectorAll('.btn-sync-fabric').forEach(function(btn) {
-        btn.addEventListener('click', function() {
-            const fabricId = this.dataset.fabricId;
-            const button = this;
-            
-            button.disabled = true;
-            button.innerHTML = '<i class="mdi mdi-loading mdi-spin"></i>';
-            
-            fetch(`/plugins/hedgehog/fabrics/${fabricId}/sync/`, {
-                method: 'POST',
-                headers: {
-                    'X-CSRFToken': document.querySelector('[name=csrfmiddlewaretoken]').value,
-                    'Content-Type': 'application/json',
-                },
-            })
-            .then(response => response.json())
-            .then(data => {
-                if (data.success) {
-                    location.reload();
-                } else {
-                    alert('Sync failed: ' + data.error);
-                    button.disabled = false;
-                    button.innerHTML = '<i class="mdi mdi-sync"></i>';
-                }
-            })
-            .catch(error => {
-                alert('Sync failed: ' + error);
-                button.disabled = false;
-                button.innerHTML = '<i class="mdi mdi-sync"></i>';
+    console.log('🚀 Fabric overview JavaScript loading...');
+    
+    // Get CSRF token (NetBox provides it in a meta tag)
+    const csrfToken = document.querySelector('[name=csrfmiddlewaretoken]') || 
+                     document.querySelector('meta[name="csrf-token"]');
+    if (!csrfToken) {
+        console.error('❌ CSRF token not found');
+        return;
+    }
+    const csrfTokenValue = csrfToken.value || csrfToken.getAttribute('content');
+    console.log('✅ CSRF token found');
+    
+    // Check if UnifiedSync is available
+    if (typeof UnifiedSync !== 'undefined') {
+        console.log('✅ UnifiedSync handler available');
+        
+        // Handle sync fabric buttons
+        document.querySelectorAll('.btn-sync-fabric').forEach(function(btn) {
+            btn.addEventListener('click', function() {
+                const fabricId = this.dataset.fabricId;
+                console.log('🔄 Sync fabric clicked for fabric:', fabricId);
+                
+                UnifiedSync.performSync(fabricId, 'full', this);
             });
         });
-    });
+    } else {
+        console.warn('⚠️ UnifiedSync not available, using fallback handlers');
+        
+        // Fallback sync fabric buttons
+        document.querySelectorAll('.btn-sync-fabric').forEach(function(btn) {
+            btn.addEventListener('click', function() {
+                const fabricId = this.dataset.fabricId;
+                const button = this;
+                
+                button.disabled = true;
+                button.innerHTML = '<i class="mdi mdi-loading mdi-spin"></i>';
+                
+                fetch(`/plugins/hedgehog/fabrics/${fabricId}/sync/`, {
+                    method: 'POST',
+                    headers: {
+                        'X-CSRFToken': csrfTokenValue,
+                        'Content-Type': 'application/json',
+                        'Cache-Control': 'no-cache',
+                        'Pragma': 'no-cache'
+                    },
+                })
+                .then(response => response.json())
+                .then(data => {
+                    if (data.success) {
+                        location.reload();
+                    } else {
+                        alert('Sync failed: ' + data.error);
+                        button.disabled = false;
+                        button.innerHTML = '<i class="mdi mdi-sync"></i>';
+                    }
+                })
+                .catch(error => {
+                    alert('Sync failed: ' + error);
+                    button.disabled = false;
+                    button.innerHTML = '<i class="mdi mdi-sync"></i>';
+                });
+            });
+        });
+    }
 
     // Test connection buttons
     document.querySelectorAll('.btn-test-connection').forEach(function(btn) {

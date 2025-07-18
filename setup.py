@@ -14,6 +14,7 @@ setup(
         'kubernetes>=24.0.0',
         'pyyaml>=6.0',
         'jsonschema>=4.0.0',
+        'GitPython>=3.1.0',
     ],
     packages=find_packages(),
     include_package_data=True,
