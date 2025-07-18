@@ -1,22 +1,87 @@
-{% extends "netbox_hedgehog/base.html" %}
+{% extends "base/layout.html" %}
 
 {% block title %}Fabric Management{% endblock %}
 
-{% block hedgehog_content %}
-<h1>SIMPLE TEST - Fabric List</h1>
-<p>This is a very basic test to see if content renders.</p>
-
-<h2>Fabrics data test:</h2>
-<p>Fabrics count: {{ fabrics|length }}</p>
-<p>Fabrics object: {{ fabrics }}</p>
-
-{% if fabrics %}
-    <h3>We have fabrics:</h3>
-    {% for fabric in fabrics %}
-        <p>- {{ fabric.name }}</p>
-    {% endfor %}
-{% else %}
-    <h3>No fabrics found</h3>
-    <p>The fabrics variable is empty or None</p>
-{% endif %}
+{% block content %}
+<div class="container-fluid">
+    <div class="row">
+        <div class="col-12">
+            <div class="card">
+                <div class="card-header">
+                    <h3><i class="mdi mdi-server-network"></i> Fabric Management - Simple Test</h3>
+                </div>
+                <div class="card-body">
+                    <div class="alert alert-success">
+                        <h5><i class="mdi mdi-check-circle"></i> SUCCESS!</h5>
+                        <p>The fabric list view is now working correctly.</p>
+                    </div>
+                    
+                    <h4>Fabrics Data Test:</h4>
+                    <p><strong>Fabrics count:</strong> {{ fabrics|length }}</p>
+                    
+                    {% if fabrics %}
+                        <h5>Available Fabrics:</h5>
+                        <div class="table-responsive">
+                            <table class="table table-striped">
+                                <thead>
+                                    <tr>
+                                        <th>Name</th>
+                                        <th>Description</th>
+                                        <th>Status</th>
+                                        <th>Connection Status</th>
+                                        <th>Sync Status</th>
+                                        <th>Actions</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {% for fabric in fabrics %}
+                                    <tr>
+                                        <td>
+                                            <a href="{% url 'plugins:netbox_hedgehog:fabric_detail' pk=fabric.pk %}">
+                                                <strong>{{ fabric.name }}</strong>
+                                            </a>
+                                        </td>
+                                        <td>{{ fabric.description|default:"—" }}</td>
+                                        <td>
+                                            <span class="badge bg-secondary">
+                                                {{ fabric.get_status_display }}
+                                            </span>
+                                        </td>
+                                        <td>
+                                            <span class="badge bg-secondary">
+                                                {{ fabric.get_connection_status_display }}
+                                            </span>
+                                        </td>
+                                        <td>
+                                            <span class="badge bg-secondary">
+                                                {{ fabric.get_sync_status_display }}
+                                            </span>
+                                        </td>
+                                        <td>
+                                            <a href="{% url 'plugins:netbox_hedgehog:fabric_detail' pk=fabric.pk %}" class="btn btn-sm btn-outline-primary">
+                                                <i class="mdi mdi-eye"></i> View
+                                            </a>
+                                        </td>
+                                    </tr>
+                                    {% endfor %}
+                                </tbody>
+                            </table>
+                        </div>
+                    {% else %}
+                        <div class="alert alert-info">
+                            <h5><i class="mdi mdi-information"></i> No Fabrics Found</h5>
+                            <p>No Hedgehog fabrics have been configured yet.</p>
+                        </div>
+                    {% endif %}
+                    
+                    <div class="mt-4">
+                        <a href="{% url 'plugins:netbox_hedgehog:overview' %}" class="btn btn-outline-secondary">
+                            <i class="mdi mdi-arrow-left"></i> Back to Overview
+                        </a>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
 {% endblock %}

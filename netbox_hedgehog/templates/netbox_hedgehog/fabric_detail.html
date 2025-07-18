@@ -488,6 +488,8 @@
 
 {% block javascript %}
 {{ block.super }}
+<script src="{% static 'netbox_hedgehog/js/sync-handler.js' %}?v={{ "now"|date:"U" }}"></script>
+<script src="{% static 'netbox_hedgehog/js/emergency-sync-fix.js' %}?v={{ "now"|date:"U" }}"></script>
 <script type="text/javascript">
 document.addEventListener('DOMContentLoaded', function() {
     console.log('🚀 Fabric detail JavaScript loading...');
@@ -648,39 +650,64 @@ document.addEventListener('DOMContentLoaded', function() {
             const fabricId = this.getAttribute('data-fabric-id');
             console.log('🔄 Git Sync clicked for fabric:', fabricId);
             
-            // Show loading state
-            const originalText = this.innerHTML;
-            this.innerHTML = '<i class="mdi mdi-loading mdi-spin"></i> Syncing from Git...';
-            this.disabled = true;
-            
-            // Make API call for Git sync
-            fetch(`/api/plugins/hedgehog/gitops-fabrics/${fabricId}/sync_desired_state/`, {
-                method: 'POST',
-                headers: {
-                    'X-CSRFToken': csrfToken.value,
-                    'Content-Type': 'application/json',
-                },
-                credentials: 'same-origin'
-            })
-            .then(response => {
-                console.log('📡 Git sync response status:', response.status);
-                return response.json();
-            })
-            .then(data => {
-                console.log('✅ Git sync response:', data);
-                if (data.success) {
-                    this.innerHTML = '<i class="mdi mdi-check"></i> Synced from Git!';
-                    this.className = 'btn btn-success';
-                    
-                    // Show success notification
-                    showNotification('Git sync completed successfully!', 'success');
-                    
-                    // Reload page to show updated status
-                    setTimeout(() => location.reload(), 2000);
-                } else {
-                    this.innerHTML = '<i class="mdi mdi-close"></i> Sync Failed';
+            // Use UnifiedSync if available
+            if (window.UnifiedSync && window.UnifiedSync.sync) {
+                console.log('Using UnifiedSync for Git sync button');
+                window.UnifiedSync.sync(fabricId, this);
+            } else {
+                console.warn('UnifiedSync not available, using inline implementation');
+                
+                // Fallback implementation with cache-busting
+                const originalText = this.innerHTML;
+                this.innerHTML = '<i class="mdi mdi-loading mdi-spin"></i> Syncing from Git...';
+                this.disabled = true;
+                
+                const timestamp = Date.now();
+                fetch(`http://vlab-art-2.l.hhdev.io:8004/plugins/hedgehog/api/fabrics/${fabricId}/gitops/sync/?_cb=${timestamp}`, {
+                    method: 'POST',
+                    headers: {
+                        'X-CSRFToken': csrfToken.value,
+                        'Content-Type': 'application/json',
+                        'Accept': 'application/json',
+                        'Cache-Control': 'no-cache',
+                        'Pragma': 'no-cache'
+                    },
+                    credentials: 'same-origin',
+                    cache: 'no-store'
+                })
+                .then(response => {
+                    console.log('📡 Git sync response status:', response.status);
+                    return response.json();
+                })
+                .then(data => {
+                    console.log('✅ Git sync response:', data);
+                    if (data.success) {
+                        this.innerHTML = '<i class="mdi mdi-check"></i> Synced from Git!';
+                        this.className = 'btn btn-success';
+                        
+                        // Show success notification
+                        showNotification('Git sync completed successfully!', 'success');
+                        
+                        // Reload page to show updated status
+                        setTimeout(() => location.reload(), 2000);
+                    } else {
+                        this.innerHTML = '<i class="mdi mdi-close"></i> Sync Failed';
+                        this.className = 'btn btn-danger';
+                        showNotification('Git sync failed: ' + (data.error || 'Unknown error'), 'error');
+                        
+                        // Reset button after delay
+                        setTimeout(() => {
+                            this.innerHTML = originalText;
+                            this.className = 'btn btn-primary';
+                            this.disabled = false;
+                        }, 3000);
+                    }
+                })
+                .catch(error => {
+                    console.error('❌ Git sync error:', error);
+                    this.innerHTML = '<i class="mdi mdi-close"></i> Error';
                     this.className = 'btn btn-danger';
-                    showNotification('Git sync failed: ' + (data.error || 'Unknown error'), 'error');
+                    showNotification('Git sync failed: ' + error.message, 'error');
                     
                     // Reset button after delay
                     setTimeout(() => {
@@ -688,21 +715,8 @@ document.addEventListener('DOMContentLoaded', function() {
                         this.className = 'btn btn-primary';
                         this.disabled = false;
                     }, 3000);
-                }
-            })
-            .catch(error => {
-                console.error('❌ Git sync error:', error);
-                this.innerHTML = '<i class="mdi mdi-close"></i> Error';
-                this.className = 'btn btn-danger';
-                showNotification('Git sync failed: ' + error.message, 'error');
-                
-                // Reset button after delay
-                setTimeout(() => {
-                    this.innerHTML = originalText;
-                    this.className = 'btn btn-primary';
-                    this.disabled = false;
-                }, 3000);
-            });
+                });
+            }
         });
     }
     
@@ -936,8 +950,8 @@ function refreshGitOpsStatus() {
     statusDisplay.innerHTML = '<i class="mdi mdi-loading mdi-spin"></i> Refreshing GitOps status...';
     
     // Fetch GitOps status from backend
-    fetch(`/plugins/netbox_hedgehog/api/fabrics/${fabricId}/gitops/status/`, {
-        method: 'GET',
+    fetch(`http://vlab-art-2.l.hhdev.io:8004/plugins/hedgehog/api/fabrics/${fabricId}/gitops/sync/`, {
+        method: 'POST',
         headers: {
             'X-CSRFToken': getCookie('csrftoken'),
             'Content-Type': 'application/json',
@@ -958,26 +972,104 @@ function refreshGitOpsStatus() {
     });
 }
 
+// Store fabric ID globally for UnifiedSync
+window.currentFabricId = {{ object.pk }};
+
 function triggerGitSync() {
     const fabricId = {{ object.pk }};
+    
+    // Debug logging
+    console.log('🔧 triggerGitSync called for fabric:', fabricId);
+    console.log('🔧 UnifiedSync available:', !!(window.UnifiedSync && window.UnifiedSync.sync));
+    console.log('🔧 Button element:', event.target);
+    console.log('🔧 Current page URL:', window.location.href);
+    console.log('🔧 Current hostname:', window.location.hostname);
+    console.log('🔧 Current port:', window.location.port);
     
     if (!confirm('This will sync the latest changes from the Git repository. Continue?')) {
         return;
     }
     
-    // Show loading notification
+    // Always use direct fetch for now to debug the issue
+    console.log('🔧 Using direct fetch to debug the issue');
     showNotification('Syncing from Git repository...', 'info');
     
-    // Trigger Git sync
-    fetch(`/plugins/netbox_hedgehog/api/fabrics/${fabricId}/gitops/sync/`, {
-        method: 'POST',
-        headers: {
-            'X-CSRFToken': getCookie('csrftoken'),
-            'Content-Type': 'application/json',
-        },
-        credentials: 'same-origin'
-    })
-    .then(response => response.json())
+    const timestamp = Date.now();
+    // Try multiple endpoint URLs to find the working one
+    const endpoints = [
+        `http://vlab-art-2.l.hhdev.io:8004/plugins/hedgehog/api/fabrics/${fabricId}/gitops/sync/?_debug=${timestamp}`,
+        `http://192.168.88.232:8004/plugins/hedgehog/api/fabrics/${fabricId}/gitops/sync/?_debug=${timestamp}`,
+        `http://localhost:8004/plugins/hedgehog/api/fabrics/${fabricId}/gitops/sync/?_debug=${timestamp}`
+    ];
+    
+    const url = endpoints[0]; // Start with the first one
+    
+    console.log('🔧 Making request to:', url);
+    
+    // Try endpoints in sequence until one works
+    async function trySync(endpointIndex = 0) {
+        if (endpointIndex >= endpoints.length) {
+            throw new Error('All sync endpoints failed');
+        }
+        
+        const currentUrl = endpoints[endpointIndex];
+        console.log(`🔧 Trying endpoint ${endpointIndex + 1}/${endpoints.length}:`, currentUrl);
+        
+        try {
+            const response = await fetch(currentUrl, {
+                method: 'POST',
+                headers: {
+                    'X-CSRFToken': getCookie('csrftoken'),
+                    'Content-Type': 'application/json',
+                    'Accept': 'application/json',
+                    'Cache-Control': 'no-cache, no-store, must-revalidate',
+                    'Pragma': 'no-cache',
+                    'X-Requested-With': 'XMLHttpRequest'
+                },
+                credentials: 'same-origin',
+                cache: 'no-store'
+            });
+            
+            console.log('🔧 Response status:', response.status);
+            console.log('🔧 Response headers:', Object.fromEntries(response.headers.entries()));
+            
+            const text = await response.text();
+            console.log('🔧 Response text (first 200 chars):', text.substring(0, 200));
+            
+            // Check if it's HTML (indicates wrong endpoint)
+            if (text.includes('<!DOCTYPE') || text.includes('<html')) {
+                console.warn(`🔧 Endpoint ${endpointIndex + 1} returned HTML, trying next...`);
+                return await trySync(endpointIndex + 1);
+            }
+            
+            // Try to parse as JSON
+            let data;
+            try {
+                data = JSON.parse(text);
+                console.log('🔧 Parsed JSON:', data);
+            } catch (parseError) {
+                console.warn(`🔧 Endpoint ${endpointIndex + 1} JSON parse failed, trying next...`);
+                return await trySync(endpointIndex + 1);
+            }
+            
+            // Check if successful
+            if (!response.ok) {
+                console.warn(`🔧 Endpoint ${endpointIndex + 1} returned HTTP ${response.status}, trying next...`);
+                return await trySync(endpointIndex + 1);
+            }
+            
+            // Success!
+            console.log(`🔧 SUCCESS with endpoint ${endpointIndex + 1}!`);
+            return data;
+            
+        } catch (error) {
+            console.warn(`🔧 Endpoint ${endpointIndex + 1} failed:`, error.message);
+            return await trySync(endpointIndex + 1);
+        }
+    }
+    
+    // Execute the sync
+    trySync()
     .then(data => {
         if (data.success) {
             showNotification('Git sync completed successfully!', 'success');
@@ -987,7 +1079,7 @@ function triggerGitSync() {
         }
     })
     .catch(error => {
-        console.error('Git sync error:', error);
+        console.error('🔧 All sync endpoints failed:', error);
         showNotification('Git sync failed: ' + error.message, 'error');
     });
 }
@@ -996,7 +1088,7 @@ function showResourceStates() {
     const fabricId = {{ object.pk }};
     
     // Fetch resource states
-    fetch(`/plugins/netbox_hedgehog/api/fabrics/${fabricId}/gitops/status/`, {
+    fetch(`/plugins/hedgehog/api/fabrics/${fabricId}/gitops/status/`, {
         method: 'GET',
         headers: {
             'X-CSRFToken': getCookie('csrftoken'),
@@ -1022,7 +1114,7 @@ function showDriftDetails() {
     const fabricId = {{ object.pk }};
     
     // Fetch drift details
-    fetch(`/plugins/netbox_hedgehog/api/fabrics/${fabricId}/gitops/status/`, {
+    fetch(`/plugins/hedgehog/api/fabrics/${fabricId}/gitops/status/`, {
         method: 'GET',
         headers: {
             'X-CSRFToken': getCookie('csrftoken'),

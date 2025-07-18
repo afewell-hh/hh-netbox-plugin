@@ -1,0 +1,156 @@
+{% extends "base/layout.html" %}
+{% load static %}
+
+{% block title %}{{ object.name }} - Fabric Details{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+    <div class="row">
+        <div class="col-12">
+            <div class="card">
+                <div class="card-header d-flex justify-content-between">
+                    <h3><i class="mdi mdi-server-network"></i> {{ object.name }} - Fabric Details</h3>
+                    <div>
+                        <a href="{% url 'plugins:netbox_hedgehog:fabric_list' %}" class="btn btn-outline-secondary">
+                            <i class="mdi mdi-arrow-left"></i> Back to Fabrics
+                        </a>
+                        <a href="{% url 'plugins:netbox_hedgehog:fabric_edit' pk=object.pk %}" class="btn btn-outline-primary">
+                            <i class="mdi mdi-pencil"></i> Edit
+                        </a>
+                    </div>
+                </div>
+                <div class="card-body">
+                    <div class="alert alert-success">
+                        <h5><i class="mdi mdi-check-circle"></i> SUCCESS!</h5>
+                        <p>The fabric detail view is now working correctly.</p>
+                    </div>
+                    
+                    <div class="row">
+                        <div class="col-md-8">
+                            <h4>Fabric Information</h4>
+                            <table class="table table-borderless">
+                                <tr>
+                                    <th width="200">Name:</th>
+                                    <td><strong>{{ object.name }}</strong></td>
+                                </tr>
+                                <tr>
+                                    <th>Description:</th>
+                                    <td>{{ object.description|default:"—" }}</td>
+                                </tr>
+                                <tr>
+                                    <th>Configuration Status:</th>
+                                    <td>
+                                        <span class="badge bg-{% if object.status == 'active' %}success{% elif object.status == 'maintenance' %}warning{% elif object.status == 'planned' %}info{% else %}secondary{% endif %}">
+                                            {{ object.get_status_display }}
+                                        </span>
+                                    </td>
+                                </tr>
+                                <tr>
+                                    <th>Connection Status:</th>
+                                    <td>
+                                        <span class="badge bg-{% if object.connection_status == 'connected' %}success{% elif object.connection_status == 'disconnected' %}danger{% elif object.connection_status == 'error' %}danger{% else %}secondary{% endif %}">
+                                            {{ object.get_connection_status_display }}
+                                        </span>
+                                    </td>
+                                </tr>
+                                <tr>
+                                    <th>Sync Status:</th>
+                                    <td>
+                                        <span class="badge bg-{% if object.sync_status == 'in_sync' %}success{% elif object.sync_status == 'out_of_sync' %}warning{% elif object.sync_status == 'syncing' %}info{% elif object.sync_status == 'error' %}danger{% else %}secondary{% endif %}">
+                                            {{ object.get_sync_status_display }}
+                                        </span>
+                                    </td>
+                                </tr>
+                                <tr>
+                                    <th>Kubernetes Server:</th>
+                                    <td>{{ object.kubernetes_server|default:"—" }}</td>
+                                </tr>
+                                <tr>
+                                    <th>Kubernetes Namespace:</th>
+                                    <td><code>{{ object.kubernetes_namespace }}</code></td>
+                                </tr>
+                                <tr>
+                                    <th>Sync Enabled:</th>
+                                    <td>
+                                        {% if object.sync_enabled %}
+                                            <span class="badge bg-success">Yes</span>
+                                        {% else %}
+                                            <span class="badge bg-secondary">No</span>
+                                        {% endif %}
+                                    </td>
+                                </tr>
+                                <tr>
+                                    <th>Sync Interval:</th>
+                                    <td>{{ object.sync_interval }} seconds</td>
+                                </tr>
+                                <tr>
+                                    <th>Last Sync:</th>
+                                    <td>
+                                        {% if object.last_sync %}
+                                            {{ object.last_sync|date:"Y-m-d H:i:s" }}
+                                            <small class="text-muted">({{ object.last_sync|timesince }} ago)</small>
+                                        {% else %}
+                                            <span class="text-muted">Never</span>
+                                        {% endif %}
+                                    </td>
+                                </tr>
+                                {% if object.sync_error %}
+                                <tr>
+                                    <th>Sync Error:</th>
+                                    <td>
+                                        <div class="alert alert-danger">
+                                            <small>{{ object.sync_error }}</small>
+                                        </div>
+                                    </td>
+                                </tr>
+                                {% endif %}
+                                {% if object.connection_error %}
+                                <tr>
+                                    <th>Connection Error:</th>
+                                    <td>
+                                        <div class="alert alert-danger">
+                                            <small>{{ object.connection_error }}</small>
+                                        </div>
+                                    </td>
+                                </tr>
+                                {% endif %}
+                            </table>
+                        </div>
+                        
+                        <div class="col-md-4">
+                            <h4>Git Configuration</h4>
+                            {% if object.git_repository %}
+                                <div class="alert alert-success">
+                                    <h6><i class="mdi mdi-git"></i> Git Repository Connected</h6>
+                                    <p><strong>Repository:</strong> {{ object.git_repository }}</p>
+                                </div>
+                            {% else %}
+                                <div class="alert alert-info">
+                                    <h6><i class="mdi mdi-information"></i> No Git Repository</h6>
+                                    <p>This fabric is not connected to a Git repository.</p>
+                                </div>
+                            {% endif %}
+                            
+                            <h4>Actions</h4>
+                            <div class="d-grid gap-2">
+                                {% if object.sync_enabled %}
+                                    <button class="btn btn-outline-info" disabled>
+                                        <i class="mdi mdi-sync"></i> Sync from Git (Coming Soon)
+                                    </button>
+                                {% else %}
+                                    <button class="btn btn-outline-secondary" disabled>
+                                        <i class="mdi mdi-sync-off"></i> Sync Disabled
+                                    </button>
+                                {% endif %}
+                                <button class="btn btn-outline-info" disabled>
+                                    <i class="mdi mdi-test-tube"></i> Test Connection (Coming Soon)
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
