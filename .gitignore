@@ -71,3 +71,30 @@ debug_*.py
 fix_*.py
 hoss/
 
+# Emergency/Debug Files Created During System Recovery
+sync_api_server.py
+sync_service/
+emergency_sync_test.html
+test_*.html
+test_*.py
+test_*.js
+*_backup*.py
+*_recovery*.py
+*_minimal*.py
+*_last_working.py
+*_test.py
+PROJECT_STATUS_REPORT.md
+SYNC_BUTTON_FIX_REPORT.md
+hossfab/
+netbox_hedgehog/completely_isolated_sync.py
+netbox_hedgehog/simple_gitops_view.py
+netbox_hedgehog/static_sync.py
+netbox_hedgehog/test_fabric_view.py
+netbox_hedgehog/utils/gitops_minimal_views.py
+netbox_hedgehog/utils/test_sync_view.py
+netbox_hedgehog/static/netbox_hedgehog/js/emergency-sync-fix.js
+netbox_hedgehog/static/netbox_hedgehog/js/sync-handler.js
+netbox_hedgehog/api/sync_endpoints.py
+netbox_hedgehog/management/commands/sync_fabric.py
+netbox_hedgehog/navigation_backup.py
+netbox_hedgehog/urls_*

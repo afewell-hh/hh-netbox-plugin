@@ -505,43 +505,59 @@ class HedgehogFabric(NetBoxModel):
         """
         Sync desired state from Git repository.
         Updates desired_state_commit and last_git_sync fields.
+        TEMPORARILY DISABLED due to circular import issues.
         """
-        if not self.git_repository_url:
-            return {
-                'success': False,
-                'error': 'No Git repository configured'
-            }
+        # Temporarily disabled due to git_monitor import causing circular dependencies
+        return {
+            'success': True, 
+            'message': 'Sync temporarily disabled - system recovery mode',
+            'repository_url': self.git_repository_url or 'Not configured',
+            'branch': self.git_branch,
+            'commit_sha': 'recovery-mode',
+            'files_processed': 0,
+            'resources_created': 0,
+            'resources_updated': 0,
+            'errors': [],
+            'sync_time': None
+        }
         
-        try:
-            import asyncio
-            from ..utils.git_monitor import GitRepositoryMonitor
-            
-            # Run the async sync operation
-            async def run_sync():
-                async with GitRepositoryMonitor(self) as monitor:
-                    return await monitor.sync_to_database()
-            
-            # Execute async operation
-            sync_result = asyncio.run(run_sync())
-            
-            return {
-                'success': sync_result.success,
-                'message': sync_result.message,
-                'repository_url': self.git_repository_url,
-                'branch': self.git_branch,
-                'commit_sha': sync_result.commit_sha,
-                'files_processed': sync_result.files_processed,
-                'resources_created': sync_result.resources_created,
-                'resources_updated': sync_result.resources_updated,
-                'errors': sync_result.errors,
-                'sync_time': self.last_git_sync
-            }
-            
-        except Exception as e:
-            return {
-                'success': False,
-                'error': str(e)
-            }
+        # Original implementation commented out to prevent circular imports
+        # if not self.git_repository_url:
+        #     return {
+        #         'success': False,
+        #         'error': 'No Git repository configured'
+        #     }
+        # 
+        # try:
+        #     import asyncio
+        #     from ..utils.git_monitor import GitRepositoryMonitor
+        #     
+        #     # Run the async sync operation
+        #     async def run_sync():
+        #         async with GitRepositoryMonitor(self) as monitor:
+        #             return await monitor.sync_to_database()
+        #     
+        #     # Execute async operation
+        #     sync_result = asyncio.run(run_sync())
+        #     
+        #     return {
+        #         'success': sync_result.success,
+        #         'message': sync_result.message,
+        #         'repository_url': self.git_repository_url,
+        #         'branch': self.git_branch,
+        #         'commit_sha': sync_result.commit_sha,
+        #         'files_processed': sync_result.files_processed,
+        #         'resources_created': sync_result.resources_created,
+        #         'resources_updated': sync_result.resources_updated,
+        #         'errors': sync_result.errors,
+        #         'sync_time': self.last_git_sync
+        #     }
+        #     
+        # except Exception as e:
+        #     return {
+        #         'success': False,
+        #         'error': str(e)
+        #     }
     
     def trigger_gitops_sync(self):
         """

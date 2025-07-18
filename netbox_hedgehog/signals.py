@@ -11,8 +11,8 @@ import logging
 logger = logging.getLogger(__name__)
 
 
-@receiver(post_save)
-def on_crd_saved(sender, instance, created, **kwargs):
+# @receiver(post_save)  # Temporarily disabled to prevent circular imports
+def on_crd_saved_disabled(sender, instance, created, **kwargs):
     """
     Handle CRD creation and updates.
     Automatically sync CRD changes to GitOps tracking.
@@ -38,22 +38,22 @@ def on_crd_saved(sender, instance, created, **kwargs):
         fabric = instance.fabric
         
         # Use the lifecycle manager to handle the event
-        from .utils.gitops_integration import CRDLifecycleManager
+        # from .utils.gitops_integration import CRDLifecycleManager
         
         if created:
-            CRDLifecycleManager.on_crd_created(instance, fabric)
-            logger.info(f"GitOps: Synced new CRD {instance.get_kind()}/{instance.name}")
+            # CRDLifecycleManager.on_crd_created(instance, fabric)
+            logger.info(f"GitOps: Would sync new CRD {instance.get_kind()}/{instance.name}")
         else:
-            CRDLifecycleManager.on_crd_updated(instance, fabric)
-            logger.info(f"GitOps: Synced updated CRD {instance.get_kind()}/{instance.name}")
+            # CRDLifecycleManager.on_crd_updated(instance, fabric)
+            logger.info(f"GitOps: Would sync updated CRD {instance.get_kind()}/{instance.name}")
             
     except Exception as e:
         # Log error but don't break CRD operations
         logger.error(f"GitOps sync failed for {sender.__name__} {getattr(instance, 'name', 'unknown')}: {e}")
 
 
-@receiver(pre_delete)
-def on_crd_pre_delete(sender, instance, **kwargs):
+# @receiver(pre_delete)  # Temporarily disabled to prevent circular imports
+def on_crd_pre_delete_disabled(sender, instance, **kwargs):
     """
     Handle CRD deletion preparation.
     Store information needed for GitOps tracking update.
@@ -88,8 +88,8 @@ def on_crd_pre_delete(sender, instance, **kwargs):
         logger.error(f"Failed to prepare GitOps deletion info for {instance}: {e}")
 
 
-@receiver(post_delete)
-def on_crd_deleted(sender, instance, **kwargs):
+# @receiver(post_delete)  # Temporarily disabled to prevent circular imports
+def on_crd_deleted_disabled(sender, instance, **kwargs):
     """
     Handle CRD deletion.
     Update GitOps tracking to reflect resource removal.
@@ -102,14 +102,14 @@ def on_crd_deleted(sender, instance, **kwargs):
         deletion_info = instance._gitops_deletion_info
         
         # Use the lifecycle manager to handle the deletion
-        from .utils.gitops_integration import CRDLifecycleManager
+        # from .utils.gitops_integration import CRDLifecycleManager
         
-        CRDLifecycleManager.on_crd_deleted(
-            deletion_info['name'],
-            deletion_info['kind'], 
-            deletion_info['namespace'],
-            deletion_info['fabric']
-        )
+        # CRDLifecycleManager.on_crd_deleted(
+        #     deletion_info['name'],
+        #     deletion_info['kind'], 
+        #     deletion_info['namespace'],
+        #     deletion_info['fabric']
+        # )
         
         logger.info(f"GitOps: Handled deletion of CRD {deletion_info['kind']}/{deletion_info['name']}")
         
@@ -117,8 +117,8 @@ def on_crd_deleted(sender, instance, **kwargs):
         logger.error(f"GitOps deletion handling failed for {sender.__name__}: {e}")
 
 
-@receiver(post_save, sender='netbox_hedgehog.HedgehogFabric')
-def on_fabric_saved(sender, instance, created, **kwargs):
+# @receiver(post_save, sender='netbox_hedgehog.HedgehogFabric')  # Temporarily disabled
+def on_fabric_saved_disabled(sender, instance, created, **kwargs):
     """
     Handle HedgehogFabric changes.
     Update fabric-level GitOps status when configuration changes.
@@ -149,8 +149,8 @@ def on_fabric_saved(sender, instance, created, **kwargs):
         logger.error(f"GitOps fabric update handling failed for {instance.name}: {e}")
 
 
-@receiver(post_save, sender='netbox_hedgehog.HedgehogResource')
-def on_gitops_resource_saved(sender, instance, created, **kwargs):
+# @receiver(post_save, sender='netbox_hedgehog.HedgehogResource')  # Temporarily disabled
+def on_gitops_resource_saved_disabled(sender, instance, created, **kwargs):
     """
     Handle HedgehogResource changes.
     Update fabric-level drift statistics when resources change.
@@ -184,8 +184,8 @@ def on_gitops_resource_saved(sender, instance, created, **kwargs):
         logger.error(f"GitOps resource tracking update failed: {e}")
 
 
-@receiver(post_delete, sender='netbox_hedgehog.HedgehogResource')
-def on_gitops_resource_deleted(sender, instance, **kwargs):
+# @receiver(post_delete, sender='netbox_hedgehog.HedgehogResource')  # Temporarily disabled
+def on_gitops_resource_deleted_disabled(sender, instance, **kwargs):
     """
     Handle HedgehogResource deletion.
     Update fabric-level drift statistics.
@@ -254,7 +254,7 @@ def trigger_full_fabric_sync(fabric):
         Sync results dict
     """
     try:
-        from .utils.gitops_integration import bulk_sync_fabric_to_gitops
+        # from .utils.gitops_integration import bulk_sync_fabric_to_gitops
         
         logger.info(f"GitOps: Starting full fabric sync for {fabric.name}")
         
