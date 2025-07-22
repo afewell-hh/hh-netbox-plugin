@@ -37,10 +37,12 @@ class NetboxHedgehogConfig(AppConfig):
     def _initialize_plugin(self):
         """Initialize plugin-specific functionality"""
         try:
-            # Perform any additional plugin initialization here
+            # Import signals to connect them to Django's signal system
+            from . import signals
+            
             import logging
             logger = logging.getLogger(__name__)
-            logger.info("Hedgehog NetBox Plugin: Initialization complete")
+            logger.info("Hedgehog NetBox Plugin: Signals connected and initialization complete")
             
         except Exception as e:
             import logging

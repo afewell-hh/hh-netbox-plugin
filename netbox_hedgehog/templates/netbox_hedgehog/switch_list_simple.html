@@ -1,0 +1,76 @@
+{% extends "base/layout.html" %}
+{% load static %}
+
+{% block title %}Switches{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+    <div class="row">
+        <div class="col-12">
+            <div class="card">
+                <div class="card-header d-flex justify-content-between">
+                    <h3><i class="mdi mdi-switch"></i> Switches</h3>
+                    <a href="{% url 'plugins:netbox_hedgehog:overview' %}" class="btn btn-outline-secondary">
+                        <i class="mdi mdi-arrow-left"></i> Back to Overview
+                    </a>
+                </div>
+                <div class="card-body">
+                    {% if switches %}
+                        <div class="table-responsive">
+                            <table class="table table-striped">
+                                <thead>
+                                    <tr>
+                                        <th>Name</th>
+                                        <th>Fabric</th>
+                                        <th>Namespace</th>
+                                        <th>Status</th>
+                                        <th>Git File</th>
+                                        <th>Last Synced</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {% for switch in switches %}
+                                    <tr>
+                                        <td>
+                                            <a href="{% url 'plugins:netbox_hedgehog:switch_detail' pk=switch.pk %}">
+                                                <strong>{{ switch.name }}</strong>
+                                            </a>
+                                        </td>
+                                        <td>{{ switch.fabric.name }}</td>
+                                        <td><code>{{ switch.namespace }}</code></td>
+                                        <td>
+                                            <span class="badge bg-secondary">{{ switch.kubernetes_status }}</span>
+                                        </td>
+                                        <td>
+                                            {% if switch.git_file_path %}
+                                                <small><code>{{ switch.git_file_path }}</code></small>
+                                            {% else %}
+                                                <small class="text-muted">Not from Git</small>
+                                            {% endif %}
+                                        </td>
+                                        <td>
+                                            {% if switch.last_synced %}
+                                                {{ switch.last_synced|date:"Y-m-d H:i" }}
+                                            {% else %}
+                                                <small class="text-muted">Never</small>
+                                            {% endif %}
+                                        </td>
+                                    </tr>
+                                    {% endfor %}
+                                </tbody>
+                            </table>
+                        </div>
+                        
+                        <p><strong>Total:</strong> {{ switches|length }} Switch{{ switches|length|pluralize }}</p>
+                    {% else %}
+                        <div class="alert alert-info">
+                            <h5><i class="mdi mdi-information"></i> No Switches Found</h5>
+                            <p>No switches found. Try running "Sync from Git" on a fabric to import switches from the Git repository.</p>
+                        </div>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

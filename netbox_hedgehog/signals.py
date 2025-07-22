@@ -11,8 +11,8 @@ import logging
 logger = logging.getLogger(__name__)
 
 
-# @receiver(post_save)  # Temporarily disabled to prevent circular imports
-def on_crd_saved_disabled(sender, instance, created, **kwargs):
+@receiver(post_save)  # Re-enabled with safe import patterns
+def on_crd_saved(sender, instance, created, **kwargs):
     """
     Handle CRD creation and updates.
     Automatically sync CRD changes to GitOps tracking.
@@ -37,23 +37,36 @@ def on_crd_saved_disabled(sender, instance, created, **kwargs):
         # Get the fabric from the instance
         fabric = instance.fabric
         
-        # Use the lifecycle manager to handle the event
-        # from .utils.gitops_integration import CRDLifecycleManager
+        # Use the state service to handle the event
+        from .services.state_service import state_service
         
         if created:
-            # CRDLifecycleManager.on_crd_created(instance, fabric)
-            logger.info(f"GitOps: Would sync new CRD {instance.get_kind()}/{instance.name}")
+            # New CRD starts in DRAFT state
+            state_service.transition_resource_state(
+                instance, 
+                'draft', 
+                'CRD created via NetBox UI'
+            )
+            logger.info(f"GitOps: New CRD {instance.get_kind()}/{instance.name} → DRAFT state")
         else:
-            # CRDLifecycleManager.on_crd_updated(instance, fabric)
-            logger.info(f"GitOps: Would sync updated CRD {instance.get_kind()}/{instance.name}")
+            # Updated CRD - check current state and potentially mark as needing sync
+            current_state = state_service.get_resource_state(instance)
+            if current_state in ['synced', 'committed']:
+                # Mark as needing attention since it was modified
+                state_service.transition_resource_state(
+                    instance,
+                    'draft',
+                    'CRD modified in NetBox UI'
+                )
+                logger.info(f"GitOps: Updated CRD {instance.get_kind()}/{instance.name} → DRAFT state")
             
     except Exception as e:
         # Log error but don't break CRD operations
         logger.error(f"GitOps sync failed for {sender.__name__} {getattr(instance, 'name', 'unknown')}: {e}")
 
 
-# @receiver(pre_delete)  # Temporarily disabled to prevent circular imports
-def on_crd_pre_delete_disabled(sender, instance, **kwargs):
+@receiver(pre_delete)  # Re-enabled with safe import patterns
+def on_crd_pre_delete(sender, instance, **kwargs):
     """
     Handle CRD deletion preparation.
     Store information needed for GitOps tracking update.
@@ -88,8 +101,8 @@ def on_crd_pre_delete_disabled(sender, instance, **kwargs):
         logger.error(f"Failed to prepare GitOps deletion info for {instance}: {e}")
 
 
-# @receiver(post_delete)  # Temporarily disabled to prevent circular imports
-def on_crd_deleted_disabled(sender, instance, **kwargs):
+@receiver(post_delete)  # Re-enabled with safe import patterns
+def on_crd_deleted(sender, instance, **kwargs):
     """
     Handle CRD deletion.
     Update GitOps tracking to reflect resource removal.
@@ -117,8 +130,8 @@ def on_crd_deleted_disabled(sender, instance, **kwargs):
         logger.error(f"GitOps deletion handling failed for {sender.__name__}: {e}")
 
 
-# @receiver(post_save, sender='netbox_hedgehog.HedgehogFabric')  # Temporarily disabled
-def on_fabric_saved_disabled(sender, instance, created, **kwargs):
+@receiver(post_save, sender='netbox_hedgehog.HedgehogFabric')  # Re-enabled with safe patterns
+def on_fabric_saved(sender, instance, created, **kwargs):
     """
     Handle HedgehogFabric changes.
     Update fabric-level GitOps status when configuration changes.
@@ -149,8 +162,8 @@ def on_fabric_saved_disabled(sender, instance, created, **kwargs):
         logger.error(f"GitOps fabric update handling failed for {instance.name}: {e}")
 
 
-# @receiver(post_save, sender='netbox_hedgehog.HedgehogResource')  # Temporarily disabled
-def on_gitops_resource_saved_disabled(sender, instance, created, **kwargs):
+@receiver(post_save, sender='netbox_hedgehog.HedgehogResource')  # Re-enabled with safe patterns
+def on_gitops_resource_saved(sender, instance, created, **kwargs):
     """
     Handle HedgehogResource changes.
     Update fabric-level drift statistics when resources change.
@@ -184,8 +197,8 @@ def on_gitops_resource_saved_disabled(sender, instance, created, **kwargs):
         logger.error(f"GitOps resource tracking update failed: {e}")
 
 
-# @receiver(post_delete, sender='netbox_hedgehog.HedgehogResource')  # Temporarily disabled
-def on_gitops_resource_deleted_disabled(sender, instance, **kwargs):
+@receiver(post_delete, sender='netbox_hedgehog.HedgehogResource')  # Re-enabled with safe patterns
+def on_gitops_resource_deleted(sender, instance, **kwargs):
     """
     Handle HedgehogResource deletion.
     Update fabric-level drift statistics.

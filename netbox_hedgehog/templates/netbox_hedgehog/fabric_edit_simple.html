@@ -1,0 +1,129 @@
+{% extends "base/layout.html" %}
+{% load static %}
+
+{% block title %}Edit {{ object.name }} - Fabric{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+    <div class="row">
+        <div class="col-12">
+            <div class="card">
+                <div class="card-header d-flex justify-content-between">
+                    <h3><i class="mdi mdi-pencil"></i> Edit {{ object.name }} - Fabric</h3>
+                    <div>
+                        <a href="{% url 'plugins:netbox_hedgehog:fabric_detail' pk=object.pk %}" class="btn btn-outline-secondary">
+                            <i class="mdi mdi-arrow-left"></i> Back to Details
+                        </a>
+                    </div>
+                </div>
+                <div class="card-body">
+                    <form method="post">
+                        {% csrf_token %}
+                        
+                        <div class="row">
+                            <div class="col-md-6">
+                                <h4>Basic Information</h4>
+                                
+                                <div class="mb-3">
+                                    <label for="{{ form.name.id_for_label }}" class="form-label">Name</label>
+                                    {{ form.name }}
+                                    {% if form.name.help_text %}
+                                        <small class="form-text text-muted">{{ form.name.help_text }}</small>
+                                    {% endif %}
+                                    {% if form.name.errors %}
+                                        <div class="text-danger">{{ form.name.errors.0 }}</div>
+                                    {% endif %}
+                                </div>
+                                
+                                <div class="mb-3">
+                                    <label for="{{ form.description.id_for_label }}" class="form-label">Description</label>
+                                    {{ form.description }}
+                                    {% if form.description.help_text %}
+                                        <small class="form-text text-muted">{{ form.description.help_text }}</small>
+                                    {% endif %}
+                                    {% if form.description.errors %}
+                                        <div class="text-danger">{{ form.description.errors.0 }}</div>
+                                    {% endif %}
+                                </div>
+                                
+                                <div class="mb-3">
+                                    <label for="{{ form.status.id_for_label }}" class="form-label">Status</label>
+                                    {{ form.status }}
+                                    {% if form.status.help_text %}
+                                        <small class="form-text text-muted">{{ form.status.help_text }}</small>
+                                    {% endif %}
+                                    {% if form.status.errors %}
+                                        <div class="text-danger">{{ form.status.errors.0 }}</div>
+                                    {% endif %}
+                                </div>
+                            </div>
+                            
+                            <div class="col-md-6">
+                                <h4>Git Configuration</h4>
+                                
+                                <div class="mb-3">
+                                    <label for="{{ form.git_repository.id_for_label }}" class="form-label">Git Repository</label>
+                                    {{ form.git_repository }}
+                                    {% if form.git_repository.help_text %}
+                                        <small class="form-text text-muted">{{ form.git_repository.help_text }}</small>
+                                    {% endif %}
+                                    {% if form.git_repository.errors %}
+                                        <div class="text-danger">{{ form.git_repository.errors.0 }}</div>
+                                    {% endif %}
+                                </div>
+                                
+                                <div class="mb-3">
+                                    <label for="{{ form.gitops_directory.id_for_label }}" class="form-label">GitOps Directory</label>
+                                    {{ form.gitops_directory }}
+                                    {% if form.gitops_directory.help_text %}
+                                        <small class="form-text text-muted">{{ form.gitops_directory.help_text }}</small>
+                                    {% endif %}
+                                    {% if form.gitops_directory.errors %}
+                                        <div class="text-danger">{{ form.gitops_directory.errors.0 }}</div>
+                                    {% endif %}
+                                </div>
+                                
+                                <h4>Kubernetes Configuration</h4>
+                                
+                                <div class="mb-3">
+                                    <label for="{{ form.kubernetes_server.id_for_label }}" class="form-label">Kubernetes Server</label>
+                                    {{ form.kubernetes_server }}
+                                    {% if form.kubernetes_server.help_text %}
+                                        <small class="form-text text-muted">{{ form.kubernetes_server.help_text }}</small>
+                                    {% endif %}
+                                    {% if form.kubernetes_server.errors %}
+                                        <div class="text-danger">{{ form.kubernetes_server.errors.0 }}</div>
+                                    {% endif %}
+                                </div>
+                                
+                                <div class="mb-3">
+                                    <label for="{{ form.kubernetes_namespace.id_for_label }}" class="form-label">Kubernetes Namespace</label>
+                                    {{ form.kubernetes_namespace }}
+                                    {% if form.kubernetes_namespace.help_text %}
+                                        <small class="form-text text-muted">{{ form.kubernetes_namespace.help_text }}</small>
+                                    {% endif %}
+                                    {% if form.kubernetes_namespace.errors %}
+                                        <div class="text-danger">{{ form.kubernetes_namespace.errors.0 }}</div>
+                                    {% endif %}
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div class="row">
+                            <div class="col-12">
+                                <hr>
+                                <button type="submit" class="btn btn-primary">
+                                    <i class="mdi mdi-check"></i> Save Changes
+                                </button>
+                                <a href="{% url 'plugins:netbox_hedgehog:fabric_detail' pk=object.pk %}" class="btn btn-secondary">
+                                    <i class="mdi mdi-cancel"></i> Cancel
+                                </a>
+                            </div>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

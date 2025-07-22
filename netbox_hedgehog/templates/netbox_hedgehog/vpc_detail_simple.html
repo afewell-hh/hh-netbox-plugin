@@ -1,0 +1,115 @@
+{% extends "base/layout.html" %}
+{% load static %}
+
+{% block title %}{{ object.name }} - VPC Details{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+    <div class="row">
+        <div class="col-12">
+            <div class="card">
+                <div class="card-header d-flex justify-content-between">
+                    <h3><i class="mdi mdi-cloud-outline"></i> {{ object.name }} - VPC Details</h3>
+                    <div>
+                        <a href="{% url 'plugins:netbox_hedgehog:vpc_list' %}" class="btn btn-outline-secondary">
+                            <i class="mdi mdi-arrow-left"></i> Back to VPCs
+                        </a>
+                    </div>
+                </div>
+                <div class="card-body">
+                    <div class="row">
+                        <div class="col-md-6">
+                            <h4>Basic Information</h4>
+                            <table class="table table-borderless">
+                                <tr>
+                                    <th width="200">Name:</th>
+                                    <td><strong>{{ object.name }}</strong></td>
+                                </tr>
+                                <tr>
+                                    <th>Fabric:</th>
+                                    <td>
+                                        <a href="{% url 'plugins:netbox_hedgehog:fabric_detail' pk=object.fabric.pk %}">
+                                            {{ object.fabric.name }}
+                                        </a>
+                                    </td>
+                                </tr>
+                                <tr>
+                                    <th>Namespace:</th>
+                                    <td><code>{{ object.namespace }}</code></td>
+                                </tr>
+                                <tr>
+                                    <th>Kubernetes Status:</th>
+                                    <td>
+                                        <span class="badge bg-secondary">{{ object.kubernetes_status }}</span>
+                                    </td>
+                                </tr>
+                                {% if object.kubernetes_uid %}
+                                <tr>
+                                    <th>Kubernetes UID:</th>
+                                    <td><code>{{ object.kubernetes_uid }}</code></td>
+                                </tr>
+                                {% endif %}
+                            </table>
+                        </div>
+                        
+                        <div class="col-md-6">
+                            <h4>Git Synchronization</h4>
+                            <table class="table table-borderless">
+                                {% if object.git_file_path %}
+                                <tr>
+                                    <th width="200">Git File:</th>
+                                    <td><code>{{ object.git_file_path }}</code></td>
+                                </tr>
+                                {% endif %}
+                                <tr>
+                                    <th>Last Synced:</th>
+                                    <td>
+                                        {% if object.last_synced %}
+                                            {{ object.last_synced|date:"Y-m-d H:i:s" }}
+                                        {% else %}
+                                            <span class="text-muted">Never</span>
+                                        {% endif %}
+                                    </td>
+                                </tr>
+                                {% if object.last_applied %}
+                                <tr>
+                                    <th>Last Applied:</th>
+                                    <td>{{ object.last_applied|date:"Y-m-d H:i:s" }}</td>
+                                </tr>
+                                {% endif %}
+                            </table>
+                            
+                            {% if object.labels %}
+                            <h5>Labels</h5>
+                            <div class="mb-3">
+                                {% for key, value in object.labels.items %}
+                                    <span class="badge bg-light text-dark">{{ key }}: {{ value }}</span>
+                                {% endfor %}
+                            </div>
+                            {% endif %}
+                            
+                            {% if object.annotations %}
+                            <h5>Annotations</h5>
+                            <div class="mb-3">
+                                {% for key, value in object.annotations.items %}
+                                    <small><code>{{ key }}: {{ value }}</code><br></small>
+                                {% endfor %}
+                            </div>
+                            {% endif %}
+                        </div>
+                    </div>
+                    
+                    {% if object.spec %}
+                    <div class="row mt-4">
+                        <div class="col-12">
+                            <h4>Specification</h4>
+                            <pre class="bg-light p-3 rounded"><code>{{ object.spec|pprint }}</code></pre>
+                        </div>
+                    </div>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

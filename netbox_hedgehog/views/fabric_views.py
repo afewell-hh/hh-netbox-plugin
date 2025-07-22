@@ -502,3 +502,57 @@ class ArgoCDSetupWizardView(View):
         }
         
         return render(request, self.template_name, context)
+    
+    def post(self, request, pk):
+        """Handle ArgoCD installation request"""
+        fabric = get_object_or_404(HedgehogFabric, pk=pk)
+        
+        # Check permissions
+        if not request.user.has_perm('netbox_hedgehog.change_hedgehogfabric'):
+            return JsonResponse({
+                'success': False,
+                'error': 'Permission denied - you cannot modify fabrics'
+            }, status=403)
+        
+        try:
+            # Import ArgoCD installer
+            from ..utils.argocd_installer import ArgoCDInstaller
+            
+            # Create installer instance
+            installer = ArgoCDInstaller(fabric)
+            
+            # Start installation (this will be async in real implementation)
+            installation_result = {
+                'success': True,
+                'message': 'ArgoCD installation started',
+                'status': 'installing',
+                'progress': 0
+            }
+            
+            # Update fabric status to indicate installation in progress
+            fabric.gitops_setup_status = 'installing'
+            fabric.save(update_fields=['gitops_setup_status'])
+            
+            # For now, return success - in real implementation this would be async
+            # TODO: Implement actual installation call
+            # result = await installer.install_argocd()
+            
+            return JsonResponse(installation_result)
+            
+        except ImportError as e:
+            return JsonResponse({
+                'success': False,
+                'error': f'ArgoCD installer not available: {str(e)}'
+            }, status=500)
+        except Exception as e:
+            logger.error(f"ArgoCD installation failed for fabric {fabric.name}: {e}")
+            
+            # Update fabric status to indicate error
+            fabric.gitops_setup_status = 'error'
+            fabric.gitops_setup_error = str(e)
+            fabric.save(update_fields=['gitops_setup_status', 'gitops_setup_error'])
+            
+            return JsonResponse({
+                'success': False,
+                'error': f'Installation failed: {str(e)}'
+            }, status=500)

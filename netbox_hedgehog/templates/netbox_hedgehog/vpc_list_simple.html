@@ -1,0 +1,76 @@
+{% extends "base/layout.html" %}
+{% load static %}
+
+{% block title %}VPCs{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+    <div class="row">
+        <div class="col-12">
+            <div class="card">
+                <div class="card-header d-flex justify-content-between">
+                    <h3><i class="mdi mdi-cloud-outline"></i> VPCs</h3>
+                    <a href="{% url 'plugins:netbox_hedgehog:overview' %}" class="btn btn-outline-secondary">
+                        <i class="mdi mdi-arrow-left"></i> Back to Overview
+                    </a>
+                </div>
+                <div class="card-body">
+                    {% if vpcs %}
+                        <div class="table-responsive">
+                            <table class="table table-striped">
+                                <thead>
+                                    <tr>
+                                        <th>Name</th>
+                                        <th>Fabric</th>
+                                        <th>Namespace</th>
+                                        <th>Status</th>
+                                        <th>Git File</th>
+                                        <th>Last Synced</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {% for vpc in vpcs %}
+                                    <tr>
+                                        <td>
+                                            <a href="{% url 'plugins:netbox_hedgehog:vpc_detail' pk=vpc.pk %}">
+                                                <strong>{{ vpc.name }}</strong>
+                                            </a>
+                                        </td>
+                                        <td>{{ vpc.fabric.name }}</td>
+                                        <td><code>{{ vpc.namespace }}</code></td>
+                                        <td>
+                                            <span class="badge bg-secondary">{{ vpc.kubernetes_status }}</span>
+                                        </td>
+                                        <td>
+                                            {% if vpc.git_file_path %}
+                                                <small><code>{{ vpc.git_file_path }}</code></small>
+                                            {% else %}
+                                                <small class="text-muted">Not from Git</small>
+                                            {% endif %}
+                                        </td>
+                                        <td>
+                                            {% if vpc.last_synced %}
+                                                {{ vpc.last_synced|date:"Y-m-d H:i" }}
+                                            {% else %}
+                                                <small class="text-muted">Never</small>
+                                            {% endif %}
+                                        </td>
+                                    </tr>
+                                    {% endfor %}
+                                </tbody>
+                            </table>
+                        </div>
+                        
+                        <p><strong>Total:</strong> {{ vpcs|length }} VPC{{ vpcs|length|pluralize }}</p>
+                    {% else %}
+                        <div class="alert alert-info">
+                            <h5><i class="mdi mdi-information"></i> No VPCs Found</h5>
+                            <p>No Virtual Private Clouds found. Try running "Sync from Git" on a fabric to import VPCs from the Git repository.</p>
+                        </div>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

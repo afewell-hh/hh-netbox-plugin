@@ -35,6 +35,13 @@ class BaseCRD(NetBoxModel):
         help_text="CRD specification as JSON"
     )
     
+    # Store raw spec for preserving YAML structure  
+    raw_spec = models.JSONField(
+        default=dict,
+        blank=True,
+        help_text="Raw spec from YAML file (preserves structure)"
+    )
+    
     # Labels and annotations
     labels = models.JSONField(
         default=dict,
@@ -84,6 +91,13 @@ class BaseCRD(NetBoxModel):
     sync_error = models.TextField(
         blank=True,
         help_text="Last sync error message (if any)"
+    )
+    
+    # Git sync tracking
+    git_file_path = models.CharField(
+        max_length=500,
+        blank=True,
+        help_text="Path to this resource in Git repository"
     )
     
     # Management fields

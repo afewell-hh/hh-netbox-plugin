@@ -1,0 +1,76 @@
+{% extends "base/layout.html" %}
+{% load static %}
+
+{% block title %}Connections{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+    <div class="row">
+        <div class="col-12">
+            <div class="card">
+                <div class="card-header d-flex justify-content-between">
+                    <h3><i class="mdi mdi-cable-data"></i> Connections</h3>
+                    <a href="{% url 'plugins:netbox_hedgehog:overview' %}" class="btn btn-outline-secondary">
+                        <i class="mdi mdi-arrow-left"></i> Back to Overview
+                    </a>
+                </div>
+                <div class="card-body">
+                    {% if connections %}
+                        <div class="table-responsive">
+                            <table class="table table-striped">
+                                <thead>
+                                    <tr>
+                                        <th>Name</th>
+                                        <th>Fabric</th>
+                                        <th>Namespace</th>
+                                        <th>Status</th>
+                                        <th>Git File</th>
+                                        <th>Last Synced</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {% for connection in connections %}
+                                    <tr>
+                                        <td>
+                                            <a href="{% url 'plugins:netbox_hedgehog:connection_detail' pk=connection.pk %}">
+                                                <strong>{{ connection.name }}</strong>
+                                            </a>
+                                        </td>
+                                        <td>{{ connection.fabric.name }}</td>
+                                        <td><code>{{ connection.namespace }}</code></td>
+                                        <td>
+                                            <span class="badge bg-secondary">{{ connection.kubernetes_status }}</span>
+                                        </td>
+                                        <td>
+                                            {% if connection.git_file_path %}
+                                                <small><code>{{ connection.git_file_path }}</code></small>
+                                            {% else %}
+                                                <small class="text-muted">Not from Git</small>
+                                            {% endif %}
+                                        </td>
+                                        <td>
+                                            {% if connection.last_synced %}
+                                                {{ connection.last_synced|date:"Y-m-d H:i" }}
+                                            {% else %}
+                                                <small class="text-muted">Never</small>
+                                            {% endif %}
+                                        </td>
+                                    </tr>
+                                    {% endfor %}
+                                </tbody>
+                            </table>
+                        </div>
+                        
+                        <p><strong>Total:</strong> {{ connections|length }} Connection{{ connections|length|pluralize }}</p>
+                    {% else %}
+                        <div class="alert alert-info">
+                            <h5><i class="mdi mdi-information"></i> No Connections Found</h5>
+                            <p>No connections found. Try running "Sync from Git" on a fabric to import connections from the Git repository.</p>
+                        </div>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

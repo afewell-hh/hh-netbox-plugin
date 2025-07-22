@@ -950,7 +950,7 @@ function refreshGitOpsStatus() {
     statusDisplay.innerHTML = '<i class="mdi mdi-loading mdi-spin"></i> Refreshing GitOps status...';
     
     // Fetch GitOps status from backend
-    fetch(`http://vlab-art-2.l.hhdev.io:8004/plugins/hedgehog/api/fabrics/${fabricId}/gitops/sync/`, {
+    fetch(`${window.location.origin}/plugins/hedgehog/api/fabrics/${fabricId}/gitops/sync/`, {
         method: 'POST',
         headers: {
             'X-CSRFToken': getCookie('csrftoken'),
@@ -990,33 +990,22 @@ function triggerGitSync() {
         return;
     }
     
-    // Always use direct fetch for now to debug the issue
-    console.log('🔧 Using direct fetch to debug the issue');
+    // Use environment-based endpoint discovery
+    console.log('🔧 Using environment-based endpoint discovery');
     showNotification('Syncing from Git repository...', 'info');
     
     const timestamp = Date.now();
-    // Try multiple endpoint URLs to find the working one
-    const endpoints = [
-        `http://vlab-art-2.l.hhdev.io:8004/plugins/hedgehog/api/fabrics/${fabricId}/gitops/sync/?_debug=${timestamp}`,
-        `http://192.168.88.232:8004/plugins/hedgehog/api/fabrics/${fabricId}/gitops/sync/?_debug=${timestamp}`,
-        `http://localhost:8004/plugins/hedgehog/api/fabrics/${fabricId}/gitops/sync/?_debug=${timestamp}`
-    ];
+    // Use current origin for reliable endpoint discovery
+    const baseUrl = window.location.origin;
+    const syncUrl = `${baseUrl}/plugins/hedgehog/api/fabrics/${fabricId}/gitops/sync/?_cb=${timestamp}`;
     
-    const url = endpoints[0]; // Start with the first one
+    console.log('🔧 Making request to:', syncUrl);
     
-    console.log('🔧 Making request to:', url);
-    
-    // Try endpoints in sequence until one works
-    async function trySync(endpointIndex = 0) {
-        if (endpointIndex >= endpoints.length) {
-            throw new Error('All sync endpoints failed');
-        }
-        
-        const currentUrl = endpoints[endpointIndex];
-        console.log(`🔧 Trying endpoint ${endpointIndex + 1}/${endpoints.length}:`, currentUrl);
+    // Single endpoint with proper error handling
+    async function performSync() {
         
         try {
-            const response = await fetch(currentUrl, {
+            const response = await fetch(syncUrl, {
                 method: 'POST',
                 headers: {
                     'X-CSRFToken': getCookie('csrftoken'),
@@ -1033,13 +1022,16 @@ function triggerGitSync() {
             console.log('🔧 Response status:', response.status);
             console.log('🔧 Response headers:', Object.fromEntries(response.headers.entries()));
             
+            if (!response.ok) {
+                throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+            }
+            
             const text = await response.text();
             console.log('🔧 Response text (first 200 chars):', text.substring(0, 200));
             
-            // Check if it's HTML (indicates wrong endpoint)
+            // Check if it's HTML (indicates wrong endpoint or error page)
             if (text.includes('<!DOCTYPE') || text.includes('<html')) {
-                console.warn(`🔧 Endpoint ${endpointIndex + 1} returned HTML, trying next...`);
-                return await trySync(endpointIndex + 1);
+                throw new Error('Server returned HTML instead of JSON - possible routing issue');
             }
             
             // Try to parse as JSON
@@ -1048,28 +1040,21 @@ function triggerGitSync() {
                 data = JSON.parse(text);
                 console.log('🔧 Parsed JSON:', data);
             } catch (parseError) {
-                console.warn(`🔧 Endpoint ${endpointIndex + 1} JSON parse failed, trying next...`);
-                return await trySync(endpointIndex + 1);
-            }
-            
-            // Check if successful
-            if (!response.ok) {
-                console.warn(`🔧 Endpoint ${endpointIndex + 1} returned HTTP ${response.status}, trying next...`);
-                return await trySync(endpointIndex + 1);
+                throw new Error(`JSON parse failed: ${parseError.message}`);
             }
             
             // Success!
-            console.log(`🔧 SUCCESS with endpoint ${endpointIndex + 1}!`);
+            console.log('🔧 SUCCESS with Git sync!');
             return data;
             
         } catch (error) {
-            console.warn(`🔧 Endpoint ${endpointIndex + 1} failed:`, error.message);
-            return await trySync(endpointIndex + 1);
+            console.error('🔧 Git sync failed:', error.message);
+            throw error;
         }
     }
     
     // Execute the sync
-    trySync()
+    performSync()
     .then(data => {
         if (data.success) {
             showNotification('Git sync completed successfully!', 'success');
@@ -1079,7 +1064,7 @@ function triggerGitSync() {
         }
     })
     .catch(error => {
-        console.error('🔧 All sync endpoints failed:', error);
+        console.error('🔧 Git sync failed:', error);
         showNotification('Git sync failed: ' + error.message, 'error');
     });
 }

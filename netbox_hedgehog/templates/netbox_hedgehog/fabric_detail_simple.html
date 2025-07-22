@@ -1,6 +1,8 @@
 {% extends "base/layout.html" %}
 {% load static %}
 
+{% csrf_token %}
+
 {% block title %}{{ object.name }} - Fabric Details{% endblock %}
 
 {% block content %}
@@ -20,10 +22,6 @@
                     </div>
                 </div>
                 <div class="card-body">
-                    <div class="alert alert-success">
-                        <h5><i class="mdi mdi-check-circle"></i> SUCCESS!</h5>
-                        <p>The fabric detail view is now working correctly.</p>
-                    </div>
                     
                     <div class="row">
                         <div class="col-md-8">
@@ -40,7 +38,7 @@
                                 <tr>
                                     <th>Configuration Status:</th>
                                     <td>
-                                        <span class="badge bg-{% if object.status == 'active' %}success{% elif object.status == 'maintenance' %}warning{% elif object.status == 'planned' %}info{% else %}secondary{% endif %}">
+                                        <span class="badge {% if object.status == 'active' %}bg-success text-white{% elif object.status == 'maintenance' %}bg-warning text-dark{% elif object.status == 'planned' %}bg-info text-white{% else %}bg-secondary text-white{% endif %}">
                                             {{ object.get_status_display }}
                                         </span>
                                     </td>
@@ -48,7 +46,7 @@
                                 <tr>
                                     <th>Connection Status:</th>
                                     <td>
-                                        <span class="badge bg-{% if object.connection_status == 'connected' %}success{% elif object.connection_status == 'disconnected' %}danger{% elif object.connection_status == 'error' %}danger{% else %}secondary{% endif %}">
+                                        <span class="badge {% if object.connection_status == 'connected' %}bg-success text-white{% elif object.connection_status == 'disconnected' %}bg-danger text-white{% elif object.connection_status == 'error' %}bg-danger text-white{% else %}bg-secondary text-white{% endif %}">
                                             {{ object.get_connection_status_display }}
                                         </span>
                                     </td>
@@ -56,7 +54,7 @@
                                 <tr>
                                     <th>Sync Status:</th>
                                     <td>
-                                        <span class="badge bg-{% if object.sync_status == 'in_sync' %}success{% elif object.sync_status == 'out_of_sync' %}warning{% elif object.sync_status == 'syncing' %}info{% elif object.sync_status == 'error' %}danger{% else %}secondary{% endif %}">
+                                        <span class="badge {% if object.sync_status == 'in_sync' %}bg-success text-white{% elif object.sync_status == 'out_of_sync' %}bg-warning text-dark{% elif object.sync_status == 'syncing' %}bg-info text-white{% elif object.sync_status == 'error' %}bg-danger text-white{% else %}bg-secondary text-white{% endif %}">
                                             {{ object.get_sync_status_display }}
                                         </span>
                                     </td>
@@ -123,29 +121,161 @@
                                 <div class="alert alert-success">
                                     <h6><i class="mdi mdi-git"></i> Git Repository Connected</h6>
                                     <p><strong>Repository:</strong> {{ object.git_repository }}</p>
+                                    <p><strong>GitOps Directory:</strong> <code>{{ object.gitops_directory|default:"/" }}</code></p>
+                                    {% if object.git_repository.url %}
+                                        <p><strong>URL:</strong> {{ object.git_repository.url }}</p>
+                                        <p><strong>Branch:</strong> {{ object.git_repository.default_branch|default:"main" }}</p>
+                                    {% endif %}
+                                </div>
+                            {% elif object.git_repository_url %}
+                                <div class="alert alert-warning">
+                                    <h6><i class="mdi mdi-git"></i> Legacy Git Configuration</h6>
+                                    <p><strong>Repository URL:</strong> {{ object.git_repository_url }}</p>
+                                    <p><strong>GitOps Directory:</strong> <code>{{ object.gitops_directory|default:"/" }}</code></p>
+                                    <p><strong>Branch:</strong> {{ object.git_branch|default:"main" }}</p>
+                                    <small class="text-muted">Consider migrating to the new Git Repository architecture.</small>
                                 </div>
                             {% else %}
                                 <div class="alert alert-info">
                                     <h6><i class="mdi mdi-information"></i> No Git Repository</h6>
                                     <p>This fabric is not connected to a Git repository.</p>
+                                    <p><strong>GitOps Directory:</strong> <code>{{ object.gitops_directory|default:"/" }}</code></p>
                                 </div>
                             {% endif %}
                             
                             <h4>Actions</h4>
                             <div class="d-grid gap-2">
                                 {% if object.sync_enabled %}
-                                    <button class="btn btn-outline-info" disabled>
-                                        <i class="mdi mdi-sync"></i> Sync from Git (Coming Soon)
+                                    <button id="sync-button" class="btn btn-outline-info" onclick="triggerSync({{ object.pk }})">
+                                        <i class="mdi mdi-sync"></i> Sync from Git
                                     </button>
                                 {% else %}
                                     <button class="btn btn-outline-secondary" disabled>
                                         <i class="mdi mdi-sync-off"></i> Sync Disabled
                                     </button>
                                 {% endif %}
-                                <button class="btn btn-outline-info" disabled>
-                                    <i class="mdi mdi-test-tube"></i> Test Connection (Coming Soon)
+                                <button id="test-connection-button" class="btn btn-outline-info" onclick="testConnection({{ object.pk }})">
+                                    <i class="mdi mdi-test-tube"></i> Test Connection
                                 </button>
                             </div>
+                            
+                            <script>
+                            // Helper function to get cookie by name
+                            function getCookie(name) {
+                                let cookieValue = null;
+                                if (document.cookie && document.cookie !== '') {
+                                    const cookies = document.cookie.split(';');
+                                    for (let i = 0; i < cookies.length; i++) {
+                                        const cookie = cookies[i].trim();
+                                        if (cookie.substring(0, name.length + 1) === (name + '=')) {
+                                            cookieValue = decodeURIComponent(cookie.substring(name.length + 1));
+                                            break;
+                                        }
+                                    }
+                                }
+                                return cookieValue;
+                            }
+                            
+                            function triggerSync(fabricId) {
+                                const button = document.getElementById('sync-button');
+                                button.disabled = true;
+                                button.innerHTML = '<i class="mdi mdi-sync mdi-spin"></i> Syncing...';
+                                
+                                const baseUrl = window.location.origin;
+                                const syncUrl = `${baseUrl}/api/plugins/hedgehog/gitops-fabrics/${fabricId}/gitops_sync/`;
+                                
+                                // Get CSRF token
+                                const csrftoken = document.querySelector('[name=csrfmiddlewaretoken]')?.value || 
+                                                document.querySelector('meta[name=csrf-token]')?.getAttribute('content') || 
+                                                getCookie('csrftoken');
+                                
+                                fetch(syncUrl, {
+                                    method: 'POST',
+                                    headers: {
+                                        'X-CSRFToken': csrftoken,
+                                        'Content-Type': 'application/json'
+                                    }
+                                })
+                                .then(response => {
+                                    if (!response.ok) {
+                                        return response.json().then(data => {
+                                            throw new Error(data.error || data.detail || `HTTP ${response.status}: ${response.statusText}`);
+                                        });
+                                    }
+                                    return response.json();
+                                })
+                                .then(data => {
+                                    if (data.success) {
+                                        showAlert('success', data.message || 'Sync completed successfully');
+                                        setTimeout(() => location.reload(), 1500);
+                                    } else {
+                                        showAlert('danger', data.error || data.message || 'Sync failed');
+                                    }
+                                })
+                                .catch(error => {
+                                    console.error('Sync error:', error);
+                                    showAlert('danger', 'Sync failed: ' + error.message);
+                                })
+                                .finally(() => {
+                                    button.disabled = false;
+                                    button.innerHTML = '<i class="mdi mdi-sync"></i> Sync from Git';
+                                });
+                            }
+                            
+                            function testConnection(fabricId) {
+                                const button = document.getElementById('test-connection-button');
+                                button.disabled = true;
+                                button.innerHTML = '<i class="mdi mdi-test-tube mdi-spin"></i> Testing...';
+                                
+                                const baseUrl = window.location.origin;
+                                const testUrl = `${baseUrl}/api/plugins/hedgehog/fabrics/${fabricId}/validate_git_configuration/`;
+                                
+                                // Get CSRF token
+                                const csrftoken = document.querySelector('[name=csrfmiddlewaretoken]')?.value || 
+                                                document.querySelector('meta[name=csrf-token]')?.getAttribute('content') || 
+                                                getCookie('csrftoken');
+                                
+                                fetch(testUrl, {
+                                    method: 'POST',
+                                    headers: {
+                                        'X-CSRFToken': csrftoken,
+                                        'Content-Type': 'application/json'
+                                    }
+                                })
+                                .then(response => response.json())
+                                .then(data => {
+                                    if (data.success) {
+                                        showAlert('success', data.message || 'Connection test passed');
+                                        setTimeout(() => location.reload(), 1500);
+                                    } else {
+                                        showAlert('danger', data.error || 'Connection test failed');
+                                    }
+                                })
+                                .catch(error => {
+                                    showAlert('danger', 'Connection test failed: ' + error.message);
+                                })
+                                .finally(() => {
+                                    button.disabled = false;
+                                    button.innerHTML = '<i class="mdi mdi-test-tube"></i> Test Connection';
+                                });
+                            }
+                            
+                            function showAlert(type, message) {
+                                const alertDiv = document.createElement('div');
+                                alertDiv.className = `alert alert-${type} alert-dismissible fade show`;
+                                alertDiv.innerHTML = `
+                                    ${message}
+                                    <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+                                `;
+                                
+                                const container = document.querySelector('.card-body');
+                                container.insertBefore(alertDiv, container.firstChild);
+                                
+                                setTimeout(() => {
+                                    alertDiv.remove();
+                                }, 5000);
+                            }
+                            </script>
                         </div>
                     </div>
                 </div>

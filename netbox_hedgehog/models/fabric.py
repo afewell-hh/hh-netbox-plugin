@@ -1,8 +1,11 @@
+import logging
 from django.db import models
 from django.urls import reverse
 from netbox.models import NetBoxModel
 
 from ..choices import FabricStatusChoices, ConnectionStatusChoices, SyncStatusChoices
+
+logger = logging.getLogger(__name__)
 
 class HedgehogFabric(NetBoxModel):
     """
@@ -561,31 +564,24 @@ class HedgehogFabric(NetBoxModel):
     
     def trigger_gitops_sync(self):
         """
-        Trigger GitOps tool synchronization (ArgoCD/Flux).
-        Returns sync operation status.
+        Sync CRs from Git repository directory into HNP database.
+        This does NOT trigger external GitOps tools - it syncs Git -> HNP.
         """
-        if self.gitops_tool == 'none' or self.gitops_tool == 'manual':
-            return {
-                'success': False,
-                'message': f'GitOps tool is set to {self.gitops_tool} - manual sync required'
-            }
-        
-        if not self.gitops_app_name:
-            return {
-                'success': False,
-                'error': 'GitOps application name not configured'
-            }
+        from ..utils.git_directory_sync import sync_fabric_from_git
         
         try:
-            # TODO: Implement actual GitOps tool sync triggering
-            return {
-                'success': True,
-                'message': f'{self.gitops_tool} sync placeholder - implementation pending',
-                'tool': self.gitops_tool,
-                'app_name': self.gitops_app_name,
-                'namespace': self.gitops_namespace
-            }
+            # Perform Git directory sync
+            result = sync_fabric_from_git(self)
+            
+            if result['success']:
+                logger.info(f"Git sync completed for fabric {self.name}: {result['message']}")
+            else:
+                logger.error(f"Git sync failed for fabric {self.name}: {result.get('error', 'Unknown error')}")
+                
+            return result
+            
         except Exception as e:
+            logger.error(f"Git sync failed: {e}")
             return {
                 'success': False,
                 'error': str(e)
