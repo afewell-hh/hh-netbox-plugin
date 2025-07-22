@@ -1,0 +1,1 @@
+# WebSocket consumers for real-time updates
