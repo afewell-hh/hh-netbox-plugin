@@ -1,0 +1,335 @@
+{% load static %}
+
+<!-- GitOps Edit Button Component -->
+{% if object and object.fabric %}
+<div class="gitops-edit-section">
+    <div class="row mb-3">
+        <div class="col-12">
+            <div class="card border-primary">
+                <div class="card-header bg-primary text-white">
+                    <h6 class="card-title mb-0">
+                        <i class="mdi mdi-git"></i>
+                        GitOps Management
+                    </h6>
+                </div>
+                <div class="card-body">
+                    <div class="row">
+                        <div class="col-md-8">
+                            <div class="gitops-status">
+                                <h6>Current Status</h6>
+                                <ul class="list-unstyled">
+                                    <li>
+                                        <strong>Fabric:</strong> 
+                                        <a href="{% url 'plugins:netbox_hedgehog:fabric_detail' pk=object.fabric.pk %}">
+                                            {{ object.fabric.name }}
+                                        </a>
+                                    </li>
+                                    <li>
+                                        <strong>Git File:</strong> 
+                                        {% if object.git_file_path %}
+                                            <code>{{ object.git_file_path }}</code>
+                                            <span class="badge bg-success">In Git</span>
+                                        {% else %}
+                                            <span class="text-muted">Not in Git repository</span>
+                                            <span class="badge bg-warning">Not Synced</span>
+                                        {% endif %}
+                                    </li>
+                                    <li>
+                                        <strong>Kubernetes Status:</strong> 
+                                        <span class="badge {% if object.kubernetes_status == 'live' %}bg-success{% elif object.kubernetes_status == 'error' %}bg-danger{% else %}bg-secondary{% endif %}">
+                                            {{ object.kubernetes_status|default:"unknown" }}
+                                        </span>
+                                    </li>
+                                    <li>
+                                        <strong>Last Synced:</strong> 
+                                        {% if object.last_synced %}
+                                            {{ object.last_synced|date:"Y-m-d H:i" }}
+                                            <small class="text-muted">({{ object.last_synced|timesince }} ago)</small>
+                                        {% else %}
+                                            <span class="text-muted">Never</span>
+                                        {% endif %}
+                                    </li>
+                                </ul>
+                            </div>
+                        </div>
+                        <div class="col-md-4">
+                            <div class="d-grid gap-2">
+                                <!-- GitOps Edit Button -->
+                                {% if cr_type and object.pk %}
+                                <a href="{% url gitops_edit_url_name pk=object.pk %}" class="btn btn-primary">
+                                    <i class="mdi mdi-pencil-box"></i>
+                                    Edit with GitOps
+                                </a>
+                                {% endif %}
+                                
+                                <!-- YAML Preview Button -->
+                                <button type="button" class="btn btn-outline-info" onclick="previewYAML('{{ cr_type }}', {{ object.pk }})">
+                                    <i class="mdi mdi-file-code-outline"></i>
+                                    Preview YAML
+                                </button>
+                                
+                                <!-- Workflow Status Button -->
+                                <button type="button" class="btn btn-outline-secondary" onclick="checkWorkflowStatus('{{ cr_type }}', {{ object.pk }})">
+                                    <i class="mdi mdi-information-outline"></i>
+                                    GitOps Status
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- YAML Preview Modal -->
+<div class="modal fade" id="yamlPreviewModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-xl">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">
+                    <i class="mdi mdi-file-code-outline"></i>
+                    YAML Preview - {{ object.name }}
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <div id="yamlPreviewContent">
+                    <div class="d-flex justify-content-center">
+                        <div class="spinner-border" role="status">
+                            <span class="visually-hidden">Loading...</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- GitOps Status Modal -->
+<div class="modal fade" id="gitopsStatusModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">
+                    <i class="mdi mdi-information-outline"></i>
+                    GitOps Workflow Status - {{ object.name }}
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <div id="gitopsStatusContent">
+                    <div class="d-flex justify-content-center">
+                        <div class="spinner-border" role="status">
+                            <span class="visually-hidden">Loading...</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+// YAML Preview Function
+function previewYAML(crType, objectId) {
+    const modal = new bootstrap.Modal(document.getElementById('yamlPreviewModal'));
+    const content = document.getElementById('yamlPreviewContent');
+    
+    // Show loading spinner
+    content.innerHTML = `
+        <div class="d-flex justify-content-center">
+            <div class="spinner-border" role="status">
+                <span class="visually-hidden">Generating YAML preview...</span>
+            </div>
+        </div>
+    `;
+    
+    modal.show();
+    
+    // Generate YAML preview via API
+    fetch(`/plugins/hedgehog/api/gitops/yaml-preview/`, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/x-www-form-urlencoded',
+            'X-CSRFToken': getCookie('csrftoken')
+        },
+        body: `model_name=${crType}&object_id=${objectId}`
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success && data.preview) {
+            const preview = data.preview;
+            content.innerHTML = `
+                <div class="yaml-preview">
+                    <h6>Current YAML:</h6>
+                    <pre><code class="language-yaml">${escapeHtml(preview.current_yaml)}</code></pre>
+                    
+                    ${preview.changes_detected ? `
+                        <hr>
+                        <div class="alert alert-info">
+                            <i class="mdi mdi-information"></i>
+                            This is the current YAML representation. Use the "Edit with GitOps" button to make changes.
+                        </div>
+                    ` : ''}
+                </div>
+            `;
+        } else {
+            content.innerHTML = `
+                <div class="alert alert-danger">
+                    <i class="mdi mdi-alert"></i>
+                    Failed to generate YAML preview: ${data.error || 'Unknown error'}
+                </div>
+            `;
+        }
+    })
+    .catch(error => {
+        content.innerHTML = `
+            <div class="alert alert-danger">
+                <i class="mdi mdi-alert"></i>
+                Error generating YAML preview: ${error.message}
+            </div>
+        `;
+    });
+}
+
+// GitOps Status Check Function
+function checkWorkflowStatus(crType, objectId) {
+    const modal = new bootstrap.Modal(document.getElementById('gitopsStatusModal'));
+    const content = document.getElementById('gitopsStatusContent');
+    
+    // Show loading spinner
+    content.innerHTML = `
+        <div class="d-flex justify-content-center">
+            <div class="spinner-border" role="status">
+                <span class="visually-hidden">Checking GitOps status...</span>
+            </div>
+        </div>
+    `;
+    
+    modal.show();
+    
+    // Get GitOps status via API
+    fetch(`/plugins/hedgehog/api/gitops/workflow-status/${crType}/${objectId}/`)
+    .then(response => response.json())
+    .then(data => {
+        if (data.success && data.gitops_status) {
+            const status = data.gitops_status;
+            content.innerHTML = `
+                <div class="gitops-status-details">
+                    <table class="table table-borderless">
+                        <tr>
+                            <th width="200">Resource Name:</th>
+                            <td><strong>${status.cr_name}</strong></td>
+                        </tr>
+                        <tr>
+                            <th>Resource Type:</th>
+                            <td>${status.cr_type}</td>
+                        </tr>
+                        <tr>
+                            <th>Fabric:</th>
+                            <td>${status.fabric_name}</td>
+                        </tr>
+                        <tr>
+                            <th>Git Integration:</th>
+                            <td>
+                                ${status.has_git_file ? 
+                                    `<span class="badge bg-success">Active</span><br><small><code>${status.git_file_path}</code></small>` : 
+                                    `<span class="badge bg-warning">Not in Git</span>`
+                                }
+                            </td>
+                        </tr>
+                        <tr>
+                            <th>Kubernetes Status:</th>
+                            <td>
+                                <span class="badge ${status.kubernetes_status === 'live' ? 'bg-success' : 'bg-secondary'}">
+                                    ${status.kubernetes_status || 'unknown'}
+                                </span>
+                            </td>
+                        </tr>
+                        <tr>
+                            <th>Sync Status:</th>
+                            <td>
+                                <span class="badge ${getSyncStatusClass(status.sync_status)}">
+                                    ${getSyncStatusText(status.sync_status)}
+                                </span>
+                            </td>
+                        </tr>
+                        <tr>
+                            <th>Last Synced:</th>
+                            <td>${status.last_synced ? new Date(status.last_synced).toLocaleString() : 'Never'}</td>
+                        </tr>
+                        ${status.last_gui_edit ? `
+                        <tr>
+                            <th>Last GUI Edit:</th>
+                            <td>${new Date(status.last_gui_edit).toLocaleString()}</td>
+                        </tr>
+                        ` : ''}
+                    </table>
+                </div>
+            `;
+        } else {
+            content.innerHTML = `
+                <div class="alert alert-danger">
+                    <i class="mdi mdi-alert"></i>
+                    Failed to get GitOps status: ${data.error || 'Unknown error'}
+                </div>
+            `;
+        }
+    })
+    .catch(error => {
+        content.innerHTML = `
+            <div class="alert alert-danger">
+                <i class="mdi mdi-alert"></i>
+                Error checking GitOps status: ${error.message}
+            </div>
+        `;
+    });
+}
+
+// Helper functions
+function getCookie(name) {
+    let cookieValue = null;
+    if (document.cookie && document.cookie !== '') {
+        const cookies = document.cookie.split(';');
+        for (let i = 0; i < cookies.length; i++) {
+            const cookie = cookies[i].trim();
+            if (cookie.substring(0, name.length + 1) === (name + '=')) {
+                cookieValue = decodeURIComponent(cookie.substring(name.length + 1));
+                break;
+            }
+        }
+    }
+    return cookieValue;
+}
+
+function escapeHtml(text) {
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
+}
+
+function getSyncStatusClass(status) {
+    switch(status) {
+        case 'in_sync': return 'bg-success';
+        case 'pending_deployment': return 'bg-warning';
+        case 'missing_from_git': return 'bg-danger';
+        default: return 'bg-secondary';
+    }
+}
+
+function getSyncStatusText(status) {
+    switch(status) {
+        case 'in_sync': return 'In Sync';
+        case 'pending_deployment': return 'Pending Deployment';
+        case 'missing_from_git': return 'Missing from Git';
+        default: return 'Not Synced';
+    }
+}
+</script>

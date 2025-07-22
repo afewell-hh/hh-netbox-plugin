@@ -1,0 +1,112 @@
+<!-- Enhanced Fabric Filter with Cookie Persistence -->
+<div class="row mb-3">
+    <div class="col-12">
+        <div class="card border-info">
+            <div class="card-header bg-info text-white">
+                <h6 class="mb-0">
+                    <i class="mdi mdi-filter"></i>
+                    GitOps Fabric Filter
+                </h6>
+            </div>
+            <div class="card-body">
+                <form method="get" class="d-flex gap-2 align-items-center" id="fabric-filter-form">
+                    <label for="fabric-select" class="form-label mb-0">Select Fabric:</label>
+                    <select name="fabric" id="fabric-select" class="form-select" style="width: auto;">
+                        <option value="">All Fabrics</option>
+                        {% for fabric in all_fabrics %}
+                            <option value="{{ fabric.id }}" 
+                                {% if fabric.id|stringformat:"s" == fabric_filter_id %}selected{% endif %}>
+                                {{ fabric.name }}
+                                {% if fabric.description %}
+                                    - {{ fabric.description|truncatechars:30 }}
+                                {% endif %}
+                            </option>
+                        {% endfor %}
+                    </select>
+                    {% if selected_fabric %}
+                        <a href="?" class="btn btn-outline-secondary btn-sm" id="clear-filter">
+                            <i class="mdi mdi-close"></i> Clear Filter
+                        </a>
+                    {% endif %}
+                    {% if selected_fabric %}
+                        <span class="badge bg-info ms-2">
+                            Filtering by: {{ selected_fabric.name }}
+                        </span>
+                    {% endif %}
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const fabricSelect = document.getElementById('fabric-select');
+    const clearFilterBtn = document.getElementById('clear-filter');
+    
+    // Load saved fabric filter from cookie on page load
+    function loadSavedFilter() {
+        const savedFabric = getCookie('hedgehog_fabric_filter');
+        if (savedFabric && !getUrlParam('fabric')) {
+            // If no URL param but cookie exists, redirect with filter
+            const currentUrl = new URL(window.location);
+            currentUrl.searchParams.set('fabric', savedFabric);
+            window.location.href = currentUrl.toString();
+        }
+    }
+    
+    // Save fabric filter to cookie when changed
+    fabricSelect.addEventListener('change', function() {
+        const selectedFabric = this.value;
+        if (selectedFabric) {
+            setCookie('hedgehog_fabric_filter', selectedFabric, 7); // 7 days
+        } else {
+            deleteCookie('hedgehog_fabric_filter');
+        }
+        // Submit form to apply filter
+        document.getElementById('fabric-filter-form').submit();
+    });
+    
+    // Clear filter and cookie
+    if (clearFilterBtn) {
+        clearFilterBtn.addEventListener('click', function(e) {
+            e.preventDefault();
+            deleteCookie('hedgehog_fabric_filter');
+            // Remove fabric param from URL
+            const url = new URL(window.location);
+            url.searchParams.delete('fabric');
+            window.location.href = url.toString();
+        });
+    }
+    
+    // Cookie utility functions
+    function setCookie(name, value, days) {
+        const expires = new Date();
+        expires.setTime(expires.getTime() + (days * 24 * 60 * 60 * 1000));
+        document.cookie = name + '=' + value + ';expires=' + expires.toUTCString() + ';path=/plugins/hedgehog/';
+    }
+    
+    function getCookie(name) {
+        const nameEQ = name + '=';
+        const ca = document.cookie.split(';');
+        for (let i = 0; i < ca.length; i++) {
+            let c = ca[i];
+            while (c.charAt(0) === ' ') c = c.substring(1, c.length);
+            if (c.indexOf(nameEQ) === 0) return c.substring(nameEQ.length, c.length);
+        }
+        return null;
+    }
+    
+    function deleteCookie(name) {
+        document.cookie = name + '=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/plugins/hedgehog/;';
+    }
+    
+    function getUrlParam(param) {
+        const urlParams = new URLSearchParams(window.location.search);
+        return urlParams.get(param);
+    }
+    
+    // Load saved filter on page load (only if no current filter in URL)
+    loadSavedFilter();
+});
+</script>

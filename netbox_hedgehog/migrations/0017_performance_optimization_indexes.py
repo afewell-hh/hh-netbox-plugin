@@ -14,18 +14,18 @@ class Migration(migrations.Migration):
             sql=[
                 # Fabric status and connection queries
                 "CREATE INDEX IF NOT EXISTS idx_fabric_status_connection ON netbox_hedgehog_hedgehogfabric(status, connection_status);",
-                "CREATE INDEX IF NOT EXISTS idx_fabric_sync_status ON netbox_hedgehog_hedgehogfabric(sync_status, last_sync_time);",
+                "CREATE INDEX IF NOT EXISTS idx_fabric_sync_status ON netbox_hedgehog_hedgehogfabric(sync_status, last_sync);",
                 "CREATE INDEX IF NOT EXISTS idx_fabric_active ON netbox_hedgehog_hedgehogfabric(status) WHERE status = 'active';",
                 
-                # Real-time monitoring indexes
-                "CREATE INDEX IF NOT EXISTS idx_fabric_realtime_enabled ON netbox_hedgehog_hedgehogfabric(realtime_monitoring_enabled, watch_enabled);",
-                "CREATE INDEX IF NOT EXISTS idx_fabric_watch_status ON netbox_hedgehog_hedgehogfabric(watch_status, last_watch_event);",
+                # Real-time monitoring indexes (only using existing fields)
+                "CREATE INDEX IF NOT EXISTS idx_fabric_watch_enabled ON netbox_hedgehog_hedgehogfabric(watch_enabled);",
+                "CREATE INDEX IF NOT EXISTS idx_fabric_watch_status ON netbox_hedgehog_hedgehogfabric(watch_status);",
             ],
             reverse_sql=[
                 "DROP INDEX IF EXISTS idx_fabric_status_connection;",
                 "DROP INDEX IF EXISTS idx_fabric_sync_status;", 
                 "DROP INDEX IF EXISTS idx_fabric_active;",
-                "DROP INDEX IF EXISTS idx_fabric_realtime_enabled;",
+                "DROP INDEX IF EXISTS idx_fabric_watch_enabled;",
                 "DROP INDEX IF EXISTS idx_fabric_watch_status;",
             ]
         ),

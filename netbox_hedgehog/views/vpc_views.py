@@ -20,9 +20,10 @@ from utilities.permissions import get_permission_for_model
 
 # Plugin imports
 from ..models.fabric import HedgehogFabric
-from ..models.vpc import VPC, IPv4Namespace, VLANNamespace, VPCAttachment, VPCPeering
+from ..models.vpc_api import VPC, IPv4Namespace, VPCAttachment, VPCPeering
+from ..models.wiring_api import VLANNamespace
 from ..utils.kubernetes import KubernetesClient
-from ..utils.crd_schemas import VPCCRDSchema
+from ..utils.crd_schemas import CRDSchemaManager
 from ..choices import KubernetesStatusChoices
 
 

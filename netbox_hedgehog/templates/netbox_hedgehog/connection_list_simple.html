@@ -5,11 +5,20 @@
 
 {% block content %}
 <div class="container-fluid">
+    <!-- Fabric Filter Component -->
+    {% include "netbox_hedgehog/components/fabric_filter_enhanced.html" %}
+    
     <div class="row">
         <div class="col-12">
             <div class="card">
                 <div class="card-header d-flex justify-content-between">
-                    <h3><i class="mdi mdi-cable-data"></i> Connections</h3>
+                    <h3>
+                        <i class="mdi mdi-cable-data"></i> 
+                        Connections
+                        {% if selected_fabric %}
+                            <small class="text-muted">- {{ selected_fabric.name }}</small>
+                        {% endif %}
+                    </h3>
                     <a href="{% url 'plugins:netbox_hedgehog:overview' %}" class="btn btn-outline-secondary">
                         <i class="mdi mdi-arrow-left"></i> Back to Overview
                     </a>

@@ -2,6 +2,7 @@ from django.urls import path, include
 from netbox.api.routers import NetBoxRouter
 
 from . import views
+from .sync_endpoints import HCKCSyncView, StateComparisonView
 # from .git_health_views import (
 #     GitHealthSummaryView, GitRepositoryHealthDetailView, 
 #     GitRepositoryHealthHistoryView, GitConnectionMetricsView, force_health_check
@@ -53,6 +54,10 @@ urlpatterns = router.urls + [
     path('gitops/argocd/setup/', views.ArgoCDSetupAPIView.as_view(), name='argocd-setup'),
     path('gitops/argocd/progress/<str:installation_id>/', views.ArgoCDProgressAPIView.as_view(), name='argocd-progress'),
     path('gitops/test-connection/', views.GitOpsTestConnectionAPIView.as_view(), name='gitops-test-connection'),
+    
+    # HCKC State Sync endpoints (GitOps Workflow)
+    path('gitops-fabrics/<int:fabric_id>/hckc_sync/', HCKCSyncView.as_view(), name='hckc-sync'),
+    path('gitops-fabrics/<int:fabric_id>/state-comparison/', StateComparisonView.as_view(), name='state-comparison'),
     
     # Git Repository Health Monitoring endpoints (Week 2 Integration) - Temporarily disabled
     # path('git-repositories/health-summary/', GitHealthSummaryView.as_view(), name='git-health-summary'),

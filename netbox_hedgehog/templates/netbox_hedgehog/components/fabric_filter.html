@@ -1,0 +1,74 @@
+{% if show_fabric_filter %}
+<div class="row mb-3">
+    <div class="col-md-6">
+        <div class="card">
+            <div class="card-body">
+                <h6 class="card-title">
+                    <i class="mdi mdi-filter"></i>
+                    Filter by Fabric
+                </h6>
+                <form method="get" class="form-inline">
+                    <div class="input-group">
+                        <select name="fabric" class="form-select" onchange="this.form.submit()">
+                            <option value="">All Fabrics</option>
+                            {% for fabric in all_fabrics %}
+                                <option value="{{ fabric.id }}" 
+                                    {% if fabric.id|stringformat:"s" == fabric_filter_id %}selected{% endif %}>
+                                    {{ fabric.name }}
+                                    {% if fabric.description %}
+                                        - {{ fabric.description|truncatechars:50 }}
+                                    {% endif %}
+                                </option>
+                            {% endfor %}
+                        </select>
+                        {% if selected_fabric %}
+                            <a href="?" class="btn btn-outline-secondary">
+                                <i class="mdi mdi-close"></i>
+                                Clear Filter
+                            </a>
+                        {% endif %}
+                    </div>
+                    
+                    {% if selected_fabric %}
+                        <div class="mt-2">
+                            <small class="text-muted">
+                                <i class="mdi mdi-information"></i>
+                                Showing CRs from fabric: 
+                                <strong>{{ selected_fabric.name }}</strong>
+                                {% if selected_fabric.description %}
+                                    ({{ selected_fabric.description }})
+                                {% endif %}
+                            </small>
+                        </div>
+                    {% endif %}
+                </form>
+            </div>
+        </div>
+    </div>
+    
+    {% if selected_fabric %}
+    <div class="col-md-6">
+        <div class="card">
+            <div class="card-body">
+                <h6 class="card-title">
+                    <i class="mdi mdi-view-dashboard"></i>
+                    Fabric Overview
+                </h6>
+                <div class="d-grid gap-2">
+                    <a href="/plugins/hedgehog/fabrics/{{ selected_fabric.id }}/" 
+                       class="btn btn-primary btn-sm">
+                        <i class="mdi mdi-eye"></i>
+                        View Fabric Details
+                    </a>
+                    <a href="/plugins/hedgehog/fabrics/{{ selected_fabric.id }}/crds/" 
+                       class="btn btn-outline-primary btn-sm">
+                        <i class="mdi mdi-format-list-bulleted-type"></i>
+                        View All CRDs for this Fabric
+                    </a>
+                </div>
+            </div>
+        </div>
+    </div>
+    {% endif %}
+</div>
+{% endif %}

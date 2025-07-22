@@ -17,6 +17,9 @@
                     </div>
                 </div>
                 <div class="card-body">
+                    <!-- GitOps Edit Button Component -->
+                    {% include "netbox_hedgehog/components/gitops_edit_button.html" with cr_type="Connection" gitops_edit_url_name="plugins:netbox_hedgehog:gitops_connection_edit" %}
+                    
                     <div class="row">
                         <div class="col-md-6">
                             <h4>Basic Information</h4>

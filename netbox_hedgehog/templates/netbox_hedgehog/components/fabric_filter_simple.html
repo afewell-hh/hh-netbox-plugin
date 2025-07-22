@@ -1,0 +1,43 @@
+<!-- Simple Fabric Filter - Debugging Version -->
+<div class="row mb-3">
+    <div class="col-12">
+        <div class="card border-primary">
+            <div class="card-header bg-primary text-white">
+                <h6 class="mb-0">
+                    <i class="mdi mdi-filter"></i>
+                    🧪 GitOps Fabric Filter (Debug Version)
+                </h6>
+            </div>
+            <div class="card-body">
+                <p><strong>Filter Status:</strong> Filter component loaded successfully! 🎉</p>
+                <form method="get" class="d-flex gap-2 align-items-center">
+                    <label for="fabric-select">Select Fabric:</label>
+                    <select name="fabric" id="fabric-select" class="form-select" style="width: auto;" onchange="this.form.submit()">
+                        <option value="">All Fabrics</option>
+                        {% for fabric in all_fabrics %}
+                            <option value="{{ fabric.id }}" 
+                                {% if fabric.id|stringformat:"s" == fabric_filter_id %}selected{% endif %}>
+                                {{ fabric.name }}
+                                {% if fabric.description %}
+                                    - {{ fabric.description|truncatechars:30 }}
+                                {% endif %}
+                            </option>
+                        {% endfor %}
+                    </select>
+                    {% if selected_fabric %}
+                        <a href="?" class="btn btn-outline-secondary btn-sm">
+                            <i class="mdi mdi-close"></i> Clear Filter
+                        </a>
+                    {% endif %}
+                </form>
+                
+                <!-- Debug Info -->
+                <small class="text-muted mt-2 d-block">
+                    <strong>Debug:</strong> 
+                    Current URL: {{ request.get_full_path }} | 
+                    Request method: {{ request.method }}
+                </small>
+            </div>
+        </div>
+    </div>
+</div>

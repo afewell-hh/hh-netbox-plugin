@@ -6,6 +6,12 @@ from netbox.views.generic import ObjectView
 from .models import HedgehogFabric
 from .models.vpc_api import VPC, External, ExternalAttachment, ExternalPeering, IPv4Namespace, VPCAttachment, VPCPeering
 from .models.wiring_api import Connection, Switch, Server, VLANNamespace, SwitchGroup
+from .mixins import FabricFilterMixin
+from .views.crd_views import FabricCRDListView
+from .views import gitops_edit_views
+
+# Import detail views (need to avoid naming conflicts with list views)
+from .views.vpc_views import VPCDetailView as VPCDetailViewImported
 
 app_name = 'netbox_hedgehog'
 
@@ -49,75 +55,75 @@ class FabricEditView(UpdateView):
 class TopologyView(TemplateView):
     template_name = 'netbox_hedgehog/topology.html'
 
-# Simple CR List Views
-class VPCListView(ListView):
+# Simple CR List Views with Fabric Filtering
+class VPCListView(FabricFilterMixin, ListView):
     model = VPC
     template_name = 'netbox_hedgehog/vpc_list_simple.html'
     context_object_name = 'vpcs'
     paginate_by = 25
 
-class ConnectionListView(ListView):
+class ConnectionListView(FabricFilterMixin, ListView):
     model = Connection
     template_name = 'netbox_hedgehog/connection_list_simple.html'
     context_object_name = 'connections'
     paginate_by = 25
 
-class SwitchListView(ListView):
+class SwitchListView(FabricFilterMixin, ListView):
     model = Switch
     template_name = 'netbox_hedgehog/switch_list_simple.html'
     context_object_name = 'switches'
     paginate_by = 25
 
-class ServerListView(ListView):
+class ServerListView(FabricFilterMixin, ListView):
     model = Server
     template_name = 'netbox_hedgehog/server_list.html'
     context_object_name = 'servers'
     paginate_by = 25
 
-class VLANNamespaceListView(ListView):
+class VLANNamespaceListView(FabricFilterMixin, ListView):
     model = VLANNamespace
     template_name = 'netbox_hedgehog/vlannamespace_list.html'
     context_object_name = 'vlannamespaces'
     paginate_by = 25
 
-class SwitchGroupListView(ListView):
+class SwitchGroupListView(FabricFilterMixin, ListView):
     model = SwitchGroup
     template_name = 'netbox_hedgehog/switchgroup_list.html'
     context_object_name = 'switchgroups'
     paginate_by = 25
 
-# VPC API ListView classes
-class ExternalListView(ListView):
+# VPC API ListView classes with Fabric Filtering
+class ExternalListView(FabricFilterMixin, ListView):
     model = External
     template_name = 'netbox_hedgehog/external_list.html'
     context_object_name = 'externals'
     paginate_by = 25
 
-class ExternalAttachmentListView(ListView):
+class ExternalAttachmentListView(FabricFilterMixin, ListView):
     model = ExternalAttachment
     template_name = 'netbox_hedgehog/externalattachment_list.html'
     context_object_name = 'externalattachments'
     paginate_by = 25
 
-class ExternalPeeringListView(ListView):
+class ExternalPeeringListView(FabricFilterMixin, ListView):
     model = ExternalPeering
     template_name = 'netbox_hedgehog/externalpeering_list.html'
     context_object_name = 'externalpeerings'
     paginate_by = 25
 
-class IPv4NamespaceListView(ListView):
+class IPv4NamespaceListView(FabricFilterMixin, ListView):
     model = IPv4Namespace
     template_name = 'netbox_hedgehog/ipv4namespace_list.html'
     context_object_name = 'ipv4namespaces'
     paginate_by = 25
 
-class VPCAttachmentListView(ListView):
+class VPCAttachmentListView(FabricFilterMixin, ListView):
     model = VPCAttachment
     template_name = 'netbox_hedgehog/vpcattachment_list.html'
     context_object_name = 'vpcattachments'
     paginate_by = 25
 
-class VPCPeeringListView(ListView):
+class VPCPeeringListView(FabricFilterMixin, ListView):
     model = VPCPeering
     template_name = 'netbox_hedgehog/vpcpeering_list.html'
     context_object_name = 'vpcpeerings'
@@ -203,10 +209,11 @@ urlpatterns = [
     path('fabrics/', FabricListView.as_view(), name='fabric_list'),
     path('fabrics/<int:pk>/', FabricDetailView.as_view(), name='fabric_detail'),
     path('fabrics/<int:pk>/edit/', FabricEditView.as_view(), name='fabric_edit'),
+    path('fabrics/<int:pk>/crds/', FabricCRDListView.as_view(), name='fabric_crds'),
     
     # CR List pages
     path('vpcs/', VPCListView.as_view(), name='vpc_list'),
-    path('vpcs/<int:pk>/', VPCDetailView.as_view(), name='vpc_detail'),
+    path('vpcs/<int:pk>/', VPCDetailViewImported.as_view(), name='vpc_detail'),
     path('connections/', ConnectionListView.as_view(), name='connection_list'),
     path('connections/<int:pk>/', ConnectionDetailView.as_view(), name='connection_detail'),
     path('switches/', SwitchListView.as_view(), name='switch_list'),
@@ -231,6 +238,25 @@ urlpatterns = [
     path('vpc-attachments/<int:pk>/', VPCAttachmentDetailView.as_view(), name='vpcattachment_detail'),
     path('vpc-peerings/', VPCPeeringListView.as_view(), name='vpcpeering_list'),
     path('vpc-peerings/<int:pk>/', VPCPeeringDetailView.as_view(), name='vpcpeering_detail'),
+    
+    # GitOps Edit URLs
+    path('gitops/vpcs/<int:pk>/edit/', gitops_edit_views.GitOpsVPCEditView.as_view(), name='gitops_vpc_edit'),
+    path('gitops/externals/<int:pk>/edit/', gitops_edit_views.GitOpsExternalEditView.as_view(), name='gitops_external_edit'),
+    path('gitops/external-attachments/<int:pk>/edit/', gitops_edit_views.GitOpsExternalAttachmentEditView.as_view(), name='gitops_externalattachment_edit'),
+    path('gitops/external-peerings/<int:pk>/edit/', gitops_edit_views.GitOpsExternalPeeringEditView.as_view(), name='gitops_externalpeering_edit'),
+    path('gitops/ipv4namespaces/<int:pk>/edit/', gitops_edit_views.GitOpsIPv4NamespaceEditView.as_view(), name='gitops_ipv4namespace_edit'),
+    path('gitops/vpc-attachments/<int:pk>/edit/', gitops_edit_views.GitOpsVPCAttachmentEditView.as_view(), name='gitops_vpcattachment_edit'),
+    path('gitops/vpc-peerings/<int:pk>/edit/', gitops_edit_views.GitOpsVPCPeeringEditView.as_view(), name='gitops_vpcpeering_edit'),
+    path('gitops/connections/<int:pk>/edit/', gitops_edit_views.GitOpsConnectionEditView.as_view(), name='gitops_connection_edit'),
+    path('gitops/servers/<int:pk>/edit/', gitops_edit_views.GitOpsServerEditView.as_view(), name='gitops_server_edit'),
+    path('gitops/switches/<int:pk>/edit/', gitops_edit_views.GitOpsSwitchEditView.as_view(), name='gitops_switch_edit'),
+    path('gitops/switch-groups/<int:pk>/edit/', gitops_edit_views.GitOpsSwitchGroupEditView.as_view(), name='gitops_switchgroup_edit'),
+    path('gitops/vlan-namespaces/<int:pk>/edit/', gitops_edit_views.GitOpsVLANNamespaceEditView.as_view(), name='gitops_vlannamespace_edit'),
+    
+    # GitOps API endpoints
+    path('api/gitops/yaml-preview/', gitops_edit_views.YAMLPreviewView.as_view(), name='gitops_yaml_preview'),
+    path('api/gitops/yaml-validation/', gitops_edit_views.YAMLValidationView.as_view(), name='gitops_yaml_validation'),
+    path('api/gitops/workflow-status/<str:model_name>/<int:object_id>/', gitops_edit_views.GitOpsWorkflowStatusView.as_view(), name='gitops_workflow_status'),
 ]
 
 # Add remaining placeholder pages for navigation

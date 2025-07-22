@@ -154,9 +154,30 @@
                                         <i class="mdi mdi-sync-off"></i> Sync Disabled
                                     </button>
                                 {% endif %}
+                                <button id="sync-hckc-button" class="btn btn-outline-primary" onclick="syncFromHCKC({{ object.pk }})">
+                                    <i class="mdi mdi-kubernetes"></i> Sync from HCKC
+                                </button>
                                 <button id="test-connection-button" class="btn btn-outline-info" onclick="testConnection({{ object.pk }})">
                                     <i class="mdi mdi-test-tube"></i> Test Connection
                                 </button>
+                            </div>
+                            
+                            <h4 class="mt-4">Custom Resources</h4>
+                            <div class="d-grid gap-2">
+                                <a href="{% url 'plugins:netbox_hedgehog:fabric_crds' pk=object.pk %}" class="btn btn-primary">
+                                    <i class="mdi mdi-format-list-bulleted-type"></i> View All CRDs
+                                </a>
+                                <div class="btn-group" role="group">
+                                    <a href="{% url 'plugins:netbox_hedgehog:vpc_list' %}?fabric={{ object.pk }}" class="btn btn-outline-secondary btn-sm">
+                                        <i class="mdi mdi-cloud-outline"></i> VPCs
+                                    </a>
+                                    <a href="{% url 'plugins:netbox_hedgehog:connection_list' %}?fabric={{ object.pk }}" class="btn btn-outline-secondary btn-sm">
+                                        <i class="mdi mdi-cable-data"></i> Connections
+                                    </a>
+                                    <a href="{% url 'plugins:netbox_hedgehog:switch_list' %}?fabric={{ object.pk }}" class="btn btn-outline-secondary btn-sm">
+                                        <i class="mdi mdi-switch"></i> Switches
+                                    </a>
+                                </div>
                             </div>
                             
                             <script>
@@ -219,6 +240,52 @@
                                 .finally(() => {
                                     button.disabled = false;
                                     button.innerHTML = '<i class="mdi mdi-sync"></i> Sync from Git';
+                                });
+                            }
+                            
+                            function syncFromHCKC(fabricId) {
+                                const button = document.getElementById('sync-hckc-button');
+                                button.disabled = true;
+                                button.innerHTML = '<i class="mdi mdi-kubernetes mdi-spin"></i> Syncing...';
+                                
+                                const baseUrl = window.location.origin;
+                                const syncUrl = `${baseUrl}/api/plugins/hedgehog/gitops-fabrics/${fabricId}/hckc_sync/`;
+                                
+                                // Get CSRF token
+                                const csrftoken = document.querySelector('[name=csrfmiddlewaretoken]')?.value || 
+                                                document.querySelector('meta[name=csrf-token]')?.getAttribute('content') || 
+                                                getCookie('csrftoken');
+                                
+                                fetch(syncUrl, {
+                                    method: 'POST',
+                                    headers: {
+                                        'X-CSRFToken': csrftoken,
+                                        'Content-Type': 'application/json'
+                                    }
+                                })
+                                .then(response => {
+                                    if (!response.ok) {
+                                        return response.json().then(data => {
+                                            throw new Error(data.error || data.detail || `HTTP ${response.status}: ${response.statusText}`);
+                                        });
+                                    }
+                                    return response.json();
+                                })
+                                .then(data => {
+                                    if (data.success) {
+                                        showAlert('success', data.message || 'HCKC sync completed successfully');
+                                        setTimeout(() => location.reload(), 1500);
+                                    } else {
+                                        showAlert('danger', data.error || data.message || 'HCKC sync failed');
+                                    }
+                                })
+                                .catch(error => {
+                                    console.error('HCKC sync error:', error);
+                                    showAlert('danger', 'HCKC sync failed: ' + error.message);
+                                })
+                                .finally(() => {
+                                    button.disabled = false;
+                                    button.innerHTML = '<i class="mdi mdi-kubernetes"></i> Sync from HCKC';
                                 });
                             }
                             
