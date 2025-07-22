@@ -37,11 +37,14 @@ class FabricDetailView(DetailView):
 class FabricEditView(UpdateView):
     model = HedgehogFabric
     template_name = 'netbox_hedgehog/fabric_edit_simple.html'
-    fields = ['name', 'description', 'status', 'git_repository', 'gitops_directory', 'kubernetes_server', 'kubernetes_namespace']
+    fields = [
+        'name', 'description', 'status', 'git_repository', 'gitops_directory', 
+        'kubernetes_server', 'kubernetes_namespace', 'kubernetes_token', 'kubernetes_ca_cert'
+    ]
     context_object_name = 'object'
     
     def get_success_url(self):
-        return f'/plugins/netbox_hedgehog/fabrics/{self.object.pk}/'
+        return f'/plugins/hedgehog/fabrics/{self.object.pk}/'
 
 class TopologyView(TemplateView):
     template_name = 'netbox_hedgehog/topology.html'

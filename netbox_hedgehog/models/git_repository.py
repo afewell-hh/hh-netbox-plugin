@@ -303,7 +303,8 @@ class GitRepository(NetBoxModel):
             Current fabric count
         """
         try:
-            from .fabric import HedgehogFabric
+            from django.apps import apps
+            HedgehogFabric = apps.get_model('netbox_hedgehog', 'HedgehogFabric')
             count = HedgehogFabric.objects.filter(git_repository=self).count()
             self.fabric_count = count
             self.save(update_fields=['fabric_count'])
@@ -333,10 +334,12 @@ class GitRepository(NetBoxModel):
             QuerySet of HedgehogFabric objects
         """
         try:
-            from .fabric import HedgehogFabric
+            from django.apps import apps
+            HedgehogFabric = apps.get_model('netbox_hedgehog', 'HedgehogFabric')
             return HedgehogFabric.objects.filter(git_repository=self)
         except Exception:
-            return []
+            from django.db import models
+            return models.QuerySet().none()
     
     def get_connection_summary(self) -> Dict[str, Any]:
         """

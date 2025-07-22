@@ -313,6 +313,52 @@ class HedgehogFabric(NetBoxModel):
         help_text="Enable self-healing in GitOps applications"
     )
     
+    # Real-time monitoring configuration
+    watch_enabled = models.BooleanField(
+        default=True,
+        help_text="Enable real-time Kubernetes CRD watching for this fabric"
+    )
+    
+    watch_crd_types = models.JSONField(
+        default=list,
+        help_text="List of CRD types to watch (empty for all supported types)"
+    )
+    
+    watch_status = models.CharField(
+        max_length=20,
+        choices=[
+            ('inactive', 'Inactive'),
+            ('starting', 'Starting'),
+            ('active', 'Active'),
+            ('error', 'Error'),
+            ('stopped', 'Stopped')
+        ],
+        default='inactive',
+        help_text="Current watch status for real-time monitoring"
+    )
+    
+    watch_started_at = models.DateTimeField(
+        null=True,
+        blank=True,
+        help_text="When real-time watching was started"
+    )
+    
+    watch_last_event = models.DateTimeField(
+        null=True,
+        blank=True,
+        help_text="Timestamp of last watch event received"
+    )
+    
+    watch_event_count = models.PositiveIntegerField(
+        default=0,
+        help_text="Total number of watch events processed"
+    )
+    
+    watch_error_message = models.TextField(
+        blank=True,
+        help_text="Last watch error message"
+    )
+    
     class Meta:
         verbose_name = "Hedgehog Fabric"
         verbose_name_plural = "Hedgehog Fabrics"
@@ -335,11 +381,22 @@ class HedgehogFabric(NetBoxModel):
         """Return count of active/live CRDs in this fabric"""
         total = 0
         try:
+            from django.apps import apps
             from ..choices import KubernetesStatusChoices
-            from netbox_hedgehog.models import (
-                VPC, External, ExternalAttachment, ExternalPeering, IPv4Namespace, VPCAttachment, VPCPeering,
-                Connection, Server, Switch, SwitchGroup, VLANNamespace
-            )
+            
+            # Use apps.get_model to avoid circular imports
+            VPC = apps.get_model('netbox_hedgehog', 'VPC')
+            External = apps.get_model('netbox_hedgehog', 'External')
+            ExternalAttachment = apps.get_model('netbox_hedgehog', 'ExternalAttachment')
+            ExternalPeering = apps.get_model('netbox_hedgehog', 'ExternalPeering')
+            IPv4Namespace = apps.get_model('netbox_hedgehog', 'IPv4Namespace')
+            VPCAttachment = apps.get_model('netbox_hedgehog', 'VPCAttachment')
+            VPCPeering = apps.get_model('netbox_hedgehog', 'VPCPeering')
+            Connection = apps.get_model('netbox_hedgehog', 'Connection')
+            Server = apps.get_model('netbox_hedgehog', 'Server')
+            Switch = apps.get_model('netbox_hedgehog', 'Switch')
+            SwitchGroup = apps.get_model('netbox_hedgehog', 'SwitchGroup')
+            VLANNamespace = apps.get_model('netbox_hedgehog', 'VLANNamespace')
             
             models = [VPC, External, ExternalAttachment, ExternalPeering, IPv4Namespace, VPCAttachment, VPCPeering,
                      Connection, Server, Switch, SwitchGroup, VLANNamespace]
@@ -432,8 +489,11 @@ class HedgehogFabric(NetBoxModel):
         Updates drift_status and drift_count fields.
         """
         try:
-            from ..models.gitops import HedgehogResource
+            from django.apps import apps
             from django.utils import timezone
+            
+            # Use apps.get_model to avoid circular imports
+            HedgehogResource = apps.get_model('netbox_hedgehog', 'HedgehogResource')
             
             # Get all resources for this fabric
             resources = HedgehogResource.objects.filter(fabric=self)
@@ -947,3 +1007,99 @@ class HedgehogFabric(NetBoxModel):
         # Merge with base summary
         base_summary.update(argocd_info)
         return base_summary
+    
+    # Real-time monitoring methods
+    
+    def get_watch_configuration(self):
+        """
+        Get watch configuration for real-time monitoring.
+        
+        Returns:
+            FabricConnectionInfo for Kubernetes watch service
+        """
+        from ..domain.interfaces.kubernetes_watch_interface import FabricConnectionInfo
+        
+        # Default CRD types if none specified
+        enabled_crds = self.watch_crd_types if self.watch_crd_types else [
+            'VPC', 'External', 'ExternalAttachment', 'ExternalPeering', 
+            'IPv4Namespace', 'VPCAttachment', 'VPCPeering',
+            'Connection', 'Server', 'Switch', 'SwitchGroup', 'VLANNamespace'
+        ]
+        
+        return FabricConnectionInfo(
+            fabric_id=self.pk,
+            cluster_endpoint=self.kubernetes_server or '',
+            token=self.kubernetes_token,
+            ca_cert=self.kubernetes_ca_cert,
+            namespace=self.kubernetes_namespace or 'default',
+            enabled_crds=enabled_crds
+        )
+    
+    def can_enable_watch(self):
+        """
+        Check if real-time watching can be enabled for this fabric.
+        
+        Returns:
+            bool: True if watch can be enabled
+        """
+        connection_info = self.get_watch_configuration()
+        return connection_info.is_valid and self.watch_enabled
+    
+    def update_watch_status(self, status, error_message=None):
+        """
+        Update watch status and related fields.
+        
+        Args:
+            status: New watch status
+            error_message: Optional error message
+        """
+        from django.utils import timezone
+        
+        old_status = self.watch_status
+        self.watch_status = status
+        
+        if error_message:
+            self.watch_error_message = error_message
+        elif status != 'error':
+            self.watch_error_message = ''
+        
+        if status == 'active' and old_status != 'active':
+            self.watch_started_at = timezone.now()
+        elif status in ['inactive', 'stopped', 'error']:
+            # Don't clear watch_started_at to preserve history
+            pass
+        
+        self.save(update_fields=[
+            'watch_status', 'watch_error_message', 'watch_started_at'
+        ])
+        
+        logger.info(f"Fabric {self.name} watch status updated: {old_status} -> {status}")
+    
+    def record_watch_event(self):
+        """
+        Record that a watch event was received.
+        Updates event count and last event timestamp.
+        """
+        from django.utils import timezone
+        
+        self.watch_event_count += 1
+        self.watch_last_event = timezone.now()
+        self.save(update_fields=['watch_event_count', 'watch_last_event'])
+    
+    def get_watch_statistics(self):
+        """
+        Get watch statistics for this fabric.
+        
+        Returns:
+            Dict with watch statistics
+        """
+        return {
+            'enabled': self.watch_enabled,
+            'status': self.watch_status,
+            'started_at': self.watch_started_at,
+            'last_event': self.watch_last_event,
+            'event_count': self.watch_event_count,
+            'enabled_crd_types': self.watch_crd_types or 'all',
+            'error_message': self.watch_error_message,
+            'can_enable': self.can_enable_watch()
+        }
