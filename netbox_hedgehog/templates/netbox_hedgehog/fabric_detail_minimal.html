@@ -1,0 +1,101 @@
+{% extends "base/layout.html" %}
+{% load static %}
+
+{% block title %}{{ object.name }} - Fabric Details{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+    <div class="row">
+        <div class="col-12">
+            <div class="card">
+                <div class="card-header d-flex justify-content-between align-items-center">
+                    <h3 class="card-title mb-0">
+                        <i class="mdi mdi-server-network text-primary"></i>
+                        {{ object.name }}
+                    </h3>
+                    <div>
+                        <a href="{% url 'plugins:netbox_hedgehog:fabric_list' %}" class="btn btn-outline-secondary">
+                            <i class="mdi mdi-arrow-left"></i> Back to Fabrics
+                        </a>
+                        <a href="{% url 'plugins:netbox_hedgehog:fabric_edit' pk=object.pk %}" class="btn btn-outline-primary">
+                            <i class="mdi mdi-pencil"></i> Edit
+                        </a>
+                    </div>
+                </div>
+                <div class="card-body">
+                    <h4>Basic Information</h4>
+                    <table class="table table-striped">
+                        <tr>
+                            <th>Name:</th>
+                            <td>{{ object.name }}</td>
+                        </tr>
+                        <tr>
+                            <th>Description:</th>
+                            <td>{{ object.description|default:"—" }}</td>
+                        </tr>
+                        <tr>
+                            <th>Status:</th>
+                            <td>{{ object.get_status_display }}</td>
+                        </tr>
+                        <tr>
+                            <th>Git Repository:</th>
+                            <td>{{ object.git_repository|default:"—" }}</td>
+                        </tr>
+                        <tr>
+                            <th>GitOps Directory:</th>
+                            <td>{{ object.gitops_directory|default:"—" }}</td>
+                        </tr>
+                        <tr>
+                            <th>Kubernetes Server:</th>
+                            <td>{{ object.kubernetes_server|default:"—" }}</td>
+                        </tr>
+                        <tr>
+                            <th>Kubernetes Namespace:</th>
+                            <td>{{ object.kubernetes_namespace|default:"—" }}</td>
+                        </tr>
+                        <tr>
+                            <th>Created:</th>
+                            <td>{{ object.created|date:"M d, Y H:i" }}</td>
+                        </tr>
+                    </table>
+
+                    <h4 class="mt-4">Quick Actions</h4>
+                    <div class="btn-group">
+                        <button class="btn btn-primary" onclick="syncFromGit()">
+                            <i class="mdi mdi-sync"></i> Sync from Git
+                        </button>
+                        <a href="{% url 'plugins:netbox_hedgehog:connection_list' %}" class="btn btn-info">
+                            <i class="mdi mdi-cable-data"></i> View Connections
+                        </a>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+function syncFromGit() {
+    const fabricId = {{ object.pk }};
+    
+    fetch(`/api/plugins/hedgehog/gitops-fabrics/${fabricId}/gitops_sync/`, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'X-CSRFToken': document.querySelector('[name=csrfmiddlewaretoken]').value
+        }
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            alert('Sync completed successfully!');
+        } else {
+            alert('Sync failed: ' + (data.error || 'Unknown error'));
+        }
+    })
+    .catch(error => {
+        alert('Sync failed: ' + error.message);
+    });
+}
+</script>
+{% endblock %}
