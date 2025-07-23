@@ -14,7 +14,7 @@ class Connection(BaseCRD):
         verbose_name_plural = "Connections"
     
     def get_absolute_url(self):
-        return reverse('plugins:netbox_hedgehog:connection', kwargs={'pk': self.pk})
+        return reverse('plugins:netbox_hedgehog:connection_detail', kwargs={'pk': self.pk})
     
     def get_api_version(self):
         return 'wiring.githedgehog.com/v1beta1'
@@ -46,7 +46,7 @@ class Server(BaseCRD):
         verbose_name_plural = "Servers"
     
     def get_absolute_url(self):
-        return reverse('plugins:netbox_hedgehog:server', kwargs={'pk': self.pk})
+        return reverse('plugins:netbox_hedgehog:server_detail', kwargs={'pk': self.pk})
     
     def get_api_version(self):
         return 'wiring.githedgehog.com/v1beta1'
@@ -65,7 +65,7 @@ class Switch(BaseCRD):
         verbose_name_plural = "Switches"
     
     def get_absolute_url(self):
-        return reverse('plugins:netbox_hedgehog:switch', kwargs={'pk': self.pk})
+        return reverse('plugins:netbox_hedgehog:switch_detail', kwargs={'pk': self.pk})
     
     def get_api_version(self):
         return 'wiring.githedgehog.com/v1beta1'
@@ -98,7 +98,7 @@ class SwitchGroup(BaseCRD):
         verbose_name_plural = "Switch Groups"
     
     def get_absolute_url(self):
-        return reverse('plugins:netbox_hedgehog:switchgroup', kwargs={'pk': self.pk})
+        return reverse('plugins:netbox_hedgehog:switchgroup_detail', kwargs={'pk': self.pk})
     
     def get_api_version(self):
         return 'wiring.githedgehog.com/v1beta1'
@@ -124,7 +124,7 @@ class VLANNamespace(BaseCRD):
         verbose_name_plural = "VLAN Namespaces"
     
     def get_absolute_url(self):
-        return reverse('plugins:netbox_hedgehog:vlannamespace', kwargs={'pk': self.pk})
+        return reverse('plugins:netbox_hedgehog:vlannamespace_detail', kwargs={'pk': self.pk})
     
     def get_api_version(self):
         return 'wiring.githedgehog.com/v1beta1'

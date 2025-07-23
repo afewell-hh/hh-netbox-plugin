@@ -23,6 +23,9 @@
                     </div>
                 </div>
                 <div class="card-body">
+                    <!-- GitOps Edit Button Component -->
+                    {% include "netbox_hedgehog/components/gitops_edit_button.html" with cr_type="VLANNamespace" gitops_edit_url_name="plugins:netbox_hedgehog:gitops_vlannamespace_edit" %}
+                    
                     <div class="row">
                         <div class="col-md-8">
                             <h4>VLAN Namespace Information</h4>

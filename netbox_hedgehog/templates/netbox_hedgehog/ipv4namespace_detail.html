@@ -34,6 +34,9 @@
                     </div>
                 </div>
                 <div class="card-body">
+                    <!-- GitOps Edit Button Component -->
+                    {% include "netbox_hedgehog/components/gitops_edit_button.html" with cr_type="IPv4Namespace" gitops_edit_url_name="plugins:netbox_hedgehog:gitops_ipv4namespace_edit" %}
+                    
                     <div class="row">
                         <div class="col-md-6">
                             <table class="table table-hover">

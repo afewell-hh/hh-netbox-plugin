@@ -13,7 +13,7 @@ class VPC(BaseCRD):
         verbose_name_plural = "VPCs"
     
     def get_absolute_url(self):
-        return reverse('plugins:netbox_hedgehog:vpc', kwargs={'pk': self.pk})
+        return reverse('plugins:netbox_hedgehog:vpc_detail', kwargs={'pk': self.pk})
     
     def get_api_version(self):
         return 'vpc.githedgehog.com/v1beta1'
@@ -89,7 +89,7 @@ class IPv4Namespace(BaseCRD):
         verbose_name_plural = "IPv4 Namespaces"
     
     def get_absolute_url(self):
-        return reverse('plugins:netbox_hedgehog:ipv4namespace', kwargs={'pk': self.pk})
+        return reverse('plugins:netbox_hedgehog:ipv4namespace_detail', kwargs={'pk': self.pk})
     
     def get_api_version(self):
         return 'vpc.githedgehog.com/v1beta1'

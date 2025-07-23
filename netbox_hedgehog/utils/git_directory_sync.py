@@ -195,6 +195,7 @@ class GitDirectorySync:
             kind = doc.get('kind')
             metadata = doc.get('metadata', {})
             name = metadata.get('name')
+            namespace = metadata.get('namespace', 'default')
             
             if not kind or not name:
                 self.stats['skipped'] += 1
@@ -217,9 +218,14 @@ class GitDirectorySync:
             
             # Create or update the CR
             with transaction.atomic():
+                # Debug logging for SwitchGroup specifically
+                if kind == 'SwitchGroup':
+                    logger.warning(f"[SYNC DEBUG] Processing SwitchGroup: {name}, namespace: {namespace}, fabric: {self.fabric.name}")
+                
                 cr, created = model_class.objects.update_or_create(
                     name=name,
                     fabric=self.fabric,
+                    namespace=namespace,
                     defaults={
                         'spec': doc.get('spec', {}),
                         'raw_spec': doc.get('spec', {}),
@@ -233,9 +239,15 @@ class GitDirectorySync:
                 if created:
                     self.stats['created'] += 1
                     logger.info(f"Created {kind} '{name}' from {file_path}")
+                    # Extra debug for SwitchGroup
+                    if kind == 'SwitchGroup':
+                        logger.warning(f"SwitchGroup CREATED: {name} (ID: {cr.pk}) in fabric {self.fabric.name}")
                 else:
                     self.stats['updated'] += 1
                     logger.info(f"Updated {kind} '{name}' from {file_path}")
+                    # Extra debug for SwitchGroup
+                    if kind == 'SwitchGroup':
+                        logger.warning(f"SwitchGroup UPDATED: {name} (ID: {cr.pk}) in fabric {self.fabric.name}")
                     
         except Exception as e:
             self.stats['errors'] += 1

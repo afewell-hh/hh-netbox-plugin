@@ -1,0 +1,174 @@
+{% extends "base/layout.html" %}
+{% load static %}
+{% load form_helpers %}
+
+{% block title %}Edit {{ object.name }} - {{ model_verbose_name }} GitOps{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+    <div class="row">
+        <div class="col-12">
+            <div class="card">
+                <div class="card-header d-flex justify-content-between">
+                    <h3>
+                        <i class="mdi mdi-pencil-box"></i> 
+                        Edit {{ model_verbose_name }} - {{ object.name }}
+                        <small class="text-muted">with GitOps Workflow</small>
+                    </h3>
+                    <div>
+                        <a href="{{ object.get_absolute_url }}" class="btn btn-outline-secondary">
+                            <i class="mdi mdi-arrow-left"></i> Back to {{ model_verbose_name }}
+                        </a>
+                    </div>
+                </div>
+                <div class="card-body">
+                    
+                    <!-- GitOps Workflow Info -->
+                    <div class="alert alert-info">
+                        <h6><i class="mdi mdi-git"></i> GitOps Workflow Active</h6>
+                        <p class="mb-0">
+                            Changes made through this form will:
+                        </p>
+                        <ol class="mb-0 mt-2">
+                            <li>Update the {{ model_verbose_name }} in the HNP database</li>
+                            <li>Generate and update the YAML file in Git repository</li>
+                            <li>Automatically commit and push changes</li>
+                            <li>Trigger GitOps deployment to HCKC cluster</li>
+                        </ol>
+                        <small class="text-muted">
+                            <strong>Fabric:</strong> {{ object.fabric.name }} | 
+                            <strong>Git File:</strong> {{ object.git_file_path|default:"Will be created" }}
+                        </small>
+                    </div>
+                    
+                    <!-- Edit Form -->
+                    <form method="post" class="gitops-edit-form">
+                        {% csrf_token %}
+                        
+                        <div class="row">
+                            <div class="col-md-8">
+                                <h4>{{ model_verbose_name }} Configuration</h4>
+                                
+                                {% for field in form %}
+                                    {% if field.name != 'commit_message' and field.name != 'yaml_preview' %}
+                                    <div class="mb-3">
+                                        {{ field.label_tag }}
+                                        {{ field }}
+                                        {% if field.help_text %}
+                                            <small class="form-text text-muted">{{ field.help_text }}</small>
+                                        {% endif %}
+                                        {{ field.errors }}
+                                    </div>
+                                    {% endif %}
+                                {% endfor %}
+                                
+                                <!-- GitOps Commit Message -->
+                                <div class="mb-3">
+                                    <div class="card border-primary">
+                                        <div class="card-header bg-primary text-white">
+                                            <h6 class="card-title mb-0">
+                                                <i class="mdi mdi-git"></i> Git Commit Message
+                                            </h6>
+                                        </div>
+                                        <div class="card-body">
+                                            {{ form.commit_message }}
+                                            {% if form.commit_message.help_text %}
+                                                <small class="form-text text-muted">{{ form.commit_message.help_text }}</small>
+                                            {% endif %}
+                                            {{ form.commit_message.errors }}
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                            
+                            <div class="col-md-4">
+                                <!-- Action Buttons -->
+                                <h4>Actions</h4>
+                                <div class="d-grid gap-2 mb-4">
+                                    <button type="submit" class="btn btn-success">
+                                        <i class="mdi mdi-content-save"></i>
+                                        Save with GitOps
+                                    </button>
+                                    <button type="button" class="btn btn-outline-info" onclick="previewChanges()">
+                                        <i class="mdi mdi-file-compare"></i>
+                                        Preview YAML Changes
+                                    </button>
+                                    <button type="button" class="btn btn-outline-warning" onclick="validateYAML()">
+                                        <i class="mdi mdi-check-circle-outline"></i>
+                                        Validate JSON
+                                    </button>
+                                </div>
+                                
+                                <!-- Current Status -->
+                                <h4>Current Status</h4>
+                                <div class="card">
+                                    <div class="card-body">
+                                        <table class="table table-sm table-borderless">
+                                            <tr>
+                                                <th>Git File:</th>
+                                                <td>
+                                                    {% if object.git_file_path %}
+                                                        <small><code>{{ object.git_file_path }}</code></small>
+                                                    {% else %}
+                                                        <small class="text-muted">Will be created</small>
+                                                    {% endif %}
+                                                </td>
+                                            </tr>
+                                            <tr>
+                                                <th>K8s Status:</th>
+                                                <td>
+                                                    <span class="badge {% if object.kubernetes_status == 'live' %}bg-success{% else %}bg-secondary{% endif %}">
+                                                        {{ object.kubernetes_status|default:"unknown" }}
+                                                    </span>
+                                                </td>
+                                            </tr>
+                                            <tr>
+                                                <th>Last Synced:</th>
+                                                <td>
+                                                    {% if object.last_synced %}
+                                                        <small>{{ object.last_synced|date:"Y-m-d H:i" }}</small>
+                                                    {% else %}
+                                                        <small class="text-muted">Never</small>
+                                                    {% endif %}
+                                                </td>
+                                            </tr>
+                                        </table>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <!-- Hidden fields -->
+                        {{ form.yaml_preview }}
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+function previewChanges() {
+    alert('YAML preview functionality coming soon!');
+}
+
+function validateYAML() {
+    // Get current form spec value
+    const specField = document.querySelector('[name="spec"]');
+    const specValue = specField ? specField.value : '';
+    
+    if (!specValue.trim()) {
+        alert('Please enter a spec value to validate.');
+        return;
+    }
+    
+    try {
+        // Basic JSON validation
+        JSON.parse(specValue);
+        alert('JSON validation passed!');
+    } catch (error) {
+        alert('JSON validation failed: ' + error.message);
+    }
+}
+</script>
+{% endblock %}

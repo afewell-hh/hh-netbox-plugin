@@ -18,6 +18,14 @@ from ..forms import gitops_forms
 class GitOpsEditMixin:
     """Mixin to add GitOps workflow to edit views"""
     
+    def get_context_data(self, **kwargs):
+        """Add model metadata to context"""
+        context = super().get_context_data(**kwargs)
+        if self.object:
+            context['model_verbose_name'] = self.object._meta.verbose_name
+            context['model_verbose_name_plural'] = self.object._meta.verbose_name_plural
+        return context
+    
     def form_valid(self, form):
         """Override to integrate GitOps workflow"""
         # Get commit message from form if available
@@ -67,73 +75,109 @@ class GitOpsVPCEditView(GitOpsEditMixin, generic.ObjectEditView):
     queryset = VPC.objects.all()
     form = gitops_forms.GitOpsVPCForm
     template_name = 'netbox_hedgehog/gitops/vpc_edit.html'
+    
+    def get_success_url(self):
+        return reverse('plugins:netbox_hedgehog:vpc_detail', kwargs={'pk': self.object.pk})
 
 
 class GitOpsExternalEditView(GitOpsEditMixin, generic.ObjectEditView):
     queryset = External.objects.all()
     form = gitops_forms.GitOpsExternalForm
-    template_name = 'netbox_hedgehog/gitops/external_edit.html'
+    template_name = 'netbox_hedgehog/gitops/generic_cr_edit.html'
+    
+    def get_success_url(self):
+        return reverse('plugins:netbox_hedgehog:external_detail', kwargs={'pk': self.object.pk})
 
 
 class GitOpsExternalAttachmentEditView(GitOpsEditMixin, generic.ObjectEditView):
     queryset = ExternalAttachment.objects.all()
     form = gitops_forms.GitOpsExternalAttachmentForm
-    template_name = 'netbox_hedgehog/gitops/externalattachment_edit.html'
+    template_name = 'netbox_hedgehog/gitops/generic_cr_edit.html'
+    
+    def get_success_url(self):
+        return reverse('plugins:netbox_hedgehog:externalattachment_detail', kwargs={'pk': self.object.pk})
 
 
 class GitOpsExternalPeeringEditView(GitOpsEditMixin, generic.ObjectEditView):
     queryset = ExternalPeering.objects.all()
     form = gitops_forms.GitOpsExternalPeeringForm
-    template_name = 'netbox_hedgehog/gitops/externalpeering_edit.html'
+    template_name = 'netbox_hedgehog/gitops/generic_cr_edit.html'
+    
+    def get_success_url(self):
+        return reverse('plugins:netbox_hedgehog:externalpeering_detail', kwargs={'pk': self.object.pk})
 
 
 class GitOpsIPv4NamespaceEditView(GitOpsEditMixin, generic.ObjectEditView):
     queryset = IPv4Namespace.objects.all()
     form = gitops_forms.GitOpsIPv4NamespaceForm
-    template_name = 'netbox_hedgehog/gitops/ipv4namespace_edit.html'
+    template_name = 'netbox_hedgehog/gitops/generic_cr_edit.html'
+    
+    def get_success_url(self):
+        return reverse('plugins:netbox_hedgehog:ipv4namespace_detail', kwargs={'pk': self.object.pk})
 
 
 class GitOpsVPCAttachmentEditView(GitOpsEditMixin, generic.ObjectEditView):
     queryset = VPCAttachment.objects.all()
     form = gitops_forms.GitOpsVPCAttachmentForm
-    template_name = 'netbox_hedgehog/gitops/vpcattachment_edit.html'
+    template_name = 'netbox_hedgehog/gitops/generic_cr_edit.html'
+    
+    def get_success_url(self):
+        return reverse('plugins:netbox_hedgehog:vpcattachment_detail', kwargs={'pk': self.object.pk})
 
 
 class GitOpsVPCPeeringEditView(GitOpsEditMixin, generic.ObjectEditView):
     queryset = VPCPeering.objects.all()
     form = gitops_forms.GitOpsVPCPeeringForm
-    template_name = 'netbox_hedgehog/gitops/vpcpeering_edit.html'
+    template_name = 'netbox_hedgehog/gitops/generic_cr_edit.html'
+    
+    def get_success_url(self):
+        return reverse('plugins:netbox_hedgehog:vpcpeering_detail', kwargs={'pk': self.object.pk})
 
 
 # Wiring API Edit Views with GitOps Integration
 class GitOpsConnectionEditView(GitOpsEditMixin, generic.ObjectEditView):
     queryset = Connection.objects.all()
     form = gitops_forms.GitOpsConnectionForm
-    template_name = 'netbox_hedgehog/gitops/connection_edit.html'
+    template_name = 'netbox_hedgehog/gitops/generic_cr_edit.html'
+    
+    def get_success_url(self):
+        return reverse('plugins:netbox_hedgehog:connection_detail', kwargs={'pk': self.object.pk})
 
 
 class GitOpsServerEditView(GitOpsEditMixin, generic.ObjectEditView):
     queryset = Server.objects.all()
     form = gitops_forms.GitOpsServerForm
-    template_name = 'netbox_hedgehog/gitops/server_edit.html'
+    template_name = 'netbox_hedgehog/gitops/generic_cr_edit.html'
+    
+    def get_success_url(self):
+        return reverse('plugins:netbox_hedgehog:server_detail', kwargs={'pk': self.object.pk})
 
 
 class GitOpsSwitchEditView(GitOpsEditMixin, generic.ObjectEditView):
     queryset = Switch.objects.all()
     form = gitops_forms.GitOpsSwitchForm
-    template_name = 'netbox_hedgehog/gitops/switch_edit.html'
+    template_name = 'netbox_hedgehog/gitops/generic_cr_edit.html'
+    
+    def get_success_url(self):
+        return reverse('plugins:netbox_hedgehog:switch_detail', kwargs={'pk': self.object.pk})
 
 
 class GitOpsSwitchGroupEditView(GitOpsEditMixin, generic.ObjectEditView):
     queryset = SwitchGroup.objects.all()
     form = gitops_forms.GitOpsSwitchGroupForm
-    template_name = 'netbox_hedgehog/gitops/switchgroup_edit.html'
+    template_name = 'netbox_hedgehog/gitops/generic_cr_edit.html'
+    
+    def get_success_url(self):
+        return reverse('plugins:netbox_hedgehog:switchgroup_detail', kwargs={'pk': self.object.pk})
 
 
 class GitOpsVLANNamespaceEditView(GitOpsEditMixin, generic.ObjectEditView):
     queryset = VLANNamespace.objects.all()
     form = gitops_forms.GitOpsVLANNamespaceForm
-    template_name = 'netbox_hedgehog/gitops/vlannamespace_edit.html'
+    template_name = 'netbox_hedgehog/gitops/generic_cr_edit.html'
+    
+    def get_success_url(self):
+        return reverse('plugins:netbox_hedgehog:vlannamespace_detail', kwargs={'pk': self.object.pk})
 
 
 # YAML Preview and Validation Views

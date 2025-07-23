@@ -44,14 +44,12 @@ document.addEventListener('DOMContentLoaded', function() {
     const fabricSelect = document.getElementById('fabric-select');
     const clearFilterBtn = document.getElementById('clear-filter');
     
-    // Load saved fabric filter from cookie on page load
+    // Load saved fabric filter from cookie on page load (disabled to prevent intermittent behavior)
     function loadSavedFilter() {
         const savedFabric = getCookie('hedgehog_fabric_filter');
         if (savedFabric && !getUrlParam('fabric')) {
-            // If no URL param but cookie exists, redirect with filter
-            const currentUrl = new URL(window.location);
-            currentUrl.searchParams.set('fabric', savedFabric);
-            window.location.href = currentUrl.toString();
+            // Set the select value but don't auto-redirect to prevent race conditions
+            fabricSelect.value = savedFabric;
         }
     }
     

@@ -30,10 +30,53 @@
                         </div>
                     </div>
                     
-                    {% if table.rows %}
-                    {% load render_table from django_tables2 %}
-                    {% render_table table 'inc/table.html' %}
-                    
+                    {% if switchgroups %}
+                        <div class="table-responsive">
+                            <table class="table table-striped">
+                                <thead>
+                                    <tr>
+                                        <th>Name</th>
+                                        <th>Fabric</th>
+                                        <th>Namespace</th>
+                                        <th>Status</th>
+                                        <th>Git File</th>
+                                        <th>Last Synced</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {% for switchgroup in switchgroups %}
+                                    <tr>
+                                        <td>
+                                            <a href="{% url 'plugins:netbox_hedgehog:switchgroup_detail' pk=switchgroup.pk %}">
+                                                <strong>{{ switchgroup.name }}</strong>
+                                            </a>
+                                        </td>
+                                        <td>{{ switchgroup.fabric.name }}</td>
+                                        <td><code>{{ switchgroup.namespace }}</code></td>
+                                        <td>
+                                            <span class="badge bg-secondary">{{ switchgroup.kubernetes_status }}</span>
+                                        </td>
+                                        <td>
+                                            {% if switchgroup.git_file_path %}
+                                                <small><code>{{ switchgroup.git_file_path }}</code></small>
+                                            {% else %}
+                                                <small class="text-muted">Not from Git</small>
+                                            {% endif %}
+                                        </td>
+                                        <td>
+                                            {% if switchgroup.last_synced %}
+                                                {{ switchgroup.last_synced|date:"Y-m-d H:i" }}
+                                            {% else %}
+                                                <small class="text-muted">Never</small>
+                                            {% endif %}
+                                        </td>
+                                    </tr>
+                                    {% endfor %}
+                                </tbody>
+                            </table>
+                        </div>
+                        
+                        <p><strong>Total:</strong> {{ switchgroups|length }} Switch Group{{ switchgroups|length|pluralize }}</p>
                     {% else %}
                     <div class="alert alert-info">
                         <h5><i class="mdi mdi-information"></i> No Switch Groups Found</h5>

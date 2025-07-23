@@ -16,7 +16,8 @@ from netbox.forms import NetBoxModelForm
 
 # Plugin imports
 from ..models.fabric import HedgehogFabric
-from ..models.vpc import VPC, IPv4Namespace, VLANNamespace, VPCAttachment, VPCPeering
+from ..models.vpc_api import VPC, IPv4Namespace, VPCAttachment, VPCPeering
+from ..models.wiring_api import VLANNamespace
 from ..choices import KubernetesStatusChoices
 from ..utils.crd_schemas import VPCCRDSchema
 
@@ -27,8 +28,7 @@ class VPCForm(NetBoxModelForm):
     class Meta:
         model = VPC
         fields = [
-            'name', 'description', 'fabric', 'ipv4_namespace', 'vlan_namespace',
-            'subnets_config', 'kubernetes_namespace', 'tags'
+            'name', 'description', 'fabric', 'spec', 'kubernetes_namespace', 'tags'
         ]
         widgets = {
             'name': forms.TextInput(attrs={
@@ -39,10 +39,10 @@ class VPCForm(NetBoxModelForm):
                 'rows': 3,
                 'class': 'form-control'
             }),
-            'subnets_config': forms.Textarea(attrs={
+            'spec': forms.Textarea(attrs={
                 'rows': 10,
                 'class': 'form-control',
-                'placeholder': 'JSON configuration for subnets'
+                'placeholder': 'JSON specification for VPC'
             }),
         }
     
@@ -310,59 +310,59 @@ class VPCCreateForm(forms.Form):
         except ipaddress.AddressValueError:
             return {}
         
-        subnets_config = {}
+        vpc_spec = {'subnets': {}}
         
         if template == 'basic':
             # Single subnet
             subnet_network = list(base_network.subnets(new_prefix=24))[0]
             gateway = str(subnet_network.network_address + 1)
             
-            subnets_config['main'] = {
+            vpc_spec['subnets']['main'] = {
                 'subnet': str(subnet_network),
                 'gateway': gateway,
                 'vlan': base_vlan,
             }
             
             if enable_dhcp:
-                subnets_config['main']['dhcp'] = {'enable': True}
+                vpc_spec['subnets']['main']['dhcp'] = {'enable': True}
         
         elif template == 'web-db':
             # Two subnets
             subnets = list(base_network.subnets(new_prefix=24))
             
-            subnets_config['web'] = {
+            vpc_spec['subnets']['web'] = {
                 'subnet': str(subnets[0]),
                 'gateway': str(subnets[0].network_address + 1),
                 'vlan': base_vlan,
             }
             
-            subnets_config['db'] = {
+            vpc_spec['subnets']['db'] = {
                 'subnet': str(subnets[1]),
                 'gateway': str(subnets[1].network_address + 1),
                 'vlan': base_vlan + 1,
             }
             
             if enable_dhcp:
-                subnets_config['web']['dhcp'] = {'enable': True}
-                subnets_config['db']['dhcp'] = {'enable': True}
+                vpc_spec['subnets']['web']['dhcp'] = {'enable': True}
+                vpc_spec['subnets']['db']['dhcp'] = {'enable': True}
         
         elif template == 'three-tier':
             # Three subnets
             subnets = list(base_network.subnets(new_prefix=24))
             
-            subnets_config['web'] = {
+            vpc_spec['subnets']['web'] = {
                 'subnet': str(subnets[0]),
                 'gateway': str(subnets[0].network_address + 1),
                 'vlan': base_vlan,
             }
             
-            subnets_config['app'] = {
+            vpc_spec['subnets']['app'] = {
                 'subnet': str(subnets[1]),
                 'gateway': str(subnets[1].network_address + 1),
                 'vlan': base_vlan + 1,
             }
             
-            subnets_config['db'] = {
+            vpc_spec['subnets']['db'] = {
                 'subnet': str(subnets[2]),
                 'gateway': str(subnets[2].network_address + 1),
                 'vlan': base_vlan + 2,
@@ -370,9 +370,9 @@ class VPCCreateForm(forms.Form):
             
             if enable_dhcp:
                 for subnet_name in ['web', 'app', 'db']:
-                    subnets_config[subnet_name]['dhcp'] = {'enable': True}
+                    vpc_spec['subnets'][subnet_name]['dhcp'] = {'enable': True}
         
-        return subnets_config
+        return vpc_spec
 
 
 # Create formset for multiple subnet configurations
@@ -497,12 +497,12 @@ class IPv4NamespaceForm(NetBoxModelForm):
     
     class Meta:
         model = IPv4Namespace
-        fields = ['name', 'description', 'fabric', 'subnets_config', 'tags']
+        fields = ['name', 'description', 'fabric', 'spec', 'tags']
         widgets = {
-            'subnets_config': forms.Textarea(attrs={
+            'spec': forms.Textarea(attrs={
                 'rows': 8,
                 'class': 'form-control',
-                'placeholder': 'JSON array of subnet CIDRs, e.g., ["10.0.0.0/16", "192.168.0.0/16"]'
+                'placeholder': 'JSON specification for IPv4 namespace'
             }),
         }
 

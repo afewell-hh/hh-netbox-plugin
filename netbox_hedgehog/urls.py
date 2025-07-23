@@ -11,7 +11,7 @@ from .views.crd_views import FabricCRDListView
 from .views import gitops_edit_views
 
 # Import detail views (need to avoid naming conflicts with list views)
-from .views.vpc_views import VPCDetailView as VPCDetailViewImported
+# from .views.vpc_views import VPCDetailView as VPCDetailViewImported  # Disabled - has field dependency issues
 
 app_name = 'netbox_hedgehog'
 
@@ -86,11 +86,35 @@ class VLANNamespaceListView(FabricFilterMixin, ListView):
     context_object_name = 'vlannamespaces'
     paginate_by = 25
 
-class SwitchGroupListView(FabricFilterMixin, ListView):
-    model = SwitchGroup
+class SwitchGroupListView(TemplateView):
     template_name = 'netbox_hedgehog/switchgroup_list.html'
-    context_object_name = 'switchgroups'
-    paginate_by = 25
+    
+    def get_context_data(self, **kwargs):
+        """Simple query with optional fabric filtering"""
+        from .models.fabric import HedgehogFabric
+        
+        context = super().get_context_data(**kwargs)
+        
+        # Get all SwitchGroups, optionally filtered by fabric
+        switchgroups = SwitchGroup.objects.all()
+        fabric_id = self.request.GET.get('fabric')
+        selected_fabric = None
+        
+        if fabric_id:
+            try:
+                selected_fabric = HedgehogFabric.objects.get(pk=fabric_id)
+                switchgroups = switchgroups.filter(fabric=selected_fabric)
+            except (ValueError, HedgehogFabric.DoesNotExist):
+                # Invalid fabric ID - show all
+                pass
+        
+        context['switchgroups'] = switchgroups
+        context['selected_fabric'] = selected_fabric
+        context['fabric_filter_id'] = fabric_id
+        context['all_fabrics'] = HedgehogFabric.objects.all().order_by('name')
+        context['show_fabric_filter'] = True
+        
+        return context
 
 # VPC API ListView classes with Fabric Filtering
 class ExternalListView(FabricFilterMixin, ListView):
@@ -213,7 +237,7 @@ urlpatterns = [
     
     # CR List pages
     path('vpcs/', VPCListView.as_view(), name='vpc_list'),
-    path('vpcs/<int:pk>/', VPCDetailViewImported.as_view(), name='vpc_detail'),
+    path('vpcs/<int:pk>/', VPCDetailView.as_view(), name='vpc_detail'),
     path('connections/', ConnectionListView.as_view(), name='connection_list'),
     path('connections/<int:pk>/', ConnectionDetailView.as_view(), name='connection_detail'),
     path('switches/', SwitchListView.as_view(), name='switch_list'),
