@@ -35,9 +35,53 @@
                         </div>
                     </div>
                     
-                    {% if table.rows %}
-                    {% load render_table from django_tables2 %}
-                    {% render_table table 'inc/table.html' %}
+                    {% if externalattachments %}
+                        <div class="table-responsive">
+                            <table class="table table-striped">
+                                <thead>
+                                    <tr>
+                                        <th>Name</th>
+                                        <th>Fabric</th>
+                                        <th>Namespace</th>
+                                        <th>Status</th>
+                                        <th>Git File</th>
+                                        <th>Last Synced</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {% for externalattachment in externalattachments %}
+                                    <tr>
+                                        <td>
+                                            <a href="{% url 'plugins:netbox_hedgehog:externalattachment_detail' pk=externalattachment.pk %}">
+                                                <strong>{{ externalattachment.name }}</strong>
+                                            </a>
+                                        </td>
+                                        <td>{{ externalattachment.fabric.name }}</td>
+                                        <td><code>{{ externalattachment.namespace }}</code></td>
+                                        <td>
+                                            <span class="badge bg-secondary">{{ externalattachment.kubernetes_status }}</span>
+                                        </td>
+                                        <td>
+                                            {% if externalattachment.git_file_path %}
+                                                <small><code>{{ externalattachment.git_file_path }}</code></small>
+                                            {% else %}
+                                                <small class="text-muted">Not from Git</small>
+                                            {% endif %}
+                                        </td>
+                                        <td>
+                                            {% if externalattachment.last_synced %}
+                                                {{ externalattachment.last_synced|date:"Y-m-d H:i" }}
+                                            {% else %}
+                                                <small class="text-muted">Never</small>
+                                            {% endif %}
+                                        </td>
+                                    </tr>
+                                    {% endfor %}
+                                </tbody>
+                            </table>
+                        </div>
+                        
+                        <p><strong>Total:</strong> {{ externalattachments|length }} External Attachment{{ externalattachments|length|pluralize }}</p>
                     {% else %}
                     <div class="alert alert-info">
                         <h5><i class="mdi mdi-information"></i> No External Attachments Found</h5>

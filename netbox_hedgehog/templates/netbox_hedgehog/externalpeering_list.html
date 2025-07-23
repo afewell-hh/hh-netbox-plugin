@@ -30,7 +30,7 @@
                         </div>
                     </div>
                     
-                    {% if externalpeeringconfigurations %}
+                    {% if externalpeerings %}
                     <div class="table-responsive">
                         <table class="table table-striped">
                             <thead>
@@ -38,47 +38,49 @@
                                     <th>Name</th>
                                     <th>Fabric</th>
                                     <th>Namespace</th>
-                                    <th>K8s Status</th>
-                                    <th>Created</th>
-                                    <th>Actions</th>
+                                    <th>Status</th>
+                                    <th>Git File</th>
+                                    <th>Last Synced</th>
                                 </tr>
                             </thead>
                             <tbody>
-                                {% for peering in externalpeeringconfigurations %}
+                                {% for externalpeering in externalpeerings %}
                                 <tr>
                                     <td>
-                                        <strong>{{ peering.name }}</strong>
-                                        {% if peering.description %}
-                                            <br><small class="text-muted">{{ peering.description|truncatechars:40 }}</small>
+                                        <a href="{% url 'plugins:netbox_hedgehog:externalpeering_detail' pk=externalexternalpeering.pk %}">
+                                            <strong>{{ externalexternalpeering.name }}</strong>
+                                        </a>
+                                        {% if externalpeering.description %}
+                                            <br><small class="text-muted">{{ externalpeering.description|truncatechars:40 }}</small>
                                         {% endif %}
                                     </td>
                                     <td>
-                                        {% if peering.fabric %}
-                                            <a href="{% url 'plugins:netbox_hedgehog:fabric_detail' pk=peering.fabric.pk %}">
-                                                {{ peering.fabric.name }}
+                                        {% if externalpeering.fabric %}
+                                            <a href="{% url 'plugins:netbox_hedgehog:fabric_detail' pk=externalpeering.fabric.pk %}">
+                                                {{ externalpeering.fabric.name }}
                                             </a>
                                         {% else %}
                                             <span class="text-muted">—</span>
                                         {% endif %}
                                     </td>
                                     <td>
-                                        <code>{{ peering.namespace|default:"default" }}</code>
+                                        <code>{{ externalpeering.namespace|default:"default" }}</code>
                                     </td>
                                     <td>
-                                        <span class="badge bg-{% if peering.kubernetes_status == 'live' %}success{% elif peering.kubernetes_status == 'error' %}danger{% else %}secondary{% endif %}">
-                                            {{ peering.get_kubernetes_status_display|default:"Unknown" }}
+                                        <span class="badge bg-{% if externalpeering.kubernetes_status == 'live' %}success{% elif externalpeering.kubernetes_status == 'error' %}danger{% else %}secondary{% endif %}">
+                                            {{ externalpeering.get_kubernetes_status_display|default:"Unknown" }}
                                         </span>
                                     </td>
                                     <td>
-                                        <span title="{{ peering.created }}">{{ peering.created|timesince }} ago</span>
+                                        <span title="{{ externalpeering.created }}">{{ externalpeering.created|timesince }} ago</span>
                                     </td>
                                     <td>
                                         <div class="btn-group btn-group-sm">
-                                            <a href="{% url 'plugins:netbox_hedgehog:externalpeering_detail' pk=peering.pk %}" 
+                                            <a href="{% url 'plugins:netbox_hedgehog:externalpeering_detail' pk=externalpeering.pk %}" 
                                                class="btn btn-outline-primary" title="View Details">
                                                 <i class="mdi mdi-eye"></i>
                                             </a>
-                                            <a href="{% url 'plugins:netbox_hedgehog:externalpeering_edit' pk=peering.pk %}" 
+                                            <a href="{% url 'plugins:netbox_hedgehog:externalpeering_edit' pk=externalpeering.pk %}" 
                                                class="btn btn-outline-secondary" title="Edit">
                                                 <i class="mdi mdi-pencil"></i>
                                             </a>

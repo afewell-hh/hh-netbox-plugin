@@ -62,8 +62,53 @@
                     </div>
                 </div>
                 <div class="card-body">
-                    {% if table.rows %}
-                        {% render_table table 'inc/table.html' %}
+                    {% if ipv4namespaces %}
+                        <div class="table-responsive">
+                            <table class="table table-striped">
+                                <thead>
+                                    <tr>
+                                        <th>Name</th>
+                                        <th>Fabric</th>
+                                        <th>Namespace</th>
+                                        <th>Status</th>
+                                        <th>Git File</th>
+                                        <th>Last Synced</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {% for ipv4namespace in ipv4namespaces %}
+                                    <tr>
+                                        <td>
+                                            <a href="{% url 'plugins:netbox_hedgehog:ipv4namespace_detail' pk=ipv4namespace.pk %}">
+                                                <strong>{{ ipv4namespace.name }}</strong>
+                                            </a>
+                                        </td>
+                                        <td>{{ ipv4namespace.fabric.name }}</td>
+                                        <td><code>{{ ipv4namespace.namespace }}</code></td>
+                                        <td>
+                                            <span class="badge bg-secondary">{{ ipv4namespace.kubernetes_status }}</span>
+                                        </td>
+                                        <td>
+                                            {% if ipv4namespace.git_file_path %}
+                                                <small><code>{{ ipv4namespace.git_file_path }}</code></small>
+                                            {% else %}
+                                                <small class="text-muted">Not from Git</small>
+                                            {% endif %}
+                                        </td>
+                                        <td>
+                                            {% if ipv4namespace.last_synced %}
+                                                {{ ipv4namespace.last_synced|date:"Y-m-d H:i" }}
+                                            {% else %}
+                                                <small class="text-muted">Never</small>
+                                            {% endif %}
+                                        </td>
+                                    </tr>
+                                    {% endfor %}
+                                </tbody>
+                            </table>
+                        </div>
+                        
+                        <p><strong>Total:</strong> {{ ipv4namespaces|length }} IPv4 Namespace{{ ipv4namespaces|length|pluralize }}</p>
                     {% else %}
                         <div class="text-center py-5">
                             <i class="mdi mdi-ip-network mdi-48px text-muted mb-3"></i>
@@ -83,7 +128,7 @@
         </div>
     </div>
     
-    {% if table.rows %}
+    {% if ipv4namespaces %}
     <div class="row mt-4">
         <div class="col-12">
             <div class="card">
