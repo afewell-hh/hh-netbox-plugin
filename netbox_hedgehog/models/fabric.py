@@ -359,6 +359,36 @@ class HedgehogFabric(NetBoxModel):
         help_text="Last watch error message"
     )
     
+    # GitOps File Management System fields (MVP2 Enhancement)
+    gitops_initialized = models.BooleanField(
+        default=False,
+        help_text="Whether GitOps file management structure has been initialized"
+    )
+    
+    archive_strategy = models.CharField(
+        max_length=30,
+        choices=[
+            ('rename_with_extension', 'Rename with .archived extension'),
+            ('move_to_archive_dir', 'Move to archive directory'),
+            ('backup_with_timestamp', 'Backup with timestamp'),
+            ('none', 'No archiving')
+        ],
+        default='rename_with_extension',
+        help_text="Strategy for archiving original files during ingestion"
+    )
+    
+    raw_directory_path = models.CharField(
+        max_length=500,
+        blank=True,
+        help_text="Full path to the raw/ directory where users drop files"
+    )
+    
+    managed_directory_path = models.CharField(
+        max_length=500,
+        blank=True,
+        help_text="Full path to the managed/ directory where HNP maintains normalized files"
+    )
+    
     class Meta:
         verbose_name = "Hedgehog Fabric"
         verbose_name_plural = "Hedgehog Fabrics"

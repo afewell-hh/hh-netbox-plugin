@@ -1,0 +1,547 @@
+{% extends "netbox_hedgehog/base.html" %}
+{% load static %}
+
+{% block title %}Raw Directory Monitor{% endblock %}
+
+{% block breadcrumbs %}
+    <li class="breadcrumb-item"><a href="{% url 'plugins:netbox_hedgehog:fabric_list' %}">Fabrics</a></li>
+    <li class="breadcrumb-item"><a href="{% url 'plugins:netbox_hedgehog:gitops_dashboard' %}">GitOps Dashboard</a></li>
+    <li class="breadcrumb-item active">Raw Directory</li>
+{% endblock %}
+
+{% block hedgehog_content %}
+<div class="container-fluid">
+    <!-- Header -->
+    <div class="row mb-4">
+        <div class="col-12">
+            <div class="d-flex justify-content-between align-items-center">
+                <div>
+                    <h2><i class="mdi mdi-folder-eye text-warning"></i> Raw Directory Monitor</h2>
+                    <p class="text-muted mb-0">Monitor files waiting to be processed by the GitOps ingestion system</p>
+                </div>
+                <div>
+                    <div class="btn-group me-2" role="group">
+                        <button class="btn btn-outline-secondary" id="refresh-monitor">
+                            <i class="mdi mdi-refresh"></i> Refresh
+                        </button>
+                        <button class="btn btn-outline-info" id="toggle-auto-refresh">
+                            <i class="mdi mdi-play"></i> Auto-refresh
+                        </button>
+                    </div>
+                    <button class="btn btn-success" id="process-all-files">
+                        <i class="mdi mdi-play"></i> Process All
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Status Overview -->
+    <div class="row mb-4">
+        <div class="col-md-3">
+            <div class="card bg-warning text-white">
+                <div class="card-body text-center">
+                    <i class="mdi mdi-file-clock display-4 mb-2"></i>
+                    <h2 id="pending-count">0</h2>
+                    <small>Files Pending</small>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card bg-info text-white">
+                <div class="card-body text-center">
+                    <i class="mdi mdi-cog display-4 mb-2"></i>
+                    <h2 id="processing-count">0</h2>
+                    <small>Currently Processing</small>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card bg-success text-white">
+                <div class="card-body text-center">
+                    <i class="mdi mdi-check-circle display-4 mb-2"></i>
+                    <h2 id="completed-count">0</h2>
+                    <small>Completed Today</small>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card bg-danger text-white">
+                <div class="card-body text-center">
+                    <i class="mdi mdi-alert-circle display-4 mb-2"></i>
+                    <h2 id="error-count">0</h2>
+                    <small>Processing Errors</small>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Main Content -->
+    <div class="row">
+        <!-- Left Column: File List -->
+        <div class="col-lg-8">
+            <div class="card">
+                <div class="card-header d-flex justify-content-between align-items-center">
+                    <h5 class="card-title mb-0">
+                        <i class="mdi mdi-file-multiple"></i> Raw Files
+                    </h5>
+                    <div class="btn-group btn-group-sm" role="group">
+                        <input type="radio" class="btn-check" name="file-filter" id="filter-all" autocomplete="off" checked>
+                        <label class="btn btn-outline-primary" for="filter-all">All</label>
+                        
+                        <input type="radio" class="btn-check" name="file-filter" id="filter-pending" autocomplete="off">
+                        <label class="btn btn-outline-warning" for="filter-pending">Pending</label>
+                        
+                        <input type="radio" class="btn-check" name="file-filter" id="filter-processing" autocomplete="off">
+                        <label class="btn btn-outline-info" for="filter-processing">Processing</label>
+                        
+                        <input type="radio" class="btn-check" name="file-filter" id="filter-errors" autocomplete="off">
+                        <label class="btn btn-outline-danger" for="filter-errors">Errors</label>
+                    </div>
+                </div>
+                <div class="card-body p-0">
+                    <div class="table-responsive">
+                        <table class="table table-hover mb-0" id="files-table">
+                            <thead class="table-light">
+                                <tr>
+                                    <th width="30">
+                                        <div class="form-check">
+                                            <input class="form-check-input" type="checkbox" id="select-all-files">
+                                        </div>
+                                    </th>
+                                    <th>File</th>
+                                    <th>Status</th>
+                                    <th>Size</th>
+                                    <th>Added</th>
+                                    <th>Fabric</th>
+                                    <th>Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody id="files-tbody">
+                                <!-- Files populated via JavaScript -->
+                            </tbody>
+                        </table>
+                    </div>
+                    
+                    <!-- Empty State -->
+                    <div class="empty-state d-none" id="files-empty">
+                        <i class="mdi mdi-file-multiple"></i>
+                        <h5>No Files Found</h5>
+                        <p>The raw directory is empty or no files match the current filter.</p>
+                        <button class="btn btn-primary" onclick="uploadFiles()">
+                            <i class="mdi mdi-upload"></i> Upload Files
+                        </button>
+                    </div>
+                </div>
+                <div class="card-footer d-flex justify-content-between align-items-center">
+                    <div class="bulk-actions d-none" id="bulk-actions">
+                        <div class="btn-group btn-group-sm" role="group">
+                            <button class="btn btn-success" onclick="bulkProcess()">
+                                <i class="mdi mdi-play"></i> Process Selected
+                            </button>
+                            <button class="btn btn-warning" onclick="bulkPrioritize()">
+                                <i class="mdi mdi-star"></i> Prioritize
+                            </button>
+                            <button class="btn btn-danger" onclick="bulkDelete()">
+                                <i class="mdi mdi-delete"></i> Delete
+                            </button>
+                        </div>
+                        <span class="ms-2 text-muted">
+                            <span id="selected-count">0</span> selected
+                        </span>
+                    </div>
+                    <div class="pagination-info">
+                        Showing <span id="showing-start">1</span>-<span id="showing-end">0</span> 
+                        of <span id="total-files">0</span> files
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Right Column: Processing Queue & Logs -->
+        <div class="col-lg-4">
+            <!-- Processing Queue -->
+            <div class="card mb-4">
+                <div class="card-header">
+                    <h5 class="card-title mb-0">
+                        <i class="mdi mdi-format-list-numbered"></i> Processing Queue
+                    </h5>
+                </div>
+                <div class="card-body">
+                    <div class="queue-status mb-3">
+                        <div class="d-flex justify-content-between align-items-center mb-2">
+                            <span>Queue Status:</span>
+                            <span class="badge bg-success" id="queue-status">Active</span>
+                        </div>
+                        <div class="progress mb-2">
+                            <div class="progress-bar" id="queue-progress" style="width: 0%"></div>
+                        </div>
+                        <small class="text-muted">
+                            Processing <span id="current-processing">0</span> of <span id="queue-total">0</span> files
+                        </small>
+                    </div>
+
+                    <!-- Queue Items -->
+                    <div class="queue-items" id="queue-items">
+                        <!-- Queue items populated via JavaScript -->
+                    </div>
+
+                    <!-- Empty Queue -->
+                    <div class="text-center text-muted d-none" id="queue-empty">
+                        <i class="mdi mdi-playlist-check display-4 mb-2 opacity-50"></i>
+                        <p>Processing queue is empty</p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Real-time Processing Log -->
+            <div class="card">
+                <div class="card-header d-flex justify-content-between align-items-center">
+                    <h5 class="card-title mb-0">
+                        <i class="mdi mdi-console"></i> Processing Log
+                    </h5>
+                    <div class="btn-group btn-group-sm" role="group">
+                        <button class="btn btn-outline-secondary" onclick="clearLog()">
+                            Clear
+                        </button>
+                        <button class="btn btn-outline-secondary" onclick="exportLog()">
+                            Export
+                        </button>
+                    </div>
+                </div>
+                <div class="card-body p-0">
+                    <div class="log-container" id="processing-log">
+                        <!-- Log entries populated via JavaScript -->
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- File Details Modal -->
+<div class="modal fade" id="fileDetailsModal" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">
+                    <i class="mdi mdi-file-document"></i> File Details
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body" id="file-details-body">
+                <!-- Content loaded via JavaScript -->
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                <button type="button" class="btn btn-primary" id="process-file-btn">
+                    <i class="mdi mdi-play"></i> Process File
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- File Upload Modal -->
+<div class="modal fade" id="fileUploadModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">
+                    <i class="mdi mdi-upload"></i> Upload Files
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <form id="file-upload-form" enctype="multipart/form-data">
+                    <div class="mb-3">
+                        <label for="fabric-select" class="form-label">Target Fabric</label>
+                        <select class="form-select" id="fabric-select" required>
+                            <option value="">Select a fabric...</option>
+                            <!-- Populated via JavaScript -->
+                        </select>
+                    </div>
+                    <div class="mb-3">
+                        <label for="file-input" class="form-label">YAML Files</label>
+                        <input type="file" 
+                               class="form-control" 
+                               id="file-input" 
+                               multiple 
+                               accept=".yaml,.yml"
+                               required>
+                        <div class="form-text">
+                            Select one or more YAML files to upload to the raw directory.
+                        </div>
+                    </div>
+                    <div class="form-check">
+                        <input class="form-check-input" type="checkbox" id="auto-process">
+                        <label class="form-check-label" for="auto-process">
+                            Automatically process after upload
+                        </label>
+                    </div>
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                <button type="button" class="btn btn-primary" id="upload-files-btn">
+                    <i class="mdi mdi-upload"></i> Upload
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Processing Error Modal -->
+<div class="modal fade" id="errorDetailsModal" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title text-danger">
+                    <i class="mdi mdi-alert-circle"></i> Processing Error Details
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body" id="error-details-body">
+                <!-- Error details loaded via JavaScript -->
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                <button type="button" class="btn btn-warning" id="retry-processing-btn">
+                    <i class="mdi mdi-reload"></i> Retry Processing
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block hedgehog_javascript %}
+<script src="{% static 'netbox_hedgehog/js/raw-directory-monitor.js' %}"></script>
+<style>
+/* Raw Directory Monitor Styles */
+.queue-items {
+    max-height: 200px;
+    overflow-y: auto;
+}
+
+.queue-item {
+    display: flex;
+    align-items: center;
+    justify-content: between;
+    padding: 0.5rem 0;
+    border-bottom: 1px solid var(--bs-border-color);
+}
+
+.queue-item:last-child {
+    border-bottom: none;
+}
+
+.queue-item .file-name {
+    flex: 1;
+    font-size: 0.875rem;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.queue-item .queue-position {
+    font-size: 0.75rem;
+    color: var(--bs-secondary);
+    margin-right: 0.5rem;
+}
+
+.queue-item .processing-spinner {
+    width: 16px;
+    height: 16px;
+    border: 2px solid var(--bs-border-color);
+    border-top-color: var(--bs-primary);
+    border-radius: 50%;
+    animation: spin 1s linear infinite;
+}
+
+.log-container {
+    height: 300px;
+    overflow-y: auto;
+    background-color: #f8f9fa;
+    border: 1px solid var(--bs-border-color);
+}
+
+.log-entry {
+    padding: 0.25rem 0.75rem;
+    border-bottom: 1px solid var(--bs-border-color);
+    font-family: 'Courier New', monospace;
+    font-size: 0.75rem;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.log-entry:last-child {
+    border-bottom: none;
+}
+
+.log-entry .timestamp {
+    color: var(--bs-secondary);
+    min-width: 80px;
+}
+
+.log-entry .level {
+    min-width: 60px;
+    font-weight: bold;
+}
+
+.log-entry .level.info {
+    color: var(--bs-info);
+}
+
+.log-entry .level.success {
+    color: var(--bs-success);
+}
+
+.log-entry .level.warning {
+    color: var(--bs-warning);
+}
+
+.log-entry .level.error {
+    color: var(--bs-danger);
+}
+
+.log-entry .message {
+    flex: 1;
+}
+
+/* File status indicators */
+.file-status {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.25rem;
+}
+
+.file-status.pending {
+    color: var(--bs-warning);
+}
+
+.file-status.processing {
+    color: var(--bs-info);
+}
+
+.file-status.completed {
+    color: var(--bs-success);
+}
+
+.file-status.error {
+    color: var(--bs-danger);
+}
+
+.file-status .spinner {
+    width: 14px;
+    height: 14px;
+    border: 2px solid currentColor;
+    border-top-color: transparent;
+    border-radius: 50%;
+    animation: spin 1s linear infinite;
+}
+
+/* Bulk actions */
+.bulk-actions {
+    animation: slideIn 0.3s ease;
+}
+
+@keyframes slideIn {
+    from {
+        opacity: 0;
+        transform: translateY(-10px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+/* Upload progress */
+.upload-progress {
+    margin-top: 1rem;
+}
+
+.upload-item {
+    display: flex;
+    align-items: center;
+    justify-content: between;
+    padding: 0.5rem 0;
+    border-bottom: 1px solid var(--bs-border-color);
+}
+
+.upload-item:last-child {
+    border-bottom: none;
+}
+
+.upload-item .file-name {
+    flex: 1;
+    margin-right: 1rem;
+}
+
+.upload-item .upload-status {
+    min-width: 100px;
+    text-align: right;
+}
+
+/* Real-time updates */
+.file-row.updated {
+    animation: highlight 2s ease;
+}
+
+@keyframes highlight {
+    0% {
+        background-color: rgba(var(--bs-info-rgb), 0.3);
+    }
+    100% {
+        background-color: transparent;
+    }
+}
+
+/* Loading states */
+.loading-overlay {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background-color: rgba(255, 255, 255, 0.8);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 10;
+}
+
+.loading-spinner {
+    width: 2rem;
+    height: 2rem;
+    border: 0.25em solid var(--bs-border-color);
+    border-top-color: var(--bs-primary);
+    border-radius: 50%;
+    animation: spin 1s linear infinite;
+}
+
+/* Responsive adjustments */
+@media (max-width: 768px) {
+    .table-responsive table th,
+    .table-responsive table td {
+        white-space: nowrap;
+        font-size: 0.875rem;
+    }
+    
+    .bulk-actions {
+        flex-direction: column;
+        gap: 0.5rem;
+    }
+    
+    .log-container {
+        height: 200px;
+    }
+}
+
+@keyframes spin {
+    to { transform: rotate(360deg); }
+}
+</style>
+{% endblock %}

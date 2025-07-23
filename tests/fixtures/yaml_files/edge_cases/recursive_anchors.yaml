@@ -1,0 +1,295 @@
+# Recursive Anchors and Complex YAML References Test File
+# Tests complex YAML anchor and alias scenarios
+
+# Define base configuration templates
+base_metadata: &base_metadata
+  labels:
+    managed-by: hedgehog-netbox-plugin
+    version: v1.0
+    environment: test
+  annotations:
+    created-by: test-suite
+    test-type: recursive-anchors
+
+network_defaults: &network_defaults
+  mtu: 9000
+  dhcp: enabled
+  monitoring: enabled
+
+security_policy: &security_policy
+  encryption: required
+  authentication: certificate
+  access_control: rbac
+
+# Complex nested anchor structure
+complex_config: &complex_config
+  metadata:
+    <<: *base_metadata
+    additional_labels:
+      config_type: complex
+  network:
+    <<: *network_defaults
+    advanced_settings:
+      qos: enabled
+      traffic_shaping: adaptive
+  security:
+    <<: *security_policy
+    advanced_security:
+      intrusion_detection: enabled
+      packet_inspection: deep
+
+---
+
+# First document using complex anchors
+apiVersion: hhnet.githedgehog.com/v1alpha1
+kind: VPC
+metadata:
+  name: complex-anchor-vpc
+  namespace: default
+  <<: *base_metadata
+  labels:
+    <<: *base_metadata
+    type: vpc
+    complexity: high
+spec:
+  description: "VPC using complex anchor references"
+  subnet: "10.0.0.0/16"
+  config:
+    <<: *complex_config
+    vpc_specific:
+      isolation: strict
+      peering: controlled
+
+---
+
+# Document with self-referencing structure (but not circular)
+apiVersion: hhnet.githedgehog.com/v1alpha1
+kind: External
+metadata:
+  name: self-ref-external
+  namespace: default
+  <<: *base_metadata
+spec:
+  description: "External with self-referencing configuration"
+  vlan: 100
+  # Self-referencing configuration template
+  bgp_config: &bgp_template
+    asn: 65000
+    router_id: "192.168.1.1"
+    neighbors: []
+    policies:
+      import_policy: &import_pol
+        name: "import-policy"
+        rules:
+          - match: "community"
+            action: "accept"
+      export_policy:
+        name: "export-policy"
+        rules:
+          - match: "prefix"
+            action: "accept"
+        # Reference to import policy for consistency
+        consistency_check: *import_pol
+  # Use the BGP template
+  routing:
+    bgp: *bgp_template
+
+---
+
+# Document with deeply nested anchor references
+deep_config: &deep_config
+  level1: &level1
+    level2: &level2
+      level3: &level3
+        level4: &level4
+          level5:
+            value: "deep-value"
+            back_reference_l4: *level4
+            back_reference_l3: *level3
+            back_reference_l2: *level2
+            back_reference_l1: *level1
+
+apiVersion: wiring.githedgehog.com/v1alpha1
+kind: Switch
+metadata:
+  name: deep-anchor-switch
+  namespace: default
+  <<: *base_metadata
+spec:
+  description: "Switch with deeply nested anchor references"
+  role: leaf
+  advanced_config:
+    <<: *deep_config
+    switch_specific:
+      port_config: &port_template
+        speed: "25G"
+        mtu: 9000
+        flow_control: enabled
+      ports:
+        - name: "Ethernet1"
+          <<: *port_template
+          description: "Server connection"
+        - name: "Ethernet2"
+          <<: *port_template
+          description: "Another server connection"
+        - name: "Ethernet48"
+          <<: *port_template
+          speed: "100G"  # Override speed
+          description: "Uplink connection"
+
+---
+
+# Document with multiple anchor merges
+multimerge_base: &multimerge_base
+  common_field: "base-value"
+  base_only: "base-only-value"
+
+multimerge_extension1: &multimerge_ext1
+  common_field: "extension1-value"  # Will override base
+  ext1_only: "ext1-only-value"
+
+multimerge_extension2: &multimerge_ext2
+  common_field: "extension2-value"  # Will override extension1
+  ext2_only: "ext2-only-value"
+
+apiVersion: hhnet.githedgehog.com/v1alpha1
+kind: VPC
+metadata:
+  name: multimerge-vpc
+  namespace: default
+  <<: *base_metadata
+spec:
+  description: "VPC with multiple anchor merges"
+  subnet: "10.3.0.0/16"
+  # Multiple merge test - last one wins for conflicting keys
+  config:
+    <<: [*multimerge_base, *multimerge_ext1, *multimerge_ext2]
+    vpc_specific: "vpc-value"
+  # Alternative syntax for multiple merges
+  settings:
+    - <<: *network_defaults
+    - <<: *security_policy
+    - custom_setting: "custom-value"
+
+---
+
+# Document with anchor in list context
+port_configs: &port_configs
+  - name: "Ethernet1"
+    speed: "25G"
+    type: "server"
+  - name: "Ethernet2" 
+    speed: "25G"
+    type: "server"
+  - name: "Ethernet48"
+    speed: "100G"
+    type: "uplink"
+
+apiVersion: wiring.githedgehog.com/v1alpha1
+kind: Switch
+metadata:
+  name: list-anchor-switch
+  namespace: default
+  <<: *base_metadata
+spec:
+  description: "Switch using anchors in list context"
+  role: leaf
+  ports: *port_configs
+  # Use same port config in different context
+  backup_ports: *port_configs
+  port_templates:
+    standard_ports: *port_configs
+
+---
+
+# Document testing anchor scope and shadowing
+global_anchor: &global_anchor
+  global_value: "I am global"
+
+apiVersion: hhnet.githedgehog.com/v1alpha1
+kind: VPC
+metadata:
+  name: anchor-scope-vpc
+  namespace: default
+spec:
+  description: "VPC testing anchor scope and shadowing"
+  subnet: "10.4.0.0/16"
+  config:
+    # Local anchor with same name shadows global
+    global_anchor: &global_anchor
+      global_value: "I am local and shadow global"
+      local_only: "local-value"
+    
+    # Use local version (shadowed)
+    test1: *global_anchor
+    
+    # Nested scope test
+    nested:
+      # Another local anchor
+      global_anchor: &global_anchor
+        global_value: "I am nested and shadow both"
+        nested_only: "nested-value"
+      
+      # Use nested version
+      test2: *global_anchor
+
+---
+
+# Complex real-world example with anchors
+common_vpc_settings: &common_vpc_settings
+  dhcp:
+    enabled: true 
+    lease_time: 86400
+    dns_servers: ["8.8.8.8", "8.8.4.4"]
+  monitoring:
+    enabled: true
+    metrics: ["bandwidth", "latency", "packet_loss"]
+    alerts:
+      - type: "bandwidth_threshold"
+        threshold: "80%"
+      - type: "latency_spike"
+        threshold: "100ms"
+  security:
+    firewalling: enabled
+    intrusion_detection: enabled
+    packet_filtering: strict
+
+production_overrides: &production_overrides
+  monitoring:
+    enabled: true
+    metrics: ["bandwidth", "latency", "packet_loss", "jitter", "error_rate"]
+    alerts:
+      - type: "bandwidth_threshold"
+        threshold: "70%"  # More aggressive for production
+      - type: "latency_spike" 
+        threshold: "50ms"  # Stricter latency for production
+      - type: "error_rate"
+        threshold: "0.1%"
+    retention: "30d"
+  security:
+    firewalling: enabled
+    intrusion_detection: enabled
+    packet_filtering: strict
+    encryption: "AES-256"
+    audit_logging: enabled
+
+apiVersion: hhnet.githedgehog.com/v1alpha1
+kind: VPC
+metadata:
+  name: real-world-vpc
+  namespace: production
+  <<: *base_metadata
+  labels:
+    <<: *base_metadata
+    environment: production
+    criticality: high
+spec:
+  description: "Real-world VPC with complex anchor usage"
+  subnet: "10.100.0.0/16"
+  # Merge common settings with production overrides
+  settings:
+    <<: [*common_vpc_settings, *production_overrides]
+    # VPC-specific settings
+    vpc_id: "vpc-prod-001"
+    region: "us-east-1"
+    availability_zones: ["us-east-1a", "us-east-1b", "us-east-1c"]

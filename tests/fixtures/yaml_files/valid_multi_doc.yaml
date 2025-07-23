@@ -1,0 +1,147 @@
+# Valid Multi-Document YAML File
+# Contains various Hedgehog CRD types for comprehensive testing
+
+apiVersion: hhnet.githedgehog.com/v1alpha1
+kind: VPC
+metadata:
+  name: production-vpc
+  namespace: production
+  labels:
+    environment: production
+    team: networking
+    criticality: high
+  annotations:
+    description: "Main production VPC for customer workloads"
+    contact: "network-team@company.com"
+spec:
+  description: "Production VPC with full isolation and monitoring"
+  subnet: "10.0.0.0/16"
+  policies:
+    - name: allow-internal
+      action: allow
+      sources: ["10.0.0.0/16"]
+    - name: allow-monitoring
+      action: allow  
+      sources: ["monitoring"]
+  settings:
+    dhcp: enabled
+    dns: ["8.8.8.8", "8.8.4.4"]
+    mtu: 9000
+
+---
+
+apiVersion: hhnet.githedgehog.com/v1alpha1
+kind: External
+metadata:
+  name: bgp-external-peer
+  namespace: production
+  labels:
+    environment: production
+    protocol: bgp
+    provider: external-isp
+spec:
+  description: "BGP peering with external ISP"
+  vlan: 100
+  ipv4Namespace: "external-bgp"
+  inboundCommunity: "65000:100"
+  outboundCommunity: "65000:200"
+  bgpConfig:
+    asn: 65000
+    routerId: "192.168.1.1"
+    neighbors:
+      - ip: "192.168.1.2"
+        asn: 65001
+        description: "ISP peer"
+
+---
+
+apiVersion: wiring.githedgehog.com/v1alpha1
+kind: Switch
+metadata:
+  name: leaf-switch-01
+  namespace: infrastructure
+  labels:
+    role: leaf
+    rack: rack-01
+    zone: availability-zone-1
+spec:
+  description: "Leaf switch in rack 01"
+  role: leaf
+  ports:
+    - name: Ethernet1
+      speed: 25G
+      description: "Connection to server-01"
+    - name: Ethernet2  
+      speed: 25G
+      description: "Connection to server-02"
+    - name: Ethernet48
+      speed: 100G
+      description: "Uplink to spine"
+  groups:
+    - leaf-switches
+    - rack-01-switches
+
+---
+
+apiVersion: wiring.githedgehog.com/v1alpha1
+kind: Connection
+metadata:
+  name: leaf-spine-connection-01
+  namespace: infrastructure
+  labels:
+    connection-type: leaf-spine
+    bandwidth: 100G
+spec:
+  description: "High-bandwidth connection between leaf and spine"
+  endpoints:
+    - switch: leaf-switch-01
+      port: Ethernet48
+    - switch: spine-switch-01
+      port: Ethernet1
+  settings:
+    mtu: 9000
+    lacp: enabled
+
+---
+
+apiVersion: hhnet.githedgehog.com/v1alpha1
+kind: VPCAttachment
+metadata:
+  name: production-vpc-attachment
+  namespace: production
+  labels:
+    vpc: production-vpc
+    attachment-type: server
+spec:
+  description: "Attachment of production VPC to server workloads"
+  vpc: production-vpc
+  connection: server-connection-01
+  subnet: "10.0.1.0/24"
+  vlan: 101
+  settings:
+    native: false
+    isolated: false
+
+---
+
+apiVersion: hhnet.githedgehog.com/v1alpha1
+kind: IPv4Namespace
+metadata:
+  name: production-ipv4-namespace
+  namespace: production
+  labels:
+    environment: production
+    purpose: workload-addressing
+spec:
+  description: "IPv4 addressing namespace for production workloads"
+  subnets:
+    - "10.0.0.0/16"
+    - "172.16.0.0/12"
+  dhcp:
+    enabled: true
+    ranges:
+      - start: "10.0.1.100"
+        end: "10.0.1.200"
+  dns:
+    servers: ["10.0.0.10", "10.0.0.11"]
+    domain: "prod.company.local"

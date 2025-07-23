@@ -2,6 +2,7 @@ import logging
 import yaml
 import os
 import json
+from pathlib import Path
 from typing import Dict, Any, Optional, List
 from datetime import datetime
 from django.utils import timezone
@@ -181,22 +182,134 @@ class GitOpsEditService:
         logger.info(f"Updated {cr_instance.__class__.__name__} {cr_instance.name} in database")
     
     def _update_cr_yaml_file(self, fabric: HedgehogFabric, cr_instance) -> Dict[str, Any]:
-        """Update the YAML file in the Git repository"""
+        """
+        SAFELY update the YAML file in the Git repository.
+        
+        CRITICAL FIX: This method now handles both single and multi-document YAML files
+        properly without destroying other objects in multi-document files.
+        """
+        try:
+            # Check if fabric uses new GitOps file management
+            if self._uses_new_gitops_structure(fabric):
+                return self._update_cr_in_managed_directory(fabric, cr_instance)
+            else:
+                return self._legacy_update_cr_yaml_file(fabric, cr_instance)
+                
+        except Exception as e:
+            logger.error(f"Failed to update YAML file: {str(e)}")
+            raise
+    
+    def _uses_new_gitops_structure(self, fabric: HedgehogFabric) -> bool:
+        """Check if fabric uses the new GitOps file management structure."""
+        return (
+            hasattr(fabric, 'gitops_initialized') and 
+            fabric.gitops_initialized and
+            hasattr(fabric, 'managed_directory_path') and
+            fabric.managed_directory_path
+        )
+    
+    def _update_cr_in_managed_directory(self, fabric: HedgehogFabric, cr_instance) -> Dict[str, Any]:
+        """
+        Update CR in the managed/ directory structure (NEW SAFE METHOD).
+        
+        This method:
+        1. Updates only single-document files in managed/ directory
+        2. Never overwrites multi-document files
+        3. Preserves all other objects
+        """
         try:
             # Generate YAML content from CR instance
             yaml_content = self._generate_cr_yaml(cr_instance)
             
-            # Determine file path
-            file_path = self._get_cr_file_path(fabric, cr_instance)
+            # Determine managed file path
+            managed_path = Path(fabric.managed_directory_path)
+            file_path = self._get_managed_file_path(fabric, cr_instance, managed_path)
             
-            # Get Git repository path
+            # Ensure directory exists
+            file_path.parent.mkdir(parents=True, exist_ok=True)
+            
+            # Write single-document YAML file (SAFE - only one object per file)
+            with open(file_path, 'w') as f:
+                f.write(yaml_content)
+            
+            # Update CR with file path
+            relative_path = file_path.relative_to(managed_path.parent)
+            cr_instance.git_file_path = str(relative_path)
+            cr_instance.save()
+            
+            logger.info(f"SAFELY updated CR in managed file: {file_path}")
+            return {
+                'success': True,
+                'file_path': str(relative_path),
+                'full_path': str(file_path),
+                'yaml_content': yaml_content,
+                'method': 'managed_directory_safe_update'
+            }
+            
+        except Exception as e:
+            logger.error(f"Failed to update CR in managed directory: {str(e)}")
+            raise
+    
+    def _get_managed_file_path(self, fabric: HedgehogFabric, cr_instance, managed_path: Path) -> Path:
+        """Get the file path for a CR in the managed directory structure."""
+        # Map CRD kind to directory
+        kind_to_directory = {
+            'VPC': 'vpcs',
+            'External': 'externals',
+            'ExternalAttachment': 'externalattachments',
+            'ExternalPeering': 'externalpeerings',
+            'IPv4Namespace': 'ipv4namespaces',
+            'VPCAttachment': 'vpcattachments',
+            'VPCPeering': 'vpcpeerings',
+            'Connection': 'connections',
+            'Server': 'servers',
+            'Switch': 'switches',
+            'SwitchGroup': 'switchgroups',
+            'VLANNamespace': 'vlannamespaces'
+        }
+        
+        kind = cr_instance.__class__.__name__
+        directory = kind_to_directory.get(kind, kind.lower() + 's')
+        
+        # Generate filename
+        namespace = cr_instance.namespace or fabric.kubernetes_namespace or 'default'
+        if namespace and namespace != 'default':
+            filename = f"{namespace}-{cr_instance.name}.yaml"
+        else:
+            filename = f"{cr_instance.name}.yaml"
+        
+        return managed_path / directory / filename
+    
+    def _legacy_update_cr_yaml_file(self, fabric: HedgehogFabric, cr_instance) -> Dict[str, Any]:
+        """
+        LEGACY method for updating YAML files (UNSAFE - but preserved for compatibility).
+        
+        WARNING: This method has the critical bug of overwriting entire files.
+        It should only be used for fabrics that haven't been migrated to the new structure.
+        """
+        logger.warning(f"Using LEGACY (UNSAFE) YAML update for fabric {fabric.name} - consider migrating to new GitOps structure")
+        
+        try:
+            # Check if the target file is multi-document
+            file_path = self._get_cr_file_path(fabric, cr_instance)
             repo_path = self._get_git_repo_path(fabric)
             full_file_path = os.path.join(repo_path, file_path)
+            
+            # SAFETY CHECK: Don't overwrite multi-document files
+            if os.path.exists(full_file_path):
+                if self._is_multi_document_file(full_file_path):
+                    raise Exception(
+                        f"PREVENTED DATA LOSS: File {file_path} contains multiple documents. "
+                        f"Use GitOps onboarding to migrate to safe file management structure."
+                    )
+            
+            # Generate YAML content from CR instance
+            yaml_content = self._generate_cr_yaml(cr_instance)
             
             # Ensure directory exists
             os.makedirs(os.path.dirname(full_file_path), exist_ok=True)
             
-            # Write YAML file
+            # Write YAML file (only if safe)
             with open(full_file_path, 'w') as f:
                 f.write(yaml_content)
             
@@ -204,17 +317,33 @@ class GitOpsEditService:
             cr_instance.git_file_path = file_path
             cr_instance.save()
             
-            logger.info(f"Updated YAML file: {file_path}")
+            logger.warning(f"LEGACY update completed for: {file_path}")
             return {
                 'success': True,
                 'file_path': file_path,
                 'full_path': full_file_path,
-                'yaml_content': yaml_content
+                'yaml_content': yaml_content,
+                'method': 'legacy_update_with_safety_check'
             }
             
         except Exception as e:
-            logger.error(f"Failed to update YAML file: {str(e)}")
+            logger.error(f"Failed to update YAML file (legacy method): {str(e)}")
             raise
+    
+    def _is_multi_document_file(self, file_path: str) -> bool:
+        """Check if a YAML file contains multiple documents."""
+        try:
+            with open(file_path, 'r') as f:
+                documents = list(yaml.safe_load_all(f))
+            
+            # Filter out None/empty documents
+            valid_documents = [doc for doc in documents if doc and isinstance(doc, dict)]
+            return len(valid_documents) > 1
+            
+        except Exception as e:
+            logger.warning(f"Could not check if file {file_path} is multi-document: {str(e)}")
+            # Err on the side of caution
+            return True
     
     def _generate_cr_yaml(self, cr_instance) -> str:
         """Generate Kubernetes YAML manifest from CR instance"""

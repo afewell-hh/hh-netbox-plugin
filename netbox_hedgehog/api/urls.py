@@ -3,6 +3,10 @@ from netbox.api.routers import NetBoxRouter
 
 from . import views
 from .sync_endpoints import HCKCSyncView, StateComparisonView
+from .gitops_views import (
+    GitOpsOnboardingAPIView, GitOpsIngestionAPIView, GitOpsStatusAPIView,
+    GitOpsWatcherAPIView, GitOpsGlobalStatusAPIView, GitOpsValidationAPIView
+)
 # from .git_health_views import (
 #     GitHealthSummaryView, GitRepositoryHealthDetailView, 
 #     GitRepositoryHealthHistoryView, GitConnectionMetricsView, force_health_check
@@ -58,6 +62,14 @@ urlpatterns = router.urls + [
     # HCKC State Sync endpoints (GitOps Workflow)
     path('gitops-fabrics/<int:fabric_id>/hckc_sync/', HCKCSyncView.as_view(), name='hckc-sync'),
     path('gitops-fabrics/<int:fabric_id>/state-comparison/', StateComparisonView.as_view(), name='state-comparison'),
+    
+    # GitOps File Management endpoints (MVP2 Enhancement)
+    path('fabrics/<int:fabric_id>/init-gitops/', GitOpsOnboardingAPIView.as_view(), name='gitops-init'),
+    path('fabrics/<int:fabric_id>/ingest-raw/', GitOpsIngestionAPIView.as_view(), name='gitops-ingest'),
+    path('fabrics/<int:fabric_id>/gitops-status/', GitOpsStatusAPIView.as_view(), name='gitops-status'),
+    path('fabrics/<int:fabric_id>/watcher/', GitOpsWatcherAPIView.as_view(), name='gitops-watcher'),
+    path('fabrics/<int:fabric_id>/validate-gitops/', GitOpsValidationAPIView.as_view(), name='gitops-validate'),
+    path('gitops/global-status/', GitOpsGlobalStatusAPIView.as_view(), name='gitops-global-status'),
     
     # Git Repository Health Monitoring endpoints (Week 2 Integration) - Temporarily disabled
     # path('git-repositories/health-summary/', GitHealthSummaryView.as_view(), name='git-health-summary'),

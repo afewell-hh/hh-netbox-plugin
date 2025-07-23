@@ -371,3 +371,174 @@ class GitOpsVLANNamespaceForm(GitOpsFormMixin, NetBoxModelForm):
             'fabric', 'name', 'namespace', 'spec', 'labels',
             'annotations', 'auto_sync', 'tags'
         ]
+
+
+# GitOps File Management Forms
+class GitOpsOnboardingForm(forms.Form):
+    """
+    Form for GitOps onboarding wizard configuration step.
+    """
+    
+    ARCHIVE_STRATEGY_CHOICES = [
+        ('organize', 'Organize & Migrate (Recommended) - Parse files and organize into managed structure'),
+        ('archive', 'Archive & Start Fresh - Archive all files and start with clean structure'),
+        ('backup', 'Backup Only - Create backups but leave files in place'),
+    ]
+    
+    # Basic Configuration
+    fabric = forms.ModelChoiceField(
+        queryset=None,  # Will be set in __init__
+        required=True,
+        help_text="Select the fabric to configure for GitOps file management",
+        widget=forms.Select(attrs={
+            'class': 'form-select',
+            'id': 'fabric-selector'
+        })
+    )
+    
+    gitops_directory = forms.CharField(
+        max_length=500,
+        required=True,
+        help_text="Path within repository where GitOps files will be managed (e.g., /fabrics/production/gitops)",
+        widget=forms.TextInput(attrs={
+            'placeholder': '/fabrics/production/gitops',
+            'class': 'form-control',
+            'id': 'gitops-directory'
+        })
+    )
+    
+    raw_directory = forms.CharField(
+        max_length=200,
+        initial='raw/',
+        help_text="Directory name for unprocessed YAML files",
+        widget=forms.TextInput(attrs={
+            'class': 'form-control',
+            'id': 'raw-directory'
+        })
+    )
+    
+    managed_directory = forms.CharField(
+        max_length=200,
+        initial='managed/',
+        help_text="Directory name for processed and organized files",
+        widget=forms.TextInput(attrs={
+            'class': 'form-control',
+            'id': 'managed-directory'
+        })
+    )
+    
+    # Migration Strategy
+    archive_strategy = forms.ChoiceField(
+        choices=ARCHIVE_STRATEGY_CHOICES,
+        initial='organize',
+        required=True,
+        help_text="Choose how to handle existing files during setup",
+        widget=forms.RadioSelect(attrs={
+            'class': 'form-check-input'
+        })
+    )
+    
+    # Confirmation
+    confirm_migration = forms.BooleanField(
+        required=True,
+        label="I understand existing files will be reorganized according to the selected strategy",
+        widget=forms.CheckboxInput(attrs={
+            'class': 'form-check-input',
+            'id': 'confirm-strategy'
+        })
+    )
+    
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        # Import here to avoid circular imports
+        from ..models.fabric import HedgehogFabric
+        self.fields['fabric'].queryset = HedgehogFabric.objects.all()
+
+
+class FileUploadForm(forms.Form):
+    """
+    Form for uploading files to the raw directory.
+    """
+    
+    fabric = forms.ModelChoiceField(
+        queryset=None,  # Will be set in __init__
+        required=True,
+        help_text="Select the target fabric for file upload",
+        widget=forms.Select(attrs={
+            'class': 'form-select',
+            'id': 'fabric-select'
+        })
+    )
+    
+    files = forms.FileField(
+        required=True,
+        help_text="Select YAML files to upload",
+        widget=forms.FileInput(attrs={
+            'class': 'form-control',
+            'id': 'file-input',
+            'accept': '.yaml,.yml'
+        })
+    )
+    
+    auto_process = forms.BooleanField(
+        initial=False,
+        required=False,
+        label="Automatically process after upload",
+        help_text="Start processing immediately after upload completes",
+        widget=forms.CheckboxInput(attrs={
+            'class': 'form-check-input',
+            'id': 'auto-process'
+        })
+    )
+    
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        # Import here to avoid circular imports
+        from ..models.fabric import HedgehogFabric
+        self.fields['fabric'].queryset = HedgehogFabric.objects.filter(gitops_initialized=True)
+
+
+class ArchiveRestoreForm(forms.Form):
+    """
+    Form for restoring archived files.
+    """
+    
+    archive_ids = forms.MultipleChoiceField(
+        required=True,
+        help_text="Select archives to restore",
+        widget=forms.CheckboxSelectMultiple(attrs={
+            'class': 'form-check-input'
+        })
+    )
+    
+    target_directory = forms.ChoiceField(
+        choices=[
+            ('raw', 'Raw Directory - Files will be queued for processing'),
+            ('managed', 'Managed Directory - Files will be organized directly'),
+            ('custom', 'Custom Location - Specify custom path'),
+        ],
+        initial='raw',
+        required=True,
+        help_text="Choose where to restore the archived files",
+        widget=forms.RadioSelect(attrs={
+            'class': 'form-check-input'
+        })
+    )
+    
+    overwrite_existing = forms.BooleanField(
+        initial=False,
+        required=False,
+        label="Overwrite existing files with the same name",
+        widget=forms.CheckboxInput(attrs={
+            'class': 'form-check-input',
+            'id': 'overwrite-existing'
+        })
+    )
+    
+    def __init__(self, *args, available_archives=None, **kwargs):
+        super().__init__(*args, **kwargs)
+        
+        if available_archives:
+            choices = [(archive.id, f"{archive.original_name} ({archive.archived_date})") 
+                      for archive in available_archives]
+            self.fields['archive_ids'].choices = choices

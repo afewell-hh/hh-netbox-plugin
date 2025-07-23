@@ -1,0 +1,506 @@
+{% extends "netbox_hedgehog/base.html" %}
+{% load static %}
+
+{% block title %}GitOps File Management Dashboard{% endblock %}
+
+{% block breadcrumbs %}
+    <li class="breadcrumb-item"><a href="{% url 'plugins:netbox_hedgehog:fabric_list' %}">Fabrics</a></li>
+    <li class="breadcrumb-item active">GitOps Dashboard</li>
+{% endblock %}
+
+{% block hedgehog_content %}
+<div class="container-fluid">
+    <!-- Dashboard Header -->
+    <div class="row mb-4">
+        <div class="col-12">
+            <div class="d-flex justify-content-between align-items-center">
+                <div>
+                    <h2><i class="mdi mdi-view-dashboard text-primary"></i> GitOps File Management</h2>
+                    <p class="text-muted mb-0">Monitor and manage your GitOps file processing pipeline</p>
+                </div>
+                <div>
+                    <button class="btn btn-outline-secondary me-2" id="refresh-dashboard">
+                        <i class="mdi mdi-refresh"></i> Refresh
+                    </button>
+                    <a href="{% url 'plugins:netbox_hedgehog:gitops_onboarding' %}" class="btn btn-primary">
+                        <i class="mdi mdi-plus"></i> Setup New Fabric
+                    </a>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Status Overview Cards -->
+    <div class="row mb-4">
+        <div class="col-md-3">
+            <div class="card gitops-status-card bg-primary text-white">
+                <div class="card-body text-center">
+                    <i class="mdi mdi-folder-multiple display-4 mb-2"></i>
+                    <h2 id="total-fabrics">0</h2>
+                    <small>Total Fabrics with GitOps</small>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card gitops-status-card bg-warning text-white">
+                <div class="card-body text-center">
+                    <i class="mdi mdi-file-clock display-4 mb-2"></i>
+                    <h2 id="pending-files">0</h2>
+                    <small>Files Pending Processing</small>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card gitops-status-card bg-success text-white">
+                <div class="card-body text-center">
+                    <i class="mdi mdi-file-check display-4 mb-2"></i>
+                    <h2 id="processed-today">0</h2>
+                    <small>Files Processed Today</small>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card gitops-status-card bg-danger text-white">
+                <div class="card-body text-center">
+                    <i class="mdi mdi-alert-circle display-4 mb-2"></i>
+                    <h2 id="error-count">0</h2>
+                    <small>Processing Errors</small>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Main Content Grid -->
+    <div class="row">
+        <!-- Left Column: Active Fabrics & Processing Status -->
+        <div class="col-lg-8">
+            <!-- Active Fabrics -->
+            <div class="card mb-4">
+                <div class="card-header d-flex justify-content-between align-items-center">
+                    <h5 class="card-title mb-0">
+                        <i class="mdi mdi-server-network"></i> GitOps-Enabled Fabrics
+                    </h5>
+                    <div class="btn-group btn-group-sm" role="group">
+                        <input type="radio" class="btn-check" name="fabric-filter" id="filter-all" autocomplete="off" checked>
+                        <label class="btn btn-outline-primary" for="filter-all">All</label>
+                        
+                        <input type="radio" class="btn-check" name="fabric-filter" id="filter-active" autocomplete="off">
+                        <label class="btn btn-outline-success" for="filter-active">Active</label>
+                        
+                        <input type="radio" class="btn-check" name="fabric-filter" id="filter-errors" autocomplete="off">
+                        <label class="btn btn-outline-danger" for="filter-errors">Errors</label>
+                    </div>
+                </div>
+                <div class="card-body">
+                    <div class="table-responsive">
+                        <table class="table table-hover" id="fabrics-table">
+                            <thead>
+                                <tr>
+                                    <th>Fabric</th>
+                                    <th>Status</th>
+                                    <th>Raw Files</th>
+                                    <th>Managed Files</th>
+                                    <th>Last Activity</th>
+                                    <th>Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody id="fabrics-tbody">
+                                <!-- Populated via JavaScript -->
+                            </tbody>
+                        </table>
+                    </div>
+                    
+                    <!-- Empty State -->
+                    <div class="empty-state d-none" id="fabrics-empty">
+                        <i class="mdi mdi-server-network"></i>
+                        <h5>No GitOps Fabrics</h5>
+                        <p>Get started by setting up GitOps for your first fabric.</p>
+                        <a href="{% url 'plugins:netbox_hedgehog:gitops_onboarding' %}" class="btn btn-primary">
+                            <i class="mdi mdi-rocket-launch"></i> Setup GitOps
+                        </a>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Real-time Processing Activity -->
+            <div class="card">
+                <div class="card-header d-flex justify-content-between align-items-center">
+                    <h5 class="card-title mb-0">
+                        <i class="mdi mdi-clock-fast"></i> Real-time Processing Activity
+                    </h5>
+                    <div class="form-check form-switch">
+                        <input class="form-check-input" type="checkbox" id="auto-refresh" checked>
+                        <label class="form-check-label" for="auto-refresh">Auto-refresh</label>
+                    </div>
+                </div>
+                <div class="card-body">
+                    <!-- Activity Timeline -->
+                    <div class="timeline" id="activity-timeline">
+                        <!-- Timeline items populated via JavaScript -->
+                    </div>
+                    
+                    <!-- No Activity State -->
+                    <div class="empty-state d-none" id="activity-empty">
+                        <i class="mdi mdi-clock-outline"></i>
+                        <h5>No Recent Activity</h5>
+                        <p>File processing activity will appear here in real-time.</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Right Column: System Health & Quick Actions -->
+        <div class="col-lg-4">
+            <!-- System Health -->
+            <div class="card mb-4">
+                <div class="card-header">
+                    <h5 class="card-title mb-0">
+                        <i class="mdi mdi-heart-pulse"></i> System Health
+                    </h5>
+                </div>
+                <div class="card-body">
+                    <!-- Health Indicators -->
+                    <div class="row text-center">
+                        <div class="col-6 mb-3">
+                            <div class="health-metric">
+                                <div class="health-circle" id="ingestion-health">
+                                    <i class="mdi mdi-download"></i>
+                                </div>
+                                <small class="d-block mt-2">File Ingestion</small>
+                            </div>
+                        </div>
+                        <div class="col-6 mb-3">
+                            <div class="health-metric">
+                                <div class="health-circle" id="processing-health">
+                                    <i class="mdi mdi-cog"></i>
+                                </div>
+                                <small class="d-block mt-2">Processing</small>
+                            </div>
+                        </div>
+                        <div class="col-6">
+                            <div class="health-metric">
+                                <div class="health-circle" id="storage-health">
+                                    <i class="mdi mdi-database"></i>
+                                </div>
+                                <small class="d-block mt-2">Storage</small>
+                            </div>
+                        </div>
+                        <div class="col-6">
+                            <div class="health-metric">
+                                <div class="health-circle" id="archive-health">
+                                    <i class="mdi mdi-archive"></i>
+                                </div>
+                                <small class="d-block mt-2">Archive</small>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- System Metrics -->
+                    <div class="mt-3">
+                        <h6>Performance Metrics</h6>
+                        <div class="metric-item d-flex justify-content-between mb-2">
+                            <span>Average Processing Time:</span>
+                            <span id="avg-processing-time" class="fw-bold">--</span>
+                        </div>
+                        <div class="metric-item d-flex justify-content-between mb-2">
+                            <span>Success Rate:</span>
+                            <span id="success-rate" class="fw-bold">--</span>
+                        </div>
+                        <div class="metric-item d-flex justify-content-between">
+                            <span>Queue Depth:</span>
+                            <span id="queue-depth" class="fw-bold">--</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Quick Actions -->
+            <div class="card mb-4">
+                <div class="card-header">
+                    <h5 class="card-title mb-0">
+                        <i class="mdi mdi-lightning-bolt"></i> Quick Actions
+                    </h5>
+                </div>
+                <div class="card-body">
+                    <div class="d-grid gap-2">
+                        <button class="btn btn-primary" id="trigger-global-sync">
+                            <i class="mdi mdi-sync"></i> Sync All Fabrics
+                        </button>
+                        <button class="btn btn-warning" id="process-pending-files">
+                            <i class="mdi mdi-play"></i> Process Pending Files
+                        </button>
+                        <button class="btn btn-info" id="check-system-health">
+                            <i class="mdi mdi-stethoscope"></i> Health Check
+                        </button>
+                        <div class="dropdown">
+                            <button class="btn btn-outline-secondary dropdown-toggle w-100" 
+                                    type="button" 
+                                    data-bs-toggle="dropdown">
+                                <i class="mdi mdi-tools"></i> Maintenance
+                            </button>
+                            <ul class="dropdown-menu w-100">
+                                <li><a class="dropdown-item" href="#" onclick="cleanupArchives()">
+                                    <i class="mdi mdi-broom"></i> Cleanup Archives
+                                </a></li>
+                                <li><a class="dropdown-item" href="#" onclick="optimizeStorage()">
+                                    <i class="mdi mdi-speedometer"></i> Optimize Storage
+                                </a></li>
+                                <li><a class="dropdown-item" href="#" onclick="validateIntegrity()">
+                                    <i class="mdi mdi-shield-check"></i> Validate Integrity
+                                </a></li>
+                                <li><hr class="dropdown-divider"></li>
+                                <li><a class="dropdown-item text-danger" href="#" onclick="emergencyStop()">
+                                    <i class="mdi mdi-stop-circle"></i> Emergency Stop
+                                </a></li>
+                            </ul>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Storage Overview -->
+            <div class="card">
+                <div class="card-header">
+                    <h5 class="card-title mb-0">
+                        <i class="mdi mdi-chart-pie"></i> Storage Overview
+                    </h5>
+                </div>
+                <div class="card-body">
+                    <!-- Storage Usage Chart -->
+                    <div class="storage-chart mb-3">
+                        <canvas id="storage-usage-chart" width="200" height="200"></canvas>
+                    </div>
+                    
+                    <!-- Storage Breakdown -->
+                    <div class="storage-breakdown">
+                        <div class="storage-item d-flex justify-content-between align-items-center mb-2">
+                            <div class="d-flex align-items-center">
+                                <div class="storage-color-indicator bg-primary me-2"></div>
+                                <span>Raw Files</span>
+                            </div>
+                            <span id="raw-storage" class="fw-bold">--</span>
+                        </div>
+                        <div class="storage-item d-flex justify-content-between align-items-center mb-2">
+                            <div class="d-flex align-items-center">
+                                <div class="storage-color-indicator bg-success me-2"></div>
+                                <span>Managed Files</span>
+                            </div>
+                            <span id="managed-storage" class="fw-bold">--</span>
+                        </div>
+                        <div class="storage-item d-flex justify-content-between align-items-center">
+                            <div class="d-flex align-items-center">
+                                <div class="storage-color-indicator bg-warning me-2"></div>
+                                <span>Archives</span>
+                            </div>
+                            <span id="archive-storage" class="fw-bold">--</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Processing Details Modal -->
+<div class="modal fade" id="processingModal" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">
+                    <i class="mdi mdi-cog"></i> Processing Details
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body" id="processing-modal-body">
+                <!-- Content loaded via JavaScript -->
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Fabric Actions Modal -->
+<div class="modal fade" id="fabricActionsModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">
+                    <i class="mdi mdi-server-network"></i> Fabric Actions
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body" id="fabric-actions-body">
+                <!-- Content loaded via JavaScript -->
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                <button type="button" class="btn btn-primary" id="confirm-fabric-action">Confirm</button>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block hedgehog_javascript %}
+<script src="{% static 'netbox_hedgehog/js/gitops-dashboard.js' %}"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<style>
+/* GitOps Dashboard Styles */
+.gitops-status-card {
+    transition: all 0.3s ease;
+    cursor: pointer;
+}
+
+.gitops-status-card:hover {
+    transform: translateY(-5px);
+    box-shadow: 0 0.5rem 1rem rgba(0, 0, 0, 0.2);
+}
+
+.health-metric {
+    text-align: center;
+}
+
+.health-circle {
+    width: 60px;
+    height: 60px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin: 0 auto;
+    font-size: 1.5rem;
+    color: white;
+    background-color: var(--bs-secondary);
+    transition: all 0.3s ease;
+}
+
+.health-circle.healthy {
+    background-color: var(--bs-success);
+    animation: pulse-success 2s infinite;
+}
+
+.health-circle.warning {
+    background-color: var(--bs-warning);
+    animation: pulse-warning 2s infinite;
+}
+
+.health-circle.error {
+    background-color: var(--bs-danger);
+    animation: pulse-error 2s infinite;
+}
+
+@keyframes pulse-success {
+    0% { box-shadow: 0 0 0 0 rgba(var(--bs-success-rgb), 0.7); }
+    70% { box-shadow: 0 0 0 10px rgba(var(--bs-success-rgb), 0); }
+    100% { box-shadow: 0 0 0 0 rgba(var(--bs-success-rgb), 0); }
+}
+
+@keyframes pulse-warning {
+    0% { box-shadow: 0 0 0 0 rgba(var(--bs-warning-rgb), 0.7); }
+    70% { box-shadow: 0 0 0 10px rgba(var(--bs-warning-rgb), 0); }
+    100% { box-shadow: 0 0 0 0 rgba(var(--bs-warning-rgb), 0); }
+}
+
+@keyframes pulse-error {
+    0% { box-shadow: 0 0 0 0 rgba(var(--bs-danger-rgb), 0.7); }
+    70% { box-shadow: 0 0 0 10px rgba(var(--bs-danger-rgb), 0); }
+    100% { box-shadow: 0 0 0 0 rgba(var(--bs-danger-rgb), 0); }
+}
+
+.storage-color-indicator {
+    width: 12px;
+    height: 12px;
+    border-radius: 2px;
+}
+
+.timeline {
+    max-height: 400px;
+    overflow-y: auto;
+}
+
+.timeline-item {
+    border-left: 2px solid var(--bs-border-color);
+    padding-left: 1rem;
+    margin-bottom: 1rem;
+    position: relative;
+}
+
+.timeline-item::before {
+    content: '';
+    position: absolute;
+    left: -6px;
+    top: 0.5rem;
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    background-color: var(--bs-primary);
+}
+
+.timeline-item.success::before {
+    background-color: var(--bs-success);
+}
+
+.timeline-item.warning::before {
+    background-color: var(--bs-warning);
+}
+
+.timeline-item.error::before {
+    background-color: var(--bs-danger);
+}
+
+.empty-state {
+    text-align: center;
+    padding: 3rem 1rem;
+    color: var(--bs-secondary);
+}
+
+.empty-state .mdi {
+    font-size: 4rem;
+    margin-bottom: 1rem;
+    opacity: 0.5;
+}
+
+/* Responsive adjustments */
+@media (max-width: 768px) {
+    .gitops-status-card {
+        margin-bottom: 1rem;
+    }
+    
+    .health-circle {
+        width: 50px;
+        height: 50px;
+        font-size: 1.2rem;
+    }
+    
+    .storage-chart {
+        text-align: center;
+    }
+}
+
+/* Loading states */
+.loading {
+    opacity: 0.6;
+    pointer-events: none;
+}
+
+.loading::after {
+    content: '';
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: 20px;
+    height: 20px;
+    margin: -10px 0 0 -10px;
+    border: 2px solid var(--bs-primary);
+    border-radius: 50%;
+    border-top-color: transparent;
+    animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+    to { transform: rotate(360deg); }
+}
+</style>
+{% endblock %}

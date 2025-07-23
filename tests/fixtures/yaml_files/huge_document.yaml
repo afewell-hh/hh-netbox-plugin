@@ -1,0 +1,269 @@
+# Huge Document Test File (Programmatically generated structure)
+# This file tests performance with large YAML documents
+
+apiVersion: hhnet.githedgehog.com/v1alpha1
+kind: VPC
+metadata:
+  name: huge-performance-vpc
+  namespace: performance-test
+  labels:
+    # Generate many labels for testing
+    environment: performance-test
+    size: huge
+    test-type: performance
+    label-001: value-001
+    label-002: value-002
+    label-003: value-003
+    label-004: value-004
+    label-005: value-005
+    label-006: value-006
+    label-007: value-007
+    label-008: value-008
+    label-009: value-009
+    label-010: value-010
+    label-011: value-011
+    label-012: value-012
+    label-013: value-013
+    label-014: value-014
+    label-015: value-015
+    label-016: value-016
+    label-017: value-017
+    label-018: value-018
+    label-019: value-019
+    label-020: value-020
+  annotations:
+    description: "Huge VPC for performance testing"
+    performance-test: "true"
+    created-for: "stress-testing-yaml-parser"
+    annotation-001: "This is annotation 001 with some lengthy text to increase document size"
+    annotation-002: "This is annotation 002 with some lengthy text to increase document size"
+    annotation-003: "This is annotation 003 with some lengthy text to increase document size"
+    annotation-004: "This is annotation 004 with some lengthy text to increase document size"
+    annotation-005: "This is annotation 005 with some lengthy text to increase document size"
+spec:
+  description: "Huge VPC with extensive configuration for performance testing"
+  subnet: "10.0.0.0/8"
+  # Large configuration arrays
+  policies:
+    - name: policy-001
+      action: allow
+      sources: ["10.0.1.0/24", "10.0.2.0/24", "10.0.3.0/24"]
+      destinations: ["10.1.1.0/24", "10.1.2.0/24", "10.1.3.0/24"]
+      ports: [80, 443, 8080, 8443, 9090, 9443]
+    - name: policy-002
+      action: allow
+      sources: ["10.0.4.0/24", "10.0.5.0/24", "10.0.6.0/24"]
+      destinations: ["10.1.4.0/24", "10.1.5.0/24", "10.1.6.0/24"]
+      ports: [80, 443, 8080, 8443, 9090, 9443]
+    - name: policy-003
+      action: allow
+      sources: ["10.0.7.0/24", "10.0.8.0/24", "10.0.9.0/24"]
+      destinations: ["10.1.7.0/24", "10.1.8.0/24", "10.1.9.0/24"]
+      ports: [80, 443, 8080, 8443, 9090, 9443]
+    - name: policy-004
+      action: deny
+      sources: ["192.168.0.0/16"]
+      destinations: ["0.0.0.0/0"]
+    - name: policy-005
+      action: allow
+      sources: ["172.16.0.0/12"]
+      destinations: ["10.0.0.0/8"]
+      ports: [22, 3389, 5432, 3306, 27017, 6379]
+  # Large subnet allocations
+  subnets:
+    - name: subnet-001
+      cidr: "10.1.0.0/16"
+      purpose: "workload-tier-1"
+      dhcp_range: "10.1.1.1-10.1.254.254"
+    - name: subnet-002
+      cidr: "10.2.0.0/16"
+      purpose: "workload-tier-2"
+      dhcp_range: "10.2.1.1-10.2.254.254"
+    - name: subnet-003
+      cidr: "10.3.0.0/16"
+      purpose: "workload-tier-3"
+      dhcp_range: "10.3.1.1-10.3.254.254"
+    - name: subnet-004
+      cidr: "10.4.0.0/16"
+      purpose: "database-tier"
+      dhcp_range: "10.4.1.1-10.4.254.254"
+    - name: subnet-005
+      cidr: "10.5.0.0/16"
+      purpose: "cache-tier"
+      dhcp_range: "10.5.1.1-10.5.254.254"
+    - name: subnet-006
+      cidr: "10.6.0.0/16"
+      purpose: "messaging-tier"
+      dhcp_range: "10.6.1.1-10.6.254.254"
+    - name: subnet-007
+      cidr: "10.7.0.0/16"
+      purpose: "monitoring-tier"
+      dhcp_range: "10.7.1.1-10.7.254.254"
+    - name: subnet-008
+      cidr: "10.8.0.0/16"
+      purpose: "logging-tier"
+      dhcp_range: "10.8.1.1-10.8.254.254"
+    - name: subnet-009
+      cidr: "10.9.0.0/16"
+      purpose: "backup-tier"
+      dhcp_range: "10.9.1.1-10.9.254.254"
+    - name: subnet-010
+      cidr: "10.10.0.0/16"
+      purpose: "development-tier"
+      dhcp_range: "10.10.1.1-10.10.254.254"
+  # Large route tables
+  routes:
+    - destination: "0.0.0.0/0"
+      gateway: "10.0.0.1"
+      metric: 100
+    - destination: "172.16.0.0/12"
+      gateway: "10.0.0.2"
+      metric: 200
+    - destination: "192.168.0.0/16"
+      gateway: "10.0.0.3"
+      metric: 300
+    - destination: "10.20.0.0/16"
+      gateway: "10.0.0.4"
+      metric: 400
+    - destination: "10.21.0.0/16"
+      gateway: "10.0.0.5"
+      metric: 500
+  # Large DNS configuration
+  dns:
+    servers:
+      - "8.8.8.8"
+      - "8.8.4.4"
+      - "1.1.1.1"
+      - "1.0.0.1"
+      - "208.67.222.222"
+      - "208.67.220.220"
+    domains:
+      - "company.local"
+      - "prod.company.local"
+      - "dev.company.local"
+      - "test.company.local"
+      - "staging.company.local"
+    search_domains:
+      - "company.local"
+      - "prod.company.local"
+      - "internal.company.local"
+      - "services.company.local"
+  # Large monitoring configuration
+  monitoring:
+    enabled: true
+    metrics:
+      - bandwidth_utilization
+      - packet_loss_rate
+      - latency_average
+      - latency_percentile_95
+      - latency_percentile_99
+      - connection_count
+      - error_rate
+      - throughput
+      - queue_depth
+      - buffer_utilization
+    thresholds:
+      bandwidth_utilization:
+        warning: 70
+        critical: 85
+      packet_loss_rate:
+        warning: 0.1
+        critical: 1.0
+      latency_average:
+        warning: 10
+        critical: 50
+      error_rate:
+        warning: 0.01
+        critical: 0.1
+    retention:
+      metrics: "30d"
+      logs: "7d"
+      traces: "3d"
+  # Large security configuration
+  security:
+    encryption:
+      enabled: true
+      algorithm: "AES-256-GCM"
+      key_rotation_interval: "24h"
+    access_control:
+      enabled: true
+      default_policy: "deny"
+      rules:
+        - name: "allow-internal-web"
+          source: "10.0.0.0/8"
+          destination: "10.0.0.0/8"
+          ports: [80, 443]
+          action: "allow"
+        - name: "allow-internal-ssh"
+          source: "10.0.0.0/8"
+          destination: "10.0.0.0/8"
+          ports: [22]
+          action: "allow"
+        - name: "allow-internal-db"
+          source: "10.1.0.0/16"
+          destination: "10.4.0.0/16"
+          ports: [5432, 3306, 27017]
+          action: "allow"
+        - name: "allow-monitoring"
+          source: "10.7.0.0/16"
+          destination: "10.0.0.0/8"
+          ports: [9090, 9100, 3000]
+          action: "allow"
+    intrusion_detection:
+      enabled: true
+      sensitivity: "high"
+      rules:
+        - "detect-port-scan"
+        - "detect-brute-force"
+        - "detect-ddos"
+        - "detect-malware"
+    audit:
+      enabled: true
+      events:
+        - "connection-established"
+        - "connection-terminated"
+        - "policy-violation"
+        - "security-alert"
+      retention: "90d"
+  # Performance tuning parameters
+  performance:
+    mtu: 9000
+    tcp_window_scaling: true
+    tcp_congestion_control: "bbr"
+    buffer_sizes:
+      send: 65536
+      receive: 65536
+    queue_discipline: "fq_codel"
+    interrupt_coalescing: true
+  # Large metadata section for testing
+  metadata_extended:
+    created_by: "performance-test-suite"
+    created_at: "2024-01-01T00:00:00Z"
+    version: "1.0.0"
+    tags:
+      - performance
+      - testing
+      - huge-document
+      - yaml-parser
+      - stress-test
+    properties:
+      test_case_id: "PERF-001"
+      document_size: "large"
+      expected_processing_time: "< 30s"
+      memory_limit: "< 100MB"
+    validation_rules:
+      - name: "subnet-overlap-check"
+        enabled: true
+      - name: "policy-consistency-check"
+        enabled: true
+      - name: "route-reachability-check"
+        enabled: true
+    compliance:
+      standards:
+        - "ISO-27001"
+        - "SOC-2"
+        - "HIPAA"
+        - "PCI-DSS"
+      audited: true
+      last_audit: "2024-01-01"
+      next_audit: "2024-07-01"

@@ -1,0 +1,149 @@
+# Malformed Document Closing Test File
+# Tests various ways documents can be improperly closed
+
+apiVersion: hhnet.githedgehog.com/v1alpha1
+kind: VPC
+metadata:
+  name: proper-start-vpc
+  namespace: default
+spec:
+  description: "Properly started VPC"
+  subnet: "10.0.0.0/16"
+# Missing document end marker - document just stops
+
+apiVersion: hhnet.githedgehog.com/v1alpha1
+kind: External
+metadata:
+  name: no-proper-end-external
+  namespace: default
+spec:
+  description: "External without proper document ending"
+  vlan: 100
+# This document also just ends without ---
+
+---
+# Document separator but incomplete document follows
+apiVersion: hhnet.githedgehog.com/v1alpha1
+kind: VPC
+metadata:
+  name: incomplete-vpc
+# Document is incomplete - missing spec
+
+---
+
+# Document with invalid ending markers
+apiVersion: hhnet.githedgehog.com/v1alpha1
+kind: VPC
+metadata:
+  name: invalid-end-markers-vpc
+  namespace: default
+spec:
+  description: "VPC with invalid end markers"
+  subnet: "10.1.0.0/16"
+--  # Invalid document end (missing one dash)
+
+---
+
+apiVersion: hhnet.githedgehog.com/v1alpha1
+kind: External
+metadata:
+  name: too-many-dashes-external
+  namespace: default
+spec:
+  description: "External with too many dashes"
+  vlan: 200
+----  # Too many dashes
+
+---
+
+# Document that starts but has syntax error in middle
+apiVersion: hhnet.githedgehog.com/v1alpha1
+kind: VPC
+metadata:
+  name: syntax-error-vpc
+  namespace: default
+spec:
+  description: "VPC with syntax error"
+  subnet: 10.2.0.0/16  # Missing quotes around IP
+  invalid-field: [unclosed-list  # Unclosed list
+  
+---
+
+# Document with mixed content types
+apiVersion: hhnet.githedgehog.com/v1alpha1
+kind: VPC
+metadata:
+  name: mixed-content-vpc
+  namespace: default
+spec:
+  description: "VPC with mixed content"
+  # Following line has mixed types that might confuse parser
+  config: {key1: value1, key2: [item1, item2}, incomplete: # Mixed dict/list syntax
+
+---
+
+# Document that starts normally but becomes malformed
+apiVersion: hhnet.githedgehog.com/v1alpha1
+kind: Switch
+metadata:
+  name: becomes-malformed-switch
+  namespace: default
+spec:
+  description: "Switch that becomes malformed"
+  ports:
+    - name: Port1
+      speed: 25G
+    - name: Port2
+      speed: # Missing value
+    - name: # Missing name
+      speed: 100G
+      
+---
+
+# Document with nested structure that's not properly closed
+apiVersion: hhnet.githedgehog.com/v1alpha1
+kind: VPC
+metadata:
+  name: nested-unclosed-vpc
+  namespace: default
+spec:
+  description: "VPC with unclosed nested structures"
+  config:
+    level1:
+      level2:
+        level3:
+          level4: {
+            unclosed: dict
+            # Missing closing brace
+
+---
+
+# Document with string that contains document separator
+apiVersion: hhnet.githedgehog.com/v1alpha1
+kind: VPC
+metadata:
+  name: separator-in-string-vpc
+  namespace: default
+spec:
+  description: |
+    This string contains what looks like a document separator:
+    ---
+    But it's actually part of the string content.
+    This can confuse naive parsers.
+  notes: "Another field after the tricky string"
+
+---
+
+# Empty document (just separator)
+
+---
+
+# Document that ends abruptly in the middle of a field
+apiVersion: hhnet.githedgehog.com/v1alpha1
+kind: External
+metadata:
+  name: abrupt-end-external
+  namespace: default
+spec:
+  description: "External that ends abruptly"
+  vlan:

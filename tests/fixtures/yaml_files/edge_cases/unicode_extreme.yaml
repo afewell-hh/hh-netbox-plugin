@@ -1,0 +1,165 @@
+# Extreme Unicode Characters Test File
+# Tests handling of various Unicode categories and edge cases
+
+apiVersion: hhnet.githedgehog.com/v1alpha1
+kind: VPC
+metadata:
+  name: unicode-extreme-vpc
+  namespace: default
+  labels:
+    # Latin Extended
+    latin-extended: "Ħĕđġĕħøġ-ñétßøx"
+    # Cyrillic
+    cyrillic: "Хеджхог-Сеть"
+    # Greek
+    greek: "Δίκτυο-Σκαντζόχοιρος"
+    # Arabic (RTL)
+    arabic: "شبكة-قنفذ"
+    # Hebrew (RTL)
+    hebrew: "רשת-קיפוד"
+    # Chinese Simplified
+    chinese-simplified: "刺猬网络"
+    # Chinese Traditional
+    chinese-traditional: "刺蝟網絡"
+    # Japanese Hiragana/Katakana/Kanji
+    japanese-mixed: "ハリネズミ・ネットワーク"
+    # Korean
+    korean: "고슴도치-네트워크"
+    # Emoji mix
+    emoji-basic: "🦔🌐💻🔧⚡"
+    emoji-advanced: "🚀🌟⭐💫🔥🌈🎯"
+    # Mathematical symbols
+    mathematical: "∑∫∂∇∆∞≠≤≥±∓"
+    # Arrows and symbols
+    arrows: "→←↑↓↔↕↖↗↘↙⟶⟷⟸"
+    # Currency and special
+    currency: "€£¥₹₽₿¢₡₨₩₪"
+    # Diacritics and combining
+    diacritics: "café naïve résumé piñata"
+    # Zero-width characters (invisibles)
+    zero-width: "test‌hidden‍text"  # Zero-width non-joiner and joiner
+    # Right-to-left marks
+    rtl-mixed: "English‏עברית‎English"
+    # Combining characters (multiple accents on same letter)
+    combining: "e̋̂̃̄̅̆̇̈̉̊̋̌̍̎̏"
+    # Rare Unicode blocks
+    runic: "ᚠᚢᚦᚨᚱᚲ"
+    ogham: "ᚁᚂᚃᚄᚅᚆ"
+    # Enclosed characters
+    enclosed: "①②③Ⓐⓑⓒ⒜⒝⒞"
+    # Superscript/subscript
+    super-sub: "x²+y²=z² H₂O"
+  annotations:
+    unicode-test: "Full Unicode spectrum test 🧪"
+    description: "Testing extreme Unicode characters: αβγδε ∀∃∄∅∆"
+spec:
+  description: |
+    Multi-line Unicode test:
+    Line 1: Basic ASCII text
+    Line 2: Latin-1 Supplement: café résumé naïve señor
+    Line 3: Latin Extended: Ħĕđġĕħøġ ñétßøx ŧęšŧ
+    Line 4: Cyrillic: Привет мир! Как дела?
+    Line 5: Greek: Γεια σας κόσμε! Πώς είσαι;
+    Line 6: Arabic: مرحبا بالعالم! كيف حالك؟
+    Line 7: Hebrew: שלום עולם! איך אתה?
+    Line 8: Chinese: 你好世界！你好吗？
+    Line 9: Japanese: こんにちは世界！元気ですか？
+    Line 10: Korean: 안녕하세요 세계! 어떻게 지내세요?
+    Line 11: Emoji mix: 🌍👋💻🔧⚡🚀🌟🎉
+    Line 12: Math symbols: ∑(i=1 to ∞) 1/i² = π²/6
+    Line 13: Chemistry: H₂SO₄ + 2NaOH → Na₂SO₄ + 2H₂O
+    Line 14: Physics: E=mc² where c≈3×10⁸ m/s
+    Line 15: Mixed scripts: English中文Русский한국어العربية
+  subnet: "10.0.0.0/16"
+  policies:
+    - "allow-unicode-🌐"
+    - "permit-∀-traffic"
+    - "règles-spéciales"
+    - "правила-безопасности"
+
+---
+
+apiVersion: hhnet.githedgehog.com/v1alpha1
+kind: External
+metadata:
+  name: экстернал-соединение  # Cyrillic name
+  namespace: default
+  labels:
+    протокол: "BGP"  # Cyrillic key and value
+    環境: "本番"      # Japanese key and value
+    환경: "운영"      # Korean key and value
+spec:
+  description: "Multi-script external connection: 外部接続 🌐"
+  vlan: 100
+  notes: |
+    Technical notes in multiple languages:
+    🇬🇧 English: This is an external BGP connection
+    🇷🇺 Русский: Это внешнее BGP соединение  
+    🇯🇵 日本語: これは外部BGP接続です
+    🇰🇷 한국어: 이것은 외부 BGP 연결입니다
+    🇨🇳 中文: 这是一个外部BGP连接
+    🇸🇦 العربية: هذا اتصال BGP خارجي
+
+---
+
+apiVersion: wiring.githedgehog.com/v1alpha1
+kind: Switch
+metadata:
+  name: スイッチ-01  # Japanese switch name
+  namespace: default
+  labels:
+    类型: "叶子"     # Chinese: type: leaf
+    ubicación: "bastidor-α"  # Spanish with Greek letter
+    статус: "активный"       # Russian: status: active
+spec:
+  description: "Multi-language switch: 多言語スイッチ 🔌"
+  role: leaf
+  ports:
+    - name: "端口-1"    # Chinese: Port-1
+      speed: "25G"
+      description: "连接到服务器-α"  # Chinese: Connection to server-α
+    - name: "포트-2"     # Korean: Port-2  
+      speed: "25G"
+      description: "서버-β 연결"    # Korean: Server-β connection
+    - name: "Порт-3"    # Russian: Port-3
+      speed: "100G" 
+      description: "Восходящее соединение"  # Russian: Uplink connection
+
+---
+
+# Test document with potential parsing edge cases
+apiVersion: hhnet.githedgehog.com/v1alpha1
+kind: VPC
+metadata:
+  name: parsing-edge-cases
+  namespace: default
+spec:
+  description: "Edge cases for YAML parsing"
+  # String that looks like other YAML types
+  config:
+    string-true: "true"      # String, not boolean
+    string-false: "false"    # String, not boolean
+    string-null: "null"      # String, not null
+    string-number: "123"     # String, not number
+    string-float: "123.45"   # String, not float
+    string-date: "2024-01-01" # String, not date
+    # Actual types for comparison
+    bool-true: true
+    bool-false: false
+    null-value: null
+    number-int: 123
+    number-float: 123.45
+    # Unicode in various contexts
+    unicode-key-中文: "Chinese key"
+    "unicode key with spaces 🔑": "Unicode key with emoji and spaces"
+    # Complex Unicode strings
+    complex-unicode: |
+      This is a complex Unicode string with:
+      - Emojis: 🦔🌟⚡🔧💻🚀
+      - Math: ∑∫∂∇∆∞≠≤≥±∓
+      - Arrows: →←↑↓↔↕↖↗↘↙
+      - Multiple scripts: Hello世界Привет한국어مرحبا
+      - Combining chars: e̋̂̃̄̅ (e with multiple accents)
+      - RTL: English‏עברית‎English
+      - Zero-width: test‌hidden‍text
+  subnet: "10.255.0.0/16"

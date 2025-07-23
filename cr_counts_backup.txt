@@ -1,0 +1,9 @@
+=== Current CR Counts ===
+Fabric: test-fabric-gitops (ID: 11)
+Timestamp: Wed Jul 23 08:16:37 UTC 2025
+
+Switches: 7
+Servers: 10
+Connections: 26
+VPCs: 1
+Switch Groups: 3
