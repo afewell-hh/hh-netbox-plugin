@@ -6,6 +6,67 @@
 {% block header %}
     {{ block.super }}
     <link rel="stylesheet" href="{% static 'netbox_hedgehog/css/hedgehog.css' %}">
+    <style>
+        /* Progressive Disclosure UI Styles */
+        .progressive-dashboard { display: grid; gap: 1.5rem; margin-bottom: 2rem; }
+        .dashboard-overview { 
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white; border-radius: 12px; padding: 2rem;
+            box-shadow: 0 4px 15px rgba(102, 126, 234, 0.15);
+        }
+        .status-cards { 
+            display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 1.5rem; margin-bottom: 1.5rem;
+        }
+        .status-card {
+            background: rgba(255, 255, 255, 0.1); border: 1px solid rgba(255, 255, 255, 0.2);
+            border-radius: 8px; padding: 1.5rem; backdrop-filter: blur(10px);
+            transition: all 0.3s ease;
+        }
+        .status-card:hover { background: rgba(255, 255, 255, 0.15); transform: translateY(-2px); }
+        .status-card-title { font-size: 0.9rem; font-weight: 600; opacity: 0.9; margin-bottom: 0.5rem; text-transform: uppercase; letter-spacing: 0.5px; }
+        .status-card-value { font-size: 1.8rem; font-weight: 700; margin-bottom: 0.5rem; }
+        .status-card-subtitle { font-size: 0.8rem; opacity: 0.8; }
+        .quick-actions { display: flex; gap: 1rem; flex-wrap: wrap; }
+        .quick-action-btn {
+            background: rgba(255, 255, 255, 0.1); border: 1px solid rgba(255, 255, 255, 0.3);
+            color: white; padding: 0.75rem 1.5rem; border-radius: 6px; text-decoration: none;
+            font-weight: 500; transition: all 0.3s ease; display: flex; align-items: center; gap: 0.5rem;
+        }
+        .quick-action-btn:hover { background: rgba(255, 255, 255, 0.2); color: white; text-decoration: none; transform: translateY(-1px); }
+        .dashboard-section {
+            background: white; border: 1px solid #e9ecef; border-radius: 8px; margin-bottom: 1rem;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08); transition: all 0.3s ease; overflow: hidden;
+        }
+        .dashboard-section:hover { box-shadow: 0 4px 15px rgba(0, 0, 0, 0.12); }
+        .section-toggle {
+            background: #f8f9fa; border: none; border-bottom: 1px solid #e9ecef;
+            padding: 1.25rem 1.5rem; margin: 0; width: 100%; text-align: left; cursor: pointer;
+            display: flex; justify-content: space-between; align-items: center; font-weight: 600;
+            font-size: 1.1rem; color: #495057; transition: all 0.3s ease; user-select: none;
+        }
+        .section-toggle:hover { background: #e9ecef; }
+        .section-toggle.collapsed { border-bottom: none; }
+        .section-icon { margin-right: 0.75rem; font-size: 1.2rem; }
+        .section-title { flex: 1; }
+        .toggle-icon { font-size: 1.2rem; transition: transform 0.3s ease; color: #6c757d; }
+        .section-toggle.collapsed .toggle-icon { transform: rotate(-90deg); }
+        .section-content { padding: 1.5rem; transition: all 0.3s ease; max-height: none; overflow: visible; }
+        .section-content.collapsed { max-height: 0; padding: 0 1.5rem; overflow: hidden; }
+        .info-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 1.5rem; }
+        .info-item { display: flex; flex-direction: column; gap: 0.5rem; }
+        .info-label { font-weight: 600; color: #495057; font-size: 0.9rem; text-transform: uppercase; letter-spacing: 0.5px; }
+        .info-value { color: #212529; font-size: 1rem; }
+        .status-indicator {
+            display: inline-flex; align-items: center; gap: 0.5rem; padding: 0.5rem 1rem;
+            border-radius: 20px; font-size: 0.9rem; font-weight: 600;
+        }
+        .status-indicator.success { background: #d4edda; color: #155724; border: 1px solid #c3e6cb; }
+        .status-indicator.warning { background: #fff3cd; color: #856404; border: 1px solid #ffeaa7; }
+        .status-indicator.danger { background: #f8d7da; color: #721c24; border: 1px solid #f5c6cb; }
+        .status-indicator.info { background: #d1ecf1; color: #0c5460; border: 1px solid #bee5eb; }
+        .status-indicator.secondary { background: #e2e3e5; color: #383d41; border: 1px solid #d6d8db; }
+    </style>
 {% endblock %}
 
 {% block content %}
@@ -23,12 +84,90 @@
                         <a href="{% url 'plugins:netbox_hedgehog:fabric_edit' pk=object.pk %}" class="btn btn-outline-primary">
                             <i class="mdi mdi-pencil"></i> Edit
                         </a>
-                        <a href="{% url 'plugins:netbox_hedgehog:fabric_delete' pk=object.pk %}" class="btn btn-outline-danger">
-                            <i class="mdi mdi-delete"></i> Delete
-                        </a>
                     </div>
                 </div>
                 <div class="card-body">
+                    <!-- Progressive Disclosure Overview Dashboard -->
+                    <div class="dashboard-overview mb-4">
+                        <div class="status-cards">
+                            <div class="status-card">
+                                <div class="status-card-title">Connection Status</div>
+                                <div class="status-card-value">
+                                    {% if object.connection_status == 'connected' %}
+                                        <i class="mdi mdi-check-circle"></i>
+                                    {% elif object.connection_status == 'error' %}
+                                        <i class="mdi mdi-alert-circle"></i>
+                                    {% else %}
+                                        <i class="mdi mdi-help-circle"></i>
+                                    {% endif %}
+                                </div>
+                                <div class="status-card-subtitle">{{ object.get_connection_status_display }}</div>
+                            </div>
+                            
+                            <div class="status-card">
+                                <div class="status-card-title">Sync Status</div>
+                                <div class="status-card-value">
+                                    {% if object.sync_status == 'in_sync' %}
+                                        <i class="mdi mdi-sync"></i>
+                                    {% elif object.sync_status == 'syncing' %}
+                                        <i class="mdi mdi-sync mdi-spin"></i>
+                                    {% elif object.sync_status == 'error' %}
+                                        <i class="mdi mdi-sync-alert"></i>
+                                    {% else %}
+                                        <i class="mdi mdi-sync-off"></i>
+                                    {% endif %}
+                                </div>
+                                <div class="status-card-subtitle">{{ object.get_sync_status_display }}</div>
+                            </div>
+                            
+                            <div class="status-card">
+                                <div class="status-card-title">Total CRDs</div>
+                                <div class="status-card-value">{{ object.cached_crd_count|default:0 }}</div>
+                                <div class="status-card-subtitle">
+                                    {% if object.last_sync %}
+                                        Last synced {{ object.last_sync|timesince }} ago
+                                    {% else %}
+                                        Never synchronized
+                                    {% endif %}
+                                </div>
+                            </div>
+                            
+                            <div class="status-card">
+                                <div class="status-card-title">GitOps Status</div>
+                                <div class="status-card-value">
+                                    {% if object.gitops_initialized %}
+                                        <i class="mdi mdi-git"></i>
+                                    {% else %}
+                                        <i class="mdi mdi-git text-muted"></i>
+                                    {% endif %}
+                                </div>
+                                <div class="status-card-subtitle">
+                                    {% if object.gitops_initialized %}
+                                        Initialized
+                                    {% else %}
+                                        Not Initialized
+                                    {% endif %}
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div class="quick-actions">
+                            <a href="#" class="quick-action-btn" onclick="syncFromGit(); return false;">
+                                <i class="mdi mdi-sync"></i> Sync from Git
+                            </a>
+                            {% if object.git_repository_url %}
+                                <a href="{{ object.git_repository_url }}" target="_blank" class="quick-action-btn">
+                                    <i class="mdi mdi-open-in-new"></i> View Repository
+                                </a>
+                            {% endif %}
+                            {% if not object.gitops_initialized %}
+                                <a href="#" class="quick-action-btn" onclick="initGitOps(); return false;">
+                                    <i class="mdi mdi-folder-plus"></i> Initialize GitOps
+                                </a>
+                            {% endif %}
+                        </div>
+                    </div>
+                    
                     <div class="row">
                         <div class="col-md-8">
                             <h4>Fabric Information</h4>
@@ -207,9 +346,7 @@
                                             <i class="mdi mdi-git"></i> Not Connected
                                         </span>
                                         <div class="mt-2">
-                                            <a href="{% url 'plugins:netbox_hedgehog:gitops_onboarding' %}" class="btn btn-sm btn-outline-primary">
-                                                <i class="mdi mdi-git"></i> Connect to Git Repository
-                                            </a>
+                                            <span class="text-muted">GitOps onboarding not configured</span>
                                         </div>
                                     </td>
                                 </tr>
@@ -249,9 +386,7 @@
                                                 <i class="mdi mdi-alert-circle"></i> Setup Failed
                                             </span>
                                             <div class="mt-2">
-                                                <a href="{% url 'plugins:netbox_hedgehog:argocd_setup_wizard' pk=object.pk %}" class="btn btn-sm btn-warning">
-                                                    <i class="mdi mdi-refresh"></i> Retry ArgoCD Setup
-                                                </a>
+                                                <span class="text-muted">ArgoCD setup not available</span>
                                                 {% if object.gitops_setup_error %}
                                                     <div class="mt-1">
                                                         <small class="text-danger">{{ object.gitops_setup_error|truncatechars:100 }}</small>
@@ -263,9 +398,7 @@
                                                 <i class="mdi mdi-kubernetes"></i> Not Configured
                                             </span>
                                             <div class="mt-2">
-                                                <a href="{% url 'plugins:netbox_hedgehog:argocd_setup_wizard' pk=object.pk %}" class="btn btn-sm btn-primary">
-                                                    <i class="mdi mdi-rocket"></i> Setup ArgoCD GitOps
-                                                </a>
+                                                <span class="text-muted">ArgoCD setup not available</span>
                                                 <div class="mt-1">
                                                     <small class="text-muted">
                                                         <i class="mdi mdi-information"></i>
@@ -336,9 +469,7 @@
                                     {% endif %}
                                     <!-- ArgoCD Setup Action (Week 2 MVP2) -->
                                     {% if not object.argocd_installed and object.gitops_setup_status != 'installing' %}
-                                        <a href="{% url 'plugins:netbox_hedgehog:argocd_setup_wizard' pk=object.pk %}" class="btn btn-success">
-                                            <i class="mdi mdi-rocket"></i> Setup ArgoCD
-                                        </a>
+                                        <span class="text-muted">ArgoCD setup not available</span>
                                     {% elif object.argocd_installed and object.argocd_server_url %}
                                         <a href="{{ object.argocd_server_url }}" target="_blank" class="btn btn-info">
                                             <i class="mdi mdi-open-in-new"></i> ArgoCD UI
@@ -535,15 +666,7 @@
                                     </div>
                                     <div class="card-body">
                                         <div class="d-grid gap-2">
-                                            <a href="{% url 'plugins:netbox_hedgehog:raw_directory' %}" class="btn btn-outline-warning">
-                                                <i class="mdi mdi-folder-eye"></i> Raw Directory Monitor
-                                            </a>
-                                            <a href="{% url 'plugins:netbox_hedgehog:gitops_dashboard' %}" class="btn btn-outline-info">
-                                                <i class="mdi mdi-view-dashboard"></i> GitOps Dashboard
-                                            </a>
-                                            <a href="{% url 'plugins:netbox_hedgehog:archive_browser' %}" class="btn btn-outline-secondary">
-                                                <i class="mdi mdi-archive"></i> Archive Browser
-                                            </a>
+                                            <div class="text-muted">GitOps file management tools not available</div>
                                             <button class="btn btn-primary" onclick="processAllFiles({{ object.pk }})">
                                                 <i class="mdi mdi-play"></i> Process All Files
                                             </button>
@@ -623,12 +746,8 @@
                             <h5><i class="mdi mdi-information"></i> GitOps Not Configured</h5>
                             <p>GitOps file management features are available once you configure a Git repository for this fabric.</p>
                             <div class="mt-3">
-                                <a href="{% url 'plugins:netbox_hedgehog:gitops_onboarding' %}" class="btn btn-primary">
-                                    <i class="mdi mdi-rocket-launch"></i> Setup GitOps File Management
-                                </a>
-                                <a href="{% url 'plugins:netbox_hedgehog:gitops_dashboard' %}" class="btn btn-outline-info ms-2">
-                                    <i class="mdi mdi-view-dashboard"></i> View GitOps Dashboard
-                                </a>
+                                <span class="text-muted">GitOps setup not available</span>
+                                <span class="text-muted ms-2">GitOps dashboard not available</span>
                             </div>
                         </div>
                     </div>
@@ -1671,5 +1790,83 @@ document.addEventListener('DOMContentLoaded', function() {
         updateFileManagementStats();
     }
 });
+
+// Progressive Disclosure Functions
+async function syncFromGit() {
+    const fabricId = {{ object.pk }};
+    const button = event.target.closest('a');
+    const originalText = button.innerHTML;
+    
+    try {
+        button.innerHTML = '<i class="mdi mdi-loading mdi-spin"></i> Syncing...';
+        button.style.pointerEvents = 'none';
+        
+        const response = await fetch(`/api/plugins/hedgehog/gitops-fabrics/${fabricId}/gitops_sync/`, {
+            method: 'POST',
+            headers: {
+                'Authorization': 'Token {{ request.user.auth_token.key }}',
+                'Content-Type': 'application/json',
+                'X-CSRFToken': document.querySelector('[name=csrfmiddlewaretoken]').value
+            }
+        });
+        
+        const result = await response.json();
+        
+        if (result.success) {
+            button.innerHTML = '<i class="mdi mdi-check"></i> Sync Completed';
+            setTimeout(() => location.reload(), 2000);
+        } else {
+            button.innerHTML = '<i class="mdi mdi-alert"></i> Sync Failed';
+            console.error('Sync failed:', result.error);
+        }
+    } catch (error) {
+        button.innerHTML = '<i class="mdi mdi-alert"></i> Error';
+        console.error('Network error:', error);
+    }
+    
+    setTimeout(() => {
+        button.innerHTML = originalText;
+        button.style.pointerEvents = 'auto';
+    }, 3000);
+}
+
+async function initGitOps() {
+    const fabricId = {{ object.pk }};
+    const button = event.target.closest('a');
+    const originalText = button.innerHTML;
+    
+    try {
+        button.innerHTML = '<i class="mdi mdi-loading mdi-spin"></i> Initializing...';
+        button.style.pointerEvents = 'none';
+        
+        const response = await fetch(`/api/plugins/hedgehog/fabrics/${fabricId}/init-gitops/`, {
+            method: 'POST',
+            headers: {
+                'Authorization': 'Token {{ request.user.auth_token.key }}',
+                'Content-Type': 'application/json',
+                'X-CSRFToken': document.querySelector('[name=csrfmiddlewaretoken]').value
+            },
+            body: JSON.stringify({ force: false })
+        });
+        
+        const result = await response.json();
+        
+        if (result.success) {
+            button.innerHTML = '<i class="mdi mdi-check"></i> Initialized';
+            setTimeout(() => location.reload(), 2000);
+        } else {
+            button.innerHTML = '<i class="mdi mdi-alert"></i> Failed';
+            console.error('Init failed:', result.error);
+        }
+    } catch (error) {
+        button.innerHTML = '<i class="mdi mdi-alert"></i> Error';
+        console.error('Network error:', error);
+    }
+    
+    setTimeout(() => {
+        button.innerHTML = originalText;
+        button.style.pointerEvents = 'auto';
+    }, 3000);
+}
 </script>
 {% endblock %}
