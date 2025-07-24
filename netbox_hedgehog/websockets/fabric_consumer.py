@@ -247,8 +247,51 @@ class FabricConsumer(AsyncWebsocketConsumer):
                 'params': params
             })
             
-            # TODO: Actually trigger the sync operation
-            # This would integrate with your GitSyncService
+            # Actually trigger the sync operation using GitSyncService
+            try:
+                from ..application.services.git_sync_service import GitSyncService
+                from ..tasks.git_sync_tasks import git_sync_fabric
+                
+                # Determine sync type and parameters
+                sync_type = params.get('sync_type', 'full')
+                force = params.get('force', False)
+                
+                if sync_type == 'async':
+                    # Trigger async sync using Celery task
+                    task = git_sync_fabric.delay(fabric.id, force)
+                    
+                    await self.send_message('sync_initiated', {
+                        'task_id': task.id,
+                        'sync_type': 'async',
+                        'message': 'Async sync task queued',
+                        'fabric_name': fabric.name
+                    })
+                    
+                else:
+                    # Trigger immediate sync
+                    git_service = GitSyncService()
+                    result = await database_sync_to_async(git_service.sync_fabric_from_git)(fabric)
+                    
+                    if result.success:
+                        await self.send_message('sync_completed', {
+                            'success': True,
+                            'message': 'Sync completed successfully',
+                            'details': result.details,
+                            'duration': result.details.get('duration', 0)
+                        })
+                    else:
+                        await self.send_message('sync_failed', {
+                            'success': False,
+                            'error': result.error,
+                            'details': result.details
+                        })
+                        
+            except Exception as sync_error:
+                logger.error(f"WebSocket sync trigger failed: {sync_error}")
+                await self.send_message('sync_error', {
+                    'success': False,
+                    'error': f'Sync trigger failed: {str(sync_error)}'
+                })
             
         except Exception as e:
             logger.error(f"Failed to handle sync trigger: {e}")

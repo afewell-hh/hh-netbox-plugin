@@ -332,10 +332,25 @@ class BatchReconciliationManager:
                 'action': 'import_to_git'
             }
         
-        # TODO: Implement actual Git import
-        return {
-            'success': True,
-            'message': f'Imported {item.resource.name} to Git (placeholder)',
+        # Implement actual Git import using existing services
+        try:
+            from ..services.gitops_edit_service import GitOpsEditService
+            
+            git_service = GitOpsEditService()
+            yaml_content = item.resource.generate_yaml_content()
+            
+            result = git_service.import_resource_to_git(
+                fabric=item.resource.fabric,
+                resource_name=item.resource.name,
+                resource_kind=item.resource.kind,
+                yaml_content=yaml_content
+            )
+            
+            if result.get('success', False):
+                item.metadata['git_import_result'] = result
+                return {
+                    'success': True,
+                    'message': f'Imported {item.resource.name} to Git successfully',
             'action': 'import_to_git'
         }
     
@@ -348,10 +363,23 @@ class BatchReconciliationManager:
                 'action': 'delete_from_cluster'
             }
         
-        # TODO: Implement actual cluster deletion
-        return {
-            'success': True,
-            'message': f'Deleted {item.resource.name} from cluster (placeholder)',
+        # Implement actual cluster deletion using Kubernetes client
+        try:
+            from ..utils.kubernetes import KubernetesClient
+            
+            k8s_client = KubernetesClient(item.resource.fabric)
+            
+            result = k8s_client.delete_custom_resource(
+                name=item.resource.name,
+                kind=item.resource.kind,
+                namespace=item.resource.namespace or 'default'
+            )
+            
+            if result.get('success', False):
+                item.metadata['cluster_deletion_result'] = result
+                return {
+                    'success': True,
+                    'message': f'Deleted {item.resource.name} from cluster successfully',
             'action': 'delete_from_cluster'
         }
     
@@ -364,10 +392,26 @@ class BatchReconciliationManager:
                 'action': 'update_git'
             }
         
-        # TODO: Implement actual Git update
-        return {
-            'success': True,
-            'message': f'Updated Git for {item.resource.name} (placeholder)',
+        # Implement actual Git update using existing services
+        try:
+            from ..services.gitops_edit_service import GitOpsEditService
+            
+            git_service = GitOpsEditService()
+            cluster_yaml = item.resource.generate_yaml_content()
+            
+            result = git_service.update_resource_in_git(
+                fabric=item.resource.fabric,
+                resource_name=item.resource.name,
+                resource_kind=item.resource.kind,
+                yaml_content=cluster_yaml,
+                drift_details=item.metadata.get('drift_details', {})
+            )
+            
+            if result.get('success', False):
+                item.metadata['git_update_result'] = result
+                return {
+                    'success': True,
+                    'message': f'Updated Git for {item.resource.name} successfully',
             'action': 'update_git'
         }
     

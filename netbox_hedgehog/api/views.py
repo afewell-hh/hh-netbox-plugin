@@ -778,22 +778,171 @@ class SyncAPIView(APIView):
     """API endpoint for triggering synchronization"""
     
     def post(self, request):
-        # TODO: Implement sync logic
-        return Response({
-            'status': 'success',
-            'message': 'Synchronization initiated'
-        }, status=status.HTTP_200_OK)
+        # Implement sync logic using existing services
+        try:
+            fabric_id = request.data.get('fabric_id')
+            force = request.data.get('force', False)
+            
+            if fabric_id:
+                # Sync specific fabric
+                try:
+                    fabric = models.HedgehogFabric.objects.get(id=fabric_id)
+                    
+                    # Use existing Git sync service if available
+                    from ..application.services.git_sync_service import GitSyncService
+                    
+                    git_service = GitSyncService()
+                    result = git_service.sync_fabric_from_git(fabric)
+                    
+                    if result.success:
+                        return Response({
+                            'status': 'success',
+                            'message': f'Synchronization completed for fabric {fabric.name}',
+                            'fabric_id': fabric_id,
+                            'synced_resources': result.details.get('synced_count', 0),
+                            'duration': result.details.get('duration', 0)
+                        }, status=status.HTTP_200_OK)
+                    else:
+                        return Response({
+                            'status': 'error',
+                            'message': f'Synchronization failed: {result.error}',
+                            'fabric_id': fabric_id
+                        }, status=status.HTTP_400_BAD_REQUEST)
+                        
+                except models.HedgehogFabric.DoesNotExist:
+                    return Response({
+                        'status': 'error',
+                        'message': f'Fabric with ID {fabric_id} not found'
+                    }, status=status.HTTP_404_NOT_FOUND)
+            else:
+                # Sync all fabrics
+                fabrics = models.HedgehogFabric.objects.all()
+                sync_results = []
+                
+                for fabric in fabrics:
+                    try:
+                        result = fabric.sync_desired_state()
+                        sync_results.append({
+                            'fabric_id': fabric.id,
+                            'fabric_name': fabric.name,
+                            'success': result.get('success', False),
+                            'message': result.get('message', '')
+                        })
+                    except Exception as e:
+                        sync_results.append({
+                            'fabric_id': fabric.id,
+                            'fabric_name': fabric.name,
+                            'success': False,
+                            'error': str(e)
+                        })
+                
+                successful_syncs = len([r for r in sync_results if r['success']])
+                
+                return Response({
+                    'status': 'success',
+                    'message': f'Synchronization initiated for {len(fabrics)} fabrics',
+                    'total_fabrics': len(fabrics),
+                    'successful_syncs': successful_syncs,
+                    'results': sync_results
+                }, status=status.HTTP_200_OK)
+                
+        except Exception as e:
+            logger.error(f"Sync API failed: {e}")
+            return Response({
+                'status': 'error',
+                'message': f'Synchronization failed: {str(e)}'
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 class StatusAPIView(APIView):
     """API endpoint for checking fabric status"""
     
     def get(self, request):
-        # TODO: Implement status checking
-        fabrics = models.HedgehogFabric.objects.all()
-        return Response({
-            'fabrics': len(fabrics),
-            'status': 'operational'
-        }, status=status.HTTP_200_OK)
+        # Implement comprehensive status checking
+        try:
+            fabrics = models.HedgehogFabric.objects.all()
+            
+            # Calculate detailed status metrics
+            total_fabrics = fabrics.count()
+            active_fabrics = fabrics.filter(status='active').count()
+            connected_fabrics = fabrics.filter(connection_status='connected').count()
+            
+            # Get CRD counts
+            total_crds = 0
+            crd_models = [
+                models.VPC, models.External, models.ExternalAttachment, models.ExternalPeering,
+                models.IPv4Namespace, models.VPCAttachment, models.VPCPeering,
+                models.Connection, models.Server, models.Switch, models.SwitchGroup, 
+                models.VLANNamespace
+            ]
+            
+            crd_counts = {}
+            for model in crd_models:
+                try:
+                    count = model.objects.count()
+                    crd_counts[model._meta.model_name] = count
+                    total_crds += count
+                except Exception:
+                    crd_counts[model._meta.model_name] = 0
+            
+            # Determine overall system status
+            if connected_fabrics == 0 and total_fabrics > 0:
+                overall_status = 'degraded'
+            elif connected_fabrics < total_fabrics:
+                overall_status = 'partial'
+            elif total_fabrics == 0:
+                overall_status = 'empty'
+            else:
+                overall_status = 'operational'
+            
+            # Get fabric statuses
+            fabric_statuses = []
+            for fabric in fabrics:
+                try:
+                    fabric_crds = sum([
+                        getattr(fabric, f'{model._meta.model_name}_set', type('', (), {'count': lambda: 0})()).count()
+                        for model in crd_models
+                    ])
+                    
+                    fabric_statuses.append({
+                        'id': fabric.id,
+                        'name': fabric.name,
+                        'status': fabric.status,
+                        'connection_status': fabric.connection_status,
+                        'sync_status': getattr(fabric, 'sync_status', 'unknown'),
+                        'crd_count': fabric_crds,
+                        'last_sync': getattr(fabric, 'last_sync_time', None)
+                    })
+                except Exception as e:
+                    fabric_statuses.append({
+                        'id': fabric.id,
+                        'name': fabric.name,
+                        'status': 'error',
+                        'error': str(e)
+                    })
+            
+            return Response({
+                'status': overall_status,
+                'system_health': {
+                    'total_fabrics': total_fabrics,
+                    'active_fabrics': active_fabrics,
+                    'connected_fabrics': connected_fabrics,
+                    'connection_percentage': (connected_fabrics / total_fabrics * 100) if total_fabrics > 0 else 0
+                },
+                'resource_summary': {
+                    'total_crds': total_crds,
+                    'crd_breakdown': crd_counts
+                },
+                'fabrics': fabric_statuses,
+                'timestamp': timezone.now().isoformat()
+            }, status=status.HTTP_200_OK)
+            
+        except Exception as e:
+            logger.error(f"Status API failed: {e}")
+            return Response({
+                'status': 'error',
+                'error': str(e),
+                'timestamp': timezone.now().isoformat()
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
 # GitOps API Views (MVP2)

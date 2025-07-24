@@ -568,16 +568,51 @@ class ReconciliationAlert(NetBoxModel):
                 }
             }
         
-        # TODO: Implement actual Git import
-        return {
-            'success': True,
-            'message': 'Resource imported to Git repository (placeholder)',
-            'details': {
-                'resource_name': self.resource.name,
-                'resource_kind': self.resource.kind,
-                'implementation': 'pending'
+        # Implement actual Git import using existing services
+        try:
+            from ..services.gitops_edit_service import GitOpsEditService
+            
+            git_service = GitOpsEditService()
+            yaml_content = self.resource.generate_yaml_content()
+            
+            result = git_service.import_resource_to_git(
+                fabric=self.fabric,
+                resource_name=self.resource.name,
+                resource_kind=self.resource.kind,
+                yaml_content=yaml_content
+            )
+            
+            if result.get('success', False):
+                return {
+                    'success': True,
+                    'message': f'Resource {self.resource.name} imported to Git repository',
+                    'details': {
+                        'resource_name': self.resource.name,
+                        'resource_kind': self.resource.kind,
+                        'git_path': result.get('file_path', ''),
+                        'commit_sha': result.get('commit_sha', '')
+                    }
+                }
+            else:
+                return {
+                    'success': False,
+                    'error': result.get('error', 'Failed to import resource to Git'),
+                    'details': {
+                        'resource_name': self.resource.name,
+                        'resource_kind': self.resource.kind
+                    }
+                }
+        except Exception as e:
+            logger.error(f"Git import failed for {self.resource.name}: {e}")
+            return {
+                'success': False,
+                'error': f'Git import failed: {str(e)}',
+                'details': {
+                    'resource_name': self.resource.name,
+                    'resource_kind': self.resource.kind,
+                    'exception': str(e)
+                }
             }
-        }
     
     def _execute_delete_from_cluster(self, dry_run=False):
         """Execute delete from cluster action"""
@@ -598,16 +633,51 @@ class ReconciliationAlert(NetBoxModel):
                 }
             }
         
-        # TODO: Implement actual cluster deletion
-        return {
-            'success': True,
-            'message': 'Resource deleted from cluster (placeholder)',
-            'details': {
-                'resource_name': self.resource.name,
-                'resource_kind': self.resource.kind,
-                'implementation': 'pending'
+        # Implement actual cluster deletion using Kubernetes client
+        try:
+            from ..utils.kubernetes import KubernetesClient
+            
+            k8s_client = KubernetesClient(self.fabric)
+            
+            result = k8s_client.delete_custom_resource(
+                name=self.resource.name,
+                kind=self.resource.kind,
+                namespace=self.resource.namespace or 'default'
+            )
+            
+            if result.get('success', False):
+                return {
+                    'success': True,
+                    'message': f'Resource {self.resource.name} deleted from cluster',
+                    'details': {
+                        'resource_name': self.resource.name,
+                        'resource_kind': self.resource.kind,
+                        'namespace': self.resource.namespace,
+                        'deletion_timestamp': result.get('deletion_timestamp')
+                    }
+                }
+            else:
+                return {
+                    'success': False,
+                    'error': result.get('error', 'Failed to delete resource from cluster'),
+                    'details': {
+                        'resource_name': self.resource.name,
+                        'resource_kind': self.resource.kind,
+                        'namespace': self.resource.namespace
+                    }
+                }
+        except Exception as e:
+            logger.error(f"Cluster deletion failed for {self.resource.name}: {e}")
+            return {
+                'success': False,
+                'error': f'Cluster deletion failed: {str(e)}',
+                'details': {
+                    'resource_name': self.resource.name,
+                    'resource_kind': self.resource.kind,
+                    'namespace': self.resource.namespace,
+                    'exception': str(e)
+                }
             }
-        }
     
     def _execute_update_git(self, dry_run=False):
         """Execute update Git action"""
@@ -628,16 +698,55 @@ class ReconciliationAlert(NetBoxModel):
                 }
             }
         
-        # TODO: Implement actual Git update
-        return {
-            'success': True,
-            'message': 'Git updated with cluster state (placeholder)',
-            'details': {
-                'resource_name': self.resource.name,
-                'resource_kind': self.resource.kind,
-                'implementation': 'pending'
+        # Implement actual Git update using existing services
+        try:
+            from ..services.gitops_edit_service import GitOpsEditService
+            
+            git_service = GitOpsEditService()
+            
+            # Get current cluster state
+            cluster_yaml = self.resource.generate_yaml_content()
+            
+            result = git_service.update_resource_in_git(
+                fabric=self.fabric,
+                resource_name=self.resource.name,
+                resource_kind=self.resource.kind,
+                yaml_content=cluster_yaml,
+                drift_details=self.drift_details
+            )
+            
+            if result.get('success', False):
+                return {
+                    'success': True,
+                    'message': f'Git updated with cluster state for {self.resource.name}',
+                    'details': {
+                        'resource_name': self.resource.name,
+                        'resource_kind': self.resource.kind,
+                        'git_path': result.get('file_path', ''),
+                        'commit_sha': result.get('commit_sha', ''),
+                        'changes_applied': result.get('changes', [])
+                    }
+                }
+            else:
+                return {
+                    'success': False,
+                    'error': result.get('error', 'Failed to update Git with cluster state'),
+                    'details': {
+                        'resource_name': self.resource.name,
+                        'resource_kind': self.resource.kind
+                    }
+                }
+        except Exception as e:
+            logger.error(f"Git update failed for {self.resource.name}: {e}")
+            return {
+                'success': False,
+                'error': f'Git update failed: {str(e)}',
+                'details': {
+                    'resource_name': self.resource.name,
+                    'resource_kind': self.resource.kind,
+                    'exception': str(e)
+                }
             }
-        }
     
     def _execute_ignore(self, dry_run=False):
         """Execute ignore action"""

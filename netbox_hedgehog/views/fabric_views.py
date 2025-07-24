@@ -533,9 +533,47 @@ class ArgoCDSetupWizardView(View):
             fabric.gitops_setup_status = 'installing'
             fabric.save(update_fields=['gitops_setup_status'])
             
-            # For now, return success - in real implementation this would be async
-            # TODO: Implement actual installation call
-            # result = await installer.install_argocd()
+            # Implement actual installation call
+            try:
+                # Use the installer's async installation method
+                import asyncio
+                
+                async def run_installation():
+                    return await installer.install_argocd()
+                
+                # Run the async installation
+                result = asyncio.run(run_installation())
+                
+                # Update installation result with actual result
+                if result.get('success', False):
+                    installation_result.update({
+                        'success': True,
+                        'status': 'completed',
+                        'progress': 100,
+                        'argocd_status': result.get('argocd_status', {}),
+                        'installation_details': result.get('installation_details', {})
+                    })
+                    fabric.gitops_setup_status = 'configured'
+                else:
+                    installation_result.update({
+                        'success': False,
+                        'status': 'failed',
+                        'error': result.get('error', 'Installation failed'),
+                        'details': result.get('details', {})
+                    })
+                    fabric.gitops_setup_status = 'failed'
+                
+                fabric.save(update_fields=['gitops_setup_status'])
+                
+            except Exception as install_error:
+                logger.error(f"ArgoCD installation execution failed: {install_error}")
+                installation_result.update({
+                    'success': False,
+                    'status': 'failed',
+                    'error': f'Installation execution failed: {str(install_error)}'
+                })
+                fabric.gitops_setup_status = 'failed'
+                fabric.save(update_fields=['gitops_setup_status'])
             
             return JsonResponse(installation_result)
             

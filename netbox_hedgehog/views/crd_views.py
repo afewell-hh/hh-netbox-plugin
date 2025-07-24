@@ -162,17 +162,39 @@ class ApplyCRDView(View):
         crd = get_object_or_404(model, pk=crd_pk, fabric=fabric)
         
         try:
-            # TODO: Implement actual Kubernetes API call
-            # For now, simulate success
-            crd.kubernetes_status = 'live'
-            crd.last_applied = timezone.now()
-            crd.save()
+            # Implement actual Kubernetes API call using existing utilities
+            from ..utils.kubernetes import KubernetesClient
             
-            return JsonResponse({
-                'success': True,
-                'message': f'Successfully applied {crd.kind} {crd.name}',
-                'status': crd.kubernetes_status
-            })
+            k8s_client = KubernetesClient(fabric)
+            
+            # Generate YAML content for the CRD
+            yaml_content = self._get_crd_yaml(crd)
+            
+            # Apply the resource to Kubernetes
+            result = k8s_client.apply_custom_resource(
+                name=crd.name,
+                kind=crd.kind,
+                namespace=crd.namespace or 'default',
+                yaml_content=yaml_content
+            )
+            
+            if result.get('success', False):
+                # Update local status
+                crd.kubernetes_status = 'live'
+                crd.last_applied = timezone.now()
+                crd.save(update_fields=['kubernetes_status', 'last_applied'])
+                
+                return JsonResponse({
+                    'success': True,
+                    'message': f'Successfully applied {crd.kind} {crd.name} to Kubernetes',
+                    'status': crd.kubernetes_status,
+                    'applied_at': crd.last_applied.isoformat()
+                })
+            else:
+                return JsonResponse({
+                    'success': False,
+                    'error': result.get('error', 'Failed to apply resource to Kubernetes')
+                })
         except Exception as e:
             return JsonResponse({
                 'success': False,
@@ -209,15 +231,38 @@ class DeleteCRDView(View):
         crd = get_object_or_404(model, pk=crd_pk, fabric=fabric)
         
         try:
-            # TODO: Implement actual Kubernetes API call to delete
-            # For now, simulate deletion
-            crd_name = crd.name
-            crd.delete()
+            # Implement actual Kubernetes API call to delete
+            from ..utils.kubernetes import KubernetesClient
             
-            return JsonResponse({
-                'success': True,
-                'message': f'Successfully deleted {crd.kind} {crd_name}'
-            })
+            k8s_client = KubernetesClient(fabric)
+            crd_name = crd.name
+            crd_kind = crd.kind
+            
+            # Delete from Kubernetes first
+            result = k8s_client.delete_custom_resource(
+                name=crd.name,
+                kind=crd.kind,
+                namespace=crd.namespace or 'default'
+            )
+            
+            if result.get('success', False):
+                # Delete from local database
+                crd.delete()
+                
+                return JsonResponse({
+                    'success': True,
+                    'message': f'Successfully deleted {crd_kind} {crd_name} from Kubernetes and database',
+                    'deletion_timestamp': result.get('deletion_timestamp', timezone.now().isoformat())
+                })
+            else:
+                # Even if Kubernetes deletion fails, allow local deletion with warning
+                crd.delete()
+                
+                return JsonResponse({
+                    'success': True,
+                    'message': f'Deleted {crd_kind} {crd_name} from database (Kubernetes deletion may have failed)',
+                    'warning': result.get('error', 'Kubernetes deletion status unknown')
+                })
         except Exception as e:
             return JsonResponse({
                 'success': False,

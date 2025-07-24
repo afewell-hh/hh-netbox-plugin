@@ -579,14 +579,59 @@ class HedgehogFabric(NetBoxModel):
             return None
         
         try:
-            # TODO: Implement actual GitOps tool client creation
-            return {
-                'tool': self.gitops_tool,
-                'app_name': self.gitops_app_name,
-                'namespace': self.gitops_namespace,
-                'configured': bool(self.gitops_app_name),
-                'status': 'client_not_implemented'
-            }
+            # Implement actual GitOps tool client creation
+            if self.gitops_tool == 'argocd':
+                from ..utils.argocd_git_integration import ArgoCDClient
+                
+                client = ArgoCDClient(
+                    server=self.kubernetes_server,
+                    namespace=self.gitops_namespace or self.kubernetes_namespace,
+                    app_name=self.gitops_app_name
+                )
+                
+                # Test client connectivity
+                status = client.get_application_status()
+                
+                return {
+                    'tool': self.gitops_tool,
+                    'app_name': self.gitops_app_name,
+                    'namespace': self.gitops_namespace,
+                    'configured': bool(self.gitops_app_name),
+                    'status': 'connected' if status.get('success') else 'error',
+                    'client': client,
+                    'app_status': status.get('app_status', 'unknown')
+                }
+                
+            elif self.gitops_tool == 'flux':
+                from ..utils.flux_client import FluxClient
+                
+                client = FluxClient(
+                    namespace=self.gitops_namespace or self.kubernetes_namespace,
+                    source_name=self.gitops_app_name
+                )
+                
+                # Test client connectivity
+                status = client.get_source_status()
+                
+                return {
+                    'tool': self.gitops_tool,
+                    'app_name': self.gitops_app_name,
+                    'namespace': self.gitops_namespace,
+                    'configured': bool(self.gitops_app_name),
+                    'status': 'connected' if status.get('success') else 'error',
+                    'client': client,
+                    'source_status': status.get('source_status', 'unknown')
+                }
+                
+            else:
+                return {
+                    'tool': self.gitops_tool,
+                    'app_name': self.gitops_app_name,
+                    'namespace': self.gitops_namespace,
+                    'configured': bool(self.gitops_app_name),
+                    'status': 'unsupported_tool',
+                    'error': f'GitOps tool {self.gitops_tool} not implemented'
+                }
         except Exception as e:
             return {
                 'tool': self.gitops_tool,
