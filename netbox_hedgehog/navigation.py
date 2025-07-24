@@ -1,5 +1,4 @@
-from netbox.plugins import PluginMenuButton, PluginMenuItem, PluginMenu
-from netbox.choices import ButtonColorChoices
+from netbox.plugins import PluginMenuItem, PluginMenu
 
 # Complete plugin menu restored with placeholder views (16 total pages)
 menu = PluginMenu(

@@ -1,6 +1,5 @@
 from django.urls import path
-from django.views.generic import TemplateView, ListView, CreateView, UpdateView, DeleteView, DetailView
-from netbox.views.generic import ObjectView
+from django.views.generic import TemplateView, ListView, UpdateView, DetailView
 
 # Minimal safe imports
 from .models import HedgehogFabric
