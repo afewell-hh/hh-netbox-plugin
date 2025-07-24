@@ -1,5 +1,0 @@
-Git Repository Info for Reuse:
-URL: https://github.com/afewell-hh/gitops-test-1.git
-Branch: main
-Token: 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
-Path: gitops/hedgehog/fabric-1/
