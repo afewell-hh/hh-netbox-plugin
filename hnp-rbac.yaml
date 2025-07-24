@@ -1,0 +1,80 @@
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: hnp-sync
+  namespace: default
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: hnp-sync-role
+rules:
+- apiGroups: [""]
+  resources: 
+    - pods
+    - services
+    - endpoints
+    - namespaces
+    - nodes
+    - persistentvolumes
+    - persistentvolumeclaims
+    - configmaps
+    - secrets
+  verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+- apiGroups: ["apps"]
+  resources:
+    - deployments
+    - replicasets
+    - daemonsets
+    - statefulsets
+  verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+- apiGroups: ["extensions"]
+  resources:
+    - deployments
+    - replicasets
+    - daemonsets
+  verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+- apiGroups: ["apiextensions.k8s.io"]
+  resources:
+    - customresourcedefinitions
+  verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+- apiGroups: ["vpc.hhfabric.io"]
+  resources:
+    - vpcs
+    - externals
+    - externalattachments
+    - externalpeerings
+    - ipv4namespaces
+    - vpcattachments
+    - vpcpeerings
+  verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+- apiGroups: ["wiring.hhfabric.io"]
+  resources:
+    - connections
+    - servers
+    - switches
+    - switchgroups
+    - vlannamespaces
+  verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: hnp-sync-binding
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: hnp-sync-role
+subjects:
+- kind: ServiceAccount
+  name: hnp-sync
+  namespace: default
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: hnp-sync-token
+  namespace: default
+  annotations:
+    kubernetes.io/service-account.name: hnp-sync
+type: kubernetes.io/service-account-token

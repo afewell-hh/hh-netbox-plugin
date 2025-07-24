@@ -1,4 +1,5 @@
 import logging
+import os
 from typing import Dict, Any, Optional, List
 from datetime import datetime
 import json
@@ -43,21 +44,49 @@ class KubernetesClient:
                 # Use fabric-specific configuration
                 configuration = client.Configuration()
                 configuration.host = fabric_config['host']
+                configuration.verify_ssl = fabric_config.get('verify_ssl', True)
                 
+                # Handle bearer token authentication properly
                 if 'api_key' in fabric_config:
-                    configuration.api_key = fabric_config['api_key']
+                    if isinstance(fabric_config['api_key'], dict) and 'authorization' in fabric_config['api_key']:
+                        # Extract token from "Bearer <token>" format
+                        auth_header = fabric_config['api_key']['authorization']
+                        if auth_header.startswith('Bearer '):
+                            token = auth_header[7:]  # Remove "Bearer " prefix
+                        else:
+                            token = auth_header
+                        
+                        # Set up bearer token authentication using the correct method
+                        configuration.api_key = {'authorization': token}
+                        configuration.api_key_prefix = {'authorization': 'Bearer'}
+                        
+                        # Debug logging
+                        logger.debug(f"Setting up token authentication: token length={len(token)}, prefix=Bearer")
+                    else:
+                        configuration.api_key = fabric_config['api_key']
                 
                 if 'ssl_ca_cert' in fabric_config:
-                    configuration.ssl_ca_cert = fabric_config['ssl_ca_cert']
-                    
-                configuration.verify_ssl = fabric_config.get('verify_ssl', True)
+                    # Write certificate to temporary file since kubernetes client expects file path
+                    import tempfile
+                    with tempfile.NamedTemporaryFile(mode='w', suffix='.pem', delete=False) as cert_file:
+                        cert_file.write(fabric_config['ssl_ca_cert'])
+                        configuration.ssl_ca_cert = cert_file.name
                 
                 self._api_client = client.ApiClient(configuration)
             else:
                 # Use default kubeconfig
                 try:
-                    config.load_kube_config()
-                    self._api_client = client.ApiClient()
+                    # Try to load from /tmp/kubeconfig first (for Docker environment)
+                    if os.path.exists('/tmp/kubeconfig'):
+                        config.load_kube_config(config_file='/tmp/kubeconfig')
+                        self._api_client = client.ApiClient()
+                        logger.info("Successfully loaded kubeconfig from /tmp/kubeconfig")
+                    else:
+                        # Fallback to default kubeconfig location
+                        config.load_kube_config()
+                        self._api_client = client.ApiClient()
+                        logger.info("Successfully loaded default kubeconfig")
+                        
                 except Exception as e:
                     logger.error(f"Failed to load kubeconfig: {e}")
                     raise
@@ -611,6 +640,60 @@ class KubernetesSync:
                    f"{results['updated']} updated, {results['errors']} errors")
         
         return results
+    
+    def list_custom_resources(self, api_version: str, namespace: str = None) -> List[Dict[str, Any]]:
+        """
+        List custom resources by API version (e.g., 'vpc.hhnet.githedgehog.com')
+        Returns list of resource objects
+        """
+        resources = []
+        
+        try:
+            # Parse API version to get group
+            if '.' in api_version:
+                # Extract the base group from api_version
+                # e.g., 'vpc.hhnet.githedgehog.com' -> 'vpc'
+                crd_type = api_version.split('.')[0]
+                
+                # Map to our CRD types
+                matching_crds = []
+                for plural, crd_info in self.crd_types.items():
+                    if crd_info['group'].startswith(crd_type + '.'):
+                        matching_crds.append((plural, crd_info))
+                
+                if not matching_crds:
+                    logger.warning(f"No CRD types found for API version {api_version}")
+                    return resources
+                
+                custom_api = self.client._get_custom_api()
+                
+                for plural, crd_info in matching_crds:
+                    try:
+                        response = custom_api.list_namespaced_custom_object(
+                            group=crd_info['group'],
+                            version=crd_info['version'],
+                            namespace=namespace or self.fabric.kubernetes_namespace or 'default',
+                            plural=plural
+                        )
+                        
+                        items = response.get('items', [])
+                        # Add apiVersion and kind to each item
+                        for item in items:
+                            item['apiVersion'] = f"{crd_info['group']}/{crd_info['version']}"
+                            item['kind'] = crd_info['kind']
+                        
+                        resources.extend(items)
+                        
+                    except ApiException as e:
+                        if e.status != 404:  # Ignore not found
+                            logger.error(f"Failed to list {plural}: {e}")
+                    except Exception as e:
+                        logger.error(f"Unexpected error listing {plural}: {e}")
+            
+        except Exception as e:
+            logger.error(f"Failed to list custom resources for {api_version}: {e}")
+        
+        return resources
     
     def fetch_crds_from_kubernetes(self) -> Dict[str, Any]:
         """

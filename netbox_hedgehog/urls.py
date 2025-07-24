@@ -9,6 +9,7 @@ from .models.wiring_api import Connection, Switch, Server, VLANNamespace, Switch
 from .mixins import FabricFilterMixin
 from .views.crd_views import FabricCRDListView
 from .views import gitops_edit_views
+from .views.sync_views import FabricTestConnectionView, FabricSyncView
 
 # Import detail views (need to avoid naming conflicts with list views)
 # from .views.vpc_views import VPCDetailView as VPCDetailViewImported  # Disabled - has field dependency issues
@@ -234,6 +235,8 @@ urlpatterns = [
     path('fabrics/<int:pk>/', FabricDetailView.as_view(), name='fabric_detail'),
     path('fabrics/<int:pk>/edit/', FabricEditView.as_view(), name='fabric_edit'),
     path('fabrics/<int:pk>/crds/', FabricCRDListView.as_view(), name='fabric_crds'),
+    path('fabrics/<int:pk>/test-connection/', FabricTestConnectionView.as_view(), name='fabric_test_connection'),
+    path('fabrics/<int:pk>/sync/', FabricSyncView.as_view(), name='fabric_sync'),
     
     # CR List pages
     path('vpcs/', VPCListView.as_view(), name='vpc_list'),

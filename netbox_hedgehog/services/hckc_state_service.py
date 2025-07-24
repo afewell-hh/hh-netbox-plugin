@@ -6,7 +6,7 @@ from django.utils import timezone
 from ..models.fabric import HedgehogFabric
 from ..models.vpc_api import VPC, External, ExternalAttachment, ExternalPeering, IPv4Namespace, VPCAttachment, VPCPeering
 from ..models.wiring_api import Connection, Server, Switch, SwitchGroup, VLANNamespace
-from ..utils.kubernetes import KubernetesClient
+from ..utils.kubernetes import KubernetesSync
 
 logger = logging.getLogger(__name__)
 
@@ -15,19 +15,22 @@ class HCKCStateService:
     """Service for synchronizing and comparing state between Git (desired) and HCKC cluster (actual)"""
     
     def __init__(self):
+        # Map CRD types to models - using the actual groups from the cluster
         self.cr_models = {
-            'vpc.hhnet.githedgehog.com': VPC,
-            'external.hhnet.githedgehog.com': External,
-            'externalattachment.hhnet.githedgehog.com': ExternalAttachment,
-            'externalpeering.hhnet.githedgehog.com': ExternalPeering,
-            'ipv4namespace.hhnet.githedgehog.com': IPv4Namespace,
-            'vpcattachment.hhnet.githedgehog.com': VPCAttachment,
-            'vpcpeering.hhnet.githedgehog.com': VPCPeering,
-            'connection.wiring.githedgehog.com': Connection,
-            'server.wiring.githedgehog.com': Server,
-            'switch.wiring.githedgehog.com': Switch,
-            'switchgroup.wiring.githedgehog.com': SwitchGroup,
-            'vlannamespace.wiring.githedgehog.com': VLANNamespace,
+            # VPC API CRDs (all use vpc.githedgehog.com group)
+            'vpcs': VPC,
+            'externals': External,  
+            'externalattachments': ExternalAttachment,
+            'externalpeerings': ExternalPeering,
+            'ipv4namespaces': IPv4Namespace,
+            'vpcattachments': VPCAttachment,
+            'vpcpeerings': VPCPeering,
+            # Wiring API CRDs (all use wiring.githedgehog.com group)
+            'connections': Connection,
+            'servers': Server,
+            'switches': Switch,
+            'switchgroups': SwitchGroup,
+            'vlannamespaces': VLANNamespace,
         }
     
     def sync_actual_state_from_cluster(self, fabric: HedgehogFabric) -> Dict[str, Any]:
@@ -36,7 +39,7 @@ class HCKCStateService:
         Returns sync summary with counts and any errors
         """
         try:
-            k8s_client = KubernetesClient(fabric)
+            k8s_sync = KubernetesSync(fabric)
             sync_summary = {
                 'fabric_id': fabric.id,
                 'fabric_name': fabric.name,
@@ -51,26 +54,26 @@ class HCKCStateService:
             logger.info(f"Starting HCKC state sync for fabric {fabric.name}")
             
             # Sync each CR type from cluster
-            for api_version, model_class in self.cr_models.items():
+            for crd_plural, model_class in self.cr_models.items():
                 try:
-                    cr_summary = self._sync_cr_type_from_cluster(k8s_client, fabric, api_version, model_class)
-                    sync_summary['cr_types_synced'][api_version] = cr_summary
+                    cr_summary = self._sync_cr_type_from_cluster(k8s_sync, fabric, crd_plural, model_class)
+                    sync_summary['cr_types_synced'][crd_plural] = cr_summary
                     sync_summary['total_resources_found'] += cr_summary.get('found_in_cluster', 0)
                     sync_summary['total_resources_updated'] += cr_summary.get('updated_in_hnp', 0)
                     
                 except Exception as e:
-                    error_msg = f"Failed to sync {api_version}: {str(e)}"
+                    error_msg = f"Failed to sync {crd_plural}: {str(e)}"
                     logger.error(error_msg)
                     sync_summary['errors'].append(error_msg)
             
             # Update fabric sync status
             fabric.last_sync = timezone.now()
             if not sync_summary['errors']:
-                fabric.sync_status = 'in_sync'
-                fabric.sync_error = None
+                fabric.sync_status = 'synced'  # Use 'synced' not 'in_sync'
+                fabric.sync_error = ''  # Empty string instead of None
                 sync_summary['success'] = True
             else:
-                fabric.sync_status = 'error'
+                fabric.sync_status = 'error'  # This is correct
                 fabric.sync_error = '; '.join(sync_summary['errors'][:3])  # Keep first 3 errors
             
             fabric.save()
@@ -98,11 +101,11 @@ class HCKCStateService:
                 'sync_completed_at': timezone.now()
             }
     
-    def _sync_cr_type_from_cluster(self, k8s_client: KubernetesClient, fabric: HedgehogFabric, 
-                                   api_version: str, model_class) -> Dict[str, Any]:
+    def _sync_cr_type_from_cluster(self, k8s_sync: KubernetesSync, fabric: HedgehogFabric, 
+                                   crd_plural: str, model_class) -> Dict[str, Any]:
         """Sync a specific CR type from the cluster"""
         summary = {
-            'api_version': api_version,
+            'crd_plural': crd_plural,
             'model_name': model_class.__name__,
             'found_in_cluster': 0,
             'updated_in_hnp': 0,
@@ -111,12 +114,31 @@ class HCKCStateService:
         }
         
         try:
-            # Get all CRDs of this type from cluster
-            cluster_crds = k8s_client.list_custom_resources(api_version, fabric.kubernetes_namespace)
+            # Get CRD info from k8s_sync.crd_types
+            if crd_plural not in k8s_sync.crd_types:
+                summary['errors'].append(f"CRD type {crd_plural} not found in KubernetesSync")
+                return summary
+                
+            crd_info = k8s_sync.crd_types[crd_plural]
+            
+            # Use the KubernetesSync client's custom API to list resources
+            custom_api = k8s_sync.client._get_custom_api()
+            response = custom_api.list_namespaced_custom_object(
+                group=crd_info['group'],
+                version=crd_info['version'],
+                namespace=fabric.kubernetes_namespace or 'default',
+                plural=crd_plural
+            )
+            
+            cluster_crds = response.get('items', [])
             summary['found_in_cluster'] = len(cluster_crds)
             
             for crd_data in cluster_crds:
                 try:
+                    # Add apiVersion and kind to each item for consistency
+                    crd_data['apiVersion'] = f"{crd_info['group']}/{crd_info['version']}"
+                    crd_data['kind'] = crd_info['kind']
+                    
                     # Update or create CRD in HNP database
                     updated = self._update_cr_from_cluster_data(fabric, model_class, crd_data)
                     if updated:
@@ -130,7 +152,7 @@ class HCKCStateService:
                     logger.warning(error_msg)
             
         except Exception as e:
-            error_msg = f"Failed to list {api_version} from cluster: {str(e)}"
+            error_msg = f"Failed to list {crd_plural} from cluster: {str(e)}"
             summary['errors'].append(error_msg)
             logger.error(error_msg)
         

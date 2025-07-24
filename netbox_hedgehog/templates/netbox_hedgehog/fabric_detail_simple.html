@@ -380,7 +380,7 @@
                                 button.innerHTML = '<i class="mdi mdi-test-tube mdi-spin"></i> Testing...';
                                 
                                 const baseUrl = window.location.origin;
-                                const testUrl = `${baseUrl}/api/plugins/hedgehog/fabrics/${fabricId}/validate_git_configuration/`;
+                                const testUrl = `${baseUrl}/plugins/hedgehog/fabrics/${fabricId}/test-connection/`;
                                 
                                 // Get CSRF token
                                 const csrftoken = document.querySelector('[name=csrfmiddlewaretoken]')?.value || 
@@ -397,7 +397,10 @@
                                 .then(response => response.json())
                                 .then(data => {
                                     if (data.success) {
-                                        showAlert('success', data.message || 'Connection test passed');
+                                        const clusterInfo = data.details || {};
+                                        const message = data.message || 'Connection test successful!';
+                                        const details = clusterInfo.cluster_version ? ` (${clusterInfo.cluster_version})` : '';
+                                        showAlert('success', message + details);
                                         setTimeout(() => location.reload(), 1500);
                                     } else {
                                         showAlert('danger', data.error || 'Connection test failed');

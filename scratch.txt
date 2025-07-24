@@ -282,3 +282,17 @@ Please understand that all of my comments here come from a place where I do not 
 
 [2025-07-22 01:26:25] ✅ SUCCESS: Installation completed in under 30 minutes!
 [2025-07-22 01:26:25] 📝 Installation log saved to: /tmp/hemk-install-20250722-012404.log
+
+  // "env": {
+  //   "BASH_DEFAULT_TIMEOUT_MS": "600000",
+  //   "BASH_MAX_TIMEOUT_MS": "90000",
+  //   "BASH_MAX_OUTPUT_LENGTH": "500000",
+  //   "CLAUDE_BASH_MAINTAIN_PROJECT_WORKING_DIR": "true",
+  //   "MAX_THINKING_TOKENS": "40000",
+  //   "MCP_TIMEOUT": "90000",
+  //   "MCP_TOOL_TIMEOUT": "160000",
+  //   "DISABLE_COST_WARNINGS": "1",
+  //   "DISABLE_NON_ESSENTIAL_MODEL_CALLS": "0",
+  //   "CLAUDE_CODE_MAX_OUTPUT_TOKENS": "8192"
+  // }
+  // }
