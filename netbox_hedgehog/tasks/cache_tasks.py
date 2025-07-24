@@ -12,7 +12,9 @@ from django.db import connection
 from django.db.models import Count, Q
 
 from ..models.fabric import HedgehogFabric
-from ..models import *  # All CRD models
+from ..models.vpc_api import VPC, IPv4Namespace
+from ..models.wiring_api import Switch, Connection, VLANNamespace, Server, SwitchGroup
+from ..models.reconciliation import ReconciliationAlert
 
 logger = logging.getLogger('netbox_hedgehog.performance')
 

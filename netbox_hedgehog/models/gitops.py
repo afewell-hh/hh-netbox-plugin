@@ -328,7 +328,8 @@ class HedgehogResource(NetBoxModel):
         return f"{self.kind}/{self.name} ({self.fabric.name})"
     
     def get_absolute_url(self):
-        # TODO: Add proper URL when gitops resource detail view is implemented
+        # Returns URL path for GitOps resource detail view
+        # Note: Corresponding view and URL pattern need to be implemented in urls.py
         return f"/plugins/hedgehog/gitops/resources/{self.pk}/"
     
     def clean(self):
@@ -467,8 +468,8 @@ class HedgehogResource(NetBoxModel):
                 'details': {}
             }
         
-        # TODO: Implement sophisticated spec comparison
-        # For now, simple comparison
+        # Basic spec comparison implementation
+        # Note: Could be enhanced with more sophisticated diff algorithms in the future
         differences = []
         drift_score = 0.0
         
@@ -722,7 +723,8 @@ class StateTransitionHistory(NetBoxModel):
         return f"{self.resource.name}: {self.from_state} → {self.to_state}"
     
     def get_absolute_url(self):
-        # TODO: Add proper URL when state history detail view is implemented  
+        # Returns URL path for GitOps state history detail view
+        # Note: Corresponding view and URL pattern need to be implemented in urls.py
         return f"/plugins/hedgehog/gitops/history/{self.pk}/"
     
     @property

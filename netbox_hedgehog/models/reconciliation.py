@@ -257,7 +257,8 @@ class ReconciliationAlert(NetBoxModel):
         return f"{self.alert_type}: {self.resource.name} ({self.severity})"
     
     def get_absolute_url(self):
-        # TODO: Add proper URL when reconciliation alert detail view is implemented
+        # Returns URL path for reconciliation alert detail view
+        # Note: Corresponding view and URL pattern need to be implemented in urls.py
         return f"/plugins/hedgehog/reconciliation/alerts/{self.pk}/"
     
     def clean(self):

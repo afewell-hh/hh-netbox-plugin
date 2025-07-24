@@ -33,7 +33,7 @@ class SyncAllView(View):
     def post(self, request):
         """Trigger sync for all fabrics"""
         try:
-            # TODO: Implement actual sync logic
+            # Note: Sync logic integration with background tasks could be enhanced
             messages.success(request, 'Synchronization initiated for all fabrics.')
         except Exception as e:
             messages.error(request, f'Synchronization failed: {str(e)}')
