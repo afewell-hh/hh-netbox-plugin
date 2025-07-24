@@ -2,6 +2,10 @@
 
 A NetBox plugin for managing Hedgehog fabric Custom Resource Definitions (CRDs) with a self-service catalog interface.
 
+## Status
+
+**✅ Production Ready**: The plugin has completed comprehensive technical debt cleanup (July 2025) and is fully operational with clean, maintainable code.
+
 ## Features
 
 - **Self-Service Catalog**: Web-based interface for creating and managing Hedgehog fabric CRDs
@@ -9,6 +13,7 @@ A NetBox plugin for managing Hedgehog fabric Custom Resource Definitions (CRDs) 
 - **Kubernetes Integration**: Bi-directional synchronization with Kubernetes clusters
 - **Multi-Fabric Support**: Manage multiple Hedgehog fabrics from a single NetBox instance
 - **Real-Time Status**: Monitor CRD status and health with automatic updates
+- **GitOps Ready**: ArgoCD integration for GitOps workflows
 
 ## Supported CRDs
 
