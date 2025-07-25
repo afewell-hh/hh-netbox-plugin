@@ -13,6 +13,15 @@ from .views.sync_views import FabricTestConnectionView, FabricSyncView
 # Import detail views (need to avoid naming conflicts with list views)
 # from .views.vpc_views import VPCDetailView as VPCDetailViewImported  # Disabled - has field dependency issues
 
+# Import git repository views
+from .views.git_repository_views import (
+    GitRepositoryListView, GitRepositoryView, GitRepositoryEditView, 
+    GitRepositoryDeleteView, GitRepositoryTestConnectionView
+)
+
+# Import fabric views
+from .views.fabric_views import FabricCreateView
+
 app_name = 'netbox_hedgehog'
 
 # Working views from git history
@@ -231,6 +240,7 @@ urlpatterns = [
     path('', OverviewView.as_view(), name='overview'),
     path('topology/', TopologyView.as_view(), name='topology'),
     path('fabrics/', FabricListView.as_view(), name='fabric_list'),
+    path('fabrics/add/', FabricCreateView.as_view(), name='fabric_add'),
     path('fabrics/<int:pk>/', FabricDetailView.as_view(), name='fabric_detail'),
     path('fabrics/<int:pk>/edit/', FabricEditView.as_view(), name='fabric_edit'),
     path('fabrics/<int:pk>/crds/', FabricCRDListView.as_view(), name='fabric_crds'),
@@ -283,13 +293,19 @@ urlpatterns = [
     path('api/gitops/yaml-preview/', gitops_edit_views.YAMLPreviewView.as_view(), name='gitops_yaml_preview'),
     path('api/gitops/yaml-validation/', gitops_edit_views.YAMLValidationView.as_view(), name='gitops_yaml_validation'),
     path('api/gitops/workflow-status/<str:model_name>/<int:object_id>/', gitops_edit_views.GitOpsWorkflowStatusView.as_view(), name='gitops_workflow_status'),
+    
+    # Git Repository Management URLs
+    path('git-repositories/', GitRepositoryListView.as_view(), name='gitrepository_list'),
+    path('git-repositories/add/', GitRepositoryEditView.as_view(), name='gitrepository_add'),
+    path('git-repositories/<int:pk>/', GitRepositoryView.as_view(), name='git_repository_detail'),
+    path('git-repositories/<int:pk>/edit/', GitRepositoryEditView.as_view(), name='gitrepository_edit'),
+    path('git-repositories/<int:pk>/delete/', GitRepositoryDeleteView.as_view(), name='gitrepository_delete'),
+    path('git-repositories/<int:pk>/test-connection/', GitRepositoryTestConnectionView.as_view(), name='gitrepository_test_connection'),
 ]
 
 # Add remaining placeholder pages for navigation
 placeholder_pages = [
     ('gitops-onboarding/', 'gitops_onboarding', 'GitOps Onboarding'),
-    ('git-repositories/', 'gitrepository_list', 'Git Repositories'),
-    ('git-repositories/add/', 'gitrepository_add', 'Add Git Repository'),
     ('vpcs/add/', 'vpc_add', 'Add VPC'),
     ('externals/', 'external_list', 'External Systems'),
     ('externals/add/', 'external_add', 'Add External System'),

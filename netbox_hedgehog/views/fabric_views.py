@@ -319,10 +319,31 @@ class FabricListView(generic.ObjectListView):
 
 
 class FabricCreateView(generic.ObjectEditView):
-    """Create view for fabrics"""
+    """Create view for fabrics with workflow integration"""
     queryset = HedgehogFabric.objects.all()
-    # form_class = FabricForm  # Will need to create form class
-    template_name = 'netbox_hedgehog/fabric_form.html'
+    template_name = 'netbox_hedgehog/fabric_creation_workflow.html'
+    
+    def get_form_class(self):
+        from ..forms.fabric_forms import FabricCreationWorkflowForm
+        return FabricCreationWorkflowForm
+    
+    def get_form_kwargs(self):
+        kwargs = super().get_form_kwargs()
+        kwargs['user'] = self.request.user
+        return kwargs
+    
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        context['workflow_active'] = True
+        context['page_title'] = 'Create New Fabric'
+        
+        # Add available git repositories for user
+        from ..models.git_repository import GitRepository
+        context['user_git_repositories'] = GitRepository.objects.filter(
+            created_by=self.request.user
+        ).order_by('name')
+        
+        return context
 
 
 class FabricEditView(generic.ObjectEditView):

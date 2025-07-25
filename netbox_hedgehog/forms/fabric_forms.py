@@ -392,3 +392,301 @@ class BulkFabricOperationsForm(forms.Form):
         required=True,
         help_text="Confirm that you want to perform this operation"
     )
+
+
+class FabricCreationWorkflowForm(NetBoxModelForm):
+    """
+    Unified fabric creation form that integrates with UnifiedFabricCreationWorkflow.
+    Supports both existing and new git repository workflows.
+    """
+    
+    # Workflow step field
+    workflow_step = forms.CharField(
+        widget=forms.HiddenInput(),
+        initial='basic_info',
+        required=False
+    )
+    
+    # Git repository selection
+    git_repository = forms.ModelChoiceField(
+        queryset=None,  # Set in __init__ based on user
+        required=False,
+        empty_label="Select existing repository...",
+        help_text="Choose an existing Git repository or create a new one"
+    )
+    
+    gitops_directory = forms.CharField(
+        max_length=500,
+        initial='/',
+        help_text="Directory path within the Git repository for this fabric"
+    )
+    
+    # New repository creation fields (hidden by default)
+    create_new_repository = forms.BooleanField(
+        required=False,
+        initial=False,
+        help_text="Create a new Git repository for this fabric"
+    )
+    
+    new_repo_name = forms.CharField(
+        max_length=200,
+        required=False,
+        help_text="Name for the new Git repository"
+    )
+    
+    new_repo_url = forms.URLField(
+        required=False,
+        help_text="URL for the new Git repository"
+    )
+    
+    new_repo_provider = forms.ChoiceField(
+        choices=[
+            ('github', 'GitHub'),
+            ('gitlab', 'GitLab'),
+            ('bitbucket', 'Bitbucket'),
+            ('generic', 'Generic Git'),
+        ],
+        required=False,
+        initial='github'
+    )
+    
+    new_repo_auth_type = forms.ChoiceField(
+        choices=[
+            ('token', 'Personal Access Token'),
+            ('basic', 'Username/Password'),
+            ('ssh_key', 'SSH Key'),
+        ],
+        required=False,
+        initial='token'
+    )
+    
+    new_repo_token = forms.CharField(
+        widget=forms.PasswordInput(),
+        required=False,
+        help_text="Personal access token for repository authentication"
+    )
+    
+    new_repo_username = forms.CharField(
+        max_length=100,
+        required=False,
+        help_text="Username for repository authentication"
+    )
+    
+    new_repo_password = forms.CharField(
+        widget=forms.PasswordInput(),
+        required=False,
+        help_text="Password for repository authentication"
+    )
+    
+    new_repo_ssh_key = forms.CharField(
+        widget=forms.Textarea(attrs={'rows': 8}),
+        required=False,
+        help_text="SSH private key for repository authentication"
+    )
+    
+    # GitOps configuration
+    gitops_tool = forms.ChoiceField(
+        choices=[
+            ('manual', 'Manual Deployment'),
+            ('argocd', 'ArgoCD'),
+            ('flux', 'Flux v2'),
+        ],
+        initial='manual',
+        help_text="GitOps tool for automated deployment"
+    )
+    
+    auto_sync_enabled = forms.BooleanField(
+        initial=True,
+        required=False,
+        help_text="Enable automatic synchronization from Git"
+    )
+    
+    class Meta:
+        model = HedgehogFabric
+        fields = [
+            'name', 'description', 'status',
+            'kubernetes_server', 'kubernetes_namespace', 'kubernetes_token', 'kubernetes_ca_cert',
+            'sync_enabled', 'sync_interval'
+        ]
+        widgets = {
+            'name': forms.TextInput(attrs={
+                'class': 'form-control',
+                'placeholder': 'e.g., production-datacenter-1'
+            }),
+            'description': forms.Textarea(attrs={
+                'rows': 3,
+                'class': 'form-control',
+                'placeholder': 'Description of this Hedgehog fabric deployment'
+            }),
+            'kubernetes_server': forms.URLInput(attrs={
+                'class': 'form-control',
+                'placeholder': 'https://kubernetes.example.com:6443'
+            }),
+            'kubernetes_namespace': forms.TextInput(attrs={
+                'class': 'form-control',
+                'placeholder': 'hedgehog-system'
+            }),
+            'kubernetes_token': forms.Textarea(attrs={
+                'rows': 3,
+                'class': 'form-control font-monospace',
+                'placeholder': 'Kubernetes service account token'
+            }),
+            'kubernetes_ca_cert': forms.Textarea(attrs={
+                'rows': 8,
+                'class': 'form-control font-monospace',
+                'placeholder': 'Kubernetes cluster CA certificate'
+            }),
+        }
+    
+    def __init__(self, *args, **kwargs):
+        self.user = kwargs.pop('user', None)
+        super().__init__(*args, **kwargs)
+        
+        # Set git repository queryset based on user
+        if self.user:
+            from ..models.git_repository import GitRepository
+            self.fields['git_repository'].queryset = GitRepository.objects.filter(
+                created_by=self.user
+            ).order_by('name')
+        
+        # Set default namespace
+        if not self.instance.pk:
+            self.fields['kubernetes_namespace'].initial = 'hedgehog-system'
+    
+    def clean(self):
+        """Cross-field validation for fabric creation workflow"""
+        cleaned_data = super().clean()
+        
+        # Validate git repository configuration
+        git_repository = cleaned_data.get('git_repository')
+        create_new_repository = cleaned_data.get('create_new_repository')
+        
+        if not git_repository and not create_new_repository:
+            raise ValidationError(
+                "Either select an existing Git repository or choose to create a new one."
+            )
+        
+        # Validate new repository fields if creating new
+        if create_new_repository:
+            new_repo_name = cleaned_data.get('new_repo_name')
+            new_repo_url = cleaned_data.get('new_repo_url')
+            auth_type = cleaned_data.get('new_repo_auth_type')
+            
+            if not new_repo_name:
+                raise ValidationError("Repository name is required when creating a new repository.")
+            
+            if not new_repo_url:
+                raise ValidationError("Repository URL is required when creating a new repository.")
+            
+            # Validate authentication fields based on type
+            if auth_type == 'token':
+                if not cleaned_data.get('new_repo_token'):
+                    raise ValidationError("Token is required for token authentication.")
+            elif auth_type == 'basic':
+                if not cleaned_data.get('new_repo_username') or not cleaned_data.get('new_repo_password'):
+                    raise ValidationError("Username and password are required for basic authentication.")
+            elif auth_type == 'ssh_key':
+                if not cleaned_data.get('new_repo_ssh_key'):
+                    raise ValidationError("SSH private key is required for SSH key authentication.")
+        
+        # Validate GitOps directory
+        gitops_directory = cleaned_data.get('gitops_directory', '/')
+        if not gitops_directory.startswith('/'):
+            cleaned_data['gitops_directory'] = '/' + gitops_directory
+        
+        return cleaned_data
+    
+    def save(self, commit=True):
+        """Save fabric using UnifiedFabricCreationWorkflow"""
+        if not commit:
+            return super().save(commit=False)
+        
+        from ..utils.fabric_creation_workflow import UnifiedFabricCreationWorkflow
+        
+        # Prepare fabric data
+        fabric_data = {
+            'name': self.cleaned_data['name'],
+            'description': self.cleaned_data.get('description', ''),
+            'status': self.cleaned_data.get('status', 'planned'),
+            'kubernetes_server': self.cleaned_data.get('kubernetes_server', ''),
+            'kubernetes_token': self.cleaned_data.get('kubernetes_token', ''),
+            'kubernetes_ca_cert': self.cleaned_data.get('kubernetes_ca_cert', ''),
+            'kubernetes_namespace': self.cleaned_data.get('kubernetes_namespace', 'hedgehog-system'),
+            'sync_enabled': self.cleaned_data.get('sync_enabled', True),
+            'sync_interval': self.cleaned_data.get('sync_interval', 300),
+            'gitops_tool': self.cleaned_data.get('gitops_tool', 'manual'),
+            'auto_sync_enabled': self.cleaned_data.get('auto_sync_enabled', True),
+            'prune_enabled': False,
+            'self_heal_enabled': True,
+        }
+        
+        # Initialize workflow
+        workflow = UnifiedFabricCreationWorkflow(self.user)
+        
+        # Determine creation path
+        if self.cleaned_data.get('create_new_repository'):
+            # Create fabric with new repository
+            git_config = {
+                'name': self.cleaned_data['new_repo_name'],
+                'url': self.cleaned_data['new_repo_url'],
+                'provider': self.cleaned_data.get('new_repo_provider', 'github'),
+                'authentication_type': self.cleaned_data.get('new_repo_auth_type', 'token'),
+                'gitops_directory': self.cleaned_data.get('gitops_directory', '/'),
+                'test_connection': True,  # Always test new repositories
+            }
+            
+            # Add credentials based on auth type
+            auth_type = self.cleaned_data.get('new_repo_auth_type', 'token')
+            credentials = {}
+            
+            if auth_type == 'token':
+                credentials['token'] = self.cleaned_data.get('new_repo_token')
+            elif auth_type == 'basic':
+                credentials['username'] = self.cleaned_data.get('new_repo_username')
+                credentials['password'] = self.cleaned_data.get('new_repo_password')
+            elif auth_type == 'ssh_key':
+                credentials['private_key'] = self.cleaned_data.get('new_repo_ssh_key')
+            
+            if credentials:
+                git_config['credentials'] = credentials
+            
+            result = workflow.create_fabric_with_new_repository(fabric_data, git_config)
+        else:
+            # Create fabric with existing repository
+            git_repository = self.cleaned_data['git_repository']
+            directory = self.cleaned_data.get('gitops_directory', '/')
+            
+            result = workflow.create_fabric_with_git_repository(
+                fabric_data, git_repository.id, directory
+            )
+        
+        if result.success:
+            self.instance = result.fabric
+            return self.instance
+        else:
+            raise ValidationError(f"Fabric creation failed: {result.error}")
+    
+    def get_workflow_data(self):
+        """Get data for workflow dialog steps"""
+        return {
+            'basic_info': {
+                'name': self.cleaned_data.get('name', ''),
+                'description': self.cleaned_data.get('description', ''),
+                'status': self.cleaned_data.get('status', 'planned'),
+            },
+            'git_config': {
+                'repository': self.cleaned_data.get('git_repository'),
+                'directory': self.cleaned_data.get('gitops_directory', '/'),
+                'create_new': self.cleaned_data.get('create_new_repository', False),
+            },
+            'kubernetes_config': {
+                'server': self.cleaned_data.get('kubernetes_server', ''),
+                'namespace': self.cleaned_data.get('kubernetes_namespace', 'hedgehog-system'),
+                'token': self.cleaned_data.get('kubernetes_token', ''),
+                'ca_cert': self.cleaned_data.get('kubernetes_ca_cert', ''),
+            },
+            'gitops_config': {
+                'tool': self.cleaned_data.get('gitops_tool', 'manual'),
+                'auto_sync': self.cleaned_data.get('auto_sync_enabled', True),
+            }
+        }

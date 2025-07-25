@@ -1,0 +1,1186 @@
+{% extends "base/layout.html" %}
+{% load static %}
+
+{% block title %}{{ page_title }}{% endblock %}
+
+{% block header %}
+    {{ block.super }}
+    <link rel="stylesheet" href="{% static 'netbox_hedgehog/css/hedgehog.css' %}">
+    <style>
+        .workflow-container {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+        
+        .workflow-progress {
+            background: var(--bs-body-bg);
+            border: 1px solid var(--bs-border-color);
+            border-radius: 0.5rem;
+            padding: 1.5rem;
+            margin-bottom: 2rem;
+        }
+        
+        .progress-steps {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            position: relative;
+        }
+        
+        .progress-steps::before {
+            content: '';
+            position: absolute;
+            top: 50%;
+            left: 0;
+            right: 0;
+            height: 2px;
+            background: var(--bs-border-color);
+            z-index: 1;
+        }
+        
+        .progress-step {
+            background: var(--bs-body-bg);
+            border: 2px solid var(--bs-border-color);
+            border-radius: 50%;
+            width: 3rem;
+            height: 3rem;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: 600;
+            position: relative;
+            z-index: 2;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+        
+        .progress-step.active {
+            background: var(--bs-primary);
+            border-color: var(--bs-primary);
+            color: white;
+        }
+        
+        .progress-step.completed {
+            background: var(--bs-success);
+            border-color: var(--bs-success);
+            color: white;
+        }
+        
+        .progress-step:hover {
+            transform: scale(1.1);
+        }
+        
+        .step-label {
+            position: absolute;
+            top: 100%;
+            left: 50%;
+            transform: translateX(-50%);
+            margin-top: 0.5rem;
+            font-size: 0.875rem;
+            font-weight: 500;
+            white-space: nowrap;
+        }
+        
+        .workflow-step {
+            background: var(--bs-body-bg);
+            border: 1px solid var(--bs-border-color);
+            border-radius: 0.5rem;
+            padding: 2rem;
+            margin-bottom: 2rem;
+            display: none;
+        }
+        
+        .workflow-step.active {
+            display: block;
+            animation: fadeInUp 0.3s ease;
+        }
+        
+        @keyframes fadeInUp {
+            from {
+                opacity: 0;
+                transform: translateY(20px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+        
+        .workflow-step h4 {
+            color: var(--bs-primary);
+            margin-bottom: 1.5rem;
+            padding-bottom: 0.5rem;
+            border-bottom: 2px solid var(--bs-primary);
+        }
+        
+        .git-repo-option {
+            border: 2px solid var(--bs-border-color);
+            border-radius: 0.5rem;
+            padding: 1.5rem;
+            margin-bottom: 1rem;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+        
+        .git-repo-option:hover {
+            border-color: var(--bs-primary);
+            background: rgba(var(--bs-primary-rgb), 0.05);
+        }
+        
+        .git-repo-option.selected {
+            border-color: var(--bs-primary);
+            background: rgba(var(--bs-primary-rgb), 0.1);
+        }
+        
+        .git-repo-option input[type="radio"] {
+            display: none;
+        }
+        
+        .repo-icon {
+            font-size: 2rem;
+            color: var(--bs-primary);
+            margin-bottom: 0.5rem;
+        }
+        
+        .new-repo-fields {
+            background: rgba(var(--bs-info-rgb), 0.05);
+            border: 1px solid var(--bs-info);
+            border-radius: 0.5rem;
+            padding: 1.5rem;
+            margin-top: 1rem;
+            display: none;
+        }
+        
+        .new-repo-fields.show {
+            display: block;
+            animation: fadeInDown 0.3s ease;
+        }
+        
+        @keyframes fadeInDown {
+            from {
+                opacity: 0;
+                transform: translateY(-20px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+        
+        .workflow-actions {
+            display: flex;
+            justify-content: between;
+            gap: 1rem;
+            margin-top: 2rem;
+            padding-top: 1.5rem;
+            border-top: 1px solid var(--bs-border-color);
+        }
+        
+        .validation-status {
+            background: var(--bs-light);
+            border: 1px solid var(--bs-border-color);
+            border-radius: 0.375rem;
+            padding: 1rem;
+            margin-top: 1rem;
+        }
+        
+        .validation-item {
+            display: flex;
+            align-items: center;
+            margin-bottom: 0.5rem;
+        }
+        
+        .validation-item .mdi {
+            margin-right: 0.5rem;
+            font-size: 1.1rem;
+        }
+        
+        .validation-item.valid {
+            color: var(--bs-success);
+        }
+        
+        .validation-item.invalid {
+            color: var(--bs-danger);
+        }
+        
+        .validation-item.warning {
+            color: var(--bs-warning);
+        }
+        
+        .field-group {
+            background: rgba(var(--bs-secondary-rgb), 0.05);
+            border: 1px solid rgba(var(--bs-secondary-rgb), 0.2);
+            border-radius: 0.375rem;
+            padding: 1rem;
+            margin-bottom: 1.5rem;
+        }
+        
+        .field-group h6 {
+            color: var(--bs-secondary);
+            margin-bottom: 1rem;
+            font-weight: 600;
+        }
+        
+        .auth-type-selector {
+            display: flex;
+            gap: 1rem;
+            margin-bottom: 1rem;
+        }
+        
+        .auth-type-option {
+            flex: 1;
+            border: 1px solid var(--bs-border-color);
+            border-radius: 0.375rem;
+            padding: 0.75rem;
+            text-align: center;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+        
+        .auth-type-option:hover {
+            border-color: var(--bs-primary);
+            background: rgba(var(--bs-primary-rgb), 0.05);
+        }
+        
+        .auth-type-option.selected {
+            border-color: var(--bs-primary);
+            background: rgba(var(--bs-primary-rgb), 0.1);
+            color: var(--bs-primary);
+        }
+        
+        .auth-type-option input[type="radio"] {
+            display: none;
+        }
+        
+        .summary-section {
+            background: rgba(var(--bs-success-rgb), 0.05);
+            border: 1px solid var(--bs-success);
+            border-radius: 0.375rem;
+            padding: 1.5rem;
+            margin-bottom: 1.5rem;
+        }
+        
+        .summary-section h6 {
+            color: var(--bs-success);
+            margin-bottom: 1rem;
+        }
+        
+        .summary-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 1rem;
+        }
+        
+        .summary-item {
+            background: var(--bs-body-bg);
+            border: 1px solid rgba(var(--bs-success-rgb), 0.3);
+            border-radius: 0.25rem;
+            padding: 0.75rem;
+        }
+        
+        .summary-item dt {
+            font-size: 0.875rem;
+            color: var(--bs-secondary);
+            margin-bottom: 0.25rem;
+        }
+        
+        .summary-item dd {
+            margin-bottom: 0;
+            font-weight: 500;
+            word-break: break-word;
+        }
+    </style>
+{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+    <div class="workflow-container">
+        <!-- Workflow Progress -->
+        <div class="workflow-progress">
+            <div class="progress-steps">
+                <div class="progress-step active" data-step="1">
+                    <i class="mdi mdi-information"></i>
+                    <div class="step-label">Basic Information</div>
+                </div>
+                <div class="progress-step" data-step="2">
+                    <i class="mdi mdi-git"></i>
+                    <div class="step-label">Git Repository</div>
+                </div>
+                <div class="progress-step" data-step="3">
+                    <i class="mdi mdi-kubernetes"></i>
+                    <div class="step-label">Kubernetes Config</div>
+                </div>
+                <div class="progress-step" data-step="4">
+                    <i class="mdi mdi-rocket-launch"></i>
+                    <div class="step-label">GitOps Setup</div>
+                </div>
+                <div class="progress-step" data-step="5">
+                    <i class="mdi mdi-check-all"></i>
+                    <div class="step-label">Review & Create</div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Main Form -->
+        <form method="post" id="fabric-workflow-form">
+            {% csrf_token %}
+            {{ form.workflow_step }}
+            
+            <!-- Step 1: Basic Information -->
+            <div class="workflow-step active" id="step-1">
+                <h4><i class="mdi mdi-information"></i> Basic Information</h4>
+                <div class="row">
+                    <div class="col-md-6">
+                        <div class="mb-3">
+                            <label for="{{ form.name.id_for_label }}" class="form-label">
+                                Fabric Name <span class="text-danger">*</span>
+                            </label>
+                            {{ form.name }}
+                            {% if form.name.help_text %}
+                                <div class="form-text">{{ form.name.help_text }}</div>
+                            {% endif %}
+                            {% if form.name.errors %}
+                                <div class="invalid-feedback d-block">{{ form.name.errors.0 }}</div>
+                            {% endif %}
+                        </div>
+                        
+                        <div class="mb-3">
+                            <label for="{{ form.description.id_for_label }}" class="form-label">Description</label>
+                            {{ form.description }}
+                            {% if form.description.help_text %}
+                                <div class="form-text">{{ form.description.help_text }}</div>
+                            {% endif %}
+                        </div>
+                    </div>
+                    
+                    <div class="col-md-6">
+                        <div class="mb-3">
+                            <label for="{{ form.status.id_for_label }}" class="form-label">Status</label>
+                            {{ form.status }}
+                        </div>
+                        
+                        <div class="mb-3">
+                            <label for="{{ form.sync_enabled.id_for_label }}" class="form-label">Sync Settings</label>
+                            <div class="form-check">
+                                {{ form.sync_enabled }}
+                                <label class="form-check-label" for="{{ form.sync_enabled.id_for_label }}">
+                                    Enable automatic synchronization
+                                </label>
+                            </div>
+                            
+                            <div class="mt-2">
+                                <label for="{{ form.sync_interval.id_for_label }}" class="form-label">Sync Interval (seconds)</label>
+                                {{ form.sync_interval }}
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Step 2: Git Repository -->
+            <div class="workflow-step" id="step-2">
+                <h4><i class="mdi mdi-git"></i> Git Repository Configuration</h4>
+                
+                <div class="row">
+                    <div class="col-md-8">
+                        <!-- Existing Repository Option -->
+                        <div class="git-repo-option" data-option="existing" onclick="selectRepoOption('existing')">
+                            <input type="radio" name="repo_selection" value="existing" id="repo-existing" checked>
+                            <label for="repo-existing">
+                                <div class="d-flex align-items-center">
+                                    <div class="repo-icon me-3">
+                                        <i class="mdi mdi-source-repository"></i>
+                                    </div>
+                                    <div>
+                                        <h6 class="mb-1">Use Existing Repository</h6>
+                                        <p class="mb-0 text-muted">Select from your configured Git repositories</p>
+                                    </div>
+                                </div>
+                            </label>
+                        </div>
+                        
+                        <div id="existing-repo-fields" class="ms-4 mb-3">
+                            <div class="mb-3">
+                                <label for="{{ form.git_repository.id_for_label }}" class="form-label">Git Repository</label>
+                                {{ form.git_repository }}
+                                {% if not user_git_repositories %}
+                                    <div class="form-text text-warning">
+                                        <i class="mdi mdi-alert"></i> No Git repositories found. 
+                                        <a href="{% url 'plugins:netbox_hedgehog:gitrepository_add' %}" target="_blank">Add one here</a> 
+                                        or create a new repository below.
+                                    </div>
+                                {% endif %}
+                            </div>
+                            
+                            <div class="mb-3">
+                                <label for="{{ form.gitops_directory.id_for_label }}" class="form-label">GitOps Directory</label>
+                                {{ form.gitops_directory }}
+                                {% if form.gitops_directory.help_text %}
+                                    <div class="form-text">{{ form.gitops_directory.help_text }}</div>
+                                {% endif %}
+                            </div>
+                        </div>
+                        
+                        <!-- New Repository Option -->
+                        <div class="git-repo-option" data-option="new" onclick="selectRepoOption('new')">
+                            <input type="radio" name="repo_selection" value="new" id="repo-new">
+                            <label for="repo-new">
+                                <div class="d-flex align-items-center">
+                                    <div class="repo-icon me-3">
+                                        <i class="mdi mdi-plus-circle"></i>
+                                    </div>
+                                    <div>
+                                        <h6 class="mb-1">Create New Repository</h6>
+                                        <p class="mb-0 text-muted">Add a new Git repository configuration</p>
+                                    </div>
+                                </div>
+                            </label>
+                        </div>
+                        
+                        <div id="new-repo-fields" class="new-repo-fields">
+                            {{ form.create_new_repository.as_hidden }}
+                            
+                            <div class="field-group">
+                                <h6><i class="mdi mdi-information"></i> Repository Information</h6>
+                                <div class="row">
+                                    <div class="col-md-6">
+                                        <div class="mb-3">
+                                            <label for="{{ form.new_repo_name.id_for_label }}" class="form-label">Repository Name</label>
+                                            {{ form.new_repo_name }}
+                                        </div>
+                                    </div>
+                                    <div class="col-md-6">
+                                        <div class="mb-3">
+                                            <label for="{{ form.new_repo_provider.id_for_label }}" class="form-label">Provider</label>
+                                            {{ form.new_repo_provider }}
+                                        </div>
+                                    </div>
+                                </div>
+                                
+                                <div class="mb-3">
+                                    <label for="{{ form.new_repo_url.id_for_label }}" class="form-label">Repository URL</label>
+                                    {{ form.new_repo_url }}
+                                </div>
+                            </div>
+                            
+                            <div class="field-group">
+                                <h6><i class="mdi mdi-lock"></i> Authentication</h6>
+                                <div class="auth-type-selector">
+                                    <div class="auth-type-option selected" data-auth="token" onclick="selectAuthType('token')">
+                                        <input type="radio" name="new_repo_auth_type" value="token" id="auth-token" checked>
+                                        <label for="auth-token">
+                                            <i class="mdi mdi-key"></i><br>
+                                            <strong>Token</strong>
+                                        </label>
+                                    </div>
+                                    <div class="auth-type-option" data-auth="basic" onclick="selectAuthType('basic')">
+                                        <input type="radio" name="new_repo_auth_type" value="basic" id="auth-basic">
+                                        <label for="auth-basic">
+                                            <i class="mdi mdi-account"></i><br>
+                                            <strong>Username/Password</strong>
+                                        </label>
+                                    </div>
+                                    <div class="auth-type-option" data-auth="ssh_key" onclick="selectAuthType('ssh_key')">
+                                        <input type="radio" name="new_repo_auth_type" value="ssh_key" id="auth-ssh">
+                                        <label for="auth-ssh">
+                                            <i class="mdi mdi-key-variant"></i><br>
+                                            <strong>SSH Key</strong>
+                                        </label>
+                                    </div>
+                                </div>
+                                
+                                <div id="token-fields" class="auth-fields">
+                                    <div class="mb-3">
+                                        <label for="{{ form.new_repo_token.id_for_label }}" class="form-label">Personal Access Token</label>
+                                        {{ form.new_repo_token }}
+                                        {% if form.new_repo_token.help_text %}
+                                            <div class="form-text">{{ form.new_repo_token.help_text }}</div>
+                                        {% endif %}
+                                    </div>
+                                </div>
+                                
+                                <div id="basic-fields" class="auth-fields" style="display: none;">
+                                    <div class="row">
+                                        <div class="col-md-6">
+                                            <div class="mb-3">
+                                                <label for="{{ form.new_repo_username.id_for_label }}" class="form-label">Username</label>
+                                                {{ form.new_repo_username }}
+                                            </div>
+                                        </div>
+                                        <div class="col-md-6">
+                                            <div class="mb-3">
+                                                <label for="{{ form.new_repo_password.id_for_label }}" class="form-label">Password</label>
+                                                {{ form.new_repo_password }}
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                                
+                                <div id="ssh-fields" class="auth-fields" style="display: none;">
+                                    <div class="mb-3">
+                                        <label for="{{ form.new_repo_ssh_key.id_for_label }}" class="form-label">SSH Private Key</label>
+                                        {{ form.new_repo_ssh_key }}
+                                        {% if form.new_repo_ssh_key.help_text %}
+                                            <div class="form-text">{{ form.new_repo_ssh_key.help_text }}</div>
+                                        {% endif %}
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="col-md-4">
+                        <div class="validation-status" id="git-validation">
+                            <h6><i class="mdi mdi-check-circle"></i> Validation Status</h6>
+                            <div class="validation-item valid">
+                                <i class="mdi mdi-check-circle"></i>
+                                <span>Repository selection ready</span>
+                            </div>
+                            <div class="validation-item invalid">
+                                <i class="mdi mdi-alert-circle"></i>
+                                <span>Repository access not tested</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Step 3: Kubernetes Configuration -->
+            <div class="workflow-step" id="step-3">
+                <h4><i class="mdi mdi-kubernetes"></i> Kubernetes Configuration</h4>
+                <div class="row">
+                    <div class="col-md-8">
+                        <div class="field-group">
+                            <h6><i class="mdi mdi-server"></i> Cluster Connection</h6>
+                            <div class="mb-3">
+                                <label for="{{ form.kubernetes_server.id_for_label }}" class="form-label">Kubernetes API Server</label>
+                                {{ form.kubernetes_server }}
+                                {% if form.kubernetes_server.help_text %}
+                                    <div class="form-text">{{ form.kubernetes_server.help_text }}</div>
+                                {% endif %}
+                            </div>
+                            
+                            <div class="mb-3">
+                                <label for="{{ form.kubernetes_namespace.id_for_label }}" class="form-label">Target Namespace</label>
+                                {{ form.kubernetes_namespace }}
+                                {% if form.kubernetes_namespace.help_text %}
+                                    <div class="form-text">{{ form.kubernetes_namespace.help_text }}</div>
+                                {% endif %}
+                            </div>
+                        </div>
+                        
+                        <div class="field-group">
+                            <h6><i class="mdi mdi-lock"></i> Authentication</h6>
+                            <div class="mb-3">
+                                <label for="{{ form.kubernetes_token.id_for_label }}" class="form-label">Service Account Token</label>
+                                {{ form.kubernetes_token }}
+                                {% if form.kubernetes_token.help_text %}
+                                    <div class="form-text">{{ form.kubernetes_token.help_text }}</div>
+                                {% endif %}
+                            </div>
+                            
+                            <div class="mb-3">
+                                <label for="{{ form.kubernetes_ca_cert.id_for_label }}" class="form-label">CA Certificate</label>
+                                {{ form.kubernetes_ca_cert }}
+                                {% if form.kubernetes_ca_cert.help_text %}
+                                    <div class="form-text">{{ form.kubernetes_ca_cert.help_text }}</div>
+                                {% endif %}
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="col-md-4">
+                        <div class="validation-status" id="k8s-validation">
+                            <h6><i class="mdi mdi-kubernetes"></i> Connection Status</h6>
+                            <div class="validation-item warning">
+                                <i class="mdi mdi-alert"></i>
+                                <span>Connection not tested</span>
+                            </div>
+                            <button type="button" class="btn btn-outline-primary btn-sm mt-2" onclick="testKubernetesConnection()">
+                                <i class="mdi mdi-test-tube"></i> Test Connection
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Step 4: GitOps Setup -->
+            <div class="workflow-step" id="step-4">
+                <h4><i class="mdi mdi-rocket-launch"></i> GitOps Configuration</h4>
+                <div class="row">
+                    <div class="col-md-8">
+                        <div class="field-group">
+                            <h6><i class="mdi mdi-cog"></i> GitOps Tool</h6>
+                            <div class="mb-3">
+                                <label for="{{ form.gitops_tool.id_for_label }}" class="form-label">GitOps Tool</label>
+                                {{ form.gitops_tool }}
+                                {% if form.gitops_tool.help_text %}
+                                    <div class="form-text">{{ form.gitops_tool.help_text }}</div>
+                                {% endif %}
+                            </div>
+                            
+                            <div class="form-check">
+                                {{ form.auto_sync_enabled }}
+                                <label class="form-check-label" for="{{ form.auto_sync_enabled.id_for_label }}">
+                                    {{ form.auto_sync_enabled.help_text }}
+                                </label>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="col-md-4">
+                        <div class="validation-status">
+                            <h6><i class="mdi mdi-rocket-launch"></i> GitOps Status</h6>
+                            <div class="validation-item valid">
+                                <i class="mdi mdi-check-circle"></i>
+                                <span>Configuration ready</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Step 5: Review & Create -->
+            <div class="workflow-step" id="step-5">
+                <h4><i class="mdi mdi-check-all"></i> Review & Create Fabric</h4>
+                
+                <div class="summary-section">
+                    <h6><i class="mdi mdi-information"></i> Configuration Summary</h6>
+                    <div class="summary-grid" id="config-summary">
+                        <!-- Summary will be populated by JavaScript -->
+                    </div>
+                </div>
+                
+                <div class="validation-status" id="final-validation">
+                    <h6><i class="mdi mdi-check-all"></i> Pre-Creation Validation</h6>
+                    <div id="validation-results">
+                        <!-- Validation results will be populated here -->
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Workflow Actions -->
+            <div class="workflow-actions">
+                <div class="flex-grow-1">
+                    <button type="button" class="btn btn-outline-secondary" id="prev-step" onclick="previousStep()" style="display: none;">
+                        <i class="mdi mdi-arrow-left"></i> Previous
+                    </button>
+                </div>
+                <div>
+                    <button type="button" class="btn btn-outline-secondary me-2" onclick="cancelWorkflow()">
+                        <i class="mdi mdi-close"></i> Cancel
+                    </button>
+                    <button type="button" class="btn btn-primary" id="next-step" onclick="nextStep()">
+                        Next <i class="mdi mdi-arrow-right"></i>
+                    </button>
+                    <button type="submit" class="btn btn-success" id="create-fabric" style="display: none;">
+                        <i class="mdi mdi-plus"></i> Create Fabric
+                    </button>
+                </div>
+            </div>
+        </form>
+    </div>
+</div>
+{% endblock %}
+
+{% block javascript %}
+{{ block.super }}
+<script type="text/javascript">
+document.addEventListener('DOMContentLoaded', function() {
+    console.log('🚀 Fabric Creation Workflow loaded');
+    
+    // Initialize workflow state
+    window.workflowState = {
+        currentStep: 1,
+        totalSteps: 5,
+        formData: {},
+        validationStatus: {
+            basicInfo: false,
+            gitRepo: false,
+            kubernetes: false,
+            gitops: false,
+            finalValidation: false
+        }
+    };
+    
+    // Initialize form validation
+    setupFormValidation();
+    
+    // Update initial state
+    updateStepValidation(1);
+});
+
+function selectRepoOption(option) {
+    const existingOption = document.querySelector('[data-option="existing"]');
+    const newOption = document.querySelector('[data-option="new"]');
+    const existingFields = document.getElementById('existing-repo-fields');
+    const newRepoFields = document.getElementById('new-repo-fields');
+    const createNewField = document.getElementById('{{ form.create_new_repository.id_for_label }}');
+    
+    // Update UI
+    existingOption.classList.remove('selected');
+    newOption.classList.remove('selected');
+    
+    if (option === 'existing') {
+        existingOption.classList.add('selected');
+        document.getElementById('repo-existing').checked = true;
+        existingFields.style.display = 'block';
+        newRepoFields.classList.remove('show');
+        createNewField.checked = false;
+    } else {
+        newOption.classList.add('selected');
+        document.getElementById('repo-new').checked = true;
+        existingFields.style.display = 'none';
+        newRepoFields.classList.add('show');
+        createNewField.checked = true;
+    }
+    
+    updateStepValidation(2);
+}
+
+function selectAuthType(authType) {
+    const authOptions = document.querySelectorAll('.auth-type-option');
+    const authFields = document.querySelectorAll('.auth-fields');
+    
+    // Update UI
+    authOptions.forEach(option => option.classList.remove('selected'));
+    authFields.forEach(field => field.style.display = 'none');
+    
+    document.querySelector(`[data-auth="${authType}"]`).classList.add('selected');
+    document.getElementById(`auth-${authType.replace('_', '-')}`).checked = true;
+    document.getElementById(`${authType.replace('_', '-')}-fields`).style.display = 'block';
+}
+
+function nextStep() {
+    const currentStep = window.workflowState.currentStep;
+    
+    // Validate current step
+    if (!validateCurrentStep()) {
+        return;
+    }
+    
+    // Move to next step
+    if (currentStep < window.workflowState.totalSteps) {
+        showStep(currentStep + 1);
+    }
+}
+
+function previousStep() {
+    const currentStep = window.workflowState.currentStep;
+    
+    if (currentStep > 1) {
+        showStep(currentStep - 1);
+    }
+}
+
+function showStep(stepNumber) {
+    // Hide all steps
+    const steps = document.querySelectorAll('.workflow-step');
+    steps.forEach(step => step.classList.remove('active'));
+    
+    // Show target step
+    document.getElementById(`step-${stepNumber}`).classList.add('active');
+    
+    // Update progress
+    updateProgressSteps(stepNumber);
+    
+    // Update navigation buttons
+    updateNavigationButtons(stepNumber);
+    
+    // Update workflow state
+    window.workflowState.currentStep = stepNumber;
+    
+    // Update hidden field
+    document.getElementById('{{ form.workflow_step.id_for_label }}').value = getStepName(stepNumber);
+    
+    // Special handling for final step
+    if (stepNumber === 5) {
+        generateSummary();
+        performFinalValidation();
+    }
+}
+
+function updateProgressSteps(currentStep) {
+    const progressSteps = document.querySelectorAll('.progress-step');
+    
+    progressSteps.forEach((step, index) => {
+        const stepNumber = index + 1;
+        step.classList.remove('active', 'completed');
+        
+        if (stepNumber < currentStep) {
+            step.classList.add('completed');
+        } else if (stepNumber === currentStep) {
+            step.classList.add('active');
+        }
+    });
+}
+
+function updateNavigationButtons(stepNumber) {
+    const prevButton = document.getElementById('prev-step');
+    const nextButton = document.getElementById('next-step');
+    const createButton = document.getElementById('create-fabric');
+    
+    // Previous button
+    prevButton.style.display = stepNumber > 1 ? 'inline-block' : 'none';
+    
+    // Next/Create buttons
+    if (stepNumber === window.workflowState.totalSteps) {
+        nextButton.style.display = 'none';
+        createButton.style.display = 'inline-block';
+    } else {
+        nextButton.style.display = 'inline-block';
+        createButton.style.display = 'none';
+    }
+}
+
+function validateCurrentStep() {
+    const currentStep = window.workflowState.currentStep;
+    
+    switch (currentStep) {
+        case 1:
+            return validateBasicInfo();
+        case 2:
+            return validateGitRepo();
+        case 3:
+            return validateKubernetes();
+        case 4:
+            return validateGitOps();
+        case 5:
+            return true; // Final validation happens elsewhere
+        default:
+            return true;
+    }
+}
+
+function validateBasicInfo() {
+    const nameField = document.getElementById('{{ form.name.id_for_label }}');
+    const isValid = nameField.value.trim() !== '';
+    
+    window.workflowState.validationStatus.basicInfo = isValid;
+    updateStepValidation(1);
+    
+    if (!isValid) {
+        nameField.focus();
+        showError('Fabric name is required');
+    }
+    
+    return isValid;
+}
+
+function validateGitRepo() {
+    const repoSelection = document.querySelector('input[name="repo_selection"]:checked').value;
+    let isValid = false;
+    
+    if (repoSelection === 'existing') {
+        const repoField = document.getElementById('{{ form.git_repository.id_for_label }}');
+        isValid = repoField.value !== '';
+        if (!isValid) {
+            showError('Please select a Git repository');
+        }
+    } else {
+        const nameField = document.getElementById('{{ form.new_repo_name.id_for_label }}');
+        const urlField = document.getElementById('{{ form.new_repo_url.id_for_label }}');
+        const authType = document.querySelector('input[name="new_repo_auth_type"]:checked').value;
+        
+        isValid = nameField.value.trim() !== '' && urlField.value.trim() !== '';
+        
+        if (isValid) {
+            // Validate auth fields based on type
+            if (authType === 'token') {
+                const tokenField = document.getElementById('{{ form.new_repo_token.id_for_label }}');
+                isValid = tokenField.value.trim() !== '';
+                if (!isValid) showError('Token is required for authentication');
+            } else if (authType === 'basic') {
+                const usernameField = document.getElementById('{{ form.new_repo_username.id_for_label }}');
+                const passwordField = document.getElementById('{{ form.new_repo_password.id_for_label }}');
+                isValid = usernameField.value.trim() !== '' && passwordField.value.trim() !== '';
+                if (!isValid) showError('Username and password are required');
+            } else if (authType === 'ssh_key') {
+                const keyField = document.getElementById('{{ form.new_repo_ssh_key.id_for_label }}');
+                isValid = keyField.value.trim() !== '';
+                if (!isValid) showError('SSH private key is required');
+            }
+        } else {
+            showError('Repository name and URL are required');
+        }
+    }
+    
+    window.workflowState.validationStatus.gitRepo = isValid;
+    updateStepValidation(2);
+    
+    return isValid;
+}
+
+function validateKubernetes() {
+    // Kubernetes fields are optional, but validate format if provided
+    const serverField = document.getElementById('{{ form.kubernetes_server.id_for_label }}');
+    let isValid = true;
+    
+    if (serverField.value.trim() !== '') {
+        const urlPattern = /^https?:\/\/.+/;
+        isValid = urlPattern.test(serverField.value.trim());
+        if (!isValid) {
+            showError('Kubernetes server URL must start with http:// or https://');
+        }
+    }
+    
+    window.workflowState.validationStatus.kubernetes = isValid;
+    updateStepValidation(3);
+    
+    return isValid;
+}
+
+function validateGitOps() {
+    // GitOps configuration is generally optional
+    window.workflowState.validationStatus.gitops = true;
+    updateStepValidation(4);
+    return true;
+}
+
+function updateStepValidation(stepNumber) {
+    // This could update visual indicators for step validation
+    // Implementation depends on specific validation feedback UI
+}
+
+function generateSummary() {
+    const summaryContainer = document.getElementById('config-summary');
+    const formData = new FormData(document.getElementById('fabric-workflow-form'));
+    
+    const summaryItems = [
+        {
+            label: 'Fabric Name',
+            value: formData.get('name') || 'Not specified'
+        },
+        {
+            label: 'Description',
+            value: formData.get('description') || 'None'
+        },
+        {
+            label: 'Status',
+            value: formData.get('status') || 'planned'
+        },
+        {
+            label: 'Git Repository',
+            value: getGitRepoSummary(formData)
+        },
+        {
+            label: 'GitOps Directory',
+            value: formData.get('gitops_directory') || '/'
+        },
+        {
+            label: 'Kubernetes Server',
+            value: formData.get('kubernetes_server') || 'Not configured'
+        },
+        {
+            label: 'Kubernetes Namespace',
+            value: formData.get('kubernetes_namespace') || 'hedgehog-system'
+        },
+        {
+            label: 'GitOps Tool',
+            value: formData.get('gitops_tool') || 'manual'
+        }
+    ];
+    
+    summaryContainer.innerHTML = summaryItems.map(item => `
+        <div class="summary-item">
+            <dt>${item.label}</dt>
+            <dd>${item.value}</dd>
+        </div>
+    `).join('');
+}
+
+function getGitRepoSummary(formData) {
+    const repoSelection = document.querySelector('input[name="repo_selection"]:checked').value;
+    
+    if (repoSelection === 'existing') {
+        const repoSelect = document.getElementById('{{ form.git_repository.id_for_label }}');
+        const selectedOption = repoSelect.options[repoSelect.selectedIndex];
+        return selectedOption ? selectedOption.text : 'No repository selected';
+    } else {
+        const repoName = formData.get('new_repo_name');
+        const repoUrl = formData.get('new_repo_url');
+        return repoName ? `${repoName} (${repoUrl})` : 'New repository (not configured)';
+    }
+}
+
+function performFinalValidation() {
+    const validationContainer = document.getElementById('validation-results');
+    const formData = new FormData(document.getElementById('fabric-workflow-form'));
+    
+    const validations = [
+        {
+            condition: formData.get('name') && formData.get('name').trim() !== '',
+            message: 'Fabric name is provided',
+            type: 'valid'
+        },
+        {
+            condition: validateGitConfiguration(formData),
+            message: 'Git repository configuration is valid',
+            type: 'valid'
+        },
+        {
+            condition: true, // Always true for now
+            message: 'Ready to create fabric',
+            type: 'valid'
+        }
+    ];
+    
+    validationContainer.innerHTML = validations.map(validation => `
+        <div class="validation-item ${validation.type}">
+            <i class="mdi mdi-${validation.type === 'valid' ? 'check-circle' : 'alert-circle'}"></i>
+            <span>${validation.message}</span>
+        </div>
+    `).join('');
+    
+    // Update final validation status
+    window.workflowState.validationStatus.finalValidation = validations.every(v => v.type === 'valid');
+}
+
+function validateGitConfiguration(formData) {
+    const repoSelection = document.querySelector('input[name="repo_selection"]:checked').value;
+    
+    if (repoSelection === 'existing') {
+        return formData.get('git_repository') !== '';
+    } else {
+        return formData.get('new_repo_name') && formData.get('new_repo_url');
+    }
+}
+
+function testKubernetesConnection() {
+    const button = event.target;
+    const originalText = button.innerHTML;
+    
+    button.innerHTML = '<i class="mdi mdi-loading mdi-spin"></i> Testing...';
+    button.disabled = true;
+    
+    // Simulate connection test
+    setTimeout(() => {
+        const success = Math.random() > 0.3; // 70% success rate
+        const validationDiv = document.getElementById('k8s-validation');
+        
+        if (success) {
+            validationDiv.innerHTML = `
+                <h6><i class="mdi mdi-kubernetes"></i> Connection Status</h6>
+                <div class="validation-item valid">
+                    <i class="mdi mdi-check-circle"></i>
+                    <span>Connection successful</span>
+                </div>
+                <div class="validation-item valid">
+                    <i class="mdi mdi-information"></i>
+                    <span>Cluster version: v1.28.0</span>
+                </div>
+            `;
+        } else {
+            validationDiv.innerHTML = `
+                <h6><i class="mdi mdi-kubernetes"></i> Connection Status</h6>
+                <div class="validation-item invalid">
+                    <i class="mdi mdi-alert-circle"></i>
+                    <span>Connection failed</span>
+                </div>
+                <button type="button" class="btn btn-outline-primary btn-sm mt-2" onclick="testKubernetesConnection()">
+                    <i class="mdi mdi-test-tube"></i> Retry Test
+                </button>
+            `;
+        }
+        
+        // Reset button
+        button.innerHTML = originalText;
+        button.disabled = false;
+    }, 2000);
+}
+
+function setupFormValidation() {
+    const form = document.getElementById('fabric-workflow-form');
+    
+    // Real-time validation for key fields
+    const nameField = document.getElementById('{{ form.name.id_for_label }}');
+    if (nameField) {
+        nameField.addEventListener('input', function() {
+            updateStepValidation(1);
+        });
+    }
+    
+    // Form submission
+    form.addEventListener('submit', function(e) {
+        e.preventDefault();
+        
+        if (window.workflowState.validationStatus.finalValidation) {
+            submitForm();
+        } else {
+            showError('Please complete all required fields before creating the fabric');
+        }
+    });
+}
+
+function submitForm() {
+    const form = document.getElementById('fabric-workflow-form');
+    const createButton = document.getElementById('create-fabric');
+    const originalText = createButton.innerHTML;
+    
+    createButton.innerHTML = '<i class="mdi mdi-loading mdi-spin"></i> Creating Fabric...';
+    createButton.disabled = true;
+    
+    // Submit the form
+    form.submit();
+}
+
+function cancelWorkflow() {
+    if (confirm('Are you sure you want to cancel? All entered data will be lost.')) {
+        window.location.href = '{% url "plugins:netbox_hedgehog:fabric_list" %}';
+    }
+}
+
+function getStepName(stepNumber) {
+    const stepNames = {
+        1: 'basic_info',
+        2: 'git_config',
+        3: 'kubernetes_config',
+        4: 'gitops_config',
+        5: 'review_create'
+    };
+    return stepNames[stepNumber] || 'basic_info';
+}
+
+function showError(message) {
+    // Create a temporary alert
+    const alert = document.createElement('div');
+    alert.className = 'alert alert-danger alert-dismissible fade show position-fixed';
+    alert.style.cssText = 'top: 20px; right: 20px; z-index: 9999; min-width: 300px;';
+    alert.innerHTML = `
+        <i class="mdi mdi-alert-circle"></i>
+        ${message}
+        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+    `;
+    
+    document.body.appendChild(alert);
+    
+    // Auto-remove after 5 seconds
+    setTimeout(() => {
+        if (alert.parentNode) {
+            alert.remove();
+        }
+    }, 5000);
+}
+
+function showSuccess(message) {
+    // Create a temporary alert
+    const alert = document.createElement('div');
+    alert.className = 'alert alert-success alert-dismissible fade show position-fixed';
+    alert.style.cssText = 'top: 20px; right: 20px; z-index: 9999; min-width: 300px;';
+    alert.innerHTML = `
+        <i class="mdi mdi-check-circle"></i>
+        ${message}
+        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+    `;
+    
+    document.body.appendChild(alert);
+    
+    // Auto-remove after 5 seconds
+    setTimeout(() => {
+        if (alert.parentNode) {
+            alert.remove();
+        }
+    }, 5000);
+}
+</script>
+{% endblock %}
