@@ -219,6 +219,19 @@ class BaseCRD(NetBoxModel):
         """Return the full Kubernetes resource name (namespace/name)"""
         return f"{self.namespace}/{self.name}"
     
+    def get_git_file_status(self):
+        """
+        Return the Git file status for this CRD.
+        Used to determine if the CRD came from Git or was created via UI.
+        
+        Returns:
+            str: "From Git" if CRD has git_file_path, "Not from Git" otherwise
+        """
+        if self.git_file_path and self.git_file_path.strip():
+            return "From Git"
+        else:
+            return "Not from Git"
+    
     # GitOps integration methods (added for MVP2)
     def get_gitops_resource(self):
         """

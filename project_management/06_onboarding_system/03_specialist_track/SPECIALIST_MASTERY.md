@@ -275,6 +275,25 @@ class TestCRDSyncIntegration(TestCase):
 - **Mentoring**: Support development of junior specialists
 - **Innovation**: Identification and implementation of technical improvements
 
+## Testing Authority and Validation
+
+### CRITICAL: Testing Authority Module
+**MANDATORY READING**: @04_environment_mastery/TESTING_AUTHORITY_MODULE.md
+
+**You have FULL AUTHORITY to**:
+- Execute docker commands to restart services: `sudo docker restart netbox-docker-netbox-1`
+- Test your changes in the actual environment
+- Validate functionality before reporting completion
+- Use Django shell, curl, and other tools for verification
+
+**NEVER ask users to**:
+- Restart containers for you
+- Test your changes  
+- Validate your work
+- Check if something works
+
+**YOUR RESPONSIBILITY**: Test and verify EVERYTHING before claiming success!
+
 ## Specialist Validation Checklist
 
 ### Before Implementation:
@@ -291,13 +310,21 @@ class TestCRDSyncIntegration(TestCase):
 - [ ] Integration testing performed continuously
 - [ ] Documentation updated in parallel with code
 
+### Testing and Verification (MANDATORY):
+- [ ] Docker container restarted after code changes
+- [ ] Functionality tested in browser/API
+- [ ] User experience validated as actually working
+- [ ] No errors in container logs or browser console
+- [ ] End-to-end workflow tested completely
+
 ### Before Delivery:
 - [ ] All tests pass without modification
 - [ ] Code reviewed by appropriate peers
 - [ ] Integration with dependent components validated
 - [ ] Performance tested under realistic conditions
 - [ ] Documentation complete and accurate
+- [ ] **USER EXPERIENCE VERIFIED WORKING** ✅
 
-**SPECIALIST MASTERY ACHIEVED**: Demonstrates technical excellence, consistent TDD practices, and seamless integration with HNP architecture.
+**SPECIALIST MASTERY ACHIEVED**: Demonstrates technical excellence, consistent TDD practices, complete testing validation, and seamless integration with HNP architecture.
 
 **NEXT PHASE**: Apply specialist capabilities to complex HNP features requiring deep domain expertise.

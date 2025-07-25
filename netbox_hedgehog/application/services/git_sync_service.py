@@ -91,7 +91,7 @@ class GitSyncService:
                     
                     # Find and process YAML files
                     yaml_files = self._find_yaml_files(repo_path, fabric.git_path or "")
-                    manifests = self._parse_yaml_files(yaml_files)
+                    manifests = self._parse_yaml_files(yaml_files, repo_path)
                     
                     # Create/update CRDs
                     crd_results = self._process_manifests(fabric, manifests)
@@ -189,7 +189,7 @@ class GitSyncService:
         logger.info(f"Found {len(yaml_files)} YAML files in {search_dir}")
         return yaml_files
     
-    def _parse_yaml_files(self, yaml_files: List[str]) -> List[Dict[str, Any]]:
+    def _parse_yaml_files(self, yaml_files: List[str], repo_path: str) -> List[Dict[str, Any]]:
         """Parse YAML files into manifests."""
         manifests = []
         
@@ -200,8 +200,18 @@ class GitSyncService:
                     documents = yaml.safe_load_all(f)
                     for doc in documents:
                         if doc and isinstance(doc, dict):
-                            # Add file path for tracking
-                            doc['_file_path'] = file_path
+                            # Add file path for tracking - make it relative to repo root
+                            # Convert absolute path to relative path from repo root
+                            try:
+                                relative_path = os.path.relpath(file_path, repo_path)
+                                # Clean up the path - remove any leading ./
+                                if relative_path.startswith('./'):
+                                    relative_path = relative_path[2:]
+                            except ValueError:
+                                # If relpath fails, use basename as fallback
+                                relative_path = os.path.basename(file_path)
+                            
+                            doc['_file_path'] = relative_path
                             manifests.append(doc)
                             
             except Exception as e:

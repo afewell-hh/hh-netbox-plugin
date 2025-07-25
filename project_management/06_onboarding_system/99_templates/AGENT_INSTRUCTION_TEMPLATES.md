@@ -378,11 +378,12 @@
 4. Validate integration with existing HNP components
 5. Update documentation to reflect new functionality
 
-**Git Workflow Compliance**:
-- Work on feature branch: `git checkout -b feature/component-task`
-- Comprehensive testing before commits: `python -m pytest`
-- Descriptive commit messages with clear technical rationale
-- Code review before integration with main codebase
+**Git Workflow Compliance** (MANDATORY):
+See: @onboarding/04_environment_mastery/GIT_WORKFLOW_MASTERY.md
+- Create feature branch: `git checkout -b feature/descriptive-task-name`
+- Commit every 2 hours minimum with clear messages
+- GUI tests must pass before completion: `./run_demo_tests.py`
+- Push to remote and provide evidence of working functionality
 
 **Code Quality Standards**:
 - Follow HNP project conventions consistently

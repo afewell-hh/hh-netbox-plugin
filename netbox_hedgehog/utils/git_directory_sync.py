@@ -116,15 +116,28 @@ class GitDirectorySync:
                 self._process_directory(gitops_path)
                 
                 # Update fabric last sync time
-                self.fabric.last_sync = timezone.now()
-                self.fabric.sync_status = 'synced' if self.stats['errors'] == 0 else 'error'
+                self.fabric.last_git_sync = timezone.now()
+                if hasattr(self.fabric, 'sync_status'):
+                    self.fabric.sync_status = 'synced' if self.stats['errors'] == 0 else 'error'
                 self.fabric.save()
                 
+                success = self.stats['errors'] == 0
+                message = f"Sync completed: {self.stats['created']} created, {self.stats['updated']} updated"
+                if self.stats['errors'] > 0:
+                    message += f", {self.stats['errors']} errors"
+                
+                logger.info(f"Git sync for fabric {self.fabric.name}: {message}")
+                
                 return {
-                    'success': True,
-                    'message': f"Sync completed: {self.stats['created']} created, {self.stats['updated']} updated, {self.stats['errors']} errors",
-                    'stats': self.stats,
-                    'errors': self.errors
+                    'success': success,
+                    'message': message,
+                    'commit_sha': clone_result.get('commit_sha', 'unknown'),
+                    'files_processed': self.stats['scanned'],
+                    'resources_created': self.stats['created'],
+                    'resources_updated': self.stats['updated'],
+                    'errors': self.errors if self.stats['errors'] > 0 else [],
+                    'warnings': [],
+                    'sync_time': self.fabric.last_git_sync.isoformat() if self.fabric.last_git_sync else None
                 }
                 
         except Exception as e:
@@ -145,19 +158,41 @@ class GitDirectorySync:
             else:
                 auth_url = url
                 
+            logger.info(f"Cloning repository {url} branch {branch}")
+            
             # Clone repository
             cmd = ['git', 'clone', '--depth', '1', '--branch', branch, auth_url, str(path)]
-            result = subprocess.run(cmd, capture_output=True, text=True)
+            result = subprocess.run(cmd, capture_output=True, text=True, timeout=60)
             
             if result.returncode != 0:
+                logger.error(f"Git clone failed: {result.stderr}")
                 return {
                     'success': False,
-                    'error': f'Git clone failed: {result.stderr}'
+                    'error': f'Git clone failed: {result.stderr.strip()}'
                 }
-                
-            return {'success': True}
             
+            # Get the current commit SHA
+            try:
+                commit_cmd = ['git', '-C', str(path), 'rev-parse', 'HEAD']
+                commit_result = subprocess.run(commit_cmd, capture_output=True, text=True, timeout=10)
+                commit_sha = commit_result.stdout.strip() if commit_result.returncode == 0 else 'unknown'
+            except Exception as e:
+                logger.warning(f"Failed to get commit SHA: {e}")
+                commit_sha = 'unknown'
+                
+            logger.info(f"Successfully cloned repository to {path}, commit: {commit_sha[:8]}")
+            return {
+                'success': True,
+                'commit_sha': commit_sha
+            }
+            
+        except subprocess.TimeoutExpired:
+            return {
+                'success': False,
+                'error': 'Git clone operation timed out'
+            }
         except Exception as e:
+            logger.error(f"Failed to clone repository: {e}")
             return {
                 'success': False,
                 'error': f'Failed to clone repository: {str(e)}'
@@ -188,6 +223,55 @@ class GitDirectorySync:
             self.errors.append(f"Error processing {file_path}: {str(e)}")
             logger.error(f"Failed to process YAML file {file_path}: {e}")
     
+    def _calculate_git_file_path(self, file_path: Path) -> str:
+        """
+        Calculate the Git file path for a CRD from its full file system path.
+        
+        This creates a relative path from the repository root that can be used
+        to identify the file within the Git repository.
+        
+        Args:
+            file_path: Full Path object to the YAML file
+            
+        Returns:
+            str: Relative path from Git repository root
+        """
+        try:
+            # Convert to string for easier manipulation
+            file_str = str(file_path)
+            
+            # Try to find a good reference point in the path
+            # Look for common GitOps directory patterns
+            path_parts = file_path.parts
+            
+            # Try to find the repository root or gitops directory
+            repo_indicators = ['repo', 'hedgehog', 'gitops', 'fabric-1']
+            start_index = None
+            
+            for i, part in enumerate(path_parts):
+                if part in repo_indicators:
+                    start_index = i + 1  # Start after the repo indicator
+                    break
+            
+            if start_index is not None and start_index < len(path_parts):
+                # Create relative path from the found starting point
+                relative_parts = path_parts[start_index:]
+                relative_path = '/'.join(relative_parts)
+            else:
+                # Fallback: use the filename and parent directory
+                if len(path_parts) >= 2:
+                    relative_path = f"{path_parts[-2]}/{path_parts[-1]}"
+                else:
+                    relative_path = path_parts[-1]
+            
+            logger.debug(f"Calculated git_file_path: {relative_path} from {file_path}")
+            return relative_path
+            
+        except Exception as e:
+            logger.warning(f"Failed to calculate git file path for {file_path}: {e}")
+            # Ultimate fallback
+            return file_path.name
+    
     def _process_cr_document(self, doc: Dict[str, Any], file_path: Path):
         """Process a single CR document from YAML"""
         try:
@@ -216,6 +300,9 @@ class GitDirectorySync:
             model_module = getattr(models, module_name)
             model_class = getattr(model_module, class_name)
             
+            # Calculate proper git file path
+            git_file_path = self._calculate_git_file_path(file_path)
+            
             # Create or update the CR
             with transaction.atomic():
                 # Debug logging for SwitchGroup specifically
@@ -231,7 +318,7 @@ class GitDirectorySync:
                         'raw_spec': doc.get('spec', {}),
                         'annotations': metadata.get('annotations', {}),
                         'labels': metadata.get('labels', {}),
-                        'git_file_path': str(file_path.relative_to(file_path.parent.parent.parent)),
+                        'git_file_path': git_file_path,
                         'last_synced': timezone.now()
                     }
                 )
