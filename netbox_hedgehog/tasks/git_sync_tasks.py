@@ -9,6 +9,7 @@ from typing import Dict, Any, Optional
 from celery import shared_task
 from django.core.cache import cache
 from django.db import transaction
+from django.utils import timezone
 
 from ..application.services.git_service import GitService
 from ..application.services.event_service import EventService
@@ -123,8 +124,8 @@ def git_sync_fabric(self, fabric_id: int, force: bool = False) -> Dict[str, Any]
             # Update fabric status
             with transaction.atomic():
                 fabric.sync_status = 'synced'
-                fabric.last_sync_time = time.time()
-                fabric.save(update_fields=['sync_status', 'last_sync_time'])
+                fabric.last_sync = timezone.now()
+                fabric.save(update_fields=['sync_status', 'last_sync'])
             
             # Clear cache to force refresh
             cache.delete_many([
