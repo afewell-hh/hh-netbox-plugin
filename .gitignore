@@ -55,6 +55,13 @@ kubeconfig*
 *.key
 *.pem
 
+# Environment files
+.env
+.env.*
+
+# Token files
+*.token
+
 # Submodules and external repos
 gitignore/netbox-docker/
 gitignore/
