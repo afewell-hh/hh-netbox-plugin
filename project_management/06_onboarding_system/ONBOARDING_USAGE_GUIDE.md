@@ -78,7 +78,7 @@ Refer to: @onboarding/00_foundation/UNIVERSAL_FOUNDATION.md
 You need to fix the login bug in the authentication system.
 
 First, let me explain the environment setup. The NetBox Docker 
-environment is running at localhost:8000 with credentials admin/admin.
+environment is running at ${NETBOX_URL} with credentials ${NETBOX_USERNAME}/${NETBOX_PASSWORD}.
 To restart it, use sudo docker restart netbox-docker-netbox-1...
 [500+ lines of repeated environment setup]
 

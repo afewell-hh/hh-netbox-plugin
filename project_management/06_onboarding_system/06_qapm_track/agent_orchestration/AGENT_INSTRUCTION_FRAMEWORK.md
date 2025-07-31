@@ -73,8 +73,8 @@ Technical Stack:
 CONTEXT:
 
 Environment:
-- NetBox at localhost:8000 (dockerized)
-- Test user: admin/admin
+- NetBox at ${NETBOX_URL} (dockerized)
+- Test user: ${NETBOX_USERNAME}/${NETBOX_PASSWORD}
 - Error occurs at: /plugins/netbox_hedgehog/fabrics/1/edit/
 - Current state: Page returns 500 error
 

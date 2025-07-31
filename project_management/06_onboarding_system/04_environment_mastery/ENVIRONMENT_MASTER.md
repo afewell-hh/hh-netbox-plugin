@@ -6,27 +6,27 @@
 
 ### NetBox Docker Setup
 - **Location**: `/home/ubuntu/gitignore/netbox-docker/`
-- **Access**: `localhost:8000` (admin/admin)
+- **Access**: `${NETBOX_URL}` (${NETBOX_USERNAME}/${NETBOX_PASSWORD})
 - **Plugin**: HNP integrated at startup
 - **Database**: PostgreSQL shared with NetBox core
 - **Status Check**: `docker ps | grep netbox`
 
 ### HCKC Kubernetes Cluster
 - **Type**: K3s cluster
-- **Endpoint**: `127.0.0.1:6443`
+- **Endpoint**: `${K8S_API_SERVER}`
 - **Config**: `~/.kube/config` (default kubeconfig)
 - **Access Test**: `kubectl get nodes`
 - **CRDs Location**: 12 types operational (VPC + Wiring APIs)
 
 ### ArgoCD GitOps Integration  
 - **Config**: `/hemk/poc_development/kubeconfig/kubeconfig.yaml`
-- **Repository**: `https://github.com/afewell-hh/gitops-test-1.git`
+- **Repository**: `${GITOPS_REPOSITORY_URL}`
 - **Sync Pattern**: CRD changes → Git commits → ArgoCD deployment
 - **Access**: Standard kubectl with proper kubeconfig
 
 ### File System Navigation
 ```
-/home/ubuntu/cc/hedgehog-netbox-plugin/  (Project Root)
+${PROJECT_ROOT}/  (Project Root)
 ├── netbox_hedgehog/                     (Plugin Core)
 │   ├── models/                          (12 CRD Django models)
 │   ├── views/                           (UI views with Bootstrap 5)
@@ -58,7 +58,7 @@ git status                                 # Repository clean
 python manage.py check                     # Django health
 
 # Quick Setup Validation
-curl http://localhost:8000/admin          # NetBox access
+curl http://${NETBOX_URL}/admin          # NetBox access
 kubectl get crds | grep hedgehog           # CRDs installed
 ls ~/.kube/config                          # K8s config exists
 ```

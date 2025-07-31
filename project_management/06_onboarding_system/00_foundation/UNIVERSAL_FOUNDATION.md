@@ -13,7 +13,7 @@
 ### Environment Reality Check (30 seconds to verify)
 ```bash
 # These MUST work immediately:
-docker ps | grep netbox              # NetBox running on localhost:8000
+docker ps | grep netbox              # NetBox running on ${NETBOX_URL}
 kubectl get nodes                    # HCKC cluster accessible
 git status                          # Clean working directory
 python -m pytest --version         # Testing framework ready
@@ -38,7 +38,7 @@ python -m pytest --version         # Testing framework ready
 
 ### File System DNA (eliminate discovery waste)
 ```
-/home/ubuntu/cc/hedgehog-netbox-plugin/  # Project root - MEMORIZE THIS
+${PROJECT_ROOT}/  # Project root - MEMORIZE THIS
 ├── netbox_hedgehog/                     # Plugin core implementation
 ├── project_management/                  # Coordination hub (YOU ARE HERE)
 │   ├── 07_qapm_workspaces/              # Organized project workspaces

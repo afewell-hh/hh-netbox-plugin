@@ -2,7 +2,7 @@
 
 ## HCKC Cluster Architecture
 - **Type**: K3s (lightweight Kubernetes)
-- **Endpoint**: `127.0.0.1:6443`
+- **Endpoint**: `${K8S_API_SERVER}`
 - **Access**: Standard kubectl with `~/.kube/config`
 - **CRD Count**: 12 HNP CRDs operational
 
@@ -64,7 +64,7 @@ for event in w.stream(api.list_cluster_custom_object,
 6. **Conflict**: Manual resolution required
 
 ## GitOps Integration
-- **Repository**: `https://github.com/afewell-hh/gitops-test-1.git`
+- **Repository**: `${GITOPS_REPOSITORY_URL}`
 - **Pattern**: NetBox changes → Git commit → ArgoCD sync → Cluster apply
 - **Config**: ArgoCD watches git repo for CRD manifests
 - **Validation**: ArgoCD pre-sync hooks for schema validation

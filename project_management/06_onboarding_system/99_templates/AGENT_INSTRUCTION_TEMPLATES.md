@@ -39,10 +39,10 @@
 **Timeline**: [REALISTIC DELIVERY EXPECTATIONS]
 
 **Environment Status**: 
-- NetBox Docker: localhost:8000 (admin/admin) ✅
-- HCKC Cluster: 127.0.0.1:6443 via ~/.kube/config ✅  
-- GitOps: https://github.com/afewell-hh/gitops-test-1.git ✅
-- Project Root: /home/ubuntu/cc/hedgehog-netbox-plugin/ ✅
+- NetBox Docker: ${NETBOX_URL} (${NETBOX_USERNAME}/${NETBOX_PASSWORD}) ✅
+- HCKC Cluster: ${K8S_API_SERVER} via ${K8S_CONFIG_PATH} ✅  
+- GitOps: ${GITOPS_REPOSITORY_URL} ✅
+- Project Root: ${PROJECT_ROOT} ✅
 
 ## EXPANDED CONTEXT (Level 1 - Reference)
 
@@ -215,10 +215,10 @@
 **Sprint Timeline**: [REALISTIC DELIVERY SCHEDULE]
 
 **Environment Status**:
-- NetBox Docker: localhost:8000 (admin/admin) ✅
-- HCKC Cluster: 127.0.0.1:6443 via ~/.kube/config ✅
-- GitOps: https://github.com/afewell-hh/gitops-test-1.git ✅
-- Project Root: /home/ubuntu/cc/hedgehog-netbox-plugin/ ✅
+- NetBox Docker: ${NETBOX_URL} (${NETBOX_USERNAME}/${NETBOX_PASSWORD}) ✅
+- HCKC Cluster: ${K8S_API_SERVER} via ${K8S_CONFIG_PATH} ✅
+- GitOps: ${GITOPS_REPOSITORY_URL} ✅
+- Project Root: ${PROJECT_ROOT} ✅
 
 ## EXPANDED CONTEXT (Level 1 - Reference)
 
@@ -373,10 +373,10 @@
 **Manager**: [ASSIGNED FEATURE MANAGER]
 
 **Environment Status**:
-- NetBox Docker: localhost:8000 (admin/admin) ✅
-- HCKC Cluster: 127.0.0.1:6443 via ~/.kube/config ✅
-- GitOps: https://github.com/afewell-hh/gitops-test-1.git ✅
-- Project Root: /home/ubuntu/cc/hedgehog-netbox-plugin/ ✅
+- NetBox Docker: ${NETBOX_URL} (${NETBOX_USERNAME}/${NETBOX_PASSWORD}) ✅
+- HCKC Cluster: ${K8S_API_SERVER} via ${K8S_CONFIG_PATH} ✅
+- GitOps: ${GITOPS_REPOSITORY_URL} ✅
+- Project Root: ${PROJECT_ROOT} ✅
 
 ## EXPANDED CONTEXT (Level 1 - Reference)
 

@@ -19,24 +19,24 @@ The previous UX designer successfully completed:
 ## Required Onboarding Modules
 
 ### Environment Setup
-**Reference**: `/home/ubuntu/cc/hedgehog-netbox-plugin/project_management/06_onboarding_system/04_environment_mastery/ENVIRONMENT_MASTER.md`
+**Reference**: `${PROJECT_ROOT}/project_management/06_onboarding_system/04_environment_mastery/ENVIRONMENT_MASTER.md`
 - NetBox Docker operations and container management
-- Local development environment at http://localhost:8000  
+- Local development environment at http://${NETBOX_URL}  
 - Kubernetes cluster access via kubectl
 - GitOps repository integration details
 
 ### Testing Authority & Work Verification (CRITICAL)
-**Reference**: `/home/ubuntu/cc/hedgehog-netbox-plugin/project_management/06_onboarding_system/04_environment_mastery/TESTING_AUTHORITY_MODULE.md`
+**Reference**: `${PROJECT_ROOT}/project_management/06_onboarding_system/04_environment_mastery/TESTING_AUTHORITY_MODULE.md`
 
 **MANDATORY VERIFICATION PROTOCOL:**
 - You have FULL AUTHORITY to execute docker commands
 - You MUST test ALL changes yourself before reporting completion
 - NEVER ask the user to validate your work
 - Run GUI test suite: `python3 run_demo_tests.py` 
-- Test actual browser functionality at http://localhost:8000
+- Test actual browser functionality at http://${NETBOX_URL}
 
 ### Process Requirements
-**Reference**: `/home/ubuntu/cc/hedgehog-netbox-plugin/project_management/06_onboarding_system/00_foundation/UNIVERSAL_FOUNDATION.md`
+**Reference**: `${PROJECT_ROOT}/project_management/06_onboarding_system/00_foundation/UNIVERSAL_FOUNDATION.md`
 - Git workflow and commit standards
 - Documentation requirements  
 - Quality gates and validation protocols
@@ -51,7 +51,7 @@ The previous UX designer successfully completed:
 
 ### Active Work Area
 The UX improvement session is documented in:
-**Location**: `/home/ubuntu/cc/hedgehog-netbox-plugin/UX_IMPROVEMENTS_SESSION_REPORT.md`
+**Location**: `${PROJECT_ROOT}/UX_IMPROVEMENTS_SESSION_REPORT.md`
 
 ### Test Suite Status
 - **Current State**: 71/71 tests passing (maintained by previous agent)
@@ -63,7 +63,7 @@ The UX improvement session is documented in:
 ### Step 1: Investigation
 1. **Read the UX improvements report** to understand recent changes
 2. **Check git status** to see uncommitted changes
-3. **Test the specific failing functionality** at http://localhost:8000
+3. **Test the specific failing functionality** at http://${NETBOX_URL}
 4. **Review recent commits** for potential breaking changes
 5. **Check NetBox container logs** for specific error messages
 
@@ -84,7 +84,7 @@ The UX improvement session is documented in:
 Before claiming completion, you MUST provide:
 
 ✅ **IMPLEMENTED:** [specific changes made]
-✅ **TESTED:** [actual browser testing performed at localhost:8000]  
+✅ **TESTED:** [actual browser testing performed at ${NETBOX_URL}]  
 ✅ **VERIFIED:** [specific results observed - pages loading, HTTP codes, etc.]
 ✅ **REGRESSION CHECK:** [GUI test suite results - must be 71/71 passing]
 ✅ **STATUS:** Confirmed working with evidence
@@ -142,7 +142,7 @@ When complex tasks require >30 minutes:
 ## Critical Reminders
 
 ### Work Verification (NON-NEGOTIABLE)
-- **Test every change** in actual browser at http://localhost:8000
+- **Test every change** in actual browser at http://${NETBOX_URL}
 - **Run GUI test suite** before claiming any task complete
 - **Provide specific evidence** of functionality working
 - **Never assume** changes work without verification

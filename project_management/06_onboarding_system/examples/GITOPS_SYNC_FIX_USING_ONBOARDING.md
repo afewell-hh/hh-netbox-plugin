@@ -12,7 +12,7 @@
 ## Specific Problem
 - CRDs from GitOps show "Not from Git" despite being from Git repository
 - Git sync completes but attribution fails
-- Test repo: https://github.com/afewell-hh/gitops-test-1.git
+- Test repo: ${GITOPS_REPOSITORY_URL}
 
 ## Standard Training Modules
 - **Environment**: @onboarding/04_environment_mastery/ENVIRONMENT_MASTER.md

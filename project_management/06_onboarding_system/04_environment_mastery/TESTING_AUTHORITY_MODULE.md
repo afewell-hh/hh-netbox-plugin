@@ -68,10 +68,10 @@
 4. **Test the actual functionality**
    ```bash
    # API testing
-   curl -s http://localhost:8000/api/plugins/netbox-hedgehog/fabrics/
+   curl -s http://${NETBOX_URL}/api/plugins/netbox-hedgehog/fabrics/
    
    # UI testing
-   curl -s http://localhost:8000/plugins/hedgehog/fabrics/1/ | grep -i "sync"
+   curl -s http://${NETBOX_URL}/plugins/hedgehog/fabrics/1/ | grep -i "sync"
    ```
 
 5. **Validate user experience**
@@ -103,24 +103,24 @@ sudo docker exec -it netbox-docker-netbox-1 python manage.py shell
 sudo docker restart netbox-docker-netbox-1
 
 # Test page loads
-curl -I http://localhost:8000/plugins/hedgehog/vpcs/
+curl -I http://${NETBOX_URL}/plugins/hedgehog/vpcs/
 # Should return 200 OK
 ```
 
 ### After API Changes:
 ```bash
 # Test API endpoints
-curl -X GET http://localhost:8000/api/plugins/netbox-hedgehog/vpcs/ \
+curl -X GET http://${NETBOX_URL}/api/plugins/netbox-hedgehog/vpcs/ \
   -H "Authorization: Token your-token-here"
 ```
 
 ### After JavaScript Changes:
 ```bash
 # Check for JS errors
-curl -s http://localhost:8000/plugins/hedgehog/ | grep -i "error"
+curl -s http://${NETBOX_URL}/plugins/hedgehog/ | grep -i "error"
 
 # Look for specific functionality
-curl -s http://localhost:8000/plugins/hedgehog/fabrics/1/ | grep -i "sync.*from.*git"
+curl -s http://${NETBOX_URL}/plugins/hedgehog/fabrics/1/ | grep -i "sync.*from.*git"
 ```
 
 ---

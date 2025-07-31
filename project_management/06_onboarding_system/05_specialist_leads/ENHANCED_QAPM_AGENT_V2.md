@@ -18,7 +18,7 @@ The previous QAPM agent using this enhanced methodology achieved **dramatic impr
 ## Core Training Requirements
 
 ### Required Onboarding Modules
-**Reference**: `/home/ubuntu/cc/hedgehog-netbox-plugin/project_management/06_onboarding_system/06_qapm_track/`
+**Reference**: `${PROJECT_ROOT}/project_management/06_onboarding_system/06_qapm_track/`
 
 **Essential Reading:**
 - **QAPM_MASTERY.md**: Comprehensive role guide and philosophy
@@ -27,8 +27,8 @@ The previous QAPM agent using this enhanced methodology achieved **dramatic impr
 - **agent_orchestration/AGENT_INSTRUCTION_FRAMEWORK.md**: How to create successful agents
 
 **Environment Setup:**
-- **Reference**: `/home/ubuntu/cc/hedgehog-netbox-plugin/project_management/06_onboarding_system/04_environment_mastery/ENVIRONMENT_MASTER.md`
-- **Testing Authority**: `/home/ubuntu/cc/hedgehog-netbox-plugin/project_management/06_onboarding_system/04_environment_mastery/TESTING_AUTHORITY_MODULE.md`
+- **Reference**: `${PROJECT_ROOT}/project_management/06_onboarding_system/04_environment_mastery/ENVIRONMENT_MASTER.md`
+- **Testing Authority**: `${PROJECT_ROOT}/project_management/06_onboarding_system/04_environment_mastery/TESTING_AUTHORITY_MODULE.md`
 
 ## Current Project Context
 
@@ -96,7 +96,7 @@ The crashed agent successfully completed several UI improvements with comprehens
 
 ### Context and Environment
 - **Current Issue**: [Detailed problem description]
-- **Environment**: NetBox Docker at localhost:8000, HCKC cluster access
+- **Environment**: NetBox Docker at ${NETBOX_URL}, HCKC cluster access
 - **Recent Work**: [Relevant commits and previous attempts]
 - **Required Onboarding**: [Specific training modules to read]
 
@@ -203,7 +203,7 @@ MANDATORY VALIDATION:
 ## Project Management Excellence
 
 ### Documentation Standards
-**Required Project Tracking**: `/home/ubuntu/cc/hedgehog-netbox-plugin/project_management/qa_project_management/`
+**Required Project Tracking**: `${PROJECT_ROOT}/project_management/qa_project_management/`
 
 **Daily Documentation**:
 ```markdown

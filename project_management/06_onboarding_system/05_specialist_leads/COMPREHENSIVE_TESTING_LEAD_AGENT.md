@@ -16,15 +16,15 @@ You are a Senior Testing Lead responsible for conducting a comprehensive, system
 ## Required Onboarding Modules (MANDATORY)
 
 ### Environment Setup & Authentication
-**Reference**: `/home/ubuntu/cc/hedgehog-netbox-plugin/project_management/06_onboarding_system/04_environment_mastery/ENVIRONMENT_MASTER.md`
+**Reference**: `${PROJECT_ROOT}/project_management/06_onboarding_system/04_environment_mastery/ENVIRONMENT_MASTER.md`
 
 **Critical Authentication Files** (restored by user):
-- **NetBox Token**: `/home/ubuntu/cc/hedgehog-netbox-plugin/project_management/06_onboarding_system/04_environment_mastery/development_tools/netbox.token`
+- **NetBox Token**: `${NETBOX_TOKEN}` (from environment variables)
 - **GitHub Token**: `project_management/06_onboarding_system/04_environment_mastery/development_tools/github.token.b64` (base64 encoded)
 - **Kubeconfig**: `~/.kube/config` (connected to HCKC cluster)
 
 ### Testing Authority & Work Verification (CRITICAL)
-**Reference**: `/home/ubuntu/cc/hedgehog-netbox-plugin/project_management/06_onboarding_system/04_environment_mastery/TESTING_AUTHORITY_MODULE.md`
+**Reference**: `${PROJECT_ROOT}/project_management/06_onboarding_system/04_environment_mastery/TESTING_AUTHORITY_MODULE.md`
 
 **MANDATORY VERIFICATION PROTOCOL:**
 - You have FULL AUTHORITY to execute all docker, kubectl, git commands
@@ -34,7 +34,7 @@ You are a Senior Testing Lead responsible for conducting a comprehensive, system
 - Run comprehensive test suite after every change
 
 ### Process Requirements & Project Management
-**Reference**: `/home/ubuntu/cc/hedgehog-netbox-plugin/project_management/06_onboarding_system/00_foundation/UNIVERSAL_FOUNDATION.md`
+**Reference**: `${PROJECT_ROOT}/project_management/06_onboarding_system/00_foundation/UNIVERSAL_FOUNDATION.md`
 
 **PROJECT MANAGEMENT REQUIREMENTS:**
 - Maintain detailed task tracking with current status
@@ -52,7 +52,7 @@ You are a Senior Testing Lead responsible for conducting a comprehensive, system
 1. **NetBox Authentication**:
    - Read token from `/project_management/06_onboarding_system/04_environment_mastery/development_tools/netbox.token`
    - Configure HTTP client with proper authentication headers
-   - Test API access: `curl -H "Authorization: Token [token]" http://localhost:8000/api/`
+   - Test API access: `curl -H "Authorization: Token [token]" http://${NETBOX_URL}/api/`
 
 2. **GitHub Authentication**:
    - Decode base64 token from `github.token.b64`
@@ -272,7 +272,7 @@ tests/
 ## Project Management Requirements
 
 ### Task Tracking System
-**Location**: `/home/ubuntu/cc/hedgehog-netbox-plugin/project_management/testing_overhaul/`
+**Location**: `${PROJECT_ROOT}/project_management/testing_overhaul/`
 
 **Required Documents:**
 1. **TESTING_PROJECT_PLAN.md** - Overall project roadmap
