@@ -10,11 +10,12 @@ menu = PluginMenu(
                 link_text='Dashboard',
                 buttons=()
             ),
-            PluginMenuItem(
-                link='plugins:netbox_hedgehog:topology',
-                link_text='Network Topology',
-                buttons=()
-            ),
+            # Network Topology - Hidden for now as feature is not implemented
+            # PluginMenuItem(
+            #     link='plugins:netbox_hedgehog:topology',
+            #     link_text='Network Topology',
+            #     buttons=()
+            # ),
         )),
         ('Infrastructure', (
             PluginMenuItem(

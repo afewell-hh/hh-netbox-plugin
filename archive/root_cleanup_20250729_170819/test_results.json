@@ -1,0 +1,48 @@
+{
+  "start_time": "2025-07-26T18:27:33.039609",
+  "tests_run": 7,
+  "tests_passed": 7,
+  "tests_failed": 0,
+  "critical_failures": [],
+  "warnings": [
+    "HCKC sync API not accessible"
+  ],
+  "test_details": {
+    "All Critical Pages Accessible": {
+      "passed": true,
+      "duration": 0.9328947067260742,
+      "critical": true
+    },
+    "GitOps Sync": {
+      "passed": true,
+      "duration": 1.9066340923309326,
+      "critical": true
+    },
+    "Git Repository Validation": {
+      "passed": true,
+      "duration": 0.037545204162597656,
+      "critical": true
+    },
+    "Fabric Sync Buttons": {
+      "passed": true,
+      "duration": 0.037793636322021484,
+      "critical": true
+    },
+    "Navigation Integrity": {
+      "passed": true,
+      "duration": 0.08639860153198242,
+      "critical": true
+    },
+    "HCKC Sync Status Check": {
+      "passed": true,
+      "duration": 0.07120966911315918,
+      "critical": false
+    },
+    "CR Records Display Properly": {
+      "passed": true,
+      "duration": 0.14875030517578125,
+      "critical": true
+    }
+  },
+  "system_state": "FULLY_FUNCTIONAL"
+}

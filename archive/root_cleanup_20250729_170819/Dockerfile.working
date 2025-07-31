@@ -1,0 +1,24 @@
+# Custom NetBox image with Hedgehog plugin installed
+FROM netboxcommunity/netbox:v4.3-3.3.0
+
+# Install kubernetes package and the plugin in the NetBox virtual environment
+USER root
+
+# Install pip and git in the virtual environment
+RUN apt-get update && apt-get install -y python3-pip curl git
+RUN curl https://bootstrap.pypa.io/get-pip.py -o get-pip.py
+RUN /opt/netbox/venv/bin/python get-pip.py
+RUN rm get-pip.py
+
+# Install required packages
+RUN /opt/netbox/venv/bin/pip install kubernetes==24.2.0 GitPython==3.1.44
+
+# Copy the plugin to NetBox directory
+COPY ./netbox_hedgehog /opt/netbox/netbox/netbox_hedgehog
+
+# Switch back to netbox user
+USER netbox
+
+# Add labels for identification
+LABEL description="NetBox with Hedgehog plugin installed"
+LABEL version="1.0"

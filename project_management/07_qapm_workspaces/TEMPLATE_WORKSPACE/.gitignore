@@ -1,0 +1,25 @@
+# QAPM Workspace .gitignore
+# Temporary files that should not be committed
+
+temp/
+*.tmp
+*.temp
+*_temp.*
+debug_*
+scratch_*
+working_*
+
+# Common temporary file patterns
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+*~
+
+# IDE temporary files
+.vscode/settings.json
+.idea/workspace.xml
+
+# Log files that might be created during debugging
+*.log
+debug.txt

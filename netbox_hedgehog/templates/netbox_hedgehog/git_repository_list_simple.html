@@ -1,0 +1,105 @@
+{% extends "base/layout.html" %}
+{% load static %}
+
+{% block title %}Git Repositories{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+    <div class="row">
+        <div class="col-12">
+            <div class="card">
+                <div class="card-header d-flex justify-content-between">
+                    <h3><i class="mdi mdi-git"></i> Git Repository Management</h3>
+                    <a href="{% url 'plugins:netbox_hedgehog:overview' %}" class="btn btn-outline-secondary">
+                        <i class="mdi mdi-arrow-left"></i> Back to Dashboard
+                    </a>
+                </div>
+                <div class="card-body">
+                    {% if error %}
+                    <div class="alert alert-danger">
+                        <h5><i class="mdi mdi-alert"></i> Error</h5>
+                        <p>{{ error }}</p>
+                    </div>
+                    {% endif %}
+                    
+                    <div class="d-flex justify-content-between align-items-center mb-3">
+                        <div>
+                            <h4>Git Repositories</h4>
+                            <p>Manage Git repository authentication and connections for your Hedgehog fabrics.</p>
+                        </div>
+                    </div>
+                    
+                    {% if repositories %}
+                    <div class="table-responsive">
+                        <table class="table table-striped">
+                            <thead>
+                                <tr>
+                                    <th>Name</th>
+                                    <th>URL</th>
+                                    <th>Provider</th>
+                                    <th>Auth Type</th>
+                                    <th>Connection Status</th>
+                                    <th>Last Validated</th>
+                                    <th>Owner</th>
+                                    <th>Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for repository in repositories %}
+                                <tr>
+                                    <td>
+                                        <a href="{% url 'plugins:netbox_hedgehog:gitrepository_detail' pk=repository.pk %}">
+                                            {{ repository.name }}
+                                        </a>
+                                    </td>
+                                    <td><code>{{ repository.url }}</code></td>
+                                    <td>{{ repository.get_provider_display }}</td>
+                                    <td>{{ repository.get_authentication_type_display }}</td>
+                                    <td>
+                                        {% if repository.connection_status == 'connected' %}
+                                            <span class="badge bg-success text-white">Connected</span>
+                                        {% elif repository.connection_status == 'failed' %}
+                                            <span class="badge bg-danger text-white">Failed</span>
+                                        {% elif repository.connection_status == 'testing' %}
+                                            <span class="badge bg-warning text-dark">Testing</span>
+                                        {% else %}
+                                            <span class="badge bg-secondary text-white">Pending</span>
+                                        {% endif %}
+                                    </td>
+                                    <td>
+                                        {% if repository.last_validated %}
+                                            {{ repository.last_validated|date:"M d, Y H:i" }}
+                                        {% else %}
+                                            <em>Not validated</em>
+                                        {% endif %}
+                                    </td>
+                                    <td>
+                                        {% if repository.created_by %}
+                                            {{ repository.created_by.username }}
+                                        {% else %}
+                                            <em>Unknown</em>
+                                        {% endif %}
+                                    </td>
+                                    <td>
+                                        <a href="{% url 'plugins:netbox_hedgehog:gitrepository_detail' pk=repository.pk %}" 
+                                           class="btn btn-sm btn-outline-primary">
+                                            <i class="mdi mdi-eye"></i> View
+                                        </a>
+                                    </td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                    {% else %}
+                    <div class="alert alert-info">
+                        <h5><i class="mdi mdi-information"></i> No Git Repositories Found</h5>
+                        <p>No Git repositories have been configured yet. Create your first repository to get started.</p>
+                    </div>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

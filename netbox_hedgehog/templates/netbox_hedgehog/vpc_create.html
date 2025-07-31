@@ -4,6 +4,11 @@
 
 {% block title %}Create VPC{% endblock %}
 
+{% block header %}
+    {{ block.super }}
+    <link rel="stylesheet" href="{% static 'netbox_hedgehog/css/hedgehog.css' %}">
+{% endblock %}
+
 {% block breadcrumbs %}
     <li class="breadcrumb-item">
         <a href="{% url 'plugins:netbox_hedgehog:vpc_list' %}">VPCs</a>
@@ -95,7 +100,7 @@
                         </div>
 
                         <!-- Namespace Selection -->
-                        <div class="row mb-3" id="namespace-selection" style="display: none;">
+                        <div class="row mb-3 hedgehog-hidden" id="namespace-selection">
                             <div class="col-md-6">
                                 <label for="id_ipv4_namespace" class="form-label">IPv4 Namespace</label>
                                 <select class="form-select" id="id_ipv4_namespace" name="ipv4_namespace">
@@ -143,7 +148,7 @@
                         </div>
 
                         <!-- Custom Configuration (hidden by default) -->
-                        <div id="custom-config" style="display: none;">
+                        <div id="custom-config" class="hedgehog-hidden">
                             <h6>Custom Subnet Configuration</h6>
                             <div id="subnet-forms">
                                 <!-- Dynamic subnet forms will be added here -->
@@ -203,7 +208,7 @@
                         {% for template_id, template in templates.items %}
                             {% if template.example %}
                                 <div class="template-example" data-template="{{ template_id }}" 
-                                     {% if template_id != 'basic' %}style="display: none;"{% endif %}>
+                                     {% if template_id != 'basic' %}class="hedgehog-hidden"{% endif %}>
                                     <h6>{{ template.name }}</h6>
                                     <div class="small">
                                         {% for subnet_name, subnet_config in template.example.items %}

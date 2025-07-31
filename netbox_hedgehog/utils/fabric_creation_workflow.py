@@ -419,13 +419,16 @@ class UnifiedFabricCreationWorkflow:
     
     def setup_fabric_git_integration(self, fabric: HedgehogFabric) -> IntegrationResult:
         """
-        Setup git integration for newly created fabric.
+        Setup git integration for newly created fabric WITH GitOps directory initialization.
+        
+        This method now includes GitOps directory initialization to enable upstream GitHub
+        changes that external GitOps tools (ArgoCD/Flux) can detect and sync.
         
         Args:
             fabric: Fabric instance to setup integration for
             
         Returns:
-            IntegrationResult with integration status and details
+            IntegrationResult with integration status and GitOps initialization details
         """
         try:
             if not fabric.git_repository:
@@ -470,6 +473,77 @@ class UnifiedFabricCreationWorkflow:
                 self.logger.warning(f"Directory validation failed during integration: {e}")
                 directory_validation = {'error': str(e), 'valid': False}
             
+            # INTEGRATION FIX: Initialize GitOps directory structure
+            gitops_initialization = {'attempted': False, 'success': False}
+            
+            if fabric.git_repository and fabric.gitops_directory and directory_validation.get('valid', False):
+                try:
+                    self.logger.info(f"Initializing GitOps directory structure for fabric {fabric.name}")
+                    
+                    # Import GitOpsDirectoryManager for directory initialization
+                    from ..services.bidirectional_sync.gitops_directory_manager import GitOpsDirectoryManager
+                    
+                    # Initialize GitOps directory using existing implementation
+                    manager = GitOpsDirectoryManager(fabric)
+                    init_result = manager.initialize_directory_structure(force=False)
+                    
+                    gitops_initialization = {
+                        'attempted': True,
+                        'success': init_result.success,
+                        'message': init_result.message,
+                        'directories_created': init_result.directories_created,
+                        'errors': init_result.errors,
+                        'warnings': init_result.warnings
+                    }
+                    
+                    if init_result.success:
+                        # Update fabric GitOps initialization status
+                        fabric.gitops_initialized = True
+                        fabric.gitops_directory_status = 'initialized'
+                        fabric.directory_init_error = ''
+                        fabric.last_directory_sync = timezone.now()
+                        fabric.save(update_fields=[
+                            'gitops_initialized', 
+                            'gitops_directory_status', 
+                            'directory_init_error',
+                            'last_directory_sync'
+                        ])
+                        
+                        self.logger.info(f"GitOps directory initialized successfully for fabric {fabric.id}")
+                    else:
+                        # Update fabric with error status but don't fail creation
+                        fabric.gitops_directory_status = 'error'
+                        fabric.directory_init_error = '; '.join(init_result.errors)
+                        fabric.save(update_fields=['gitops_directory_status', 'directory_init_error'])
+                        
+                        self.logger.warning(f"GitOps directory initialization had errors for fabric {fabric.id}: {init_result.errors}")
+                    
+                except Exception as e:
+                    error_msg = f"GitOps directory initialization failed for fabric {fabric.id}: {str(e)}"
+                    self.logger.error(error_msg)
+                    
+                    gitops_initialization = {
+                        'attempted': True,
+                        'success': False,
+                        'error': str(e)
+                    }
+                    
+                    # Update fabric with error status but don't fail creation
+                    try:
+                        fabric.gitops_directory_status = 'error'
+                        fabric.directory_init_error = str(e)
+                        fabric.save(update_fields=['gitops_directory_status', 'directory_init_error'])
+                    except Exception:
+                        # If fabric fields don't exist yet, just log and continue
+                        self.logger.warning(f"Could not update GitOps status fields for fabric {fabric.id}")
+            else:
+                self.logger.info(f"Skipping GitOps initialization for fabric {fabric.id} - prerequisites not met")
+                gitops_initialization = {
+                    'attempted': False,
+                    'success': False,
+                    'reason': 'Prerequisites not met (repository, directory, or validation failed)'
+                }
+            
             # Update fabric timestamps
             fabric.last_git_sync = timezone.now()
             fabric.save(update_fields=['last_git_sync'])
@@ -480,9 +554,18 @@ class UnifiedFabricCreationWorkflow:
                 directory_validation.get('valid', False)
             )
             
+            # Note: We don't require GitOps initialization success for integration success
+            # This maintains backward compatibility and prevents fabric creation failures
+            
+            success_message = 'Git integration setup completed'
+            if gitops_initialization.get('success'):
+                success_message += ' with GitOps directory initialization'
+            elif gitops_initialization.get('attempted'):
+                success_message += ' (GitOps initialization had warnings)'
+            
             return IntegrationResult(
                 success=integration_success,
-                message='Git integration setup completed' if integration_success else 'Git integration setup completed with warnings',
+                message=success_message,
                 health_status=health_status,
                 credential_status=credential_status,
                 directory_validation=directory_validation

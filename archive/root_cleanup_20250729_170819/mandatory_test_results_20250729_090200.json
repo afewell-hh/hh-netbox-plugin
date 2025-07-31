@@ -1,0 +1,18 @@
+{
+  "timestamp": "20250729_090200",
+  "passed": 10,
+  "failed": 0,
+  "failed_tests": [],
+  "detailed_results": [
+    "\u2713 test_fabric_exists: PASSED",
+    "\u2713 test_git_repository_exists: PASSED",
+    "\u2713 test_fabric_git_repository_link: PASSED",
+    "\u2713 test_fabric_gitops_directory: PASSED",
+    "\u2713 test_git_repository_authentication: PASSED",
+    "\u2713 test_repository_content_accessible: PASSED",
+    "\u2713 test_sync_creates_crd_records: PASSED",
+    "\u2713 test_gui_fabric_page_loads: PASSED",
+    "\u2713 test_sync_button_exists: PASSED",
+    "\u2713 test_fabric_counts_display: PASSED"
+  ]
+}

@@ -74,22 +74,15 @@ class KubernetesClient:
                 
                 self._api_client = client.ApiClient(configuration)
             else:
-                # Use default kubeconfig
-                try:
-                    # Try to load from /tmp/kubeconfig first (for Docker environment)
-                    if os.path.exists('/tmp/kubeconfig'):
-                        config.load_kube_config(config_file='/tmp/kubeconfig')
-                        self._api_client = client.ApiClient()
-                        logger.info("Successfully loaded kubeconfig from /tmp/kubeconfig")
-                    else:
-                        # Fallback to default kubeconfig location
-                        config.load_kube_config()
-                        self._api_client = client.ApiClient()
-                        logger.info("Successfully loaded default kubeconfig")
-                        
-                except Exception as e:
-                    logger.error(f"Failed to load kubeconfig: {e}")
-                    raise
+                # No fabric-specific configuration provided - this violates multi-fabric architecture
+                error_msg = (
+                    f"Fabric '{self.fabric.name}' has no Kubernetes configuration. "
+                    f"Each fabric must have explicit kubernetes_server, kubernetes_token, and kubernetes_ca_cert "
+                    f"configured to maintain proper multi-fabric isolation. "
+                    f"Fallback to default kubeconfig is not allowed."
+                )
+                logger.error(error_msg)
+                raise ValueError(error_msg)
         
         return self._api_client
     
@@ -186,7 +179,7 @@ class KubernetesClient:
             crd_instance.kubernetes_status = KubernetesStatusChoices.APPLIED
             crd_instance.last_applied = datetime.now()
             crd_instance.sync_error = ''
-            crd_instance.save()
+            self._save_with_user_context(crd_instance)
             
             return {
                 'success': True,
@@ -202,7 +195,7 @@ class KubernetesClient:
             # Update CRD instance with error
             crd_instance.kubernetes_status = KubernetesStatusChoices.ERROR
             crd_instance.sync_error = str(e)
-            crd_instance.save()
+            self._save_with_user_context(crd_instance)
             
             return {
                 'success': False,
@@ -241,7 +234,7 @@ class KubernetesClient:
                 crd_instance.kubernetes_status = status
                 crd_instance.last_synced = datetime.now()
                 crd_instance.sync_error = ''
-                crd_instance.save()
+                self._save_with_user_context(crd_instance)
                 
                 return {
                     'success': True,
@@ -257,7 +250,7 @@ class KubernetesClient:
                     crd_instance.kubernetes_status = KubernetesStatusChoices.UNKNOWN
                     crd_instance.kubernetes_uid = ''
                     crd_instance.kubernetes_resource_version = ''
-                    crd_instance.save()
+                    self._save_with_user_context(crd_instance)
                     
                     return {
                         'success': True,
@@ -272,7 +265,7 @@ class KubernetesClient:
             
             crd_instance.kubernetes_status = KubernetesStatusChoices.ERROR
             crd_instance.sync_error = str(e)
-            crd_instance.save()
+            self._save_with_user_context(crd_instance)
             
             return {
                 'success': False,
@@ -305,7 +298,7 @@ class KubernetesClient:
                 # Update CRD instance status
                 crd_instance.kubernetes_status = KubernetesStatusChoices.DELETING
                 crd_instance.sync_error = ''
-                crd_instance.save()
+                self._save_with_user_context(crd_instance)
                 
                 return {
                     'success': True,
@@ -326,7 +319,7 @@ class KubernetesClient:
             logger.error(f"Failed to delete CRD {crd_instance.name}: {e}")
             
             crd_instance.sync_error = str(e)
-            crd_instance.save()
+            self._save_with_user_context(crd_instance)
             
             return {
                 'success': False,
@@ -372,9 +365,10 @@ class KubernetesSync:
     Handles batch operations and status monitoring.
     """
     
-    def __init__(self, fabric: HedgehogFabric):
+    def __init__(self, fabric: HedgehogFabric, user=None):
         self.fabric = fabric
         self.client = KubernetesClient(fabric)
+        self.user = user  # User context for audit logging
         
         # Define Hedgehog CRD types and their API groups
         self.crd_types = {
@@ -393,6 +387,27 @@ class KubernetesSync:
             'switchgroups': {'group': 'wiring.githedgehog.com', 'version': 'v1beta1', 'kind': 'SwitchGroup'},
             'vlannamespaces': {'group': 'wiring.githedgehog.com', 'version': 'v1beta1', 'kind': 'VLANNamespace'},
         }
+    
+    def _save_with_user_context(self, model_instance):
+        """Save model instance with proper user context for audit logging"""
+        if self.user:
+            # Set the user context for NetBox audit logging
+            # This prevents the AnonymousUser error in ObjectChange
+            from django.contrib.auth import get_user_model
+            User = get_user_model()
+            
+            # Temporarily set user context for this save operation
+            # NetBox uses threading.local to track the current user for audit logs
+            try:
+                from auditlog.context import set_actor
+                with set_actor(actor=self.user):
+                    model_instance.save()
+            except ImportError:
+                # Fallback if auditlog context not available
+                model_instance.save()
+        else:
+            # No user context available, save normally (may cause audit log issues)
+            model_instance.save()
     
     def sync_all_crds(self) -> Dict[str, Any]:
         """
@@ -420,7 +435,7 @@ class KubernetesSync:
                 
                 # Update fabric with error status
                 self.fabric.sync_error = '; '.join(fetch_result['errors'][:3])  # First 3 errors
-                self.fabric.save()
+                self._save_with_user_context(self.fabric)
                 
                 return results
             

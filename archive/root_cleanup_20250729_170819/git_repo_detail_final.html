@@ -1,0 +1,206 @@
+*   Trying 127.0.0.1:8000...
+  % Total    % Received % Xferd  Average Speed   Time    Time     Time  Current
+                                 Dload  Upload   Total   Spent    Left  Speed
+  0     0    0     0    0     0      0      0 --:--:-- --:--:-- --:--:--     0* Connected to localhost (127.0.0.1) port 8000 (#0)
+> GET /plugins/hedgehog/git-repositories/1/ HTTP/1.1
+> Host: localhost:8000
+> User-Agent: curl/7.81.0
+> Accept: */*
+> 
+* Mark bundle as not supporting multiuse
+< HTTP/1.1 302 Found
+< Content-Type: text/html; charset=utf-8
+< Location: /login/?next=/plugins/hedgehog/git-repositories/1/
+< X-Request-ID: 48bfbb7b-8568-464c-b919-f1bf4f11cabd
+< Vary: HX-Request, Accept-Language, Cookie, origin
+< X-Content-Type-Options: nosniff
+< Referrer-Policy: same-origin
+< Cross-Origin-Opener-Policy: same-origin
+< X-Frame-Options: SAMEORIGIN
+< Content-Length: 0
+< Content-Language: en
+< Server: Unit/1.34.2
+< Date: Mon, 28 Jul 2025 21:19:10 GMT
+< 
+  0     0    0     0    0     0      0      0 --:--:-- --:--:-- --:--:--     0
+* Connection #0 to host localhost left intact
+* Issue another request to this URL: 'http://localhost:8000/login/?next=/plugins/hedgehog/git-repositories/1/'
+* Found bundle for host localhost: 0x563d69e49ee0 [serially]
+* Can not multiplex, even if we wanted to!
+* Re-using existing connection! (#0) with host localhost
+* Connected to localhost (127.0.0.1) port 8000 (#0)
+> GET /login/?next=/plugins/hedgehog/git-repositories/1/ HTTP/1.1
+> Host: localhost:8000
+> User-Agent: curl/7.81.0
+> Accept: */*
+> 
+* Mark bundle as not supporting multiuse
+< HTTP/1.1 200 OK
+< Content-Type: text/html; charset=utf-8
+< X-Request-ID: 7b446355-1768-4442-bb03-978c4eade466
+< Vary: HX-Request, Cookie, Accept-Language, origin
+< X-Content-Type-Options: nosniff
+< Referrer-Policy: same-origin
+< Cross-Origin-Opener-Policy: same-origin
+< X-Frame-Options: SAMEORIGIN
+< Content-Length: 3520
+< Content-Language: en
+< Set-Cookie:  csrftoken=k9AaPhPN68KsJXqP10bYrS2BfP5xOhSH; expires=Mon, 27 Jul 2026 21:19:10 GMT; Max-Age=31449600; Path=/; SameSite=Lax
+< Server: Unit/1.34.2
+< Date: Mon, 28 Jul 2025 21:19:10 GMT
+< 
+{ [3520 bytes data]
+100  3520  100  3520    0     0   164k      0 --:--:-- --:--:-- --:--:--  164k
+* Connection #0 to host localhost left intact
+
+
+
+
+
+
+
+<!DOCTYPE html>
+<html
+  lang="en"
+  data-netbox-url-name="login"
+  data-netbox-version="4.3.3-Docker-3.3.0"
+  
+  >
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="initial-scale=1, maximum-scale=5, width=device-width, viewport-fit=cover" />
+    <meta name="htmx-config" content='{"scrollBehavior": "auto"}'>
+    <meta name="hostname" content="949978661a38" />
+
+    
+    <title>Home | NetBox</title>
+
+    
+    <script
+      type="text/javascript"
+      src="/static/setmode.js?v=4.3.3"
+      onerror="window.location='/media-failure/?filename=setmode.js'">
+    </script>
+    <script type="text/javascript">
+      (function () {
+        initMode()
+      })();
+      window.CSRF_TOKEN = "mkjprDmnBitnEQYLo0zg5g8wuhRU9Yu9wjJp6K10xg3FdDeqfQA4mY0XzWMhN5cG";
+    </script>
+
+    
+    <link
+      rel="stylesheet"
+      href="/static/netbox-external.css?v=4.3.3"
+      onerror="window.location='/media-failure/?filename=netbox-external.css'"
+    />
+    <link
+      rel="stylesheet"
+      href="/static/netbox.css?v=4.3.3"
+      onerror="window.location='/media-failure/?filename=netbox.css'"
+    />
+    <link rel="icon" type="image/png" href="/static/netbox.ico" />
+    <link rel="apple-touch-icon" type="image/png" href="/static/netbox_touch-icon-180.png" />
+
+    
+    <script
+      type="text/javascript"
+      src="/static/netbox.js?v=4.3.3"
+      onerror="window.location='/media-failure/?filename=netbox.js'">
+    </script>
+    
+
+    
+    
+    
+
+  </head>
+  <body>
+
+    
+    
+
+  <div class="page page-center">
+    <div class="container container-tight py-4">
+
+      
+      <div class="text-center mb-4">
+        <img src="/static/logo_netbox_dark_teal.svg" alt="NetBox Logo" height="80" class="hide-theme-dark logo">
+        <img src="/static/logo_netbox_bright_teal.svg" alt="NetBox Logo" height="80" class="hide-theme-light logo">
+        <div class="netbox-edition fw-semibold">Community</div>
+      </div>
+
+      
+      
+
+      
+      
+
+      <div class="card card-md">
+        
+          <div class="card-body">
+            <h2 class="text-center mb-4">Log In</h2>
+
+            
+            <form action="/login/" method="post">
+              <input type="hidden" name="csrfmiddlewaretoken" value="mkjprDmnBitnEQYLo0zg5g8wuhRU9Yu9wjJp6K10xg3FdDeqfQA4mY0XzWMhN5cG">
+
+              
+              
+                <input type="hidden" name="next" value="/plugins/hedgehog/git-repositories/1/" />
+              
+
+              <div class="form-group mb-3">
+                <label for="id_username" class="form-label">Username</label>
+                <input type="text" name="username"
+ autofocus autocapitalize="none" autocomplete="username" maxlength="150" required id="id_username"
+ class="form-control">
+                
+              </div>
+
+              <div class="form-group">
+                <label for="id_password" class="form-label">Password</label>
+                <input type="password" name="password"
+ autocomplete="current-password" required id="id_password"
+ class="form-control">
+                
+              </div>
+
+              <div class="form-footer">
+                <button type="submit" class="btn btn-primary w-100">
+                  Sign In
+                </button>
+              </div>
+            </form>
+          </div>
+        
+
+        
+        
+
+      </div>
+
+    </div>
+  </div>
+
+
+
+    
+    
+
+    
+    
+
+<div id="django-messages" class="toast-container position-fixed bottom-0 end-0 p-3" hx-swap-oob="true">
+
+  
+  
+
+  
+  
+
+</div>
+
+
+  </body>
+</html>

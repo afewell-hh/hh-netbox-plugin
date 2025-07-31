@@ -1,8 +1,14 @@
 {% extends "netbox_hedgehog/base.html" %}
+{% load static %}
 {% load i18n %}
 {% load render_table from django_tables2 %}
 
 {% block title %}Hedgehog Fabric Overview{% endblock %}
+
+{% block header %}
+    {{ block.super }}
+    <link rel="stylesheet" href="{% static 'netbox_hedgehog/css/hedgehog.css' %}">
+{% endblock %}
 
 {% block breadcrumbs %}
     <li class="breadcrumb-item active">Overview</li>
@@ -151,7 +157,7 @@
                         </div>
                     {% else %}
                         <div class="text-center py-4">
-                            <i class="mdi mdi-network-off text-muted" style="font-size: 3rem;"></i>
+                            <i class="mdi mdi-network-off text-muted hedgehog-icon-large"></i>
                             <p class="text-muted mt-2">No fabrics configured</p>
                             {% if can_add_fabric %}
                                 <a href="{% url 'plugins:netbox_hedgehog:fabric_add' %}" class="btn btn-primary">
@@ -178,9 +184,7 @@
                         <a href="{% url 'plugins:netbox_hedgehog:vpc_create' %}" class="btn btn-success">
                             <i class="mdi mdi-cloud-plus"></i> Create VPC
                         </a>
-                        <a href="{% url 'plugins:netbox_hedgehog:topology' %}" class="btn btn-info">
-                            <i class="mdi mdi-graph-outline"></i> View Topology
-                        </a>
+                        <!-- Topology button removed -->
                         <a href="{% url 'plugins:netbox_hedgehog:catalog' %}" class="btn btn-warning">
                             <i class="mdi mdi-format-list-bulleted"></i> Browse Catalog
                         </a>

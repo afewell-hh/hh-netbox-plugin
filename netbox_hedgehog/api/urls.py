@@ -7,6 +7,11 @@ from .gitops_views import (
     GitOpsOnboardingAPIView, GitOpsIngestionAPIView, GitOpsStatusAPIView,
     GitOpsWatcherAPIView, GitOpsGlobalStatusAPIView, GitOpsValidationAPIView
 )
+# Bidirectional sync imports - ACTIVATED for GitOps system
+from .bidirectional_sync_api import (
+    DirectoryManagementAPIView, SynchronizationControlAPIView, SyncOperationAPIView,
+    ConflictManagementAPIView, ResourceFileMappingAPIView, get_api_urls
+)
 # from .git_health_views import (
 #     GitHealthSummaryView, GitRepositoryHealthDetailView, 
 #     GitRepositoryHealthHistoryView, GitConnectionMetricsView, force_health_check
@@ -17,8 +22,8 @@ router = NetBoxRouter()
 # Fabric API
 router.register('fabrics', views.FabricViewSet)
 
-# Git Repository API (Week 1 GitOps Architecture)
-router.register('git-repositories', views.GitRepositoryViewSet)
+# Git Repository API (Week 1 GitOps Architecture) - Changed to avoid web UI conflict
+router.register('git-repos-api', views.GitRepositoryViewSet)
 
 # GitOps API (MVP2)
 router.register('gitops-fabrics', views.EnhancedFabricViewSet, basename='gitopsfabric')
@@ -70,6 +75,9 @@ urlpatterns = router.urls + [
     path('fabrics/<int:fabric_id>/watcher/', GitOpsWatcherAPIView.as_view(), name='gitops-watcher'),
     path('fabrics/<int:fabric_id>/validate-gitops/', GitOpsValidationAPIView.as_view(), name='gitops-validate'),
     path('gitops/global-status/', GitOpsGlobalStatusAPIView.as_view(), name='gitops-global-status'),
+    
+    # Bidirectional Sync endpoints (MVP3) - ACTIVATED for GitOps system
+] + get_api_urls() + [
     
     # Git Repository Health Monitoring endpoints (Week 2 Integration) - Temporarily disabled
     # path('git-repositories/health-summary/', GitHealthSummaryView.as_view(), name='git-health-summary'),

@@ -1,0 +1,80 @@
+{
+  "timestamp": "2025-07-27T00:40:44.884291",
+  "summary": {
+    "total": 3,
+    "passed": 3,
+    "failed": 0,
+    "errors": 0,
+    "success_rate": "100.0%"
+  },
+  "results": [
+    {
+      "timestamp": "2025-07-27T00:40:44.770657",
+      "test_name": "Sync Error Information Quality",
+      "status": "PASS",
+      "evidence": {
+        "error_message": "Cannot assign &quot;&lt;SimpleLazyObject: &lt;django.contrib.auth.models.AnonymousUser object at 0x7f79e2000fe0&gt;&gt;&quot;: &quot;ObjectChange.user&quot; must be a &quot;User&quot; instance.",
+        "mentions_user_auth": true,
+        "actionable": true,
+        "technical_detail": true,
+        "error_category": "authentication_context"
+      }
+    },
+    {
+      "timestamp": "2025-07-27T00:40:44.852220",
+      "test_name": "Sync Operation Infrastructure",
+      "status": "PASS",
+      "evidence": {
+        "buttons": {
+          "sync_from_git": {
+            "present": true,
+            "fabric_id": "12"
+          },
+          "sync_from_hckc": {
+            "present": true,
+            "fabric_id": "12"
+          },
+          "test_connection": {
+            "present": true,
+            "fabric_id": "12"
+          }
+        },
+        "api_endpoints": {
+          "/api/plugins/hedgehog/gitops-fabrics/12/gitops_sync/": {
+            "status_code": 403,
+            "exists": true,
+            "auth_required": true
+          },
+          "/api/plugins/hedgehog/gitops-fabrics/12/hckc_sync/": {
+            "status_code": 405,
+            "exists": true,
+            "auth_required": false
+          },
+          "/plugins/hedgehog/fabrics/12/test-connection/": {
+            "status_code": 200,
+            "exists": true,
+            "auth_required": true
+          }
+        },
+        "all_buttons_present": true,
+        "all_endpoints_exist": true
+      }
+    },
+    {
+      "timestamp": "2025-07-27T00:40:44.883773",
+      "test_name": "Authentication Context Error Identified",
+      "status": "PASS",
+      "evidence": {
+        "error_message": "Cannot assign &quot;&lt;SimpleLazyObject: &lt;django.contrib.auth.models.AnonymousUser object at 0x7f79e2000fe0&gt;&gt;&quot;: &quot;ObjectChange.user&quot; must be a &quot;User&quot; instance.",
+        "authentication_issues": {
+          "anonymous_user_issue": true,
+          "user_instance_requirement": false,
+          "object_change_audit": true,
+          "django_auth_error": true
+        },
+        "is_auth_context_error": true,
+        "suggested_fix": "Sync operations need proper user context for NetBox audit logging"
+      }
+    }
+  ]
+}

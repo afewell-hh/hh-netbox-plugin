@@ -1,0 +1,65 @@
+{
+  "timestamp": "2025-07-27T07:56:25.302628",
+  "summary": {
+    "total_tests": 4,
+    "passed": 3,
+    "failed": 1,
+    "success_rate": 75.0,
+    "duration_seconds": 0.025317,
+    "assessment": "GOOD - Most improvements validated, minor issues to address"
+  },
+  "test_results": [
+    {
+      "test": "Kubernetes Server Display",
+      "passed": true,
+      "evidence": [
+        "Found Kubernetes Server display section",
+        "Has conditional logic: True",
+        "Has else clause: True",
+        "Shows default IP: True",
+        "Has description: True",
+        "\u2713 Properly handles empty kubernetes_server field"
+      ],
+      "issues": [],
+      "html_evidence": "<th>Kubernetes Server:</th>\n                                    <td>\n                                        {% if object.kubernetes_server and object.kubernetes_server|length > 0 %}\n                                            <code>{{ object.kubernetes_server }}</code>\n                                        {% else %}\n                                            <span class=\"text-muted\">https://127.0.0.1:6443</span>\n                                            <small class=\"text-muted ms-2\">(HCK"
+    },
+    {
+      "test": "Git Configuration 2-Column Layout",
+      "passed": true,
+      "evidence": [
+        "Git section uses col-md-6",
+        "\u2713 Git configuration uses 2-column layout (col-md-6)",
+        "Kubernetes section uses col-md-6",
+        "\u2713 Both sections use matching layout"
+      ],
+      "issues": [],
+      "html_evidence": "<div class=\"col-md-6\">\n                            <div class=\"card border-primary\">\n                                <div class=\"card-header bg-primary text-white\">\n                                    <h5 class=\"mb-0\"><i class=\"mdi mdi-git\"></i> Git Repository Sync</h5>\n                                    <small>Syncing FROM Git TO NetBox</small>\n                                </div>\n            "
+    },
+    {
+      "test": "Model Field Accuracy",
+      "passed": false,
+      "evidence": [
+        "Model fields: 56",
+        "Template field references: 29",
+        "Valid references: 26",
+        "Invalid references: 3"
+      ],
+      "issues": [
+        "Invalid field references: ['active_crd_count', 'crd_count', 'error_crd_count']"
+      ],
+      "html_evidence": "active_crd_count: <h3>{{ object.active_crd_count }}</h3>\ncrd_count: <h3 data-crd-count>{{ object.crd_count }}</h3>\nerror_crd_count: <h3>{{ object.error_crd_count }}</h3>"
+    },
+    {
+      "test": "Kubeconfig Connection Mechanism",
+      "passed": true,
+      "evidence": [
+        "Found 8 sync-related files",
+        "Kubeconfig usage in simple_sync.py",
+        "Kubeconfig support: True",
+        "Fallback logic: False",
+        "\u2713 Kubeconfig support found (fallback logic unclear)"
+      ],
+      "issues": []
+    }
+  ]
+}

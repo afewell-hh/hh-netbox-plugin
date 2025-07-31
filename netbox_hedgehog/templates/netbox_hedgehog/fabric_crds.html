@@ -3,6 +3,11 @@
 
 {% block title %}CRDs - {{ fabric.name }}{% endblock %}
 
+{% block header %}
+    {{ block.super }}
+    <link rel="stylesheet" href="{% static 'netbox_hedgehog/css/hedgehog.css' %}">
+{% endblock %}
+
 {% block content %}
 {% csrf_token %}
 <div class="container-fluid">

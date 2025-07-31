@@ -12,7 +12,7 @@
                 <p><strong>Filter Status:</strong> Filter component loaded successfully! 🎉</p>
                 <form method="get" class="d-flex gap-2 align-items-center">
                     <label for="fabric-select">Select Fabric:</label>
-                    <select name="fabric" id="fabric-select" class="form-select" style="width: auto;" onchange="this.form.submit()">
+                    <select name="fabric" id="fabric-select" class="form-select hedgehog-select-auto" onchange="this.form.submit()">
                         <option value="">All Fabrics</option>
                         {% for fabric in all_fabrics %}
                             <option value="{{ fabric.id }}" 

@@ -12,6 +12,9 @@ from django.contrib.auth.decorators import login_required
 from django.core.paginator import Paginator
 from datetime import datetime
 import json
+import logging
+
+logger = logging.getLogger(__name__)
 
 # NetBox imports
 from netbox.views import generic
@@ -26,6 +29,7 @@ from ..utils.fabric_onboarding import FabricOnboardingManager
 from ..utils.reconciliation import ReconciliationManager
 from ..choices import KubernetesStatusChoices
 from ..tables import FabricTable
+from ..forms.fabric import FabricForm
 
 
 @method_decorator(login_required, name='dispatch')
@@ -144,7 +148,17 @@ class FabricDetailView(View):
             'namespace_count': fabric.cluster_info.get('namespace_count') if fabric.cluster_info else None
         }
         
+        # Get drift status summary
+        drift_summary = {
+            'status': fabric.drift_status,
+            'count': fabric.drift_count,
+            'last_check': fabric.last_git_sync,
+            'total_resources': switches.count() + connections.count() + vpcs.count() + ipv4_namespaces.count() + vlan_namespaces.count(),
+            'severity': 'critical' if fabric.drift_count > 5 else 'important' if fabric.drift_count > 0 else 'none'
+        }
+
         context = {
+            'object': fabric,  # For template compatibility
             'fabric': fabric,
             'switches': switches,
             'connections': connections,
@@ -154,6 +168,7 @@ class FabricDetailView(View):
             'switches_by_role': switches_by_role,
             'recent_changes': recent_changes,
             'connection_test': connection_test,
+            'drift_summary': drift_summary,
             'can_change': request.user.has_perm('netbox_hedgehog.change_hedgehogfabric'),
             'can_delete': request.user.has_perm('netbox_hedgehog.delete_hedgehogfabric'),
         }
@@ -319,38 +334,16 @@ class FabricListView(generic.ObjectListView):
 
 
 class FabricCreateView(generic.ObjectEditView):
-    """Create view for fabrics with workflow integration"""
+    """Create view for fabrics"""
     queryset = HedgehogFabric.objects.all()
-    template_name = 'netbox_hedgehog/fabric_creation_workflow.html'
-    
-    def get_form_class(self):
-        from ..forms.fabric_forms import FabricCreationWorkflowForm
-        return FabricCreationWorkflowForm
-    
-    def get_form_kwargs(self):
-        kwargs = super().get_form_kwargs()
-        kwargs['user'] = self.request.user
-        return kwargs
-    
-    def get_context_data(self, **kwargs):
-        context = super().get_context_data(**kwargs)
-        context['workflow_active'] = True
-        context['page_title'] = 'Create New Fabric'
-        
-        # Add available git repositories for user
-        from ..models.git_repository import GitRepository
-        context['user_git_repositories'] = GitRepository.objects.filter(
-            created_by=self.request.user
-        ).order_by('name')
-        
-        return context
+    template_name = 'generic/object_edit.html'
 
 
 class FabricEditView(generic.ObjectEditView):
     """Edit view for fabrics"""
     queryset = HedgehogFabric.objects.all()
-    # form_class = FabricForm  # Will need to create form class 
-    template_name = 'netbox_hedgehog/fabric_form.html'
+    form = FabricForm
+    template_name = 'netbox_hedgehog/fabric_edit_simple.html'
 
 
 class FabricDeleteView(generic.ObjectDeleteView):

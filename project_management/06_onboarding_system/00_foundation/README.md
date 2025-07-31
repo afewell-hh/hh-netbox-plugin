@@ -15,6 +15,20 @@ By completing this module, agents will understand:
 
 ## Module Structure
 
+### UNIVERSAL_FOUNDATION.md
+Essential knowledge for all agents (Required first)
+- Project mission and environment verification
+- Agent hierarchy understanding (Orchestrator → QAPM → Task agents)
+- Core process compliance and quality gates
+- Escalation triggers and emergency procedures
+
+### NEW_PARADIGM_REFERENCE.md
+Comprehensive guide to new agent hierarchy (Required reading)
+- Role definitions and responsibilities for each agent type
+- Communication patterns and escalation paths
+- Systematic problem-solving approaches
+- Migration guidance from previous models
+
 ### universal_environment/
 Complete environment setup and tool mastery
 - NetBox plugin architecture and APIs
@@ -60,6 +74,6 @@ After completing foundation:
 ## Next Steps
 
 Choose your role track based on assignment:
-- High-level coordination → 01_orchestrator_track/
-- Task management → 02_manager_track/
+- Strategic coordination → 01_orchestrator_track/
+- Process architecture → 06_qapm_track/
 - Technical implementation → 03_specialist_track/

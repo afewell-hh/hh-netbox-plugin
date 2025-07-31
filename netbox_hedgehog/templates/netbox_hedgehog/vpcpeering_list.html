@@ -3,6 +3,11 @@
 
 {% block title %}VPC Peering Management{% endblock %}
 
+{% block header %}
+    {{ block.super }}
+    <link rel="stylesheet" href="{% static 'netbox_hedgehog/css/hedgehog.css' %}">
+{% endblock %}
+
 {% block content %}
 <div class="container-fluid">
     <!-- Fabric Filter Component -->

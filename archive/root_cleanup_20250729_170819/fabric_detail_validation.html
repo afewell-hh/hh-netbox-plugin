@@ -1,0 +1,896 @@
+
+
+
+
+
+
+
+<!DOCTYPE html>
+<html
+  lang="en"
+  data-netbox-url-name="fabric_detail"
+  data-netbox-version="4.3.3-Docker-3.3.0"
+  
+  >
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="initial-scale=1, maximum-scale=5, width=device-width, viewport-fit=cover" />
+    <meta name="htmx-config" content='{"scrollBehavior": "auto"}'>
+    <meta name="hostname" content="fe388fd33a28" />
+
+    
+    <title>HCKC - Fabric Details | NetBox</title>
+
+    
+    <script
+      type="text/javascript"
+      src="/static/setmode.js?v=4.3.3"
+      onerror="window.location='/media-failure/?filename=setmode.js'">
+    </script>
+    <script type="text/javascript">
+      (function () {
+        initMode()
+      })();
+      window.CSRF_TOKEN = "9FpFb5Ku1KTZdQhFhJIHsc07rAaubbvXnXz5eYGQpjnqM29Dg5JYiT8DSqWDOZeo";
+    </script>
+
+    
+    <link
+      rel="stylesheet"
+      href="/static/netbox-external.css?v=4.3.3"
+      onerror="window.location='/media-failure/?filename=netbox-external.css'"
+    />
+    <link
+      rel="stylesheet"
+      href="/static/netbox.css?v=4.3.3"
+      onerror="window.location='/media-failure/?filename=netbox.css'"
+    />
+    <link rel="icon" type="image/png" href="/static/netbox.ico" />
+    <link rel="apple-touch-icon" type="image/png" href="/static/netbox_touch-icon-180.png" />
+
+    
+    <script
+      type="text/javascript"
+      src="/static/netbox.js?v=4.3.3"
+      onerror="window.location='/media-failure/?filename=netbox.js'">
+    </script>
+    
+
+    
+    
+    
+
+  </head>
+  <body>
+
+    
+    
+
+  <div class="page">
+
+    
+    <aside class="navbar navbar-vertical navbar-expand-lg d-print-none">
+
+      
+
+      <div class="container-fluid">
+
+        
+        <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#sidebar-menu" aria-controls="sidebar-menu" aria-expanded="false" aria-label="Toggle navigation">
+          <span class="navbar-toggler-icon"></span>
+        </button>
+
+        
+        <h1 class="navbar-brand pb-0">
+          <a href="/">
+            <img src="/static/logo_netbox_dark_teal.svg" alt="NetBox Logo" class="navbar-brand-image hide-theme-dark">
+            <img src="/static/logo_netbox_bright_teal.svg" alt="NetBox Logo" class="navbar-brand-image hide-theme-light">
+            <div class="netbox-edition fw-semibold text-center fs-5 my-1">Community</div>
+          </a>
+        </h1>
+
+        
+        <div class="navbar-nav flex-row align-items-center d-lg-none">
+          
+          
+
+<div class="d-flex ms-2">
+  <button class="btn color-mode-toggle hide-theme-dark" title="Enable dark mode" data-bs-toggle="tooltip" data-bs-placement="bottom">
+    <i class="mdi mdi-lightbulb"></i>
+  </button>
+  <button class="btn color-mode-toggle hide-theme-light" title="Enable light mode" data-bs-toggle="tooltip" data-bs-placement="bottom">
+    <i class="mdi mdi-lightbulb-on"></i>
+  </button>
+</div>
+
+          
+
+
+
+
+
+  <div class="btn-group align-items-center ps-2">
+    <a class="btn btn-primary" type="button" href="/login/?next=/plugins/hedgehog/fabrics/19/">
+      <i class="mdi mdi-login-variant"></i> Log In
+    </a>
+  </div>
+
+
+        </div>
+
+        
+        <div class="collapse navbar-collapse" id="sidebar-menu">
+          
+
+
+
+<ul class="navbar-nav pt-lg-2" >
+  <li class="nav-item d-block d-lg-none">
+    <form action="/search/" method="get" autocomplete="off" novalidate>
+      <div class="input-group mb-1 mt-2">
+        <div class="input-group-prepend">
+          <span class="input-group-text">
+            <i class="mdi mdi-magnify"></i>
+          </span>
+        </div>
+        <input type="text" name="q" value="" class="form-control" placeholder="Search…" aria-label="Search NetBox">
+        <div class="input-group-append">
+          <button type="submit" class="form-control">Search</button>
+        </div>
+      </div>
+    </form>
+  </li>
+  
+    <li class="nav-item dropdown">
+
+      
+      <a class="nav-link dropdown-toggle" href="#" data-bs-toggle="dropdown" data-bs-auto-close="false" role="button" aria-expanded="false" >
+        <span class="nav-link-icon d-md-none d-lg-inline-block">
+          <i class="mdi mdi-puzzle"></i>
+        </span>
+        <span class="nav-link-title">
+          Hedgehog
+        </span>
+      </a>
+
+      
+      <div class="dropdown-menu">
+        <div class="dropdown-menu-columns">
+          <div class="dropdown-menu-column pb-2">
+            
+              <div class="text-uppercase text-secondary fw-bold fs-5 ps-3 pt-3 pb-1">
+                Overview
+              </div>
+              
+                <div class="dropdown-item d-flex justify-content-between ps-3 py-0">
+                  <a href="/plugins/hedgehog/" class="d-inline-flex flex-fill py-1">Dashboard</a>
+                  
+                </div>
+              
+            
+              <div class="text-uppercase text-secondary fw-bold fs-5 ps-3 pt-3 pb-1">
+                Infrastructure
+              </div>
+              
+                <div class="dropdown-item d-flex justify-content-between ps-3 py-0">
+                  <a href="/plugins/hedgehog/fabrics/" class="d-inline-flex flex-fill py-1">Fabrics</a>
+                  
+                </div>
+              
+                <div class="dropdown-item d-flex justify-content-between ps-3 py-0">
+                  <a href="/plugins/hedgehog/git-repositories/" class="d-inline-flex flex-fill py-1">Git Repositories</a>
+                  
+                </div>
+              
+            
+              <div class="text-uppercase text-secondary fw-bold fs-5 ps-3 pt-3 pb-1">
+                VPC API
+              </div>
+              
+                <div class="dropdown-item d-flex justify-content-between ps-3 py-0">
+                  <a href="/plugins/hedgehog/vpcs/" class="d-inline-flex flex-fill py-1">VPCs</a>
+                  
+                </div>
+              
+                <div class="dropdown-item d-flex justify-content-between ps-3 py-0">
+                  <a href="/plugins/hedgehog/externals/" class="d-inline-flex flex-fill py-1">External Systems</a>
+                  
+                </div>
+              
+                <div class="dropdown-item d-flex justify-content-between ps-3 py-0">
+                  <a href="/plugins/hedgehog/ipv4namespaces/" class="d-inline-flex flex-fill py-1">IPv4 Namespaces</a>
+                  
+                </div>
+              
+            
+              <div class="text-uppercase text-secondary fw-bold fs-5 ps-3 pt-3 pb-1">
+                Attachments &amp; Peering
+              </div>
+              
+                <div class="dropdown-item d-flex justify-content-between ps-3 py-0">
+                  <a href="/plugins/hedgehog/external-attachments/" class="d-inline-flex flex-fill py-1">External Attachments</a>
+                  
+                </div>
+              
+                <div class="dropdown-item d-flex justify-content-between ps-3 py-0">
+                  <a href="/plugins/hedgehog/external-peerings/" class="d-inline-flex flex-fill py-1">External Peerings</a>
+                  
+                </div>
+              
+                <div class="dropdown-item d-flex justify-content-between ps-3 py-0">
+                  <a href="/plugins/hedgehog/vpc-attachments/" class="d-inline-flex flex-fill py-1">VPC Attachments</a>
+                  
+                </div>
+              
+                <div class="dropdown-item d-flex justify-content-between ps-3 py-0">
+                  <a href="/plugins/hedgehog/vpc-peerings/" class="d-inline-flex flex-fill py-1">VPC Peerings</a>
+                  
+                </div>
+              
+            
+              <div class="text-uppercase text-secondary fw-bold fs-5 ps-3 pt-3 pb-1">
+                Wiring API
+              </div>
+              
+                <div class="dropdown-item d-flex justify-content-between ps-3 py-0">
+                  <a href="/plugins/hedgehog/connections/" class="d-inline-flex flex-fill py-1">Connections</a>
+                  
+                </div>
+              
+                <div class="dropdown-item d-flex justify-content-between ps-3 py-0">
+                  <a href="/plugins/hedgehog/switches/" class="d-inline-flex flex-fill py-1">Switches</a>
+                  
+                </div>
+              
+                <div class="dropdown-item d-flex justify-content-between ps-3 py-0">
+                  <a href="/plugins/hedgehog/servers/" class="d-inline-flex flex-fill py-1">Servers</a>
+                  
+                </div>
+              
+                <div class="dropdown-item d-flex justify-content-between ps-3 py-0">
+                  <a href="/plugins/hedgehog/switch-groups/" class="d-inline-flex flex-fill py-1">Switch Groups</a>
+                  
+                </div>
+              
+                <div class="dropdown-item d-flex justify-content-between ps-3 py-0">
+                  <a href="/plugins/hedgehog/vlan-namespaces/" class="d-inline-flex flex-fill py-1">VLAN Namespaces</a>
+                  
+                </div>
+              
+            
+          </div>
+        </div>
+      </div>
+
+    </li>
+  
+</ul>
+
+
+          
+          <div class="text-muted text-center fs-5 my-3">
+            NetBox Community v4.3.3-Docker-3.3.0
+            
+              <div>
+                <a href="https://netboxlabs.com/netbox-cloud/" class="text-muted">Get Cloud</a> |
+                <a href="https://netboxlabs.com/netbox-enterprise/" class="text-muted">Get Enterprise</a>
+              </div>
+            
+          </div>
+
+        </div>
+      </div>
+    </aside>
+
+    
+    <header class="navbar navbar-expand-md sticky-top d-none d-lg-flex d-print-none">
+      <div class="container-fluid">
+
+        
+        <div class="navbar-nav flex-row align-items-center order-md-last">
+          
+          
+
+<div class="d-flex ms-2">
+  <button class="btn color-mode-toggle hide-theme-dark" title="Enable dark mode" data-bs-toggle="tooltip" data-bs-placement="bottom">
+    <i class="mdi mdi-lightbulb"></i>
+  </button>
+  <button class="btn color-mode-toggle hide-theme-light" title="Enable light mode" data-bs-toggle="tooltip" data-bs-placement="bottom">
+    <i class="mdi mdi-lightbulb-on"></i>
+  </button>
+</div>
+
+          
+
+
+
+
+
+  <div class="btn-group align-items-center ps-2">
+    <a class="btn btn-primary" type="button" href="/login/?next=/plugins/hedgehog/fabrics/19/">
+      <i class="mdi mdi-login-variant"></i> Log In
+    </a>
+  </div>
+
+
+        </div>
+
+        
+        <div class="collapse navbar-collapse" id="navbar-menu">
+          <form action="/search/" method="get" autocomplete="off" novalidate>
+            <div class="input-icon">
+              <span class="input-icon-addon">
+                <i class="mdi mdi-magnify"></i>
+              </span>
+              <input type="text" name="q" value="" class="form-control" placeholder="Search…" aria-label="Search NetBox">
+            </div>
+          </form>
+        </div>
+
+      </div>
+    </header>
+
+    
+    <div class="page-wrapper">
+      <div id="page-content" >
+
+      
+      
+    
+
+        
+        
+        
+
+        
+        
+
+        
+        
+
+      
+    <link rel="stylesheet" href="/static/netbox_hedgehog/css/hedgehog.css">
+
+      
+
+      
+      
+        <div class="page-body my-1">
+          <div class="container-fluid tab-content py-3">
+
+            
+            
+            
+
+            
+            
+<div class="container-fluid">
+    <div class="row">
+        <div class="col-12">
+            <div class="card">
+                <div class="card-header d-flex justify-content-between">
+                    <h3><i class="mdi mdi-server-network"></i> HCKC - Fabric Details</h3>
+                    <div>
+                        <a href="/plugins/hedgehog/fabrics/" class="btn btn-outline-secondary">
+                            <i class="mdi mdi-arrow-left"></i> Back to Fabrics
+                        </a>
+                        <a href="/plugins/hedgehog/fabrics/19/edit/" class="btn btn-outline-primary">
+                            <i class="mdi mdi-pencil"></i> Edit
+                        </a>
+                    </div>
+                </div>
+                <div class="card-body">
+                    
+                    <div class="row">
+                        <div class="col-md-8">
+                            <!-- Basic Fabric Information -->
+                            <h4>Fabric Information</h4>
+                            <table class="table table-borderless">
+                                <tr>
+                                    <th width="200">Name:</th>
+                                    <td><strong>HCKC</strong></td>
+                                </tr>
+                                <tr>
+                                    <th>Description:</th>
+                                    <td>HCKC test cluster fabric</td>
+                                </tr>
+                            </table>
+
+                            <!-- Git Repository Sync Section -->
+                            <h5 class="mt-4"><i class="mdi mdi-git"></i> Git Repository Sync</h5>
+                            <table class="table table-borderless">
+                                <tr>
+                                    <th width="200">Git Sync Status:</th>
+                                    <td>
+                                        <span class="badge bg-secondary">
+                                            Not Configured
+                                        </span>
+                                    </td>
+                                </tr>
+                                <tr>
+                                    <th>Git Sync Enabled:</th>
+                                    <td>
+                                        
+                                            <span class="badge bg-secondary">No Repository</span>
+                                        
+                                    </td>
+                                </tr>
+                                
+                            </table>
+
+                            <!-- Hedgehog Fabric Sync Section -->
+                            <h5 class="mt-4"><i class="mdi mdi-kubernetes"></i> Hedgehog Fabric Sync</h5>
+                            <table class="table table-borderless">
+                                <tr>
+                                    <th width="200">Fabric Kubernetes Server:</th>
+                                    <td>
+                                        
+                                            <code>https://172.18.0.8:6443</code>
+                                        
+                                    </td>
+                                </tr>
+                                <tr>
+                                    <th>Fabric Kubernetes Namespace:</th>
+                                    <td><code>default</code></td>
+                                </tr>
+                                <tr>
+                                    <th>Fabric Sync Status:</th>
+                                    <td>
+                                        <span class="badge bg-danger text-white">
+                                            Sync Error
+                                        </span>
+                                    </td>
+                                </tr>
+                                <tr>
+                                    <th>Fabric Sync Enabled:</th>
+                                    <td>
+                                        
+                                            <span class="badge bg-success">Yes</span>
+                                        
+                                    </td>
+                                </tr>
+                                <tr>
+                                    <th>Fabric Sync Interval:</th>
+                                    <td>300 seconds</td>
+                                </tr>
+                                <tr>
+                                    <th>Fabric Last Sync:</th>
+                                    <td>
+                                        
+                                            2025-07-29 06:26:58
+                                            <small class="text-muted">(15 minutes ago)</small>
+                                        
+                                    </td>
+                                </tr>
+                            </table>
+
+                            <!-- Drift Detection Section -->
+                            <h5 class="mt-4"><i class="mdi mdi-compare"></i> Drift Detection</h5>
+                            <table class="table table-borderless">
+                                <tr>
+                                    <th width="200">Drift Status:</th>
+                                    <td>
+                                        
+                                            <span class="badge bg-success">No drift detected</span>
+                                        
+                                    </td>
+                                </tr>
+                                <tr>
+                                    <th>Drift Count:</th>
+                                    <td>0</td>
+                                </tr>
+                                <tr>
+                                    <th>Last Drift Check:</th>
+                                    <td>
+                                        
+                                            <span class="text-muted">Never</span>
+                                        
+                                    </td>
+                                </tr>
+                            </table>
+
+                            <!-- Error Information -->
+                            
+                            <h5 class="mt-4"><i class="mdi mdi-alert-circle"></i> Error Information</h5>
+                            <table class="table table-borderless">
+                                
+                                <tr>
+                                    <th width="200">Sync Error:</th>
+                                    <td>
+                                        <div class="alert alert-danger">
+                                            <small>Cannot assign &quot;&lt;SimpleLazyObject: &lt;django.contrib.auth.models.AnonymousUser object at 0x7fbeead432c0&gt;&gt;&quot;: &quot;ObjectChange.user&quot; must be a &quot;User&quot; instance.</small>
+                                        </div>
+                                    </td>
+                                </tr>
+                                
+                                
+                            </table>
+                            
+                        </div>
+                        
+                        <div class="col-md-4">
+                            <h4>Git Configuration</h4>
+                            
+                                <div class="alert alert-warning">
+                                    <h6><i class="mdi mdi-git"></i> Legacy Git Configuration</h6>
+                                    <table class="table table-borderless mb-0">
+                                        <tr>
+                                            <th width="30%">Repository URL:</th>
+                                            <td><span class="text-break" style="word-break: break-all; overflow-wrap: break-word;">https://github.com/afewell-hh/gitops-test-1.git</span></td>
+                                        </tr>
+                                        <tr>
+                                            <th>GitOps Directory:</th>
+                                            <td><code class="text-break">/</code></td>
+                                        </tr>
+                                        <tr>
+                                            <th>Branch:</th>
+                                            <td><code class="text-break">main</code></td>
+                                        </tr>
+                                    </table>
+                                    <small class="text-muted d-block mt-2">Consider migrating to the new Git Repository architecture.</small>
+                                </div>
+                            
+                            
+                            <h4>Actions</h4>
+                            <div class="d-grid gap-2">
+                                
+                                    <button id="sync-button" class="btn btn-outline-info" onclick="triggerSync(19)">
+                                        <i class="mdi mdi-sync"></i> Sync from Git
+                                    </button>
+                                
+                                <button id="sync-fabric-button" class="btn btn-outline-primary" onclick="syncFromFabric(19)">
+                                    <i class="mdi mdi-kubernetes"></i> Sync from Fabric
+                                </button>
+                                <button id="test-connection-button" class="btn btn-outline-info" onclick="testConnection(19)">
+                                    <i class="mdi mdi-test-tube"></i> Test Connection
+                                </button>
+                            </div>
+                            
+                            <h4 class="mt-4">Custom Resources</h4>
+                            <div class="d-grid gap-2">
+                                <a href="/plugins/hedgehog/fabrics/19/crds/" class="btn btn-primary">
+                                    <i class="mdi mdi-format-list-bulleted-type"></i> View All CRDs
+                                </a>
+                                <div class="btn-group" role="group">
+                                    <a href="/plugins/hedgehog/vpcs/?fabric=19" class="btn btn-outline-secondary btn-sm">
+                                        <i class="mdi mdi-cloud-outline"></i> VPCs
+                                    </a>
+                                    <a href="/plugins/hedgehog/connections/?fabric=19" class="btn btn-outline-secondary btn-sm">
+                                        <i class="mdi mdi-cable-data"></i> Connections
+                                    </a>
+                                    <a href="/plugins/hedgehog/switches/?fabric=19" class="btn btn-outline-secondary btn-sm">
+                                        <i class="mdi mdi-switch"></i> Switches
+                                    </a>
+                                </div>
+                            </div>
+                            
+                            <script>
+                            // Helper function to get cookie by name
+                            function getCookie(name) {
+                                let cookieValue = null;
+                                if (document.cookie && document.cookie !== '') {
+                                    const cookies = document.cookie.split(';');
+                                    for (let i = 0; i < cookies.length; i++) {
+                                        const cookie = cookies[i].trim();
+                                        if (cookie.substring(0, name.length + 1) === (name + '=')) {
+                                            cookieValue = decodeURIComponent(cookie.substring(name.length + 1));
+                                            break;
+                                        }
+                                    }
+                                }
+                                return cookieValue;
+                            }
+                            
+                            function triggerSync(fabricId) {
+                                const button = document.getElementById('sync-button');
+                                button.disabled = true;
+                                button.innerHTML = '<i class="mdi mdi-sync mdi-spin"></i> Syncing...';
+                                
+                                const baseUrl = window.location.origin;
+                                const syncUrl = `${baseUrl}/api/plugins/hedgehog/gitops-fabrics/${fabricId}/gitops_sync/`;
+                                
+                                // Get CSRF token
+                                const csrftoken = document.querySelector('[name=csrfmiddlewaretoken]')?.value || 
+                                                document.querySelector('meta[name=csrf-token]')?.getAttribute('content') || 
+                                                getCookie('csrftoken');
+                                
+                                fetch(syncUrl, {
+                                    method: 'POST',
+                                    headers: {
+                                        'X-CSRFToken': csrftoken,
+                                        'Content-Type': 'application/json'
+                                    }
+                                })
+                                .then(response => {
+                                    if (!response.ok) {
+                                        return response.json().then(data => {
+                                            throw new Error(data.error || data.detail || `HTTP ${response.status}: ${response.statusText}`);
+                                        });
+                                    }
+                                    return response.json();
+                                })
+                                .then(data => {
+                                    if (data.success) {
+                                        showAlert('success', data.message || 'Sync completed successfully');
+                                        setTimeout(() => location.reload(), 1500);
+                                    } else {
+                                        showAlert('danger', data.error || data.message || 'Sync failed');
+                                    }
+                                })
+                                .catch(error => {
+                                    console.error('Sync error:', error);
+                                    showAlert('danger', 'Sync failed: ' + error.message);
+                                })
+                                .finally(() => {
+                                    button.disabled = false;
+                                    button.innerHTML = '<i class="mdi mdi-sync"></i> Sync from Git';
+                                });
+                            }
+                            
+                            function syncFromFabric(fabricId) {
+                                const button = document.getElementById('sync-fabric-button');
+                                button.disabled = true;
+                                button.innerHTML = '<i class="mdi mdi-kubernetes mdi-spin"></i> Syncing...';
+                                
+                                const baseUrl = window.location.origin;
+                                const syncUrl = `${baseUrl}/api/plugins/hedgehog/gitops-fabrics/${fabricId}/hckc_sync/`;
+                                
+                                // Get CSRF token
+                                const csrftoken = document.querySelector('[name=csrfmiddlewaretoken]')?.value || 
+                                                document.querySelector('meta[name=csrf-token]')?.getAttribute('content') || 
+                                                getCookie('csrftoken');
+                                
+                                fetch(syncUrl, {
+                                    method: 'POST',
+                                    headers: {
+                                        'X-CSRFToken': csrftoken,
+                                        'Content-Type': 'application/json'
+                                    }
+                                })
+                                .then(response => {
+                                    if (!response.ok) {
+                                        return response.json().then(data => {
+                                            throw new Error(data.error || data.detail || `HTTP ${response.status}: ${response.statusText}`);
+                                        });
+                                    }
+                                    return response.json();
+                                })
+                                .then(data => {
+                                    if (data.success) {
+                                        showAlert('success', data.message || 'Fabric sync completed successfully');
+                                        setTimeout(() => location.reload(), 1500);
+                                    } else {
+                                        showAlert('danger', data.error || data.message || 'Fabric sync failed');
+                                    }
+                                })
+                                .catch(error => {
+                                    console.error('Fabric sync error:', error);
+                                    showAlert('danger', 'Fabric sync failed: ' + error.message);
+                                })
+                                .finally(() => {
+                                    button.disabled = false;
+                                    button.innerHTML = '<i class="mdi mdi-kubernetes"></i> Sync from Fabric';
+                                });
+                            }
+                            
+                            function testConnection(fabricId) {
+                                const button = document.getElementById('test-connection-button');
+                                button.disabled = true;
+                                button.innerHTML = '<i class="mdi mdi-test-tube mdi-spin"></i> Testing...';
+                                
+                                const baseUrl = window.location.origin;
+                                const testUrl = `${baseUrl}/plugins/hedgehog/fabrics/${fabricId}/test-connection/`;
+                                
+                                // Get CSRF token
+                                const csrftoken = document.querySelector('[name=csrfmiddlewaretoken]')?.value || 
+                                                document.querySelector('meta[name=csrf-token]')?.getAttribute('content') || 
+                                                getCookie('csrftoken');
+                                
+                                fetch(testUrl, {
+                                    method: 'POST',
+                                    headers: {
+                                        'X-CSRFToken': csrftoken,
+                                        'Content-Type': 'application/json'
+                                    }
+                                })
+                                .then(response => response.json())
+                                .then(data => {
+                                    if (data.success) {
+                                        const clusterInfo = data.details || {};
+                                        const message = data.message || 'Connection test successful!';
+                                        const details = clusterInfo.cluster_version ? ` (${clusterInfo.cluster_version})` : '';
+                                        showAlert('success', message + details);
+                                        setTimeout(() => location.reload(), 1500);
+                                    } else {
+                                        showAlert('danger', data.error || 'Connection test failed');
+                                    }
+                                })
+                                .catch(error => {
+                                    showAlert('danger', 'Connection test failed: ' + error.message);
+                                })
+                                .finally(() => {
+                                    button.disabled = false;
+                                    button.innerHTML = '<i class="mdi mdi-test-tube"></i> Test Connection';
+                                });
+                            }
+                            
+                            function showAlert(type, message) {
+                                const alertDiv = document.createElement('div');
+                                alertDiv.className = `alert alert-${type} alert-dismissible fade show`;
+                                alertDiv.innerHTML = `
+                                    ${message}
+                                    <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+                                `;
+                                
+                                const container = document.querySelector('.card-body');
+                                container.insertBefore(alertDiv, container.firstChild);
+                                
+                                setTimeout(() => {
+                                    alertDiv.remove();
+                                }, 5000);
+                            }
+                            </script>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+function syncFromGit() {
+    const fabricId = 19;
+    
+    // Show loading state
+    const button = event.target;
+    const originalText = button.innerHTML;
+    button.innerHTML = '<i class="mdi mdi-loading mdi-spin"></i> Syncing...';
+    button.disabled = true;
+    
+    fetch(`/api/plugins/hedgehog/gitops-fabrics/${fabricId}/gitops_sync/`, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'X-CSRFToken': document.querySelector('[name=csrfmiddlewaretoken]').value
+        }
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            button.innerHTML = '<i class="mdi mdi-check"></i> Sync completed!';
+            button.style.background = 'rgba(76, 175, 80, 0.3)';
+            setTimeout(() => {
+                button.innerHTML = originalText;
+                button.style.background = '';
+                button.disabled = false;
+            }, 3000);
+        } else {
+            button.innerHTML = '<i class="mdi mdi-alert"></i> Sync failed';
+            button.style.background = 'rgba(244, 67, 54, 0.3)';
+            setTimeout(() => {
+                button.innerHTML = originalText;
+                button.style.background = '';
+                button.disabled = false;
+            }, 5000);
+        }
+    })
+    .catch(error => {
+        button.innerHTML = '<i class="mdi mdi-alert"></i> Network error';
+        button.style.background = 'rgba(244, 67, 54, 0.3)';
+        setTimeout(() => {
+            button.innerHTML = originalText;
+            button.style.background = '';
+            button.disabled = false;
+        }, 5000);
+    });
+}
+</script>
+
+            
+
+          </div>
+        </div>
+      
+      
+
+      
+      
+      
+
+      
+      
+
+      </div>
+
+      
+      <footer class="footer footer-transparent d-print-none py-2">
+        <div class="container-fluid d-flex justify-content-between align-items-center">
+          
+
+            
+            <ul class="list-inline mb-0 fs-2">
+              
+                
+                <li class="list-inline-item">
+                  <a href="/static/docs/" target="_blank" class="link-secondary" rel="noopener" aria-label="Docs">
+                    <i title="Docs" class="mdi mdi-book-open-variant text-primary" data-bs-placement="top" data-bs-toggle="tooltip"></i>
+                  </a>
+                </li>
+                
+                <li class="list-inline-item">
+                  <a href="/api/" target="_blank" class="link-secondary" rel="noopener" aria-label="REST API">
+                    <i title="REST API" class="mdi mdi-cloud-braces text-primary" data-bs-placement="top" data-bs-toggle="tooltip"></i>
+                  </a>
+                </li>
+                
+                <li class="list-inline-item">
+                  <a href="/api/schema/swagger-ui/" target="_blank" class="link-secondary" rel="noopener" aria-label="REST API documentation">
+                    <i title="REST API documentation" class="mdi mdi-book text-primary" data-bs-placement="top" data-bs-toggle="tooltip"></i>
+                  </a>
+                </li>
+                
+                
+                  <li class="list-inline-item">
+                    <a href="/graphql/" target="_blank" class="link-secondary" rel="noopener" aria-label="GraphQL API">
+                      <i title="GraphQL API" class="mdi mdi-graphql text-primary" data-bs-placement="top" data-bs-toggle="tooltip"></i>
+                    </a>
+                  </li>
+                
+
+                
+                
+                  
+                  <li class="list-inline-item">
+                    <a href="https://github.com/netbox-community/netbox" target="_blank" class="link-secondary" rel="noopener" aria-label="Source Code">
+                      <i title="Source Code" class="mdi mdi-github text-primary" data-bs-placement="top" data-bs-toggle="tooltip"></i>
+                    </a>
+                  </li>
+                  
+                  <li class="list-inline-item">
+                    <a href="https://netdev.chat" target="_blank" class="link-secondary" rel="noopener" aria-label="Community">
+                      <i title="Community" class="mdi mdi-slack text-primary" data-bs-placement="top" data-bs-toggle="tooltip"></i>
+                    </a>
+                  </li>
+                
+              
+            </ul>
+            
+
+            
+            <ul class="list-inline list-inline-dots fs-5 mb-0" id="footer-stamp" hx-swap-oob="true">
+              <li class="list-inline-item">2025-07-29 06:42:03 UTC</li>
+              <li class="list-inline-item">fe388fd33a28</li>
+            </ul>
+            
+
+          
+        </div>
+      </footer>
+      
+
+    
+    </div>
+
+  </div>
+
+
+    
+    
+
+    
+    
+
+<div id="django-messages" class="toast-container position-fixed bottom-0 end-0 p-3" hx-swap-oob="true">
+
+  
+  
+
+  
+  
+
+</div>
+
+
+  </body>
+</html>

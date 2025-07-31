@@ -66,6 +66,49 @@
         .status-indicator.danger { background: #f8d7da; color: #721c24; border: 1px solid #f5c6cb; }
         .status-indicator.info { background: #d1ecf1; color: #0c5460; border: 1px solid #bee5eb; }
         .status-indicator.secondary { background: #e2e3e5; color: #383d41; border: 1px solid #d6d8db; }
+        
+        /* Drift Detection Styles */
+        .drift-spotlight {
+            background: linear-gradient(135deg, #f39c12 0%, #e67e22 100%);
+            color: white; border-radius: 12px; padding: 2rem;
+            box-shadow: 0 4px 15px rgba(243, 156, 18, 0.2);
+            margin-bottom: 2rem;
+        }
+        .drift-spotlight.in-sync {
+            background: linear-gradient(135deg, #27ae60 0%, #229954 100%);
+            box-shadow: 0 4px 15px rgba(39, 174, 96, 0.2);
+        }
+        .drift-spotlight.critical {
+            background: linear-gradient(135deg, #e74c3c 0%, #c0392b 100%);
+            box-shadow: 0 4px 15px rgba(231, 76, 60, 0.2);
+        }
+        .drift-summary-cards {
+            display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 1rem; margin-top: 1.5rem;
+        }
+        .drift-summary-card {
+            background: rgba(255, 255, 255, 0.15); border: 1px solid rgba(255, 255, 255, 0.2);
+            border-radius: 8px; padding: 1.5rem; text-align: center;
+            transition: all 0.3s ease;
+        }
+        .drift-summary-card:hover { background: rgba(255, 255, 255, 0.25); transform: translateY(-2px); }
+        .drift-summary-card-title { font-size: 0.9rem; font-weight: 600; opacity: 0.9; margin-bottom: 0.5rem; }
+        .drift-summary-card-value { font-size: 2rem; font-weight: 700; margin-bottom: 0.5rem; }
+        .drift-summary-card-subtitle { font-size: 0.8rem; opacity: 0.8; }
+        .drift-actions {
+            display: flex; gap: 1rem; flex-wrap: wrap; margin-top: 1.5rem;
+        }
+        .drift-action-btn {
+            background: rgba(255, 255, 255, 0.15); border: 1px solid rgba(255, 255, 255, 0.3);
+            color: white; padding: 0.75rem 1.5rem; border-radius: 6px; text-decoration: none;
+            font-weight: 500; transition: all 0.3s ease; display: flex; align-items: center; gap: 0.5rem;
+        }
+        .drift-action-btn:hover { background: rgba(255, 255, 255, 0.25); color: white; text-decoration: none; }
+        .drift-badge { padding: 0.25rem 0.75rem; border-radius: 12px; font-size: 0.75rem; font-weight: 600; }
+        .drift-badge.critical { background: #dc3545; color: white; }
+        .drift-badge.important { background: #fd7e14; color: white; }
+        .drift-badge.minor { background: #ffc107; color: #212529; }
+        .drift-badge.none { background: #198754; color: white; }
     </style>
 {% endblock %}
 
@@ -87,91 +130,233 @@
                     </div>
                 </div>
                 <div class="card-body">
-                    <!-- Progressive Disclosure Overview Dashboard -->
-                    <div class="dashboard-overview mb-4">
-                        <div class="status-cards">
-                            <div class="status-card">
-                                <div class="status-card-title">Connection Status</div>
-                                <div class="status-card-value">
-                                    {% if object.connection_status == 'connected' %}
-                                        <i class="mdi mdi-check-circle"></i>
-                                    {% elif object.connection_status == 'error' %}
-                                        <i class="mdi mdi-alert-circle"></i>
-                                    {% else %}
-                                        <i class="mdi mdi-help-circle"></i>
-                                    {% endif %}
+                    <!-- Sync Status Summary -->
+                    <div class="row mb-4">
+                        <div class="col-md-6">
+                            <div class="card border-primary">
+                                <div class="card-header bg-primary text-white">
+                                    <h5 class="mb-0"><i class="mdi mdi-git"></i> Git Repository Sync</h5>
+                                    <small>Syncing FROM Git TO NetBox</small>
                                 </div>
-                                <div class="status-card-subtitle">{{ object.get_connection_status_display }}</div>
-                            </div>
-                            
-                            <div class="status-card">
-                                <div class="status-card-title">Sync Status</div>
-                                <div class="status-card-value">
-                                    {% if object.sync_status == 'in_sync' %}
-                                        <i class="mdi mdi-sync"></i>
-                                    {% elif object.sync_status == 'syncing' %}
-                                        <i class="mdi mdi-sync mdi-spin"></i>
-                                    {% elif object.sync_status == 'error' %}
-                                        <i class="mdi mdi-sync-alert"></i>
+                                <div class="card-body">
+                                    <div class="d-flex justify-content-between align-items-center mb-3">
+                                        <div>
+                                            <h6 class="mb-0">Status</h6>
+                                            {% if object.git_repository_url %}
+                                                {% if object.drift_status == 'in_sync' %}
+                                                    <span class="badge bg-success">
+                                                        <i class="mdi mdi-check-circle"></i> In Sync
+                                                    </span>
+                                                {% elif object.drift_status == 'drift_detected' %}
+                                                    <span class="badge bg-warning">
+                                                        <i class="mdi mdi-alert-circle"></i> Drift Detected
+                                                    </span>
+                                                {% else %}
+                                                    <span class="badge bg-secondary">
+                                                        <i class="mdi mdi-help-circle"></i> Unknown
+                                                    </span>
+                                                {% endif %}
+                                            {% else %}
+                                                <span class="badge bg-secondary">
+                                                    <i class="mdi mdi-git"></i> Not Configured
+                                                </span>
+                                            {% endif %}
+                                        </div>
+                                        <div class="text-end">
+                                            {% if object.last_git_sync %}
+                                                <small class="text-muted">Last sync: {{ object.last_git_sync|timesince }} ago</small>
+                                            {% else %}
+                                                <small class="text-muted">Never synced</small>
+                                            {% endif %}
+                                        </div>
+                                    </div>
+                                    {% if object.git_repository_url %}
+                                        <div class="mb-2">
+                                            <small class="text-muted">Repository:</small><br>
+                                            <a href="{{ object.git_repository_url }}" target="_blank" class="text-decoration-none">
+                                                <i class="mdi mdi-open-in-new"></i> {{ object.git_repository_url|truncatechars:40 }}
+                                            </a>
+                                        </div>
+                                        <button class="btn btn-sm btn-primary" onclick="syncFromGit(); return false;">
+                                            <i class="mdi mdi-sync"></i> Sync from Git
+                                        </button>
                                     {% else %}
-                                        <i class="mdi mdi-sync-off"></i>
-                                    {% endif %}
-                                </div>
-                                <div class="status-card-subtitle">{{ object.get_sync_status_display }}</div>
-                            </div>
-                            
-                            <div class="status-card">
-                                <div class="status-card-title">Total CRDs</div>
-                                <div class="status-card-value">{{ object.cached_crd_count|default:0 }}</div>
-                                <div class="status-card-subtitle">
-                                    {% if object.last_sync %}
-                                        Last synced {{ object.last_sync|timesince }} ago
-                                    {% else %}
-                                        Never synchronized
-                                    {% endif %}
-                                </div>
-                            </div>
-                            
-                            <div class="status-card">
-                                <div class="status-card-title">GitOps Status</div>
-                                <div class="status-card-value">
-                                    {% if object.gitops_initialized %}
-                                        <i class="mdi mdi-git"></i>
-                                    {% else %}
-                                        <i class="mdi mdi-git text-muted"></i>
-                                    {% endif %}
-                                </div>
-                                <div class="status-card-subtitle">
-                                    {% if object.gitops_initialized %}
-                                        Initialized
-                                    {% else %}
-                                        Not Initialized
+                                        <p class="mb-2">Configure a Git repository to sync configuration from Git to NetBox.</p>
+                                        <a href="{% url 'plugins:netbox_hedgehog:fabric_edit' pk=object.pk %}" class="btn btn-sm btn-outline-primary">
+                                            <i class="mdi mdi-git"></i> Configure Git
+                                        </a>
                                     {% endif %}
                                 </div>
                             </div>
                         </div>
                         
-                        <div class="quick-actions">
-                            <a href="#" class="quick-action-btn" onclick="syncFromGit(); return false;">
-                                <i class="mdi mdi-sync"></i> Sync from Git
-                            </a>
-                            {% if object.git_repository_url %}
-                                <a href="{{ object.git_repository_url }}" target="_blank" class="quick-action-btn">
-                                    <i class="mdi mdi-open-in-new"></i> View Repository
-                                </a>
-                            {% endif %}
-                            {% if not object.gitops_initialized %}
-                                <a href="#" class="quick-action-btn" onclick="initGitOps(); return false;">
-                                    <i class="mdi mdi-folder-plus"></i> Initialize GitOps
-                                </a>
-                            {% endif %}
+                        <div class="col-md-6">
+                            <div class="card border-info">
+                                <div class="card-header bg-info text-white">
+                                    <h5 class="mb-0"><i class="mdi mdi-kubernetes"></i> HCKC (Kubernetes) Sync</h5>
+                                    <small>Syncing FROM NetBox TO Kubernetes</small>
+                                </div>
+                                <div class="card-body">
+                                    <div class="d-flex justify-content-between align-items-center mb-3">
+                                        <div>
+                                            <h6 class="mb-0">Status</h6>
+                                            {% if object.sync_status == 'in_sync' %}
+                                                <span class="badge bg-success">
+                                                    <i class="mdi mdi-check-circle"></i> In Sync
+                                                </span>
+                                            {% elif object.sync_status == 'syncing' %}
+                                                <span class="badge bg-info">
+                                                    <i class="mdi mdi-sync mdi-spin"></i> Syncing
+                                                </span>
+                                            {% elif object.sync_status == 'error' %}
+                                                <span class="badge bg-danger">
+                                                    <i class="mdi mdi-sync-alert"></i> Error
+                                                </span>
+                                            {% else %}
+                                                <span class="badge bg-secondary">
+                                                    <i class="mdi mdi-sync-off"></i> Not Synced
+                                                </span>
+                                            {% endif %}
+                                        </div>
+                                        <div class="text-end">
+                                            {% if object.last_sync %}
+                                                <small class="text-muted">Last sync: {{ object.last_sync|timesince }} ago</small>
+                                            {% else %}
+                                                <small class="text-muted">Never synced</small>
+                                            {% endif %}
+                                        </div>
+                                    </div>
+                                    <div class="mb-2">
+                                        <small class="text-muted">Namespace:</small> <code>{{ object.kubernetes_namespace }}</code><br>
+                                        <small class="text-muted">CRDs:</small> <strong>{{ object.cached_crd_count|default:0 }}</strong>
+                                    </div>
+                                    {% if object.sync_error %}
+                                        <div class="alert alert-danger py-1 px-2 mb-2">
+                                            <small>{{ object.sync_error|truncatechars:100 }}</small>
+                                        </div>
+                                    {% endif %}
+                                    <button id="sync-now-btn" class="btn btn-sm btn-info" data-fabric-id="{{ object.pk }}">
+                                        <i class="mdi mdi-sync"></i> Sync to Kubernetes
+                                    </button>
+                                </div>
+                            </div>
                         </div>
                     </div>
+                    
+                    <!-- Enhanced Drift Detection Section -->
+                    {% if object.git_repository_url %}
+                    <div class="drift-spotlight {% if drift_summary.status == 'in_sync' %}in-sync{% elif drift_summary.severity == 'critical' %}critical{% endif %}">
+                        <div class="d-flex justify-content-between align-items-start mb-3">
+                            <div>
+                                <h4 class="mb-2">
+                                    <i class="mdi mdi-compare-horizontal"></i> 
+                                    Drift Detection Status
+                                </h4>
+                                <p class="mb-0 opacity-90">
+                                    {% if drift_summary.status == 'in_sync' %}
+                                        Your fabric configuration is perfectly synchronized with Git repository.
+                                    {% elif drift_summary.count > 0 %}
+                                        Configuration drift detected. {{ drift_summary.count }} resource{{ drift_summary.count|pluralize }} need attention.
+                                    {% else %}
+                                        Drift detection is active and monitoring your fabric configuration.
+                                    {% endif %}
+                                </p>
+                            </div>
+                            <div class="text-end">
+                                <span class="drift-badge {{ drift_summary.severity }}">
+                                    {% if drift_summary.status == 'in_sync' %}
+                                        <i class="mdi mdi-check-circle"></i> In Sync
+                                    {% elif drift_summary.count > 0 %}
+                                        <i class="mdi mdi-alert-circle"></i> {{ drift_summary.count }} Drift{{ drift_summary.count|pluralize }}
+                                    {% else %}
+                                        <i class="mdi mdi-help-circle"></i> {{ drift_summary.status|title }}
+                                    {% endif %}
+                                </span>
+                            </div>
+                        </div>
+                        
+                        <div class="drift-summary-cards">
+                            <div class="drift-summary-card">
+                                <div class="drift-summary-card-title">RESOURCES WITH DRIFT</div>
+                                <div class="drift-summary-card-value">{{ drift_summary.count }}</div>
+                                <div class="drift-summary-card-subtitle">
+                                    of {{ drift_summary.total_resources }} total
+                                </div>
+                            </div>
+                            <div class="drift-summary-card">
+                                <div class="drift-summary-card-title">LAST CHECK</div>
+                                <div class="drift-summary-card-value">
+                                    {% if drift_summary.last_check %}
+                                        {{ drift_summary.last_check|timesince|truncatewords:1 }}
+                                    {% else %}
+                                        Never
+                                    {% endif %}
+                                </div>
+                                <div class="drift-summary-card-subtitle">
+                                    {% if drift_summary.last_check %}ago{% else %}checked{% endif %}
+                                </div>
+                            </div>
+                            <div class="drift-summary-card">
+                                <div class="drift-summary-card-title">SEVERITY</div>
+                                <div class="drift-summary-card-value">
+                                    {% if drift_summary.severity == 'critical' %}
+                                        <i class="mdi mdi-alert-octagon"></i>
+                                    {% elif drift_summary.severity == 'important' %}
+                                        <i class="mdi mdi-alert-circle"></i>
+                                    {% elif drift_summary.severity == 'minor' %}
+                                        <i class="mdi mdi-alert"></i>
+                                    {% else %}
+                                        <i class="mdi mdi-check-circle"></i>
+                                    {% endif %}
+                                </div>
+                                <div class="drift-summary-card-subtitle">
+                                    {{ drift_summary.severity|title }}{% if drift_summary.severity == 'none' %} Issues{% endif %}
+                                </div>
+                            </div>
+                            <div class="drift-summary-card">
+                                <div class="drift-summary-card-title">STATUS</div>
+                                <div class="drift-summary-card-value">
+                                    {% if object.drift_status == 'in_sync' %}
+                                        <i class="mdi mdi-check-bold"></i>
+                                    {% elif object.drift_status == 'drift_detected' %}
+                                        <i class="mdi mdi-sync-alert"></i>
+                                    {% else %}
+                                        <i class="mdi mdi-help-circle"></i>
+                                    {% endif %}
+                                </div>
+                                <div class="drift-summary-card-subtitle">
+                                    {{ object.get_drift_status_display|default:object.drift_status|title }}
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div class="drift-actions">
+                            {% if drift_summary.count > 0 %}
+                                <button class="drift-action-btn" onclick="showDriftAnalysis({{ object.pk }})">
+                                    <i class="mdi mdi-chart-line"></i> Analyze Drift
+                                </button>
+                                <button class="drift-action-btn" onclick="syncFromGit()">
+                                    <i class="mdi mdi-sync"></i> Sync from Git
+                                </button>
+                            {% else %}
+                                <button class="drift-action-btn" onclick="checkForDrift({{ object.pk }})">
+                                    <i class="mdi mdi-magnify"></i> Check for Drift
+                                </button>
+                                <button class="drift-action-btn" onclick="viewDriftHistory({{ object.pk }})">
+                                    <i class="mdi mdi-history"></i> View History
+                                </button>
+                            {% endif %}
+                            <button class="drift-action-btn" onclick="configureDriftSettings({{ object.pk }})">
+                                <i class="mdi mdi-cog"></i> Configure Detection
+                            </button>
+                        </div>
+                    </div>
+                    {% endif %}
                     
                     <div class="row">
                         <div class="col-md-8">
                             <h4>Fabric Information</h4>
-                            <table class="table table-borderless">
+                            <table class="table table-borderless fabric-detail">
                                 <tr>
                                     <th width="200">Name:</th>
                                     <td>{{ object.name }}</td>
@@ -188,33 +373,99 @@
                                         </span>
                                     </td>
                                 </tr>
+                                
+                                <!-- Git Repository Sync Details -->
+                                <tr class="table-active">
+                                    <th colspan="2" class="bg-light">
+                                        <i class="mdi mdi-git text-primary"></i> Git Repository Sync (Git → NetBox)
+                                    </th>
+                                </tr>
                                 <tr>
-                                    <th>Connection Status:</th>
+                                    <th>Git Sync Status:</th>
                                     <td>
-                                        {% if object.connection_status == 'connected' %}
-                                            <span class="badge bg-success" data-connection-status>Connected</span>
-                                        {% elif object.connection_status == 'disconnected' %}
-                                            <span class="badge bg-danger" data-connection-status>Disconnected</span>
-                                        {% elif object.connection_status == 'error' %}
-                                            <span class="badge bg-danger" data-connection-status>Error</span>
+                                        {% if object.git_repository_url %}
+                                            {% if object.drift_status == 'in_sync' %}
+                                                <span class="badge bg-success fs-6 px-3 py-2">
+                                                    <i class="mdi mdi-check-circle"></i> In Sync
+                                                </span>
+                                                <span class="text-success ms-2">
+                                                    <i class="mdi mdi-shield-check"></i> Configuration synchronized
+                                                </span>
+                                            {% elif object.drift_status == 'drift_detected' %}
+                                                <span class="badge bg-warning fs-6 px-3 py-2">
+                                                    <i class="mdi mdi-alert-circle"></i> Drift Detected
+                                                </span>
+                                                <span class="text-warning ms-2">
+                                                    <i class="mdi mdi-compare-horizontal"></i> {{ object.drift_count }} resource{{ object.drift_count|pluralize }} with drift
+                                                </span>
+                                            {% else %}
+                                                <span class="badge bg-secondary fs-6 px-3 py-2">
+                                                    <i class="mdi mdi-help-circle"></i> Unknown
+                                                </span>
+                                                <span class="text-muted ms-2">Status unknown</span>
+                                            {% endif %}
                                         {% else %}
-                                            <span class="badge bg-secondary" data-connection-status>Unknown</span>
+                                            <span class="badge bg-secondary fs-6 px-3 py-2">
+                                                <i class="mdi mdi-git"></i> Not Configured
+                                            </span>
+                                            <span class="text-muted ms-2">No Git repository configured</span>
                                         {% endif %}
                                     </td>
                                 </tr>
                                 <tr>
-                                    <th>Sync Status:</th>
+                                    <th>Last Git Sync:</th>
+                                    <td>
+                                        {% if object.last_git_sync %}
+                                            {{ object.last_git_sync }} ({{ object.last_git_sync|timesince }} ago)
+                                        {% else %}
+                                            <span class="text-muted">Never synchronized from Git</span>
+                                        {% endif %}
+                                    </td>
+                                </tr>
+                                
+                                <!-- Kubernetes Sync Details -->
+                                <tr class="table-active">
+                                    <th colspan="2" class="bg-light">
+                                        <i class="mdi mdi-kubernetes text-info"></i> HCKC Sync (NetBox → Kubernetes)
+                                    </th>
+                                </tr>
+                                <tr>
+                                    <th>HCKC Sync Status:</th>
                                     <td>
                                         {% if object.sync_status == 'in_sync' %}
-                                            <span class="badge bg-success" data-sync-status>In Sync</span>
+                                            <span class="badge bg-success" data-sync-status><i class="mdi mdi-check-circle"></i> In Sync</span>
                                         {% elif object.sync_status == 'out_of_sync' %}
-                                            <span class="badge bg-warning" data-sync-status>Out of Sync</span>
+                                            <span class="badge bg-warning" data-sync-status><i class="mdi mdi-alert"></i> Out of Sync</span>
                                         {% elif object.sync_status == 'syncing' %}
-                                            <span class="badge bg-info" data-sync-status>Syncing</span>
+                                            <span class="badge bg-info" data-sync-status><i class="mdi mdi-sync mdi-spin"></i> Syncing</span>
                                         {% elif object.sync_status == 'error' %}
-                                            <span class="badge bg-danger" data-sync-status>Sync Error</span>
+                                            <span class="badge bg-danger" data-sync-status><i class="mdi mdi-sync-alert"></i> Sync Error</span>
                                         {% else %}
-                                            <span class="badge bg-secondary" data-sync-status>Never Synced</span>
+                                            <span class="badge bg-secondary" data-sync-status><i class="mdi mdi-sync-off"></i> Never Synced</span>
+                                        {% endif %}
+                                    </td>
+                                </tr>
+                                <tr>
+                                    <th>Last HCKC Sync:</th>
+                                    <td>
+                                        {% if object.last_sync %}
+                                            {{ object.last_sync }} ({{ object.last_sync|timesince }} ago)
+                                        {% else %}
+                                            <span class="text-muted">Never synchronized to Kubernetes</span>
+                                        {% endif %}
+                                    </td>
+                                </tr>
+                                <tr>
+                                    <th>Connection Status:</th>
+                                    <td>
+                                        {% if object.connection_status == 'connected' %}
+                                            <span class="badge bg-success" data-connection-status><i class="mdi mdi-lan-connect"></i> Connected</span>
+                                        {% elif object.connection_status == 'disconnected' %}
+                                            <span class="badge bg-danger" data-connection-status><i class="mdi mdi-lan-disconnect"></i> Disconnected</span>
+                                        {% elif object.connection_status == 'error' %}
+                                            <span class="badge bg-danger" data-connection-status><i class="mdi mdi-alert"></i> Error</span>
+                                        {% else %}
+                                            <span class="badge bg-secondary" data-connection-status><i class="mdi mdi-help-circle"></i> Unknown</span>
                                         {% endif %}
                                     </td>
                                 </tr>
@@ -224,7 +475,14 @@
                                 </tr>
                                 <tr>
                                     <th>Kubernetes Server:</th>
-                                    <td>{{ object.kubernetes_server|default:"Using default kubeconfig" }}</td>
+                                    <td>
+                                        {% if object.kubernetes_server and object.kubernetes_server|length > 0 %}
+                                            <code>{{ object.kubernetes_server }}</code>
+                                        {% else %}
+                                            <span class="text-muted">Not configured</span>
+                                            <small class="text-muted ms-2">(Using default kubeconfig)</small>
+                                        {% endif %}
+                                    </td>
                                 </tr>
                                 <tr>
                                     <th>Sync Enabled:</th>
@@ -234,16 +492,6 @@
                                             ({{ object.sync_interval }}s interval)
                                         {% else %}
                                             <span class="badge bg-secondary">Disabled</span>
-                                        {% endif %}
-                                    </td>
-                                </tr>
-                                <tr>
-                                    <th>Last Sync:</th>
-                                    <td>
-                                        {% if object.last_sync %}
-                                            {{ object.last_sync }} ({{ object.last_sync|timesince }} ago)
-                                        {% else %}
-                                            <span class="text-muted">Never synchronized</span>
                                         {% endif %}
                                     </td>
                                 </tr>
@@ -276,33 +524,6 @@
                                     <td><code>{{ object.git_branch|default:"main" }}</code></td>
                                 </tr>
                                 <tr>
-                                    <th>GitOps State:</th>
-                                    <td>
-                                        <div id="gitops-state-display">
-                                            {% if object.drift_status == 'in_sync' %}
-                                                <span class="badge bg-success">
-                                                    <i class="mdi mdi-check-circle"></i> SYNCED
-                                                </span>
-                                                <small class="text-muted ms-2">Git and cluster are aligned</small>
-                                            {% elif object.drift_status == 'drift_detected' %}
-                                                <span class="badge bg-warning">
-                                                    <i class="mdi mdi-alert-circle"></i> DRIFTED
-                                                </span>
-                                                <small class="text-muted ms-2">{{ object.drift_count }} resource(s) with drift</small>
-                                            {% else %}
-                                                <span class="badge bg-secondary">
-                                                    <i class="mdi mdi-help-circle"></i> UNKNOWN
-                                                </span>
-                                                <small class="text-muted ms-2">GitOps status unknown</small>
-                                            {% endif %}
-                                        </div>
-                                        
-                                        <button class="btn btn-sm btn-outline-info ms-2" onclick="refreshGitOpsStatus()">
-                                            <i class="mdi mdi-refresh"></i> Refresh
-                                        </button>
-                                    </td>
-                                </tr>
-                                <tr>
                                     <th>GitOps Operations:</th>
                                     <td>
                                         <div class="btn-group" role="group">
@@ -316,16 +537,6 @@
                                                 <i class="mdi mdi-compare-horizontal"></i> Drift Details
                                             </button>
                                         </div>
-                                    </td>
-                                </tr>
-                                <tr>
-                                    <th>Last Git Sync:</th>
-                                    <td>
-                                        {% if object.last_git_sync %}
-                                            {{ object.last_git_sync }} ({{ object.last_git_sync|timesince }} ago)
-                                        {% else %}
-                                            <span class="text-muted">Never synchronized from Git</span>
-                                        {% endif %}
                                     </td>
                                 </tr>
                                 <tr>
@@ -351,64 +562,6 @@
                                     </td>
                                 </tr>
                                 {% endif %}
-                                
-                                <!-- ArgoCD Setup Integration (Week 2 MVP2) -->
-                                <tr>
-                                    <th>ArgoCD GitOps:</th>
-                                    <td>
-                                        {% if object.argocd_installed %}
-                                            <span class="badge bg-success">
-                                                <i class="mdi mdi-kubernetes"></i> ArgoCD Installed
-                                            </span>
-                                            {% if object.argocd_server_url %}
-                                                <a href="{{ object.argocd_server_url }}" target="_blank" class="btn btn-sm btn-outline-success ms-2">
-                                                    <i class="mdi mdi-open-in-new"></i> Open ArgoCD UI
-                                                </a>
-                                            {% endif %}
-                                            <div class="mt-2">
-                                                <small class="text-muted">
-                                                    Version: {{ object.argocd_version|default:"Unknown" }} | 
-                                                    Status: {{ object.argocd_health_status|default:"Unknown" }}
-                                                    {% if object.argocd_installation_date %}
-                                                        | Installed: {{ object.argocd_installation_date|timesince }} ago
-                                                    {% endif %}
-                                                </small>
-                                            </div>
-                                        {% elif object.gitops_setup_status == 'installing' %}
-                                            <span class="badge bg-info">
-                                                <i class="mdi mdi-loading mdi-spin"></i> Installing ArgoCD...
-                                            </span>
-                                            <div class="mt-2">
-                                                <small class="text-muted">ArgoCD installation in progress</small>
-                                            </div>
-                                        {% elif object.gitops_setup_status == 'error' %}
-                                            <span class="badge bg-danger">
-                                                <i class="mdi mdi-alert-circle"></i> Setup Failed
-                                            </span>
-                                            <div class="mt-2">
-                                                <span class="text-muted">ArgoCD setup not available</span>
-                                                {% if object.gitops_setup_error %}
-                                                    <div class="mt-1">
-                                                        <small class="text-danger">{{ object.gitops_setup_error|truncatechars:100 }}</small>
-                                                    </div>
-                                                {% endif %}
-                                            </div>
-                                        {% else %}
-                                            <span class="badge bg-secondary">
-                                                <i class="mdi mdi-kubernetes"></i> Not Configured
-                                            </span>
-                                            <div class="mt-2">
-                                                <span class="text-muted">ArgoCD setup not available</span>
-                                                <div class="mt-1">
-                                                    <small class="text-muted">
-                                                        <i class="mdi mdi-information"></i>
-                                                        Deploy ArgoCD for automated GitOps workflows
-                                                    </small>
-                                                </div>
-                                            </div>
-                                        {% endif %}
-                                    </td>
-                                </tr>
                             </table>
                         </div>
                         
@@ -467,18 +620,6 @@
                                         <i class="mdi mdi-eye"></i> View CRDs (0)
                                     </button>
                                     {% endif %}
-                                    <!-- ArgoCD Setup Action (Week 2 MVP2) -->
-                                    {% if not object.argocd_installed and object.gitops_setup_status != 'installing' %}
-                                        <span class="text-muted">ArgoCD setup not available</span>
-                                    {% elif object.argocd_installed and object.argocd_server_url %}
-                                        <a href="{{ object.argocd_server_url }}" target="_blank" class="btn btn-info">
-                                            <i class="mdi mdi-open-in-new"></i> ArgoCD UI
-                                        </a>
-                                    {% elif object.gitops_setup_status == 'installing' %}
-                                        <button class="btn btn-info" disabled>
-                                            <i class="mdi mdi-loading mdi-spin"></i> Installing...
-                                        </button>
-                                    {% endif %}
                                     
                                     <button class="btn btn-warning" disabled>
                                         <i class="mdi mdi-cog"></i> Configuration
@@ -524,13 +665,25 @@
                                         <th>Drift Status:</th>
                                         <td>
                                             <span class="gitops-status-indicator {% if object.drift_count > 0 %}has-drift{% endif %}">
-                                                <span class="badge bg-{% if object.drift_status == 'in_sync' %}success{% elif object.drift_status == 'drift_detected' %}warning{% else %}secondary{% endif %}">
+                                                <span class="badge bg-{% if object.drift_status == 'in_sync' %}success{% elif object.drift_status == 'drift_detected' %}warning{% else %}secondary{% endif %} fs-6 px-3 py-2">
                                                     <i class="mdi mdi-{% if object.drift_status == 'in_sync' %}check-circle{% elif object.drift_status == 'drift_detected' %}alert-circle{% else %}help-circle{% endif %}"></i>
                                                     {{ object.get_drift_status_display|default:object.drift_status|title }}
                                                 </span>
                                             </span>
                                             {% if object.drift_count > 0 %}
-                                                <small class="text-muted ms-2">{{ object.drift_count }} resource{{ object.drift_count|pluralize }} with drift</small>
+                                                <div class="mt-2">
+                                                    <span class="text-warning fw-bold">
+                                                        <i class="mdi mdi-compare-horizontal"></i> 
+                                                        {{ object.drift_count }} resource{{ object.drift_count|pluralize }} with configuration drift
+                                                    </span>
+                                                    <button class="btn btn-sm btn-outline-warning ms-2" onclick="showDriftAnalysis({{ object.pk }})">
+                                                        <i class="mdi mdi-chart-line"></i> Analyze
+                                                    </button>
+                                                </div>
+                                            {% else %}
+                                                <span class="text-success ms-2">
+                                                    <i class="mdi mdi-shield-check"></i> All resources synchronized
+                                                </span>
                                             {% endif %}
                                         </td>
                                     </tr>
@@ -646,7 +799,7 @@
                                         
                                         <div class="mt-3">
                                             <h6>Recent File Activity</h6>
-                                            <div class="file-activity-log" style="max-height: 200px; overflow-y: auto;">
+                                            <div class="file-activity-log hedgehog-scrollable-200">
                                                 <div class="text-muted text-center py-3" id="no-activity">
                                                     <i class="mdi mdi-clock-outline"></i>
                                                     <p class="mb-0">No recent file activity</p>
@@ -1790,6 +1943,385 @@ document.addEventListener('DOMContentLoaded', function() {
         updateFileManagementStats();
     }
 });
+
+// Enhanced Drift Detection Functions
+function showDriftAnalysis(fabricId) {
+    console.log('🔍 Showing drift analysis for fabric:', fabricId);
+    
+    // Show loading state
+    showNotification('Loading drift analysis...', 'info');
+    
+    // Fetch detailed drift analysis
+    fetch(`/plugins/hedgehog/api/fabrics/${fabricId}/drift-analysis/`, {
+        method: 'GET',
+        headers: {
+            'X-CSRFToken': getCookie('csrftoken'),
+            'Content-Type': 'application/json',
+        },
+        credentials: 'same-origin'
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            showDriftAnalysisModal(data);
+        } else {
+            showNotification('Failed to load drift analysis: ' + (data.error || 'Unknown error'), 'error');
+        }
+    })
+    .catch(error => {
+        console.error('Drift analysis error:', error);
+        showNotification('Failed to load drift analysis: ' + error.message, 'error');
+    });
+}
+
+function checkForDrift(fabricId) {
+    console.log('🔄 Checking for drift for fabric:', fabricId);
+    
+    if (!confirm('This will perform a comprehensive drift check against the Git repository. Continue?')) {
+        return;
+    }
+    
+    // Show loading notification
+    showNotification('Checking for configuration drift...', 'info');
+    
+    // Trigger drift check
+    fetch(`/plugins/hedgehog/api/fabrics/${fabricId}/check-drift/`, {
+        method: 'POST',
+        headers: {
+            'X-CSRFToken': getCookie('csrftoken'),
+            'Content-Type': 'application/json',
+        },
+        credentials: 'same-origin'
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            showNotification('Drift check completed successfully!', 'success');
+            setTimeout(() => location.reload(), 2000);
+        } else {
+            showNotification('Drift check failed: ' + (data.error || 'Unknown error'), 'error');
+        }
+    })
+    .catch(error => {
+        console.error('Drift check error:', error);
+        showNotification('Drift check failed: ' + error.message, 'error');
+    });
+}
+
+function viewDriftHistory(fabricId) {
+    console.log('📚 Viewing drift history for fabric:', fabricId);
+    
+    // Fetch drift history
+    fetch(`/plugins/hedgehog/api/fabrics/${fabricId}/drift-history/`, {
+        method: 'GET',
+        headers: {
+            'X-CSRFToken': getCookie('csrftoken'),
+        },
+        credentials: 'same-origin'
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            showDriftHistoryModal(data);
+        } else {
+            showNotification('Failed to load drift history', 'error');
+        }
+    })
+    .catch(error => {
+        console.error('Drift history error:', error);
+        showNotification('Failed to load drift history', 'error');
+    });
+}
+
+function configureDriftSettings(fabricId) {
+    console.log('⚙️ Configuring drift settings for fabric:', fabricId);
+    
+    // Show drift configuration modal
+    showDriftConfigurationModal(fabricId);
+}
+
+function showDriftAnalysisModal(data) {
+    const modalHtml = `
+        <div class="modal fade" id="driftAnalysisModal" tabindex="-1">
+            <div class="modal-dialog modal-xl">
+                <div class="modal-content">
+                    <div class="modal-header">
+                        <h5 class="modal-title">
+                            <i class="mdi mdi-chart-line text-warning"></i>
+                            Drift Analysis Report
+                        </h5>
+                        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                    </div>
+                    <div class="modal-body">
+                        <div class="row mb-4">
+                            <div class="col-md-3 text-center">
+                                <div class="card bg-warning text-white">
+                                    <div class="card-body">
+                                        <h3>${data.drift_summary.count || 0}</h3>
+                                        <small>Resources with Drift</small>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="col-md-3 text-center">
+                                <div class="card bg-info text-white">
+                                    <div class="card-body">
+                                        <h3>${data.drift_summary.total_resources || 0}</h3>
+                                        <small>Total Resources</small>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="col-md-3 text-center">
+                                <div class="card bg-success text-white">
+                                    <div class="card-body">
+                                        <h3>${data.drift_summary.synchronized || 0}</h3>
+                                        <small>Synchronized</small>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="col-md-3 text-center">
+                                <div class="card bg-secondary text-white">
+                                    <div class="card-body">
+                                        <h3>${data.drift_summary.severity || 'Low'}</h3>
+                                        <small>Severity Level</small>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        ${data.drift_details && data.drift_details.length > 0 ? `
+                        <div class="mt-4">
+                            <h6>Detailed Drift Analysis</h6>
+                            <div class="table-responsive">
+                                <table class="table table-sm">
+                                    <thead>
+                                        <tr>
+                                            <th>Resource</th>
+                                            <th>Type</th>
+                                            <th>Status</th>
+                                            <th>Drift Score</th>
+                                            <th>Last Modified</th>
+                                            <th>Actions</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        ${data.drift_details.map(item => `
+                                            <tr>
+                                                <td><code>${item.name}</code></td>
+                                                <td><span class="badge bg-primary">${item.type}</span></td>
+                                                <td>
+                                                    <span class="badge bg-${item.status === 'drift' ? 'warning' : 'success'}">
+                                                        ${item.status}
+                                                    </span>
+                                                </td>
+                                                <td>${item.drift_score ? item.drift_score.toFixed(2) : 'N/A'}</td>
+                                                <td>${item.last_modified || 'Unknown'}</td>
+                                                <td>
+                                                    <button class="btn btn-sm btn-outline-primary" onclick="viewResourceDrift('${item.name}')">
+                                                        <i class="mdi mdi-eye"></i>
+                                                    </button>
+                                                </td>
+                                            </tr>
+                                        `).join('')}
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                        ` : '<p class="text-muted">No detailed drift information available</p>'}
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                        <button type="button" class="btn btn-warning" onclick="exportDriftReport()">
+                            <i class="mdi mdi-download"></i> Export Report
+                        </button>
+                        <button type="button" class="btn btn-primary" onclick="syncFromGit()">
+                            <i class="mdi mdi-sync"></i> Sync from Git
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    `;
+    
+    // Remove existing modal if present
+    const existingModal = document.getElementById('driftAnalysisModal');
+    if (existingModal) {
+        existingModal.remove();
+    }
+    
+    // Add modal to body and show
+    document.body.insertAdjacentHTML('beforeend', modalHtml);
+    const modal = new bootstrap.Modal(document.getElementById('driftAnalysisModal'));
+    modal.show();
+}
+
+function showDriftHistoryModal(data) {
+    const modalHtml = `
+        <div class="modal fade" id="driftHistoryModal" tabindex="-1">
+            <div class="modal-dialog modal-lg">
+                <div class="modal-content">
+                    <div class="modal-header">
+                        <h5 class="modal-title">
+                            <i class="mdi mdi-history text-info"></i>
+                            Drift Detection History
+                        </h5>
+                        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                    </div>
+                    <div class="modal-body">
+                        ${data.history && data.history.length > 0 ? `
+                        <div class="timeline">
+                            ${data.history.map(entry => `
+                                <div class="timeline-item">
+                                    <div class="timeline-marker bg-${entry.status === 'drift' ? 'warning' : 'success'}"></div>
+                                    <div class="timeline-content">
+                                        <h6>${entry.timestamp}</h6>
+                                        <p>${entry.summary}</p>
+                                        <small class="text-muted">
+                                            ${entry.resources_affected || 0} resources affected
+                                        </small>
+                                    </div>
+                                </div>
+                            `).join('')}
+                        </div>
+                        ` : '<p class="text-muted text-center">No drift history available</p>'}
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    `;
+    
+    // Remove existing modal if present
+    const existingModal = document.getElementById('driftHistoryModal');
+    if (existingModal) {
+        existingModal.remove();
+    }
+    
+    // Add modal to body and show
+    document.body.insertAdjacentHTML('beforeend', modalHtml);
+    const modal = new bootstrap.Modal(document.getElementById('driftHistoryModal'));
+    modal.show();
+}
+
+function showDriftConfigurationModal(fabricId) {
+    const modalHtml = `
+        <div class="modal fade" id="driftConfigModal" tabindex="-1">
+            <div class="modal-dialog">
+                <div class="modal-content">
+                    <div class="modal-header">
+                        <h5 class="modal-title">
+                            <i class="mdi mdi-cog text-primary"></i>
+                            Drift Detection Settings
+                        </h5>
+                        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                    </div>
+                    <div class="modal-body">
+                        <form id="driftConfigForm">
+                            <div class="mb-3">
+                                <label class="form-label">Detection Frequency</label>
+                                <select class="form-select" name="detection_frequency">
+                                    <option value="manual">Manual Only</option>
+                                    <option value="hourly">Every Hour</option>
+                                    <option value="daily" selected>Daily</option>
+                                    <option value="weekly">Weekly</option>
+                                </select>
+                            </div>
+                            <div class="mb-3">
+                                <label class="form-label">Sensitivity Level</label>
+                                <select class="form-select" name="sensitivity">
+                                    <option value="low">Low - Major changes only</option>
+                                    <option value="medium" selected>Medium - Standard detection</option>
+                                    <option value="high">High - All changes</option>
+                                </select>
+                            </div>
+                            <div class="form-check mb-3">
+                                <input class="form-check-input" type="checkbox" name="auto_sync" id="autoSync" checked>
+                                <label class="form-check-label" for="autoSync">
+                                    Enable automatic sync on drift detection
+                                </label>
+                            </div>
+                            <div class="form-check mb-3">
+                                <input class="form-check-input" type="checkbox" name="notifications" id="notifications" checked>
+                                <label class="form-check-label" for="notifications">
+                                    Send notifications when drift is detected
+                                </label>
+                            </div>
+                        </form>
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                        <button type="button" class="btn btn-primary" onclick="saveDriftSettings(${fabricId})">
+                            <i class="mdi mdi-content-save"></i> Save Settings
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    `;
+    
+    // Remove existing modal if present
+    const existingModal = document.getElementById('driftConfigModal');
+    if (existingModal) {
+        existingModal.remove();
+    }
+    
+    // Add modal to body and show
+    document.body.insertAdjacentHTML('beforeend', modalHtml);
+    const modal = new bootstrap.Modal(document.getElementById('driftConfigModal'));
+    modal.show();
+}
+
+function saveDriftSettings(fabricId) {
+    const form = document.getElementById('driftConfigForm');
+    const formData = new FormData(form);
+    
+    // Convert to JSON
+    const settings = {};
+    formData.forEach((value, key) => {
+        settings[key] = value;
+    });
+    
+    // Add checkboxes manually (they don't appear in FormData if unchecked)
+    settings.auto_sync = document.getElementById('autoSync').checked;
+    settings.notifications = document.getElementById('notifications').checked;
+    
+    fetch(`/plugins/hedgehog/api/fabrics/${fabricId}/drift-settings/`, {
+        method: 'POST',
+        headers: {
+            'X-CSRFToken': getCookie('csrftoken'),
+            'Content-Type': 'application/json',
+        },
+        credentials: 'same-origin',
+        body: JSON.stringify(settings)
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            showNotification('Drift detection settings saved successfully!', 'success');
+            // Close modal
+            const modal = bootstrap.Modal.getInstance(document.getElementById('driftConfigModal'));
+            modal.hide();
+        } else {
+            showNotification('Failed to save settings: ' + (data.error || 'Unknown error'), 'error');
+        }
+    })
+    .catch(error => {
+        console.error('Save settings error:', error);
+        showNotification('Failed to save settings: ' + error.message, 'error');
+    });
+}
+
+function viewResourceDrift(resourceName) {
+    console.log('👁️ Viewing drift details for resource:', resourceName);
+    // This would show detailed diff view for a specific resource
+    showNotification(`Detailed drift view for ${resourceName} not yet implemented`, 'info');
+}
+
+function exportDriftReport() {
+    console.log('💾 Exporting drift report');
+    showNotification('Drift report export not yet implemented', 'info');
+}
 
 // Progressive Disclosure Functions
 async function syncFromGit() {

@@ -11,7 +11,7 @@
             <div class="card-body">
                 <form method="get" class="d-flex gap-2 align-items-center" id="fabric-filter-form">
                     <label for="fabric-select" class="form-label mb-0">Select Fabric:</label>
-                    <select name="fabric" id="fabric-select" class="form-select" style="width: auto;">
+                    <select name="fabric" id="fabric-select" class="form-select hedgehog-select-auto">
                         <option value="">All Fabrics</option>
                         {% for fabric in all_fabrics %}
                             <option value="{{ fabric.id }}" 

@@ -45,6 +45,7 @@ local_settings.py
 .pytest_cache/
 .coverage
 htmlcov/
+.env
 
 # Database
 *.db
@@ -105,3 +106,7 @@ netbox_hedgehog/api/sync_endpoints.py
 netbox_hedgehog/management/commands/sync_fabric.py
 netbox_hedgehog/navigation_backup.py
 netbox_hedgehog/urls_*
+
+token.*
+*.token
+token

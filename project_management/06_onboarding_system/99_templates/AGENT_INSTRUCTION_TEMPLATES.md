@@ -76,6 +76,20 @@
 
 ## PROCESS REQUIREMENTS (Non-Negotiable)
 
+**File Organization Setup (MANDATORY FIRST STEP)**:
+- Create QAPM workspace: `/project_management/07_qapm_workspaces/[project_name]/`
+- Establish directory structure following template: 01_problem_analysis/, 04_evidence_collection/, temp/
+- Configure .gitignore for temp/ directory to prevent temporary file commits
+- Include file organization requirements in ALL spawned agent instructions
+- Monitor and enforce agent compliance with file placement protocols
+
+**Architecture Compliance (MANDATORY)**:
+- Review `/architecture_specifications/CLAUDE.md` before beginning any work
+- Check relevant ADRs in `/01_architectural_decisions/` for existing design decisions
+- Assess change impact on related system components using centralized documentation
+- UPDATE centralized documentation within `/architecture_specifications/` (NEVER create scattered docs)
+- Escalate architectural implications and uncertainties immediately
+
 **Git Workflow**: 
 - Feature branches for all changes: `git checkout -b feature/descriptive-name`
 - Comprehensive testing before any commits: `python -m pytest`
@@ -90,18 +104,24 @@
 
 **Documentation Requirements**:
 - README updates for any user-facing changes
-- Architecture documentation for significant design changes
+- Architecture documentation for significant design changes (in centralized `/architecture_specifications/`)
 - CLAUDE.md external memory kept current with project state
+- ZERO TOLERANCE for scattered documentation outside centralized structure
 
 **Quality Gates**:
+- **File organization audit completed** (repository root clean, workspace organized)
+- Architecture compliance verified before work completion
 - All tests pass before declaring work complete
 - Code follows HNP project conventions consistently
-- Documentation current with implemented functionality
+- Documentation current with implemented functionality (centralized only)
 - Integration validated across all system components
+- **All temporary files cleaned or properly archived**
 
 ## ESCALATION PROTOCOLS
 
 **Escalate Immediately For**:
+- Uncertainty about architectural implications of proposed changes
+- Conflicts between requirements and existing architectural decisions (ADRs)
 - Architectural decisions affecting NetBox plugin compatibility
 - Requirements changes that impact project scope significantly
 - Resource constraints threatening delivery timelines
@@ -118,11 +138,13 @@
 ## SUCCESS VALIDATION
 
 **Before Agent Spawning**:
+- [ ] **QAPM workspace created and directory structure established**
 - [ ] Task complexity analyzed and appropriately decomposed
 - [ ] Specialist expertise requirements identified clearly
 - [ ] Success criteria defined measurably for each specialist
 - [ ] Integration strategy planned for combining deliverables
 - [ ] Context prepared specifically for each specialist role
+- [ ] **File organization requirements defined for all expected agent outputs**
 
 **During Coordination**:
 - [ ] Specialist progress monitored without micromanagement
@@ -130,6 +152,8 @@
 - [ ] Quality standards enforced consistently across all work
 - [ ] External memory (CLAUDE.md) maintained current
 - [ ] Appropriate escalation for architectural decisions
+- [ ] **Agent file organization compliance monitored continuously**
+- [ ] **Repository root checked regularly for scattered files**
 
 **Before Delivery**:
 - [ ] All specialist deliverables integrated successfully
@@ -137,6 +161,8 @@
 - [ ] Performance tested under realistic conditions
 - [ ] Documentation updated to reflect delivered functionality
 - [ ] Stakeholder communication completed appropriately
+- [ ] **Complete file organization audit performed (workspace + repository root)**
+- [ ] **All temporary files cleaned and workspace properly archived**
 
 ## CONTEXT MANAGEMENT
 
@@ -228,6 +254,20 @@
 
 ## PROCESS REQUIREMENTS (Built Into Manager DNA)
 
+**File Organization Enforcement (MANDATORY FIRST STEP)**:
+- Ensure QAPM workspace exists or create: `/project_management/07_qapm_workspaces/[project_name]/`
+- Include file organization section in ALL specialist instructions
+- Monitor specialist compliance with file placement protocols
+- Enforce cleanup validation before accepting specialist deliverables
+- Audit workspace organization regularly during feature development
+
+**Architecture Compliance Enforcement (MANDATORY)**:
+- Ensure all specialists review `/architecture_specifications/CLAUDE.md` before starting work
+- Verify specialists check relevant ADRs in `/01_architectural_decisions/` for design context
+- Validate change impact assessments completed for all architectural modifications
+- Enforce centralized documentation updates within `/architecture_specifications/` (ZERO scattered docs)
+- Escalate architectural implications that exceed feature-level authority
+
 **Git Workflow Enforcement**:
 - All specialists work on feature branches: `feature/component-description`
 - Comprehensive testing required before any commits: `python -m pytest`
@@ -241,12 +281,13 @@
 - Performance testing for database and API operations
 
 **Documentation Management**:
-- Feature documentation updated in parallel with implementation
+- Feature documentation updated in parallel with implementation (in centralized location)
 - API changes documented with examples and usage patterns
 - User-facing changes reflected in README and help documentation
-- Technical decisions documented for future reference
+- Technical decisions documented for future reference (centralized architectural specs)
 
 **Quality Gate Enforcement**:
+- Architecture compliance verified for all specialist deliverables
 - All tests pass before declaring specialist work complete
 - Code review completed for all changes
 - Integration validation across all system components
@@ -371,12 +412,26 @@
 
 ## PROCESS REQUIREMENTS (Test-Driven Development DNA)
 
+**File Organization Compliance (MANDATORY FIRST STEP)**:
+- Use assigned QAPM workspace: `/project_management/07_qapm_workspaces/[project_name]/`
+- Place all outputs in proper workspace locations (investigation → 01_problem_analysis/, evidence → 04_evidence_collection/)
+- Use temp/ directory for temporary files (gitignored)
+- NEVER create files in repository root without explicit manager authorization
+- Clean all temporary files before declaring work complete
+
+**Architecture Compliance (MANDATORY FIRST STEP)**:
+- Review `/architecture_specifications/CLAUDE.md` before ANY implementation work
+- Check relevant ADRs in `/01_architectural_decisions/` for design decisions affecting your domain
+- Complete change impact assessment for architectural modifications
+- Update centralized documentation within `/architecture_specifications/` for architectural changes
+- Escalate architectural uncertainties to manager immediately (NEVER guess)
+
 **TDD Workflow (Mandatory)**:
 1. Write failing test that defines expected behavior clearly
 2. Implement minimal code to make test pass
 3. Refactor for code quality while keeping tests green
 4. Validate integration with existing HNP components
-5. Update documentation to reflect new functionality
+5. Update documentation to reflect new functionality (centralized location only)
 
 **Git Workflow Compliance** (MANDATORY):
 See: @onboarding/04_environment_mastery/GIT_WORKFLOW_MASTERY.md
@@ -487,6 +542,8 @@ class TestVPCPeeringIntegration(TestCase):
 - [ ] Integration points identified and planned appropriately
 - [ ] Code structure designed for maintainability and performance
 - [ ] Manager communication established with clear expectations
+- [ ] **QAPM workspace location confirmed and file organization plan understood**
+- [ ] **Output locations identified for all expected artifacts**
 
 **During Implementation**:
 - [ ] TDD workflow followed consistently throughout development
@@ -494,6 +551,8 @@ class TestVPCPeeringIntegration(TestCase):
 - [ ] Integration testing performed continuously
 - [ ] Progress communication maintained with assigned manager
 - [ ] Documentation updated in parallel with code changes
+- [ ] **All files placed in proper workspace locations continuously**
+- [ ] **Temporary files managed in gitignored temp/ directory**
 
 **Before Delivery**:
 - [ ] All tests pass without any modifications required
@@ -501,6 +560,9 @@ class TestVPCPeeringIntegration(TestCase):
 - [ ] Integration validated with all dependent components
 - [ ] Performance tested under realistic usage conditions
 - [ ] Manager acceptance criteria satisfied completely
+- [ ] **Complete file organization audit performed (all files in proper locations)**
+- [ ] **All temporary files cleaned or archived in gitignored directories**
+- [ ] **`git status` verified to show only intended source code changes**
 
 ## ESCALATION PROTOCOLS
 

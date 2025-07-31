@@ -37,18 +37,18 @@
                 
                 <div id="auth-fields">
                     <!-- Basic Authentication Fields -->
-                    <div id="basic-auth-fields" class="auth-type-fields" style="display: none;">
+                    <div id="basic-auth-fields" class="auth-type-fields hedgehog-hidden">
                         {% render_field form.username %}
                         {% render_field form.password %}
                     </div>
                     
                     <!-- Token Authentication Fields -->
-                    <div id="token-auth-fields" class="auth-type-fields" style="display: none;">
+                    <div id="token-auth-fields" class="auth-type-fields hedgehog-hidden">
                         {% render_field form.token %}
                     </div>
                     
                     <!-- SSH Authentication Fields -->
-                    <div id="ssh-auth-fields" class="auth-type-fields" style="display: none;">
+                    <div id="ssh-auth-fields" class="auth-type-fields hedgehog-hidden">
                         {% render_field form.ssh_private_key %}
                         {% render_field form.ssh_passphrase %}
                     </div>

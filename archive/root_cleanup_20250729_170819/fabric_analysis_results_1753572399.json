@@ -1,0 +1,199 @@
+{
+  "authentication_successful": true,
+  "timestamp": "2025-07-26T23:26:39.313652",
+  "fabric_list_analysis": {
+    "page_accessible": true,
+    "fabric_count_claimed": 1,
+    "fabric_count_actual": 1,
+    "fabrics_found": [
+      {
+        "id": "12",
+        "name": "test-fabric-gitops-mvp2",
+        "description": "Form Test - Edit Verification 20:11:57",
+        "status_badges": [
+          "\n                                                Active\n                                            ",
+          "\n                                                Connected\n                                            ",
+          "\n                                                Sync Error\n                                            "
+        ],
+        "namespace": null,
+        "last_sync": null,
+        "crd_count": 0,
+        "row_content": "<tr>\n                                        <th>Name</th>\n                                        <th>Description</th>\n                                        <th>Status</th>\n                        ..."
+      }
+    ],
+    "table_structure": {
+      "headers_found": [
+        "Name",
+        "Description",
+        "Status",
+        "Connection Status",
+        "Sync Status",
+        "Actions"
+      ],
+      "header_count": 6,
+      "has_actions_column": true,
+      "has_status_columns": true
+    },
+    "action_buttons": {
+      "add_fabric": true,
+      "view_buttons": 2,
+      "edit_buttons": 0,
+      "sync_buttons": 0
+    },
+    "pagination_functional": true,
+    "search_filter_functional": false,
+    "data_accuracy": {
+      "total_fabrics": 1,
+      "fabrics_with_complete_data": 0,
+      "fabrics_with_missing_data": 1,
+      "common_issues": [
+        "namespace",
+        "last_sync"
+      ]
+    },
+    "errors": []
+  },
+  "fabric_detail_analyses": {
+    "12": {
+      "page_accessible": true,
+      "fabric_data": {
+        "id": "12",
+        "name": "/i> test-fabric-gitops-mvp2 - Fabric Details",
+        "description": null
+      },
+      "status_indicators": {
+        "connection_status": "\n                                            Connected\n                                        ",
+        "sync_status": "\n                                            Sync Error\n                                        ",
+        "git_status": null,
+        "drift_status": null,
+        "total_status_badges": 4
+      },
+      "action_buttons": {
+        "edit_button_present": true,
+        "test_connection_present": true,
+        "sync_button_present": true,
+        "back_button_present": true,
+        "test_connection_functional": false,
+        "sync_functional": false
+      },
+      "data_sections": {
+        "connection_info": true,
+        "kubernetes_config": true,
+        "git_config": true,
+        "resource_counts": true,
+        "status_summary": false
+      },
+      "interactive_elements": {
+        "progressive_disclosure": true,
+        "collapsible_sections": 25,
+        "status_refresh": true,
+        "real_time_updates": false
+      },
+      "cross_page_consistency": {
+        "name_match": true,
+        "id_match": true,
+        "data_conflicts": [],
+        "consistent_fields": 1,
+        "total_comparable_fields": 2
+      },
+      "errors": []
+    }
+  },
+  "fabric_add_form_analysis": {
+    "form_accessible": true,
+    "form_fields": {
+      "next": {
+        "type": "input",
+        "required": false
+      },
+      "username": {
+        "type": "input",
+        "required": false
+      },
+      "password": {
+        "type": "input",
+        "required": false
+      }
+    },
+    "validation_functional": true,
+    "submission_functional": true,
+    "required_fields": [],
+    "dropdown_options": {},
+    "form_errors": [],
+    "csrf_protection": true
+  },
+  "fabric_edit_form_analyses": {
+    "12": {
+      "form_accessible": true,
+      "form_fields": {
+        "q": {
+          "type": "input",
+          "required": false
+        },
+        "name": {
+          "type": "input",
+          "required": false
+        },
+        "gitops_directory": {
+          "type": "input",
+          "required": false
+        },
+        "kubernetes_server": {
+          "type": "input",
+          "required": false
+        },
+        "kubernetes_namespace": {
+          "type": "input",
+          "required": false
+        },
+        "description": {
+          "type": "textarea",
+          "required": false
+        },
+        "kubernetes_token": {
+          "type": "textarea",
+          "required": false
+        },
+        "kubernetes_ca_cert": {
+          "type": "textarea",
+          "required": false
+        },
+        "status": {
+          "type": "select",
+          "required": false
+        },
+        "git_repository": {
+          "type": "select",
+          "required": false
+        }
+      },
+      "validation_functional": true,
+      "submission_functional": true,
+      "required_fields": [],
+      "dropdown_options": {},
+      "form_errors": [],
+      "csrf_protection": true
+    }
+  },
+  "cross_page_verification": {
+    "fabric_count_consistency": true,
+    "data_consistency_issues": [],
+    "navigation_consistency": true,
+    "status_consistency": true
+  },
+  "overall_functionality": {
+    "pages_accessible": 2,
+    "pages_tested": 2,
+    "buttons_functional": 0,
+    "buttons_tested": 0,
+    "forms_functional": 2,
+    "forms_tested": 2,
+    "critical_failures": [],
+    "overall_score": 100.0
+  },
+  "critical_issues": [],
+  "recommendations": [
+    "MEDIUM: Test Connection button present but not functional",
+    "MEDIUM: Sync button present but not functional"
+  ]
+}

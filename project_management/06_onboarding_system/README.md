@@ -43,16 +43,16 @@
 
 **Validation**: Successfully coordinate 3-5 specialists for complex feature delivery.
 
-#### 📋 Manager Track - Task Execution Leadership  
-**Location**: `02_manager_track/`
+#### 📋 QAPM Track - Process Architecture Leadership  
+**Location**: `06_qapm_track/`
 **Target**: Claude Sonnet 4 agents
-**Authority**: Feature delivery, specialist management
+**Authority**: Process design, systematic agent spawning, quality assurance
 
-- **MANAGER_MASTERY.md**: Sprint management, specialist coordination, quality control
-- Feature-level delivery with comprehensive testing
-- Cross-functional team coordination
+- **QAPM_MASTERY.md**: Process architecture, systematic problem approach, evidence-based validation
+- Quality assurance through systematic methodologies
+- Agent spawning and coordination oversight
 
-**Validation**: Deliver complete features using coordinated specialist teams.
+**Validation**: Design effective processes and spawn appropriate task-specific agents.
 
 #### 🔧 Specialist Track - Technical Implementation
 **Location**: `03_specialist_track/`
@@ -75,7 +75,18 @@
 
 **Validation**: Troubleshoot complex environment issues independently.
 
-### Level 3: Crisis Management (Failure Recovery)
+### Level 3: Architecture Mastery (Documentation Scatter Prevention)
+**Location**: `07_architecture_mastery/`
+**Target**: All agents (mandatory completion)
+
+- **Architecture Navigation Training**: Efficient navigation of centralized documentation
+- **Architectural Decision Understanding**: ADR process and compliance requirements
+- **Change Impact Assessment**: Systematic architectural implications analysis
+- **Documentation Compliance**: Prevention of documentation scatter through centralized standards
+
+**Validation**: Demonstrate architecture compliance preventing documentation chaos.
+
+### Level 4: Crisis Management (Failure Recovery)
 **Location**: `05_escalation_protocols/`
 **Target**: All agents (mandatory completion)
 
@@ -111,8 +122,8 @@
 
 1. **Assess Task Complexity**:
    - Simple task → Specialist agent
-   - Feature delivery → Manager agent  
-   - Multi-feature coordination → Orchestrator agent
+   - Complex task requiring process design → QAPM agent  
+   - Multi-project coordination → Orchestrator agent
 
 2. **Select Onboarding Path**:
    - All agents: Universal Foundation (required)
@@ -218,8 +229,8 @@
 │   └── core_processes/                 (Git, testing, documentation DNA)
 ├── 01_orchestrator_track/              (Strategic leadership training)
 │   └── ORCHESTRATOR_MASTERY.md         (Multi-agent coordination excellence)
-├── 02_manager_track/                   (Task execution leadership)
-│   └── MANAGER_MASTERY.md              (Feature delivery and quality management)
+├── 06_qapm_track/                      (Process architecture leadership)
+│   └── QAPM_MASTERY.md                 (Process design and systematic methodologies)
 ├── 03_specialist_track/                (Technical implementation mastery)
 │   └── SPECIALIST_MASTERY.md           (Domain expertise and TDD excellence)
 ├── 04_environment_mastery/             (Advanced technical proficiency)
@@ -227,7 +238,13 @@
 │   ├── netbox_integration/             (NetBox plugin architecture)
 │   └── kubernetes_systems/             (CRD management and cluster operations)
 ├── 05_escalation_protocols/            (Failure prevention and recovery)
-│   └── CEO_ESCALATION_PROTOCOLS.md     (When and how to escalate uncertainty)
+│   └── ORCHESTRATOR_ESCALATION_PROTOCOLS.md     (When and how to escalate uncertainty)
+├── 07_architecture_mastery/            (Documentation scatter prevention)
+│   ├── architecture_navigation/        (Centralized documentation navigation)
+│   ├── architectural_decisions/        (ADR process and compliance)
+│   ├── change_impact_assessment/       (Systematic impact analysis)
+│   ├── documentation_compliance/       (Scatter prevention standards)
+│   └── validation_framework/           (Architecture compliance verification)
 └── 99_templates/                       (Reusable instruction templates)
     └── AGENT_INSTRUCTION_TEMPLATES.md  (Research-validated agent creation)
 ```

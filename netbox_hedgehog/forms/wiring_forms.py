@@ -440,41 +440,7 @@ class SwitchGroupForm(NetBoxModelForm):
         }
 
 
-class TopologyFilterForm(forms.Form):
-    """Form for topology view filtering"""
-    
-    fabric = DynamicModelChoiceField(
-        queryset=HedgehogFabric.objects.all(),
-        required=False,
-        widget=StaticSelect2(),
-        help_text="Filter by fabric"
-    )
-    
-    switch_role = forms.ChoiceField(
-        choices=[('', 'All Roles')] + list(SwitchRoleChoices),
-        required=False,
-        widget=StaticSelect2(),
-        help_text="Filter by switch role"
-    )
-    
-    connection_type = forms.ChoiceField(
-        choices=[('', 'All Types')] + list(ConnectionTypeChoices),
-        required=False,
-        widget=StaticSelect2(),
-        help_text="Filter by connection type"
-    )
-    
-    show_servers = forms.BooleanField(
-        initial=True,
-        required=False,
-        help_text="Show servers in topology"
-    )
-    
-    show_connections = forms.BooleanField(
-        initial=True,
-        required=False,
-        help_text="Show connections in topology"
-    )
+# TopologyFilterForm removed - topology feature not implemented
 
 
 class BulkSwitchOperationsForm(forms.Form):

@@ -48,14 +48,14 @@ Clean transitions between agents and roles
 **Response**: Engage same-role agents, use templates and best practices
 **Escalation**: If issue impacts delivery or requires authority
 
-### Level 3: Management Intervention (30 minutes - 2 hours)
+### Level 3: Orchestrator Intervention (30 minutes - 2 hours)
 **Triggers**: Scope changes, resource needs, quality gate failures
-**Response**: Manager or orchestrator involvement, formal decision process
-**Escalation**: If strategic changes or executive authority needed
+**Response**: Orchestrator involvement, formal decision process
+**Escalation**: If strategic changes or higher authority needed
 
-### Level 4: Executive/Critical (Immediate)
+### Level 4: Critical/Emergency (Immediate)
 **Triggers**: System down, data loss, security breach, project failure
-**Response**: Immediate executive notification, emergency procedures
+**Response**: Immediate orchestrator notification, emergency procedures
 **Resolution**: All hands response until resolution
 
 ## Common Failure Scenarios

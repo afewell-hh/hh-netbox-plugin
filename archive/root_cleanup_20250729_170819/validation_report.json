@@ -1,0 +1,68 @@
+{
+  "total_tests": 5,
+  "passed": 1,
+  "failed": 4,
+  "success_rate": 20.0,
+  "duration_seconds": 0.113584,
+  "timestamp": "2025-07-27T07:50:31.466101",
+  "detailed_results": [
+    {
+      "test_name": "Git Configuration Layout (2 columns)",
+      "passed": false,
+      "evidence_count": 4,
+      "error_count": 1,
+      "cross_validations": {
+        "column_count_matches": false,
+        "fields_in_2col": false
+      },
+      "has_html_evidence": false
+    },
+    {
+      "test_name": "Kubernetes Server Display (default kubeconfig)",
+      "passed": false,
+      "evidence_count": 3,
+      "error_count": 1,
+      "cross_validations": {
+        "has_conditional_logic": true,
+        "has_default_text": false,
+        "text_near_conditional": false
+      },
+      "has_html_evidence": true
+    },
+    {
+      "test_name": "Edit Form Separation (Git vs K8s sync)",
+      "passed": false,
+      "evidence_count": 7,
+      "error_count": 1,
+      "cross_validations": {
+        "has_section_headers": false,
+        "fields_clustered": false
+      },
+      "has_html_evidence": false
+    },
+    {
+      "test_name": "Model Field Accuracy (no made-up fields)",
+      "passed": false,
+      "evidence_count": 4,
+      "error_count": 1,
+      "cross_validations": {
+        "all_fields_valid": false,
+        "has_model_fields": true,
+        "has_template_fields": true
+      },
+      "has_html_evidence": true
+    },
+    {
+      "test_name": "Connection Mechanism (kubeconfig-based)",
+      "passed": true,
+      "evidence_count": 4,
+      "error_count": 0,
+      "cross_validations": {
+        "has_kubeconfig_support": true,
+        "has_fallback_logic": true,
+        "sync_files_exist": true
+      },
+      "has_html_evidence": true
+    }
+  ]
+}

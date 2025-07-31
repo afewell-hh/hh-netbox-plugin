@@ -25,16 +25,18 @@
                         <div class="col-md-3">
                             <div class="card bg-primary text-white">
                                 <div class="card-body text-center">
-                                    <h2>{{ fabric_count }}</h2>
+                                    <h2>{{ fabric_count|default:"ERR" }}</h2>
                                     <p class="mb-0">Total Fabrics</p>
-                                    <small class="opacity-75">{{ gitops_stats.git_connected_count|default:0 }} with Git</small>
+                                    {% if debug_error %}
+                                    <small class="text-warning">Debug: {{ debug_error }}</small>
+                                    {% endif %}
                                 </div>
                             </div>
                         </div>
                         <div class="col-md-3">
                             <div class="card bg-success text-white">
                                 <div class="card-body text-center">
-                                    <h2>{{ vpc_count }}</h2>
+                                    <h2>{{ vpc_count|default:0 }}</h2>
                                     <p class="mb-0">VPCs</p>
                                     <small class="opacity-75">Network resources</small>
                                 </div>
@@ -99,17 +101,7 @@
                         </div>
                     </div>
                     
-                    <div class="row mt-4">
-                        <div class="col-md-4">
-                            <div class="card border-info">
-                                <div class="card-body">
-                                    <h5 class="card-title">🌐 Network Topology</h5>
-                                    <p class="card-text">Visualize network connections and infrastructure.</p>
-                                    <a href="{% url 'plugins:netbox_hedgehog:topology' %}" class="btn btn-info">View Topology</a>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
+                    <!-- Network Topology feature removed -->
                     
                     <!-- CRD Management Section -->
                     <div class="row mt-4">
@@ -198,22 +190,6 @@
                                         <a href="{% url 'plugins:netbox_hedgehog:vpcpeering_list' %}" class="btn btn-sm btn-outline-primary">View All</a>
                                         <a href="{% url 'plugins:netbox_hedgehog:vpcpeering_add' %}" class="btn btn-sm btn-success">Create New</a>
                                     </div>
-                                </div>
-                            </div>
-                        </div>
-                        <div class="col-md-6">
-                            <div class="card border-info h-100">
-                                <div class="card-body">
-                                    <h6 class="card-title"><i class="mdi mdi-information"></i> Getting Started with CRDs</h6>
-                                    <p class="card-text">New to Hedgehog CRD management? Follow these steps:</p>
-                                    <ol class="small">
-                                        <li><strong>Create a fabric connection</strong> - Set up your Kubernetes cluster connection</li>
-                                        <li><strong>Set up IPv4 namespaces</strong> - Define IP address allocation scopes</li>
-                                        <li><strong>Configure external systems</strong> - Add BGP neighbors and connections</li>
-                                        <li><strong>Create VPCs and attachments</strong> - Deploy workload networking</li>
-                                        <li><strong>Establish peerings</strong> - Connect VPCs and external networks</li>
-                                    </ol>
-                                    <a href="{% url 'plugins:netbox_hedgehog:fabric_list' %}" class="btn btn-sm btn-primary">Start with Fabrics</a>
                                 </div>
                             </div>
                         </div>

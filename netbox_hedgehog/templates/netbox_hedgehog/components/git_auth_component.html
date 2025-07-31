@@ -83,7 +83,7 @@
                             <a href="#" class="disclosure-toggle" onclick="toggleTokenHelp('{{ component_id|default:'default' }}')">
                                 <i class="mdi mdi-chevron-right"></i> How to generate a token
                             </a>
-                            <div id="token-help-{{ component_id|default:'default' }}" class="disclosure-content" style="display: none;">
+                            <div id="token-help-{{ component_id|default:'default' }}" class="disclosure-content hedgehog-hidden">
                                 <div class="provider-instructions">
                                     <div class="provider-instruction" data-provider="github">
                                         <strong>GitHub:</strong>
@@ -118,12 +118,12 @@
                     <button type="button" class="btn btn-outline-info btn-sm" onclick="validateToken('{{ component_id|default:'default' }}')">
                         <i class="mdi mdi-check-circle"></i> Validate Token
                     </button>
-                    <div id="token-validation-result-{{ component_id|default:'default' }}" class="validation-result mt-2" style="display: none;"></div>
+                    <div id="token-validation-result-{{ component_id|default:'default' }}" class="validation-result mt-2 hedgehog-hidden"></div>
                 </div>
             </div>
             
             <!-- SSH Authentication Form -->
-            <div class="auth-form" id="auth-form-ssh-{{ component_id|default:'default' }}" style="display: none;">
+            <div class="auth-form hedgehog-hidden" id="auth-form-ssh-{{ component_id|default:'default' }}">
                 <div class="mb-3">
                     <label for="ssh-private-key-{{ component_id|default:'default' }}" class="form-label">
                         SSH Private Key
@@ -154,7 +154,7 @@
                     <button type="button" class="btn btn-outline-info btn-sm" onclick="validateSSHKey('{{ component_id|default:'default' }}')">
                         <i class="mdi mdi-check-circle"></i> Validate SSH Key
                     </button>
-                    <div id="ssh-validation-result-{{ component_id|default:'default' }}" class="validation-result mt-2" style="display: none;"></div>
+                    <div id="ssh-validation-result-{{ component_id|default:'default' }}" class="validation-result mt-2 hedgehog-hidden"></div>
                 </div>
                 
                 <!-- SSH Key Generation Helper -->
@@ -163,7 +163,7 @@
                         <a href="#" class="disclosure-toggle" onclick="toggleSSHHelp('{{ component_id|default:'default' }}')">
                             <i class="mdi mdi-chevron-right"></i> SSH Key Generation Guide
                         </a>
-                        <div id="ssh-help-{{ component_id|default:'default' }}" class="disclosure-content" style="display: none;">
+                        <div id="ssh-help-{{ component_id|default:'default' }}" class="disclosure-content hedgehog-hidden">
                             <div class="ssh-key-instructions">
                                 <h6>Generate SSH Key Pair:</h6>
                                 <div class="code-block">
@@ -182,7 +182,7 @@
             </div>
             
             <!-- Basic Authentication Form -->
-            <div class="auth-form" id="auth-form-basic-{{ component_id|default:'default' }}" style="display: none;">
+            <div class="auth-form hedgehog-hidden" id="auth-form-basic-{{ component_id|default:'default' }}">
                 <div class="alert alert-warning">
                     <i class="mdi mdi-alert"></i>
                     <strong>Security Notice:</strong> Username/password authentication is less secure than tokens or SSH keys. 
@@ -217,7 +217,7 @@
                     <button type="button" class="btn btn-outline-info btn-sm" onclick="validateBasicAuth('{{ component_id|default:'default' }}')">
                         <i class="mdi mdi-check-circle"></i> Validate Credentials
                     </button>
-                    <div id="basic-validation-result-{{ component_id|default:'default' }}" class="validation-result mt-2" style="display: none;"></div>
+                    <div id="basic-validation-result-{{ component_id|default:'default' }}" class="validation-result mt-2 hedgehog-hidden"></div>
                 </div>
             </div>
             
@@ -241,7 +241,7 @@
                                 </span>
                             </div>
                         </div>
-                        <div id="connection-test-result-{{ component_id|default:'default' }}" class="connection-result mt-3" style="display: none;"></div>
+                        <div id="connection-test-result-{{ component_id|default:'default' }}" class="connection-result mt-3 hedgehog-hidden"></div>
                     </div>
                 </div>
             </div>

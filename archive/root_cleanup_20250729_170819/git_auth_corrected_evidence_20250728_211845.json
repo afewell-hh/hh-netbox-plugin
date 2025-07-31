@@ -1,0 +1,85 @@
+{
+  "test_timestamp": "2025-07-28T21:18:45.652975",
+  "corrected_base_url": "http://localhost:8000/plugins/hedgehog",
+  "test_results": {
+    "plugin_base": {
+      "url": "http://localhost:8000/plugins/hedgehog",
+      "status_code": 301,
+      "headers": {
+        "Content-Type": "text/html; charset=utf-8",
+        "Location": "/plugins/hedgehog/",
+        "Vary": "Accept-Language, Cookie, origin",
+        "Content-Language": "en",
+        "Server": "Unit/1.34.2",
+        "Date": "Mon, 28 Jul 2025 21:18:45 GMT",
+        "Transfer-Encoding": "chunked"
+      },
+      "content_length": 0
+    },
+    "list_page": {
+      "url": "http://localhost:8000/plugins/hedgehog/git-repositories/",
+      "status_code": 200,
+      "headers": {
+        "Content-Type": "text/html; charset=utf-8",
+        "X-Request-ID": "7a11dc7d-c2ce-4817-93ee-7961c7804945",
+        "Vary": "HX-Request, Cookie, Accept-Language, origin",
+        "X-Content-Type-Options": "nosniff",
+        "Referrer-Policy": "same-origin",
+        "Cross-Origin-Opener-Policy": "same-origin",
+        "X-Frame-Options": "SAMEORIGIN",
+        "Content-Length": "17265",
+        "Content-Language": "en",
+        "Set-Cookie": "csrftoken=CioMPp7xWxZK0DWXioMKK6DojPiofD8X; expires=Mon, 27 Jul 2026 21:18:45 GMT; Max-Age=31449600; Path=/; SameSite=Lax",
+        "Server": "Unit/1.34.2",
+        "Date": "Mon, 28 Jul 2025 21:18:45 GMT"
+      },
+      "content_length": 17265
+    },
+    "detail_page": {
+      "url": "http://localhost:8000/plugins/hedgehog/git-repositories/1/",
+      "status_code": 302,
+      "headers": {
+        "Content-Type": "text/html; charset=utf-8",
+        "Location": "/login/?next=/plugins/hedgehog/git-repositories/1/",
+        "X-Request-ID": "c2b61ad8-383c-47b0-aab5-3d5584efbfcf",
+        "Vary": "HX-Request, Accept-Language, Cookie, origin",
+        "X-Content-Type-Options": "nosniff",
+        "Referrer-Policy": "same-origin",
+        "Cross-Origin-Opener-Policy": "same-origin",
+        "X-Frame-Options": "SAMEORIGIN",
+        "Content-Length": "0",
+        "Content-Language": "en",
+        "Server": "Unit/1.34.2",
+        "Date": "Mon, 28 Jul 2025 21:18:45 GMT"
+      },
+      "content_length": 0
+    },
+    "home_page": {
+      "url": "http://localhost:8000/",
+      "status_code": 302,
+      "headers": {
+        "Content-Type": "text/html; charset=utf-8",
+        "Location": "/login/?next=/",
+        "X-Request-ID": "3a2ccbaa-a066-46d1-9775-c352a23026cb",
+        "Vary": "HX-Request, Accept-Language, Cookie, origin",
+        "X-Content-Type-Options": "nosniff",
+        "Referrer-Policy": "same-origin",
+        "Cross-Origin-Opener-Policy": "same-origin",
+        "X-Frame-Options": "SAMEORIGIN",
+        "Content-Length": "0",
+        "Content-Language": "en",
+        "Server": "Unit/1.34.2",
+        "Date": "Mon, 28 Jul 2025 21:18:45 GMT"
+      }
+    }
+  },
+  "screenshots_needed": [
+    "git_repos_list_working_fixed",
+    "git_repo_detail_redirect_fixed"
+  ],
+  "authentication_analysis": {
+    "list_requires_auth": false,
+    "detail_requires_auth": true,
+    "netbox_requires_auth": true
+  }
+}

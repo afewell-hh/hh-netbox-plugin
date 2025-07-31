@@ -4,6 +4,11 @@
 
 {% block title %}Fabric Management{% endblock %}
 
+{% block header %}
+    {{ block.super }}
+    <link rel="stylesheet" href="{% static 'netbox_hedgehog/css/hedgehog.css' %}">
+{% endblock %}
+
 {% block hedgehog_content %}
 <div class="container-fluid">
     <div class="row">

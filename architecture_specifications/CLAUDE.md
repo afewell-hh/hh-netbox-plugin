@@ -1,27 +1,74 @@
 # Architecture Specifications Context
 
-**Purpose**: Technical architecture and design documentation for HNP
-**Architecture Style**: NetBox plugin with Kubernetes integration
+**Purpose**: Technical architecture and design documentation for HNP  
+**Architecture Style**: NetBox plugin with Kubernetes integration  
+**Status**: MVP Complete - Comprehensive architecture documentation consolidated
 
-## Core Architecture
-- Plugin Pattern: NetBox 4.3.3 compatible Django app
-- Data Flow: K8s CRDs → Python Client → Django Models → NetBox UI
-- State Management: Six-state workflow with conflict resolution
-- Integration: Real-time sync with Kubernetes watch patterns
+## Core Architecture (✅ Documented)
+- **Plugin Pattern**: NetBox 4.3.3 compatible Django app
+- **Data Flow**: GitOps repository → YAML parsing → Django models → NetBox UI
+- **GitOps Integration**: Multi-fabric directory management with drift detection
+- **Authentication**: Encrypted credential storage with repository separation design
 
-## Key Components
-- Models: 12 CRD types (VPC API + Wiring API)
-- Views: List/Detail with progressive disclosure
-- API: REST endpoints for all CRD operations
-- Sync: KubernetesSync class for cluster integration
+## Current System Status
+- **Operational**: 12 CRD types with 36 synchronized records
+- **GitOps**: github.com/afewell-hh/gitops-test-1.git operational
+- **Testing**: 10/10 tests passing with evidence-based validation
+- **Security**: Comprehensive authentication with encrypted credentials
 
-## Design Principles
-1. NetBox compatibility first
-2. Kubernetes-native patterns
-3. Progressive UI disclosure
-4. GitOps-ready architecture
+## Key Architecture Documentation
+
+### System Architecture
+- **System Overview**: Comprehensive current architecture status
+- **Kubernetes Integration**: K8s cluster integration patterns and GitOps processing
+- **NetBox Plugin Layer**: Django plugin architecture with authentication integration
+- **GitOps Architecture**: Multi-fabric directory management and drift detection design
+
+### Architectural Decisions
+- **Decision Log**: 9 ADRs total (8 implemented, 1 approved for implementation)
+- **GitOps-First**: Single workflow architecture (implemented)
+- **Repository Separation**: Multi-fabric authentication design (approved)
+- **Quality Framework**: Test-driven development with evidence-based validation
+
+### Component Architecture
+- **Models**: HedgehogFabric, GitRepository with proper foreign key relationships
+- **Views**: List/Detail with progressive disclosure and drift detection UI
+- **API**: REST endpoints with encrypted credential management
+- **Templates**: Bootstrap 5 with NetBox-consistent styling
+
+## Design Principles (Validated)
+1. **NetBox Compatibility First**: ✅ NetBox 4.3.3 integration operational
+2. **Kubernetes-Native Patterns**: ✅ GitOps workflow with YAML processing
+3. **Progressive UI Disclosure**: ✅ Professional interface with drift detection prominence
+4. **GitOps-Ready Architecture**: ✅ Repository-based configuration management
+
+## Navigation Map
+```
+architecture_specifications/
+├── 00_current_architecture/          # ✅ Current system documentation
+│   ├── system_overview.md            # ✅ MVP complete status
+│   └── component_architecture/       # ✅ Detailed component specs
+│       ├── kubernetes_integration.md # ✅ K8s integration patterns
+│       ├── netbox_plugin_layer.md   # ✅ Plugin architecture
+│       └── gitops/                  # ✅ GitOps architecture
+│           ├── gitops_overview.md   # ✅ Comprehensive GitOps design
+│           ├── directory_management_specification.md
+│           └── drift_detection_design.md
+├── 01_architectural_decisions/       # ✅ Complete ADR documentation
+│   ├── decision_log.md              # ✅ 9 ADRs indexed
+│   ├── active_decisions/            # ✅ Repository separation design
+│   └── approved_decisions/          # ✅ Implemented decisions
+└── README.md                        # ✅ Architecture navigation guide
+```
+
+## Implementation Evidence
+- **All Components Operational**: System architecture fully documented with current operational status
+- **Quality Assurance**: Evidence-based validation with comprehensive test coverage
+- **Zero Information Loss**: All scattered architectural information consolidated
+- **Clear Navigation**: Professional documentation structure with cross-references
 
 ## References
-@00_current_architecture/system_overview.md
-@02_design_specifications/data_models/
-@03_standards_governance/coding_standards.md
+- **System Overview**: @00_current_architecture/system_overview.md
+- **GitOps Architecture**: @00_current_architecture/component_architecture/gitops/gitops_overview.md
+- **Architectural Decisions**: @01_architectural_decisions/decision_log.md
+- **Archive**: @../archive/README.md - Consolidated scattered documentation

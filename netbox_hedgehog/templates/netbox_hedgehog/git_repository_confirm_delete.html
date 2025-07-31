@@ -5,8 +5,8 @@
 
 {% block breadcrumbs %}
 <li class="breadcrumb-item"><a href="{% url 'plugins:netbox_hedgehog:overview' %}">Hedgehog</a></li>
-<li class="breadcrumb-item"><a href="{% url 'plugins:netbox_hedgehog:git_repository_list' %}">Git Repositories</a></li>
-<li class="breadcrumb-item"><a href="{% url 'plugins:netbox_hedgehog:git_repository_detail' pk=object.pk %}">{{ object.name }}</a></li>
+<li class="breadcrumb-item"><a href="{% url 'plugins:netbox_hedgehog:gitrepository_list' %}">Git Repositories</a></li>
+<li class="breadcrumb-item"><a href="{% url 'plugins:netbox_hedgehog:gitrepository_detail' pk=object.pk %}">{{ object.name }}</a></li>
 <li class="breadcrumb-item active">Delete</li>
 {% endblock %}
 
@@ -43,7 +43,7 @@
                 <form method="post">
                     {% csrf_token %}
                     <div class="d-flex justify-content-between">
-                        <a href="{% url 'plugins:netbox_hedgehog:git_repository_detail' pk=object.pk %}" class="btn btn-secondary">
+                        <a href="{% url 'plugins:netbox_hedgehog:gitrepository_detail' pk=object.pk %}" class="btn btn-secondary">
                             Cancel
                         </a>
                         <button type="submit" class="btn btn-danger">

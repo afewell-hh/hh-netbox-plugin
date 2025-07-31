@@ -215,7 +215,7 @@
                         </div>
                     </div>
                     <div class="progress">
-                        <div class="progress-bar" role="progressbar" style="width: 20%" aria-valuenow="20" aria-valuemin="0" aria-valuemax="100" id="wizard-progress-bar"></div>
+                        <div class="progress-bar hedgehog-progress-20" role="progressbar" aria-valuenow="20" aria-valuemin="0" aria-valuemax="100" id="wizard-progress-bar"></div>
                     </div>
                 </div>
 
@@ -307,7 +307,7 @@
                                             <i class="mdi mdi-chevron-down"></i> How to generate a token
                                         </a>
                                     </div>
-                                    <div id="token-help" class="disclosure-content" style="display: none;">
+                                    <div id="token-help" class="disclosure-content hedgehog-disclosure-content">
                                         <strong>GitHub:</strong> Settings → Developer settings → Personal access tokens → Generate new token<br>
                                         <strong>GitLab:</strong> User Settings → Access Tokens → Create personal access token<br>
                                         <strong>Required permissions:</strong> repo, read:org (for GitHub)
@@ -315,7 +315,7 @@
                                 </div>
                             </div>
                             
-                            <div id="auth-ssh" class="auth-method-form" style="display: none;">
+                            <div id="auth-ssh" class="auth-method-form hedgehog-auth-fields">
                                 <div class="mb-3">
                                     <label for="ssh-private-key" class="form-label">SSH Private Key</label>
                                     <textarea class="form-control" id="ssh-private-key" rows="6" placeholder="-----BEGIN OPENSSH PRIVATE KEY-----"></textarea>
@@ -327,7 +327,7 @@
                                 </div>
                             </div>
                             
-                            <div id="auth-basic" class="auth-method-form" style="display: none;">
+                            <div id="auth-basic" class="auth-method-form hedgehog-auth-fields">
                                 <div class="mb-3">
                                     <label for="git-username" class="form-label">Username</label>
                                     <input type="text" class="form-control" id="git-username" placeholder="your-username">
@@ -347,7 +347,7 @@
                                     <button type="button" class="btn btn-outline-info" onclick="testConnection()">
                                         <i class="mdi mdi-play"></i> Test Connection
                                     </button>
-                                    <div id="connection-result" class="validation-result" style="display: none;">
+                                    <div id="connection-result" class="validation-result hedgehog-validation-result">
                                         <div class="d-flex align-items-center">
                                             <i class="mdi mdi-loading mdi-spin me-2"></i>
                                             <span>Testing connection...</span>
@@ -441,7 +441,7 @@
                                     </button>
                                     <div class="form-text mt-2">Scan repository for existing Hedgehog CRD files</div>
                                     
-                                    <div id="discovery-result" class="validation-result" style="display: none;">
+                                    <div id="discovery-result" class="validation-result hedgehog-validation-result">
                                         <div class="d-flex align-items-center mb-2">
                                             <i class="mdi mdi-loading mdi-spin me-2"></i>
                                             <span>Scanning repository...</span>
@@ -465,7 +465,7 @@
                         </div>
                     </div>
                     
-                    <div id="yaml-results" class="mt-4" style="display: none;">
+                    <div id="yaml-results" class="mt-4 hedgehog-hidden">
                         <h5>Discovered Resources</h5>
                         <div id="yaml-files-list"></div>
                     </div>

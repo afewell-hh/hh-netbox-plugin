@@ -1,0 +1,40 @@
+{% extends "base/layout.html" %}
+
+{% block title %}{{ title }}{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+    <h1>{{ title }}</h1>
+    
+    {% if error %}
+        <div class="alert alert-danger">
+            <h4>Error Detected: {{ error_type }}</h4>
+            <p><strong>Error:</strong> {{ error }}</p>
+        </div>
+    {% else %}
+        <div class="alert alert-success">
+            <h4>✅ Basic View Loading Works!</h4>
+            <p>No error in basic fabric retrieval and template rendering.</p>
+        </div>
+        
+        {% if object %}
+            <div class="card">
+                <div class="card-header">
+                    <h4>Fabric Information</h4>
+                </div>
+                <div class="card-body">
+                    <p><strong>Name:</strong> {{ object.name }}</p>
+                    <p><strong>PK:</strong> {{ object.pk }}</p>
+                    <p><strong>Type:</strong> {{ object|default:"None" }}</p>
+                </div>
+            </div>
+        {% endif %}
+    {% endif %}
+    
+    <div class="mt-3">
+        <a href="{% url 'plugins:netbox_hedgehog:fabric_detail' pk=object.pk %}" class="btn btn-secondary">
+            <i class="mdi mdi-arrow-left"></i> Back to Fabric
+        </a>
+    </div>
+</div>
+{% endblock %}

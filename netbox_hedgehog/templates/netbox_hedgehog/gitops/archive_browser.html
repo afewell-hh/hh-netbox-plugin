@@ -3,6 +3,11 @@
 
 {% block title %}Archive Browser{% endblock %}
 
+{% block header %}
+    {{ block.super }}
+    <link rel="stylesheet" href="{% static 'netbox_hedgehog/css/hedgehog.css' %}">
+{% endblock %}
+
 {% block breadcrumbs %}
     <li class="breadcrumb-item"><a href="{% url 'plugins:netbox_hedgehog:fabric_list' %}">Fabrics</a></li>
     <li class="breadcrumb-item"><a href="{% url 'plugins:netbox_hedgehog:gitops_dashboard' %}">GitOps Dashboard</a></li>
@@ -262,7 +267,7 @@
         <!-- Archive Details Panel -->
         <div class="col-lg-4">
             <!-- Selected Archive Details -->
-            <div class="card mb-4" id="archive-details-card" style="display: none;">
+            <div class="card mb-4 hedgehog-hidden" id="archive-details-card">
                 <div class="card-header">
                     <h5 class="card-title mb-0">
                         <i class="mdi mdi-file-document"></i> Archive Details
@@ -376,7 +381,7 @@
                                     <button class="btn btn-outline-secondary" onclick="formatContent('raw')">Raw</button>
                                 </div>
                             </div>
-                            <pre class="bg-light p-3 rounded" id="archive-content" style="height: 400px; overflow-y: auto;"></pre>
+                            <pre class="bg-light p-3 rounded hedgehog-scrollable-400" id="archive-content"></pre>
                         </div>
                     </div>
                     <div class="col-md-4">

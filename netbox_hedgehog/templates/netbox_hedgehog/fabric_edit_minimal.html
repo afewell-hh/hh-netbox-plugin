@@ -1,0 +1,20 @@
+{% extends "base/layout.html" %}
+
+{% block title %}Debug Edit Page{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+    <h1>Debug: Fabric Edit Page</h1>
+    
+    <div class="alert alert-info">
+        <strong>Debug Information:</strong>
+        <p>{{ debug_message }}</p>
+        <p>Object: {{ object }}</p>
+    </div>
+    
+    <div class="mt-3">
+        <a href="{% url 'plugins:netbox_hedgehog:fabric_detail' pk=object.pk %}" class="btn btn-primary">Back to Details</a>
+        <a href="{% url 'plugins:netbox_hedgehog:fabric_list' %}" class="btn btn-secondary">Back to List</a>
+    </div>
+</div>
+{% endblock %}

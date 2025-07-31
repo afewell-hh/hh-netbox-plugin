@@ -23,7 +23,9 @@ python -m pytest --version         # Testing framework ready
 1. **Git Workflow**: Feature branch → test → commit → PR (NEVER skip)
 2. **Testing Mandate**: All code changes require passing tests
 3. **Documentation**: Update docs with every feature change
-4. **Escalation Trigger**: When uncertain, ASK - never guess destructively
+4. **Hierarchy Awareness**: Orchestrator → QAPM → Task-specific agents
+5. **File Organization**: NEVER create files in repository root without explicit justification
+6. **Escalation Trigger**: When uncertain, ASK - never guess destructively
 
 ## Level 1: Project Context Integration
 
@@ -39,9 +41,30 @@ python -m pytest --version         # Testing framework ready
 /home/ubuntu/cc/hedgehog-netbox-plugin/  # Project root - MEMORIZE THIS
 ├── netbox_hedgehog/                     # Plugin core implementation
 ├── project_management/                  # Coordination hub (YOU ARE HERE)
+│   ├── 07_qapm_workspaces/              # Organized project workspaces
+│   └── ...                             # Other management directories
 ├── architecture_specifications/         # Technical design docs
 ├── claude_memory/                       # External memory system
+├── tests/                              # All test artifacts
 └── README.md                           # Project overview
+```
+
+### File Organization DNA (prevent repository chaos)
+**ABSOLUTE RULE**: Repository root is for essential configuration files ONLY
+
+**Decision Tree for File Placement**:
+1. **Temporary/Working file?** → Use QAPM workspace temp/ directory (gitignored)
+2. **Test artifact?** → Use /tests/ directory structure
+3. **Project documentation?** → Use centralized /project_management/ or /architecture_specifications/
+4. **Essential configuration?** → Repository root (with explicit justification ONLY)
+
+**QAPM Workspace Structure** (All projects MUST use):
+```
+/project_management/07_qapm_workspaces/[project_name]/
+├── 01_problem_analysis/          # Investigation outputs
+├── 04_evidence_collection/       # Implementation and test evidence
+├── temp/                        # Gitignored temporary files
+└── ...                         # Other organized directories
 ```
 
 ### CRD Architecture (12 types operational)
@@ -50,6 +73,18 @@ python -m pytest --version         # Testing framework ready
 - **Sync Pattern**: NetBox Django models ↔ Kubernetes CRDs ↔ GitOps repository
 
 ## Level 2: Process Compliance DNA
+
+### Agent Hierarchy Understanding (Critical for proper escalation)
+- **Orchestrator**: Central coordination, spawns QAPMs for complex tasks
+- **Quality Assurance Project Manager (QAPM)**: Process architect, spawns task-specific agents
+- **Task-specific Agents**: Execute specific technical work (coding, testing, documentation)
+- **Escalation Flow**: Task agent → QAPM → Orchestrator (when appropriate)
+
+### File Organization Responsibility
+- **All Agents**: Must follow file placement decision tree and use designated workspace locations
+- **QAPMs**: Must create organized workspaces and include file organization in ALL agent instructions
+- **Task Agents**: Must place all outputs in proper workspace locations and clean temporary files
+- **Everyone**: NEVER create files in repository root without explicit justification
 
 ### Git Workflow (Built into agent behavior)
 ```bash
@@ -79,8 +114,10 @@ git push origin feature/descriptive-name
 1. ✅ All tests pass (`python -m pytest`)
 2. ✅ Code follows project conventions  
 3. ✅ Documentation updated appropriately
-4. ✅ Git commit with descriptive message
-5. ✅ PR created for code review
+4. ✅ **File organization maintained (no scattered files in repository root)**
+5. ✅ **Temporary files cleaned or properly archived**
+6. ✅ Git commit with descriptive message
+7. ✅ PR created for code review
 
 ## Level 3: Failure Prevention Protocols
 
@@ -95,7 +132,10 @@ git push origin feature/descriptive-name
 - ❓ **Test Failures**: Cannot resolve failing tests within 30 minutes
 - ❓ **Architectural Decisions**: Significant design changes needed
 - ❓ **Data Loss Risk**: Any operation that might destroy existing data
+- ❓ **File Placement Uncertainty**: Unclear where files should be placed
+- ❓ **Repository Root Creation**: Any need to create files in repository root
 - ❓ **Uncertainty**: When you're not 100% confident in the approach
+- ❓ **Role Boundary**: Task exceeds your agent type's designated scope
 
 ### Emergency Procedures  
 - **Context Loss**: Refer to CLAUDE.md architecture for project recovery
@@ -110,20 +150,26 @@ git push origin feature/descriptive-name
 - [ ] Project context internalized (mission + current state)
 - [ ] Task requirements clearly understood
 - [ ] Success criteria defined explicitly
+- [ ] **File organization plan created (where will outputs be stored?)**
+- [ ] **QAPM workspace available or created if needed**
 
 ### Before Declaring Task Complete:
 - [ ] All tests pass without modification
 - [ ] Code follows project conventions
 - [ ] Documentation updated appropriately  
+- [ ] **All files placed in proper locations (no repository root scattering)**
+- [ ] **Temporary files cleaned or archived in gitignored directories**
+- [ ] **`git status` verified to show only intended changes**
 - [ ] Git commit with descriptive message
 - [ ] Changes validated in development environment
 
 ### Before Escalating Issues:
 - [ ] Attempted standard troubleshooting procedures
 - [ ] Checked existing documentation for guidance
+- [ ] **Verified file placement follows decision tree (not a file organization issue)**
 - [ ] Identified specific blocker requiring human input
 - [ ] Prepared clear description of issue and attempted solutions
 
 **FOUNDATION COMPLETE**: Agent demonstrates environment mastery, process compliance, and appropriate escalation behavior.
 
-**NEXT STEP**: Proceed to role-specific track (Orchestrator/Manager/Specialist) based on assignment.
+**NEXT STEP**: Proceed to role-specific track (Orchestrator/QAPM/Specialist) based on assignment.

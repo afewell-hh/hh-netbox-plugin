@@ -1,0 +1,28 @@
+{
+  "timestamp": "2025-07-28T21:45:14.841421",
+  "agent": "Enhanced QAPM v2.1",
+  "fixes_applied": {
+    "css_labels": "Added text-white/text-dark classes to badge elements",
+    "detail_page": "Fixed template syntax error (removed '< /dev/null')"
+  },
+  "validation_results": {
+    "authentication": "failed",
+    "list_page": {
+      "url": "http://localhost:8000/plugins/hedgehog/git-repositories/",
+      "status_code": 200
+    },
+    "css_fix_success": false,
+    "detail_page": {
+      "url": "http://localhost:8000/plugins/hedgehog/git-repositories/1/",
+      "status_code": 200
+    },
+    "detail_page_fixed": true
+  },
+  "evidence_collected": [
+    {
+      "type": "template_fix",
+      "location": "detail_page",
+      "evidence": "No shell syntax found in template"
+    }
+  ]
+}

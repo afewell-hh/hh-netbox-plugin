@@ -1,0 +1,67 @@
+{
+  "validation_timestamp": "2025-07-28T21:24:55.178342",
+  "qapm_agent": "Enhanced QAPM v2.1",
+  "issue_description": "Git repository list page bypassed authentication while detail page required it",
+  "fix_applied": "Added LoginRequiredMixin to WorkingGitRepositoryListView and GitRepositoryDetailView",
+  "validation_results": {
+    "list_page_fixed": true,
+    "detail_page_maintained": true,
+    "consistency_check": {
+      "plugin_overview": "status_200",
+      "fabric_list": "status_200",
+      "vpc_list": "requires_auth"
+    }
+  },
+  "before_fix_evidence": {
+    "list_page_status": 200,
+    "detail_page_status": 302
+  },
+  "after_fix_evidence": {
+    "list_page": {
+      "url": "http://localhost:8000/plugins/hedgehog/git-repositories/",
+      "status_code": 302,
+      "headers": {
+        "Content-Type": "text/html; charset=utf-8",
+        "Location": "/login/?next=/plugins/hedgehog/git-repositories/",
+        "X-Request-ID": "28f5c3d3-3465-43a2-ab8e-362603193d76",
+        "Vary": "HX-Request, Accept-Language, Cookie, origin",
+        "X-Content-Type-Options": "nosniff",
+        "Referrer-Policy": "same-origin",
+        "Cross-Origin-Opener-Policy": "same-origin",
+        "X-Frame-Options": "SAMEORIGIN",
+        "Content-Length": "0",
+        "Content-Language": "en",
+        "Server": "Unit/1.34.2",
+        "Date": "Mon, 28 Jul 2025 21:24:55 GMT"
+      },
+      "content_length": 0
+    },
+    "detail_page": {
+      "url": "http://localhost:8000/plugins/hedgehog/git-repositories/1/",
+      "status_code": 302,
+      "headers": {
+        "Content-Type": "text/html; charset=utf-8",
+        "Location": "/login/?next=/plugins/hedgehog/git-repositories/1/",
+        "X-Request-ID": "8eb3bfa0-003c-4233-9436-2b4ecd3e20de",
+        "Vary": "HX-Request, Accept-Language, Cookie, origin",
+        "X-Content-Type-Options": "nosniff",
+        "Referrer-Policy": "same-origin",
+        "Cross-Origin-Opener-Policy": "same-origin",
+        "X-Frame-Options": "SAMEORIGIN",
+        "Content-Length": "0",
+        "Content-Language": "en",
+        "Server": "Unit/1.34.2",
+        "Date": "Mon, 28 Jul 2025 21:24:55 GMT"
+      },
+      "content_length": 0
+    }
+  },
+  "user_workflow_validation": {
+    "list_page_redirect": "/login/?next=/plugins/hedgehog/git-repositories/",
+    "detail_page_redirect": "/login/?next=/plugins/hedgehog/git-repositories/1/",
+    "consistent_behavior": false,
+    "user_experience": "consistent - both pages require authentication"
+  },
+  "regression_testing": {},
+  "evidence_quality": "comprehensive"
+}

@@ -5,6 +5,11 @@
 
 {% block title %}{{ object.name }} - Fabric Details{% endblock %}
 
+{% block header %}
+    {{ block.super }}
+    <link rel="stylesheet" href="{% static 'netbox_hedgehog/css/hedgehog.css' %}">
+{% endblock %}
+
 {% block content %}
 <div class="container-fluid">
     <div class="row">
@@ -23,93 +28,9 @@
                 </div>
                 <div class="card-body">
                     
-                    <!-- Progressive Disclosure Dashboard -->
-                    <div class="dashboard-overview mb-4" style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); border-radius: 10px; padding: 20px; color: white;">
-                        <div class="status-cards" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 15px; margin-bottom: 20px;">
-                            <div class="status-card" style="background: rgba(255, 255, 255, 0.1); border-radius: 8px; padding: 15px; text-align: center; backdrop-filter: blur(10px);">
-                                <div class="status-card-title" style="font-size: 0.9rem; opacity: 0.8; margin-bottom: 5px;">Connection Status</div>
-                                <div class="status-card-value" style="font-size: 1.5rem; font-weight: bold; margin-bottom: 5px;">
-                                    {% if object.sync_status == 'synced' %}
-                                        <i class="mdi mdi-check-circle"></i>
-                                    {% elif object.sync_status == 'error' %}
-                                        <i class="mdi mdi-alert-circle"></i>
-                                    {% else %}
-                                        <i class="mdi mdi-help-circle"></i>
-                                    {% endif %}
-                                </div>
-                                <div class="status-card-subtitle" style="font-size: 0.8rem; opacity: 0.7;">
-                                    {{ object.sync_status|default:'Unknown' }}
-                                </div>
-                            </div>
-                            
-                            <div class="status-card" style="background: rgba(255, 255, 255, 0.1); border-radius: 8px; padding: 15px; text-align: center; backdrop-filter: blur(10px);">
-                                <div class="status-card-title" style="font-size: 0.9rem; opacity: 0.8; margin-bottom: 5px;">Git Repository</div>
-                                <div class="status-card-value" style="font-size: 1.5rem; font-weight: bold; margin-bottom: 5px;">
-                                    {% if object.git_repository %}
-                                        <i class="mdi mdi-git"></i>
-                                    {% else %}
-                                        <i class="mdi mdi-git-off"></i>
-                                    {% endif %}
-                                </div>
-                                <div class="status-card-subtitle" style="font-size: 0.8rem; opacity: 0.7;">
-                                    {% if object.git_repository %}
-                                        Connected
-                                    {% else %}
-                                        Not configured
-                                    {% endif %}
-                                </div>
-                            </div>
-                            
-                            <div class="status-card" style="background: rgba(255, 255, 255, 0.1); border-radius: 8px; padding: 15px; text-align: center; backdrop-filter: blur(10px);">
-                                <div class="status-card-title" style="font-size: 0.9rem; opacity: 0.8; margin-bottom: 5px;">Kubernetes</div>
-                                <div class="status-card-value" style="font-size: 1.5rem; font-weight: bold; margin-bottom: 5px;">
-                                    {% if object.kubernetes_server %}
-                                        <i class="mdi mdi-kubernetes"></i>
-                                    {% else %}
-                                        <i class="mdi mdi-server-off"></i>
-                                    {% endif %}
-                                </div>
-                                <div class="status-card-subtitle" style="font-size: 0.8rem; opacity: 0.7;">
-                                    {% if object.kubernetes_server %}
-                                        {{ object.kubernetes_namespace|default:'default' }}
-                                    {% else %}
-                                        Not configured
-                                    {% endif %}
-                                </div>
-                            </div>
-                            
-                            <div class="status-card" style="background: rgba(255, 255, 255, 0.1); border-radius: 8px; padding: 15px; text-align: center; backdrop-filter: blur(10px);">
-                                <div class="status-card-title" style="font-size: 0.9rem; opacity: 0.8; margin-bottom: 5px;">Last Sync</div>
-                                <div class="status-card-value" style="font-size: 1.5rem; font-weight: bold; margin-bottom: 5px;">
-                                    <i class="mdi mdi-clock"></i>
-                                </div>
-                                <div class="status-card-subtitle" style="font-size: 0.8rem; opacity: 0.7;">
-                                    {% if object.last_sync %}
-                                        {{ object.last_sync|timesince }} ago
-                                    {% else %}
-                                        Never synced
-                                    {% endif %}
-                                </div>
-                            </div>
-                        </div>
-                        
-                        <div class="quick-actions" style="display: flex; gap: 10px; flex-wrap: wrap;">
-                            <a href="#" class="quick-action-btn" onclick="syncFromGit(); return false;" style="background: rgba(255, 255, 255, 0.2); color: white; border: 1px solid rgba(255, 255, 255, 0.3); padding: 8px 16px; border-radius: 5px; text-decoration: none; font-size: 0.9rem; transition: all 0.3s ease;">
-                                <i class="mdi mdi-sync"></i> Sync from Git
-                            </a>
-                            {% if object.git_repository %}
-                                <a href="{{ object.git_repository }}" target="_blank" class="quick-action-btn" style="background: rgba(255, 255, 255, 0.2); color: white; border: 1px solid rgba(255, 255, 255, 0.3); padding: 8px 16px; border-radius: 5px; text-decoration: none; font-size: 0.9rem;">
-                                    <i class="mdi mdi-open-in-new"></i> View Repository
-                                </a>
-                            {% endif %}
-                            <a href="{% url 'plugins:netbox_hedgehog:connection_list' %}" class="quick-action-btn" style="background: rgba(255, 255, 255, 0.2); color: white; border: 1px solid rgba(255, 255, 255, 0.3); padding: 8px 16px; border-radius: 5px; text-decoration: none; font-size: 0.9rem;">
-                                <i class="mdi mdi-cable-data"></i> View Connections
-                            </a>
-                        </div>
-                    </div>
-                    
                     <div class="row">
                         <div class="col-md-8">
+                            <!-- Basic Fabric Information -->
                             <h4>Fabric Information</h4>
                             <table class="table table-borderless">
                                 <tr>
@@ -120,40 +41,82 @@
                                     <th>Description:</th>
                                     <td>{{ object.description|default:"—" }}</td>
                                 </tr>
+                            </table>
+
+                            <!-- Git Repository Sync Section -->
+                            <h5 class="mt-4"><i class="mdi mdi-git"></i> Git Repository Sync</h5>
+                            <table class="table table-borderless">
                                 <tr>
-                                    <th>Configuration Status:</th>
+                                    <th width="200">Git Sync Status:</th>
                                     <td>
-                                        <span class="badge {% if object.status == 'active' %}bg-success text-white{% elif object.status == 'maintenance' %}bg-warning text-dark{% elif object.status == 'planned' %}bg-info text-white{% else %}bg-secondary text-white{% endif %}">
-                                            {{ object.get_status_display }}
+                                        <span class="badge {% if object.git_repository %}bg-success{% else %}bg-secondary{% endif %}">
+                                            {% if object.git_repository %}Connected{% else %}Not Configured{% endif %}
                                         </span>
                                     </td>
                                 </tr>
                                 <tr>
-                                    <th>Connection Status:</th>
+                                    <th>Git Sync Enabled:</th>
                                     <td>
-                                        <span class="badge {% if object.connection_status == 'connected' %}bg-success text-white{% elif object.connection_status == 'disconnected' %}bg-danger text-white{% elif object.connection_status == 'error' %}bg-danger text-white{% else %}bg-secondary text-white{% endif %}">
-                                            {{ object.get_connection_status_display }}
-                                        </span>
+                                        {% if object.git_repository %}
+                                            {% if object.git_repository.sync_enabled %}
+                                                <span class="badge bg-success">Yes</span>
+                                            {% else %}
+                                                <span class="badge bg-secondary">No</span>
+                                            {% endif %}
+                                        {% else %}
+                                            <span class="badge bg-secondary">No Repository</span>
+                                        {% endif %}
+                                    </td>
+                                </tr>
+                                {% if object.git_repository %}
+                                <tr>
+                                    <th>Git Sync Interval:</th>
+                                    <td>{{ object.git_repository.sync_interval|default:"—" }} seconds</td>
+                                </tr>
+                                <tr>
+                                    <th>Git Last Sync:</th>
+                                    <td>
+                                        {% if object.git_repository.last_sync %}
+                                            {{ object.git_repository.last_sync|date:"Y-m-d H:i:s" }}
+                                            <small class="text-muted">({{ object.git_repository.last_sync|timesince }} ago)</small>
+                                        {% else %}
+                                            <span class="text-muted">Never</span>
+                                        {% endif %}
+                                    </td>
+                                </tr>
+                                {% endif %}
+                            </table>
+
+                            <!-- Hedgehog Fabric Sync Section -->
+                            <h5 class="mt-4"><i class="mdi mdi-kubernetes"></i> Hedgehog Fabric Sync</h5>
+                            <table class="table table-borderless">
+                                <tr>
+                                    <th width="200">Fabric Kubernetes Server:</th>
+                                    <td>
+                                        {% if object.kubernetes_server and object.kubernetes_server|length > 0 %}
+                                            <code>{{ object.kubernetes_server }}</code>
+                                        {% else %}
+                                            <span class="text-warning">
+                                                <i class="mdi mdi-alert-circle"></i> Not configured
+                                            </span>
+                                            <small class="text-muted ms-2">(Kubernetes connection required for sync)</small>
+                                        {% endif %}
                                     </td>
                                 </tr>
                                 <tr>
-                                    <th>Sync Status:</th>
+                                    <th>Fabric Kubernetes Namespace:</th>
+                                    <td><code>{{ object.kubernetes_namespace }}</code></td>
+                                </tr>
+                                <tr>
+                                    <th>Fabric Sync Status:</th>
                                     <td>
-                                        <span class="badge {% if object.sync_status == 'in_sync' %}bg-success text-white{% elif object.sync_status == 'out_of_sync' %}bg-warning text-dark{% elif object.sync_status == 'syncing' %}bg-info text-white{% elif object.sync_status == 'error' %}bg-danger text-white{% else %}bg-secondary text-white{% endif %}">
+                                        <span class="badge {% if object.sync_status == 'in_sync' %}bg-success text-white{% elif object.sync_status == 'synced' %}bg-success text-white{% elif object.sync_status == 'out_of_sync' %}bg-warning text-dark{% elif object.sync_status == 'syncing' %}bg-info text-white{% elif object.sync_status == 'error' %}bg-danger text-white{% else %}bg-secondary text-white{% endif %}">
                                             {{ object.get_sync_status_display }}
                                         </span>
                                     </td>
                                 </tr>
                                 <tr>
-                                    <th>Kubernetes Server:</th>
-                                    <td>{{ object.kubernetes_server|default:"—" }}</td>
-                                </tr>
-                                <tr>
-                                    <th>Kubernetes Namespace:</th>
-                                    <td><code>{{ object.kubernetes_namespace }}</code></td>
-                                </tr>
-                                <tr>
-                                    <th>Sync Enabled:</th>
+                                    <th>Fabric Sync Enabled:</th>
                                     <td>
                                         {% if object.sync_enabled %}
                                             <span class="badge bg-success">Yes</span>
@@ -163,11 +126,11 @@
                                     </td>
                                 </tr>
                                 <tr>
-                                    <th>Sync Interval:</th>
+                                    <th>Fabric Sync Interval:</th>
                                     <td>{{ object.sync_interval }} seconds</td>
                                 </tr>
                                 <tr>
-                                    <th>Last Sync:</th>
+                                    <th>Fabric Last Sync:</th>
                                     <td>
                                         {% if object.last_sync %}
                                             {{ object.last_sync|date:"Y-m-d H:i:s" }}
@@ -177,9 +140,45 @@
                                         {% endif %}
                                     </td>
                                 </tr>
+                            </table>
+
+                            <!-- Drift Detection Section -->
+                            <h5 class="mt-4"><i class="mdi mdi-compare"></i> Drift Detection</h5>
+                            <table class="table table-borderless">
+                                <tr>
+                                    <th width="200">Drift Status:</th>
+                                    <td>
+                                        {% if object.drift_count > 0 %}
+                                            <span class="badge bg-warning text-dark">{{ object.drift_count }} drift(s) detected</span>
+                                        {% else %}
+                                            <span class="badge bg-success">No drift detected</span>
+                                        {% endif %}
+                                    </td>
+                                </tr>
+                                <tr>
+                                    <th>Drift Count:</th>
+                                    <td>{{ object.drift_count|default:"0" }}</td>
+                                </tr>
+                                <tr>
+                                    <th>Last Drift Check:</th>
+                                    <td>
+                                        {% if object.last_drift_check %}
+                                            {{ object.last_drift_check|date:"Y-m-d H:i:s" }}
+                                            <small class="text-muted">({{ object.last_drift_check|timesince }} ago)</small>
+                                        {% else %}
+                                            <span class="text-muted">Never</span>
+                                        {% endif %}
+                                    </td>
+                                </tr>
+                            </table>
+
+                            <!-- Error Information -->
+                            {% if object.sync_error or object.connection_error %}
+                            <h5 class="mt-4"><i class="mdi mdi-alert-circle"></i> Error Information</h5>
+                            <table class="table table-borderless">
                                 {% if object.sync_error %}
                                 <tr>
-                                    <th>Sync Error:</th>
+                                    <th width="200">Sync Error:</th>
                                     <td>
                                         <div class="alert alert-danger">
                                             <small>{{ object.sync_error }}</small>
@@ -198,6 +197,7 @@
                                 </tr>
                                 {% endif %}
                             </table>
+                            {% endif %}
                         </div>
                         
                         <div class="col-md-4">
@@ -205,26 +205,59 @@
                             {% if object.git_repository %}
                                 <div class="alert alert-success">
                                     <h6><i class="mdi mdi-git"></i> Git Repository Connected</h6>
-                                    <p><strong>Repository:</strong> {{ object.git_repository }}</p>
-                                    <p><strong>GitOps Directory:</strong> <code>{{ object.gitops_directory|default:"/" }}</code></p>
-                                    {% if object.git_repository.url %}
-                                        <p><strong>URL:</strong> {{ object.git_repository.url }}</p>
-                                        <p><strong>Branch:</strong> {{ object.git_repository.default_branch|default:"main" }}</p>
-                                    {% endif %}
+                                    <table class="table table-borderless mb-0">
+                                        <tr>
+                                            <th width="30%">Repository:</th>
+                                            <td><span class="text-break">{{ object.git_repository }}</span></td>
+                                        </tr>
+                                        <tr>
+                                            <th>GitOps Directory:</th>
+                                            <td><code class="text-break">{{ object.gitops_directory|default:"/" }}</code></td>
+                                        </tr>
+                                        {% if object.git_repository.url %}
+                                            <tr>
+                                                <th>URL:</th>
+                                                <td><span class="text-break" style="word-break: break-all; overflow-wrap: break-word;">{{ object.git_repository.url }}</span></td>
+                                            </tr>
+                                            <tr>
+                                                <th>Branch:</th>
+                                                <td><code class="text-break">{{ object.git_repository.default_branch|default:"main" }}</code></td>
+                                            </tr>
+                                        {% endif %}
+                                    </table>
                                 </div>
                             {% elif object.git_repository_url %}
                                 <div class="alert alert-warning">
                                     <h6><i class="mdi mdi-git"></i> Legacy Git Configuration</h6>
-                                    <p><strong>Repository URL:</strong> {{ object.git_repository_url }}</p>
-                                    <p><strong>GitOps Directory:</strong> <code>{{ object.gitops_directory|default:"/" }}</code></p>
-                                    <p><strong>Branch:</strong> {{ object.git_branch|default:"main" }}</p>
-                                    <small class="text-muted">Consider migrating to the new Git Repository architecture.</small>
+                                    <table class="table table-borderless mb-0">
+                                        <tr>
+                                            <th width="30%">Repository URL:</th>
+                                            <td><span class="text-break" style="word-break: break-all; overflow-wrap: break-word;">{{ object.git_repository_url }}</span></td>
+                                        </tr>
+                                        <tr>
+                                            <th>GitOps Directory:</th>
+                                            <td><code class="text-break">{{ object.gitops_directory|default:"/" }}</code></td>
+                                        </tr>
+                                        <tr>
+                                            <th>Branch:</th>
+                                            <td><code class="text-break">{{ object.git_branch|default:"main" }}</code></td>
+                                        </tr>
+                                    </table>
+                                    <small class="text-muted d-block mt-2">Consider migrating to the new Git Repository architecture.</small>
                                 </div>
                             {% else %}
                                 <div class="alert alert-info">
                                     <h6><i class="mdi mdi-information"></i> No Git Repository</h6>
-                                    <p>This fabric is not connected to a Git repository.</p>
-                                    <p><strong>GitOps Directory:</strong> <code>{{ object.gitops_directory|default:"/" }}</code></p>
+                                    <table class="table table-borderless mb-0">
+                                        <tr>
+                                            <th width="30%">Status:</th>
+                                            <td>This fabric is not connected to a Git repository.</td>
+                                        </tr>
+                                        <tr>
+                                            <th>GitOps Directory:</th>
+                                            <td><code class="text-break">{{ object.gitops_directory|default:"/" }}</code></td>
+                                        </tr>
+                                    </table>
                                 </div>
                             {% endif %}
                             
@@ -239,8 +272,8 @@
                                         <i class="mdi mdi-sync-off"></i> Sync Disabled
                                     </button>
                                 {% endif %}
-                                <button id="sync-hckc-button" class="btn btn-outline-primary" onclick="syncFromHCKC({{ object.pk }})">
-                                    <i class="mdi mdi-kubernetes"></i> Sync from HCKC
+                                <button id="sync-fabric-button" class="btn btn-outline-primary" onclick="syncFromFabric({{ object.pk }})">
+                                    <i class="mdi mdi-kubernetes"></i> Sync from Fabric
                                 </button>
                                 <button id="test-connection-button" class="btn btn-outline-info" onclick="testConnection({{ object.pk }})">
                                     <i class="mdi mdi-test-tube"></i> Test Connection
@@ -328,8 +361,8 @@
                                 });
                             }
                             
-                            function syncFromHCKC(fabricId) {
-                                const button = document.getElementById('sync-hckc-button');
+                            function syncFromFabric(fabricId) {
+                                const button = document.getElementById('sync-fabric-button');
                                 button.disabled = true;
                                 button.innerHTML = '<i class="mdi mdi-kubernetes mdi-spin"></i> Syncing...';
                                 
@@ -358,19 +391,19 @@
                                 })
                                 .then(data => {
                                     if (data.success) {
-                                        showAlert('success', data.message || 'HCKC sync completed successfully');
+                                        showAlert('success', data.message || 'Fabric sync completed successfully');
                                         setTimeout(() => location.reload(), 1500);
                                     } else {
-                                        showAlert('danger', data.error || data.message || 'HCKC sync failed');
+                                        showAlert('danger', data.error || data.message || 'Fabric sync failed');
                                     }
                                 })
                                 .catch(error => {
-                                    console.error('HCKC sync error:', error);
-                                    showAlert('danger', 'HCKC sync failed: ' + error.message);
+                                    console.error('Fabric sync error:', error);
+                                    showAlert('danger', 'Fabric sync failed: ' + error.message);
                                 })
                                 .finally(() => {
                                     button.disabled = false;
-                                    button.innerHTML = '<i class="mdi mdi-kubernetes"></i> Sync from HCKC';
+                                    button.innerHTML = '<i class="mdi mdi-kubernetes"></i> Sync from Fabric';
                                 });
                             }
                             

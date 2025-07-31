@@ -1,0 +1,89 @@
+{
+  "timestamp": "2025-07-27T16:17:00.893629",
+  "tests": {
+    "Fix 1 - Fabric Discovery": {
+      "status": "PASSED",
+      "details": [
+        "Found fabric IDs: [12, 12]"
+      ],
+      "evidence": []
+    },
+    "Fix 1 - Page Loading": {
+      "status": "PASSED",
+      "details": [
+        "2/2 fabric pages load without errors"
+      ],
+      "evidence": []
+    },
+    "Fix 2 - Display Messages": {
+      "status": "PASSED",
+      "details": [
+        "Proper configuration messages displayed",
+        "Fabric 12: \u2705 No localhost URL",
+        "Fabric 12: \u2705 Proper messages: ['Using default kubeconfig', 'default kubeconfig']",
+        "Fabric 12: \u2705 No localhost URL",
+        "Fabric 12: \u2705 Proper messages: ['Using default kubeconfig', 'default kubeconfig']"
+      ],
+      "evidence": []
+    },
+    "Fix 3 - CSS Content": {
+      "status": "FAILED",
+      "details": [
+        "High Specificity Selectors: 5/5 (100%)",
+        "Badge Variant Selectors: 5/5 (100%)",
+        "Important Rules: 4/4 (100%)",
+        "Documentation: 2/3 (67%)",
+        "CSS file size: 26,483 bytes"
+      ],
+      "evidence": []
+    },
+    "Docker - Access": {
+      "status": "WARNING",
+      "details": [
+        "Cannot access Docker daemon"
+      ],
+      "evidence": []
+    },
+    "Integration - Combined Fixes": {
+      "status": "PASSED",
+      "details": [
+        "No Server Errors: \u2705",
+        "No Localhost URL: \u2705",
+        "Proper K8s Messaging: \u2705",
+        "Badges Present: \u2705",
+        "Page Completeness: \u2705",
+        "Overall: 5/5 checks passed"
+      ],
+      "evidence": []
+    }
+  },
+  "summary": {
+    "total": 6,
+    "passed": 4,
+    "failed": 1,
+    "warnings": 1
+  },
+  "fixes_status": {
+    "error_crd_count": "WORKING",
+    "kubernetes_server_display": "WORKING",
+    "badge_css_readability": "INCOMPLETE"
+  },
+  "evidence": [
+    "Total tests executed: 6",
+    "Tests passed: 4",
+    "Tests failed: 1",
+    "Warnings: 1",
+    "",
+    "Fix Status Summary:",
+    "  error_crd_count: WORKING",
+    "  kubernetes_server_display: WORKING",
+    "  badge_css_readability: INCOMPLETE",
+    "",
+    "Validation Approach:",
+    "  - HTTP-based testing (no Django setup required)",
+    "  - Real fabric page validation",
+    "  - CSS file content verification",
+    "  - Docker integration testing",
+    "  - Regression prevention checks"
+  ]
+}

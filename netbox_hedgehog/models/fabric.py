@@ -448,7 +448,41 @@ class HedgehogFabric(NetBoxModel):
     @property
     def error_crd_count(self):
         """Return count of CRDs with errors in this fabric"""
-        return 0  # Safe fallback
+        total = 0
+        try:
+            from django.apps import apps
+            from ..choices import KubernetesStatusChoices
+            
+            # Use apps.get_model to avoid circular imports (same pattern as active_crd_count)
+            VPC = apps.get_model('netbox_hedgehog', 'VPC')
+            External = apps.get_model('netbox_hedgehog', 'External')
+            ExternalAttachment = apps.get_model('netbox_hedgehog', 'ExternalAttachment')
+            ExternalPeering = apps.get_model('netbox_hedgehog', 'ExternalPeering')
+            IPv4Namespace = apps.get_model('netbox_hedgehog', 'IPv4Namespace')
+            VPCAttachment = apps.get_model('netbox_hedgehog', 'VPCAttachment')
+            VPCPeering = apps.get_model('netbox_hedgehog', 'VPCPeering')
+            Connection = apps.get_model('netbox_hedgehog', 'Connection')
+            Server = apps.get_model('netbox_hedgehog', 'Server')
+            Switch = apps.get_model('netbox_hedgehog', 'Switch')
+            SwitchGroup = apps.get_model('netbox_hedgehog', 'SwitchGroup')
+            VLANNamespace = apps.get_model('netbox_hedgehog', 'VLANNamespace')
+            
+            models = [VPC, External, ExternalAttachment, ExternalPeering, IPv4Namespace, VPCAttachment, VPCPeering,
+                     Connection, Server, Switch, SwitchGroup, VLANNamespace]
+            
+            for model in models:
+                try:
+                    total += model.objects.filter(
+                        fabric=self,
+                        kubernetes_status=KubernetesStatusChoices.ERROR
+                    ).count()
+                except Exception:
+                    # Table doesn't exist yet, skip this model
+                    pass
+        except ImportError:
+            # Models not available, return 0
+            pass
+        return total
     
     def get_kubernetes_config(self):
         """
@@ -643,21 +677,123 @@ class HedgehogFabric(NetBoxModel):
         """
         Sync desired state from Git repository.
         Updates desired_state_commit and last_git_sync fields.
-        TEMPORARILY DISABLED due to circular import issues.
+        Creates HedgehogResource records for all CRs found in GitOps directory.
         """
-        # Temporarily disabled due to git_monitor import causing circular dependencies
-        return {
-            'success': True, 
-            'message': 'Sync temporarily disabled - system recovery mode',
-            'repository_url': self.git_repository_url or 'Not configured',
-            'branch': self.git_branch,
-            'commit_sha': 'recovery-mode',
-            'files_processed': 0,
-            'resources_created': 0,
-            'resources_updated': 0,
-            'errors': [],
-            'sync_time': None
-        }
+        if not self.git_repository_url:
+            return {
+                'success': False,
+                'error': 'No Git repository configured'
+            }
+        
+        try:
+            # Import here to avoid circular dependencies
+            import tempfile
+            import shutil
+            import yaml
+            import git
+            from pathlib import Path
+            from django.utils import timezone
+            from django.db import transaction
+            
+            # Clone repository
+            temp_dir = tempfile.mkdtemp()
+            try:
+                repo = git.Repo.clone_from(self.git_repository_url, temp_dir, branch=self.git_branch)
+                commit_sha = repo.head.commit.hexsha
+                
+                # Look for YAML files in the specified git path
+                git_path = Path(temp_dir) / (self.git_path.strip('/') if self.git_path else '')
+                
+                if not git_path.exists():
+                    return {
+                        'success': False,
+                        'error': f'GitOps path {self.git_path} not found in repository'
+                    }
+                
+                yaml_files = list(git_path.glob('*.yaml')) + list(git_path.glob('*.yml'))
+                
+                resources_created = 0
+                resources_updated = 0
+                errors = []
+                
+                with transaction.atomic():
+                    # Clear existing desired_spec for this fabric (to detect removed files)
+                    from ..models.gitops import HedgehogResource
+                    
+                    # Clear desired_spec for existing resources
+                    HedgehogResource.objects.filter(fabric=self).update(desired_spec=None)
+                    
+                    for yaml_file in yaml_files:
+                        try:
+                            with open(yaml_file, 'r') as f:
+                                docs = list(yaml.safe_load_all(f))
+                            
+                            for doc in docs:
+                                if not doc or 'kind' not in doc or 'metadata' not in doc:
+                                    continue
+                                
+                                # Check if this is a Hedgehog CRD
+                                kind = doc.get('kind')
+                                api_version = doc.get('apiVersion', '')
+                                
+                                if 'hedgehog.githedgehog.com' in api_version or kind in [
+                                    'VPC', 'External', 'ExternalAttachment', 'ExternalPeering', 
+                                    'IPv4Namespace', 'VPCAttachment', 'VPCPeering',
+                                    'Connection', 'Server', 'Switch', 'SwitchGroup', 'VLANNamespace'
+                                ]:
+                                    name = doc['metadata'].get('name', 'unknown')
+                                    namespace = doc['metadata'].get('namespace', 'default')
+                                    
+                                    # Create or update HedgehogResource
+                                    resource, created = HedgehogResource.objects.get_or_create(
+                                        fabric=self,
+                                        kind=kind,
+                                        name=name,
+                                        namespace=namespace,
+                                        defaults={
+                                            'desired_spec': doc,
+                                            'api_version': api_version,
+                                            'desired_commit': commit_sha
+                                        }
+                                    )
+                                    
+                                    if created:
+                                        resources_created += 1
+                                    else:
+                                        resource.desired_spec = doc
+                                        resource.desired_commit = commit_sha
+                                        resource.save()
+                                        resources_updated += 1
+                                        
+                        except Exception as e:
+                            errors.append(f"Error processing {yaml_file.name}: {str(e)}")
+                
+                # Update fabric sync info
+                self.desired_state_commit = commit_sha
+                self.last_git_sync = timezone.now()
+                self.save(update_fields=['desired_state_commit', 'last_git_sync'])
+                
+                return {
+                    'success': True,
+                    'message': f'Sync completed successfully',
+                    'repository_url': self.git_repository_url,
+                    'branch': self.git_branch,
+                    'commit_sha': commit_sha,
+                    'files_processed': len(yaml_files),
+                    'resources_created': resources_created,
+                    'resources_updated': resources_updated,
+                    'errors': errors,
+                    'sync_time': self.last_git_sync
+                }
+                
+            finally:
+                shutil.rmtree(temp_dir, ignore_errors=True)
+                
+        except Exception as e:
+            return {
+                'success': False,
+                'error': f'Sync failed: {str(e)}'
+            }
         
         # Original implementation commented out to prevent circular imports
         # if not self.git_repository_url:
@@ -1178,3 +1314,119 @@ class HedgehogFabric(NetBoxModel):
             'error_message': self.watch_error_message,
             'can_enable': self.can_enable_watch()
         }
+    
+    def sync_actual_state(self):
+        """
+        Sync actual state from Kubernetes cluster to HedgehogResource records.
+        Updates actual_spec and actual_status fields for drift detection.
+        """
+        if not self.kubernetes_server:
+            return {
+                'success': False,
+                'error': 'No Kubernetes cluster configured'
+            }
+        
+        try:
+            from ..utils.kubernetes import KubernetesSync
+            from ..models.gitops import HedgehogResource
+            from django.utils import timezone
+            from django.db import transaction
+            
+            # Create Kubernetes sync client
+            k8s_sync = KubernetesSync(self)
+            
+            # Fetch CRDs from cluster
+            fetch_result = k8s_sync.fetch_crds_from_kubernetes()
+            
+            if not fetch_result['success']:
+                return {
+                    'success': False,
+                    'error': f"Failed to fetch CRDs from cluster: {'; '.join(fetch_result['errors'])}"
+                }
+            
+            resources_updated = 0
+            resources_cleared = 0
+            errors = []
+            
+            with transaction.atomic():
+                # Clear actual_spec for all resources (to detect removed resources)
+                HedgehogResource.objects.filter(fabric=self).update(
+                    actual_spec=None,
+                    actual_status=None,
+                    actual_updated=None
+                )
+                
+                # Update actual_spec for resources found in cluster
+                for kind, cluster_resources in fetch_result['resources'].items():
+                    for resource in cluster_resources:
+                        try:
+                            metadata = resource.get('metadata', {})
+                            name = metadata.get('name', '')
+                            namespace = metadata.get('namespace', 'default')
+                            
+                            if not name:
+                                continue
+                            
+                            # Find corresponding HedgehogResource
+                            try:
+                                hedgehog_resource = HedgehogResource.objects.get(
+                                    fabric=self,
+                                    kind=kind,
+                                    name=name,
+                                    namespace=namespace
+                                )
+                                
+                                # Update actual state
+                                hedgehog_resource.actual_spec = resource.get('spec', {})
+                                hedgehog_resource.actual_status = resource.get('status', {})
+                                hedgehog_resource.actual_resource_version = metadata.get('resourceVersion', '')
+                                hedgehog_resource.actual_updated = timezone.now()
+                                hedgehog_resource.save(update_fields=[
+                                    'actual_spec', 'actual_status', 'actual_resource_version', 'actual_updated'
+                                ])
+                                
+                                resources_updated += 1
+                                
+                            except HedgehogResource.DoesNotExist:
+                                # Resource exists in cluster but not in GitOps - create orphaned resource
+                                HedgehogResource.objects.create(
+                                    fabric=self,
+                                    kind=kind,
+                                    name=name,
+                                    namespace=namespace,
+                                    api_version=resource.get('apiVersion', ''),
+                                    actual_spec=resource.get('spec', {}),
+                                    actual_status=resource.get('status', {}),
+                                    actual_resource_version=metadata.get('resourceVersion', ''),
+                                    actual_updated=timezone.now(),
+                                    labels=metadata.get('labels', {}),
+                                    annotations=metadata.get('annotations', {})
+                                )
+                                
+                                resources_updated += 1
+                                
+                        except Exception as e:
+                            error_msg = f"Error processing {kind}/{name}: {str(e)}"
+                            errors.append(error_msg)
+                            logger.error(error_msg)
+                
+                # Calculate drift for all resources
+                for resource in HedgehogResource.objects.filter(fabric=self):
+                    resource.calculate_drift()
+            
+            # Update fabric state
+            self.calculate_drift_status()
+            
+            return {
+                'success': True,
+                'message': f'Cluster sync completed successfully',
+                'resources_updated': resources_updated,
+                'errors': errors,
+                'sync_time': timezone.now()
+            }
+            
+        except Exception as e:
+            return {
+                'success': False,
+                'error': f'Cluster sync failed: {str(e)}'
+            }

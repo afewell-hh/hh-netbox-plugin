@@ -499,7 +499,7 @@
                                     </div>
                                 </div>
                                 
-                                <div id="basic-fields" class="auth-fields" style="display: none;">
+                                <div id="basic-fields" class="auth-fields hedgehog-auth-fields">
                                     <div class="row">
                                         <div class="col-md-6">
                                             <div class="mb-3">
@@ -516,7 +516,7 @@
                                     </div>
                                 </div>
                                 
-                                <div id="ssh-fields" class="auth-fields" style="display: none;">
+                                <div id="ssh-fields" class="auth-fields hedgehog-auth-fields">
                                     <div class="mb-3">
                                         <label for="{{ form.new_repo_ssh_key.id_for_label }}" class="form-label">SSH Private Key</label>
                                         {{ form.new_repo_ssh_key }}
@@ -662,7 +662,7 @@
             <!-- Workflow Actions -->
             <div class="workflow-actions">
                 <div class="flex-grow-1">
-                    <button type="button" class="btn btn-outline-secondary" id="prev-step" onclick="previousStep()" style="display: none;">
+                    <button type="button" class="btn btn-outline-secondary hedgehog-wizard-nav" id="prev-step" onclick="previousStep()">
                         <i class="mdi mdi-arrow-left"></i> Previous
                     </button>
                 </div>
@@ -673,7 +673,7 @@
                     <button type="button" class="btn btn-primary" id="next-step" onclick="nextStep()">
                         Next <i class="mdi mdi-arrow-right"></i>
                     </button>
-                    <button type="submit" class="btn btn-success" id="create-fabric" style="display: none;">
+                    <button type="submit" class="btn btn-success hedgehog-wizard-nav" id="create-fabric">
                         <i class="mdi mdi-plus"></i> Create Fabric
                     </button>
                 </div>

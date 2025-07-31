@@ -245,7 +245,7 @@
                         </div>
                     </div>
                     <div class="progress">
-                        <div class="progress-bar" role="progressbar" style="width: 20%" aria-valuenow="20" aria-valuemin="0" aria-valuemax="100" id="wizard-progress-bar"></div>
+                        <div class="progress-bar hedgehog-progress-20" role="progressbar" aria-valuenow="20" aria-valuemin="0" aria-valuemax="100" id="wizard-progress-bar"></div>
                     </div>
                 </div>
 
@@ -290,7 +290,7 @@
                                         </button>
                                     </div>
                                     
-                                    <div id="prerequisites-result" class="validation-result" style="display: none;">
+                                    <div id="prerequisites-result" class="validation-result hedgehog-hidden">
                                         <div class="d-flex align-items-center">
                                             <i class="mdi mdi-loading mdi-spin me-2"></i>
                                             <span>Checking prerequisites...</span>
@@ -501,7 +501,7 @@
                                         <i class="mdi mdi-test-tube"></i> Test Connection
                                     </button>
                                     
-                                    <div id="repo-test-result" class="validation-result" style="display: none;">
+                                    <div id="repo-test-result" class="validation-result hedgehog-hidden">
                                         <div class="d-flex align-items-center">
                                             <i class="mdi mdi-loading mdi-spin me-2"></i>
                                             <span>Testing repository connection...</span>
@@ -644,7 +644,7 @@
                                         <button type="button" class="btn btn-success" onclick="startInstallation()" id="start-installation-btn">
                                             <i class="mdi mdi-play"></i> Start Installation
                                         </button>
-                                        <button type="button" class="btn btn-warning" onclick="retryInstallation()" id="retry-installation-btn" style="display: none;">
+                                        <button type="button" class="btn btn-warning hedgehog-hidden" onclick="retryInstallation()" id="retry-installation-btn">
                                             <i class="mdi mdi-refresh"></i> Retry Installation
                                         </button>
                                     </div>
@@ -652,14 +652,14 @@
                             </div>
                         </div>
                         <div class="col-md-4">
-                            <div id="argocd-status-card" class="argocd-status-card" style="display: none;">
+                            <div id="argocd-status-card" class="argocd-status-card hedgehog-hidden">
                                 <h6><i class="mdi mdi-kubernetes"></i> ArgoCD Status</h6>
                                 <div id="argocd-status-info">
                                     <!-- Status information will be populated here -->
                                 </div>
                             </div>
                             
-                            <div class="card" id="completion-card" style="display: none;">
+                            <div class="card hedgehog-hidden" id="completion-card">
                                 <div class="card-header">
                                     <h6><i class="mdi mdi-check-circle"></i> Setup Complete</h6>
                                 </div>
@@ -1087,7 +1087,7 @@ function updateArgoCDStatusCard(status) {
         ${status.admin_password ? `
         <div class="mb-2">
             <strong>Admin Password:</strong> 
-            <code style="background: rgba(255,255,255,0.2); padding: 0.25rem;">${status.admin_password}</code>
+            <code class="hedgehog-code-light">${status.admin_password}</code>
         </div>
         ` : ''}
     `;

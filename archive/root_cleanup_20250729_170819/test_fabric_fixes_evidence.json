@@ -1,0 +1,20 @@
+{
+  "test_date": "2025-07-27 16:14:52",
+  "total_tests": 6,
+  "passed": 5,
+  "failed": 1,
+  "result": "PARTIAL_SUCCESS",
+  "fixes_tested": [
+    "error_crd_count property implementation",
+    "Kubernetes server display template fix",
+    "Badge CSS readability improvements"
+  ],
+  "test_categories": [
+    "HTTP response validation",
+    "Template rendering validation",
+    "CSS validation",
+    "Integration testing",
+    "Docker container updates"
+  ],
+  "errors": []
+}

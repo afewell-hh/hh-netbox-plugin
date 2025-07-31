@@ -3,6 +3,11 @@
 
 {% block title %}GitOps Onboarding Wizard{% endblock %}
 
+{% block header %}
+    {{ block.super }}
+    <link rel="stylesheet" href="{% static 'netbox_hedgehog/css/hedgehog.css' %}">
+{% endblock %}
+
 {% block breadcrumbs %}
     <li class="breadcrumb-item"><a href="{% url 'plugins:netbox_hedgehog:fabric_list' %}">Fabrics</a></li>
     <li class="breadcrumb-item active">GitOps Onboarding</li>
@@ -176,7 +181,7 @@
                         <!-- File Detection Results -->
                         <div id="file-detection-results" class="d-none">
                             <!-- Warning for existing files -->
-                            <div class="alert alert-warning" id="existing-files-warning" style="display: none;">
+                            <div class="alert alert-warning hedgehog-hidden" id="existing-files-warning">
                                 <h5><i class="mdi mdi-alert"></i> Existing Files Detected</h5>
                                 <p>Found <strong id="file-count">0</strong> YAML files in the GitOps directory.</p>
                                 <p>These files will be:</p>
@@ -191,13 +196,13 @@
                             </div>
 
                             <!-- No files found -->
-                            <div class="alert alert-info" id="no-files-found" style="display: none;">
+                            <div class="alert alert-info hedgehog-hidden" id="no-files-found">
                                 <h5><i class="mdi mdi-information"></i> Clean Directory</h5>
                                 <p>No existing YAML files were found in the GitOps directory. The onboarding process will create the initial directory structure.</p>
                             </div>
 
                             <!-- File listing -->
-                            <div id="file-listing" class="mt-3" style="display: none;">
+                            <div id="file-listing" class="mt-3 hedgehog-hidden">
                                 <h6>Detected Files:</h6>
                                 <div class="table-responsive">
                                     <table class="table table-sm table-hover">
@@ -283,7 +288,7 @@
                         </div>
 
                         <!-- Strategy Details -->
-                        <div id="strategy-details" class="mt-4" style="display: none;">
+                        <div id="strategy-details" class="mt-4 hedgehog-hidden">
                             <div class="alert alert-light border">
                                 <h6 id="strategy-title">Strategy Details</h6>
                                 <div id="strategy-description"></div>
@@ -295,7 +300,7 @@
                         </div>
 
                         <!-- Confirmation -->
-                        <div id="strategy-confirmation" class="mt-4" style="display: none;">
+                        <div id="strategy-confirmation" class="mt-4 hedgehog-hidden">
                             <div class="form-check">
                                 <input class="form-check-input" type="checkbox" id="confirm-strategy">
                                 <label class="form-check-label" for="confirm-strategy">
@@ -337,7 +342,7 @@
                         <!-- Processing Log -->
                         <div class="processing-log">
                             <h6>Processing Log:</h6>
-                            <div class="log-container bg-dark text-light p-3 rounded" style="height: 300px; overflow-y: auto;">
+                            <div class="hedgehog-log-container hedgehog-height-300">
                                 <div class="log-entries" id="processing-log">
                                     <!-- Log entries will be added via JavaScript -->
                                 </div>
@@ -345,7 +350,7 @@
                         </div>
 
                         <!-- Error Display -->
-                        <div class="alert alert-danger" id="processing-error" style="display: none;">
+                        <div class="alert alert-danger hedgehog-hidden" id="processing-error">
                             <h5><i class="mdi mdi-alert-circle"></i> Processing Error</h5>
                             <p id="error-message"></p>
                             <details>

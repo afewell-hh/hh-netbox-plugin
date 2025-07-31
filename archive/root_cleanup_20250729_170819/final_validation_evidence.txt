@@ -1,0 +1,47 @@
+FABRIC PAGE IMPROVEMENTS - VALIDATION EVIDENCE
+============================================================
+
+Test: Kubernetes Server Display
+Status: PASSED
+----------------------------------------
+HTML Evidence:
+<th>Kubernetes Server:</th>
+                                    <td>
+                                        {% if object.kubernetes_server and object.kubernetes_server|length > 0 %}
+                                            <code>{{ object.kubernetes_server }}</code>
+                                        {% else %}
+                                            <span class="text-muted">https://127.0.0.1:6443</span>
+                                            <small class="text-muted ms-2">(HCK
+
+============================================================
+
+Test: Git Configuration 2-Column Layout
+Status: PASSED
+----------------------------------------
+HTML Evidence:
+<div class="col-md-6">
+                            <div class="card border-primary">
+                                <div class="card-header bg-primary text-white">
+                                    <h5 class="mb-0"><i class="mdi mdi-git"></i> Git Repository Sync</h5>
+                                    <small>Syncing FROM Git TO NetBox</small>
+                                </div>
+            
+
+============================================================
+
+Test: Model Field Accuracy
+Status: FAILED
+----------------------------------------
+HTML Evidence:
+active_crd_count: <h3>{{ object.active_crd_count }}</h3>
+crd_count: <h3 data-crd-count>{{ object.crd_count }}</h3>
+error_crd_count: <h3>{{ object.error_crd_count }}</h3>
+
+============================================================
+
+Test: Kubeconfig Connection Mechanism
+Status: PASSED
+----------------------------------------
+
+============================================================
+

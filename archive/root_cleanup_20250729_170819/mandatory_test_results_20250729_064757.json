@@ -1,0 +1,23 @@
+{
+  "timestamp": "20250729_064757",
+  "passed": 6,
+  "failed": 4,
+  "failed_tests": [
+    "test_fabric_git_repository_link",
+    "test_fabric_gitops_directory",
+    "test_git_repository_authentication",
+    "test_sync_creates_crd_records"
+  ],
+  "detailed_results": [
+    "\u2713 test_fabric_exists: PASSED",
+    "\u2713 test_git_repository_exists: PASSED",
+    "\u2717 test_fabric_git_repository_link: FAILED - EXPECTED FAILURE: Fabric.git_repository is None. Agent MUST fix this by setting fabric.git_repository = GitRepository(id=6)",
+    "\u2717 test_fabric_gitops_directory: FAILED - EXPECTED FAILURE: GitOps directory is root '/'. Agent MUST fix this by setting gitops_directory = 'gitops/hedgehog/fabric-1/'",
+    "\u2717 test_git_repository_authentication: FAILED - EXPECTED FAILURE: Git connection test failed. Agent MUST fix repository authentication.",
+    "\u2713 test_repository_content_accessible: PASSED",
+    "\u2717 test_sync_creates_crd_records: FAILED - EXPECTED FAILURE: Sync operation failed. Agent MUST fix sync functionality. Output: \ud83e\uddec loaded config '/etc/netbox/config/configuration.py'\n\ud83e\uddec loaded config '/etc/netbox/config/extra.py'\n\ud83e\uddec loaded config '/etc/netbox/config/logging.py'\n\ud83e\uddec loaded config '/etc/netbox/config/plugins.py'\n161 objects imported automatically (use -v 2 for details).\n\nPRE_SYNC_VPCS:2\nPRE_SYNC_CONNECTIONS:26\nPRE_SYNC_SWITCHES:8\nSYNC_SUCCESS:False\nSYNC_EXCEPTION:'error'",
+    "\u2713 test_gui_fabric_page_loads: PASSED",
+    "\u2713 test_sync_button_exists: PASSED",
+    "\u2713 test_fabric_counts_display: PASSED"
+  ]
+}

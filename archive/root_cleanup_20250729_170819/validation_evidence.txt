@@ -1,0 +1,424 @@
+FABRIC PAGE IMPROVEMENTS VALIDATION EVIDENCE
+================================================================================
+
+
+Test: Git Configuration Layout (2 columns)
+------------------------------------------------------------
+
+Test: Kubernetes Server Display (default kubeconfig)
+------------------------------------------------------------
+
+HTML Evidence:
+--- Display logic for pattern: {% if.*?kubernetes_server.*?%} ---
+                           <h6 class="mb-0">Status</h6>
+                                            {% if object.git_repository_url %}
+                                                {% if object.drift_status == 'in_sync' %}
+                                                    <span class="badge bg-success">
+                                                        <i class="mdi mdi-check-circle"></i> In Sync
+                                                    </span>
+                                                {% elif object.drift_status == 'drift_detected' %}
+                                                    <span class="badge bg-warning">
+                                                        <i class="mdi mdi-alert-circle"></i> Drift Detected
+                                                    </span>
+                                                {% else %}
+                                                    <span class="badge bg-secondary">
+                                                        <i class="mdi mdi-help-circle"></i> Unknown
+                                                    </span>
+                                                {% endif %}
+                                            {% else %}
+                                                <span class="badge bg-secondary">
+                                                    <i class="mdi mdi-git"></i> Not Configured
+                                                </span>
+                                            {% endif %}
+                                        </div>
+                                        <div class="text-end">
+                                            {% if object.last_git_sync %}
+                                                <small class="text-muted">Last sync: {{ object.last_git_sync|timesince }} ago</small>
+                                            {% else %}
+                                                <small class="text-muted">Never synced</small>
+                                            {% endif %}
+                                        </div>
+                                    </div>
+                                    {% if object.git_repository_url %}
+                                        <div class="mb-2">
+                                            <small class="text-muted">Repository:</small><br>
+                                            <a href="{{ object.git_repository_url }}" target="_blank" class="text-decoration-none">
+                                                <i class="mdi mdi-open-in-new"></i> {{ object.git_repository_url|truncatechars:40 }}
+                                            </a>
+                                        </div>
+                                        <button class="btn btn-sm btn-primary" onclick="syncFromGit(); return false;">
+                                            <i class="mdi mdi-sync"></i> Sync from Git
+                                        </button>
+                                    {% else %}
+                                        <p class="mb-2">Configure a Git repository to sync configuration from Git to NetBox.</p>
+                                        <a href="{% url 'plugins:netbox_hedgehog:fabric_edit' pk=object.pk %}" class="btn btn-sm btn-outline-primary">
+                                            <i class="mdi mdi-git"></i> Configure Git
+                                        </a>
+                                    {% endif %}
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div class="col-md-6">
+                            <div class="card border-info">
+                                <div class="card-header bg-info text-white">
+                                    <h5 class="mb-0"><i class="mdi mdi-kubernetes"></i> HCKC (Kubernetes) Sync</h5>
+                                    <small>Syncing FROM NetBox TO Kubernetes</small>
+                                </div>
+                                <div class="card-body">
+                                    <div class="d-flex justify-content-between align-items-center mb-3">
+                                        <div>
+                                            <h6 class="mb-0">Status</h6>
+                                            {% if object.sync_status == 'in_sync' %}
+                                                <span class="badge bg-success">
+                                                    <i class="mdi mdi-check-circle"></i> In Sync
+                                                </span>
+                                            {% elif object.sync_status == 'syncing' %}
+                                                <span class="badge bg-info">
+                                                    <i class="mdi mdi-sync mdi-spin"></i> Syncing
+                                                </span>
+                                            {% elif object.sync_status == 'error' %}
+                                                <span class="badge bg-danger">
+                                                    <i class="mdi mdi-sync-alert"></i> Error
+                                                </span>
+                                            {% else %}
+                                                <span class="badge bg-secondary">
+                                                    <i class="mdi mdi-sync-off"></i> Not Synced
+                                                </span>
+                                            {% endif %}
+                                        </div>
+                                        <div class="text-end">
+                                            {% if object.last_sync %}
+                                                <small class="text-muted">Last sync: {{ object.last_sync|timesince }} ago</small>
+                                            {% else %}
+                                                <small class="text-muted">Never synced</small>
+                                            {% endif %}
+                                        </div>
+                                    </div>
+                                    <div class="mb-2">
+                                        <small class="text-muted">Namespace:</small> <code>{{ object.kubernetes_namespace }}</code><br>
+                                        <small class="text-muted">CRDs:</small> <strong>{{ object.cached_crd_count|default:0 }}</strong>
+                                    </div>
+                                    {% if object.sync_error %}
+                                        <div class="alert alert-danger py-1 px-2 mb-2">
+                                            <small>{{ object.sync_error|truncatechars:100 }}</small>
+                                        </div>
+                                    {% endif %}
+                                    <button id="sync-now-btn" class="btn btn-sm btn-info" data-fabric-id="{{ object.pk }}">
+                                        <i class="mdi mdi-sync"></i> Sync to Kubernetes
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- Enhanced Drift Detection Section -->
+                    {% if object.git_repository_url %}
+                    <div class="drift-spotlight {% if drift_summary.status == 'in_sync' %}in-sync{% elif drift_summary.severity == 'critical' %}critical{% endif %}">
+                        <div class="d-flex justify-content-between align-items-start mb-3">
+                            <div>
+                                <h4 class="mb-2">
+                                    <i class="mdi mdi-compare-horizontal"></i> 
+                                    Drift Detection Status
+                                </h4>
+                                <p class="mb-0 opacity-90">
+                                    {% if drift_summary.status == 'in_sync' %}
+                                        Your fabric configuration is perfectly synchronized with Git repository.
+                                    {% elif drift_summary.count > 0 %}
+                                        Configuration drift detected. {{ drift_summary.count }} resource{{ drift_summary.count|pluralize }} need attention.
+                                    {% else %}
+                                        Drift detection is active and monitoring your fabric configuration.
+                                    {% endif %}
+                                </p>
+                            </div>
+                            <div class="text-end">
+                                <span class="drift-badge {{ drift_summary.severity }}">
+                                    {% if drift_summary.status == 'in_sync' %}
+                                        <i class="mdi mdi-check-circle"></i> In Sync
+                                    {% elif drift_summary.count > 0 %}
+                                        <i class="mdi mdi-alert-circle"></i> {{ drift_summary.count }} Drift{{ drift_summary.count|pluralize }}
+                                    {% else %}
+                                        <i class="mdi mdi-help-circle"></i> {{ drift_summary.status|title }}
+                                    {% endif %}
+                                </span>
+                            </div>
+                        </div>
+                        
+                        <div class="drift-summary-cards">
+                            <div class="drift-summary-card">
+                                <div class="drift-summary-card-title">RESOURCES WITH DRIFT</div>
+                                <div class="drift-summary-card-value">{{ drift_summary.count }}</div>
+                                <div class="drift-summary-card-subtitle">
+                                    of {{ drift_summary.total_resources }} total
+                                </div>
+                            </div>
+                            <div class="drift-summary-card">
+                                <div class="drift-summary-card-title">LAST CHECK</div>
+                                <div class="drift-summary-card-value">
+                                    {% if drift_summary.last_check %}
+                                        {{ drift_summary.last_check|timesince|truncatewords:1 }}
+                                    {% else %}
+                                        Never
+                                    {% endif %}
+                                </div>
+                                <div class="drift-summary-card-subtitle">
+                                    {% if drift_summary.last_check %}ago{% else %}checked{% endif %}
+                                </div>
+                            </div>
+                            <div class="drift-summary-card">
+                                <div class="drift-summary-card-title">SEVERITY</div>
+                                <div class="drift-summary-card-value">
+                                    {% if drift_summary.severity == 'critical' %}
+                                        <i class="mdi mdi-alert-octagon"></i>
+                                    {% elif drift_summary.severity == 'important' %}
+                                        <i class="mdi mdi-alert-circle"></i>
+                                    {% elif drift_summary.severity == 'minor' %}
+                                        <i class="mdi mdi-alert"></i>
+                                    {% else %}
+                                        <i class="mdi mdi-check-circle"></i>
+                                    {% endif %}
+                                </div>
+                                <div class="drift-summary-card-subtitle">
+                                    {{ drift_summary.severity|title }}{% if drift_summary.severity == 'none' %} Issues{% endif %}
+                                </div>
+                            </div>
+                            <div class="drift-summary-card">
+                                <div class="drift-summary-card-title">STATUS</div>
+                                <div class="drift-summary-card-value">
+                                    {% if object.drift_status == 'in_sync' %}
+                                        <i class="mdi mdi-check-bold"></i>
+                                    {% elif object.drift_status == 'drift_detected' %}
+                                        <i class="mdi mdi-sync-alert"></i>
+                                    {% else %}
+                                        <i class="mdi mdi-help-circle"></i>
+                                    {% endif %}
+                                </div>
+                                <div class="drift-summary-card-subtitle">
+                                    {{ object.get_drift_status_display|default:object.drift_status|title }}
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div class="drift-actions">
+                            {% if drift_summary.count > 0 %}
+                                <button class="drift-action-btn" onclick="showDriftAnalysis({{ object.pk }})">
+                                    <i class="mdi mdi-chart-line"></i> Analyze Drift
+                                </button>
+                                <button class="drift-action-btn" onclick="syncFromGit()">
+                                    <i class="mdi mdi-sync"></i> Sync from Git
+                                </button>
+                            {% else %}
+                                <button class="drift-action-btn" onclick="checkForDrift({{ object.pk }})">
+                                    <i class="mdi mdi-magnify"></i> Check for Drift
+                                </button>
+                                <button class="drift-action-btn" onclick="viewDriftHistory({{ object.pk }})">
+                                    <i class="mdi mdi-history"></i> View History
+                                </button>
+                            {% endif %}
+                            <button class="drift-action-btn" onclick="configureDriftSettings({{ object.pk }})">
+                                <i class="mdi mdi-cog"></i> Configure Detection
+                            </button>
+                        </div>
+                    </div>
+                    {% endif %}
+                    
+                    <div class="row">
+                        <div class="col-md-8">
+                            <h4>Fabric Information</h4>
+                            <table class="table table-borderless fabric-detail">
+                                <tr>
+                                    <th width="200">Name:</th>
+                                    <td>{{ object.name }}</td>
+                                </tr>
+                                <tr>
+                                    <th>Description:</th>
+                                    <td>{{ object.description|default:"—" }}</td>
+                                </tr>
+                                <tr>
+                                    <th>Configuration Status:</th>
+                                    <td>
+                                        <span class="badge bg-{% if object.status == 'active' %}success{% elif object.status == 'maintenance' %}warning{% else %}secondary{% endif %}">
+                                            {{ object.get_status_display }}
+                                        </span>
+                                    </td>
+                                </tr>
+                                
+                                <!-- Git Repository Sync Details -->
+                                <tr class="table-active">
+                                    <th colspan="2" class="bg-light">
+                                        <i class="mdi mdi-git text-primary"></i> Git Repository Sync (Git → NetBox)
+                                    </th>
+                                </tr>
+                                <tr>
+                                    <th>Git Sync Status:</th>
+                                    <td>
+                                        {% if object.git_repository_url %}
+                                            {% if object.drift_status == 'in_sync' %}
+                                                <span class="badge bg-success fs-6 px-3 py-2">
+                                                    <i class="mdi mdi-check-circle"></i> In Sync
+                                                </span>
+                                                <span class="text-success ms-2">
+                                                    <i class="mdi mdi-shield-check"></i> Configuration synchronized
+                                                </span>
+                                            {% elif object.drift_status == 'drift_detected' %}
+                                                <span class="badge bg-warning fs-6 px-3 py-2">
+                                                    <i class="mdi mdi-alert-circle"></i> Drift Detected
+                                                </span>
+                                                <span class="text-warning ms-2">
+                                                    <i class="mdi mdi-compare-horizontal"></i> {{ object.drift_count }} resource{{ object.drift_count|pluralize }} with drift
+                                                </span>
+                                            {% else %}
+                                                <span class="badge bg-secondary fs-6 px-3 py-2">
+                                                    <i class="mdi mdi-help-circle"></i> Unknown
+                                                </span>
+                                                <span class="text-muted ms-2">Status unknown</span>
+                                            {% endif %}
+                                        {% else %}
+                                            <span class="badge bg-secondary fs-6 px-3 py-2">
+                                                <i class="mdi mdi-git"></i> Not Configured
+                                            </span>
+                                            <span class="text-muted ms-2">No Git repository configured</span>
+                                        {% endif %}
+                                    </td>
+                                </tr>
+                                <tr>
+                                    <th>Last Git Sync:</th>
+                                    <td>
+                                        {% if object.last_git_sync %}
+                                            {{ object.last_git_sync }} ({{ object.last_git_sync|timesince }} ago)
+                                        {% else %}
+                                            <span class="text-muted">Never synchronized from Git</span>
+                                        {% endif %}
+                                    </td>
+                                </tr>
+                                
+                                <!-- Kubernetes Sync Details -->
+                                <tr class="table-active">
+                                    <th colspan="2" class="bg-light">
+                                        <i class="mdi mdi-kubernetes text-info"></i> HCKC Sync (NetBox → Kubernetes)
+                                    </th>
+                                </tr>
+                                <tr>
+                                    <th>HCKC Sync Status:</th>
+                                    <td>
+                                        {% if object.sync_status == 'in_sync' %}
+                                            <span class="badge bg-success" data-sync-status><i class="mdi mdi-check-circle"></i> In Sync</span>
+                                        {% elif object.sync_status == 'out_of_sync' %}
+                                            <span class="badge bg-warning" data-sync-status><i class="mdi mdi-alert"></i> Out of Sync</span>
+                                        {% elif object.sync_status == 'syncing' %}
+                                            <span class="badge bg-info" data-sync-status><i class="mdi mdi-sync mdi-spin"></i> Syncing</span>
+                                        {% elif object.sync_status == 'error' %}
+                                            <span class="badge bg-danger" data-sync-status><i class="mdi mdi-sync-alert"></i> Sync Error</span>
+                                        {% else %}
+                                            <span class="badge bg-secondary" data-sync-status><i class="mdi mdi-sync-off"></i> Never Synced</span>
+                                        {% endif %}
+                                    </td>
+                                </tr>
+                                <tr>
+                                    <th>Last HCKC Sync:</th>
+                                    <td>
+                                        {% if object.last_sync %}
+                                            {{ object.last_sync }} ({{ object.last_sync|timesince }} ago)
+                                        {% else %}
+                                            <span class="text-muted">Never synchronized to Kubernetes</span>
+                                        {% endif %}
+                                    </td>
+                                </tr>
+                                <tr>
+                                    <th>Connection Status:</th>
+                                    <td>
+                                        {% if object.connection_status == 'connected' %}
+                                            <span class="badge bg-success" data-connection-status><i class="mdi mdi-lan-connect"></i> Connected</span>
+                                        {% elif object.connection_status == 'disconnected' %}
+                                            <span class="badge bg-danger" data-connection-status><i class="mdi mdi-lan-disconnect"></i> Disconnected</span>
+                                        {% elif object.connection_status == 'error' %}
+                                            <span class="badge bg-danger" data-connection-status><i class="mdi mdi-alert"></i> Error</span>
+                                        {% else %}
+                                            <span class="badge bg-secondary" data-connection-status><i class="mdi mdi-help-circle"></i> Unknown</span>
+                                        {% endif %}
+                                    </td>
+                                </tr>
+                                <tr>
+                                    <th>Kubernetes Namespace:</th>
+                                    <td><code>{{ object.kubernetes_namespace }}</code></td>
+                                </tr>
+                                <tr>
+                                    <th>Kubernetes Server:</th>
+                                    <td>
+                                        {% if object.kubernetes_server and object.kubernetes_server|length > 0 %}
+                                            <code>{{ object.kubernetes_server }}</code>
+                                        {% else %}
+                                            <span class="tex
+
+--- Display logic for pattern: kubernetes_server.*?\|\s*length.*?>\s*0 ---
+</th>
+                                    <td>
+                                        {% if object.kubernetes_server and object.kubernetes_server|length > 0 %}
+                                            <code>{{ object.kubernetes_server }}</code>
+                                        {% else %}
+                                            <span class="
+
+--- Default text: HCKC K3s cluster default ---
+                   <span class="text-muted">https://127.0.0.1:6443</span>
+                                            <small class="text-muted ms-2">(HCKC K3s cluster default)</small>
+                                        {% endif %}
+                                    </td>
+                                </tr>
+        
+
+--- Default text: https://127\.0\.0\.1:6443 ---
+t.kubernetes_server }}</code>
+                                        {% else %}
+                                            <span class="text-muted">https://127.0.0.1:6443</span>
+                                            <small class="text-muted ms-2">(HCKC K3s cluster default)</small>
+                                
+
+
+Test: Edit Form Separation (Git vs K8s sync)
+------------------------------------------------------------
+
+Test: Model Field Accuracy (no made-up fields)
+------------------------------------------------------------
+
+HTML Evidence:
+--- Invalid field usage: error_crd_count ---
+object.error_crd_count }}</h3>
+
+
+--- Invalid field usage: pk ---
+object.pk %}" class="btn btn-outline-primary">
+
+
+--- Invalid field usage: crd_count ---
+object.crd_count }}</h3>
+
+
+--- Invalid field usage: active_crd_count ---
+object.active_crd_count }}</h3>
+
+
+
+Test: Connection Mechanism (kubeconfig-based)
+------------------------------------------------------------
+
+HTML Evidence:
+--- Kubeconfig usage in simple_sync.py ---
+   'message': f'Connection test successful! Kubernetes configuration found.',
+                        'details': {
+                            'server': 'configured' if has_server else 'using default kubeconfig',
+                            'namespace': fabric.kubernetes_namespace or 'default'
+                        }
+                    })
+                else:
+                    HedgehogFabric.objects.f
+
+--- Kubeconfig usage in simple_sync.py ---
+   'message': f'Connection test successful! Kubernetes configuration found.',
+                        'details': {
+                            'server': 'configured' if has_server else 'using default kubeconfig',
+                            'namespace': fabric.kubernetes_namespace or 'default'
+                        }
+                    })
+                else:
+                    HedgehogFabric.objects.f
+

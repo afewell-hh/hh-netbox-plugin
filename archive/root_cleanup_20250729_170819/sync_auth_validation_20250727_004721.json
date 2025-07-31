@@ -1,0 +1,93 @@
+{
+  "timestamp": "2025-07-27T00:47:21.332625",
+  "summary": {
+    "total": 4,
+    "passed": 3,
+    "failed": 1,
+    "errors": 0,
+    "success_rate": "75.0%"
+  },
+  "results": [
+    {
+      "timestamp": "2025-07-27T00:47:21.199366",
+      "test_name": "Sync View User Context Passing",
+      "status": "PASS",
+      "evidence": {
+        "file_checked": "sync_views.py",
+        "patterns_found": [
+          "k8s_sync = KubernetesSync(fabric, user=request.user)",
+          "user=request.user"
+        ],
+        "user_context_passed": true,
+        "login_required_decorator": true
+      }
+    },
+    {
+      "timestamp": "2025-07-27T00:47:21.199594",
+      "test_name": "KubernetesSync User Context Handling",
+      "status": "PASS",
+      "evidence": {
+        "file_checked": "kubernetes.py",
+        "patterns_found": [
+          "def __init__(self, fabric: HedgehogFabric, user=None)",
+          "self.user = user",
+          "def _save_with_user_context(self, model_instance)",
+          "set_actor(actor=self.user)",
+          "self._save_with_user_context("
+        ],
+        "user_parameter_accepted": true,
+        "save_with_context_method": true,
+        "save_context_usage_count": 9,
+        "auditlog_context_used": true
+      }
+    },
+    {
+      "timestamp": "2025-07-27T00:47:21.199707",
+      "test_name": "Authentication Error Fix Complete",
+      "status": "PASS",
+      "evidence": {
+        "fix_components": {
+          "user_context_in_view": true,
+          "user_context_in_sync_class": true,
+          "audit_context_handling": true,
+          "save_method_override": true
+        },
+        "components_implemented": 4,
+        "total_components": 4,
+        "fix_completeness": "4/4",
+        "addresses_anonymous_user_error": true
+      }
+    },
+    {
+      "timestamp": "2025-07-27T00:47:21.332067",
+      "test_name": "API Authentication Security Gap",
+      "status": "FAIL",
+      "evidence": {
+        "endpoints_tested": [
+          "/api/plugins/hedgehog/gitops-fabrics/12/gitops_sync/",
+          "/api/plugins/hedgehog/gitops-fabrics/12/hckc_sync/",
+          "/plugins/hedgehog/fabrics/12/test-connection/"
+        ],
+        "auth_results": {
+          "/api/plugins/hedgehog/gitops-fabrics/12/gitops_sync/": {
+            "status_code": 403,
+            "requires_auth": true,
+            "accessible": false
+          },
+          "/api/plugins/hedgehog/gitops-fabrics/12/hckc_sync/": {
+            "status_code": 405,
+            "requires_auth": false,
+            "accessible": false
+          },
+          "/plugins/hedgehog/fabrics/12/test-connection/": {
+            "status_code": 200,
+            "requires_auth": false,
+            "accessible": true
+          }
+        },
+        "all_require_auth": false,
+        "none_publicly_accessible": false
+      }
+    }
+  ]
+}

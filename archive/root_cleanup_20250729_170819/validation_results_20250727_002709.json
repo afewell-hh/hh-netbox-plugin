@@ -1,0 +1,140 @@
+{
+  "timestamp": "2025-07-27T00:27:09.678687",
+  "summary": {
+    "total": 11,
+    "passed": 10,
+    "failed": 1,
+    "errors": 0,
+    "success_rate": "90.9%"
+  },
+  "results": [
+    {
+      "timestamp": "2025-07-27T00:27:09.258512",
+      "test_name": "VPC Count Accuracy",
+      "status": "PASS",
+      "evidence": {
+        "dashboard_value": "2",
+        "list_page_value": null,
+        "dashboard_empty": false,
+        "list_page_accessible": true
+      }
+    },
+    {
+      "timestamp": "2025-07-27T00:27:09.284020",
+      "test_name": "Fabric Count Accuracy",
+      "status": "PASS",
+      "evidence": {
+        "dashboard_value": "1",
+        "list_page_value": null,
+        "dashboard_empty": false,
+        "list_page_accessible": true
+      }
+    },
+    {
+      "timestamp": "2025-07-27T00:27:09.380725",
+      "test_name": "Sync Status Calculation",
+      "status": "PASS",
+      "evidence": {
+        "dashboard_in_sync": "0",
+        "dashboard_drift": "1",
+        "actual_fabric_sync_states": [
+          "Sync Error",
+          "Sync Error"
+        ],
+        "fabric_count": 2
+      }
+    },
+    {
+      "timestamp": "2025-07-27T00:27:09.408978",
+      "test_name": "Navigation - Dashboard",
+      "status": "PASS",
+      "evidence": {
+        "path": "/plugins/hedgehog/",
+        "status_code": 200,
+        "server_error": false,
+        "page_loads": true,
+        "error_content": null
+      }
+    },
+    {
+      "timestamp": "2025-07-27T00:27:09.431438",
+      "test_name": "Navigation - Fabric List",
+      "status": "PASS",
+      "evidence": {
+        "path": "/plugins/hedgehog/fabrics/",
+        "status_code": 200,
+        "server_error": false,
+        "page_loads": true,
+        "error_content": null
+      }
+    },
+    {
+      "timestamp": "2025-07-27T00:27:09.450668",
+      "test_name": "Navigation - Git Repository List",
+      "status": "FAIL",
+      "evidence": {
+        "path": "/plugins/hedgehog/git-repos/",
+        "status_code": 500,
+        "server_error": true,
+        "page_loads": false,
+        "error_content": "\n\n<!DOCTYPE html>\n<html lang=\"en\">\n\n<head>\n  <title>Server Error</title>\n  <link rel=\"stylesheet\" href=\"/static/netbox.css\" />\n  <meta charset=\"UTF-8\">\n</head>\n\n<body>\n  <div class=\"container-fluid\">\n"
+      }
+    },
+    {
+      "timestamp": "2025-07-27T00:27:09.486163",
+      "test_name": "Navigation - VPC List",
+      "status": "PASS",
+      "evidence": {
+        "path": "/plugins/hedgehog/vpcs/",
+        "status_code": 200,
+        "server_error": false,
+        "page_loads": true,
+        "error_content": null
+      }
+    },
+    {
+      "timestamp": "2025-07-27T00:27:09.594152",
+      "test_name": "Navigation - Connection List",
+      "status": "PASS",
+      "evidence": {
+        "path": "/plugins/hedgehog/connections/",
+        "status_code": 200,
+        "server_error": false,
+        "page_loads": true,
+        "error_content": null
+      }
+    },
+    {
+      "timestamp": "2025-07-27T00:27:09.618699",
+      "test_name": "Dashboard Metric Population",
+      "status": "PASS",
+      "evidence": {
+        "empty_h2_count": 0,
+        "empty_metrics": [],
+        "total_metrics_checked": 4
+      }
+    },
+    {
+      "timestamp": "2025-07-27T00:27:09.639252",
+      "test_name": "Fabric List Content Population",
+      "status": "PASS",
+      "evidence": {
+        "path": "/plugins/hedgehog/fabrics/",
+        "table_rows": 2,
+        "has_content": true,
+        "has_no_items_message": false
+      }
+    },
+    {
+      "timestamp": "2025-07-27T00:27:09.665162",
+      "test_name": "VPC List Content Population",
+      "status": "PASS",
+      "evidence": {
+        "path": "/plugins/hedgehog/vpcs/",
+        "table_rows": 3,
+        "has_content": true,
+        "has_no_items_message": false
+      }
+    }
+  ]
+}

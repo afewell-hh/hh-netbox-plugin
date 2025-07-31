@@ -1,0 +1,515 @@
+<!-- 
+GitOps Initialization UI Component
+
+This component provides UI elements for GitOps directory initialization status and manual controls.
+It should be integrated into the fabric detail template after the GitOps Configuration section.
+
+INTEGRATION LOCATION: After line 750 in fabric_detail.html (GitOps File Management Section)
+-->
+
+<!-- GitOps Directory Initialization Section -->
+{% if object.git_repository and object.gitops_directory %}
+<div class="dashboard-section">
+    <button class="section-toggle" data-bs-toggle="collapse" data-bs-target="#gitops-initialization-section" aria-expanded="false">
+        <span class="section-icon">
+            <i class="mdi mdi-folder-sync"></i>
+        </span>
+        <span class="section-title">GitOps Directory Initialization</span>
+        <span class="toggle-icon">
+            <i class="mdi mdi-chevron-down"></i>
+        </span>
+    </button>
+    <div class="collapse section-content" id="gitops-initialization-section">
+        <div class="row">
+            <div class="col-md-8">
+                <div class="card">
+                    <div class="card-header bg-light">
+                        <div class="d-flex justify-content-between align-items-center">
+                            <h6 class="mb-0">
+                                <i class="mdi mdi-folder-cog"></i> Directory Structure Status
+                            </h6>
+                            <span id="gitops-init-status-badge" class="badge 
+                                {% if object.gitops_initialized %}bg-success
+                                {% elif object.gitops_directory_status == 'error' %}bg-danger
+                                {% elif object.gitops_directory_status == 'initializing' %}bg-warning
+                                {% else %}bg-secondary{% endif %}">
+                                {% if object.gitops_initialized %}
+                                    <i class="mdi mdi-check-circle"></i> Initialized
+                                {% elif object.gitops_directory_status == 'error' %}
+                                    <i class="mdi mdi-alert-circle"></i> Error
+                                {% elif object.gitops_directory_status == 'initializing' %}
+                                    <i class="mdi mdi-loading mdi-spin"></i> Initializing
+                                {% else %}
+                                    <i class="mdi mdi-folder-plus"></i> Not Initialized
+                                {% endif %}
+                            </span>
+                        </div>
+                    </div>
+                    <div class="card-body">
+                        <!-- Initialization Status Display -->
+                        <div id="gitops-init-status-display">
+                            {% if object.gitops_initialized %}
+                                <div class="alert alert-success">
+                                    <h6><i class="mdi mdi-check-circle"></i> GitOps Directory Structure Ready</h6>
+                                    <p class="mb-2">Directory structure has been initialized in the repository:</p>
+                                    <ul class="mb-2">
+                                        <li><code>raw/</code> - Files awaiting ingestion</li>
+                                        <li><code>unmanaged/</code> - External configuration files</li>
+                                        <li><code>managed/</code> - HNP-managed resources</li>
+                                    </ul>
+                                    {% if object.last_directory_sync %}
+                                        <small class="text-muted">
+                                            Last synchronized: {{ object.last_directory_sync|timesince }} ago
+                                        </small>
+                                    {% endif %}
+                                </div>
+                            {% elif object.gitops_directory_status == 'error' %}
+                                <div class="alert alert-danger">
+                                    <h6><i class="mdi mdi-alert-circle"></i> Directory Initialization Failed</h6>
+                                    {% if object.directory_init_error %}
+                                        <p class="mb-2">Error details:</p>
+                                        <div class="bg-light p-2 rounded">
+                                            <small><code>{{ object.directory_init_error }}</code></small>
+                                        </div>
+                                    {% endif %}
+                                    <p class="mt-2 mb-0">Use the "Initialize Directory" button below to retry initialization.</p>
+                                </div>
+                            {% elif object.gitops_directory_status == 'initializing' %}
+                                <div class="alert alert-warning">
+                                    <h6><i class="mdi mdi-loading mdi-spin"></i> Directory Initialization In Progress</h6>
+                                    <p class="mb-0">GitOps directory structure is being initialized. This may take a few moments.</p>
+                                </div>
+                            {% else %}
+                                <div class="alert alert-info">
+                                    <h6><i class="mdi mdi-information"></i> Directory Structure Not Initialized</h6>
+                                    <p class="mb-2">The GitOps directory structure has not been initialized yet. Initialize it to:</p>
+                                    <ul class="mb-2">
+                                        <li>Create standard GitOps directory structure (raw/, unmanaged/, managed/)</li>
+                                        <li>Enable file ingestion and management capabilities</li>
+                                        <li>Allow external GitOps tools (ArgoCD/Flux) to detect changes</li>
+                                        <li>Push directory structure to upstream GitHub repository</li>
+                                    </ul>
+                                    <p class="mb-0">Click "Initialize Directory Structure" to set up the GitOps workflow.</p>
+                                </div>
+                            {% endif %}
+                        </div>
+
+                        <!-- Repository Integration Status -->
+                        <div class="mt-3">
+                            <h6>Repository Integration</h6>
+                            <div class="info-grid">
+                                <div class="info-item">
+                                    <div class="info-label">Repository</div>
+                                    <div class="info-value">
+                                        {% if object.git_repository %}
+                                            <a href="{{ object.git_repository.url }}" target="_blank" class="text-decoration-none">
+                                                <i class="mdi mdi-open-in-new"></i> {{ object.git_repository.name }}
+                                            </a>
+                                        {% else %}
+                                            <span class="text-muted">Not configured</span>
+                                        {% endif %}
+                                    </div>
+                                </div>
+                                <div class="info-item">
+                                    <div class="info-label">GitOps Directory</div>
+                                    <div class="info-value">
+                                        <code>{{ object.gitops_directory|default:"/" }}</code>
+                                    </div>
+                                </div>
+                                <div class="info-item">
+                                    <div class="info-label">Push Branch</div>
+                                    <div class="info-value">
+                                        <code>{{ object.git_repository.get_push_branch|default:"main" }}</code>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="col-md-4">
+                <div class="card">
+                    <div class="card-header bg-light">
+                        <h6 class="mb-0">
+                            <i class="mdi mdi-play-circle"></i> Actions
+                        </h6>
+                    </div>
+                    <div class="card-body">
+                        <div class="d-grid gap-2">
+                            {% if not object.gitops_initialized %}
+                                <button id="init-gitops-btn" class="btn btn-primary" onclick="initializeGitOpsDirectory()">
+                                    <i class="mdi mdi-folder-plus"></i> Initialize Directory Structure
+                                </button>
+                            {% else %}
+                                <button id="reinit-gitops-btn" class="btn btn-warning" onclick="reinitializeGitOpsDirectory()">
+                                    <i class="mdi mdi-folder-sync"></i> Reinitialize Structure
+                                </button>
+                            {% endif %}
+                            
+                            <button id="validate-gitops-btn" class="btn btn-outline-secondary" onclick="validateGitOpsStructure()">
+                                <i class="mdi mdi-check-circle-outline"></i> Validate Structure
+                            </button>
+                            
+                            <button id="view-gitops-dir-btn" class="btn btn-outline-info" onclick="viewGitOpsDirectory()">
+                                <i class="mdi mdi-open-in-new"></i> View in Repository
+                            </button>
+                        </div>
+                        
+                        <!-- Quick Status Summary -->
+                        <div class="mt-3">
+                            <h6>Quick Status</h6>
+                            <div class="small">
+                                <div class="d-flex justify-content-between">
+                                    <span>Repository:</span>
+                                    <span class="badge bg-{% if object.git_repository %}success{% else %}secondary{% endif %}">
+                                        {% if object.git_repository %}Connected{% else %}Not Set{% endif %}
+                                    </span>
+                                </div>
+                                <div class="d-flex justify-content-between mt-1">
+                                    <span>Directory:</span>
+                                    <span class="badge bg-{% if object.gitops_initialized %}success{% elif object.gitops_directory_status == 'error' %}danger{% else %}warning{% endif %}">
+                                        {% if object.gitops_initialized %}Ready{% elif object.gitops_directory_status == 'error' %}Error{% else %}Pending{% endif %}
+                                    </span>
+                                </div>
+                                <div class="d-flex justify-content-between mt-1">
+                                    <span>Push Capability:</span>
+                                    <span class="badge bg-{% if object.git_repository.direct_push_enabled %}success{% else %}secondary{% endif %}">
+                                        {% if object.git_repository.direct_push_enabled %}Enabled{% else %}Disabled{% endif %}
+                                    </span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% else %}
+<!-- GitOps Configuration Required -->
+<div class="dashboard-section">
+    <button class="section-toggle collapsed" data-bs-toggle="collapse" data-bs-target="#gitops-initialization-section" aria-expanded="false">
+        <span class="section-icon">
+            <i class="mdi mdi-folder-alert text-muted"></i>
+        </span>
+        <span class="section-title">GitOps Directory Initialization</span>
+        <span class="toggle-icon">
+            <i class="mdi mdi-chevron-down"></i>
+        </span>
+    </button>
+    <div class="collapse section-content" id="gitops-initialization-section">
+        <div class="alert alert-warning">
+            <h6><i class="mdi mdi-alert"></i> GitOps Configuration Required</h6>
+            <p class="mb-2">GitOps directory initialization requires:</p>
+            <ul class="mb-2">
+                <li>A configured Git repository</li>
+                <li>A specified GitOps directory path</li>
+                <li>Repository authentication credentials</li>
+            </ul>
+            <p class="mb-0">Configure the Git repository settings for this fabric to enable directory initialization.</p>
+        </div>
+    </div>
+</div>
+{% endif %}
+
+<script>
+// GitOps Directory Initialization Functions
+
+async function initializeGitOpsDirectory() {
+    const fabricId = {{ object.pk }};
+    const button = document.getElementById('init-gitops-btn');
+    const statusDisplay = document.getElementById('gitops-init-status-display');
+    const statusBadge = document.getElementById('gitops-init-status-badge');
+    
+    if (!button) return;
+    
+    // Show loading state
+    const originalText = button.innerHTML;
+    button.innerHTML = '<i class="mdi mdi-loading mdi-spin"></i> Initializing...';
+    button.disabled = true;
+    
+    // Update status display
+    statusDisplay.innerHTML = `
+        <div class="alert alert-info">
+            <h6><i class="mdi mdi-loading mdi-spin"></i> Initializing GitOps Directory Structure</h6>
+            <p class="mb-0">Creating directory structure and pushing to repository...</p>
+        </div>
+    `;
+    
+    statusBadge.className = 'badge bg-warning';
+    statusBadge.innerHTML = '<i class="mdi mdi-loading mdi-spin"></i> Initializing';
+    
+    try {
+        const response = await fetch(`/api/plugins/hedgehog/fabrics/${fabricId}/init-gitops/`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRFToken': getCookie('csrftoken')
+            }
+        });
+        
+        const data = await response.json();
+        
+        if (data.success) {
+            // Success - show success message and reload page to update UI
+            statusDisplay.innerHTML = `
+                <div class="alert alert-success">
+                    <h6><i class="mdi mdi-check-circle"></i> GitOps Directory Structure Initialized Successfully</h6>
+                    <p class="mb-2">Created ${data.directories_created || 0} directories in the repository.</p>
+                    <p class="mb-0">Page will reload to show updated status...</p>
+                </div>
+            `;
+            
+            statusBadge.className = 'badge bg-success';
+            statusBadge.innerHTML = '<i class="mdi mdi-check-circle"></i> Initialized';
+            
+            // Reload page after 2 seconds to show updated status
+            setTimeout(() => {
+                window.location.reload();
+            }, 2000);
+        } else {
+            // Error - show error message
+            statusDisplay.innerHTML = `
+                <div class="alert alert-danger">
+                    <h6><i class="mdi mdi-alert-circle"></i> Directory Initialization Failed</h6>
+                    <p class="mb-2">Error: ${data.error || 'Unknown error occurred'}</p>
+                    ${data.errors && data.errors.length > 0 ? `
+                        <div class="bg-light p-2 rounded">
+                            <small><strong>Details:</strong><br>${data.errors.join('<br>')}</small>
+                        </div>
+                    ` : ''}
+                    <p class="mt-2 mb-0">Please try again or check the repository configuration.</p>
+                </div>
+            `;
+            
+            statusBadge.className = 'badge bg-danger';
+            statusBadge.innerHTML = '<i class="mdi mdi-alert-circle"></i> Error';
+        }
+    } catch (error) {
+        console.error('GitOps initialization error:', error);
+        statusDisplay.innerHTML = `
+            <div class="alert alert-danger">
+                <h6><i class="mdi mdi-alert-circle"></i> Initialization Failed</h6>
+                <p class="mb-0">Network error: ${error.message}</p>
+            </div>
+        `;
+        
+        statusBadge.className = 'badge bg-danger';
+        statusBadge.innerHTML = '<i class="mdi mdi-alert-circle"></i> Error';
+    } finally {
+        // Restore button
+        button.innerHTML = originalText;
+        button.disabled = false;
+    }
+}
+
+async function reinitializeGitOpsDirectory() {
+    if (!confirm('Are you sure you want to reinitialize the GitOps directory structure? This will recreate all directories and may overwrite existing metadata files.')) {
+        return;
+    }
+    
+    const fabricId = {{ object.pk }};
+    const button = document.getElementById('reinit-gitops-btn');
+    
+    if (!button) return;
+    
+    const originalText = button.innerHTML;
+    button.innerHTML = '<i class="mdi mdi-loading mdi-spin"></i> Reinitializing...';
+    button.disabled = true;
+    
+    try {
+        const response = await fetch(`/api/plugins/hedgehog/fabrics/${fabricId}/init-gitops/`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRFToken': getCookie('csrftoken')
+            },
+            body: JSON.stringify({ force: true })
+        });
+        
+        const data = await response.json();
+        
+        if (data.success) {
+            showNotification('GitOps directory structure reinitalized successfully', 'success');
+            setTimeout(() => window.location.reload(), 1500);
+        } else {
+            showNotification(`Reinitialization failed: ${data.error}`, 'error');
+        }
+    } catch (error) {
+        console.error('GitOps reinitialization error:', error);
+        showNotification(`Reinitialization failed: ${error.message}`, 'error');
+    } finally {
+        button.innerHTML = originalText;
+        button.disabled = false;
+    }
+}
+
+async function validateGitOpsStructure() {
+    const fabricId = {{ object.pk }};
+    const button = document.getElementById('validate-gitops-btn');
+    
+    if (!button) return;
+    
+    const originalText = button.innerHTML;
+    button.innerHTML = '<i class="mdi mdi-loading mdi-spin"></i> Validating...';
+    button.disabled = true;
+    
+    try {   
+        const response = await fetch(`/api/plugins/hedgehog/fabrics/${fabricId}/validate-gitops/`, {
+            method: 'GET',
+            headers: {
+                'X-CSRFToken': getCookie('csrftoken')
+            }
+        });
+        
+        const data = await response.json();
+        
+        if (data.success && data.validation_result) {
+            const result = data.validation_result;
+            if (result.valid) {
+                showNotification('GitOps directory structure is valid', 'success');
+            } else {
+                const issues = result.issues || [];
+                showNotification(`Validation found ${issues.length} issues: ${issues.slice(0, 2).join(', ')}`, 'warning');
+            }
+        } else {
+            showNotification(`Validation failed: ${data.error}`, 'error');
+        }
+    } catch (error) {
+        console.error('GitOps validation error:', error);
+        showNotification(`Validation failed: ${error.message}`, 'error');
+    } finally {
+        button.innerHTML = originalText;
+        button.disabled = false;
+    }
+}
+
+function viewGitOpsDirectory() {
+    const repositoryUrl = '{{ object.git_repository.url|default:"" }}';
+    const gitopsDir = '{{ object.gitops_directory|default:"" }}';
+    
+    if (repositoryUrl && gitopsDir) {
+        // Construct GitHub directory URL
+        let directoryUrl = repositoryUrl;
+        if (repositoryUrl.includes('github.com')) {
+            directoryUrl = repositoryUrl.replace(/\.git$/, '') + '/tree/main/' + gitopsDir.replace(/^\/+|\/+$/g, '');
+        }
+        window.open(directoryUrl, '_blank');
+    } else {
+        showNotification('Repository URL or GitOps directory not configured', 'warning');
+    }
+}
+
+// Utility function for notifications (if not already defined)
+function showNotification(message, type) {
+    // Create notification element
+    const notification = document.createElement('div');
+    notification.className = `alert alert-${type === 'error' ? 'danger' : type} alert-dismissible fade show position-fixed`;
+    notification.style.cssText = 'top: 20px; right: 20px; z-index: 9999; min-width: 300px;';
+    notification.innerHTML = `
+        ${message}
+        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+    `;
+    
+    document.body.appendChild(notification);
+    
+    // Auto-remove after 5 seconds
+    setTimeout(() => {
+        if (notification.parentNode) {
+            notification.remove();
+        }
+    }, 5000);
+}
+
+// Helper function to get CSRF token
+function getCookie(name) {
+    let cookieValue = null;
+    if (document.cookie && document.cookie !== '') {
+        const cookies = document.cookie.split(';');
+        for (let i = 0; i < cookies.length; i++) {
+            const cookie = cookies[i].trim();
+            if (cookie.substring(0, name.length + 1) === (name + '=')) {
+                cookieValue = decodeURIComponent(cookie.substring(name.length + 1));
+                break;
+            }
+        }
+    }
+    return cookieValue;
+}
+</script>
+
+<style>
+/* Additional styles for GitOps initialization UI */
+#gitops-initialization-section .card {
+    border: none;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+}
+
+#gitops-initialization-section .card-header {
+    border-bottom: 1px solid #dee2e6;
+}
+
+#gitops-initialization-section .info-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 1rem;
+}
+
+#gitops-initialization-section .info-item .info-label {
+    font-size: 0.8rem;
+    font-weight: 600;
+    color: #6c757d;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    margin-bottom: 0.25rem;
+}
+
+#gitops-initialization-section .info-item .info-value {
+    font-size: 0.9rem;
+    color: #495057;
+}
+
+#gitops-initialization-section .btn {
+    border-radius: 6px;
+}
+
+#gitops-initialization-section .alert {
+    border-radius: 8px;
+}
+
+#gitops-initialization-section .badge {
+    font-size: 0.8rem;
+}
+</style>
+
+<!-- 
+INTEGRATION INSTRUCTIONS:
+
+1. Insert this component into fabric_detail.html after the GitOps Configuration Section (around line 750)
+
+2. The component uses these fabric model fields (ensure they exist):
+   - object.gitops_initialized
+   - object.gitops_directory_status
+   - object.directory_init_error
+   - object.last_directory_sync
+   - object.git_repository
+   - object.gitops_directory
+
+3. The component calls these API endpoints:
+   - POST /api/plugins/hedgehog/fabrics/{id}/init-gitops/
+   - GET /api/plugins/hedgehog/fabrics/{id}/validate-gitops/
+
+4. JavaScript functions provided:
+   - initializeGitOpsDirectory() - Initialize directory structure
+   - reinitializeGitOpsDirectory() - Force reinitialize
+   - validateGitOpsStructure() - Validate existing structure
+   - viewGitOpsDirectory() - Open repository in browser
+
+5. Features implemented:
+   - Automatic status detection based on fabric fields
+   - Manual initialization with progress feedback
+   - Error handling and user feedback
+   - Integration with existing GitOps API endpoints
+   - Responsive UI with proper status indicators
+-->

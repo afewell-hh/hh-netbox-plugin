@@ -6,18 +6,24 @@
 
 ### 🏗️ 00_current_architecture/
 **Current system architecture** - The implemented architecture
-- `system_overview.md` - High-level architecture overview
-- `component_architecture/` - Individual component specifications
-- `integration_patterns.md` - Integration and interface specifications
-- `technology_stack.md` - Current technology choices and versions
-- `deployment_architecture.md` - Deployment patterns and infrastructure
+- `system_overview.md` - ✅ High-level architecture overview (MVP Complete - 12 CRD types operational)
+- `component_architecture/` - ✅ Individual component specifications
+  - `kubernetes_integration.md` - ✅ K8s cluster integration patterns
+  - `netbox_plugin_layer.md` - ✅ NetBox 4.3.3 plugin architecture
+  - `gitops/` - ✅ GitOps architecture and directory management
+    - `gitops_overview.md` - ✅ Comprehensive GitOps design
+    - `directory_management_specification.md` - ✅ Directory management patterns
+    - `drift_detection_design.md` - ✅ First-class drift detection
 
 ### 📋 01_architectural_decisions/
 **Architecture decision records (ADRs)** - Decision tracking
-- `decision_log.md` - Chronological decision log with status
-- `active_decisions/` - Decisions currently being evaluated
-- `approved_decisions/` - Approved and implemented decisions
-- `deprecated_decisions/` - Superseded or obsolete decisions
+- `decision_log.md` - ✅ Comprehensive decision index (9 ADRs total)
+- `active_decisions/` - ✅ Decisions currently being evaluated
+  - `gitops_repository_separation.md` - ✅ ADR-002: Multi-fabric architecture design
+- `approved_decisions/` - ✅ Approved and implemented decisions
+  - `adr-001-gitops-first-architecture.md` - ✅ Single GitOps workflow
+  - [8 additional implemented ADRs documented]
+- `deprecated_decisions/` - Superseded or obsolete decisions (none currently)
 
 ### 📐 02_design_specifications/
 **Detailed design documents** - Technical specifications

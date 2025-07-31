@@ -1,0 +1,88 @@
+{
+  "timestamp": "2025-07-27T07:51:38.764132",
+  "tests": [
+    {
+      "name": "Kubernetes Server Display",
+      "passed": true,
+      "evidence": [
+        "Conditional logic found: True",
+        "Else clause found: True",
+        "Default URL found: True",
+        "Default description found: True",
+        "\u2713 Kubernetes server field properly shows default when blank"
+      ],
+      "issues": [],
+      "html_snippets": [
+        {
+          "description": "Kubernetes Server Display Section",
+          "content": "<th width=\"200\">Name:</th>\n                                    <td>{{ object.name }}</td>\n                                </tr>\n                                <tr>\n                                    <th>Description:</th>\n                                    <td>{{ object.description|default:\"\u2014\" }}</td>\n                                </tr>\n                                <tr>\n                                    <th>Configuration Status:</th>\n                                    <td>\n                                        <span class=\"badge bg-{% if object.status == 'active' %}success{% elif object.status == 'maintenance' %}warning{% else %}secondary{% endif %}\">\n                                            {{ object.get_status_display }}\n                                        </span>\n                                    </td>\n                                </tr>\n                                \n                                <!-- Git Repository Sync Details -->\n                                <tr class=\"table-active\">\n                                    <th colspan=\"2\" class=\"bg-light\">\n                                        <i class=\"mdi mdi-git text-primary\"></i> Git Repository Sync (Git \u2192 NetBox)\n                                    </th>\n                                </tr>\n                                <tr>\n                                    <th>Git Sync Status:</th>\n                                    <td>\n                                        {% if object.git_repository_url %}\n                                            {% if object.drift_status == 'in_sync' %}\n                                                <span class=\"badge bg-success fs-6 px-3 py-2\">\n                                                    <i class=\"mdi mdi-check-circle\"></i> In Sync\n                                                </span>\n                                                <span class=\"text-success ms-2\">\n                                                    <i class=\"mdi mdi-shield-check\"></i> Configuration synchronized\n                                                </span>\n                                            {% elif object.drift_status == 'drift_detected' %}\n                                                <span class=\"badge bg-warning fs-6 px-3 py-2\">\n                                                    <i class=\"mdi mdi-alert-circle\"></i> Drift Detected\n                                                </span>\n                                                <span class=\"text-warning ms-2\">\n                                                    <i class=\"mdi mdi-compare-horizontal\"></i> {{ object.drift_count }} resource{{ object.drift_count|pluralize }} with drift\n                                                </span>\n                                            {% else %}\n                                                <span class=\"badge bg-secondary fs-6 px-3 py-2\">\n                                                    <i class=\"mdi mdi-help-circle\"></i> Unknown\n                                                </span>\n                                                <span class=\"text-muted ms-2\">Status unknown</span>\n                                            {% endif %}\n                                        {% else %}\n                                            <span class=\"badge bg-secondary fs-6 px-3 py-2\">\n                                                <i class=\"mdi mdi-git\"></i> Not Configured\n                                            </span>\n                                            <span class=\"text-muted ms-2\">No Git repository configured</span>\n                                        {% endif %}\n                                    </td>\n                                </tr>\n                                <tr>\n                                    <th>Last Git Sync:</th>\n                                    <td>\n                                        {% if object.last_git_sync %}\n                                            {{ object.last_git_sync }} ({{ object.last_git_sync|timesince }} ago)\n                                        {% else %}\n                                            <span class=\"text-muted\">Never synchronized from Git</span>\n                                        {% endif %}\n                                    </td>\n                                </tr>\n                                \n                                <!-- Kubernetes Sync Details -->\n                                <tr class=\"table-active\">\n                                    <th colspan=\"2\" class=\"bg-light\">\n                                        <i class=\"mdi mdi-kubernetes text-info\"></i> HCKC Sync (NetBox \u2192 Kubernetes)\n                                    </th>\n                                </tr>\n                                <tr>\n                                    <th>HCKC Sync Status:</th>\n                                    <td>\n                                        {% if object.sync_status == 'in_sync' %}\n                                            <span class=\"badge bg-success\" data-sync-status><i class=\"mdi mdi-check-circle\"></i> In Sync</span>\n                                        {% elif object.sync_status == 'out_of_sync' %}\n                                            <span class=\"badge bg-warning\" data-sync-status><i class=\"mdi mdi-alert\"></i> Out of Sync</span>\n                                        {% elif object.sync_status == 'syncing' %}\n                                            <span class=\"badge bg-info\" data-sync-status><i class=\"mdi mdi-sync mdi-spin\"></i> Syncing</span>\n                                        {% elif object.sync_status == 'error' %}\n                                            <span class=\"badge bg-danger\" data-sync-status><i class=\"mdi mdi-sync-alert\"></i> Sync Error</span>\n                                        {% else %}\n                                            <span class=\"badge bg-secondary\" data-sync-status><i class=\"mdi mdi-sync-off\"></i> Never Synced</span>\n                                        {% endif %}\n                                    </td>\n                                </tr>\n                                <tr>\n                                    <th>Last HCKC Sync:</th>\n                                    <td>\n                                        {% if object.last_sync %}\n                                            {{ object.last_sync }} ({{ object.last_sync|timesince }} ago)\n                                        {% else %}\n                                            <span class=\"text-muted\">Never synchronized to Kubernetes</span>\n                                        {% endif %}\n                                    </td>\n                                </tr>\n                                <tr>\n                                    <th>Connection Status:</th>\n                                    <td>\n                                        {% if object.connection_status == 'connected' %}\n                                            <span class=\"badge bg-success\" data-connection-status><i class=\"mdi mdi-lan-connect\"></i> Connected</span>\n                                        {% elif object.connection_status == 'disconnected' %}\n                                            <span class=\"badge bg-danger\" data-connection-status><i class=\"mdi mdi-lan-disconnect\"></i> Disconnected</span>\n                                        {% elif object.connection_status == 'error' %}\n                                            <span class=\"badge bg-danger\" data-connection-status><i class=\"mdi mdi-alert\"></i> Error</span>\n                                        {% else %}\n                                            <span class=\"badge bg-secondary\" data-connection-status><i class=\"mdi mdi-help-circle\"></i> Unknown</span>\n                                        {% endif %}\n                                    </td>\n                                </tr>\n                                <tr>\n                                    <th>Kubernetes Namespace:</th>\n                                    <td><code>{{ object.kubernetes_namespace }}</code></td>\n                                </tr>\n                                <tr>\n                                    <th>Kubernetes Server:</th>\n                                    <td>\n                                        {% if object.kubernetes_server and object.kubernetes_server|length > 0 %}\n                                            <code>{{ object.kubernetes_server }}</code>\n                                        {% else %}\n                                            <span class=\"text-muted\">https://127.0.0.1:6443</span>\n                                            <small class=\"text-muted ms-2\">(HCKC K3s cluster default)</small>\n                                        {% endif %}\n                                    </td>"
+        }
+      ]
+    },
+    {
+      "name": "Git Configuration Column Layout",
+      "passed": true,
+      "evidence": [
+        "Uses col-md-6 (2-column): True",
+        "Avoids col-md-4 (3-column): True",
+        "\u2713 Git configuration uses 2-column layout",
+        "Kubernetes section also uses col-md-6: True",
+        "\u2713 Both Git and Kubernetes sections use matching 2-column layout"
+      ],
+      "issues": [],
+      "html_snippets": [
+        {
+          "description": "Git Repository Sync Section",
+          "content": "<div class=\"col-md-6\">\n                            <div class=\"card border-primary\">\n                                <div class=\"card-header bg-primary text-white\">\n                                    <h5 class=\"mb-0\"><i class=\"mdi mdi-git\"></i> Git Repository Sync</h5>\n                                    <small>Syncing FROM Git TO NetBox</small>\n                                </div>\n                                <div class=\"card-body\">\n                                    <div class=\"d-flex j..."
+        }
+      ]
+    },
+    {
+      "name": "Model Field Accuracy",
+      "passed": false,
+      "evidence": [
+        "Model fields found: 56",
+        "Template field references: 29",
+        "Valid field references: 26"
+      ],
+      "issues": [
+        "Invalid field references found: ['active_crd_count', 'crd_count', 'error_crd_count']"
+      ],
+      "html_snippets": [
+        {
+          "description": "Invalid field usage: error_crd_count",
+          "content": "<h3>{{ object.error_crd_count }}</h3>"
+        },
+        {
+          "description": "Invalid field usage: crd_count",
+          "content": "<h3 data-crd-count>{{ object.crd_count }}</h3>"
+        },
+        {
+          "description": "Invalid field usage: active_crd_count",
+          "content": "<h3>{{ object.active_crd_count }}</h3>"
+        }
+      ]
+    },
+    {
+      "name": "Edit Form Sync Separation",
+      "passed": false,
+      "evidence": [
+        "Found form definition in: /home/ubuntu/cc/hedgehog-netbox-plugin/netbox_hedgehog/forms/fabric.py",
+        "Git fields average position: 551",
+        "K8s fields average position: 422",
+        "Separation distance: 129 characters",
+        "Section headers found: 1"
+      ],
+      "issues": [
+        "Git and Kubernetes fields are not clearly separated"
+      ],
+      "html_snippets": []
+    }
+  ],
+  "summary": {
+    "total_tests": 4,
+    "passed": 2,
+    "failed": 2,
+    "success_rate": 50.0
+  }
+}

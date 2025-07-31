@@ -18,5 +18,9 @@
 ## Quick Links
 - Project Mgmt: @project_management/CLAUDE.md
 - Architecture: @architecture_specifications/CLAUDE.md
+- System Overview: @architecture_specifications/00_current_architecture/system_overview.md
+- GitOps Architecture: @architecture_specifications/00_current_architecture/component_architecture/gitops/gitops_overview.md
+- Architectural Decisions: @architecture_specifications/01_architectural_decisions/decision_log.md
 - Environment: @claude_memory/environment/
 - Current State: @project_management/00_current_state/
+- Archive: @archive/README.md

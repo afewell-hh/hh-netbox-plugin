@@ -118,9 +118,9 @@ class FabricSyncView(View):
             fabric.sync_status = 'syncing'
             fabric.save()
             
-            # Use the real Kubernetes sync service
+            # Use the real Kubernetes sync service with user context
             try:
-                k8s_sync = KubernetesSync(fabric)
+                k8s_sync = KubernetesSync(fabric, user=request.user)
                 sync_result = k8s_sync.sync_all_crds()
                 
                 if sync_result['success']:

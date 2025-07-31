@@ -3,6 +3,11 @@
 
 {% block title %}Raw Directory Monitor{% endblock %}
 
+{% block header %}
+    {{ block.super }}
+    <link rel="stylesheet" href="{% static 'netbox_hedgehog/css/hedgehog.css' %}">
+{% endblock %}
+
 {% block breadcrumbs %}
     <li class="breadcrumb-item"><a href="{% url 'plugins:netbox_hedgehog:fabric_list' %}">Fabrics</a></li>
     <li class="breadcrumb-item"><a href="{% url 'plugins:netbox_hedgehog:gitops_dashboard' %}">GitOps Dashboard</a></li>

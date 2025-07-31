@@ -108,12 +108,21 @@ class GitOpsOnboardingService:
                 # Step 3: Create initial manifests
                 self._create_initial_manifests()
                 
-                # Step 4: Update fabric model
+                # Step 4: Push to GitHub if repository is configured
+                github_result = self._push_to_github()
+                
+                # Step 5: Update fabric model
                 self._update_fabric_model()
                 
                 self.onboarding_result['success'] = True
                 self.onboarding_result['completed_at'] = timezone.now()
-                self.onboarding_result['message'] = f"Successfully initialized GitOps structure for fabric {self.fabric.name}"
+                
+                if github_result and github_result.get('success'):
+                    self.onboarding_result['message'] = f"Successfully initialized GitOps structure for fabric {self.fabric.name} and pushed to GitHub"
+                    self.onboarding_result['github_push'] = github_result
+                else:
+                    self.onboarding_result['message'] = f"Successfully initialized local GitOps structure for fabric {self.fabric.name} (GitHub push failed)"
+                    self.onboarding_result['github_push_error'] = github_result.get('error') if github_result else 'No GitHub repository configured'
                 
                 logger.info(f"GitOps onboarding completed for fabric {self.fabric.name}")
                 return self.onboarding_result
@@ -347,6 +356,84 @@ class GitOpsOnboardingService:
             self.onboarding_result['errors'].append(error_msg)
             logger.error(error_msg)
             raise
+    
+    def _push_to_github(self) -> Optional[Dict[str, Any]]:
+        """
+        Push the created directory structure to GitHub repository.
+        
+        Returns:
+            Dict with push results or None if no GitHub repository configured
+        """
+        try:
+            # Check if fabric has a Git repository configured
+            if not hasattr(self.fabric, 'git_repository') or not self.fabric.git_repository:
+                logger.info(f"No Git repository configured for fabric {self.fabric.name}, skipping GitHub push")
+                return None
+            
+            git_repo = self.fabric.git_repository
+            
+            # Check if it's a GitHub repository
+            if 'github.com' not in git_repo.url:
+                logger.info(f"Repository {git_repo.url} is not GitHub, skipping GitHub push")
+                return None
+                
+            from .github_push_service import GitHubPushService
+            
+            # Create GitHub push service
+            github_service = GitHubPushService(git_repo)
+            
+            # Test connection first
+            connection_test = github_service.test_connection()
+            if not connection_test['success']:
+                logger.error(f"GitHub connection test failed: {connection_test['error']}")
+                return {
+                    'success': False,
+                    'error': f"GitHub connection test failed: {connection_test['error']}"
+                }
+            
+            # Determine the path in the repository
+            gitops_path = getattr(self.fabric, 'gitops_directory', 'gitops/hedgehog/fabric-1')
+            if gitops_path.startswith('/'):
+                gitops_path = gitops_path[1:]  # Remove leading slash
+            if gitops_path.endswith('/'):
+                gitops_path = gitops_path[:-1]  # Remove trailing slash
+            
+            # Create directory structure
+            directories = ['raw', 'managed', 'unmanaged', '.hnp']
+            structure_result = github_service.create_directory_structure(
+                base_path=gitops_path,
+                directories=directories,
+                commit_message=f"Initialize GitOps directory structure for fabric {self.fabric.name}"
+            )
+            
+            if not structure_result['success']:
+                logger.error(f"Failed to create GitHub directory structure: {structure_result['error']}")
+                return structure_result
+            
+            # Create manifest files
+            manifest_result = github_service.create_manifest_files(
+                base_path=gitops_path,
+                fabric_name=self.fabric.name,
+                fabric_id=self.fabric.id
+            )
+            
+            if not manifest_result['success']:
+                logger.error(f"Failed to create GitHub manifest files: {manifest_result['error']}")
+                # Don't fail completely if manifests fail, but log it
+                structure_result['manifest_warning'] = manifest_result['error']
+            else:
+                structure_result['manifest_success'] = True
+                structure_result['manifest_files'] = manifest_result.get('created_files', [])
+            
+            logger.info(f"Successfully pushed GitOps structure to GitHub for fabric {self.fabric.name}")
+            return structure_result
+            
+        except Exception as e:
+            logger.error(f"Failed to push to GitHub: {e}")
+            return {
+                'success': False,
+                'error': str(e)
+            }
     
     def validate_structure(self) -> Dict[str, Any]:
         """Validate that the GitOps structure is properly set up."""
