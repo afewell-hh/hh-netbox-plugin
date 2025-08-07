@@ -68,6 +68,9 @@ class HedgehogFabricForm(ModelForm):
             'sync_interval': 'Sync interval in seconds (0 to disable)',
         }
 
+# Import forms from fabric_forms module with GitOps integration
+from .fabric_forms import FabricCreationWorkflowForm
+
 # Import forms from other modules - temporarily disabled for system recovery
 # from .vpc_api import VPCForm, ExternalForm, IPv4NamespaceForm, ExternalAttachmentForm, ExternalPeeringForm, VPCAttachmentForm, VPCPeeringForm
 # from .wiring_api import ConnectionForm, SwitchForm, ServerForm, SwitchGroupForm, VLANNamespaceForm
@@ -75,6 +78,7 @@ class HedgehogFabricForm(ModelForm):
 
 __all__ = [
     'HedgehogFabricForm',
+    'FabricCreationWorkflowForm',  # GitOps-integrated form
     # Other forms temporarily disabled for system recovery
     # 'VPCForm',
     # 'ExternalForm',

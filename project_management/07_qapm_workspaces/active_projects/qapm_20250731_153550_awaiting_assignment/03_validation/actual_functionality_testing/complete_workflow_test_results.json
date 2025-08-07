@@ -1,0 +1,44 @@
+{
+  "test_timestamp": "2025-08-01T04:06:00.227487",
+  "test_type": "end_to_end_workflows",
+  "findings": [
+    "\u2705 Login page accessible",
+    "\u2705 HNP home accessible (existing session or no auth required)",
+    "\u2705 Fabric list page accessible",
+    "\u2705 Fabric list contains fabric-related content",
+    "\u2705 Drift detection dashboard accessible",
+    "\u2705 Drift dashboard contains relevant content: ['drift']",
+    "\u2705 Git repositories page accessible",
+    "\u2705 Vpcs CRD list accessible",
+    "\u2705 Connections CRD list accessible",
+    "\u2705 Switches CRD list accessible",
+    "\u2705 Servers CRD list accessible"
+  ],
+  "workflow_tests": [
+    {
+      "test_type": "crd_management",
+      "accessible_types": [
+        "vpcs",
+        "connections",
+        "switches",
+        "servers"
+      ],
+      "total_types": 4,
+      "success_rate": "100.0%"
+    }
+  ],
+  "screenshots_taken": [
+    "/tmp/hnp_home_page.html",
+    "/tmp/fabric_list_page.html",
+    "/tmp/drift_dashboard_page.html",
+    "/tmp/git_repos_page.html"
+  ],
+  "system_health": {
+    "total_tests": 11,
+    "successful": 11,
+    "warnings": 0,
+    "failures": 0,
+    "health_score": "100.0%",
+    "assessment": "HEALTHY"
+  }
+}

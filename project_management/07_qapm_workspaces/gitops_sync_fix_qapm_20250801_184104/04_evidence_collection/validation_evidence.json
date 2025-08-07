@@ -1,0 +1,26 @@
+{
+  "validation_start_time": "2025-08-01T19:10:45.767339",
+  "test_results": {},
+  "github_state": {
+    "github_access_error": 404
+  },
+  "functional_tests": {
+    "fabric_sync_view_importable": false,
+    "import_error": "No module named 'netbox'",
+    "gitops_signals_importable": false,
+    "signals_import_error": "No module named 'netbox'"
+  },
+  "technical_validation": {
+    "import_fix_present": true,
+    "gitops_functionality_present": true,
+    "gitops_indicators_found": [
+      "ensure_gitops_structure",
+      "ingest_fabric_raw_files",
+      "GitOps integration",
+      "structure_result",
+      "ingest_fabric_raw_files(fabric)"
+    ],
+    "url_routing_correct": true
+  },
+  "validation_end_time": "2025-08-01T19:10:45.998220"
+}

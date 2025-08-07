@@ -1,0 +1,30 @@
+{
+  "test_session": "20250805_033757",
+  "fabrics_tested": [
+    {
+      "fabric_id": "28",
+      "page_accessible": true,
+      "has_trigger_sync": true,
+      "has_sync_from_fabric": true,
+      "csrf_token": null
+    }
+  ],
+  "endpoint_tests": {
+    "github_sync": {
+      "endpoint_type": "github",
+      "endpoint_name": "GitHub Sync (FabricGitHubSyncView)",
+      "url": "http://localhost:8000/plugins/hedgehog/fabrics/28/github-sync/",
+      "get_status": 200,
+      "get_time": 0.01,
+      "timestamp": "20250805_033757"
+    },
+    "fabric_sync": {
+      "endpoint_type": "fabric",
+      "endpoint_name": "Fabric Sync (FabricSyncView)",
+      "url": "http://localhost:8000/plugins/hedgehog/fabrics/28/sync/",
+      "get_status": 200,
+      "get_time": 0.03,
+      "timestamp": "20250805_033759"
+    }
+  }
+}

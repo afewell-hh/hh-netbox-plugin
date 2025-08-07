@@ -1,0 +1,57 @@
+{
+  "critical_paths_check": {
+    "netbox_hedgehog/utils/fabric_creation_workflow.py": {
+      "exists": true,
+      "path": "/home/ubuntu/cc/hedgehog-netbox-plugin/netbox_hedgehog/utils/fabric_creation_workflow.py",
+      "is_file": true,
+      "is_directory": false
+    },
+    "netbox_hedgehog/services/gitops_onboarding_service.py": {
+      "exists": true,
+      "path": "/home/ubuntu/cc/hedgehog-netbox-plugin/netbox_hedgehog/services/gitops_onboarding_service.py",
+      "is_file": true,
+      "is_directory": false
+    },
+    "netbox_hedgehog/services/gitops_ingestion_service.py": {
+      "exists": true,
+      "path": "/home/ubuntu/cc/hedgehog-netbox-plugin/netbox_hedgehog/services/gitops_ingestion_service.py",
+      "is_file": true,
+      "is_directory": false
+    },
+    "netbox_hedgehog/models/": {
+      "exists": true,
+      "path": "/home/ubuntu/cc/hedgehog-netbox-plugin/netbox_hedgehog/models",
+      "is_file": false,
+      "is_directory": true
+    },
+    "netbox_hedgehog/views/": {
+      "exists": true,
+      "path": "/home/ubuntu/cc/hedgehog-netbox-plugin/netbox_hedgehog/views",
+      "is_file": false,
+      "is_directory": true
+    },
+    "netbox_hedgehog/forms/": {
+      "exists": true,
+      "path": "/home/ubuntu/cc/hedgehog-netbox-plugin/netbox_hedgehog/forms",
+      "is_file": false,
+      "is_directory": true
+    }
+  },
+  "missing_paths": [],
+  "existing_paths": [
+    "netbox_hedgehog/utils/fabric_creation_workflow.py",
+    "netbox_hedgehog/services/gitops_onboarding_service.py",
+    "netbox_hedgehog/services/gitops_ingestion_service.py",
+    "netbox_hedgehog/models/",
+    "netbox_hedgehog/views/",
+    "netbox_hedgehog/forms/"
+  ],
+  "total_checked": 6,
+  "validation_timestamp": "20250802_050801",
+  "gitops_files_found": [
+    "netbox_hedgehog/services/gitops_edit_service.py",
+    "netbox_hedgehog/services/gitops_ingestion_service.py",
+    "netbox_hedgehog/services/gitops_onboarding_service.py"
+  ],
+  "gitops_files_count": 3
+}

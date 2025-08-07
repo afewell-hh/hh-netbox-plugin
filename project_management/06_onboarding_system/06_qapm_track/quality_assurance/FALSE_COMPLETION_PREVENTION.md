@@ -505,6 +505,26 @@ Signed: _________________
 Date: ___________________
 ```
 
+## Enhanced Memory-Aware False Completion Prevention
+
+For complex projects requiring advanced coordination, additional memory-aware prevention techniques are available:
+
+### Type 5: The Memory Overload Completion
+**Claim**: "Task completed successfully"  
+**Reality**: Agent overwhelmed by complexity, missed critical requirements  
+**Result**: Partial implementation claiming completeness due to memory limitations
+
+### Prevention Through Memory-Aware Coordination
+- **Task Complexity Assessment**: Evaluate task difficulty vs. agent capacity
+- **Capacity Matching**: Match agent memory capability to task requirements
+- **External Memory Systems**: Use file-based memory for complex projects
+- **Failure Recovery Protocols**: Systematic recovery when memory limits exceeded
+
+### Enhanced Training Resources
+For advanced false completion prevention in memory-constrained environments:
+- [Memory-Aware Agent Coordination Mastery](../enhanced_modules/MEMORY_AWARE_AGENT_COORDINATION_MASTERY.md)
+- [Enhanced QAPM Training Validation Scenarios](../validation_frameworks/ENHANCED_QAPM_TRAINING_VALIDATION_SCENARIOS.md)
+
 ## Conclusion
 
 False completions are not mistakes—they're process failures. Every false completion represents a gap in requirements, verification, or culture. As a QAPM, you have the power and responsibility to eliminate these gaps.

@@ -7,8 +7,170 @@ from django.db.models.signals import post_save, post_delete, pre_delete
 from django.dispatch import receiver
 from django.apps import apps
 import logging
+import traceback
 
 logger = logging.getLogger(__name__)
+
+# HIVE MIND RESEARCHER: Signal execution tracing
+SIGNAL_TRACE_LOGGER = logging.getLogger('hedgehog.signals.trace')
+SIGNAL_TRACE_LOGGER.setLevel(logging.DEBUG)
+
+def trace_signal_execution(signal_name, sender, instance=None, **kwargs):
+    """Trace signal execution for debugging"""
+    try:
+        instance_info = f"{instance.__class__.__name__}:{getattr(instance, 'name', 'unknown')}" if instance else "None"
+        SIGNAL_TRACE_LOGGER.info(f"🔍 SIGNAL TRACE: {signal_name} | Sender: {sender.__name__} | Instance: {instance_info}")
+        
+        # Log stack trace to see who triggered the signal
+        stack = traceback.format_stack()
+        SIGNAL_TRACE_LOGGER.debug(f"🔍 SIGNAL STACK: {signal_name}\n{''.join(stack[-5:])}")
+        
+    except Exception as e:
+        SIGNAL_TRACE_LOGGER.error(f"🔍 SIGNAL TRACE ERROR: {signal_name} - {e}")
+
+
+def initialize_fabric_gitops(fabric):
+    """
+    Initialize GitOps structure for a fabric with strict error handling.
+    
+    Args:
+        fabric: HedgehogFabric instance to initialize
+        
+    Raises:
+        Exception: Any failure in GitOps initialization
+    """
+    try:
+        logger.info(f"Initializing GitOps structure for fabric {fabric.name}")
+        
+        # Skip if already initialized
+        if getattr(fabric, 'gitops_initialized', False):
+            logger.info(f"GitOps structure already initialized for fabric {fabric.name}")
+            return
+        
+        # Validate service availability first
+        try:
+            from .services.gitops_onboarding_service import GitOpsOnboardingService
+        except ImportError as e:
+            raise Exception(f"GitOpsOnboardingService not available: {e}")
+        
+        # Create onboarding service
+        onboarding_service = GitOpsOnboardingService(fabric)
+        
+        # Initialize GitOps structure with validation
+        result = onboarding_service.initialize_gitops_structure()
+        
+        if not result.get('success'):
+            error_msg = f"GitOps initialization failed: {result.get('error', 'Unknown error')}"
+            logger.error(f"GitOps initialization failed for fabric {fabric.name}: {error_msg}")
+            raise Exception(error_msg)
+        
+        logger.info(f"GitOps initialization completed successfully for fabric {fabric.name}: {result['message']}")
+        
+        # Note: Ingestion is now handled within initialize_gitops_structure()
+        # No need for separate ingest_fabric_raw_files() call since it's integrated
+        
+        return result
+        
+    except Exception as e:
+        logger.error(f"GitOps initialization exception for fabric {fabric.name}: {str(e)}")
+        raise  # Propagate all exceptions
+
+
+def ingest_fabric_raw_files(fabric):
+    """
+    Ingest raw files for a fabric.
+    
+    Args:
+        fabric: HedgehogFabric instance to process
+    """
+    try:
+        logger.info(f"Processing raw files for fabric {fabric.name}")
+        
+        # Import here to avoid circular imports
+        from .services.gitops_ingestion_service import GitOpsIngestionService
+        
+        # Create ingestion service
+        ingestion_service = GitOpsIngestionService(fabric)
+        
+        # Process raw directory
+        result = ingestion_service.process_raw_directory()
+        
+        if result['success']:
+            logger.info(f"Raw file ingestion completed for fabric {fabric.name}: {result['message']}")
+        else:
+            logger.warning(f"Raw file ingestion had issues for fabric {fabric.name}: {result.get('error', 'Unknown error')}")
+            
+    except Exception as e:
+        logger.error(f"Error during raw file ingestion for fabric {fabric.name}: {str(e)}")
+
+
+def validate_gitops_structure(fabric):
+    """
+    Validate that a fabric's GitOps structure is properly initialized.
+    
+    Args:
+        fabric: HedgehogFabric instance to validate
+        
+    Returns:
+        dict: Validation result with success status and details
+    """
+    try:
+        from .services.gitops_onboarding_service import GitOpsOnboardingService
+        
+        onboarding_service = GitOpsOnboardingService(fabric)
+        return onboarding_service.validate_structure()
+        
+    except Exception as e:
+        return {
+            'valid': False,
+            'errors': [f'Validation error: {str(e)}'],
+            'fabric_name': fabric.name
+        }
+
+
+def ensure_gitops_structure(fabric):
+    """
+    Ensure GitOps structure exists, initializing if necessary.
+    
+    Args:
+        fabric: HedgehogFabric instance to check
+        
+    Returns:
+        dict: Result of structure check/initialization
+    """
+    # Check if already initialized
+    if getattr(fabric, 'gitops_initialized', False):
+        # Validate existing structure
+        validation = validate_gitops_structure(fabric)
+        if validation['valid']:
+            return {
+                'success': True,
+                'message': 'GitOps structure already exists and is valid',
+                'action': 'validated'
+            }
+        else:
+            logger.warning(f"GitOps structure validation failed for fabric {fabric.name}, reinitializing")
+    
+    # Initialize or reinitialize structure
+    try:
+        from .services.gitops_onboarding_service import GitOpsOnboardingService
+        
+        onboarding_service = GitOpsOnboardingService(fabric)
+        result = onboarding_service.initialize_gitops_structure()
+        
+        return {
+            'success': result['success'],
+            'message': result.get('message', 'GitOps structure initialized'),
+            'action': 'initialized',
+            'details': result
+        }
+        
+    except Exception as e:
+        return {
+            'success': False,
+            'error': f'Failed to ensure GitOps structure: {str(e)}',
+            'action': 'failed'
+        }
 
 
 @receiver(post_save)  # Re-enabled with safe import patterns
@@ -17,25 +179,39 @@ def on_crd_saved(sender, instance, created, **kwargs):
     Handle CRD creation and updates.
     Automatically sync CRD changes to GitOps tracking.
     """
+    # HIVE MIND RESEARCHER: Trace signal execution
+    trace_signal_execution('on_crd_saved', sender, instance, created=created, **kwargs)
+    
+    # HIVE MIND RESEARCHER: Simple diagnostic print
+    print(f"🚨 SIGNAL FIRED: on_crd_saved for {sender.__name__} - {getattr(instance, 'name', 'unknown')}")
+    
     # Check if this is a Hedgehog CRD model
     if not hasattr(instance, 'fabric') or not hasattr(instance, 'get_kind'):
+        SIGNAL_TRACE_LOGGER.info(f"🔍 SKIPPING: {sender.__name__} - No fabric or get_kind method")
         return
     
     # Skip if this is a HedgehogResource (avoid recursion)
     if sender.__name__ == 'HedgehogResource':
+        SIGNAL_TRACE_LOGGER.info(f"🔍 SKIPPING: {sender.__name__} - Avoid HedgehogResource recursion")
         return
         
     # Skip if sender is not a BaseCRD subclass
     try:
         from .models.base import BaseCRD
         if not issubclass(sender, BaseCRD):
+            SIGNAL_TRACE_LOGGER.info(f"🔍 SKIPPING: {sender.__name__} - Not a BaseCRD subclass")
             return
     except ImportError:
+        SIGNAL_TRACE_LOGGER.info(f"🔍 SKIPPING: {sender.__name__} - Could not import BaseCRD")
         return
+    
+    # Log that we're proceeding with signal processing
+    SIGNAL_TRACE_LOGGER.info(f"🔍 PROCESSING: {sender.__name__} - {instance.name} (created={created})")
     
     try:
         # Get the fabric from the instance
         fabric = instance.fabric
+        SIGNAL_TRACE_LOGGER.info(f"🔍 FABRIC: {fabric.name}")
         
         # Use the state service to handle the event
         from .services.state_service import state_service
@@ -59,6 +235,53 @@ def on_crd_saved(sender, instance, created, **kwargs):
                     'CRD modified in NetBox UI'
                 )
                 logger.info(f"GitOps: Updated CRD {instance.get_kind()}/{instance.name} → DRAFT state")
+        
+        # CRITICAL FIX: Actually sync to GitHub
+        try:
+            from .services.github_sync_service import GitHubSyncService
+            
+            logger.info(f"=== SIGNALS GITHUB SYNC TRIGGER ===")
+            logger.info(f"CR: {instance.get_kind()}/{instance.name}")
+            logger.info(f"Fabric: {fabric.name}")
+            logger.info(f"Has git_repository_url: {hasattr(fabric, 'git_repository_url')}")
+            if hasattr(fabric, 'git_repository_url'):
+                logger.info(f"Git repository URL: {fabric.git_repository_url}")
+            
+            # Only sync if fabric has GitHub configured
+            if hasattr(fabric, 'git_repository_url') and fabric.git_repository_url:
+                logger.info(f"Creating GitHubSyncService for fabric {fabric.name}")
+                github_service = GitHubSyncService(fabric)
+                operation = 'create' if created else 'update'
+                
+                logger.info(f"Calling sync_cr_to_github with operation: {operation}")
+                # Sync to GitHub
+                result = github_service.sync_cr_to_github(
+                    instance,
+                    operation=operation,
+                    user='signal_handler'
+                )
+                
+                logger.info(f"=== SIGNALS GITHUB SYNC RESULT ===")
+                logger.info(f"Success: {result['success']}")
+                logger.info(f"Result: {result}")
+                
+                if result['success']:
+                    logger.info(f"GitOps: Successfully synced {instance.get_kind()}/{instance.name} to GitHub")
+                    # Update state to synced
+                    state_service.transition_resource_state(
+                        instance,
+                        'synced',
+                        f'Synced to GitHub: {result.get("commit_sha", "unknown")}'
+                    )
+                else:
+                    logger.error(f"GitOps: Failed to sync to GitHub: {result.get('error')}")
+            else:
+                logger.debug(f"GitOps: No GitHub repository configured for fabric {fabric.name}")
+                
+        except Exception as sync_e:
+            logger.error(f"GitOps: GitHub sync failed for {instance.name}: {sync_e}")
+            import traceback
+            logger.error(f"Traceback: {traceback.format_exc()}")
             
     except Exception as e:
         # Log error but don't break CRD operations
@@ -113,16 +336,32 @@ def on_crd_deleted(sender, instance, **kwargs):
     
     try:
         deletion_info = instance._gitops_deletion_info
+        fabric = deletion_info['fabric']
         
-        # Use the lifecycle manager to handle the deletion
-        # from .utils.gitops_integration import CRDLifecycleManager
-        
-        # CRDLifecycleManager.on_crd_deleted(
-        #     deletion_info['name'],
-        #     deletion_info['kind'], 
-        #     deletion_info['namespace'],
-        #     deletion_info['fabric']
-        # )
+        # CRITICAL FIX: Actually delete from GitHub
+        try:
+            from .services.github_sync_service import GitHubSyncService
+            
+            # Only sync if fabric has GitHub configured
+            if hasattr(fabric, 'git_repository_url') and fabric.git_repository_url:
+                github_service = GitHubSyncService(fabric)
+                
+                # Delete from GitHub
+                result = github_service.sync_cr_to_github(
+                    instance,
+                    operation='delete',
+                    user='signal_handler'
+                )
+                
+                if result['success']:
+                    logger.info(f"GitOps: Successfully deleted {deletion_info['kind']}/{deletion_info['name']} from GitHub")
+                else:
+                    logger.error(f"GitOps: Failed to delete from GitHub: {result.get('error')}")
+            else:
+                logger.debug(f"GitOps: No GitHub repository configured for fabric {fabric.name}")
+                
+        except Exception as sync_e:
+            logger.error(f"GitOps: GitHub deletion failed for {deletion_info['name']}: {sync_e}")
         
         logger.info(f"GitOps: Handled deletion of CRD {deletion_info['kind']}/{deletion_info['name']}")
         
@@ -135,11 +374,30 @@ def on_fabric_saved(sender, instance, created, **kwargs):
     """
     Handle HedgehogFabric changes.
     Update fabric-level GitOps status when configuration changes.
+    Initialize GitOps structure for new fabrics.
     """
+    # HIVE MIND RESEARCHER: Trace fabric signal execution
+    trace_signal_execution('on_fabric_saved', sender, instance, created=created, **kwargs)
+    
     try:
-        # Skip if this is creation (no CRDs to sync yet)
+        # Handle new fabric creation - initialize GitOps structure
         if created:
-            logger.info(f"GitOps: New fabric {instance.name} created")
+            logger.info(f"GitOps: New fabric {instance.name} created, initializing GitOps structure")
+            # Execute immediately in current transaction context to prevent race conditions
+            try:
+                from django.db import transaction
+                with transaction.atomic():
+                    initialize_fabric_gitops(instance)
+            except Exception as e:
+                logger.error(f"GitOps initialization failed for fabric {instance.name}: {e}")
+                # Set fabric status to indicate initialization failure
+                try:
+                    instance.sync_status = 'initialization_failed'
+                    instance.save(update_fields=['sync_status'])
+                except Exception as save_error:
+                    logger.error(f"Failed to update fabric status after GitOps initialization failure: {save_error}")
+                # Re-raise to ensure failure is visible
+                raise
             return
         
         # Check if GitOps configuration has changed

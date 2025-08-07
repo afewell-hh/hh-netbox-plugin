@@ -1,0 +1,107 @@
+{
+  "start_time": "2025-07-31T08:20:03.472332",
+  "fabric_id": 26,
+  "operations": [
+    {
+      "timestamp": "2025-07-31T08:20:03.472353",
+      "operation": "ENVIRONMENT_CHECK",
+      "status": "SUCCESS",
+      "details": "NETBOX_URL is set",
+      "data": null
+    },
+    {
+      "timestamp": "2025-07-31T08:20:03.472358",
+      "operation": "ENVIRONMENT_CHECK",
+      "status": "SUCCESS",
+      "details": "NETBOX_TOKEN is set",
+      "data": null
+    },
+    {
+      "timestamp": "2025-07-31T08:20:03.472361",
+      "operation": "ENVIRONMENT_CHECK",
+      "status": "SUCCESS",
+      "details": "TEST_FABRIC_K8S_API_SERVER is set",
+      "data": null
+    },
+    {
+      "timestamp": "2025-07-31T08:20:03.472363",
+      "operation": "ENVIRONMENT_CHECK",
+      "status": "SUCCESS",
+      "details": "TEST_FABRIC_K8S_TOKEN is set",
+      "data": null
+    },
+    {
+      "timestamp": "2025-07-31T08:20:03.472365",
+      "operation": "ENVIRONMENT_CHECK",
+      "status": "SUCCESS",
+      "details": "TEST_FABRIC_K8S_API_SERVER_CA is set",
+      "data": null
+    },
+    {
+      "timestamp": "2025-07-31T08:20:04.102351",
+      "operation": "GET_FABRIC_STATE",
+      "status": "SUCCESS",
+      "details": "Retrieved fabric 26",
+      "data": {
+        "name": "Test Fabric for GitOps Initialization",
+        "status": "planned"
+      }
+    },
+    {
+      "timestamp": "2025-07-31T08:20:04.102380",
+      "operation": "K8S_CONFIG_CHECK",
+      "status": "INFO",
+      "details": "Current K8s configuration",
+      "data": {
+        "kubernetes_server": "",
+        "kubernetes_token": "",
+        "kubernetes_ca_cert": "",
+        "kubernetes_namespace": "default"
+      }
+    },
+    {
+      "timestamp": "2025-07-31T08:20:04.102401",
+      "operation": "K8S_UPDATE_ATTEMPT",
+      "status": "STARTING",
+      "details": "Updating fabric with K8s config",
+      "data": {
+        "kubernetes_server": "https://172.18.0.8:6443",
+        "kubernetes_token": "***REDACTED***",
+        "kubernetes_ca_cert": "***REDACTED***",
+        "kubernetes_namespace": "default"
+      }
+    }
+  ],
+  "validations": [
+    {
+      "timestamp": "2025-07-31T08:20:03.472368",
+      "validation": "ENVIRONMENT_VALIDATION",
+      "result": "PASSED",
+      "expected": "All required environment variables present",
+      "actual": null
+    }
+  ],
+  "errors": [
+    {
+      "timestamp": "2025-07-31T08:20:04.255173",
+      "error_type": "K8S_UPDATE",
+      "message": "Failed to update fabric 26 with K8s config",
+      "exception": "400 Client Error: Bad Request for url: http://localhost:8000/api/plugins/hedgehog/fabrics/26/"
+    },
+    {
+      "timestamp": "2025-07-31T08:20:04.255210",
+      "error_type": "COMPLETE_VALIDATION",
+      "message": "Complete validation failed",
+      "exception": "400 Client Error: Bad Request for url: http://localhost:8000/api/plugins/hedgehog/fabrics/26/"
+    }
+  ],
+  "end_time": "2025-07-31T08:20:04.255222",
+  "duration": "From 2025-07-31T08:20:03.472332 to 2025-07-31T08:20:04.255222",
+  "summary": {
+    "total_operations": 8,
+    "successful_operations": 6,
+    "total_validations": 1,
+    "passed_validations": 1,
+    "total_errors": 2
+  }
+}

@@ -506,6 +506,19 @@ INTEGRATION POINTS:
 3. Build domain-specific templates
 4. Share across teams
 
+## Enhanced Memory-Aware Framework
+
+For complex projects requiring memory management and advanced coordination, see the enhanced framework:
+
+**[Memory-Aware Agent Instruction Templates](../agent_templates/MEMORY_AWARE_AGENT_INSTRUCTION_TEMPLATES.md)**
+
+This enhanced framework provides:
+- Memory capacity assessment protocols
+- Task complexity matching algorithms  
+- External memory system integration
+- Failure recovery instructions
+- Multi-agent coordination templates
+
 ## Conclusion
 
 The Agent Instruction Framework transforms project management from hoping for success to engineering it. By providing comprehensive context, clear authority, phased approaches, and evidence requirements, you create agents that cannot fail—they can only succeed or clearly escalate with actionable information.

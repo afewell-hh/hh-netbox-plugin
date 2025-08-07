@@ -1,9 +1,9 @@
 # QAPM Mastery: Process Architecture Excellence
 
-**Version**: 2.0  
-**Updated**: July 29, 2025  
-**Philosophy**: Systematic process design for evidence-based excellence  
-**Paradigm**: Process architect and agent orchestrator, not technical executor
+**Version**: 2.5 (Enhanced with Memory-Aware Coordination)  
+**Updated**: August 4, 2025  
+**Philosophy**: Systematic process design for evidence-based excellence with memory-aware coordination  
+**Paradigm**: Process architect and agent orchestrator with scientific memory management
 
 ## Table of Contents
 
@@ -17,6 +17,7 @@
 8. [Success Patterns](#success-patterns)
 9. [Common Pitfalls](#common-pitfalls)
 10. [Tools and Resources](#tools-and-resources)
+11. [Enhanced QAPM: Memory-Aware Coordination](#enhanced-qapm-memory-aware-coordination)
 
 ## Role Definition
 
@@ -462,6 +463,44 @@ Your work will not be considered complete until file organization is verified.
 - **Agent Performance Tracking**: Monitor specialist effectiveness
 - **Quality Metrics**: Evidence-based validation success rates
 - **Process Evolution**: Continuous improvement of systematic approaches
+
+## Enhanced QAPM: Memory-Aware Coordination
+
+For complex projects requiring advanced coordination and memory management, QAPMs can leverage enhanced memory-aware capabilities:
+
+### Memory-Aware Process Architecture
+
+**Enhanced Role**: Process architect with scientific memory management capabilities  
+**Advanced Skills**: Task complexity assessment, agent capacity matching, external memory utilization
+
+**Key Enhancements**:
+- **Memory Capacity Assessment**: Scientific evaluation of task complexity vs. agent limitations
+- **False Completion Prevention**: Systematic prevention through proper capacity matching
+- **External Memory Systems**: File-based memory augmentation for complex projects
+- **Adaptive Task Decomposition**: Memory-efficient task breakdown methodologies
+- **Recovery Protocols**: Systematic recovery from memory overload incidents
+
+### GitHub Integration Mastery
+
+**Advanced Coordination**: Complete GitHub-integrated project management  
+**Efficiency Target**: <15% coordination overhead through automation
+
+**Key Capabilities**:
+- **Issue-Based Project Management**: Complete project orchestration through GitHub issues
+- **Automated Evidence Management**: Systematic evidence collection and validation
+- **Project State Persistence**: 100% continuity across sessions and handoffs
+- **Advanced Automation**: Custom workflows and enterprise scaling
+
+### Enhanced Training Path
+
+**Foundation Level**: Complete existing QAPM v2.0 training  
+**Enhanced Level**: Add memory-aware coordination and GitHub integration  
+**Master Level**: Training delivery and methodology evolution
+
+**Resources**:
+- [Enhanced QAPM Mastery with Memory Awareness](./enhanced_modules/ENHANCED_QAPM_MASTERY_WITH_MEMORY_AWARENESS.md)
+- [Memory-Aware Agent Coordination Mastery](./enhanced_modules/MEMORY_AWARE_AGENT_COORDINATION_MASTERY.md)
+- [GitHub Integration Mastery](./enhanced_modules/GITHUB_INTEGRATION_MASTERY.md)
 
 ## Conclusion
 

@@ -13,10 +13,16 @@ class FabricView(generic.ObjectView):
     template_name = 'netbox_hedgehog/fabric.html'
 
 class FabricEditView(generic.ObjectEditView):
-    """Create/edit view for Hedgehog fabrics"""
+    """Create/edit view for Hedgehog fabrics with GitOps integration"""
     queryset = models.HedgehogFabric.objects.all()
-    form = forms.HedgehogFabricForm
+    form = forms.FabricCreationWorkflowForm  # Use GitOps-integrated form
     template_name = 'netbox_hedgehog/fabric_edit.html'
+    
+    def get_form_kwargs(self):
+        """Pass user context to form for Git repository access"""
+        kwargs = super().get_form_kwargs()
+        kwargs['user'] = self.request.user
+        return kwargs
 
 class FabricDeleteView(generic.ObjectDeleteView):
     """Delete view for Hedgehog fabrics"""

@@ -1,0 +1,51 @@
+
+
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <title>Server Error</title>
+  <link rel="stylesheet" href="/static/netbox.css" />
+  <meta charset="UTF-8">
+</head>
+
+<body>
+  <div class="container-fluid">
+    <div class="row">
+      <div class="col col-md-6 offset-md-3">
+        <div class="card border-danger mt-5">
+          <h2 class="card-header text-bg-danger">
+            <i class="mdi mdi-alert"></i> Server Error
+          </h2>
+          <div class="card-body">
+            
+              <p>
+                There was a problem with your request. Please contact an administrator.
+              </p>
+            
+            <hr />
+            <p>
+              The complete exception is provided below:
+            </p>
+            <pre class="block"><strong>&lt;class &#x27;django.urls.exceptions.NoReverseMatch&#x27;&gt;</strong><br />
+&#x27;netbox_hedgehog&#x27; is not a registered namespace
+
+Python version: 3.12.3
+NetBox version: 4.3.3-Docker-3.3.0
+Plugins: 
+  netbox_hedgehog: 0.2.0
+</pre>
+            <p>
+              If further assistance is required, please post to the <a href="https://github.com/netbox-community/netbox/discussions">NetBox discussion forum</a> on GitHub.
+            </p>
+            <div class="text-end">
+              <a href="/" class="btn btn-primary">Home Page</a>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</body>
+
+</html>

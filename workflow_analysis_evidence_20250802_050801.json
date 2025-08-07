@@ -1,0 +1,43 @@
+{
+  "file_exists": true,
+  "file_size": 30027,
+  "lines_count": 676,
+  "classes": [
+    "ValidationResult",
+    "CreationResult",
+    "IntegrationResult",
+    "UnifiedFabricCreationWorkflow"
+  ],
+  "functions": [
+    "__post_init__",
+    "__post_init__",
+    "__post_init__",
+    "__init__",
+    "validate_fabric_configuration",
+    "create_fabric_with_git_repository",
+    "create_fabric_with_new_repository",
+    "validate_gitops_directory_assignment",
+    "setup_fabric_git_integration",
+    "_validate_git_configuration"
+  ],
+  "imports": [
+    "logging",
+    "dataclasses.dataclass",
+    "typing.Dict",
+    "typing.Any",
+    "typing.Optional",
+    "django.contrib.auth.models.User",
+    "django.db.transaction",
+    "django.utils.timezone",
+    "models.HedgehogFabric",
+    "models.GitRepository",
+    "utils.gitops_directory_validator.GitOpsDirectoryValidator",
+    "utils.git_health_monitor.GitHealthMonitor",
+    "utils.credential_manager.CredentialManager",
+    "services.gitops_onboarding_service.GitOpsOnboardingService"
+  ],
+  "has_gitops_integration": true,
+  "has_environment_handling": false,
+  "has_error_handling": true,
+  "validation_timestamp": "20250802_050801"
+}

@@ -7,6 +7,7 @@
 
 {% block header %}
     {{ block.super }}
+    <meta name="csrf-token" content="{{ csrf_token }}">
     <link rel="stylesheet" href="{% static 'netbox_hedgehog/css/hedgehog.css' %}">
 {% endblock %}
 
@@ -321,7 +322,7 @@
                                 button.innerHTML = '<i class="mdi mdi-sync mdi-spin"></i> Syncing...';
                                 
                                 const baseUrl = window.location.origin;
-                                const syncUrl = `${baseUrl}/api/plugins/hedgehog/gitops-fabrics/${fabricId}/gitops_sync/`;
+                                const syncUrl = `${baseUrl}/plugins/hedgehog/fabrics/${fabricId}/github-sync/`;
                                 
                                 // Get CSRF token
                                 const csrftoken = document.querySelector('[name=csrfmiddlewaretoken]')?.value || 
@@ -367,7 +368,7 @@
                                 button.innerHTML = '<i class="mdi mdi-kubernetes mdi-spin"></i> Syncing...';
                                 
                                 const baseUrl = window.location.origin;
-                                const syncUrl = `${baseUrl}/api/plugins/hedgehog/gitops-fabrics/${fabricId}/hckc_sync/`;
+                                const syncUrl = `${baseUrl}/plugins/hedgehog/fabrics/${fabricId}/sync/`;
                                 
                                 // Get CSRF token
                                 const csrftoken = document.querySelector('[name=csrfmiddlewaretoken]')?.value || 

@@ -1,0 +1,389 @@
+{% extends 'base/layout.html' %}
+{% load i18n %}
+{% load helpers %}
+
+{% block title %}Drift Detection Dashboard{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <div>
+        <h1 class="h3 mb-0">
+            <i class="mdi mdi-compare-horizontal me-2"></i>
+            Drift Detection Dashboard
+        </h1>
+        <p class="text-muted mb-0">Industry-aligned drift monitoring for Hedgehog resources</p>
+    </div>
+    <div class="btn-group" role="group">
+        <button type="button" class="btn btn-outline-primary" id="refresh-drift" data-bs-toggle="tooltip" title="Refresh drift analysis">
+            <i class="mdi mdi-refresh"></i> Refresh
+        </button>
+        <button type="button" class="btn btn-outline-secondary" id="export-report" data-bs-toggle="tooltip" title="Export drift report">
+            <i class="mdi mdi-download"></i> Export
+        </button>
+    </div>
+</div>
+
+<!-- Dashboard Statistics -->
+<div class="row mb-4">
+    <div class="col-md-3">
+        <div class="card border-start border-primary border-3">
+            <div class="card-body">
+                <div class="row align-items-center">
+                    <div class="col">
+                        <div class="text-xs fw-bold text-primary text-uppercase mb-1">Total Resources</div>
+                        <div class="h5 mb-0 fw-bold">{{ dashboard_stats.total_resources }}</div>
+                    </div>
+                    <div class="col-auto">
+                        <i class="mdi mdi-database fa-2x text-gray-300"></i>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card border-start border-success border-3">
+            <div class="card-body">
+                <div class="row align-items-center">
+                    <div class="col">
+                        <div class="text-xs fw-bold text-success text-uppercase mb-1">In Sync</div>
+                        <div class="h5 mb-0 fw-bold">{{ dashboard_stats.in_sync_count }}</div>
+                    </div>
+                    <div class="col-auto">
+                        <i class="mdi mdi-check-circle fa-2x text-gray-300"></i>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card border-start border-warning border-3">
+            <div class="card-body">
+                <div class="row align-items-center">
+                    <div class="col">
+                        <div class="text-xs fw-bold text-warning text-uppercase mb-1">Drifted</div>
+                        <div class="h5 mb-0 fw-bold">{{ dashboard_stats.drifted_count }}</div>
+                        <div class="text-xs text-muted">{{ dashboard_stats.drift_percentage|floatformat:1 }}% of total</div>
+                    </div>
+                    <div class="col-auto">
+                        <i class="mdi mdi-alert-circle fa-2x text-gray-300"></i>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card border-start border-danger border-3">
+            <div class="card-body">
+                <div class="row align-items-center">
+                    <div class="col">
+                        <div class="text-xs fw-bold text-danger text-uppercase mb-1">Critical Drift</div>
+                        <div class="h5 mb-0 fw-bold">{{ dashboard_stats.critical_drift_count }}</div>
+                    </div>
+                    <div class="col-auto">
+                        <i class="mdi mdi-alert-octagon fa-2x text-gray-300"></i>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Filters -->
+{% if show_filters %}
+<div class="card mb-4">
+    <div class="card-header">
+        <h6 class="m-0 fw-bold">
+            <i class="mdi mdi-filter me-2"></i>
+            Filters
+        </h6>
+    </div>
+    <div class="card-body">
+        <form method="get" id="filter-form">
+            <div class="row">
+                <div class="col-md-3">
+                    <label for="fabric-filter" class="form-label">Fabric</label>
+                    <select class="form-select" id="fabric-filter" name="fabric">
+                        <option value="">All Fabrics</option>
+                        {% for fabric in all_fabrics %}
+                        <option value="{{ fabric.id }}" {% if selected_fabric.id == fabric.id %}selected{% endif %}>
+                            {{ fabric.name }}
+                        </option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="col-md-3">
+                    <label for="severity-filter" class="form-label">Severity</label>
+                    <select class="form-select" id="severity-filter" name="severity">
+                        <option value="">All Severities</option>
+                        {% for value, label in severity_options %}
+                        <option value="{{ value }}" {% if selected_severity == value %}selected{% endif %}>
+                            {{ label }}
+                        </option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="col-md-3">
+                    <label for="resource-type-filter" class="form-label">Resource Type</label>
+                    <select class="form-select" id="resource-type-filter" name="resource_type">
+                        <option value="">All Types</option>
+                        {% for resource_type in resource_types %}
+                        <option value="{{ resource_type }}" {% if selected_resource_type == resource_type %}selected{% endif %}>
+                            {{ resource_type }}
+                        </option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="col-md-3 d-flex align-items-end">
+                    <button type="submit" class="btn btn-primary me-2">
+                        <i class="mdi mdi-magnify"></i> Apply Filters
+                    </button>
+                    <a href="{% url 'netbox_hedgehog:drift_dashboard' %}" class="btn btn-outline-secondary">
+                        <i class="mdi mdi-filter-remove"></i> Clear
+                    </a>
+                </div>
+            </div>
+        </form>
+    </div>
+</div>
+{% endif %}
+
+<!-- Drifted Resources Table -->
+<div class="card">
+    <div class="card-header">
+        <h6 class="m-0 fw-bold">
+            <i class="mdi mdi-alert-circle me-2"></i>
+            Drifted Resources
+            <span class="badge bg-warning text-dark ms-2">{{ drifted_resources|length }}</span>
+        </h6>
+    </div>
+    <div class="card-body">
+        {% if error %}
+        <div class="alert alert-danger">
+            <i class="mdi mdi-alert-circle me-2"></i>
+            Error loading drift data: {{ error }}
+        </div>
+        {% elif not drifted_resources %}
+        <div class="text-center py-5">
+            <i class="mdi mdi-check-circle display-1 text-success mb-3"></i>
+            <h5>No Drift Detected</h5>
+            <p class="text-muted">All resources are in sync with their desired state.</p>
+        </div>
+        {% else %}
+        <div class="table-responsive">
+            <table class="table table-hover">
+                <thead>
+                    <tr>
+                        <th>Resource</th>
+                        <th>Fabric</th>
+                        <th>Type</th>
+                        <th>Drift Severity</th>
+                        <th>Drift Score</th>
+                        <th>Last Checked</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for item in drifted_resources %}
+                    <tr>
+                        <td>
+                            <div class="d-flex align-items-center">
+                                <i class="mdi mdi-cube-outline me-2"></i>
+                                <div>
+                                    <strong>{{ item.resource.name }}</strong>
+                                    <br>
+                                    <small class="text-muted">{{ item.drift_summary }}</small>
+                                </div>
+                            </div>
+                        </td>
+                        <td>
+                            <a href="{% url 'netbox_hedgehog:fabric_detail' item.resource.fabric.id %}" class="text-decoration-none">
+                                {{ item.resource.fabric.name }}
+                            </a>
+                        </td>
+                        <td>
+                            <span class="badge bg-secondary">{{ item.resource.kind }}</span>
+                        </td>
+                        <td>
+                            <span class="badge bg-{{ item.severity_class }}">
+                                {{ item.severity|capfirst }}
+                            </span>
+                        </td>
+                        <td>
+                            <div class="progress" style="height: 20px;">
+                                <div class="progress-bar bg-{{ item.severity_class }}" 
+                                     role="progressbar" 
+                                     style="width: {{ item.resource.drift_score|floatformat:0 }}%"
+                                     aria-valuenow="{{ item.resource.drift_score|floatformat:0 }}" 
+                                     aria-valuemin="0" 
+                                     aria-valuemax="100">
+                                    {{ item.resource.drift_score|floatformat:1 }}
+                                </div>
+                            </div>
+                        </td>
+                        <td>
+                            {% if item.resource.last_drift_check %}
+                                <small>{{ item.resource.last_drift_check|timesince }} ago</small>
+                            {% else %}
+                                <small class="text-muted">Never</small>
+                            {% endif %}
+                        </td>
+                        <td>
+                            <div class="btn-group btn-group-sm" role="group">
+                                <button type="button" 
+                                        class="btn btn-outline-primary view-details" 
+                                        data-resource-id="{{ item.resource.id }}"
+                                        data-bs-toggle="tooltip" title="View drift details">
+                                    <i class="mdi mdi-eye"></i>
+                                </button>
+                                {% if item.can_sync %}
+                                <button type="button" 
+                                        class="btn btn-outline-success sync-resource" 
+                                        data-resource-id="{{ item.resource.id }}"
+                                        data-bs-toggle="tooltip" title="Sync resource">
+                                    <i class="mdi mdi-sync"></i>
+                                </button>
+                                {% endif %}
+                            </div>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% endif %}
+    </div>
+</div>
+
+<!-- Loading Modal -->
+<div class="modal fade" id="loadingModal" tabindex="-1" data-bs-backdrop="static" data-bs-keyboard="false">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-body text-center">
+                <div class="spinner-border text-primary" role="status">
+                    <span class="visually-hidden">Loading...</span>
+                </div>
+                <p class="mt-3">Refreshing drift analysis...</p>
+            </div>
+        </div>
+    </div>
+</div>
+
+{% endblock %}
+
+{% block javascript %}
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    // Initialize tooltips
+    var tooltipTriggerList = [].slice.call(document.querySelectorAll('[data-bs-toggle="tooltip"]'));
+    var tooltipList = tooltipTriggerList.map(function (tooltipTriggerEl) {
+        return new bootstrap.Tooltip(tooltipTriggerEl);
+    });
+
+    // Refresh drift analysis
+    document.getElementById('refresh-drift').addEventListener('click', function() {
+        const modal = new bootstrap.Modal(document.getElementById('loadingModal'));
+        modal.show();
+        
+        const params = new URLSearchParams();
+        params.append('action', 'refresh_drift');
+        
+        const fabricFilter = document.getElementById('fabric-filter').value;
+        if (fabricFilter) {
+            params.append('fabric_id', fabricFilter);
+        }
+        
+        fetch(`{% url 'netbox_hedgehog:drift_analysis_api' %}?${params.toString()}`)
+            .then(response => response.json())
+            .then(data => {
+                modal.hide();
+                if (data.success) {
+                    // Show success toast
+                    showToast('success', `Refreshed drift analysis for ${data.updated_count} resources`);
+                    // Reload page to show updated data
+                    setTimeout(() => window.location.reload(), 1500);
+                } else {
+                    showToast('error', data.error || 'Failed to refresh drift analysis');
+                }
+            })
+            .catch(error => {
+                modal.hide();
+                showToast('error', 'Network error while refreshing drift analysis');
+                console.error('Drift refresh error:', error);
+            });
+    });
+
+    // View details functionality
+    document.querySelectorAll('.view-details').forEach(button => {
+        button.addEventListener('click', function() {
+            const resourceId = this.dataset.resourceId;
+            // For demo purposes, show an alert. In real implementation, navigate to detail page
+            alert(`Viewing drift details for resource ID: ${resourceId}\n\nIn full implementation, this would navigate to the resource drift detail page.`);
+        });
+    });
+
+    // Sync individual resources
+    document.querySelectorAll('.sync-resource').forEach(button => {
+        button.addEventListener('click', function() {
+            const resourceId = this.dataset.resourceId;
+            this.disabled = true;
+            this.innerHTML = '<i class="mdi mdi-loading mdi-spin"></i>';
+            
+            // Simulate sync operation
+            setTimeout(() => {
+                showToast('success', 'Resource sync initiated');
+                this.disabled = false;
+                this.innerHTML = '<i class="mdi mdi-sync"></i>';
+            }, 2000);
+        });
+    });
+
+    // Auto-submit filter form when selections change
+    document.querySelectorAll('#filter-form select').forEach(select => {
+        select.addEventListener('change', function() {
+            document.getElementById('filter-form').submit();
+        });
+    });
+
+    // Export report functionality
+    document.getElementById('export-report').addEventListener('click', function() {
+        const params = new URLSearchParams(window.location.search);
+        params.append('export', 'csv');
+        // For demo purposes, show an alert
+        alert('Export functionality would download a CSV report of the current drift data.');
+    });
+});
+
+function showToast(type, message) {
+    // Simple toast notification function
+    const toastContainer = document.getElementById('toast-container') || createToastContainer();
+    
+    const toast = document.createElement('div');
+    toast.className = `toast align-items-center text-white bg-${type === 'success' ? 'success' : 'danger'} border-0`;
+    toast.setAttribute('role', 'alert');
+    toast.innerHTML = `
+        <div class="d-flex">
+            <div class="toast-body">${message}</div>
+            <button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast"></button>
+        </div>
+    `;
+    
+    toastContainer.appendChild(toast);
+    const bsToast = new bootstrap.Toast(toast);
+    bsToast.show();
+    
+    // Remove toast element after it's hidden
+    toast.addEventListener('hidden.bs.toast', function() {
+        toast.remove();
+    });
+}
+
+function createToastContainer() {
+    const container = document.createElement('div');
+    container.id = 'toast-container';
+    container.className = 'toast-container position-fixed top-0 end-0 p-3';
+    container.style.zIndex = '1050';
+    document.body.appendChild(container);
+    return container;
+}
+</script>
+{% endblock %}

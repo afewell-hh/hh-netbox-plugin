@@ -1,0 +1,52 @@
+{
+  "timestamp": "2025-08-06T07:27:29.466062",
+  "fixes_applied": [
+    "Loaded .env file variables"
+  ],
+  "validation_results": {
+    "github_auth": true,
+    "github_user": "afewell-hh",
+    "test_repo_access": true,
+    "test_repo_info": {
+      "name": "afewell-hh/gitops-test-1",
+      "private": false,
+      "push_allowed": true
+    },
+    "crd_files": [
+      {
+        "file": "test-vpc-2.yaml",
+        "kind": "VPC",
+        "name": "test-vpc-2",
+        "size": 201
+      },
+      {
+        "file": "test-vpc.yaml",
+        "kind": "VPC",
+        "name": "test-vpc",
+        "size": 199
+      }
+    ],
+    "service_files": {
+      "netbox_hedgehog/services/gitops_ingestion_service.py": {
+        "exists": true,
+        "valid_syntax": true,
+        "size": 32245
+      },
+      "netbox_hedgehog/services/gitops_onboarding_service.py": {
+        "exists": true,
+        "valid_syntax": true,
+        "size": 79299
+      },
+      "netbox_hedgehog/services/github_sync_service.py": {
+        "exists": true,
+        "valid_syntax": true,
+        "size": 22558
+      }
+    }
+  },
+  "test_outcomes": {
+    "repo_content_access": true,
+    "gitops_directory_found": true,
+    "write_permissions": true
+  }
+}

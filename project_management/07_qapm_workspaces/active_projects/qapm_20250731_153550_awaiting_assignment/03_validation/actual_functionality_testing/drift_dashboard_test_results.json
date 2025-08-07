@@ -1,0 +1,29 @@
+{
+  "test_timestamp": "2025-08-01",
+  "test_type": "drift_dashboard_access",
+  "results": [
+    {
+      "url": "http://localhost:8000/plugins/hedgehog/drift-detection/",
+      "status_code": 404,
+      "authenticated": false,
+      "accessible": false
+    },
+    {
+      "url": "http://localhost:8000/plugins/hedgehog/api/drift-analysis/",
+      "status_code": 404,
+      "authenticated": false,
+      "accessible": false
+    },
+    {
+      "url": "http://localhost:8000/plugins/hedgehog/",
+      "status_code": 200,
+      "authenticated": false,
+      "accessible": true
+    }
+  ],
+  "summary": {
+    "urls_tested": 3,
+    "accessible_urls": 1,
+    "django_models_accessible": false
+  }
+}

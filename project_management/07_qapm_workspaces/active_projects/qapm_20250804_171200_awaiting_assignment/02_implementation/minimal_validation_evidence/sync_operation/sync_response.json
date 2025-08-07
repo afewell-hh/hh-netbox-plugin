@@ -1,0 +1,18 @@
+{
+  "status_code": 403,
+  "headers": {
+    "Content-Type": "text/html; charset=utf-8",
+    "X-Request-ID": "f0836d1c-5453-421e-8ffe-c15b028caa83",
+    "Vary": "HX-Request, Accept-Language, Cookie, origin",
+    "X-Content-Type-Options": "nosniff",
+    "Referrer-Policy": "same-origin",
+    "Cross-Origin-Opener-Policy": "same-origin",
+    "X-Frame-Options": "SAMEORIGIN",
+    "Content-Length": "1367",
+    "Content-Language": "en",
+    "Server": "Unit/1.34.2",
+    "Date": "Tue, 05 Aug 2025 00:36:49 GMT"
+  },
+  "content": "<!DOCTYPE html>\n<html lang=\"en\">\n<head>\n  <meta http-equiv=\"content-type\" content=\"text/html; charset=utf-8\">\n  <meta name=\"robots\" content=\"NONE,NOARCHIVE\">\n  <title>403 Forbidden</title>\n  <style>\n    html * { padding:0; margin:0; }\n    body * { padding:10px 20px; }\n    body * * { padding:0; }\n    body { font-family: sans-serif; background:#eee; color:#000; }\n    body>div { border-bottom:1px solid #ddd; }\n    h1 { font-weight:normal; margin-bottom:.4em; }\n    h1 span { font-size:60%; color:#666; font-weight:normal; }\n    #info { background:#f6f6f6; }\n    #info ul { margin: 0.5em 4em; }\n    #info p, #summary p { padding-top:10px; }\n    #summary { background: #ffc; }\n    #explanation { background:#eee; border-bottom: 0px none; }\n  </style>\n</head>\n<body>\n<div id=\"summary\">\n  <h1>Forbidden <span>(403)</span></h1>\n  <p>CSRF verification failed. Request aborted.</p>\n\n\n  <p>You are seeing this message because this site requires a CSRF cookie when submitting forms. This cookie is required f",
+  "timestamp": "2025-08-05T00:36:49.088191"
+}

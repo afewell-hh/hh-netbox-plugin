@@ -1,0 +1,4 @@
+{
+  "error": "new row for relation \"netbox_hedgehog_hedgehogfabric\" violates check constraint \"valid_sync_status\"\nDETAIL:  Failing row contains (26, 2025-07-30 21:15:32.201246+00, 2025-07-31 08:30:00.273093+00, {}, Test Fabric for GitOps Initialization, Test fabric for complete GitOps initialization workflow, planned, https://172.18.0.8:6443, eyJhbGciOiJSUzI1NiIsImtpZCI6IlhzaVN6Uy1GSk50X1FuU1NwTlE2MEhELWo0..., -----BEGIN CERTIFICATE-----MIIBeDCCAR2gAwIBAgIBADAKBggqhkjOPQQDA..., default, t, 300, null, , unknown, in_sync, , 0, 0, 0, 0, 0, 0, 0, null, main, hedgehog/, , , , in_sync, 0, 2025-07-30 22:54:37.635139+00, manual, , , f, , , unknown, null, , not_configured, , t, f, t, 6, gitops/hedgehog/fabric-1/, t, [], inactive, null, null, 0, , t, rename_with_extension, /var/lib/hedgehog/fabrics/Test Fabric for GitOps Initialization/..., /var/lib/hedgehog/fabrics/Test Fabric for GitOps Initialization/..., not_initialized, , null).",
+  "update_success": false
+}

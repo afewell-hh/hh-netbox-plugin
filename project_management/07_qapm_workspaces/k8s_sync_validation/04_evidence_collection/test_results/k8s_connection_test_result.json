@@ -1,0 +1,23 @@
+{
+  "fabric_id": 26,
+  "fabric_name": "Test Fabric for GitOps Initialization",
+  "connection_status": "error",
+  "connection_error": "HTTPSConnectionPool(host='172.18.0.8', port=6443): Max retries exceeded with url: /version/ (Caused by SSLError(SSLError(136, '[X509: NO_CERTIFICATE_OR_CRL_FOUND] no certificate or crl found (_ssl.c:4146)')))",
+  "sync_status": "synced",
+  "sync_error": "",
+  "last_sync": null,
+  "cached_crd_count": 0,
+  "cached_vpc_count": 0,
+  "cached_connection_count": 0,
+  "vpcs_count": 0,
+  "connections_count": 0,
+  "switches_count": 0,
+  "servers_count": 0,
+  "drift_status": "in_sync",
+  "connection_test_result": {
+    "success": false,
+    "error": "HTTPSConnectionPool(host='172.18.0.8', port=6443): Max retries exceeded with url: /version/ (Caused by SSLError(SSLError(136, '[X509: NO_CERTIFICATE_OR_CRL_FOUND] no certificate or crl found (_ssl.c:4146)')))",
+    "message": "Connection failed"
+  },
+  "timestamp": "2025-07-31T08:44:13.968050"
+}

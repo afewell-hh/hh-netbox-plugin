@@ -104,9 +104,9 @@
 }
 
 .section-toggle {
-    background: #f8f9fa;
+    background: #e9ecef !important; /* Slightly darker background for better definition */
     border: none;
-    border-bottom: 1px solid #e9ecef;
+    border-bottom: 2px solid #adb5bd !important; /* Stronger border */
     padding: 1.25rem 1.5rem;
     margin: 0;
     width: 100%;
@@ -115,15 +115,19 @@
     display: flex;
     justify-content: between;
     align-items: center;
-    font-weight: 600;
-    font-size: 1.1rem;
-    color: #495057;
+    font-weight: 700 !important; /* Bold weight for maximum readability */
+    font-size: 1.15rem !important; /* Slightly larger for better visibility */
+    color: #212529 !important; /* Pure black for maximum contrast */
     transition: all 0.3s ease;
     user-select: none;
+    text-shadow: none !important;
+    letter-spacing: 0.02em !important; /* Slight letter spacing for clarity */
 }
 
 .section-toggle:hover {
-    background: #e9ecef;
+    background: #d1ecf1 !important; /* Light blue background on hover for better feedback */
+    color: #000 !important; /* Maintain maximum contrast on hover */
+    border-bottom-color: #17a2b8 !important; /* Blue accent on hover */
 }
 
 .section-toggle.collapsed {
@@ -176,16 +180,30 @@
 }
 
 .info-label {
-    font-weight: 600;
-    color: #495057;
-    font-size: 0.9rem;
+    font-weight: 700 !important; /* Bold weight for maximum readability */
+    color: #212529 !important; /* Pure black for maximum contrast */
+    font-size: 0.95rem !important; /* Slightly larger for better visibility */
     text-transform: uppercase;
-    letter-spacing: 0.5px;
+    letter-spacing: 0.75px !important; /* Increased letter spacing for clarity */
+    text-shadow: none !important;
+    margin-bottom: 0.5rem !important; /* More spacing for better separation */
+    background-color: rgba(248, 249, 250, 0.8) !important; /* Subtle background for definition */
+    padding: 0.25rem 0.5rem !important; /* Padding for better visual separation */
+    border-radius: 0.25rem !important;
+    border: 1px solid #dee2e6 !important; /* Border for clear definition */
 }
 
 .info-value {
-    color: #212529;
-    font-size: 1rem;
+    color: #000 !important; /* Pure black for maximum contrast */
+    font-size: 1.05rem !important; /* Slightly larger for better readability */
+    text-shadow: none !important;
+    line-height: 1.5 !important; /* Improved line spacing */
+    font-weight: 500 !important; /* Medium weight for better readability */
+    padding: 0.5rem !important; /* Padding for better visual separation */
+    background-color: #ffffff !important; /* White background for maximum contrast */
+    border: 1px solid #e9ecef !important; /* Subtle border for definition */
+    border-radius: 0.375rem !important;
+    margin-bottom: 0.75rem !important; /* Better spacing between items */
 }
 
 /* Status Indicators */

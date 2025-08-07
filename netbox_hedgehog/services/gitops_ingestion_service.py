@@ -73,47 +73,113 @@ class GitOpsIngestionService:
             Dict with processing results
         """
         try:
-            logger.info(f"Starting raw directory processing for fabric {self.fabric.name}")
+            logger.info(f"=== INGESTION DIAGNOSTIC: Starting raw directory processing for fabric {self.fabric.name} ===")
+            logger.info(f"INGESTION DIAGNOSTIC: Fabric ID: {self.fabric.id}")
+            logger.info(f"INGESTION DIAGNOSTIC: Initial ingestion_result: {self.ingestion_result}")
             
             # Initialize paths
-            self._initialize_paths()
+            logger.info("INGESTION DIAGNOSTIC: Calling _initialize_paths()...")
+            try:
+                self._initialize_paths()
+                logger.info(f"INGESTION DIAGNOSTIC: Paths initialized - raw: {self.raw_path}, managed: {self.managed_path}, metadata: {self.metadata_path}")
+            except Exception as init_e:
+                logger.error(f"INGESTION DIAGNOSTIC: Path initialization failed: {init_e}")
+                import traceback
+                logger.error(f"INGESTION DIAGNOSTIC: Path init traceback: {traceback.format_exc()}")
+                raise
             
             # Validate structure exists
-            if not self._validate_structure():
-                raise Exception("GitOps structure not properly initialized")
+            logger.info("INGESTION DIAGNOSTIC: Calling _validate_structure()...")
+            try:
+                structure_valid = self._validate_structure()
+                logger.info(f"INGESTION DIAGNOSTIC: Structure validation result: {structure_valid}")
+                if not structure_valid:
+                    raise Exception("GitOps structure not properly initialized")
+            except Exception as val_e:
+                logger.error(f"INGESTION DIAGNOSTIC: Structure validation failed: {val_e}")
+                import traceback
+                logger.error(f"INGESTION DIAGNOSTIC: Structure validation traceback: {traceback.format_exc()}")
+                raise
             
             # Find all YAML files in raw directory
-            yaml_files = self._find_yaml_files_in_raw()
+            logger.info("INGESTION DIAGNOSTIC: Calling _find_yaml_files_in_raw()...")
+            try:
+                yaml_files = self._find_yaml_files_in_raw()
+                logger.info(f"INGESTION DIAGNOSTIC: Found {len(yaml_files)} YAML files: {[str(f) for f in yaml_files]}")
+            except Exception as find_e:
+                logger.error(f"INGESTION DIAGNOSTIC: File finding failed: {find_e}")
+                import traceback
+                logger.error(f"INGESTION DIAGNOSTIC: File finding traceback: {traceback.format_exc()}")
+                raise
             
             if not yaml_files:
+                logger.info("INGESTION DIAGNOSTIC: No files found, returning success early")
                 self.ingestion_result['success'] = True
                 self.ingestion_result['message'] = "No files to process in raw directory"
                 self.ingestion_result['completed_at'] = timezone.now()
+                logger.info(f"INGESTION DIAGNOSTIC: Early return result: {self.ingestion_result}")
                 return self.ingestion_result
             
             # Process each file
-            with transaction.atomic():
-                for yaml_file in yaml_files:
-                    self._process_yaml_file(yaml_file)
-                
-                # Update archive log
-                self._update_archive_log()
-                
-                self.ingestion_result['success'] = True
-                self.ingestion_result['completed_at'] = timezone.now()
-                self.ingestion_result['message'] = f"Successfully processed {len(yaml_files)} files, extracted {len(self.ingestion_result['documents_extracted'])} documents"
-                
-                logger.info(f"Raw directory processing completed for fabric {self.fabric.name}")
-                return self.ingestion_result
+            logger.info("INGESTION DIAGNOSTIC: Starting database transaction...")
+            try:
+                with transaction.atomic():
+                    logger.info(f"INGESTION DIAGNOSTIC: Processing {len(yaml_files)} files...")
+                    for i, yaml_file in enumerate(yaml_files):
+                        logger.info(f"INGESTION DIAGNOSTIC: Processing file {i+1}/{len(yaml_files)}: {yaml_file}")
+                        try:
+                            self._process_yaml_file(yaml_file)
+                            logger.info(f"INGESTION DIAGNOSTIC: Successfully processed file {yaml_file}")
+                        except Exception as proc_e:
+                            logger.error(f"INGESTION DIAGNOSTIC: Failed to process file {yaml_file}: {proc_e}")
+                            import traceback
+                            logger.error(f"INGESTION DIAGNOSTIC: File processing traceback: {traceback.format_exc()}")
+                            raise
+                    
+                    # Update archive log
+                    logger.info("INGESTION DIAGNOSTIC: Updating archive log...")
+                    try:
+                        self._update_archive_log()
+                        logger.info("INGESTION DIAGNOSTIC: Archive log updated successfully")
+                    except Exception as arch_e:
+                        logger.error(f"INGESTION DIAGNOSTIC: Archive log update failed: {arch_e}")
+                        import traceback
+                        logger.error(f"INGESTION DIAGNOSTIC: Archive log traceback: {traceback.format_exc()}")
+                        raise
+                    
+                    self.ingestion_result['success'] = True
+                    self.ingestion_result['completed_at'] = timezone.now()
+                    self.ingestion_result['message'] = f"Successfully processed {len(yaml_files)} files, extracted {len(self.ingestion_result['documents_extracted'])} documents"
+                    
+                    logger.info(f"INGESTION DIAGNOSTIC: Transaction completed successfully")
+                    logger.info(f"INGESTION DIAGNOSTIC: Final result: {self.ingestion_result}")
+                    logger.info(f"INGESTION DIAGNOSTIC: Raw directory processing completed for fabric {self.fabric.name}")
+                    return self.ingestion_result
+                    
+            except Exception as trans_e:
+                logger.error(f"INGESTION DIAGNOSTIC: Transaction failed: {trans_e}")
+                import traceback
+                logger.error(f"INGESTION DIAGNOSTIC: Transaction traceback: {traceback.format_exc()}")
+                raise
                 
         except Exception as e:
-            logger.error(f"Raw directory processing failed for fabric {self.fabric.name}: {str(e)}")
+            logger.error(f"INGESTION DIAGNOSTIC: Raw directory processing failed for fabric {self.fabric.name}: {str(e)}")
+            import traceback
+            logger.error(f"INGESTION DIAGNOSTIC: Main exception traceback: {traceback.format_exc()}")
+            
             self.ingestion_result['success'] = False
             self.ingestion_result['error'] = str(e)
             self.ingestion_result['completed_at'] = timezone.now()
             
             # Attempt rollback
-            self._rollback_changes()
+            logger.info("INGESTION DIAGNOSTIC: Attempting rollback...")
+            try:
+                self._rollback_changes()
+                logger.info("INGESTION DIAGNOSTIC: Rollback completed")
+            except Exception as rollback_e:
+                logger.error(f"INGESTION DIAGNOSTIC: Rollback failed: {rollback_e}")
+            
+            logger.info(f"INGESTION DIAGNOSTIC: Final error result: {self.ingestion_result}")
             return self.ingestion_result
     
     def process_single_file(self, file_path: Union[str, Path]) -> Dict[str, Any]:
@@ -324,29 +390,94 @@ class GitOpsIngestionService:
             Dict with information about the created file, or None if skipped
         """
         try:
+            logger.debug(f"Processing document {doc_index} from {original_file}")
+            
             # Extract document metadata
             kind = document.get('kind')
             metadata = document.get('metadata', {})
             name = metadata.get('name')
             namespace = metadata.get('namespace', self.fabric.kubernetes_namespace or 'default')
             
+            logger.debug(f"Document details - Kind: {kind}, Name: {name}, Namespace: {namespace}")
+            
+            # Validate basic document structure
+            if not kind:
+                logger.warning(f"Document {doc_index} from {original_file} has no 'kind' field")
+                return None
+                
+            if not name:
+                logger.warning(f"Document {doc_index} from {original_file} has no 'metadata.name' field")
+                return None
+            
             # Validate we can handle this kind
             if kind not in self.kind_to_directory:
                 logger.warning(f"Unsupported kind '{kind}' in document {doc_index} from {original_file}")
+                logger.debug(f"Supported kinds: {list(self.kind_to_directory.keys())}")
                 return None
+            
+            # Validate managed path exists
+            if not self.managed_path:
+                error_msg = f"Managed path is not initialized for fabric {self.fabric.name}"
+                logger.error(error_msg)
+                raise Exception(error_msg)
+            
+            # Create managed path if it doesn't exist
+            if not self.managed_path.exists():
+                logger.info(f"Creating managed path: {self.managed_path}")
+                try:
+                    self.managed_path.mkdir(parents=True, exist_ok=True)
+                except Exception as e:
+                    error_msg = f"Failed to create managed path {self.managed_path}: {str(e)}"
+                    logger.error(error_msg)
+                    raise Exception(error_msg)
             
             # Determine target directory and file path
             target_dir = self.managed_path / self.kind_to_directory[kind]
-            target_dir.mkdir(exist_ok=True)
+            logger.debug(f"Target directory: {target_dir}")
+            
+            try:
+                target_dir.mkdir(parents=True, exist_ok=True)
+                logger.debug(f"Created/verified target directory: {target_dir}")
+            except Exception as e:
+                error_msg = f"Failed to create target directory {target_dir}: {str(e)}"
+                logger.error(error_msg)
+                raise Exception(error_msg)
             
             # Generate filename (handle conflicts)
-            target_file = self._generate_managed_filename(target_dir, name, namespace)
+            try:
+                target_file = self._generate_managed_filename(target_dir, name, namespace)
+                logger.debug(f"Generated target file: {target_file}")
+            except Exception as e:
+                error_msg = f"Failed to generate filename for {kind}/{name}: {str(e)}"
+                logger.error(error_msg)
+                raise Exception(error_msg)
             
             # Add HNP tracking annotations
-            self._add_hnp_annotations(document, original_file, doc_index)
+            try:
+                self._add_hnp_annotations(document, original_file, doc_index)
+                logger.debug(f"Added HNP annotations to {kind}/{name}")
+            except Exception as e:
+                error_msg = f"Failed to add HNP annotations to {kind}/{name}: {str(e)}"
+                logger.error(error_msg)
+                raise Exception(error_msg)
             
             # Write normalized YAML file
-            self._write_normalized_yaml(document, target_file)
+            try:
+                self._write_normalized_yaml(document, target_file)
+                logger.debug(f"Wrote normalized YAML to {target_file}")
+            except Exception as e:
+                error_msg = f"Failed to write normalized YAML to {target_file}: {str(e)}"
+                logger.error(error_msg)
+                raise Exception(error_msg)
+            
+            # Verify file was actually created
+            if not target_file.exists():
+                error_msg = f"File {target_file} was not created despite successful write operation"
+                logger.error(error_msg)
+                raise Exception(error_msg)
+            
+            file_size = target_file.stat().st_size
+            logger.debug(f"Created file {target_file} with size {file_size} bytes")
             
             # Track the created file
             created_file_info = {
@@ -356,18 +487,20 @@ class GitOpsIngestionService:
                 'original_file': str(original_file),
                 'original_document_index': doc_index,
                 'managed_file': str(target_file),
+                'file_size': file_size,
                 'created_at': timezone.now().isoformat()
             }
             
             self.ingestion_result['files_created'].append(created_file_info)
             
-            logger.info(f"Normalized {kind}/{name} to {target_file}")
+            logger.info(f"Successfully normalized {kind}/{name} to {target_file} ({file_size} bytes)")
             return created_file_info
             
         except Exception as e:
             error_msg = f"Failed to normalize document {doc_index} from {original_file}: {str(e)}"
             logger.error(error_msg)
-            raise Exception(error_msg)
+            # Don't raise here - let the calling code handle the error and continue with other documents
+            return None
     
     def _generate_managed_filename(self, target_dir: Path, name: str, namespace: str) -> Path:
         """Generate a unique filename in the managed directory."""
@@ -412,6 +545,16 @@ class GitOpsIngestionService:
     def _write_normalized_yaml(self, document: Dict[str, Any], target_file: Path):
         """Write a normalized YAML document to file."""
         try:
+            # Validate target file path
+            if not target_file.parent.exists():
+                raise Exception(f"Target directory {target_file.parent} does not exist")
+            
+            # Check write permissions
+            try:
+                target_file.parent.resolve().stat()
+            except Exception as e:
+                raise Exception(f"Cannot access target directory {target_file.parent}: {str(e)}")
+            
             # Create header comment
             kind = document.get('kind', 'Unknown')
             name = document.get('metadata', {}).get('name', 'unknown')
@@ -421,19 +564,31 @@ class GitOpsIngestionService:
             header += f"# Generated: {timezone.now().strftime('%Y-%m-%d %H:%M:%S UTC')}\n"
             header += "---\n"
             
-            # Write file
-            with open(target_file, 'w', encoding='utf-8') as f:
-                f.write(header)
-                yaml.safe_dump(
-                    document,
-                    f,
-                    default_flow_style=False,
-                    sort_keys=False,
-                    allow_unicode=True,
-                    width=120
-                )
+            # Write file with explicit error handling
+            try:
+                with open(target_file, 'w', encoding='utf-8') as f:
+                    f.write(header)
+                    yaml.safe_dump(
+                        document,
+                        f,
+                        default_flow_style=False,
+                        sort_keys=False,
+                        allow_unicode=True,
+                        width=120
+                    )
+                    f.flush()  # Ensure data is written to disk
+                    
+            except PermissionError as e:
+                raise Exception(f"Permission denied writing to {target_file}: {str(e)}")
+            except OSError as e:
+                raise Exception(f"OS error writing to {target_file}: {str(e)}")
+            except yaml.YAMLError as e:
+                raise Exception(f"YAML serialization error for {kind}/{name}: {str(e)}")
+            except Exception as e:
+                raise Exception(f"Unexpected error writing to {target_file}: {str(e)}")
                 
         except Exception as e:
+            # Re-raise with context
             raise Exception(f"Failed to write normalized YAML to {target_file}: {str(e)}")
     
     def _archive_file(self, file_path: Path) -> Path:

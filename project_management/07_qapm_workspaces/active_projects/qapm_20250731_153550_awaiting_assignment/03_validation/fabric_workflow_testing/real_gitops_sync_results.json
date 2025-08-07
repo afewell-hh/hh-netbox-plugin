@@ -1,0 +1,18 @@
+{
+  "fabric_info": null,
+  "github_info": null,
+  "sync_result": null,
+  "file_data": null,
+  "diagnosis": {
+    "issues": [
+      "No fabric found for gitops-test-1 repository",
+      "Cannot access GitHub repository",
+      "Sync execution could not be tested"
+    ],
+    "recommendations": [
+      "Create or configure fabric for the repository",
+      "Check GitHub authentication and repository access",
+      "Ensure sync methods are available and working"
+    ]
+  }
+}

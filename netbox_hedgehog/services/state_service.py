@@ -47,7 +47,7 @@ class StateTransitionService:
                 content_type=content_type,
                 object_id=resource.pk,
                 defaults={
-                    'state': ResourceStateChoices.DRAFT,
+                    'resource_state': ResourceStateChoices.DRAFT,
                     'fabric': getattr(resource, 'fabric', None),
                     'name': getattr(resource, 'name', f"{resource.__class__.__name__}_{resource.pk}"),
                     'kind': getattr(resource, 'get_kind', lambda: resource.__class__.__name__)(),
@@ -56,17 +56,17 @@ class StateTransitionService:
             )
             
             # Validate state transition if not a new resource
-            if not created and not self.can_transition(gitops_resource.state, new_state):
+            if not created and not self.can_transition(gitops_resource.resource_state, new_state):
                 self.logger.warning(
                     f"Invalid state transition for {gitops_resource.name}: "
-                    f"{gitops_resource.state} → {new_state}"
+                    f"{gitops_resource.resource_state} → {new_state}"
                 )
                 return False
             
             # Perform the state transition
             with transaction.atomic():
-                old_state = gitops_resource.state if not created else None
-                gitops_resource.state = new_state
+                old_state = gitops_resource.resource_state if not created else None
+                gitops_resource.resource_state = new_state
                 gitops_resource.last_modified = timezone.now()
                 if user:
                     gitops_resource.last_modified_by = user
@@ -198,7 +198,7 @@ class StateTransitionService:
                 object_id=resource.pk
             ).first()
             
-            return gitops_resource.state if gitops_resource else None
+            return gitops_resource.resource_state if gitops_resource else None
             
         except Exception as e:
             self.logger.error(f"Failed to get resource state: {e}")

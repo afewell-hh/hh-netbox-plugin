@@ -26,6 +26,27 @@ class HedgehogPluginConfig(PluginConfig):
         'git_status': 30,  # Cache Git status for 30 seconds
         'drift_analysis': 120,  # Cache drift analysis for 2 minutes
     }
+    
+    def ready(self):
+        """
+        Called when the plugin is ready.
+        Import signals to register them with Django.
+        """
+        try:
+            # Import signals to connect them to Django's signal system
+            from . import signals
+            
+            import logging
+            logger = logging.getLogger(__name__)
+            logger.info("Hedgehog NetBox Plugin: Signals connected and ready")
+            
+        except Exception as e:
+            import logging
+            logger = logging.getLogger(__name__)
+            logger.error(f"Hedgehog NetBox Plugin: Signal initialization failed: {e}")
+        
+        # Call parent ready method
+        super().ready()
 
 config = HedgehogPluginConfig
 

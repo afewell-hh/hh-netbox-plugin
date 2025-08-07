@@ -183,20 +183,37 @@ class GitOpsEditService:
     
     def _update_cr_yaml_file(self, fabric: HedgehogFabric, cr_instance) -> Dict[str, Any]:
         """
-        SAFELY update the YAML file in the Git repository.
+        Update the YAML file in the GitHub repository using GitHub API.
         
-        CRITICAL FIX: This method now handles both single and multi-document YAML files
-        properly without destroying other objects in multi-document files.
+        CRITICAL FIX: This method now uses GitHub API directly instead of local file operations.
+        This ensures changes are actually pushed to the remote repository.
         """
         try:
-            # Check if fabric uses new GitOps file management
-            if self._uses_new_gitops_structure(fabric):
-                return self._update_cr_in_managed_directory(fabric, cr_instance)
-            else:
-                return self._legacy_update_cr_yaml_file(fabric, cr_instance)
+            # Import the new GitHub sync service
+            from .github_sync_service import GitHubSyncService
+            
+            # Create GitHub service
+            github_service = GitHubSyncService(fabric)
+            
+            # Sync CR to GitHub (handles file creation/update)
+            result = github_service.sync_cr_to_github(
+                cr_instance,
+                operation='update',
+                user='system'
+            )
+            
+            if not result['success']:
+                raise Exception(f"GitHub sync failed: {result.get('error', 'Unknown error')}")
+            
+            logger.info(f"Successfully updated YAML file in GitHub: {result.get('file_path')}")
+            return {
+                'success': True,
+                'file_path': result.get('file_path'),
+                'method': 'github_api_direct'
+            }
                 
         except Exception as e:
-            logger.error(f"Failed to update YAML file: {str(e)}")
+            logger.error(f"Failed to update YAML file in GitHub: {str(e)}")
             raise
     
     def _uses_new_gitops_structure(self, fabric: HedgehogFabric) -> bool:
@@ -438,60 +455,44 @@ class GitOpsEditService:
     
     def _commit_and_push_changes(self, fabric: HedgehogFabric, cr_instance, 
                                 commit_message: Optional[str], user: User) -> Dict[str, Any]:
-        """Commit and push changes to Git repository"""
+        """Commit and push changes to GitHub repository using GitHub API"""
         try:
-            import subprocess
-            
-            repo_path = self._get_git_repo_path(fabric)
+            # Import the new GitHub sync service
+            from .github_sync_service import GitHubSyncService
             
             # Generate commit message if not provided
             if not commit_message:
                 commit_message = self._generate_commit_message(cr_instance, user)
             
-            # Git operations
-            git_commands = [
-                ['git', 'add', '.'],
-                ['git', 'commit', '-m', commit_message],
-                ['git', 'push', 'origin', fabric.git_branch or 'main']
-            ]
+            # Create GitHub service
+            github_service = GitHubSyncService(fabric)
             
-            results = []
-            for cmd in git_commands:
-                result = subprocess.run(
-                    cmd, 
-                    cwd=repo_path, 
-                    capture_output=True, 
-                    text=True
-                )
-                results.append({
-                    'command': ' '.join(cmd),
-                    'returncode': result.returncode,
-                    'stdout': result.stdout,
-                    'stderr': result.stderr
-                })
-                
-                if result.returncode != 0:
-                    raise Exception(f"Git command failed: {' '.join(cmd)}, Error: {result.stderr}")
+            # Test connection first
+            connection_test = github_service.test_connection()
+            if not connection_test['success']:
+                raise Exception(f"GitHub connection failed: {connection_test['error']}")
             
-            # Get commit SHA
-            sha_result = subprocess.run(
-                ['git', 'rev-parse', 'HEAD'], 
-                cwd=repo_path, 
-                capture_output=True, 
-                text=True
+            # Sync CR to GitHub (this handles both create and update)
+            result = github_service.sync_cr_to_github(
+                cr_instance, 
+                operation='update',
+                user=user.username if user else 'system',
+                commit_message=commit_message
             )
-            commit_sha = sha_result.stdout.strip() if sha_result.returncode == 0 else 'unknown'
             
-            logger.info(f"Successfully committed and pushed changes: {commit_sha}")
+            if not result['success']:
+                raise Exception(f"GitHub sync failed: {result.get('error', 'Unknown error')}")
+            
+            logger.info(f"Successfully synced to GitHub: {result.get('commit_sha', 'unknown')}")
             return {
                 'success': True,
-                'commit_sha': commit_sha,
+                'commit_sha': result.get('commit_sha', 'unknown'),
                 'commit_message': commit_message,
-                'git_operations': results
+                'github_operation': result
             }
             
         except Exception as e:
-            logger.error(f"Git commit/push failed: {str(e)}")
+            logger.error(f"GitHub sync failed: {str(e)}")
             raise
     
     def _generate_commit_message(self, cr_instance, user: User) -> str:

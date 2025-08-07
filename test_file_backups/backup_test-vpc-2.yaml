@@ -1,0 +1,11 @@
+apiVersion: vpc.githedgehog.com/v1beta1
+kind: VPC
+metadata:
+  name: test-vpc-2
+  namespace: default
+spec:
+  subnets:
+    test-subnet:
+      subnet: 10.0.2.0/24
+      gateway: 10.0.2.1
+      vlan: 1002

@@ -1,0 +1,621 @@
+{
+  "timestamp": "2025-08-06T10:52:53.223077",
+  "test_environment": "/home/ubuntu/cc/hedgehog-netbox-plugin/project_management/07_qapm_workspaces/active_projects/qapm_20250804_170830_fgd_sync_resolution/temp/gitops-test-1/gitops/hedgehog/fabric-1",
+  "tests": {
+    "environment_setup": {
+      "status": "PASSED",
+      "message": "All required directories present"
+    },
+    "real_file_analysis": {
+      "status": "PASSED",
+      "message": "Analyzed 3 files with 48 valid documents"
+    },
+    "document_parsing": {
+      "status": "PASSED",
+      "message": "Successfully parsed 48 documents with no errors"
+    },
+    "file_processing_simulation": {
+      "status": "PASSED",
+      "message": "Simulation successful: 3 files processed"
+    },
+    "directory_structure": {
+      "status": "PASSED",
+      "message": "All expected subdirectories present (12 total)"
+    },
+    "before_after_comparison": {
+      "status": "PASSED",
+      "message": "Successfully processed 48 files"
+    },
+    "edge_case_handling": {
+      "status": "PASSED",
+      "message": "All 5 edge cases handled gracefully"
+    }
+  },
+  "evidence": {
+    "file_analysis": {
+      "test-vpc-2.yaml": {
+        "size_bytes": 201,
+        "line_count": 11,
+        "total_documents": 1,
+        "valid_documents": 1,
+        "document_kinds": [
+          "VPC"
+        ]
+      },
+      "prepop.yaml": {
+        "size_bytes": 11257,
+        "line_count": 617,
+        "total_documents": 46,
+        "valid_documents": 46,
+        "document_kinds": [
+          "SwitchGroup",
+          "SwitchGroup",
+          "SwitchGroup",
+          "Switch",
+          "Switch",
+          "Switch",
+          "Switch",
+          "Switch",
+          "Switch",
+          "Switch",
+          "Server",
+          "Server",
+          "Server",
+          "Server",
+          "Server",
+          "Server",
+          "Server",
+          "Server",
+          "Server",
+          "Server",
+          "Connection",
+          "Connection",
+          "Connection",
+          "Connection",
+          "Connection",
+          "Connection",
+          "Connection",
+          "Connection",
+          "Connection",
+          "Connection",
+          "Connection",
+          "Connection",
+          "Connection",
+          "Connection",
+          "Connection",
+          "Connection",
+          "Connection",
+          "Connection",
+          "Connection",
+          "Connection",
+          "Connection",
+          "Connection",
+          "Connection",
+          "Connection",
+          "Connection",
+          "Connection"
+        ]
+      },
+      "test-vpc.yaml": {
+        "size_bytes": 199,
+        "line_count": 11,
+        "total_documents": 1,
+        "valid_documents": 1,
+        "document_kinds": [
+          "VPC"
+        ]
+      }
+    },
+    "parsing_results": {
+      "test-vpc-2.yaml": {
+        "valid_documents": 1,
+        "errors": [],
+        "documents": [
+          {
+            "kind": "VPC",
+            "name": "test-vpc-2",
+            "namespace": "default",
+            "valid": true
+          }
+        ]
+      },
+      "prepop.yaml": {
+        "valid_documents": 46,
+        "errors": [],
+        "documents": [
+          {
+            "kind": "SwitchGroup",
+            "name": "empty",
+            "namespace": "default",
+            "valid": true
+          },
+          {
+            "kind": "SwitchGroup",
+            "name": "eslag-1",
+            "namespace": "default",
+            "valid": true
+          },
+          {
+            "kind": "SwitchGroup",
+            "name": "mclag-1",
+            "namespace": "default",
+            "valid": true
+          },
+          {
+            "kind": "Switch",
+            "name": "leaf-01",
+            "namespace": "default",
+            "valid": true
+          },
+          {
+            "kind": "Switch",
+            "name": "leaf-02",
+            "namespace": "default",
+            "valid": true
+          },
+          {
+            "kind": "Switch",
+            "name": "leaf-03",
+            "namespace": "default",
+            "valid": true
+          },
+          {
+            "kind": "Switch",
+            "name": "leaf-04",
+            "namespace": "default",
+            "valid": true
+          },
+          {
+            "kind": "Switch",
+            "name": "leaf-05",
+            "namespace": "default",
+            "valid": true
+          },
+          {
+            "kind": "Switch",
+            "name": "spine-01",
+            "namespace": "default",
+            "valid": true
+          },
+          {
+            "kind": "Switch",
+            "name": "spine-02",
+            "namespace": "default",
+            "valid": true
+          },
+          {
+            "kind": "Server",
+            "name": "server-01",
+            "namespace": "default",
+            "valid": true
+          },
+          {
+            "kind": "Server",
+            "name": "server-02",
+            "namespace": "default",
+            "valid": true
+          },
+          {
+            "kind": "Server",
+            "name": "server-03",
+            "namespace": "default",
+            "valid": true
+          },
+          {
+            "kind": "Server",
+            "name": "server-04",
+            "namespace": "default",
+            "valid": true
+          },
+          {
+            "kind": "Server",
+            "name": "server-05",
+            "namespace": "default",
+            "valid": true
+          },
+          {
+            "kind": "Server",
+            "name": "server-06",
+            "namespace": "default",
+            "valid": true
+          },
+          {
+            "kind": "Server",
+            "name": "server-07",
+            "namespace": "default",
+            "valid": true
+          },
+          {
+            "kind": "Server",
+            "name": "server-08",
+            "namespace": "default",
+            "valid": true
+          },
+          {
+            "kind": "Server",
+            "name": "server-09",
+            "namespace": "default",
+            "valid": true
+          },
+          {
+            "kind": "Server",
+            "name": "server-10",
+            "namespace": "default",
+            "valid": true
+          },
+          {
+            "kind": "Connection",
+            "name": "leaf-01--mclag-domain--leaf-02",
+            "namespace": "default",
+            "valid": true
+          },
+          {
+            "kind": "Connection",
+            "name": "leaf-01--vpc-loopback",
+            "namespace": "default",
+            "valid": true
+          },
+          {
+            "kind": "Connection",
+            "name": "leaf-02--vpc-loopback",
+            "namespace": "default",
+            "valid": true
+          },
+          {
+            "kind": "Connection",
+            "name": "leaf-03--vpc-loopback",
+            "namespace": "default",
+            "valid": true
+          },
+          {
+            "kind": "Connection",
+            "name": "leaf-04--vpc-loopback",
+            "namespace": "default",
+            "valid": true
+          },
+          {
+            "kind": "Connection",
+            "name": "leaf-05--vpc-loopback",
+            "namespace": "default",
+            "valid": true
+          },
+          {
+            "kind": "Connection",
+            "name": "server-01--mclag--leaf-01--leaf-02",
+            "namespace": "default",
+            "valid": true
+          },
+          {
+            "kind": "Connection",
+            "name": "server-02--mclag--leaf-01--leaf-02",
+            "namespace": "default",
+            "valid": true
+          },
+          {
+            "kind": "Connection",
+            "name": "server-03--unbundled--leaf-01",
+            "namespace": "default",
+            "valid": true
+          },
+          {
+            "kind": "Connection",
+            "name": "server-04--bundled--leaf-02",
+            "namespace": "default",
+            "valid": true
+          },
+          {
+            "kind": "Connection",
+            "name": "server-05--eslag--leaf-03--leaf-04",
+            "namespace": "default",
+            "valid": true
+          },
+          {
+            "kind": "Connection",
+            "name": "server-06--eslag--leaf-03--leaf-04",
+            "namespace": "default",
+            "valid": true
+          },
+          {
+            "kind": "Connection",
+            "name": "server-07--unbundled--leaf-03",
+            "namespace": "default",
+            "valid": true
+          },
+          {
+            "kind": "Connection",
+            "name": "server-08--bundled--leaf-04",
+            "namespace": "default",
+            "valid": true
+          },
+          {
+            "kind": "Connection",
+            "name": "server-09--unbundled--leaf-05",
+            "namespace": "default",
+            "valid": true
+          },
+          {
+            "kind": "Connection",
+            "name": "server-10--bundled--leaf-05",
+            "namespace": "default",
+            "valid": true
+          },
+          {
+            "kind": "Connection",
+            "name": "spine-01--fabric--leaf-01",
+            "namespace": "default",
+            "valid": true
+          },
+          {
+            "kind": "Connection",
+            "name": "spine-01--fabric--leaf-02",
+            "namespace": "default",
+            "valid": true
+          },
+          {
+            "kind": "Connection",
+            "name": "spine-01--fabric--leaf-03",
+            "namespace": "default",
+            "valid": true
+          },
+          {
+            "kind": "Connection",
+            "name": "spine-01--fabric--leaf-04",
+            "namespace": "default",
+            "valid": true
+          },
+          {
+            "kind": "Connection",
+            "name": "spine-01--fabric--leaf-05",
+            "namespace": "default",
+            "valid": true
+          },
+          {
+            "kind": "Connection",
+            "name": "spine-02--fabric--leaf-01",
+            "namespace": "default",
+            "valid": true
+          },
+          {
+            "kind": "Connection",
+            "name": "spine-02--fabric--leaf-02",
+            "namespace": "default",
+            "valid": true
+          },
+          {
+            "kind": "Connection",
+            "name": "spine-02--fabric--leaf-03",
+            "namespace": "default",
+            "valid": true
+          },
+          {
+            "kind": "Connection",
+            "name": "spine-02--fabric--leaf-04",
+            "namespace": "default",
+            "valid": true
+          },
+          {
+            "kind": "Connection",
+            "name": "spine-02--fabric--leaf-05",
+            "namespace": "default",
+            "valid": true
+          }
+        ]
+      },
+      "test-vpc.yaml": {
+        "valid_documents": 1,
+        "errors": [],
+        "documents": [
+          {
+            "kind": "VPC",
+            "name": "test-vpc",
+            "namespace": "default",
+            "valid": true
+          }
+        ]
+      }
+    },
+    "simulation_results": {
+      "success": true,
+      "files_processed": 3,
+      "documents_processed": 48,
+      "errors": []
+    },
+    "directory_structure": {
+      "expected_subdirs": [
+        "connections",
+        "switches",
+        "servers",
+        "switchgroups",
+        "vpcs",
+        "vpcattachments",
+        "externals",
+        "externalattachments",
+        "ipv4namespaces",
+        "vlannamespaces"
+      ],
+      "existing_subdirs": [
+        "connections",
+        "ipv4namespaces",
+        "switches",
+        "externals",
+        "vpcattachments",
+        "vpcpeerings",
+        "servers",
+        "externalpeerings",
+        "switchgroups",
+        "externalattachments",
+        "vlannamespaces",
+        "vpcs"
+      ],
+      "missing_subdirs": [],
+      "extra_subdirs": [
+        "vpcpeerings",
+        "externalpeerings"
+      ]
+    },
+    "before_after_comparison": {
+      "before_state": {
+        "raw_files": [
+          "test-vpc-2.yaml",
+          "prepop.yaml",
+          "test-vpc.yaml"
+        ],
+        "managed_files": [],
+        "total_raw_files": 3,
+        "total_managed_files": 0
+      },
+      "after_state": {
+        "raw_files": [
+          "test-vpc-2.yaml",
+          "prepop.yaml",
+          "test-vpc.yaml"
+        ],
+        "managed_files": [
+          "connections/server-08--bundled--leaf-04.yaml",
+          "connections/spine-01--fabric--leaf-05.yaml",
+          "connections/leaf-01--mclag-domain--leaf-02.yaml",
+          "connections/spine-01--fabric--leaf-01.yaml",
+          "connections/leaf-04--vpc-loopback.yaml",
+          "connections/server-04--bundled--leaf-02.yaml",
+          "connections/spine-02--fabric--leaf-03.yaml",
+          "connections/server-07--unbundled--leaf-03.yaml",
+          "connections/server-02--mclag--leaf-01--leaf-02.yaml",
+          "connections/server-10--bundled--leaf-05.yaml",
+          "connections/spine-02--fabric--leaf-04.yaml",
+          "connections/leaf-02--vpc-loopback.yaml",
+          "connections/spine-02--fabric--leaf-02.yaml",
+          "connections/spine-02--fabric--leaf-01.yaml",
+          "connections/leaf-05--vpc-loopback.yaml",
+          "connections/server-03--unbundled--leaf-01.yaml",
+          "connections/spine-01--fabric--leaf-04.yaml",
+          "connections/server-09--unbundled--leaf-05.yaml",
+          "connections/server-01--mclag--leaf-01--leaf-02.yaml",
+          "connections/server-06--eslag--leaf-03--leaf-04.yaml",
+          "connections/spine-01--fabric--leaf-02.yaml",
+          "connections/spine-02--fabric--leaf-05.yaml",
+          "connections/leaf-01--vpc-loopback.yaml",
+          "connections/spine-01--fabric--leaf-03.yaml",
+          "connections/server-05--eslag--leaf-03--leaf-04.yaml",
+          "connections/leaf-03--vpc-loopback.yaml",
+          "switches/spine-01.yaml",
+          "switches/leaf-04.yaml",
+          "switches/leaf-02.yaml",
+          "switches/leaf-01.yaml",
+          "switches/leaf-05.yaml",
+          "switches/spine-02.yaml",
+          "switches/leaf-03.yaml",
+          "servers/server-05.yaml",
+          "servers/server-09.yaml",
+          "servers/server-08.yaml",
+          "servers/server-02.yaml",
+          "servers/server-01.yaml",
+          "servers/server-06.yaml",
+          "servers/server-03.yaml",
+          "servers/server-07.yaml",
+          "servers/server-10.yaml",
+          "servers/server-04.yaml",
+          "switchgroups/mclag-1.yaml",
+          "switchgroups/eslag-1.yaml",
+          "switchgroups/empty.yaml",
+          "vpcs/test-vpc-2.yaml",
+          "vpcs/test-vpc.yaml"
+        ],
+        "total_raw_files": 3,
+        "total_managed_files": 48
+      },
+      "files_processed": 48,
+      "processed_files": [
+        "/tmp/tmp0_geigqj/test_fabric/managed/vpcs/test-vpc-2.yaml",
+        "/tmp/tmp0_geigqj/test_fabric/managed/switchgroups/empty.yaml",
+        "/tmp/tmp0_geigqj/test_fabric/managed/switchgroups/eslag-1.yaml",
+        "/tmp/tmp0_geigqj/test_fabric/managed/switchgroups/mclag-1.yaml",
+        "/tmp/tmp0_geigqj/test_fabric/managed/switches/leaf-01.yaml",
+        "/tmp/tmp0_geigqj/test_fabric/managed/switches/leaf-02.yaml",
+        "/tmp/tmp0_geigqj/test_fabric/managed/switches/leaf-03.yaml",
+        "/tmp/tmp0_geigqj/test_fabric/managed/switches/leaf-04.yaml",
+        "/tmp/tmp0_geigqj/test_fabric/managed/switches/leaf-05.yaml",
+        "/tmp/tmp0_geigqj/test_fabric/managed/switches/spine-01.yaml",
+        "/tmp/tmp0_geigqj/test_fabric/managed/switches/spine-02.yaml",
+        "/tmp/tmp0_geigqj/test_fabric/managed/servers/server-01.yaml",
+        "/tmp/tmp0_geigqj/test_fabric/managed/servers/server-02.yaml",
+        "/tmp/tmp0_geigqj/test_fabric/managed/servers/server-03.yaml",
+        "/tmp/tmp0_geigqj/test_fabric/managed/servers/server-04.yaml",
+        "/tmp/tmp0_geigqj/test_fabric/managed/servers/server-05.yaml",
+        "/tmp/tmp0_geigqj/test_fabric/managed/servers/server-06.yaml",
+        "/tmp/tmp0_geigqj/test_fabric/managed/servers/server-07.yaml",
+        "/tmp/tmp0_geigqj/test_fabric/managed/servers/server-08.yaml",
+        "/tmp/tmp0_geigqj/test_fabric/managed/servers/server-09.yaml",
+        "/tmp/tmp0_geigqj/test_fabric/managed/servers/server-10.yaml",
+        "/tmp/tmp0_geigqj/test_fabric/managed/connections/leaf-01--mclag-domain--leaf-02.yaml",
+        "/tmp/tmp0_geigqj/test_fabric/managed/connections/leaf-01--vpc-loopback.yaml",
+        "/tmp/tmp0_geigqj/test_fabric/managed/connections/leaf-02--vpc-loopback.yaml",
+        "/tmp/tmp0_geigqj/test_fabric/managed/connections/leaf-03--vpc-loopback.yaml",
+        "/tmp/tmp0_geigqj/test_fabric/managed/connections/leaf-04--vpc-loopback.yaml",
+        "/tmp/tmp0_geigqj/test_fabric/managed/connections/leaf-05--vpc-loopback.yaml",
+        "/tmp/tmp0_geigqj/test_fabric/managed/connections/server-01--mclag--leaf-01--leaf-02.yaml",
+        "/tmp/tmp0_geigqj/test_fabric/managed/connections/server-02--mclag--leaf-01--leaf-02.yaml",
+        "/tmp/tmp0_geigqj/test_fabric/managed/connections/server-03--unbundled--leaf-01.yaml",
+        "/tmp/tmp0_geigqj/test_fabric/managed/connections/server-04--bundled--leaf-02.yaml",
+        "/tmp/tmp0_geigqj/test_fabric/managed/connections/server-05--eslag--leaf-03--leaf-04.yaml",
+        "/tmp/tmp0_geigqj/test_fabric/managed/connections/server-06--eslag--leaf-03--leaf-04.yaml",
+        "/tmp/tmp0_geigqj/test_fabric/managed/connections/server-07--unbundled--leaf-03.yaml",
+        "/tmp/tmp0_geigqj/test_fabric/managed/connections/server-08--bundled--leaf-04.yaml",
+        "/tmp/tmp0_geigqj/test_fabric/managed/connections/server-09--unbundled--leaf-05.yaml",
+        "/tmp/tmp0_geigqj/test_fabric/managed/connections/server-10--bundled--leaf-05.yaml",
+        "/tmp/tmp0_geigqj/test_fabric/managed/connections/spine-01--fabric--leaf-01.yaml",
+        "/tmp/tmp0_geigqj/test_fabric/managed/connections/spine-01--fabric--leaf-02.yaml",
+        "/tmp/tmp0_geigqj/test_fabric/managed/connections/spine-01--fabric--leaf-03.yaml",
+        "/tmp/tmp0_geigqj/test_fabric/managed/connections/spine-01--fabric--leaf-04.yaml",
+        "/tmp/tmp0_geigqj/test_fabric/managed/connections/spine-01--fabric--leaf-05.yaml",
+        "/tmp/tmp0_geigqj/test_fabric/managed/connections/spine-02--fabric--leaf-01.yaml",
+        "/tmp/tmp0_geigqj/test_fabric/managed/connections/spine-02--fabric--leaf-02.yaml",
+        "/tmp/tmp0_geigqj/test_fabric/managed/connections/spine-02--fabric--leaf-03.yaml",
+        "/tmp/tmp0_geigqj/test_fabric/managed/connections/spine-02--fabric--leaf-04.yaml",
+        "/tmp/tmp0_geigqj/test_fabric/managed/connections/spine-02--fabric--leaf-05.yaml",
+        "/tmp/tmp0_geigqj/test_fabric/managed/vpcs/test-vpc.yaml"
+      ]
+    },
+    "edge_case_results": {
+      "empty_file": {
+        "handled_gracefully": true,
+        "note": "Empty content handled"
+      },
+      "invalid_yaml": {
+        "yaml_error": true,
+        "handled_gracefully": true
+      },
+      "missing_kind": {
+        "total_documents": 1,
+        "valid_documents": 0,
+        "handled_gracefully": true
+      },
+      "missing_name": {
+        "total_documents": 1,
+        "valid_documents": 0,
+        "handled_gracefully": true
+      },
+      "null_document": {
+        "total_documents": 2,
+        "valid_documents": 0,
+        "handled_gracefully": true
+      }
+    },
+    "final_summary": {
+      "validation_timestamp": "2025-08-06T10:52:53.523460",
+      "test_environment": "/home/ubuntu/cc/hedgehog-netbox-plugin/project_management/07_qapm_workspaces/active_projects/qapm_20250804_170830_fgd_sync_resolution/temp/gitops-test-1/gitops/hedgehog/fabric-1",
+      "total_tests_run": 7,
+      "tests_passed": 7,
+      "tests_failed": 0,
+      "success_rate": 100.0,
+      "key_findings": [
+        "Analyzed real GitOps files with 48 valid documents",
+        "Successfully simulated processing of 48 documents"
+      ]
+    }
+  },
+  "summary": {
+    "passed": 7,
+    "failed": 0,
+    "total": 7
+  }
+}

@@ -1,0 +1,85 @@
+{
+  "timestamp": "2025-08-01T21:04:58.864400",
+  "debug_results": {
+    "imports": {
+      "django": {
+        "status": "FAILED",
+        "error": "No module named 'django'"
+      },
+      "netbox": {
+        "status": "FAILED",
+        "error": "No module named 'netbox'"
+      },
+      "netbox_hedgehog.models": {
+        "status": "FAILED",
+        "error": "No module named 'netbox'"
+      },
+      "netbox_hedgehog.services.gitops_onboarding_service": {
+        "status": "FAILED",
+        "error": "No module named 'netbox'"
+      },
+      "netbox_hedgehog.views.sync_views": {
+        "status": "FAILED",
+        "error": "No module named 'netbox'"
+      },
+      "requests": {
+        "status": "SUCCESS",
+        "error": null
+      },
+      "yaml": {
+        "status": "SUCCESS",
+        "error": null
+      }
+    },
+    "gitops_service": {
+      "service_error": {
+        "status": "FAILED",
+        "error": "No module named 'netbox'"
+      }
+    },
+    "api_endpoints": {
+      "base_url": {
+        "status": "SUCCESS",
+        "url": "http://localhost:8000/plugins/hedgehog/",
+        "status_code": 200
+      },
+      "github_sync_endpoint": {
+        "status": "RESPONSE_RECEIVED",
+        "url": "http://localhost:8000/plugins/hedgehog/fabrics/1/github-sync/",
+        "status_code": 404,
+        "response_text": "\n\n\n\n\n\n\n<!DOCTYPE html>\n<html\n  lang=\"en\"\n  data-netbox-url-name=\"\"\n  data-netbox-version=\"4.3.3-Docker-3.3.0\"\n  \n  >\n  <head>\n    <meta charset=\"UTF-8\" />\n    <meta name=\"viewport\" content=\"initial-scale=1, maximum-scale=5, width=device-width, viewport-fit=cover\" />\n    <meta name=\"htmx-config\" content='{\"scrollBehavior\": \"auto\"}'>\n    <meta name=\"hostname\" content=\"fe388fd33a28\" />\n\n    \n    <title>Page Not Found | NetBox</title>\n\n    \n    <script\n      type=\"text/javascript\"\n      src=\"/static"
+      }
+    },
+    "github_authentication": {
+      "environment_token": {
+        "status": "NOT_FOUND"
+      },
+      "django_settings_token": {
+        "status": "ERROR",
+        "error": "No module named 'django'"
+      }
+    },
+    "file_processing": {
+      "processing_error": {
+        "status": "ERROR",
+        "error": "No module named 'netbox'"
+      }
+    }
+  },
+  "critical_errors": [
+    "Import failed: django - No module named 'django'",
+    "Import failed: netbox - No module named 'netbox'",
+    "Import failed: netbox_hedgehog.models - No module named 'netbox'",
+    "Import failed: netbox_hedgehog.services.gitops_onboarding_service - No module named 'netbox'",
+    "Import failed: netbox_hedgehog.views.sync_views - No module named 'netbox'",
+    "Django setup failed: No module named 'django'",
+    "GitOps service error: No module named 'netbox'",
+    "GitHub sync endpoint returns 404",
+    "File processing error: No module named 'netbox'"
+  ],
+  "evidence": {
+    "total_tests": 5,
+    "critical_errors_count": 9,
+    "debug_completed": true
+  }
+}

@@ -1,0 +1,62 @@
+{
+  "timestamp": "2025-08-01 20:44:11 UTC",
+  "tests": [
+    {
+      "test": "GitOps Service Import",
+      "success": false,
+      "timestamp": "20:44:11",
+      "details": {
+        "error": "No module named 'netbox'"
+      }
+    },
+    {
+      "test": "GitHub Client Creation",
+      "success": false,
+      "timestamp": "20:44:11",
+      "details": {
+        "error": "No module named 'netbox'"
+      }
+    },
+    {
+      "test": "File Processing Logic",
+      "success": false,
+      "timestamp": "20:44:11",
+      "details": {
+        "error": "No module named 'netbox'"
+      }
+    },
+    {
+      "test": "URL Routing",
+      "success": false,
+      "timestamp": "20:44:11",
+      "details": {
+        "error": "No module named 'django'"
+      }
+    },
+    {
+      "test": "GitHub Sync Endpoint Exists",
+      "success": false,
+      "timestamp": "20:44:11",
+      "details": {
+        "url": "http://localhost:8000/netbox_hedgehog/fabrics/1/github-sync/",
+        "status_code": 404,
+        "error": "Unexpected status code"
+      }
+    },
+    {
+      "test": "Fabric Exists",
+      "success": false,
+      "timestamp": "20:44:11",
+      "details": {
+        "fabric_id": 1,
+        "status_code": 404
+      }
+    }
+  ],
+  "summary": {
+    "total_tests": 6,
+    "passed": 0,
+    "failed": 6,
+    "success_rate": "0.0%"
+  }
+}

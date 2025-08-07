@@ -45,17 +45,27 @@
     margin-right: 0.25rem;
 }
 
-/* Badge Text Readability - Ensure proper contrast for all Bootstrap badge variants */
-/* Ultra-high specificity to override NetBox defaults and ensure readability in all contexts */
+/* Enhanced Badge Text Readability */
+/* Comprehensive badge styling with high contrast and consistent appearance */
 .netbox-hedgehog .badge,
 .hedgehog-wrapper .badge,
 .card .badge,
 .table .badge,
 td .badge,
 th .badge,
-body .badge {
+body .badge,
+.badge {
     font-weight: 500 !important;
     text-shadow: none !important;
+    font-size: 0.75rem !important;
+    padding: 0.375rem 0.75rem !important;
+    border-radius: 0.375rem !important;
+    border: 1px solid transparent !important;
+    /* Ensure minimum contrast for accessibility */
+    min-height: 1.5rem;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
 }
 
 /* Primary variant with maximum specificity */
@@ -118,7 +128,7 @@ span.badge.bg-danger,
     font-weight: 500 !important;
 }
 
-/* Warning variant with maximum specificity - dark text for contrast */
+/* Warning variant with maximum specificity - enhanced contrast */
 .netbox-hedgehog span.badge.bg-warning,
 .hedgehog-wrapper span.badge.bg-warning,
 .card span.badge.bg-warning,
@@ -128,9 +138,12 @@ th span.badge.bg-warning,
 body span.badge.bg-warning,
 span.badge.bg-warning,
 .badge.bg-warning {
-    color: #212529 !important;
+    color: #000 !important; /* Pure black for maximum contrast on yellow */
     background-color: #ffc107 !important;
-    font-weight: 500 !important;
+    font-weight: 700 !important; /* Bold weight for maximum readability */
+    border: 2px solid #e0a800 !important; /* Stronger border for definition */
+    text-shadow: none !important;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2) !important; /* Subtle shadow for depth */
 }
 
 /* Info variant with maximum specificity */
@@ -148,7 +161,7 @@ span.badge.bg-info,
     font-weight: 500 !important;
 }
 
-/* Light variant with maximum specificity */
+/* Light variant with maximum specificity - enhanced readability */
 .netbox-hedgehog span.badge.bg-light,
 .hedgehog-wrapper span.badge.bg-light,
 .card span.badge.bg-light,
@@ -158,9 +171,12 @@ th span.badge.bg-light,
 body span.badge.bg-light,
 span.badge.bg-light,
 .badge.bg-light {
-    color: #212529 !important;
+    color: #000 !important; /* Pure black for maximum contrast */
     background-color: #f8f9fa !important;
-    font-weight: 500 !important;
+    font-weight: 700 !important; /* Bold weight for maximum readability */
+    border: 2px solid #adb5bd !important; /* Stronger border for definition */
+    text-shadow: none !important;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.15) !important; /* Subtle shadow for definition */
 }
 
 /* Dark variant with maximum specificity */
@@ -178,19 +194,60 @@ span.badge.bg-dark,
     font-weight: 500 !important;
 }
 
-/* Fix Specification field readability on CR detail pages */
-/* Ensure proper contrast for pre-formatted specification text */
-pre.bg-light {
-    color: #212529 !important; /* Dark text for readability */
-    background-color: #f8f9fa !important; /* Light background */
+/* Enhanced Label and Pre-formatted Text Readability - FIXED OVERLAPPING */
+/* Comprehensive fixes for specification, labels, and annotations display */
+html body .netbox-hedgehog pre.bg-light,
+html body .hedgehog-wrapper pre.bg-light,
+html body .card-body pre.bg-light,
+html body .gitops-state-box pre.bg-light,
+html body pre.bg-light code,
+html body .bg-light pre,
+html body pre.bg-light,
+html body pre[class*="bg-light"],
+.table-responsive pre.bg-light,
+.fabric-detail pre.bg-light {
+    color: #000 !important; /* Pure black for maximum contrast */
+    background-color: #ffffff !important; /* Pure white background for highest contrast */
+    border: 2px solid #6c757d !important; /* Strong border for clear definition */
+    font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace !important;
+    font-size: 0.95rem !important; /* Slightly larger for better readability */
+    line-height: 1.8 !important; /* INCREASED line spacing to prevent overlapping */
+    padding: 1.5rem !important; /* MORE generous padding */
+    border-radius: 0.5rem !important;
+    /* Override any NetBox base styles that might interfere */
+    text-shadow: none !important;
+    font-weight: 500 !important; /* Medium weight for better readability */
+    box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.1) !important; /* Inset shadow for depth */
+    white-space: pre-wrap !important; /* Ensure proper line wrapping */
+    word-wrap: break-word !important; /* Break long words to prevent horizontal overflow */
+    overflow-wrap: break-word !important; /* Modern CSS equivalent */
+    word-break: break-word !important; /* Additional word breaking */
+    margin: 1rem 0 !important; /* Margin for vertical spacing */
+    min-height: 3rem !important; /* Minimum height to prevent collapse */
+    display: block !important; /* Ensure block display */
 }
 
-/* Additional specificity for spec/labels/annotations sections */
-.card-body pre.bg-light,
-.gitops-state-box pre.bg-light {
-    color: #212529 !important; /* Dark text */
+/* Ensure JSON/YAML content is readable */
+pre.bg-light .hljs,
+pre.bg-light .hljs-string,
+pre.bg-light .hljs-number,
+pre.bg-light .hljs-literal {
+    color: #212529 !important;
+}
+
+/* Specific override for small pre elements */
+pre.bg-light.small {
+    font-size: 0.8rem !important;
+    line-height: 1.6 !important;
+    white-space: pre-wrap !important;
+}
+
+/* Strengthen table cell pre elements */
+td pre.bg-light,
+th pre.bg-light {
+    margin: 0 !important;
     background-color: #f8f9fa !important;
-    border: 1px solid #dee2e6; /* Add subtle border for definition */
+    color: #212529 !important;
 }
 
 /* Timeline for Activity */
@@ -265,14 +322,38 @@ pre.bg-light {
     margin-right: 0.25rem;
 }
 
-/* Form Enhancements */
-.form-label {
-    font-weight: 600;
-    margin-bottom: 0.5rem;
+/* Enhanced Form Readability */
+html body .form-label,
+html body label,
+html body .control-label,
+html body .field-label {
+    font-weight: 700 !important; /* Bold weight for maximum readability */
+    margin-bottom: 0.5rem !important;
+    color: #212529 !important; /* Pure black for maximum contrast */
+    text-shadow: none !important;
+    font-size: 0.95rem !important; /* Slightly larger for better visibility */
+    letter-spacing: 0.02em !important; /* Slight letter spacing for clarity */
 }
 
-.form-text {
-    font-size: 0.8rem;
+.form-text,
+.help-text {
+    font-size: 0.875rem !important;
+    color: #6c757d !important; /* Medium contrast for help text */
+    margin-top: 0.25rem !important;
+}
+
+/* Ensure form controls have proper contrast */
+.form-control,
+.form-select {
+    color: #212529 !important;
+    background-color: #fff !important;
+    border-color: #dee2e6 !important;
+}
+
+.form-control:focus,
+.form-select:focus {
+    border-color: #0d6efd !important;
+    box-shadow: 0 0 0 0.2rem rgba(13, 110, 253, 0.25) !important;
 }
 
 .subnet-form {
@@ -318,11 +399,35 @@ pre.bg-light {
     letter-spacing: 0.5px;
 }
 
-/* Table Enhancements */
-.table th {
-    font-weight: 600;
+/* Enhanced Table Readability */
+html body .table th,
+html body table.table th,
+html body .table-responsive .table th {
+    font-weight: 700 !important; /* Bold weight for maximum readability */
     border-top: none;
-    background-color: var(--bs-light);
+    background-color: #e9ecef !important; /* Slightly darker background for better contrast */
+    color: #212529 !important; /* Pure black for maximum contrast */
+    border-color: #adb5bd !important; /* Stronger border color */
+    border-width: 2px !important; /* Thicker borders for definition */
+    padding: 1rem !important; /* More generous padding */
+    vertical-align: middle;
+    text-shadow: none !important;
+    font-size: 0.9rem !important; /* Consistent font size */
+    letter-spacing: 0.02em !important; /* Slight letter spacing for clarity */
+}
+
+/* Ensure table data cells have proper contrast */
+html body .table td,
+html body table.table td,
+html body .table-responsive .table td {
+    color: #000 !important; /* Pure black for maximum contrast */
+    vertical-align: middle;
+    padding: 1rem !important; /* More generous padding */
+    border-color: #dee2e6 !important;
+    border-width: 1px !important;
+    font-size: 0.9rem !important; /* Consistent font size */
+    font-weight: 400 !important; /* Regular weight for data */
+    text-shadow: none !important;
 }
 
 .table-responsive {
@@ -461,26 +566,234 @@ pre.bg-light {
     }
 }
 
-/* Dark Mode Support */
-@media (prefers-color-scheme: dark) {
+/* Dark Mode Support - URGENT FIX FOR UNREADABLE TEXT */
+/* NetBox Dark Theme Detection */
+@media (prefers-color-scheme: dark),
+html[data-bs-theme="dark"],
+html.dark-theme,
+body[data-bs-theme="dark"],
+body.dark-theme {
+    
+    /* CRITICAL: Fix unlabeled content that has black text on dark backgrounds */
+    /* General unlabeled content - ensure light text for readability */
+    .netbox-hedgehog p:not(.bg-light):not(.bg-white):not(.badge),
+    .hedgehog-wrapper p:not(.bg-light):not(.bg-white):not(.badge),
+    .netbox-hedgehog div:not(.bg-light):not(.bg-white):not(.badge):not(.card-header),
+    .hedgehog-wrapper div:not(.bg-light):not(.bg-white):not(.badge):not(.card-header),
+    .netbox-hedgehog span:not(.bg-light):not(.bg-white):not(.badge),
+    .hedgehog-wrapper span:not(.bg-light):not(.bg-white):not(.badge) {
+        color: #f8f9fa !important; /* Light text for dark backgrounds */
+    }
+    
+    /* Table cells without explicit backgrounds need light text */
+    .table td:not(.bg-light):not(.bg-white),
+    .table-responsive td:not(.bg-light):not(.bg-white),
+    .fabric-detail .table td:not(.bg-light):not(.bg-white) {
+        color: #f8f9fa !important; /* Light text for table data on dark backgrounds */
+    }
+    
+    /* Card content without explicit backgrounds */
+    .card-body:not(.bg-light):not(.bg-white),
+    .card-text:not(.bg-light):not(.bg-white) {
+        color: #f8f9fa !important; /* Light text for card content */
+    }
+    
+    /* Navigation and breadcrumb text */
+    .breadcrumb-item,
+    .nav-link:not(.btn):not(.badge),
+    .dropdown-item:not(.btn):not(.badge) {
+        color: #f8f9fa !important; /* Light text for navigation */
+    }
+    
+    /* Form elements without labels or explicit backgrounds */
+    .form-text:not(.bg-light):not(.bg-white),
+    .help-text:not(.bg-light):not(.bg-white),
+    input::placeholder,
+    textarea::placeholder,
+    select::placeholder {
+        color: #adb5bd !important; /* Light gray for placeholder text */
+    }
+    
+    /* Status text and unlabeled indicators */
+    .text-muted:not(.bg-light):not(.bg-white),
+    .small:not(.bg-light):not(.bg-white),
+    small:not(.bg-light):not(.bg-white) {
+        color: #adb5bd !important; /* Light gray for muted text */
+    }
+    
+    /* GitOps specific content without backgrounds */
+    .gitops-detail-section:not(.bg-light):not(.bg-white),
+    .gitops-status-section:not(.bg-light):not(.bg-white) {
+        color: #f8f9fa !important; /* Light text for GitOps sections */
+    }
+    
+    /* Preserve existing labeled field styling - these should keep dark text on light backgrounds */
+    /* Labels and form controls with explicit light backgrounds remain unchanged */
+    .form-label,
+    label,
+    .control-label,
+    .field-label,
+    .bg-light,
+    .bg-white,
+    .card-header,
+    .table th,
+    pre.bg-light,
+    code,
+    .badge {
+        /* These maintain their existing styling with dark text on light backgrounds */
+        /* No overrides needed - existing styles are correct */
+    }
+    
+    /* Timeline components for dark mode */
     .timeline-content {
         background: var(--bs-dark);
         border-color: var(--bs-secondary);
+        color: #f8f9fa !important; /* Light text for timeline content */
     }
     
+    /* Container backgrounds for dark mode */
     .topology-container {
         background-color: var(--bs-dark);
     }
     
     .subnet-form {
         background-color: var(--bs-dark);
+        color: #f8f9fa !important; /* Light text for subnet forms */
     }
     
     .vpc-preview,
     .subnet-preview {
         background-color: var(--bs-dark);
         border-color: var(--bs-secondary);
+        color: #f8f9fa !important; /* Light text for preview components */
     }
+    
+    /* GitOps state boxes for dark mode */
+    .gitops-state-box:not(.bg-light):not(.bg-white) {
+        background-color: var(--bs-dark);
+        color: #f8f9fa !important; /* Light text for state boxes */
+    }
+    
+    .gitops-state-box .state-header:not(.bg-light):not(.bg-white) {
+        background-color: #495057; /* Slightly lighter than body for contrast */
+        color: #f8f9fa !important; /* Light text for headers */
+    }
+    
+    /* Dashboard and status cards for dark mode */
+    .hedgehog-status-card:not(.bg-light):not(.bg-white) {
+        color: #f8f9fa !important; /* Light text for status cards */
+    }
+    
+    /* Empty state text for dark mode */
+    .empty-state:not(.bg-light):not(.bg-white) {
+        color: #adb5bd !important; /* Light gray for empty state text */
+    }
+    
+    /* Timeline text for dark mode */
+    .timeline-text:not(.bg-light):not(.bg-white),
+    .timeline-title:not(.bg-light):not(.bg-white) {
+        color: #f8f9fa !important; /* Light text for timeline elements */
+    }
+    
+    /* Annotation and specification text for dark mode */
+    .fabric-detail .text-muted:not(.bg-light):not(.bg-white) {
+        color: #adb5bd !important; /* Light gray for muted fabric details */
+    }
+    
+    /* Progressive disclosure content for dark mode */
+    .disclosure-detailed:not(.bg-light):not(.bg-white),
+    .disclosure-expert:not(.bg-light):not(.bg-white) {
+        color: #f8f9fa !important; /* Light text for disclosure content */
+    }
+    
+    /* Ensure form controls are readable in dark mode */
+    .form-control,
+    .form-select {
+        background-color: #495057 !important; /* Dark background for form controls */
+        color: #f8f9fa !important; /* Light text for form controls */
+        border-color: #6c757d !important; /* Medium border for visibility */
+    }
+    
+    .form-control:focus,
+    .form-select:focus {
+        background-color: #495057 !important; /* Maintain dark background on focus */
+        color: #f8f9fa !important; /* Maintain light text on focus */
+        border-color: #0d6efd !important; /* Keep focus border color */
+        box-shadow: 0 0 0 0.2rem rgba(13, 110, 253, 0.25) !important;
+    }
+}
+
+/* Specific overrides for NetBox dark theme classes */
+html[data-bs-theme="dark"] .netbox-hedgehog,
+html[data-bs-theme="dark"] .hedgehog-wrapper,
+body[data-bs-theme="dark"] .netbox-hedgehog,
+body[data-bs-theme="dark"] .hedgehog-wrapper,
+.dark-theme .netbox-hedgehog,
+.dark-theme .hedgehog-wrapper {
+    /* Unlabeled content gets light text */
+    color: #f8f9fa !important;
+}
+
+/* Preserve high contrast for labeled elements in dark mode */
+html[data-bs-theme="dark"] .form-label,
+html[data-bs-theme="dark"] label,
+html[data-bs-theme="dark"] .table th,
+html[data-bs-theme="dark"] .card-header,
+html[data-bs-theme="dark"] pre.bg-light,
+html[data-bs-theme="dark"] code,
+html[data-bs-theme="dark"] .badge,
+body[data-bs-theme="dark"] .form-label,
+body[data-bs-theme="dark"] label,
+body[data-bs-theme="dark"] .table th,
+body[data-bs-theme="dark"] .card-header,
+body[data-bs-theme="dark"] pre.bg-light,
+body[data-bs-theme="dark"] code,
+body[data-bs-theme="dark"] .badge {
+    /* These maintain their existing high-contrast styling */
+    /* Labels, headers, and code blocks keep dark text on light backgrounds */
+}
+
+/* Comprehensive CR Detail Page Fixes - Apply to all detail templates */
+.netbox-hedgehog .card-body,
+.hedgehog-wrapper .card-body {
+    padding: 2rem !important; /* More generous padding for all content */
+}
+
+.netbox-hedgehog .card-body h4,
+.hedgehog-wrapper .card-body h4,
+.netbox-hedgehog .card-body h5,
+.hedgehog-wrapper .card-body h5 {
+    margin-top: 2rem !important; /* More space above headings */
+    margin-bottom: 1rem !important; /* Consistent space below headings */
+    color: #212529 !important; /* Ensure heading readability */
+    font-weight: 700 !important; /* Bold headings */
+}
+
+.netbox-hedgehog .card-body h4:first-child,
+.hedgehog-wrapper .card-body h4:first-child {
+    margin-top: 0 !important; /* No margin for first heading */
+}
+
+/* Ensure proper spacing between sections */
+.netbox-hedgehog .card-body .row + .row,
+.hedgehog-wrapper .card-body .row + .row {
+    margin-top: 2rem !important;
+}
+
+.netbox-hedgehog .card-body hr,
+.hedgehog-wrapper .card-body hr {
+    margin: 2rem 0 !important; /* Consistent HR spacing */
+    border-color: #dee2e6 !important;
+}
+
+/* Fix any remaining pre elements that might be missed */
+.netbox-hedgehog pre,
+.hedgehog-wrapper pre {
+    line-height: 1.8 !important;
+    padding: 1.5rem !important;
+    margin: 1rem 0 !important;
+    word-wrap: break-word !important;
+    overflow-wrap: break-word !important;
 }
 
 /* Print Styles */
@@ -540,13 +853,14 @@ pre.bg-light {
     to { transform: translateX(0); }
 }
 
-/* GitOps Status Enhancement (MVP2) */
+/* GitOps Status Enhancement (MVP2) - IMPROVED SPACING */
 .gitops-status-section {
     border-top: 2px solid var(--bs-info);
-    padding-top: 1rem;
+    padding: 1.5rem !important; /* Increased padding */
     background: linear-gradient(135deg, rgba(var(--bs-info-rgb), 0.05) 0%, rgba(var(--bs-info-rgb), 0.02) 100%);
     border-radius: 0.5rem;
-    margin-top: 1.5rem !important;
+    margin-top: 2rem !important; /* More margin for separation */
+    margin-bottom: 1.5rem !important; /* Bottom margin for consistency */
 }
 
 .gitops-status-card {
@@ -839,8 +1153,15 @@ pre.bg-light {
 .gitops-state-box .state-content pre {
     max-height: 200px;
     overflow-y: auto;
-    font-size: 0.8rem;
+    font-size: 0.9rem !important; /* Larger font for better readability */
     margin-bottom: 0;
+    line-height: 1.8 !important; /* Increased line height to prevent overlapping */
+    white-space: pre-wrap !important; /* Ensure proper line wrapping */
+    padding: 1rem !important; /* More padding for better spacing */
+    color: #000 !important; /* Ensure text is readable */
+    background-color: #ffffff !important; /* White background for contrast */
+    border: 1px solid #dee2e6 !important; /* Border for definition */
+    border-radius: 0.375rem !important;
 }
 
 /* Progressive Disclosure Enhancements */
@@ -1048,6 +1369,53 @@ pre.bg-light {
     box-shadow: 0 1rem 3rem rgba(0, 0, 0, 0.175) !important;
 }
 
+/* VPC Detail and CR Pages Table Layout Fixes */
+/* Fix overlapping fields in main information tables */
+.card-body table.table-borderless {
+    table-layout: fixed;
+    width: 100%;
+    border-spacing: 0;
+    border-collapse: separate;
+}
+
+.card-body table.table-borderless th {
+    width: 30%;
+    min-width: 150px;
+    vertical-align: top;
+    text-align: left;
+    padding: 0.75rem 1.5rem 0.75rem 0 !important; /* Right padding for spacing */
+    font-weight: 700 !important;
+    color: #212529 !important;
+    background-color: transparent !important;
+    border: none !important;
+    white-space: nowrap;
+}
+
+.card-body table.table-borderless td {
+    width: 70%;
+    vertical-align: top;
+    word-wrap: break-word;
+    padding: 0.75rem 0 0.75rem 1rem !important; /* Left padding for spacing */
+    color: #000 !important;
+    border: none !important;
+    line-height: 1.5 !important;
+}
+
+.card-body table.table-borderless tr {
+    border-bottom: 1px solid rgba(0, 0, 0, 0.08) !important;
+    margin-bottom: 0.75rem !important;
+}
+
+.card-body table.table-borderless tr:last-child {
+    border-bottom: none !important;
+}
+
+/* Fix for specification fields in main content */
+.card-body h4 + .row .col-12 h5 + pre {
+    margin-top: 0.75rem !important;
+    margin-bottom: 1.5rem !important;
+}
+
 /* Inline Style Consolidation Classes */
 .hedgehog-hidden {
     display: none;
@@ -1252,53 +1620,206 @@ pre.bg-light {
     display: block;
 }
 
-/* Fix for GitOps Configuration Table Layout */
+/* Fix for GitOps Configuration Table Layout - IMPROVED SPACING */
 .gitops-detail-section table.table-borderless {
-    table-layout: auto;
+    table-layout: fixed;
     width: 100%;
+    border-spacing: 0;
+    border-collapse: separate;
 }
 
 .gitops-detail-section table.table-borderless th {
-    width: 25%;
-    min-width: 120px;
+    width: 30%;
+    min-width: 150px;
     vertical-align: top;
     white-space: nowrap;
     text-align: left;
     display: table-cell !important;
+    padding: 1.5rem 1rem 1.5rem 0 !important; /* Increased from 1rem to 1.5rem vertical padding */
+    min-height: 4rem !important; /* Increased from 3rem to 4rem */
+    font-weight: 700 !important;
+    color: #212529 !important;
+    background-color: transparent !important;
+    border: none !important;
 }
 
 .gitops-detail-section table.table-borderless td {
-    width: 75%;
+    width: 70%;
     vertical-align: top;
     word-wrap: break-word;
     display: table-cell !important;
+    padding: 1.5rem 0 1.5rem 1rem !important; /* Increased from 1rem to 1.5rem vertical padding */
+    color: #000 !important;
+    border: none !important;
+    min-height: 4rem !important; /* Increased from 3rem to 4rem */
+    line-height: 1.8 !important; /* Increased from 1.5 to 1.8 */
 }
 
 .gitops-detail-section table.table-borderless tr {
     display: table-row !important;
+    border-bottom: 1px solid rgba(0, 0, 0, 0.1) !important;
+    height: auto !important; /* Allow row to expand for content */
+    min-height: 4rem !important; /* Increased from 3rem to 4rem */
 }
 
-/* Ensure Git Configuration fields display vertically */
+/* Ensure Git Configuration fields display with proper spacing for mixed content */
 .gitops-detail-section .table-borderless tr {
-    border-bottom: 1px solid rgba(0, 0, 0, 0.05);
-    margin-bottom: 0.5rem;
+    margin-bottom: 1.5rem !important; /* Increased from 1.25rem to 1.5rem */
 }
 
 .gitops-detail-section .table-borderless tr:last-child {
-    border-bottom: none;
+    border-bottom: none !important;
 }
 
-/* Fix for Kubernetes Server field display */
-.fabric-detail .table th {
+/* Enhanced spacing for mixed content elements */
+.gitops-detail-section table.table-borderless td .badge,
+.gitops-detail-section table.table-borderless td .btn {
+    margin: 0.5rem 0 !important; /* Increased from 0.25rem to 0.5rem */
+    vertical-align: middle !important;
+    display: inline-block !important;
+}
+
+.gitops-detail-section table.table-borderless td code {
+    margin: 0.5rem 0 !important; /* Increased from 0.25rem to 0.5rem */
+    line-height: 1.6 !important; /* Increased from 1.4 to 1.6 */
+    padding: 0.5rem 0.75rem !important; /* More generous padding */
+    display: inline-block !important;
+}
+
+/* Ensure any multi-element rows have proper spacing */
+.gitops-detail-section table.table-borderless td > * {
+    vertical-align: middle !important; /* Align all elements in the middle */
+}
+
+/* Enhanced spacing between multiple elements in same cell */
+.gitops-detail-section table.table-borderless td > *:not(:last-child) {
+    margin-right: 0.75rem !important; /* Increased from 0.5rem to 0.75rem */
+    margin-bottom: 0.5rem !important; /* NEW: Add bottom margin for stacked elements */
+}
+
+/* Fix for GitOps detail section overall spacing */
+.gitops-detail-section {
+    margin-top: 2rem !important;
+    padding: 2rem !important;
+}
+
+/* Enhanced Fabric Detail Table Readability */
+html body .fabric-detail .table th,
+html body .fabric-detail table.table th {
     width: 30%;
-    font-weight: 600;
-    color: var(--bs-secondary);
+    font-weight: 700 !important; /* Bold weight for maximum readability */
+    color: #000 !important; /* Pure black for maximum contrast */
+    background-color: #e9ecef !important; /* Slightly darker background */
     vertical-align: middle;
     white-space: nowrap;
+    padding: 1rem !important; /* More generous padding */
+    border-color: #adb5bd !important; /* Stronger border */
+    border-width: 2px !important;
+    text-shadow: none !important;
+    font-size: 0.9rem !important;
+    letter-spacing: 0.02em !important;
 }
 
-.fabric-detail .table td {
+html body .fabric-detail .table td,
+html body .fabric-detail table.table td {
     width: 70%;
     vertical-align: middle;
     word-wrap: break-word;
+    color: #000 !important; /* Pure black for maximum contrast */
+    padding: 1rem !important; /* More generous padding */
+    border-color: #dee2e6 !important;
+    font-weight: 400 !important;
+    text-shadow: none !important;
+    font-size: 0.9rem !important;
+}
+
+/* Enhanced readability utility classes */
+.readable-text {
+    color: #212529 !important;
+    text-shadow: none !important;
+}
+
+.readable-secondary-text {
+    color: #495057 !important;
+    text-shadow: none !important;
+}
+
+.readable-muted-text {
+    color: #6c757d !important;
+    text-shadow: none !important;
+}
+
+/* Code and monospace text readability */
+html body code,
+html body .code,
+html body kbd,
+html body samp,
+html body .netbox-hedgehog code,
+html body .hedgehog-wrapper code {
+    color: #000 !important; /* Pure black for maximum contrast */
+    background-color: #ffffff !important; /* Pure white background */
+    border: 2px solid #6c757d !important; /* Strong border for definition */
+    border-radius: 0.375rem !important;
+    padding: 0.25rem 0.5rem !important; /* More generous padding */
+    font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace !important;
+    font-size: 0.9rem !important; /* Slightly larger for better readability */
+    font-weight: 500 !important; /* Medium weight for better readability */
+    text-shadow: none !important;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1) !important; /* Subtle shadow for depth */
+}
+
+/* Additional NetBox Core Override Classes */
+/* Maximum specificity overrides to ensure readability improvements work */
+html body .netbox-hedgehog .small,
+html body .hedgehog-wrapper .small,
+html body .netbox-hedgehog small,
+html body .hedgehog-wrapper small {
+    color: #495057 !important; /* Medium contrast for small text */
+    font-size: 0.85rem !important;
+    font-weight: 500 !important;
+    text-shadow: none !important;
+}
+
+/* Annotation and specification text */
+html body .netbox-hedgehog .text-muted,
+html body .hedgehog-wrapper .text-muted,
+html body .fabric-detail .text-muted {
+    color: #495057 !important; /* Medium contrast instead of light muted */
+    font-weight: 500 !important;
+    text-shadow: none !important;
+}
+
+/* Help text and descriptions */
+html body .netbox-hedgehog .help-text,
+html body .hedgehog-wrapper .help-text,
+html body .netbox-hedgehog .form-text,
+html body .hedgehog-wrapper .form-text {
+    color: #6c757d !important; /* Readable gray for help text */
+    font-size: 0.9rem !important; /* Slightly larger for better readability */
+    font-weight: 500 !important;
+    text-shadow: none !important;
+    line-height: 1.4 !important;
+}
+
+/* Card headers and titles */
+html body .netbox-hedgehog .card-header,
+html body .hedgehog-wrapper .card-header {
+    background-color: #e9ecef !important; /* Slightly darker for better contrast */
+    color: #212529 !important; /* Pure black text */
+    font-weight: 600 !important;
+    border-bottom: 2px solid #adb5bd !important;
+}
+
+/* Card titles */
+html body .netbox-hedgehog .card-title,
+html body .hedgehog-wrapper .card-title,
+html body .netbox-hedgehog .card-header h1,
+html body .netbox-hedgehog .card-header h2,
+html body .netbox-hedgehog .card-header h3,
+html body .netbox-hedgehog .card-header h4,
+html body .netbox-hedgehog .card-header h5,
+html body .netbox-hedgehog .card-header h6 {
+    color: #000 !important; /* Pure black for maximum contrast */
+    font-weight: 700 !important;
+    text-shadow: none !important;
 }

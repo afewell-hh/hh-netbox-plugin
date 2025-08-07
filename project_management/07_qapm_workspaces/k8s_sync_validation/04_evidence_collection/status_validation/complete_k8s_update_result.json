@@ -1,0 +1,11 @@
+{
+  "id": 26,
+  "name": "Test Fabric for GitOps Initialization",
+  "kubernetes_server": "https://172.18.0.8:6443",
+  "kubernetes_token": "***REDACTED***",
+  "kubernetes_ca_cert": "***REDACTED***",
+  "kubernetes_namespace": "default",
+  "sync_status": "synced",
+  "update_success": true,
+  "update_timestamp": "2025-07-31T08:32:17.552245"
+}

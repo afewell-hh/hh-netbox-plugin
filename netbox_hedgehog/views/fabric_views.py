@@ -224,16 +224,36 @@ class FabricTestConnectionView(View):
 
 @method_decorator(login_required, name='dispatch')
 class FabricSyncView(View):
-    """Trigger reconciliation for a fabric"""
+    """Trigger reconciliation for a fabric with GitOps integration"""
     
     def post(self, request, pk):
-        """Perform reconciliation sync"""
+        """Perform reconciliation sync with GitOps validation and ingestion"""
         fabric = get_object_or_404(HedgehogFabric, pk=pk)
         
         if not request.user.has_perm('netbox_hedgehog.change_hedgehogfabric'):
             return JsonResponse({'success': False, 'error': 'Permission denied'}, status=403)
         
         try:
+            # Step 1: Ensure GitOps structure is initialized and valid
+            from ..signals import ensure_gitops_structure, ingest_fabric_raw_files
+            
+            structure_result = ensure_gitops_structure(fabric)
+            if not structure_result['success']:
+                return JsonResponse({
+                    'success': False,
+                    'error': f'GitOps structure validation failed: {structure_result.get("error", "Unknown error")}',
+                    'details': structure_result
+                })
+            
+            # Step 2: Process raw files before sync
+            try:
+                ingest_fabric_raw_files(fabric)
+                logger.info(f"Raw file ingestion completed for fabric {fabric.name} before sync")
+            except Exception as e:
+                logger.warning(f"Raw file ingestion failed for fabric {fabric.name}: {str(e)}")
+                # Continue with sync even if ingestion fails
+            
+            # Step 3: Perform reconciliation with validated structure
             reconciliation_manager = ReconciliationManager(fabric)
             result = reconciliation_manager.perform_reconciliation(dry_run=False)
             
@@ -247,14 +267,16 @@ class FabricSyncView(View):
                 return JsonResponse({
                     'success': True,
                     'message': f'Reconciliation completed. {summary}',
-                    'results': result
+                    'results': result,
+                    'gitops_structure': structure_result
                 })
             else:
                 messages.error(request, f"Reconciliation failed for fabric '{fabric.name}'")
                 return JsonResponse({
                     'success': False,
                     'error': 'Reconciliation failed to initialize',
-                    'results': result
+                    'results': result,
+                    'gitops_structure': structure_result
                 })
                 
         except Exception as e:
@@ -288,13 +310,22 @@ class FabricOnboardingView(View):
         return render(request, self.template_name, context)
     
     def post(self, request, pk):
-        """Perform fabric onboarding"""
+        """Perform fabric onboarding with GitOps integration"""
         fabric = get_object_or_404(HedgehogFabric, pk=pk)
         
         if not request.user.has_perm('netbox_hedgehog.change_hedgehogfabric'):
             return JsonResponse({'success': False, 'error': 'Permission denied'}, status=403)
         
         try:
+            # Step 1: Ensure GitOps structure is initialized
+            from ..signals import ensure_gitops_structure
+            
+            structure_result = ensure_gitops_structure(fabric)
+            if not structure_result['success']:
+                logger.warning(f"GitOps structure validation failed during onboarding for fabric {fabric.name}: {structure_result.get('error')}")
+                # Continue with onboarding even if GitOps fails, but log the issue
+            
+            # Step 2: Perform standard fabric onboarding
             onboarding_manager = FabricOnboardingManager(fabric)
             result = onboarding_manager.perform_full_onboarding()
             
@@ -302,6 +333,9 @@ class FabricOnboardingView(View):
             all_success = all(
                 step['success'] for step in result.get('steps', {}).values()
             )
+            
+            # Add GitOps result to onboarding result
+            result['gitops_structure'] = structure_result
             
             if all_success:
                 messages.success(request, f"Successfully onboarded fabric '{fabric.name}'")
@@ -334,9 +368,22 @@ class FabricListView(generic.ObjectListView):
 
 
 class FabricCreateView(generic.ObjectEditView):
-    """Create view for fabrics"""
+    """Create view for fabrics with GitOps integration"""
     queryset = HedgehogFabric.objects.all()
+    form = FabricForm
     template_name = 'generic/object_edit.html'
+    
+    def form_valid(self, form):
+        """Override form_valid to ensure GitOps integration after fabric creation"""
+        # Call parent form_valid to save the fabric
+        response = super().form_valid(form)
+        
+        # The fabric will be automatically initialized via signals
+        # But we can add any additional logic here if needed
+        fabric = self.object
+        logger.info(f"Fabric {fabric.name} created successfully, GitOps initialization will be triggered by signals")
+        
+        return response
 
 
 class FabricEditView(generic.ObjectEditView):

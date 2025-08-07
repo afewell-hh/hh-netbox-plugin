@@ -1,0 +1,285 @@
+{
+  "timestamp": "20250805_033833",
+  "raw_directory": {
+    "path": "gitops/hedgehog/fabric-1/raw",
+    "contents": [
+      {
+        "name": ".gitkeep",
+        "path": "gitops/hedgehog/fabric-1/raw/.gitkeep",
+        "sha": "e5cabe68f7524bec63581a69671e958baac27c8b",
+        "size": 52,
+        "url": "https://api.github.com/repos/afewell-hh/gitops-test-1/contents/gitops/hedgehog/fabric-1/raw/.gitkeep?ref=main",
+        "html_url": "https://github.com/afewell-hh/gitops-test-1/blob/main/gitops/hedgehog/fabric-1/raw/.gitkeep",
+        "git_url": "https://api.github.com/repos/afewell-hh/gitops-test-1/git/blobs/e5cabe68f7524bec63581a69671e958baac27c8b",
+        "download_url": "https://raw.githubusercontent.com/afewell-hh/gitops-test-1/main/gitops/hedgehog/fabric-1/raw/.gitkeep",
+        "type": "file",
+        "_links": {
+          "self": "https://api.github.com/repos/afewell-hh/gitops-test-1/contents/gitops/hedgehog/fabric-1/raw/.gitkeep?ref=main",
+          "git": "https://api.github.com/repos/afewell-hh/gitops-test-1/git/blobs/e5cabe68f7524bec63581a69671e958baac27c8b",
+          "html": "https://github.com/afewell-hh/gitops-test-1/blob/main/gitops/hedgehog/fabric-1/raw/.gitkeep"
+        }
+      },
+      {
+        "name": "prepop.yaml",
+        "path": "gitops/hedgehog/fabric-1/raw/prepop.yaml",
+        "sha": "b4b85ede22907cd3a4b2992ea64c2d07d45ba2cc",
+        "size": 11257,
+        "url": "https://api.github.com/repos/afewell-hh/gitops-test-1/contents/gitops/hedgehog/fabric-1/raw/prepop.yaml?ref=main",
+        "html_url": "https://github.com/afewell-hh/gitops-test-1/blob/main/gitops/hedgehog/fabric-1/raw/prepop.yaml",
+        "git_url": "https://api.github.com/repos/afewell-hh/gitops-test-1/git/blobs/b4b85ede22907cd3a4b2992ea64c2d07d45ba2cc",
+        "download_url": "https://raw.githubusercontent.com/afewell-hh/gitops-test-1/main/gitops/hedgehog/fabric-1/raw/prepop.yaml",
+        "type": "file",
+        "_links": {
+          "self": "https://api.github.com/repos/afewell-hh/gitops-test-1/contents/gitops/hedgehog/fabric-1/raw/prepop.yaml?ref=main",
+          "git": "https://api.github.com/repos/afewell-hh/gitops-test-1/git/blobs/b4b85ede22907cd3a4b2992ea64c2d07d45ba2cc",
+          "html": "https://github.com/afewell-hh/gitops-test-1/blob/main/gitops/hedgehog/fabric-1/raw/prepop.yaml"
+        }
+      },
+      {
+        "name": "test-vpc-2.yaml",
+        "path": "gitops/hedgehog/fabric-1/raw/test-vpc-2.yaml",
+        "sha": "6c12401aa3dbe75473e728de6ad62c3a62ce46e9",
+        "size": 201,
+        "url": "https://api.github.com/repos/afewell-hh/gitops-test-1/contents/gitops/hedgehog/fabric-1/raw/test-vpc-2.yaml?ref=main",
+        "html_url": "https://github.com/afewell-hh/gitops-test-1/blob/main/gitops/hedgehog/fabric-1/raw/test-vpc-2.yaml",
+        "git_url": "https://api.github.com/repos/afewell-hh/gitops-test-1/git/blobs/6c12401aa3dbe75473e728de6ad62c3a62ce46e9",
+        "download_url": "https://raw.githubusercontent.com/afewell-hh/gitops-test-1/main/gitops/hedgehog/fabric-1/raw/test-vpc-2.yaml",
+        "type": "file",
+        "_links": {
+          "self": "https://api.github.com/repos/afewell-hh/gitops-test-1/contents/gitops/hedgehog/fabric-1/raw/test-vpc-2.yaml?ref=main",
+          "git": "https://api.github.com/repos/afewell-hh/gitops-test-1/git/blobs/6c12401aa3dbe75473e728de6ad62c3a62ce46e9",
+          "html": "https://github.com/afewell-hh/gitops-test-1/blob/main/gitops/hedgehog/fabric-1/raw/test-vpc-2.yaml"
+        }
+      },
+      {
+        "name": "test-vpc.yaml",
+        "path": "gitops/hedgehog/fabric-1/raw/test-vpc.yaml",
+        "sha": "529b8865f0ac1a5d106c8a618c9f42c13585cac1",
+        "size": 199,
+        "url": "https://api.github.com/repos/afewell-hh/gitops-test-1/contents/gitops/hedgehog/fabric-1/raw/test-vpc.yaml?ref=main",
+        "html_url": "https://github.com/afewell-hh/gitops-test-1/blob/main/gitops/hedgehog/fabric-1/raw/test-vpc.yaml",
+        "git_url": "https://api.github.com/repos/afewell-hh/gitops-test-1/git/blobs/529b8865f0ac1a5d106c8a618c9f42c13585cac1",
+        "download_url": "https://raw.githubusercontent.com/afewell-hh/gitops-test-1/main/gitops/hedgehog/fabric-1/raw/test-vpc.yaml",
+        "type": "file",
+        "_links": {
+          "self": "https://api.github.com/repos/afewell-hh/gitops-test-1/contents/gitops/hedgehog/fabric-1/raw/test-vpc.yaml?ref=main",
+          "git": "https://api.github.com/repos/afewell-hh/gitops-test-1/git/blobs/529b8865f0ac1a5d106c8a618c9f42c13585cac1",
+          "html": "https://github.com/afewell-hh/gitops-test-1/blob/main/gitops/hedgehog/fabric-1/raw/test-vpc.yaml"
+        }
+      }
+    ]
+  },
+  "managed_directory": {
+    "path": "gitops/hedgehog/fabric-1/managed",
+    "contents": [
+      {
+        "name": ".gitkeep",
+        "path": "gitops/hedgehog/fabric-1/managed/.gitkeep",
+        "sha": "e5cabe68f7524bec63581a69671e958baac27c8b",
+        "size": 52,
+        "url": "https://api.github.com/repos/afewell-hh/gitops-test-1/contents/gitops/hedgehog/fabric-1/managed/.gitkeep?ref=main",
+        "html_url": "https://github.com/afewell-hh/gitops-test-1/blob/main/gitops/hedgehog/fabric-1/managed/.gitkeep",
+        "git_url": "https://api.github.com/repos/afewell-hh/gitops-test-1/git/blobs/e5cabe68f7524bec63581a69671e958baac27c8b",
+        "download_url": "https://raw.githubusercontent.com/afewell-hh/gitops-test-1/main/gitops/hedgehog/fabric-1/managed/.gitkeep",
+        "type": "file",
+        "_links": {
+          "self": "https://api.github.com/repos/afewell-hh/gitops-test-1/contents/gitops/hedgehog/fabric-1/managed/.gitkeep?ref=main",
+          "git": "https://api.github.com/repos/afewell-hh/gitops-test-1/git/blobs/e5cabe68f7524bec63581a69671e958baac27c8b",
+          "html": "https://github.com/afewell-hh/gitops-test-1/blob/main/gitops/hedgehog/fabric-1/managed/.gitkeep"
+        }
+      },
+      {
+        "name": "connections",
+        "path": "gitops/hedgehog/fabric-1/managed/connections",
+        "sha": "b73aa78117a496463ff7ab2d23006753618dd174",
+        "size": 0,
+        "url": "https://api.github.com/repos/afewell-hh/gitops-test-1/contents/gitops/hedgehog/fabric-1/managed/connections?ref=main",
+        "html_url": "https://github.com/afewell-hh/gitops-test-1/tree/main/gitops/hedgehog/fabric-1/managed/connections",
+        "git_url": "https://api.github.com/repos/afewell-hh/gitops-test-1/git/trees/b73aa78117a496463ff7ab2d23006753618dd174",
+        "download_url": null,
+        "type": "dir",
+        "_links": {
+          "self": "https://api.github.com/repos/afewell-hh/gitops-test-1/contents/gitops/hedgehog/fabric-1/managed/connections?ref=main",
+          "git": "https://api.github.com/repos/afewell-hh/gitops-test-1/git/trees/b73aa78117a496463ff7ab2d23006753618dd174",
+          "html": "https://github.com/afewell-hh/gitops-test-1/tree/main/gitops/hedgehog/fabric-1/managed/connections"
+        }
+      },
+      {
+        "name": "externalattachments",
+        "path": "gitops/hedgehog/fabric-1/managed/externalattachments",
+        "sha": "76f8d705d25ffcc22c07b7710c1f0d48bcbb6bb6",
+        "size": 0,
+        "url": "https://api.github.com/repos/afewell-hh/gitops-test-1/contents/gitops/hedgehog/fabric-1/managed/externalattachments?ref=main",
+        "html_url": "https://github.com/afewell-hh/gitops-test-1/tree/main/gitops/hedgehog/fabric-1/managed/externalattachments",
+        "git_url": "https://api.github.com/repos/afewell-hh/gitops-test-1/git/trees/76f8d705d25ffcc22c07b7710c1f0d48bcbb6bb6",
+        "download_url": null,
+        "type": "dir",
+        "_links": {
+          "self": "https://api.github.com/repos/afewell-hh/gitops-test-1/contents/gitops/hedgehog/fabric-1/managed/externalattachments?ref=main",
+          "git": "https://api.github.com/repos/afewell-hh/gitops-test-1/git/trees/76f8d705d25ffcc22c07b7710c1f0d48bcbb6bb6",
+          "html": "https://github.com/afewell-hh/gitops-test-1/tree/main/gitops/hedgehog/fabric-1/managed/externalattachments"
+        }
+      },
+      {
+        "name": "externalpeerings",
+        "path": "gitops/hedgehog/fabric-1/managed/externalpeerings",
+        "sha": "4a6df06c6c952ab94d6819f9c9987c8261dab4e1",
+        "size": 0,
+        "url": "https://api.github.com/repos/afewell-hh/gitops-test-1/contents/gitops/hedgehog/fabric-1/managed/externalpeerings?ref=main",
+        "html_url": "https://github.com/afewell-hh/gitops-test-1/tree/main/gitops/hedgehog/fabric-1/managed/externalpeerings",
+        "git_url": "https://api.github.com/repos/afewell-hh/gitops-test-1/git/trees/4a6df06c6c952ab94d6819f9c9987c8261dab4e1",
+        "download_url": null,
+        "type": "dir",
+        "_links": {
+          "self": "https://api.github.com/repos/afewell-hh/gitops-test-1/contents/gitops/hedgehog/fabric-1/managed/externalpeerings?ref=main",
+          "git": "https://api.github.com/repos/afewell-hh/gitops-test-1/git/trees/4a6df06c6c952ab94d6819f9c9987c8261dab4e1",
+          "html": "https://github.com/afewell-hh/gitops-test-1/tree/main/gitops/hedgehog/fabric-1/managed/externalpeerings"
+        }
+      },
+      {
+        "name": "externals",
+        "path": "gitops/hedgehog/fabric-1/managed/externals",
+        "sha": "3dcdb7920abb2b1068ad0c497f5517edb7b32f9c",
+        "size": 0,
+        "url": "https://api.github.com/repos/afewell-hh/gitops-test-1/contents/gitops/hedgehog/fabric-1/managed/externals?ref=main",
+        "html_url": "https://github.com/afewell-hh/gitops-test-1/tree/main/gitops/hedgehog/fabric-1/managed/externals",
+        "git_url": "https://api.github.com/repos/afewell-hh/gitops-test-1/git/trees/3dcdb7920abb2b1068ad0c497f5517edb7b32f9c",
+        "download_url": null,
+        "type": "dir",
+        "_links": {
+          "self": "https://api.github.com/repos/afewell-hh/gitops-test-1/contents/gitops/hedgehog/fabric-1/managed/externals?ref=main",
+          "git": "https://api.github.com/repos/afewell-hh/gitops-test-1/git/trees/3dcdb7920abb2b1068ad0c497f5517edb7b32f9c",
+          "html": "https://github.com/afewell-hh/gitops-test-1/tree/main/gitops/hedgehog/fabric-1/managed/externals"
+        }
+      },
+      {
+        "name": "ipv4namespaces",
+        "path": "gitops/hedgehog/fabric-1/managed/ipv4namespaces",
+        "sha": "6f75ec571f749ec4dc4c78cc5b11116474515a13",
+        "size": 0,
+        "url": "https://api.github.com/repos/afewell-hh/gitops-test-1/contents/gitops/hedgehog/fabric-1/managed/ipv4namespaces?ref=main",
+        "html_url": "https://github.com/afewell-hh/gitops-test-1/tree/main/gitops/hedgehog/fabric-1/managed/ipv4namespaces",
+        "git_url": "https://api.github.com/repos/afewell-hh/gitops-test-1/git/trees/6f75ec571f749ec4dc4c78cc5b11116474515a13",
+        "download_url": null,
+        "type": "dir",
+        "_links": {
+          "self": "https://api.github.com/repos/afewell-hh/gitops-test-1/contents/gitops/hedgehog/fabric-1/managed/ipv4namespaces?ref=main",
+          "git": "https://api.github.com/repos/afewell-hh/gitops-test-1/git/trees/6f75ec571f749ec4dc4c78cc5b11116474515a13",
+          "html": "https://github.com/afewell-hh/gitops-test-1/tree/main/gitops/hedgehog/fabric-1/managed/ipv4namespaces"
+        }
+      },
+      {
+        "name": "servers",
+        "path": "gitops/hedgehog/fabric-1/managed/servers",
+        "sha": "e40ff0ed6b5958aca2be137284cd85ddb83df0fc",
+        "size": 0,
+        "url": "https://api.github.com/repos/afewell-hh/gitops-test-1/contents/gitops/hedgehog/fabric-1/managed/servers?ref=main",
+        "html_url": "https://github.com/afewell-hh/gitops-test-1/tree/main/gitops/hedgehog/fabric-1/managed/servers",
+        "git_url": "https://api.github.com/repos/afewell-hh/gitops-test-1/git/trees/e40ff0ed6b5958aca2be137284cd85ddb83df0fc",
+        "download_url": null,
+        "type": "dir",
+        "_links": {
+          "self": "https://api.github.com/repos/afewell-hh/gitops-test-1/contents/gitops/hedgehog/fabric-1/managed/servers?ref=main",
+          "git": "https://api.github.com/repos/afewell-hh/gitops-test-1/git/trees/e40ff0ed6b5958aca2be137284cd85ddb83df0fc",
+          "html": "https://github.com/afewell-hh/gitops-test-1/tree/main/gitops/hedgehog/fabric-1/managed/servers"
+        }
+      },
+      {
+        "name": "switches",
+        "path": "gitops/hedgehog/fabric-1/managed/switches",
+        "sha": "1848c0922476800f7772a6a9e55e3bfde77c2e8d",
+        "size": 0,
+        "url": "https://api.github.com/repos/afewell-hh/gitops-test-1/contents/gitops/hedgehog/fabric-1/managed/switches?ref=main",
+        "html_url": "https://github.com/afewell-hh/gitops-test-1/tree/main/gitops/hedgehog/fabric-1/managed/switches",
+        "git_url": "https://api.github.com/repos/afewell-hh/gitops-test-1/git/trees/1848c0922476800f7772a6a9e55e3bfde77c2e8d",
+        "download_url": null,
+        "type": "dir",
+        "_links": {
+          "self": "https://api.github.com/repos/afewell-hh/gitops-test-1/contents/gitops/hedgehog/fabric-1/managed/switches?ref=main",
+          "git": "https://api.github.com/repos/afewell-hh/gitops-test-1/git/trees/1848c0922476800f7772a6a9e55e3bfde77c2e8d",
+          "html": "https://github.com/afewell-hh/gitops-test-1/tree/main/gitops/hedgehog/fabric-1/managed/switches"
+        }
+      },
+      {
+        "name": "switchgroups",
+        "path": "gitops/hedgehog/fabric-1/managed/switchgroups",
+        "sha": "71b197c24a4f1254e8d0274a406f6e6824ab2259",
+        "size": 0,
+        "url": "https://api.github.com/repos/afewell-hh/gitops-test-1/contents/gitops/hedgehog/fabric-1/managed/switchgroups?ref=main",
+        "html_url": "https://github.com/afewell-hh/gitops-test-1/tree/main/gitops/hedgehog/fabric-1/managed/switchgroups",
+        "git_url": "https://api.github.com/repos/afewell-hh/gitops-test-1/git/trees/71b197c24a4f1254e8d0274a406f6e6824ab2259",
+        "download_url": null,
+        "type": "dir",
+        "_links": {
+          "self": "https://api.github.com/repos/afewell-hh/gitops-test-1/contents/gitops/hedgehog/fabric-1/managed/switchgroups?ref=main",
+          "git": "https://api.github.com/repos/afewell-hh/gitops-test-1/git/trees/71b197c24a4f1254e8d0274a406f6e6824ab2259",
+          "html": "https://github.com/afewell-hh/gitops-test-1/tree/main/gitops/hedgehog/fabric-1/managed/switchgroups"
+        }
+      },
+      {
+        "name": "vlannamespaces",
+        "path": "gitops/hedgehog/fabric-1/managed/vlannamespaces",
+        "sha": "3029ea740f975e41c98456f2ee194b58b0c6a08f",
+        "size": 0,
+        "url": "https://api.github.com/repos/afewell-hh/gitops-test-1/contents/gitops/hedgehog/fabric-1/managed/vlannamespaces?ref=main",
+        "html_url": "https://github.com/afewell-hh/gitops-test-1/tree/main/gitops/hedgehog/fabric-1/managed/vlannamespaces",
+        "git_url": "https://api.github.com/repos/afewell-hh/gitops-test-1/git/trees/3029ea740f975e41c98456f2ee194b58b0c6a08f",
+        "download_url": null,
+        "type": "dir",
+        "_links": {
+          "self": "https://api.github.com/repos/afewell-hh/gitops-test-1/contents/gitops/hedgehog/fabric-1/managed/vlannamespaces?ref=main",
+          "git": "https://api.github.com/repos/afewell-hh/gitops-test-1/git/trees/3029ea740f975e41c98456f2ee194b58b0c6a08f",
+          "html": "https://github.com/afewell-hh/gitops-test-1/tree/main/gitops/hedgehog/fabric-1/managed/vlannamespaces"
+        }
+      },
+      {
+        "name": "vpcattachments",
+        "path": "gitops/hedgehog/fabric-1/managed/vpcattachments",
+        "sha": "36942b5fa30c3daf0a792372b593e1a1b19a8dc7",
+        "size": 0,
+        "url": "https://api.github.com/repos/afewell-hh/gitops-test-1/contents/gitops/hedgehog/fabric-1/managed/vpcattachments?ref=main",
+        "html_url": "https://github.com/afewell-hh/gitops-test-1/tree/main/gitops/hedgehog/fabric-1/managed/vpcattachments",
+        "git_url": "https://api.github.com/repos/afewell-hh/gitops-test-1/git/trees/36942b5fa30c3daf0a792372b593e1a1b19a8dc7",
+        "download_url": null,
+        "type": "dir",
+        "_links": {
+          "self": "https://api.github.com/repos/afewell-hh/gitops-test-1/contents/gitops/hedgehog/fabric-1/managed/vpcattachments?ref=main",
+          "git": "https://api.github.com/repos/afewell-hh/gitops-test-1/git/trees/36942b5fa30c3daf0a792372b593e1a1b19a8dc7",
+          "html": "https://github.com/afewell-hh/gitops-test-1/tree/main/gitops/hedgehog/fabric-1/managed/vpcattachments"
+        }
+      },
+      {
+        "name": "vpcpeerings",
+        "path": "gitops/hedgehog/fabric-1/managed/vpcpeerings",
+        "sha": "3dcf245adf096b10fd8a6ee8d978a4ff514108aa",
+        "size": 0,
+        "url": "https://api.github.com/repos/afewell-hh/gitops-test-1/contents/gitops/hedgehog/fabric-1/managed/vpcpeerings?ref=main",
+        "html_url": "https://github.com/afewell-hh/gitops-test-1/tree/main/gitops/hedgehog/fabric-1/managed/vpcpeerings",
+        "git_url": "https://api.github.com/repos/afewell-hh/gitops-test-1/git/trees/3dcf245adf096b10fd8a6ee8d978a4ff514108aa",
+        "download_url": null,
+        "type": "dir",
+        "_links": {
+          "self": "https://api.github.com/repos/afewell-hh/gitops-test-1/contents/gitops/hedgehog/fabric-1/managed/vpcpeerings?ref=main",
+          "git": "https://api.github.com/repos/afewell-hh/gitops-test-1/git/trees/3dcf245adf096b10fd8a6ee8d978a4ff514108aa",
+          "html": "https://github.com/afewell-hh/gitops-test-1/tree/main/gitops/hedgehog/fabric-1/managed/vpcpeerings"
+        }
+      },
+      {
+        "name": "vpcs",
+        "path": "gitops/hedgehog/fabric-1/managed/vpcs",
+        "sha": "d2712e5dbcdbfbcbc2af70d0306b22aa3e796ad1",
+        "size": 0,
+        "url": "https://api.github.com/repos/afewell-hh/gitops-test-1/contents/gitops/hedgehog/fabric-1/managed/vpcs?ref=main",
+        "html_url": "https://github.com/afewell-hh/gitops-test-1/tree/main/gitops/hedgehog/fabric-1/managed/vpcs",
+        "git_url": "https://api.github.com/repos/afewell-hh/gitops-test-1/git/trees/d2712e5dbcdbfbcbc2af70d0306b22aa3e796ad1",
+        "download_url": null,
+        "type": "dir",
+        "_links": {
+          "self": "https://api.github.com/repos/afewell-hh/gitops-test-1/contents/gitops/hedgehog/fabric-1/managed/vpcs?ref=main",
+          "git": "https://api.github.com/repos/afewell-hh/gitops-test-1/git/trees/d2712e5dbcdbfbcbc2af70d0306b22aa3e796ad1",
+          "html": "https://github.com/afewell-hh/gitops-test-1/tree/main/gitops/hedgehog/fabric-1/managed/vpcs"
+        }
+      }
+    ]
+  }
+}

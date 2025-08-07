@@ -1,0 +1,154 @@
+{
+  "timestamp": "2025-08-06T07:25:52.152400",
+  "environment": {
+    "python_version": "3.10.12 (main, May 27 2025, 17:12:29) [GCC 11.4.0]",
+    "working_directory": "/home/ubuntu/cc/hedgehog-netbox-plugin",
+    "user": "ubuntu",
+    "django_status": "Not available",
+    "is_docker": false,
+    "github_api_accessible": true,
+    "internet_connectivity": true,
+    "environment_variables": {
+      "DJANGO_SETTINGS_MODULE": "NOT SET",
+      "SECRET_KEY": "NOT SET",
+      "DATABASE_URL": "NOT SET"
+    }
+  },
+  "configuration": {
+    "env_file_exists": true,
+    "env_file_size": 2136,
+    "token_files": [],
+    "django_model_access": "Failed: No module named 'django'"
+  },
+  "permissions": {
+    "current_directory": {
+      "path": "/home/ubuntu/cc/hedgehog-netbox-plugin",
+      "readable": true,
+      "writable": true,
+      "executable": true
+    },
+    "key_directories": {
+      "netbox_hedgehog": {
+        "exists": true,
+        "readable": true,
+        "writable": true,
+        "executable": true,
+        "file_count": 349
+      },
+      "netbox_hedgehog/services": {
+        "exists": true,
+        "readable": true,
+        "writable": true,
+        "executable": true,
+        "file_count": 19
+      },
+      "tests": {
+        "exists": true,
+        "readable": true,
+        "writable": true,
+        "executable": true,
+        "file_count": 108
+      },
+      "hemk/poc_development/fabric_management_k8s_configs/crds/raw": {
+        "exists": false
+      }
+    },
+    "temp_directory_access": true,
+    "temp_directory": "/tmp"
+  },
+  "github_access": {
+    "api_accessible": true,
+    "rate_limit": {
+      "resources": {
+        "core": {
+          "limit": 60,
+          "remaining": 54,
+          "reset": 1754466490,
+          "used": 6,
+          "resource": "core"
+        },
+        "graphql": {
+          "limit": 0,
+          "remaining": 0,
+          "reset": 1754468752,
+          "used": 0,
+          "resource": "graphql"
+        },
+        "integration_manifest": {
+          "limit": 5000,
+          "remaining": 5000,
+          "reset": 1754468752,
+          "used": 0,
+          "resource": "integration_manifest"
+        },
+        "search": {
+          "limit": 10,
+          "remaining": 10,
+          "reset": 1754465212,
+          "used": 0,
+          "resource": "search"
+        }
+      },
+      "rate": {
+        "limit": 60,
+        "remaining": 54,
+        "reset": 1754466490,
+        "used": 6,
+        "resource": "core"
+      }
+    },
+    "token_configured": false
+  },
+  "test_data": {
+    "raw_directory": {
+      "exists": false
+    },
+    "commit_directory": {
+      "exists": false
+    },
+    "pre_commit_directory": {
+      "exists": false
+    }
+  },
+  "service_tracing": {
+    "services_importable": false,
+    "import_error": "No module named 'netbox'",
+    "service_files": {
+      "netbox_hedgehog/services/gitops_ingestion_service.py": {
+        "exists": true,
+        "size": 32245
+      },
+      "netbox_hedgehog/services/gitops_onboarding_service.py": {
+        "exists": true,
+        "size": 79299
+      },
+      "netbox_hedgehog/services/gitops_edit_service.py": {
+        "exists": true,
+        "size": 25312
+      }
+    }
+  },
+  "recommendations": [
+    {
+      "priority": "CRITICAL",
+      "category": "Authentication",
+      "issue": "No GitHub token found",
+      "action": "Set GITHUB_TOKEN environment variable or create token file",
+      "test_command": "echo $GITHUB_TOKEN or ls *.token"
+    },
+    {
+      "priority": "HIGH",
+      "category": "Test Data",
+      "issue": "CRD raw directory not found",
+      "action": "Verify test data directory structure",
+      "test_command": "ls -la hemk/poc_development/fabric_management_k8s_configs/crds/raw"
+    },
+    {
+      "priority": "CRITICAL",
+      "category": "Services",
+      "issue": "Cannot import Django services",
+      "action": "Check Django setup and PYTHONPATH configuration",
+      "test_command": "python -c \"import django; django.setup()\""
+    }
+  ]
+}

@@ -9,7 +9,8 @@ from .models.vpc_api import VPC, External, ExternalAttachment, ExternalPeering, 
 from .models.wiring_api import Connection, Switch, Server, VLANNamespace, SwitchGroup
 from .views.crd_views import FabricCRDListView
 from .views import gitops_edit_views
-from .views.sync_views import FabricTestConnectionView, FabricSyncView
+from .views.sync_views import FabricTestConnectionView, FabricGitHubSyncView
+from .views.fabric_views import FabricSyncView
 from netbox.views import generic
 
 # Import fabric views
@@ -18,6 +19,13 @@ from .views.debug_edit_view import DebugFabricEditView
 
 # Import git repository views - temporarily disabled to test
 # from .views.git_repository_views import GitRepositoryListView as ProperGitRepositoryListView, GitRepositoryView
+
+# Import drift dashboard views
+from .views.drift_dashboard import (
+    DriftDetectionDashboardView,
+    FabricDriftDetailView,
+    DriftAnalysisAPIView
+)
 
 app_name = 'netbox_hedgehog'
 
@@ -373,6 +381,12 @@ urlpatterns = [
     path('fabrics/<int:pk>/crds/', FabricCRDListView.as_view(), name='fabric_crds'),
     path('fabrics/<int:pk>/test-connection/', FabricTestConnectionView.as_view(), name='fabric_test_connection'),
     path('fabrics/<int:pk>/sync/', FabricSyncView.as_view(), name='fabric_sync'),
+    path('fabrics/<int:pk>/github-sync/', FabricGitHubSyncView.as_view(), name='fabric_github_sync'),
+    
+    # Drift Detection Dashboard
+    path('drift-detection/', DriftDetectionDashboardView.as_view(), name='drift_dashboard'),
+    path('drift-detection/fabric/<int:fabric_id>/', FabricDriftDetailView.as_view(), name='fabric_drift_detail'),
+    path('api/drift-analysis/', DriftAnalysisAPIView.as_view(), name='drift_analysis_api'),
     
     # CR List pages
     path('vpcs/', VPCListView.as_view(), name='vpc_list'),

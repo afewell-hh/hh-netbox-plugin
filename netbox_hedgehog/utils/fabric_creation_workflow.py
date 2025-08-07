@@ -58,6 +58,7 @@ class IntegrationResult:
     health_status: dict = None
     credential_status: dict = None
     directory_validation: dict = None
+    migration_details: dict = None
     error: Optional[str] = None
     
     def __post_init__(self):
@@ -67,6 +68,8 @@ class IntegrationResult:
             self.credential_status = {}
         if self.directory_validation is None:
             self.directory_validation = {}
+        if self.migration_details is None:
+            self.migration_details = {}
 
 
 class UnifiedFabricCreationWorkflow:
@@ -473,76 +476,105 @@ class UnifiedFabricCreationWorkflow:
                 self.logger.warning(f"Directory validation failed during integration: {e}")
                 directory_validation = {'error': str(e), 'valid': False}
             
-            # INTEGRATION FIX: Initialize GitOps directory structure
-            gitops_initialization = {'attempted': False, 'success': False}
+            # Initialize migration details dictionary for comprehensive tracking
+            migration_details = {}
             
-            if fabric.git_repository and fabric.gitops_directory and directory_validation.get('valid', False):
+            # Initialize GitOps structure and process any pre-existing files
+            if not getattr(fabric, 'gitops_initialized', False):
                 try:
-                    self.logger.info(f"Initializing GitOps directory structure for fabric {fabric.name}")
+                    from ..services.gitops_onboarding_service import GitOpsOnboardingService
+                    self.logger.info(f"Initializing GitOps structure for fabric {fabric.name}")
                     
-                    # Import GitOpsDirectoryManager for directory initialization
-                    from ..services.bidirectional_sync.gitops_directory_manager import GitOpsDirectoryManager
+                    onboarding_service = GitOpsOnboardingService(fabric)
+                    onboarding_result = onboarding_service.initialize_gitops_structure()
                     
-                    # Initialize GitOps directory using existing implementation
-                    manager = GitOpsDirectoryManager(fabric)
-                    init_result = manager.initialize_directory_structure(force=False)
-                    
-                    gitops_initialization = {
-                        'attempted': True,
-                        'success': init_result.success,
-                        'message': init_result.message,
-                        'directories_created': init_result.directories_created,
-                        'errors': init_result.errors,
-                        'warnings': init_result.warnings
-                    }
-                    
-                    if init_result.success:
+                    if onboarding_result['success']:
+                        self.logger.info(f"GitOps onboarding successful for fabric {fabric.name}")
+                        
                         # Update fabric GitOps initialization status
-                        fabric.gitops_initialized = True
-                        fabric.gitops_directory_status = 'initialized'
-                        fabric.directory_init_error = ''
-                        fabric.last_directory_sync = timezone.now()
-                        fabric.save(update_fields=[
-                            'gitops_initialized', 
-                            'gitops_directory_status', 
-                            'directory_init_error',
-                            'last_directory_sync'
-                        ])
+                        try:
+                            fabric.gitops_initialized = True
+                            fabric.gitops_directory_status = 'initialized'
+                            fabric.directory_init_error = ''
+                            fabric.last_directory_sync = timezone.now()
+                            fabric.save(update_fields=[
+                                'gitops_initialized', 
+                                'gitops_directory_status', 
+                                'directory_init_error',
+                                'last_directory_sync'
+                            ])
+                            self.logger.info(f"Updated fabric {fabric.id} GitOps status to initialized")
+                        except Exception as field_error:
+                            # If fabric fields don't exist yet, just log and continue
+                            self.logger.warning(f"Could not update GitOps status fields for fabric {fabric.id}: {field_error}")
                         
-                        self.logger.info(f"GitOps directory initialized successfully for fabric {fabric.id}")
+                        # Process any files that were migrated to raw directory
+                        if onboarding_result.get('files_migrated') or onboarding_result.get('ingestion_attempted'):
+                            self.logger.info(f"Processing migrated files for fabric {fabric.name}")
+                            
+                            # The ingestion was already attempted during onboarding
+                            # Just log the results
+                            if onboarding_result.get('ingestion_success'):
+                                self.logger.info(f"File ingestion completed successfully for fabric {fabric.name}")
+                                migration_details['gitops_ingestion'] = {
+                                    'success': True,
+                                    'files_processed': len(onboarding_result.get('files_created', [])),
+                                    'documents_extracted': len(onboarding_result.get('documents_extracted', []))
+                                }
+                            else:
+                                self.logger.warning(f"File ingestion had issues for fabric {fabric.name}")
+                                migration_details['gitops_ingestion'] = {
+                                    'success': False,
+                                    'error': onboarding_result.get('error', 'Unknown ingestion error')
+                                }
+                        
+                        migration_details['gitops_onboarding'] = {
+                            'success': True,
+                            'message': onboarding_result.get('message', 'GitOps structure initialized')
+                        }
                     else:
-                        # Update fabric with error status but don't fail creation
-                        fabric.gitops_directory_status = 'error'
-                        fabric.directory_init_error = '; '.join(init_result.errors)
-                        fabric.save(update_fields=['gitops_directory_status', 'directory_init_error'])
+                        self.logger.error(f"GitOps onboarding failed for fabric {fabric.name}: {onboarding_result.get('error')}")
                         
-                        self.logger.warning(f"GitOps directory initialization had errors for fabric {fabric.id}: {init_result.errors}")
-                    
-                except Exception as e:
-                    error_msg = f"GitOps directory initialization failed for fabric {fabric.id}: {str(e)}"
-                    self.logger.error(error_msg)
-                    
-                    gitops_initialization = {
-                        'attempted': True,
+                        # Update fabric with error status but don't fail creation
+                        try:
+                            fabric.gitops_directory_status = 'error'
+                            fabric.directory_init_error = onboarding_result.get('error', 'Unknown onboarding error')
+                            fabric.save(update_fields=['gitops_directory_status', 'directory_init_error'])
+                        except Exception as field_error:
+                            # If fabric fields don't exist yet, just log and continue
+                            self.logger.warning(f"Could not update GitOps error status fields for fabric {fabric.id}: {field_error}")
+                        
+                        migration_details['gitops_onboarding'] = {
+                            'success': False,
+                            'error': onboarding_result.get('error', 'Unknown onboarding error')
+                        }
+                        
+                except ImportError as e:
+                    self.logger.error(f"GitOps services not available: {str(e)}")
+                    migration_details['gitops_onboarding'] = {
                         'success': False,
-                        'error': str(e)
+                        'error': f'GitOps services not available: {str(e)}'
                     }
-                    
-                    # Update fabric with error status but don't fail creation
-                    try:
-                        fabric.gitops_directory_status = 'error'
-                        fabric.directory_init_error = str(e)
-                        fabric.save(update_fields=['gitops_directory_status', 'directory_init_error'])
-                    except Exception:
-                        # If fabric fields don't exist yet, just log and continue
-                        self.logger.warning(f"Could not update GitOps status fields for fabric {fabric.id}")
+                except Exception as e:
+                    self.logger.error(f"GitOps onboarding error for fabric {fabric.name}: {str(e)}")
+                    migration_details['gitops_onboarding'] = {
+                        'success': False,
+                        'error': f'GitOps onboarding error: {str(e)}'
+                    }
             else:
-                self.logger.info(f"Skipping GitOps initialization for fabric {fabric.id} - prerequisites not met")
-                gitops_initialization = {
-                    'attempted': False,
+                # Fabric already initialized or not eligible for GitOps onboarding
+                migration_details['gitops_onboarding'] = {
                     'success': False,
-                    'reason': 'Prerequisites not met (repository, directory, or validation failed)'
+                    'skipped': True,
+                    'reason': 'Fabric already initialized or not eligible for GitOps onboarding'
                 }
+            
+            # Use the migration_details from the new integration code above
+            gitops_initialization = migration_details.get('gitops_onboarding', {
+                'attempted': False,
+                'success': False,
+                'reason': 'GitOps onboarding not attempted'
+            })
             
             # Update fabric timestamps
             fabric.last_git_sync = timezone.now()
@@ -568,7 +600,8 @@ class UnifiedFabricCreationWorkflow:
                 message=success_message,
                 health_status=health_status,
                 credential_status=credential_status,
-                directory_validation=directory_validation
+                directory_validation=directory_validation,
+                migration_details=migration_details
             )
             
         except Exception as e:
@@ -576,6 +609,7 @@ class UnifiedFabricCreationWorkflow:
             return IntegrationResult(
                 success=False,
                 message='Git integration setup failed',
+                migration_details={},
                 error=str(e)
             )
     

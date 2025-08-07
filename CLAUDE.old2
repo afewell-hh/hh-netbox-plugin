@@ -1,0 +1,402 @@
+# NetBox Hedgehog Plugin - Technical Context
+
+**Project**: Self-service Kubernetes CRD management via NetBox interface  
+**Current Status**: Production ready with 12 CRD types operational  
+**Architecture**: NetBox 4.3.3 Django plugin with Kubernetes client integration  
+**Last Updated**: July 31, 2025
+
+---
+
+## Operational Context
+
+### Current Implementation
+- **CRD Management**: 12 operational types (VPC API: 7, Wiring API: 5)  
+- **Integration Status**: Kubernetes cluster operational with GitOps workflows
+- **Test Coverage**: 100% passing with comprehensive validation suite
+- **UI Implementation**: Progressive disclosure interface with drift detection
+
+### Technology Stack
+
+#### Primary Framework
+- **NetBox**: 4.3.3 (Django-based network management platform)
+- **Python**: 3.9+ with Django 4.2.x framework
+- **Database**: PostgreSQL (NetBox standard configuration)
+- **Frontend**: Bootstrap 5 with NetBox-consistent styling patterns
+
+#### Integration Technologies  
+- **Kubernetes**: Client library integration for CRD lifecycle management
+- **GitOps**: ArgoCD integration with repository-based configuration workflows
+- **API**: Django REST Framework with NetBox model integration
+- **UI**: Progressive disclosure patterns with JavaScript enhancement
+
+#### Key Dependencies
+```python
+# Core Platform Dependencies
+netbox>=4.3.3                    # NetBox platform requirement
+django>=4.2.0                    # Django framework compatibility
+psycopg2>=2.9.0                 # PostgreSQL database adapter
+
+# Kubernetes Integration
+kubernetes>=24.0.0               # Kubernetes Python client
+pyyaml>=6.0                      # YAML configuration processing
+cryptography>=3.4.8             # Security and certificate handling
+
+# Development Dependencies  
+pytest>=7.0.0                   # Testing framework
+black>=22.0.0                   # Code formatting
+flake8>=5.0.0                   # Code linting and quality
+```
+
+---
+
+## Development Environment
+
+### Environment Setup Commands
+```bash
+# Virtual Environment Management
+python3 -m venv netbox_hedgehog_env        # Create isolated environment
+source netbox_hedgehog_env/bin/activate    # Activate development environment
+pip install --upgrade pip                  # Ensure latest pip version
+
+# Dependency Installation
+pip install -r requirements.txt            # Install project dependencies  
+pip install -r requirements-dev.txt        # Install development tools
+
+# Environment Variables (see .env.example)
+export NETBOX_URL="http://localhost:8000"
+export KUBERNETES_CONFIG_PATH="~/.kube/config"
+export DJANGO_DEBUG="True"
+```
+
+### Testing and Quality Assurance
+```bash
+# Test Execution
+python -m pytest                           # Execute full test suite
+python -m pytest tests/test_models.py      # Run specific test module
+python -m pytest tests/test_api.py -v      # Verbose output for API tests
+python -m pytest --cov=netbox_hedgehog     # Execute with coverage analysis
+
+# Code Quality Tools
+black netbox_hedgehog/                     # Format code to standard
+black --check netbox_hedgehog/             # Verify formatting compliance
+flake8 netbox_hedgehog/                    # Lint code for quality issues
+flake8 netbox_hedgehog/ --statistics       # Quality statistics report
+
+# Quality Tools Integration  
+pre-commit install                          # Git hooks for quality
+black --config pyproject.toml .           # Code formatting
+flake8 --config setup.cfg .               # Code linting
+```
+
+### NetBox Development Operations
+```bash
+# Database Management
+python manage.py migrate                   # Apply all migrations
+python manage.py migrate netbox_hedgehog   # Apply plugin-specific migrations
+python manage.py showmigrations            # Display migration status
+
+# Development Server
+python manage.py runserver                 # Start development server (port 8000)
+python manage.py runserver 0.0.0.0:8080   # Custom host and port configuration
+
+# Data Management
+python manage.py loaddata initial_data     # Load development data
+python manage.py shell                     # Access Django shell for debugging
+
+# Kubernetes Operations
+kubectl get crds | grep fabric              # Verify CRD availability
+kubectl get fabrics -A                      # Check fabric status
+kubectl get nodes                          # Verify K8s cluster access
+
+# GitOps Operations
+git push origin feature/new-feature         # Push feature branch
+gh pr create --title "Feature: Description" # Create pull request
+```
+
+---
+
+## Technical Standards and Patterns
+
+### Python Implementation Standards
+```python
+# Import Organization (follow PEP 8 and Django conventions)
+# Standard library imports
+import os
+import logging
+from typing import Dict, List, Optional
+
+# Third-party imports  
+import yaml
+from django.db import models
+from kubernetes import client, config
+
+# Local application imports
+from netbox.models import NetBoxModel
+from .validators import validate_fabric_name
+
+# Naming Conventions
+class HedgehogFabric(NetBoxModel):          # PascalCase for classes
+    """CamelCase class with descriptive docstring."""
+    
+    def validate_configuration(self) -> bool: # snake_case for methods
+        """Method with type hints and clear documentation."""
+        fabric_name = self.name.lower()      # snake_case for variables
+        return validate_fabric_name(fabric_name)
+
+# Constants and Configuration
+DEFAULT_TIMEOUT = 30                        # UPPER_CASE for constants
+MAX_RETRY_ATTEMPTS = 3
+```
+
+### Django/NetBox Implementation Patterns
+```python
+# Model Definition Standards
+class HedgehogFabric(NetBoxModel):
+    """Hedgehog fabric configuration with NetBox integration."""
+    
+    # Required fields with proper constraints
+    name = models.CharField(
+        max_length=100, 
+        unique=True,
+        help_text="Unique fabric identifier"
+    )
+    
+    # Optional fields with sensible defaults
+    description = models.TextField(
+        blank=True,
+        help_text="Optional fabric description"  
+    )
+    
+    # Foreign key relationships following NetBox patterns
+    site = models.ForeignKey(
+        to='dcim.Site',
+        on_delete=models.CASCADE,
+        help_text="Site where fabric is deployed"
+    )
+    
+    class Meta:
+        ordering = ['name']                  # Consistent ordering
+        verbose_name_plural = 'Hedgehog Fabrics'  # Proper pluralization
+        
+    def __str__(self):
+        return self.name                     # String representation
+```
+
+### API Implementation Standards
+```python
+# REST API Implementation Patterns
+from rest_framework import serializers
+from netbox.api.serializers import NetBoxModelSerializer
+
+class HedgehogFabricSerializer(NetBoxModelSerializer):
+    """API serializer with validation and formatting."""
+    
+    class Meta:
+        model = HedgehogFabric
+        fields = '__all__'
+        
+    def validate_name(self, value):
+        """Custom field validation with clear error messages."""
+        if not value or len(value.strip()) < 3:
+            raise serializers.ValidationError(
+                "Fabric name must be at least 3 characters long."
+            )
+        return value.strip().lower()
+
+# ViewSet Implementation  
+from netbox.api.viewsets import NetBoxModelViewSet
+
+class HedgehogFabricViewSet(NetBoxModelViewSet):
+    """API viewset following NetBox patterns."""
+    queryset = HedgehogFabric.objects.all()
+    serializer_class = HedgehogFabricSerializer
+    filterset_class = HedgehogFabricFilterSet
+```
+
+### Git Workflow Standards
+```bash
+# Branch Strategy
+git checkout -b feature/description         # Create feature branch from main
+git add .                                   # Stage changes
+git commit -m "feat: descriptive message"  # Conventional commit format
+
+# Code Quality Requirements
+black --check netbox_hedgehog/             # Verify formatting compliance
+flake8 netbox_hedgehog/                    # Verify code quality
+python -m pytest                          # Verify all tests pass
+
+# Pull Request Process
+git push origin feature/description         # Push feature branch
+gh pr create --title "Feature: Description" # Create pull request with description
+```
+
+---
+
+## Project Architecture and Navigation
+
+### Project Directory Structure
+```
+netbox_hedgehog/                    # Main plugin package
+├── __init__.py                     # Plugin initialization
+├── config.py                      # Plugin configuration
+├── models/                        # Database model definitions
+│   ├── __init__.py                # Model registration
+│   ├── fabric.py                  # Fabric management models
+│   ├── interface.py               # Interface configuration models
+│   └── validators.py              # Model validation functions
+├── api/                           # REST API implementation
+│   ├── __init__.py                # API package initialization
+│   ├── serializers.py             # Data serialization classes
+│   ├── views.py                   # API endpoint implementations
+│   └── urls.py                    # API URL routing
+├── views/                         # Web interface views
+│   ├── __init__.py                # View package initialization
+│   ├── fabric.py                  # Fabric management views
+│   └── generic.py                 # Shared view functionality
+├── templates/                     # HTML template files
+│   └── netbox_hedgehog/           # Plugin-specific templates
+│       ├── fabric/                # Fabric management templates
+│       └── inc/                   # Shared template components
+├── static/                        # Static web assets
+│   └── netbox_hedgehog/           # Plugin-specific assets
+│       ├── css/                   # Stylesheet files
+│       ├── js/                    # JavaScript files
+│       └── img/                   # Image assets
+└── tests/                         # Test suite
+    ├── test_models.py             # Model testing
+    ├── test_api.py                # API testing
+    └── test_views.py              # View testing
+```
+
+### Documentation Architecture
+```
+/architecture_specifications/       # Technical architecture documentation
+├── system_architecture.md         # Overall system design
+├── database_schema.md             # Data model specifications  
+├── api_specification.md           # REST API documentation
+└── integration_architecture.md    # External system integration
+
+/docs/                             # User and developer documentation
+├── api/                          # API documentation
+├── development/                  # Development guides
+├── deployment/                   # Deployment procedures
+└── user_guide/                   # End-user documentation
+
+/tests/                           # Test specifications and evidence
+├── unit/                        # Unit test implementations
+├── integration/                 # Integration test suites
+└── fixtures/                    # Test data and fixtures
+
+/project_management/               # Project coordination and planning
+├── current_state/                # Project status and priorities
+├── architecture/                 # Architecture documentation
+└── qa_frameworks/                # Quality assurance systems
+```
+
+### Navigation Guidelines
+- **Models and Database**: Start in `/netbox_hedgehog/models/` for data structure work
+- **API Development**: Use `/netbox_hedgehog/api/` for REST endpoint implementation
+- **User Interface**: Templates in `/netbox_hedgehog/templates/`, styling in `/static/`
+- **Testing**: Comprehensive test suite in `/tests/` with organized test categories
+- **Architecture Details**: Deep system design in `/architecture_specifications/`
+
+---
+
+## HNP-Specific Technical Context
+
+### Current Technical Implementation
+
+#### Operational Capabilities
+- **CRD Management**: 12 CRD types with full lifecycle support
+  - VPC API: 7 CRD types (VPC, External, IPv4Namespace, ExternalAttachment, ExternalPeering, VPCAttachment, VPCPeering)
+  - Wiring API: 5 CRD types (Switch, Connection, Server, SwitchGroup, VLANNamespace)
+- **NetBox Integration**: Seamless UI integration with NetBox 4.3.3 patterns
+- **Kubernetes Sync**: Real-time synchronization with cluster CRD status
+- **GitOps Workflow**: Repository-based configuration with ArgoCD integration
+
+#### Test Coverage Status
+- **Unit Tests**: 100% model coverage with comprehensive validation
+- **Integration Tests**: Full API endpoint coverage with realistic scenarios  
+- **UI Tests**: Progressive disclosure and workflow validation
+- **End-to-End**: Complete CRD lifecycle testing with Kubernetes integration
+
+### Technical Constraints and Requirements
+
+#### Platform Compatibility
+- **NetBox Version**: Must maintain NetBox 4.3.3+ compatibility
+- **Django Framework**: Django 4.2.x requirement with backward compatibility
+- **Python Version**: Python 3.9+ requirement for modern language features
+- **Database**: PostgreSQL optimization for NetBox standard configuration
+
+#### Kubernetes Integration Constraints
+- **CRD Lifecycle**: Must follow Kubernetes CRD management best practices
+- **API Compatibility**: Kubernetes client library version alignment
+- **Status Synchronization**: Real-time status updates without performance impact
+- **Error Handling**: Graceful degradation when cluster unavailable
+
+#### UI Design Requirements
+- **NetBox Consistency**: Must follow NetBox administrative interface patterns
+- **Progressive Disclosure**: Complex configuration presented in manageable steps
+- **Responsive Design**: Bootstrap 5 responsive patterns for all screen sizes
+- **Accessibility**: WCAG compliance following NetBox accessibility standards
+
+### Development Context and Focus Areas
+
+#### Active Development Priorities
+- **Performance Optimization**: CRD synchronization efficiency improvements
+- **U Enhancement**: Progressive disclosure pattern refinement
+- **Integration Stability**: Kubernetes client error handling and resilience
+- **Documentation**: Architecture specification completion and maintenance
+
+#### Technical Debt and Maintenance
+- **Code Quality**: Ongoing refactoring for maintainability
+- **Test Coverage**: Expansion of edge case and error condition testing
+- **Security**: Regular dependency updates and security patch integration
+- **Monitoring**: Observability and debugging capability enhancement
+
+#### Integration Architecture
+- **GitOps Pipeline**: ArgoCD integration with configuration repository
+- **Status Reporting**: Real-time CRD status reflection in NetBox UI
+- **Error Propagation**: Meaningful error messages from Kubernetes to NetBox
+- **Configuration Validation**: Pre-deployment validation of CRD configurations
+
+### Development Workflow Integration
+
+#### Standard Development Process
+1. **Feature Branch**: Create from main with descriptive name (`git checkout -b feature/description`)
+2. **Test-Driven Development**: Write tests first, then implementation
+3. **Quality Standards**: Tests pass, code formatted, no linting errors
+4. **Documentation**: Update relevant documentation with changes
+5. **Pull Request**: Create with comprehensive description and testing evidence
+
+#### Environment Verification
+```bash
+# Critical System Checks
+docker ps | grep netbox              # Verify NetBox container running
+kubectl get nodes                    # Verify Kubernetes cluster accessible  
+git status                          # Verify clean working directory state
+python -m pytest --version         # Verify testing framework ready
+python manage.py check              # Verify Django configuration valid
+```
+
+#### Testing Requirements
+- **Unit Tests**: All new code requires corresponding tests
+- **Integration Tests**: API endpoints and database operations
+- **Evidence Collection**: Screenshots for UI changes, API responses for backend
+- **Performance**: No regression in response times or resource usage
+
+---
+
+## Project Management Integration
+
+For complex project coordination and specialized methodology systems:
+- **Advanced Coordination**: See `/project_management/qapm_methodology/`
+- **Quality Assurance Systems**: Comprehensive validation frameworks available
+- **Multi-Agent Coordination**: Specialized coordination patterns available
+- **Project Phase Management**: Multi-phase project management approaches available
+
+*Note: Technical implementation focuses on code, testing, and development workflows - specialized project coordination handled by dedicated project management systems*
+
+---
+
+**This technical context provides the foundation for effective development work on the NetBox Hedgehog Plugin. The information supports all technical domains while maintaining focus on implementation, testing, and code quality standards.**

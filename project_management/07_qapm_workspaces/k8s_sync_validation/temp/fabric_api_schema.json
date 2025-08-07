@@ -1,0 +1,1498 @@
+{
+  "name": "Hedgehog Fabric List",
+  "description": "Enhanced fabric management using separated GitRepository architecture.\n\nProvides CRUD operations for fabrics with integrated GitRepository support,\nunified creation workflows, and comprehensive validation.",
+  "renders": [
+    "application/json",
+    "text/html"
+  ],
+  "parses": [
+    "application/json",
+    "multipart/form-data"
+  ],
+  "actions": {
+    "PUT": {
+      "id": {
+        "type": "integer",
+        "required": false,
+        "read_only": true,
+        "label": "ID"
+      },
+      "tags": {
+        "type": "field",
+        "required": false,
+        "read_only": false,
+        "label": "Tags",
+        "child": {
+          "type": "nested object",
+          "required": false,
+          "read_only": false,
+          "children": {
+            "id": {
+              "type": "integer",
+              "required": false,
+              "read_only": true,
+              "label": "Id"
+            },
+            "url": {
+              "type": "field",
+              "required": false,
+              "read_only": true,
+              "label": "Url"
+            },
+            "display_url": {
+              "type": "field",
+              "required": false,
+              "read_only": true,
+              "label": "Display url"
+            },
+            "display": {
+              "type": "field",
+              "required": false,
+              "read_only": true,
+              "label": "Display"
+            },
+            "name": {
+              "type": "string",
+              "required": true,
+              "read_only": false,
+              "label": "Name",
+              "max_length": 100
+            },
+            "slug": {
+              "type": "slug",
+              "required": true,
+              "read_only": false,
+              "label": "Slug",
+              "max_length": 100
+            },
+            "color": {
+              "type": "string",
+              "required": false,
+              "read_only": false,
+              "label": "Color",
+              "max_length": 6
+            }
+          }
+        }
+      },
+      "custom_fields": {
+        "type": "field",
+        "required": false,
+        "read_only": false,
+        "label": "Custom fields"
+      },
+      "url": {
+        "type": "field",
+        "required": false,
+        "read_only": true,
+        "label": "Url"
+      },
+      "display_url": {
+        "type": "field",
+        "required": false,
+        "read_only": true,
+        "label": "Display url"
+      },
+      "display": {
+        "type": "field",
+        "required": false,
+        "read_only": true,
+        "label": "Display"
+      },
+      "created": {
+        "type": "datetime",
+        "required": false,
+        "read_only": true,
+        "label": "Created"
+      },
+      "last_updated": {
+        "type": "datetime",
+        "required": false,
+        "read_only": true,
+        "label": "Last updated"
+      },
+      "custom_field_data": {
+        "type": "field",
+        "required": false,
+        "read_only": false,
+        "label": "Custom field data"
+      },
+      "name": {
+        "type": "string",
+        "required": true,
+        "read_only": false,
+        "label": "Name",
+        "help_text": "Unique name for this Hedgehog fabric",
+        "max_length": 100
+      },
+      "description": {
+        "type": "string",
+        "required": false,
+        "read_only": false,
+        "label": "Description",
+        "help_text": "Optional description of this fabric"
+      },
+      "status": {
+        "type": "choice",
+        "required": false,
+        "read_only": false,
+        "label": "Status",
+        "help_text": "Configuration status - whether this fabric is planned, active, etc.",
+        "choices": [
+          {
+            "value": "planned",
+            "display_name": "Planned"
+          },
+          {
+            "value": "active",
+            "display_name": "Active"
+          },
+          {
+            "value": "maintenance",
+            "display_name": "Maintenance"
+          },
+          {
+            "value": "decommissioned",
+            "display_name": "Decommissioned"
+          }
+        ]
+      },
+      "connection_status": {
+        "type": "choice",
+        "required": false,
+        "read_only": false,
+        "label": "Connection status",
+        "help_text": "Connection status - whether NetBox can connect to this fabric",
+        "choices": [
+          {
+            "value": "unknown",
+            "display_name": "Unknown"
+          },
+          {
+            "value": "connected",
+            "display_name": "Connected"
+          },
+          {
+            "value": "disconnected",
+            "display_name": "Disconnected"
+          },
+          {
+            "value": "error",
+            "display_name": "Error"
+          }
+        ]
+      },
+      "sync_status": {
+        "type": "choice",
+        "required": false,
+        "read_only": false,
+        "label": "Sync status",
+        "help_text": "Sync status - whether data is synchronized with Kubernetes",
+        "choices": [
+          {
+            "value": "never_synced",
+            "display_name": "Never Synced"
+          },
+          {
+            "value": "in_sync",
+            "display_name": "In Sync"
+          },
+          {
+            "value": "out_of_sync",
+            "display_name": "Out of Sync"
+          },
+          {
+            "value": "syncing",
+            "display_name": "Syncing"
+          },
+          {
+            "value": "error",
+            "display_name": "Sync Error"
+          }
+        ]
+      },
+      "kubernetes_server": {
+        "type": "url",
+        "required": false,
+        "read_only": false,
+        "label": "Kubernetes server",
+        "help_text": "Kubernetes API server URL (optional if using default kubeconfig)",
+        "max_length": 200
+      },
+      "kubernetes_token": {
+        "type": "string",
+        "required": false,
+        "read_only": false,
+        "label": "Kubernetes token",
+        "help_text": "Kubernetes service account token (leave empty to use kubeconfig)"
+      },
+      "kubernetes_ca_cert": {
+        "type": "string",
+        "required": false,
+        "read_only": false,
+        "label": "Kubernetes ca cert",
+        "help_text": "Kubernetes CA certificate (leave empty to use kubeconfig)"
+      },
+      "kubernetes_namespace": {
+        "type": "string",
+        "required": false,
+        "read_only": false,
+        "label": "Kubernetes namespace",
+        "help_text": "Default namespace for this fabric's CRDs",
+        "max_length": 253
+      },
+      "sync_enabled": {
+        "type": "boolean",
+        "required": false,
+        "read_only": false,
+        "label": "Sync enabled",
+        "help_text": "Enable automatic synchronization with Kubernetes"
+      },
+      "sync_interval": {
+        "type": "integer",
+        "required": false,
+        "read_only": false,
+        "label": "Sync interval",
+        "help_text": "Sync interval in seconds (0 to disable automatic sync)",
+        "min_value": 0,
+        "max_value": 2147483647
+      },
+      "last_sync": {
+        "type": "datetime",
+        "required": false,
+        "read_only": false,
+        "label": "Last sync",
+        "help_text": "Timestamp of last successful sync"
+      },
+      "sync_error": {
+        "type": "string",
+        "required": false,
+        "read_only": false,
+        "label": "Sync error",
+        "help_text": "Last sync error message (if any)"
+      },
+      "connection_error": {
+        "type": "string",
+        "required": false,
+        "read_only": false,
+        "label": "Connection error",
+        "help_text": "Last connection error message (if any)"
+      },
+      "gitops_directory": {
+        "type": "string",
+        "required": false,
+        "read_only": false,
+        "label": "Gitops directory",
+        "help_text": "Directory path within repository for this fabric's CRDs",
+        "max_length": 500
+      },
+      "git_repository_url": {
+        "type": "url",
+        "required": false,
+        "read_only": false,
+        "label": "Git repository url",
+        "help_text": "[DEPRECATED] Git repository URL - use git_repository field instead",
+        "max_length": 200
+      },
+      "git_branch": {
+        "type": "string",
+        "required": false,
+        "read_only": false,
+        "label": "Git branch",
+        "help_text": "[DEPRECATED] Git branch - managed by GitRepository",
+        "max_length": 100
+      },
+      "git_path": {
+        "type": "string",
+        "required": false,
+        "read_only": false,
+        "label": "Git path",
+        "help_text": "[DEPRECATED] Git path - use gitops_directory field instead",
+        "max_length": 255
+      },
+      "git_username": {
+        "type": "string",
+        "required": false,
+        "read_only": false,
+        "label": "Git username",
+        "help_text": "[DEPRECATED] Git username - managed by GitRepository",
+        "max_length": 100
+      },
+      "git_token": {
+        "type": "string",
+        "required": false,
+        "read_only": false,
+        "label": "Git token",
+        "help_text": "[DEPRECATED] Git token - managed by GitRepository",
+        "max_length": 255
+      },
+      "desired_state_commit": {
+        "type": "string",
+        "required": false,
+        "read_only": false,
+        "label": "Desired state commit",
+        "help_text": "Git commit SHA of current desired state",
+        "max_length": 40
+      },
+      "drift_status": {
+        "type": "choice",
+        "required": false,
+        "read_only": false,
+        "label": "Drift status",
+        "help_text": "Current drift status between desired and actual state",
+        "choices": [
+          {
+            "value": "in_sync",
+            "display_name": "In Sync"
+          },
+          {
+            "value": "drift_detected",
+            "display_name": "Drift Detected"
+          },
+          {
+            "value": "git_ahead",
+            "display_name": "Git Ahead"
+          },
+          {
+            "value": "cluster_ahead",
+            "display_name": "Cluster Ahead"
+          },
+          {
+            "value": "conflicts",
+            "display_name": "Conflicts"
+          }
+        ]
+      },
+      "drift_count": {
+        "type": "integer",
+        "required": false,
+        "read_only": false,
+        "label": "Drift count",
+        "help_text": "Number of resources with detected drift",
+        "min_value": 0,
+        "max_value": 2147483647
+      },
+      "last_git_sync": {
+        "type": "datetime",
+        "required": false,
+        "read_only": false,
+        "label": "Last git sync",
+        "help_text": "Timestamp of last Git repository sync"
+      },
+      "gitops_tool": {
+        "type": "choice",
+        "required": false,
+        "read_only": false,
+        "label": "Gitops tool",
+        "help_text": "GitOps tool used for deployments",
+        "choices": [
+          {
+            "value": "manual",
+            "display_name": "Manual"
+          },
+          {
+            "value": "argocd",
+            "display_name": "ArgoCD"
+          },
+          {
+            "value": "flux",
+            "display_name": "Flux"
+          },
+          {
+            "value": "tekton",
+            "display_name": "Tekton"
+          },
+          {
+            "value": "jenkins",
+            "display_name": "Jenkins"
+          },
+          {
+            "value": "none",
+            "display_name": "None"
+          }
+        ]
+      },
+      "gitops_app_name": {
+        "type": "string",
+        "required": false,
+        "read_only": false,
+        "label": "Gitops app name",
+        "help_text": "GitOps application name (for ArgoCD/Flux integration)",
+        "max_length": 255
+      },
+      "gitops_namespace": {
+        "type": "string",
+        "required": false,
+        "read_only": false,
+        "label": "Gitops namespace",
+        "help_text": "GitOps application namespace",
+        "max_length": 255
+      },
+      "cached_crd_count": {
+        "type": "integer",
+        "required": false,
+        "read_only": false,
+        "label": "Cached crd count",
+        "help_text": "Cached total count of CRDs (updated during sync)",
+        "min_value": 0,
+        "max_value": 2147483647
+      },
+      "cached_vpc_count": {
+        "type": "integer",
+        "required": false,
+        "read_only": false,
+        "label": "Cached vpc count",
+        "help_text": "Cached VPC count (updated during sync)",
+        "min_value": 0,
+        "max_value": 2147483647
+      },
+      "cached_connection_count": {
+        "type": "integer",
+        "required": false,
+        "read_only": false,
+        "label": "Cached connection count",
+        "help_text": "Cached Connection count (updated during sync)",
+        "min_value": 0,
+        "max_value": 2147483647
+      },
+      "connections_count": {
+        "type": "integer",
+        "required": false,
+        "read_only": false,
+        "label": "Connections count",
+        "help_text": "Count of Connection CRDs",
+        "min_value": 0,
+        "max_value": 2147483647
+      },
+      "servers_count": {
+        "type": "integer",
+        "required": false,
+        "read_only": false,
+        "label": "Servers count",
+        "help_text": "Count of Server CRDs",
+        "min_value": 0,
+        "max_value": 2147483647
+      },
+      "switches_count": {
+        "type": "integer",
+        "required": false,
+        "read_only": false,
+        "label": "Switches count",
+        "help_text": "Count of Switch CRDs",
+        "min_value": 0,
+        "max_value": 2147483647
+      },
+      "vpcs_count": {
+        "type": "integer",
+        "required": false,
+        "read_only": false,
+        "label": "Vpcs count",
+        "help_text": "Count of VPC CRDs",
+        "min_value": 0,
+        "max_value": 2147483647
+      },
+      "argocd_installed": {
+        "type": "boolean",
+        "required": false,
+        "read_only": false,
+        "label": "Argocd installed",
+        "help_text": "Whether ArgoCD is installed and configured for this fabric"
+      },
+      "argocd_version": {
+        "type": "string",
+        "required": false,
+        "read_only": false,
+        "label": "Argocd version",
+        "help_text": "Version of ArgoCD installed",
+        "max_length": 50
+      },
+      "argocd_server_url": {
+        "type": "url",
+        "required": false,
+        "read_only": false,
+        "label": "Argocd server url",
+        "help_text": "ArgoCD server URL for this fabric",
+        "max_length": 200
+      },
+      "argocd_health_status": {
+        "type": "choice",
+        "required": false,
+        "read_only": false,
+        "label": "Argocd health status",
+        "help_text": "Current ArgoCD health status",
+        "choices": [
+          {
+            "value": "unknown",
+            "display_name": "Unknown"
+          },
+          {
+            "value": "healthy",
+            "display_name": "Healthy"
+          },
+          {
+            "value": "unhealthy",
+            "display_name": "Unhealthy"
+          },
+          {
+            "value": "degraded",
+            "display_name": "Degraded"
+          },
+          {
+            "value": "installing",
+            "display_name": "Installing"
+          },
+          {
+            "value": "failed",
+            "display_name": "Failed"
+          }
+        ]
+      },
+      "argocd_installation_date": {
+        "type": "datetime",
+        "required": false,
+        "read_only": false,
+        "label": "Argocd installation date",
+        "help_text": "When ArgoCD was installed for this fabric"
+      },
+      "argocd_admin_password": {
+        "type": "string",
+        "required": false,
+        "read_only": false,
+        "label": "Argocd admin password",
+        "help_text": "ArgoCD admin password (encrypted)",
+        "max_length": 255
+      },
+      "gitops_setup_status": {
+        "type": "choice",
+        "required": false,
+        "read_only": false,
+        "label": "Gitops setup status",
+        "help_text": "Overall GitOps setup status for this fabric",
+        "choices": [
+          {
+            "value": "not_configured",
+            "display_name": "Not Configured"
+          },
+          {
+            "value": "manual",
+            "display_name": "Manual"
+          },
+          {
+            "value": "installing",
+            "display_name": "Installing"
+          },
+          {
+            "value": "configured",
+            "display_name": "Configured"
+          },
+          {
+            "value": "ready",
+            "display_name": "Ready"
+          },
+          {
+            "value": "error",
+            "display_name": "Error"
+          }
+        ]
+      },
+      "gitops_setup_error": {
+        "type": "string",
+        "required": false,
+        "read_only": false,
+        "label": "Gitops setup error",
+        "help_text": "Last GitOps setup error message"
+      },
+      "auto_sync_enabled": {
+        "type": "boolean",
+        "required": false,
+        "read_only": false,
+        "label": "Auto sync enabled",
+        "help_text": "Enable automatic synchronization for GitOps applications"
+      },
+      "prune_enabled": {
+        "type": "boolean",
+        "required": false,
+        "read_only": false,
+        "label": "Prune enabled",
+        "help_text": "Enable resource pruning in GitOps applications"
+      },
+      "self_heal_enabled": {
+        "type": "boolean",
+        "required": false,
+        "read_only": false,
+        "label": "Self heal enabled",
+        "help_text": "Enable self-healing in GitOps applications"
+      },
+      "watch_enabled": {
+        "type": "boolean",
+        "required": false,
+        "read_only": false,
+        "label": "Watch enabled",
+        "help_text": "Enable real-time Kubernetes CRD watching for this fabric"
+      },
+      "watch_crd_types": {
+        "type": "field",
+        "required": false,
+        "read_only": false,
+        "label": "Watch crd types",
+        "help_text": "List of CRD types to watch (empty for all supported types)"
+      },
+      "watch_status": {
+        "type": "choice",
+        "required": false,
+        "read_only": false,
+        "label": "Watch status",
+        "help_text": "Current watch status for real-time monitoring",
+        "choices": [
+          {
+            "value": "inactive",
+            "display_name": "Inactive"
+          },
+          {
+            "value": "starting",
+            "display_name": "Starting"
+          },
+          {
+            "value": "active",
+            "display_name": "Active"
+          },
+          {
+            "value": "error",
+            "display_name": "Error"
+          },
+          {
+            "value": "stopped",
+            "display_name": "Stopped"
+          }
+        ]
+      },
+      "watch_started_at": {
+        "type": "datetime",
+        "required": false,
+        "read_only": false,
+        "label": "Watch started at",
+        "help_text": "When real-time watching was started"
+      },
+      "watch_last_event": {
+        "type": "datetime",
+        "required": false,
+        "read_only": false,
+        "label": "Watch last event",
+        "help_text": "Timestamp of last watch event received"
+      },
+      "watch_event_count": {
+        "type": "integer",
+        "required": false,
+        "read_only": false,
+        "label": "Watch event count",
+        "help_text": "Total number of watch events processed",
+        "min_value": 0,
+        "max_value": 2147483647
+      },
+      "watch_error_message": {
+        "type": "string",
+        "required": false,
+        "read_only": false,
+        "label": "Watch error message",
+        "help_text": "Last watch error message"
+      },
+      "gitops_initialized": {
+        "type": "boolean",
+        "required": false,
+        "read_only": false,
+        "label": "Gitops initialized",
+        "help_text": "Whether GitOps file management structure has been initialized"
+      },
+      "archive_strategy": {
+        "type": "choice",
+        "required": false,
+        "read_only": false,
+        "label": "Archive strategy",
+        "help_text": "Strategy for archiving original files during ingestion",
+        "choices": [
+          {
+            "value": "rename_with_extension",
+            "display_name": "Rename with .archived extension"
+          },
+          {
+            "value": "move_to_archive_dir",
+            "display_name": "Move to archive directory"
+          },
+          {
+            "value": "backup_with_timestamp",
+            "display_name": "Backup with timestamp"
+          },
+          {
+            "value": "none",
+            "display_name": "No archiving"
+          }
+        ]
+      },
+      "raw_directory_path": {
+        "type": "string",
+        "required": false,
+        "read_only": false,
+        "label": "Raw directory path",
+        "help_text": "Full path to the raw/ directory where users drop files",
+        "max_length": 500
+      },
+      "managed_directory_path": {
+        "type": "string",
+        "required": false,
+        "read_only": false,
+        "label": "Managed directory path",
+        "help_text": "Full path to the managed/ directory where HNP maintains normalized files",
+        "max_length": 500
+      },
+      "git_repository": {
+        "type": "field",
+        "required": false,
+        "read_only": false,
+        "label": "Git repository",
+        "help_text": "Reference to authenticated git repository (separated architecture)"
+      }
+    },
+    "POST": {
+      "id": {
+        "type": "integer",
+        "required": false,
+        "read_only": true,
+        "label": "ID"
+      },
+      "tags": {
+        "type": "field",
+        "required": false,
+        "read_only": false,
+        "label": "Tags",
+        "child": {
+          "type": "nested object",
+          "required": false,
+          "read_only": false,
+          "children": {
+            "id": {
+              "type": "integer",
+              "required": false,
+              "read_only": true,
+              "label": "Id"
+            },
+            "url": {
+              "type": "field",
+              "required": false,
+              "read_only": true,
+              "label": "Url"
+            },
+            "display_url": {
+              "type": "field",
+              "required": false,
+              "read_only": true,
+              "label": "Display url"
+            },
+            "display": {
+              "type": "field",
+              "required": false,
+              "read_only": true,
+              "label": "Display"
+            },
+            "name": {
+              "type": "string",
+              "required": true,
+              "read_only": false,
+              "label": "Name",
+              "max_length": 100
+            },
+            "slug": {
+              "type": "slug",
+              "required": true,
+              "read_only": false,
+              "label": "Slug",
+              "max_length": 100
+            },
+            "color": {
+              "type": "string",
+              "required": false,
+              "read_only": false,
+              "label": "Color",
+              "max_length": 6
+            }
+          }
+        }
+      },
+      "custom_fields": {
+        "type": "field",
+        "required": false,
+        "read_only": false,
+        "label": "Custom fields"
+      },
+      "url": {
+        "type": "field",
+        "required": false,
+        "read_only": true,
+        "label": "Url"
+      },
+      "display_url": {
+        "type": "field",
+        "required": false,
+        "read_only": true,
+        "label": "Display url"
+      },
+      "display": {
+        "type": "field",
+        "required": false,
+        "read_only": true,
+        "label": "Display"
+      },
+      "created": {
+        "type": "datetime",
+        "required": false,
+        "read_only": true,
+        "label": "Created"
+      },
+      "last_updated": {
+        "type": "datetime",
+        "required": false,
+        "read_only": true,
+        "label": "Last updated"
+      },
+      "custom_field_data": {
+        "type": "field",
+        "required": false,
+        "read_only": false,
+        "label": "Custom field data"
+      },
+      "name": {
+        "type": "string",
+        "required": true,
+        "read_only": false,
+        "label": "Name",
+        "help_text": "Unique name for this Hedgehog fabric",
+        "max_length": 100
+      },
+      "description": {
+        "type": "string",
+        "required": false,
+        "read_only": false,
+        "label": "Description",
+        "help_text": "Optional description of this fabric"
+      },
+      "status": {
+        "type": "choice",
+        "required": false,
+        "read_only": false,
+        "label": "Status",
+        "help_text": "Configuration status - whether this fabric is planned, active, etc.",
+        "choices": [
+          {
+            "value": "planned",
+            "display_name": "Planned"
+          },
+          {
+            "value": "active",
+            "display_name": "Active"
+          },
+          {
+            "value": "maintenance",
+            "display_name": "Maintenance"
+          },
+          {
+            "value": "decommissioned",
+            "display_name": "Decommissioned"
+          }
+        ]
+      },
+      "connection_status": {
+        "type": "choice",
+        "required": false,
+        "read_only": false,
+        "label": "Connection status",
+        "help_text": "Connection status - whether NetBox can connect to this fabric",
+        "choices": [
+          {
+            "value": "unknown",
+            "display_name": "Unknown"
+          },
+          {
+            "value": "connected",
+            "display_name": "Connected"
+          },
+          {
+            "value": "disconnected",
+            "display_name": "Disconnected"
+          },
+          {
+            "value": "error",
+            "display_name": "Error"
+          }
+        ]
+      },
+      "sync_status": {
+        "type": "choice",
+        "required": false,
+        "read_only": false,
+        "label": "Sync status",
+        "help_text": "Sync status - whether data is synchronized with Kubernetes",
+        "choices": [
+          {
+            "value": "never_synced",
+            "display_name": "Never Synced"
+          },
+          {
+            "value": "in_sync",
+            "display_name": "In Sync"
+          },
+          {
+            "value": "out_of_sync",
+            "display_name": "Out of Sync"
+          },
+          {
+            "value": "syncing",
+            "display_name": "Syncing"
+          },
+          {
+            "value": "error",
+            "display_name": "Sync Error"
+          }
+        ]
+      },
+      "kubernetes_server": {
+        "type": "url",
+        "required": false,
+        "read_only": false,
+        "label": "Kubernetes server",
+        "help_text": "Kubernetes API server URL (optional if using default kubeconfig)",
+        "max_length": 200
+      },
+      "kubernetes_token": {
+        "type": "string",
+        "required": false,
+        "read_only": false,
+        "label": "Kubernetes token",
+        "help_text": "Kubernetes service account token (leave empty to use kubeconfig)"
+      },
+      "kubernetes_ca_cert": {
+        "type": "string",
+        "required": false,
+        "read_only": false,
+        "label": "Kubernetes ca cert",
+        "help_text": "Kubernetes CA certificate (leave empty to use kubeconfig)"
+      },
+      "kubernetes_namespace": {
+        "type": "string",
+        "required": false,
+        "read_only": false,
+        "label": "Kubernetes namespace",
+        "help_text": "Default namespace for this fabric's CRDs",
+        "max_length": 253
+      },
+      "sync_enabled": {
+        "type": "boolean",
+        "required": false,
+        "read_only": false,
+        "label": "Sync enabled",
+        "help_text": "Enable automatic synchronization with Kubernetes"
+      },
+      "sync_interval": {
+        "type": "integer",
+        "required": false,
+        "read_only": false,
+        "label": "Sync interval",
+        "help_text": "Sync interval in seconds (0 to disable automatic sync)",
+        "min_value": 0,
+        "max_value": 2147483647
+      },
+      "last_sync": {
+        "type": "datetime",
+        "required": false,
+        "read_only": false,
+        "label": "Last sync",
+        "help_text": "Timestamp of last successful sync"
+      },
+      "sync_error": {
+        "type": "string",
+        "required": false,
+        "read_only": false,
+        "label": "Sync error",
+        "help_text": "Last sync error message (if any)"
+      },
+      "connection_error": {
+        "type": "string",
+        "required": false,
+        "read_only": false,
+        "label": "Connection error",
+        "help_text": "Last connection error message (if any)"
+      },
+      "gitops_directory": {
+        "type": "string",
+        "required": false,
+        "read_only": false,
+        "label": "Gitops directory",
+        "help_text": "Directory path within repository for this fabric's CRDs",
+        "max_length": 500
+      },
+      "git_repository_url": {
+        "type": "url",
+        "required": false,
+        "read_only": false,
+        "label": "Git repository url",
+        "help_text": "[DEPRECATED] Git repository URL - use git_repository field instead",
+        "max_length": 200
+      },
+      "git_branch": {
+        "type": "string",
+        "required": false,
+        "read_only": false,
+        "label": "Git branch",
+        "help_text": "[DEPRECATED] Git branch - managed by GitRepository",
+        "max_length": 100
+      },
+      "git_path": {
+        "type": "string",
+        "required": false,
+        "read_only": false,
+        "label": "Git path",
+        "help_text": "[DEPRECATED] Git path - use gitops_directory field instead",
+        "max_length": 255
+      },
+      "git_username": {
+        "type": "string",
+        "required": false,
+        "read_only": false,
+        "label": "Git username",
+        "help_text": "[DEPRECATED] Git username - managed by GitRepository",
+        "max_length": 100
+      },
+      "git_token": {
+        "type": "string",
+        "required": false,
+        "read_only": false,
+        "label": "Git token",
+        "help_text": "[DEPRECATED] Git token - managed by GitRepository",
+        "max_length": 255
+      },
+      "desired_state_commit": {
+        "type": "string",
+        "required": false,
+        "read_only": false,
+        "label": "Desired state commit",
+        "help_text": "Git commit SHA of current desired state",
+        "max_length": 40
+      },
+      "drift_status": {
+        "type": "choice",
+        "required": false,
+        "read_only": false,
+        "label": "Drift status",
+        "help_text": "Current drift status between desired and actual state",
+        "choices": [
+          {
+            "value": "in_sync",
+            "display_name": "In Sync"
+          },
+          {
+            "value": "drift_detected",
+            "display_name": "Drift Detected"
+          },
+          {
+            "value": "git_ahead",
+            "display_name": "Git Ahead"
+          },
+          {
+            "value": "cluster_ahead",
+            "display_name": "Cluster Ahead"
+          },
+          {
+            "value": "conflicts",
+            "display_name": "Conflicts"
+          }
+        ]
+      },
+      "drift_count": {
+        "type": "integer",
+        "required": false,
+        "read_only": false,
+        "label": "Drift count",
+        "help_text": "Number of resources with detected drift",
+        "min_value": 0,
+        "max_value": 2147483647
+      },
+      "last_git_sync": {
+        "type": "datetime",
+        "required": false,
+        "read_only": false,
+        "label": "Last git sync",
+        "help_text": "Timestamp of last Git repository sync"
+      },
+      "gitops_tool": {
+        "type": "choice",
+        "required": false,
+        "read_only": false,
+        "label": "Gitops tool",
+        "help_text": "GitOps tool used for deployments",
+        "choices": [
+          {
+            "value": "manual",
+            "display_name": "Manual"
+          },
+          {
+            "value": "argocd",
+            "display_name": "ArgoCD"
+          },
+          {
+            "value": "flux",
+            "display_name": "Flux"
+          },
+          {
+            "value": "tekton",
+            "display_name": "Tekton"
+          },
+          {
+            "value": "jenkins",
+            "display_name": "Jenkins"
+          },
+          {
+            "value": "none",
+            "display_name": "None"
+          }
+        ]
+      },
+      "gitops_app_name": {
+        "type": "string",
+        "required": false,
+        "read_only": false,
+        "label": "Gitops app name",
+        "help_text": "GitOps application name (for ArgoCD/Flux integration)",
+        "max_length": 255
+      },
+      "gitops_namespace": {
+        "type": "string",
+        "required": false,
+        "read_only": false,
+        "label": "Gitops namespace",
+        "help_text": "GitOps application namespace",
+        "max_length": 255
+      },
+      "cached_crd_count": {
+        "type": "integer",
+        "required": false,
+        "read_only": false,
+        "label": "Cached crd count",
+        "help_text": "Cached total count of CRDs (updated during sync)",
+        "min_value": 0,
+        "max_value": 2147483647
+      },
+      "cached_vpc_count": {
+        "type": "integer",
+        "required": false,
+        "read_only": false,
+        "label": "Cached vpc count",
+        "help_text": "Cached VPC count (updated during sync)",
+        "min_value": 0,
+        "max_value": 2147483647
+      },
+      "cached_connection_count": {
+        "type": "integer",
+        "required": false,
+        "read_only": false,
+        "label": "Cached connection count",
+        "help_text": "Cached Connection count (updated during sync)",
+        "min_value": 0,
+        "max_value": 2147483647
+      },
+      "connections_count": {
+        "type": "integer",
+        "required": false,
+        "read_only": false,
+        "label": "Connections count",
+        "help_text": "Count of Connection CRDs",
+        "min_value": 0,
+        "max_value": 2147483647
+      },
+      "servers_count": {
+        "type": "integer",
+        "required": false,
+        "read_only": false,
+        "label": "Servers count",
+        "help_text": "Count of Server CRDs",
+        "min_value": 0,
+        "max_value": 2147483647
+      },
+      "switches_count": {
+        "type": "integer",
+        "required": false,
+        "read_only": false,
+        "label": "Switches count",
+        "help_text": "Count of Switch CRDs",
+        "min_value": 0,
+        "max_value": 2147483647
+      },
+      "vpcs_count": {
+        "type": "integer",
+        "required": false,
+        "read_only": false,
+        "label": "Vpcs count",
+        "help_text": "Count of VPC CRDs",
+        "min_value": 0,
+        "max_value": 2147483647
+      },
+      "argocd_installed": {
+        "type": "boolean",
+        "required": false,
+        "read_only": false,
+        "label": "Argocd installed",
+        "help_text": "Whether ArgoCD is installed and configured for this fabric"
+      },
+      "argocd_version": {
+        "type": "string",
+        "required": false,
+        "read_only": false,
+        "label": "Argocd version",
+        "help_text": "Version of ArgoCD installed",
+        "max_length": 50
+      },
+      "argocd_server_url": {
+        "type": "url",
+        "required": false,
+        "read_only": false,
+        "label": "Argocd server url",
+        "help_text": "ArgoCD server URL for this fabric",
+        "max_length": 200
+      },
+      "argocd_health_status": {
+        "type": "choice",
+        "required": false,
+        "read_only": false,
+        "label": "Argocd health status",
+        "help_text": "Current ArgoCD health status",
+        "choices": [
+          {
+            "value": "unknown",
+            "display_name": "Unknown"
+          },
+          {
+            "value": "healthy",
+            "display_name": "Healthy"
+          },
+          {
+            "value": "unhealthy",
+            "display_name": "Unhealthy"
+          },
+          {
+            "value": "degraded",
+            "display_name": "Degraded"
+          },
+          {
+            "value": "installing",
+            "display_name": "Installing"
+          },
+          {
+            "value": "failed",
+            "display_name": "Failed"
+          }
+        ]
+      },
+      "argocd_installation_date": {
+        "type": "datetime",
+        "required": false,
+        "read_only": false,
+        "label": "Argocd installation date",
+        "help_text": "When ArgoCD was installed for this fabric"
+      },
+      "argocd_admin_password": {
+        "type": "string",
+        "required": false,
+        "read_only": false,
+        "label": "Argocd admin password",
+        "help_text": "ArgoCD admin password (encrypted)",
+        "max_length": 255
+      },
+      "gitops_setup_status": {
+        "type": "choice",
+        "required": false,
+        "read_only": false,
+        "label": "Gitops setup status",
+        "help_text": "Overall GitOps setup status for this fabric",
+        "choices": [
+          {
+            "value": "not_configured",
+            "display_name": "Not Configured"
+          },
+          {
+            "value": "manual",
+            "display_name": "Manual"
+          },
+          {
+            "value": "installing",
+            "display_name": "Installing"
+          },
+          {
+            "value": "configured",
+            "display_name": "Configured"
+          },
+          {
+            "value": "ready",
+            "display_name": "Ready"
+          },
+          {
+            "value": "error",
+            "display_name": "Error"
+          }
+        ]
+      },
+      "gitops_setup_error": {
+        "type": "string",
+        "required": false,
+        "read_only": false,
+        "label": "Gitops setup error",
+        "help_text": "Last GitOps setup error message"
+      },
+      "auto_sync_enabled": {
+        "type": "boolean",
+        "required": false,
+        "read_only": false,
+        "label": "Auto sync enabled",
+        "help_text": "Enable automatic synchronization for GitOps applications"
+      },
+      "prune_enabled": {
+        "type": "boolean",
+        "required": false,
+        "read_only": false,
+        "label": "Prune enabled",
+        "help_text": "Enable resource pruning in GitOps applications"
+      },
+      "self_heal_enabled": {
+        "type": "boolean",
+        "required": false,
+        "read_only": false,
+        "label": "Self heal enabled",
+        "help_text": "Enable self-healing in GitOps applications"
+      },
+      "watch_enabled": {
+        "type": "boolean",
+        "required": false,
+        "read_only": false,
+        "label": "Watch enabled",
+        "help_text": "Enable real-time Kubernetes CRD watching for this fabric"
+      },
+      "watch_crd_types": {
+        "type": "field",
+        "required": false,
+        "read_only": false,
+        "label": "Watch crd types",
+        "help_text": "List of CRD types to watch (empty for all supported types)"
+      },
+      "watch_status": {
+        "type": "choice",
+        "required": false,
+        "read_only": false,
+        "label": "Watch status",
+        "help_text": "Current watch status for real-time monitoring",
+        "choices": [
+          {
+            "value": "inactive",
+            "display_name": "Inactive"
+          },
+          {
+            "value": "starting",
+            "display_name": "Starting"
+          },
+          {
+            "value": "active",
+            "display_name": "Active"
+          },
+          {
+            "value": "error",
+            "display_name": "Error"
+          },
+          {
+            "value": "stopped",
+            "display_name": "Stopped"
+          }
+        ]
+      },
+      "watch_started_at": {
+        "type": "datetime",
+        "required": false,
+        "read_only": false,
+        "label": "Watch started at",
+        "help_text": "When real-time watching was started"
+      },
+      "watch_last_event": {
+        "type": "datetime",
+        "required": false,
+        "read_only": false,
+        "label": "Watch last event",
+        "help_text": "Timestamp of last watch event received"
+      },
+      "watch_event_count": {
+        "type": "integer",
+        "required": false,
+        "read_only": false,
+        "label": "Watch event count",
+        "help_text": "Total number of watch events processed",
+        "min_value": 0,
+        "max_value": 2147483647
+      },
+      "watch_error_message": {
+        "type": "string",
+        "required": false,
+        "read_only": false,
+        "label": "Watch error message",
+        "help_text": "Last watch error message"
+      },
+      "gitops_initialized": {
+        "type": "boolean",
+        "required": false,
+        "read_only": false,
+        "label": "Gitops initialized",
+        "help_text": "Whether GitOps file management structure has been initialized"
+      },
+      "archive_strategy": {
+        "type": "choice",
+        "required": false,
+        "read_only": false,
+        "label": "Archive strategy",
+        "help_text": "Strategy for archiving original files during ingestion",
+        "choices": [
+          {
+            "value": "rename_with_extension",
+            "display_name": "Rename with .archived extension"
+          },
+          {
+            "value": "move_to_archive_dir",
+            "display_name": "Move to archive directory"
+          },
+          {
+            "value": "backup_with_timestamp",
+            "display_name": "Backup with timestamp"
+          },
+          {
+            "value": "none",
+            "display_name": "No archiving"
+          }
+        ]
+      },
+      "raw_directory_path": {
+        "type": "string",
+        "required": false,
+        "read_only": false,
+        "label": "Raw directory path",
+        "help_text": "Full path to the raw/ directory where users drop files",
+        "max_length": 500
+      },
+      "managed_directory_path": {
+        "type": "string",
+        "required": false,
+        "read_only": false,
+        "label": "Managed directory path",
+        "help_text": "Full path to the managed/ directory where HNP maintains normalized files",
+        "max_length": 500
+      },
+      "git_repository": {
+        "type": "field",
+        "required": false,
+        "read_only": false,
+        "label": "Git repository",
+        "help_text": "Reference to authenticated git repository (separated architecture)"
+      }
+    }
+  }
+}

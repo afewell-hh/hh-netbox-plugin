@@ -1,0 +1,20 @@
+{
+  "test_timestamp": "2025-08-01T04:03:38.678609",
+  "test_type": "drift_dashboard_post_fix",
+  "findings": [
+    "\u2705 FIXED: http://localhost:8000/plugins/hedgehog/drift-detection/ now redirects to login (was 404)",
+    "\u2705 FIXED: http://localhost:8000/plugins/hedgehog/api/drift-analysis/ now redirects to login (was 404)",
+    "\u2705 URL RESOLVED: drift_dashboard -> /plugins/hedgehog/drift-detection/",
+    "\u2705 URL RESOLVED: drift_analysis_api -> /plugins/hedgehog/api/drift-analysis/",
+    "\u2705 PARTIALLY TRUE: Drift detection dashboard at /drift-detection/ URL - URLs exist but need authentication",
+    "\u26a0 UNTESTED: Drift analysis API endpoints - needs deeper validation",
+    "\u26a0 UNTESTED: Real-time drift monitoring - needs deeper validation",
+    "\u26a0 UNTESTED: Fabric-specific drift details - needs deeper validation"
+  ],
+  "success_metrics": {
+    "total_tests": 8,
+    "successful": 5,
+    "failed": 0,
+    "success_rate": "62.5%"
+  }
+}

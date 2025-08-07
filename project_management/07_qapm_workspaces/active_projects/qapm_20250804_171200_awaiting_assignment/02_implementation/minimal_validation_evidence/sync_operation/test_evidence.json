@@ -1,0 +1,10 @@
+{
+  "test_type": "github_sync_button",
+  "fabric_id": 31,
+  "start_time": "2025-08-05T00:36:49.033592",
+  "end_time": "2025-08-05T00:36:49.088634",
+  "duration_seconds": 0.055042,
+  "success": false,
+  "result": "HTTP 403: <!DOCTYPE html>\n<html lang=\"en\">\n<head>\n  <meta http-equiv=\"content-type\" content=\"text/html; charset=utf-8\">\n  <meta name=\"robots\" content=\"NONE,NOARCHIVE\">\n  <title>403 Forbidden</title>\n  <style>\n ",
+  "sync_url": "http://localhost:8000/plugins/hedgehog/fabrics/31/github-sync/"
+}

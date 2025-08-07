@@ -1,0 +1,27 @@
+{
+  "fabric_id": 26,
+  "fabric_name": "Test Fabric for GitOps Initialization",
+  "verification_timestamp": "2025-07-31T08:34:54.100009",
+  "k8s_config_verification": {
+    "kubernetes_server": {
+      "expected": "https://172.18.0.8:6443",
+      "actual": "https://172.18.0.8:6443",
+      "valid": true
+    },
+    "kubernetes_token": {
+      "configured": true,
+      "valid": true
+    },
+    "kubernetes_ca_cert": {
+      "configured": true,
+      "valid": true
+    },
+    "kubernetes_namespace": {
+      "expected": "default",
+      "actual": "default",
+      "valid": true
+    }
+  },
+  "overall_status": "PASSED",
+  "sync_status": "synced"
+}
