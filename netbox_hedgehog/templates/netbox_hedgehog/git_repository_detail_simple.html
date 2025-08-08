@@ -10,7 +10,6 @@
 
 {% block content %}
 <div class="container-fluid">
-    <\!-- Breadcrumbs -->
     <nav aria-label="breadcrumb">
         <ol class="breadcrumb">
             <li class="breadcrumb-item"><a href="{% url 'plugins:netbox_hedgehog:overview' %}">Hedgehog</a></li>
@@ -19,7 +18,6 @@
         </ol>
     </nav>
 
-    <\!-- Page Header -->
     <div class="row mb-3">
         <div class="col-12">
             <h1><i class="mdi mdi-git"></i> {{ object.name }}</h1>
@@ -29,7 +27,6 @@
 
     <div class="row">
         <div class="col-md-8">
-            <\!-- Repository Information -->
             <div class="card">
                 <div class="card-header">
                     <h5>Repository Information</h5>
@@ -78,7 +75,6 @@
                 </div>
             </div>
             
-            <\!-- Connection Status -->
             <div class="card mt-3">
                 <div class="card-header">
                     <h5>Connection Status</h5>
@@ -100,46 +96,32 @@
                     </table>
                     
                     <div class="mt-3">
-                        <button type="button" class="btn btn-primary" onclick="testConnection()">
-                            <i class="mdi mdi-connection"></i> Test Connection
-                        </button>
+                        <form method="post" action="{% url 'plugins:netbox_hedgehog:gitrepository_test_connection' pk=object.pk %}" style="display: inline;">
+                            {% csrf_token %}
+                            <button type="submit" class="btn btn-primary">
+                                <i class="mdi mdi-connection"></i> Test Connection
+                            </button>
+                        </form>
                     </div>
-                    
-                    <script>
-                    function testConnection() {
-                        alert('Connection test successful\! Repository is accessible.');
-                    }
-                    </script>
                 </div>
             </div>
         </div>
         
         <div class="col-md-4">
-            <\!-- Actions -->
             <div class="card">
                 <div class="card-header">
                     <h5>Actions</h5>
                 </div>
                 <div class="card-body">
-                    <button class="btn btn-warning w-100 mb-2" onclick="editRepository()">
-                        <i class="mdi mdi-pencil"></i> Edit
-                    </button>
-                    <button class="btn btn-danger w-100" onclick="deleteRepository()">
-                        <i class="mdi mdi-delete"></i> Delete
-                    </button>
-                    
-                    <script>
-                    function editRepository() {
-                        alert('Edit functionality available in full authentication mode.');
-                    }
-                    function deleteRepository() {
-                        alert('Delete functionality available in full authentication mode.');
-                    }
-                    </script>
+                    <div class="alert alert-info">
+                        <small><i class="mdi mdi-information"></i> Edit and delete functions are not yet implemented for git repositories.</small>
+                    </div>
+                    <a href="{% url 'plugins:netbox_hedgehog:overview' %}" class="btn btn-outline-secondary w-100">
+                        <i class="mdi mdi-arrow-left"></i> Back to Dashboard
+                    </a>
                 </div>
             </div>
             
-            <\!-- Usage Statistics -->
             <div class="card mt-3">
                 <div class="card-header">
                     <h5>Usage Statistics</h5>
@@ -165,7 +147,6 @@
                 </div>
             </div>
             
-            <\!-- Connection Summary -->
             <div class="card mt-3">
                 <div class="card-header">
                     <h5>Repository Summary</h5>

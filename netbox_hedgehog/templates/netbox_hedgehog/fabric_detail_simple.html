@@ -59,7 +59,7 @@
                                     <th>Git Sync Enabled:</th>
                                     <td>
                                         {% if object.git_repository %}
-                                            {% if object.git_repository.sync_enabled %}
+                                            {% if object.sync_enabled %}
                                                 <span class="badge bg-success">Yes</span>
                                             {% else %}
                                                 <span class="badge bg-secondary">No</span>
@@ -71,15 +71,11 @@
                                 </tr>
                                 {% if object.git_repository %}
                                 <tr>
-                                    <th>Git Sync Interval:</th>
-                                    <td>{{ object.git_repository.sync_interval|default:"—" }} seconds</td>
-                                </tr>
-                                <tr>
                                     <th>Git Last Sync:</th>
                                     <td>
-                                        {% if object.git_repository.last_sync %}
-                                            {{ object.git_repository.last_sync|date:"Y-m-d H:i:s" }}
-                                            <small class="text-muted">({{ object.git_repository.last_sync|timesince }} ago)</small>
+                                        {% if object.last_sync %}
+                                            {{ object.last_sync|date:"Y-m-d H:i:s" }}
+                                            <small class="text-muted">({{ object.last_sync|timesince }} ago)</small>
                                         {% else %}
                                             <span class="text-muted">Never</span>
                                         {% endif %}
@@ -473,52 +469,4 @@
     </div>
 </div>
 
-<script>
-function syncFromGit() {
-    const fabricId = {{ object.pk }};
-    
-    // Show loading state
-    const button = event.target;
-    const originalText = button.innerHTML;
-    button.innerHTML = '<i class="mdi mdi-loading mdi-spin"></i> Syncing...';
-    button.disabled = true;
-    
-    fetch(`/api/plugins/hedgehog/gitops-fabrics/${fabricId}/gitops_sync/`, {
-        method: 'POST',
-        headers: {
-            'Content-Type': 'application/json',
-            'X-CSRFToken': document.querySelector('[name=csrfmiddlewaretoken]').value
-        }
-    })
-    .then(response => response.json())
-    .then(data => {
-        if (data.success) {
-            button.innerHTML = '<i class="mdi mdi-check"></i> Sync completed!';
-            button.style.background = 'rgba(76, 175, 80, 0.3)';
-            setTimeout(() => {
-                button.innerHTML = originalText;
-                button.style.background = '';
-                button.disabled = false;
-            }, 3000);
-        } else {
-            button.innerHTML = '<i class="mdi mdi-alert"></i> Sync failed';
-            button.style.background = 'rgba(244, 67, 54, 0.3)';
-            setTimeout(() => {
-                button.innerHTML = originalText;
-                button.style.background = '';
-                button.disabled = false;
-            }, 5000);
-        }
-    })
-    .catch(error => {
-        button.innerHTML = '<i class="mdi mdi-alert"></i> Network error';
-        button.style.background = 'rgba(244, 67, 54, 0.3)';
-        setTimeout(() => {
-            button.innerHTML = originalText;
-            button.style.background = '';
-            button.disabled = false;
-        }, 5000);
-    });
-}
-</script>
 {% endblock %}

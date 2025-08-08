@@ -92,6 +92,13 @@ app.conf.beat_schedule = {
         'schedule': 60.0,  # 1 minute
         'options': {'queue': 'status_updates', 'priority': 4}
     },
+    
+    # Check fabric sync intervals every minute
+    'check-fabric-sync-intervals': {
+        'task': 'netbox_hedgehog.tasks.check_fabric_sync_schedules',
+        'schedule': 60.0,  # Check every minute
+        'options': {'queue': 'git_sync', 'priority': 6}
+    },
 }
 
 app.conf.timezone = 'UTC'

@@ -6,6 +6,7 @@ Optimized for <30 second sync times with progress tracking
 import logging
 import time
 from typing import Dict, Any, Optional
+from datetime import timedelta
 from celery import shared_task
 from django.core.cache import cache
 from django.db import transaction
@@ -34,7 +35,7 @@ def git_sync_fabric(self, fabric_id: int, force: bool = False) -> Dict[str, Any]
         logger.info(f"Starting Git sync for fabric {fabric.name} [{fabric_id}]")
         
         # Publish start event
-        await event_service.publish_sync_event(
+        event_service.publish_sync_event(
             fabric_id=fabric_id,
             event_type='started',
             progress=0,
@@ -58,7 +59,7 @@ def git_sync_fabric(self, fabric_id: int, force: bool = False) -> Dict[str, Any]
         
         try:
             # Progress: 10% - Repository preparation
-            await event_service.publish_sync_event(
+            event_service.publish_sync_event(
                 fabric_id=fabric_id,
                 event_type='progress',
                 progress=10,
@@ -66,7 +67,7 @@ def git_sync_fabric(self, fabric_id: int, force: bool = False) -> Dict[str, Any]
             )
             
             # Prepare repository with timeout
-            repo_result = await git_service.prepare_repository(
+            repo_result = git_service.prepare_repository(
                 fabric=fabric,
                 timeout=10  # 10 second timeout for repo prep
             )
@@ -75,7 +76,7 @@ def git_sync_fabric(self, fabric_id: int, force: bool = False) -> Dict[str, Any]
                 raise Exception(f"Repository preparation failed: {repo_result.message}")
             
             # Progress: 30% - Fetching changes
-            await event_service.publish_sync_event(
+            event_service.publish_sync_event(
                 fabric_id=fabric_id,
                 event_type='progress',
                 progress=30,
@@ -83,9 +84,9 @@ def git_sync_fabric(self, fabric_id: int, force: bool = False) -> Dict[str, Any]
             )
             
             # Fetch with progress callback
-            fetch_result = await git_service.fetch_changes(
+            fetch_result = git_service.fetch_changes(
                 fabric=fabric,
-                progress_callback=lambda pct, msg: self._publish_progress(
+                progress_callback=lambda pct, msg: _publish_progress(
                     event_service, fabric_id, 30 + (pct * 0.4), msg
                 )
             )
@@ -94,7 +95,7 @@ def git_sync_fabric(self, fabric_id: int, force: bool = False) -> Dict[str, Any]
                 raise Exception(f"Fetch failed: {fetch_result.message}")
             
             # Progress: 70% - Processing CRDs
-            await event_service.publish_sync_event(
+            event_service.publish_sync_event(
                 fabric_id=fabric_id,
                 event_type='progress',
                 progress=70,
@@ -102,10 +103,10 @@ def git_sync_fabric(self, fabric_id: int, force: bool = False) -> Dict[str, Any]
             )
             
             # Process CRDs with batching for performance
-            crd_result = await git_service.process_crds_batch(
+            crd_result = git_service.process_crds_batch(
                 fabric=fabric,
                 batch_size=50,  # Process 50 CRDs at a time
-                progress_callback=lambda pct, msg: self._publish_progress(
+                progress_callback=lambda pct, msg: _publish_progress(
                     event_service, fabric_id, 70 + (pct * 0.25), msg
                 )
             )
@@ -114,7 +115,7 @@ def git_sync_fabric(self, fabric_id: int, force: bool = False) -> Dict[str, Any]
                 raise Exception(f"CRD processing failed: {crd_result.message}")
             
             # Progress: 95% - Finalizing
-            await event_service.publish_sync_event(
+            event_service.publish_sync_event(
                 fabric_id=fabric_id,
                 event_type='progress',
                 progress=95,
@@ -137,7 +138,7 @@ def git_sync_fabric(self, fabric_id: int, force: bool = False) -> Dict[str, Any]
             duration = time.time() - start_time
             
             # Progress: 100% - Complete
-            await event_service.publish_sync_event(
+            event_service.publish_sync_event(
                 fabric_id=fabric_id,
                 event_type='completed',
                 progress=100,
@@ -169,7 +170,7 @@ def git_sync_fabric(self, fabric_id: int, force: bool = False) -> Dict[str, Any]
         logger.error(f"Git sync failed for fabric {fabric_id}: {error_msg}")
         
         # Publish failure event
-        await event_service.publish_sync_event(
+        event_service.publish_sync_event(
             fabric_id=fabric_id,
             event_type='failed',
             progress=0,
@@ -223,7 +224,7 @@ def git_validate_repository(fabric_id: int) -> Dict[str, Any]:
         git_service = GitService()
         
         # Quick connectivity test
-        validation_result = await git_service.validate_repository(fabric)
+        validation_result = git_service.validate_repository(fabric)
         
         # Cache validation result
         cache.set(
@@ -247,12 +248,52 @@ def git_validate_repository(fabric_id: int) -> Dict[str, Any]:
             'fabric_id': fabric_id
         }
 
-async def _publish_progress(event_service: EventService, fabric_id: int, 
+def _publish_progress(event_service: EventService, fabric_id: int, 
                           progress: float, message: str):
     """Helper to publish progress events"""
-    await event_service.publish_sync_event(
+    event_service.publish_sync_event(
         fabric_id=fabric_id,
         event_type='progress',
         progress=int(progress),
         message=message
     )
+
+@shared_task(name='netbox_hedgehog.tasks.check_fabric_sync_schedules')
+def check_fabric_sync_schedules() -> Dict[str, Any]:
+    """
+    Check all enabled fabrics for sync_interval timing and trigger syncs when due.
+    Runs every 60 seconds via Celery Beat.
+    """
+    fabrics_needing_sync = []
+    
+    try:
+        # Get all enabled fabrics
+        enabled_fabrics = HedgehogFabric.objects.filter(sync_enabled=True)
+        
+        for fabric in enabled_fabrics:
+            if should_sync_now(fabric):
+                # Trigger sync using existing task
+                git_sync_fabric.delay(fabric.id)
+                fabrics_needing_sync.append(fabric.id)
+                
+    except Exception as e:
+        # Log error but don't crash scheduler
+        logger.error(f"Error in periodic sync scheduler: {e}")
+        return {'error': str(e), 'synced_fabrics': []}
+    
+    return {
+        'synced_fabrics': fabrics_needing_sync,
+        'total_checked': enabled_fabrics.count() if 'enabled_fabrics' in locals() else 0,
+        'timestamp': timezone.now().isoformat()
+    }
+
+def should_sync_now(fabric) -> bool:
+    """Determine if fabric needs sync based on interval timing"""
+    if not fabric.last_sync:
+        # Never synced - sync immediately
+        return True
+        
+    interval = timedelta(seconds=fabric.sync_interval or 300)  # Default 5 minutes
+    time_since_last = timezone.now() - fabric.last_sync
+    
+    return time_since_last >= interval
