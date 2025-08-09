@@ -313,6 +313,68 @@ class HedgehogFabric(NetBoxModel):
         help_text="Enable self-healing in GitOps applications"
     )
     
+    # Phase 2 Enhanced Periodic Sync Scheduler Fields
+    scheduler_enabled = models.BooleanField(
+        default=True,
+        help_text="Enable fabric for enhanced periodic sync scheduling"
+    )
+    
+    scheduler_priority = models.CharField(
+        max_length=20,
+        choices=[
+            ('critical', 'Critical'),
+            ('high', 'High'), 
+            ('medium', 'Medium'),
+            ('low', 'Low'),
+            ('maintenance', 'Maintenance')
+        ],
+        default='medium',
+        help_text="Scheduler priority level for sync operations"
+    )
+    
+    sync_plan_version = models.PositiveIntegerField(
+        default=1,
+        help_text="Version of current sync plan (incremented on plan changes)"
+    )
+    
+    last_scheduler_run = models.DateTimeField(
+        null=True,
+        blank=True,
+        help_text="Timestamp of last master scheduler run for this fabric"
+    )
+    
+    sync_health_score = models.FloatField(
+        default=1.0,
+        help_text="Health score calculated by scheduler (0.0=critical, 1.0=healthy)"
+    )
+    
+    scheduler_metadata = models.JSONField(
+        default=dict,
+        help_text="Scheduler-specific metadata and planning information"
+    )
+    
+    # Micro-task execution tracking
+    active_sync_tasks = models.JSONField(
+        default=list,
+        help_text="List of currently active sync tasks for this fabric"
+    )
+    
+    last_task_execution = models.DateTimeField(
+        null=True,
+        blank=True,
+        help_text="Timestamp of last task execution (any type)"
+    )
+    
+    task_execution_count = models.PositiveIntegerField(
+        default=0,
+        help_text="Total number of tasks executed for this fabric"
+    )
+    
+    failed_task_count = models.PositiveIntegerField(
+        default=0,
+        help_text="Number of failed task executions"
+    )
+    
     # Real-time monitoring configuration
     watch_enabled = models.BooleanField(
         default=True,
@@ -405,6 +467,72 @@ class HedgehogFabric(NetBoxModel):
     def crd_count(self):
         """Return total count of CRDs in this fabric"""
         return getattr(self, 'cached_crd_count', 0)
+    
+    @property
+    def calculated_sync_status(self):
+        """
+        Calculate actual sync status based on configuration and timing.
+        Returns proper status that reflects the real state.
+        """
+        from django.utils import timezone
+        
+        # If no Kubernetes server configured, can't sync
+        if not self.kubernetes_server:
+            return 'not_configured'
+        
+        # If never synced, return never_synced
+        if not self.last_sync:
+            return 'never_synced'
+        
+        # Calculate time since last sync
+        time_since_sync = timezone.now() - self.last_sync
+        sync_age_seconds = time_since_sync.total_seconds()
+        
+        # If there's a sync error, return error status
+        if self.sync_error and self.sync_error.strip():
+            return 'error'
+        
+        # If last sync is more than 2x sync interval, consider out of sync
+        if self.sync_interval > 0 and sync_age_seconds > (self.sync_interval * 2):
+            return 'out_of_sync'
+        
+        # If within sync interval, consider in sync
+        if self.sync_interval > 0 and sync_age_seconds <= self.sync_interval:
+            return 'in_sync'
+        
+        # For edge cases (sync interval = 0 or other scenarios)
+        if sync_age_seconds <= 3600:  # Within last hour
+            return 'in_sync'
+        else:
+            return 'out_of_sync'
+
+    @property
+    def calculated_sync_status_display(self):
+        """
+        Get display-friendly version of calculated sync status.
+        """
+        status_map = {
+            'not_configured': 'Not Configured',
+            'never_synced': 'Never Synced',
+            'in_sync': 'In Sync',
+            'out_of_sync': 'Out of Sync',
+            'error': 'Sync Error',
+        }
+        return status_map.get(self.calculated_sync_status, 'Unknown')
+
+    @property
+    def calculated_sync_status_badge_class(self):
+        """
+        Get Bootstrap badge class for sync status display.
+        """
+        status_classes = {
+            'not_configured': 'bg-secondary text-white',
+            'never_synced': 'bg-warning text-dark',
+            'in_sync': 'bg-success text-white',
+            'out_of_sync': 'bg-danger text-white',
+            'error': 'bg-danger text-white',
+        }
+        return status_classes.get(self.calculated_sync_status, 'bg-secondary text-white')
     
     @property
     def active_crd_count(self):
@@ -1313,6 +1441,270 @@ class HedgehogFabric(NetBoxModel):
             'enabled_crd_types': self.watch_crd_types or 'all',
             'error_message': self.watch_error_message,
             'can_enable': self.can_enable_watch()
+        }
+    
+    # Phase 2 Enhanced Scheduler Integration Methods
+    
+    def calculate_scheduler_health_score(self) -> float:
+        """
+        Calculate comprehensive health score for scheduler planning.
+        
+        Returns:
+            Float between 0.0 (critical) and 1.0 (healthy)
+        """
+        health_factors = []
+        
+        # Sync status factor (25% weight)
+        sync_score = 1.0
+        if self.sync_status == 'error':
+            sync_score = 0.1
+        elif self.sync_status == 'never_synced':
+            sync_score = 0.2
+        elif self.sync_status == 'syncing':
+            sync_score = 0.7
+        elif self.sync_status == 'stale':
+            sync_score = 0.6
+        health_factors.append(sync_score * 0.25)
+        
+        # Connection status factor (20% weight)
+        conn_score = 1.0 if self.connection_status == 'connected' else 0.3
+        health_factors.append(conn_score * 0.20)
+        
+        # Time since last sync factor (20% weight)
+        time_score = 1.0
+        if self.last_sync:
+            hours_since = (timezone.now() - self.last_sync).total_seconds() / 3600
+            if hours_since > 24:
+                time_score = 0.2
+            elif hours_since > 6:
+                time_score = 0.5
+            elif hours_since > 1:
+                time_score = 0.8
+        else:
+            time_score = 0.1
+        health_factors.append(time_score * 0.20)
+        
+        # Error rate factor (15% weight)
+        if self.task_execution_count > 0:
+            error_rate = self.failed_task_count / self.task_execution_count
+            error_score = max(0.0, 1.0 - (error_rate * 2))  # Scale error impact
+        else:
+            error_score = 1.0
+        health_factors.append(error_score * 0.15)
+        
+        # CRD error count factor (10% weight)
+        error_count = self.error_crd_count
+        crd_score = 1.0
+        if error_count > 20:
+            crd_score = 0.2
+        elif error_count > 10:
+            crd_score = 0.4  
+        elif error_count > 5:
+            crd_score = 0.7
+        elif error_count > 0:
+            crd_score = 0.9
+        health_factors.append(crd_score * 0.10)
+        
+        # GitOps status factor (10% weight)
+        gitops_score = 1.0
+        if hasattr(self, 'drift_status'):
+            if self.drift_status == 'conflicts':
+                gitops_score = 0.3
+            elif self.drift_status == 'drift_detected':
+                gitops_score = 0.6
+            elif self.drift_status == 'git_ahead':
+                gitops_score = 0.8
+        health_factors.append(gitops_score * 0.10)
+        
+        final_score = sum(health_factors)
+        
+        # Update the stored health score
+        if abs(final_score - self.sync_health_score) > 0.05:  # Only update if significant change
+            self.sync_health_score = final_score
+            self.save(update_fields=['sync_health_score'])
+        
+        return final_score
+    
+    def should_be_scheduled(self) -> bool:
+        """
+        Determine if this fabric should be included in scheduler runs.
+        
+        Returns:
+            True if fabric needs scheduler attention
+        """
+        if not self.scheduler_enabled:
+            return False
+        
+        # Always schedule critical and high priority fabrics
+        if self.scheduler_priority in ['critical', 'high']:
+            return True
+        
+        # Schedule based on health score
+        health_score = self.calculate_scheduler_health_score()
+        if health_score < 0.8:
+            return True
+        
+        # Schedule if overdue for sync
+        if self.sync_enabled and self.sync_interval:
+            if not self.last_sync:
+                return True
+            
+            time_since_sync = timezone.now() - self.last_sync
+            if time_since_sync.total_seconds() >= self.sync_interval:
+                return True
+        
+        return False
+    
+    def get_scheduler_priority_level(self) -> int:
+        """
+        Get numeric priority level for scheduler ordering.
+        
+        Returns:
+            Integer priority (1=highest, 5=lowest)
+        """
+        priority_map = {
+            'critical': 1,
+            'high': 2,
+            'medium': 3,
+            'low': 4,
+            'maintenance': 5
+        }
+        return priority_map.get(self.scheduler_priority, 3)
+    
+    def update_scheduler_execution_metrics(self, task_type: str, success: bool):
+        """
+        Update scheduler execution metrics for this fabric.
+        
+        Args:
+            task_type: Type of task executed
+            success: Whether the task succeeded
+        """
+        from django.utils import timezone
+        
+        self.task_execution_count += 1
+        if not success:
+            self.failed_task_count += 1
+        
+        self.last_task_execution = timezone.now()
+        
+        # Update scheduler metadata with task tracking
+        if not isinstance(self.scheduler_metadata, dict):
+            self.scheduler_metadata = {}
+        
+        task_history = self.scheduler_metadata.get('task_history', [])
+        task_history.append({
+            'task_type': task_type,
+            'success': success,
+            'timestamp': timezone.now().isoformat(),
+            'execution_count': self.task_execution_count
+        })
+        
+        # Keep only last 10 task records
+        self.scheduler_metadata['task_history'] = task_history[-10:]
+        self.scheduler_metadata['last_update'] = timezone.now().isoformat()
+        
+        self.save(update_fields=[
+            'task_execution_count', 'failed_task_count',
+            'last_task_execution', 'scheduler_metadata'
+        ])
+    
+    def add_active_sync_task(self, task_id: str, task_type: str, estimated_duration: int):
+        """
+        Add a sync task to the active tasks list.
+        
+        Args:
+            task_id: Unique identifier for the task
+            task_type: Type of sync task
+            estimated_duration: Estimated duration in seconds
+        """
+        if not isinstance(self.active_sync_tasks, list):
+            self.active_sync_tasks = []
+        
+        task_info = {
+            'task_id': task_id,
+            'task_type': task_type,
+            'estimated_duration': estimated_duration,
+            'started_at': timezone.now().isoformat()
+        }
+        
+        # Remove any existing task with same ID
+        self.active_sync_tasks = [
+            task for task in self.active_sync_tasks 
+            if task.get('task_id') != task_id
+        ]
+        
+        self.active_sync_tasks.append(task_info)
+        self.save(update_fields=['active_sync_tasks'])
+    
+    def remove_active_sync_task(self, task_id: str, success: bool = True):
+        """
+        Remove a sync task from the active tasks list.
+        
+        Args:
+            task_id: Task identifier to remove
+            success: Whether the task completed successfully
+        """
+        if not isinstance(self.active_sync_tasks, list):
+            return
+        
+        # Find and remove the task
+        task_found = False
+        for task in self.active_sync_tasks[:]:
+            if task.get('task_id') == task_id:
+                self.active_sync_tasks.remove(task)
+                task_found = True
+                
+                # Update execution metrics
+                task_type = task.get('task_type', 'unknown')
+                self.update_scheduler_execution_metrics(task_type, success)
+                break
+        
+        if task_found:
+            self.save(update_fields=['active_sync_tasks'])
+    
+    def get_active_task_count(self) -> int:
+        """Get count of currently active sync tasks."""
+        if not isinstance(self.active_sync_tasks, list):
+            return 0
+        return len(self.active_sync_tasks)
+    
+    def get_scheduler_statistics(self) -> Dict[str, Any]:
+        """
+        Get comprehensive scheduler statistics for this fabric.
+        
+        Returns:
+            Dict with scheduler metrics and status
+        """
+        health_score = self.calculate_scheduler_health_score()
+        
+        return {
+            'fabric_id': self.id,
+            'fabric_name': self.name,
+            'scheduler_enabled': self.scheduler_enabled,
+            'priority': self.scheduler_priority,
+            'health_score': health_score,
+            'should_be_scheduled': self.should_be_scheduled(),
+            'last_scheduler_run': self.last_scheduler_run,
+            'execution_metrics': {
+                'total_executions': self.task_execution_count,
+                'failed_executions': self.failed_task_count,
+                'success_rate': (
+                    (self.task_execution_count - self.failed_task_count) / self.task_execution_count
+                    if self.task_execution_count > 0 else 1.0
+                ),
+                'last_execution': self.last_task_execution
+            },
+            'active_tasks': {
+                'count': self.get_active_task_count(),
+                'tasks': self.active_sync_tasks or []
+            },
+            'sync_status': {
+                'status': self.sync_status,
+                'last_sync': self.last_sync,
+                'sync_enabled': self.sync_enabled,
+                'sync_interval': self.sync_interval
+            },
+            'metadata': self.scheduler_metadata or {}
         }
     
     def sync_actual_state(self):

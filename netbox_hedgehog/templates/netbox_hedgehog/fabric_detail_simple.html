@@ -35,11 +35,11 @@
                             <h4>Fabric Information</h4>
                             <table class="table table-borderless">
                                 <tr>
-                                    <th width="200">Name:</th>
+                                    <th class="text-info" width="200">Name:</th>
                                     <td><strong>{{ object.name }}</strong></td>
                                 </tr>
                                 <tr>
-                                    <th>Description:</th>
+                                    <th class="text-info">Description:</th>
                                     <td>{{ object.description|default:"—" }}</td>
                                 </tr>
                             </table>
@@ -48,7 +48,7 @@
                             <h5 class="mt-4"><i class="mdi mdi-git"></i> Git Repository Sync</h5>
                             <table class="table table-borderless">
                                 <tr>
-                                    <th width="200">Git Sync Status:</th>
+                                    <th class="text-info" width="200">Git Sync Status:</th>
                                     <td>
                                         <span class="badge {% if object.git_repository %}bg-success{% else %}bg-secondary{% endif %}">
                                             {% if object.git_repository %}Connected{% else %}Not Configured{% endif %}
@@ -56,7 +56,7 @@
                                     </td>
                                 </tr>
                                 <tr>
-                                    <th>Git Sync Enabled:</th>
+                                    <th class="text-info">Git Sync Enabled:</th>
                                     <td>
                                         {% if object.git_repository %}
                                             {% if object.sync_enabled %}
@@ -71,7 +71,7 @@
                                 </tr>
                                 {% if object.git_repository %}
                                 <tr>
-                                    <th>Git Last Sync:</th>
+                                    <th class="text-info">Git Last Sync:</th>
                                     <td>
                                         {% if object.last_sync %}
                                             {{ object.last_sync|date:"Y-m-d H:i:s" }}
@@ -88,7 +88,7 @@
                             <h5 class="mt-4"><i class="mdi mdi-kubernetes"></i> Hedgehog Fabric Sync</h5>
                             <table class="table table-borderless">
                                 <tr>
-                                    <th width="200">Fabric Kubernetes Server:</th>
+                                    <th class="text-info" width="200">Fabric Kubernetes Server:</th>
                                     <td>
                                         {% if object.kubernetes_server and object.kubernetes_server|length > 0 %}
                                             <code>{{ object.kubernetes_server }}</code>
@@ -101,19 +101,19 @@
                                     </td>
                                 </tr>
                                 <tr>
-                                    <th>Fabric Kubernetes Namespace:</th>
+                                    <th class="text-info">Fabric Kubernetes Namespace:</th>
                                     <td><code>{{ object.kubernetes_namespace }}</code></td>
                                 </tr>
                                 <tr>
-                                    <th>Fabric Sync Status:</th>
+                                    <th class="text-info">Fabric Sync Status:</th>
                                     <td>
-                                        <span class="badge {% if object.sync_status == 'in_sync' %}bg-success text-white{% elif object.sync_status == 'synced' %}bg-success text-white{% elif object.sync_status == 'out_of_sync' %}bg-warning text-dark{% elif object.sync_status == 'syncing' %}bg-info text-white{% elif object.sync_status == 'error' %}bg-danger text-white{% else %}bg-secondary text-white{% endif %}">
-                                            {{ object.get_sync_status_display }}
+                                        <span class="badge {{ object.calculated_sync_status_badge_class }}">
+                                            {{ object.calculated_sync_status_display }}
                                         </span>
                                     </td>
                                 </tr>
                                 <tr>
-                                    <th>Fabric Sync Enabled:</th>
+                                    <th class="text-info">Fabric Sync Enabled:</th>
                                     <td>
                                         {% if object.sync_enabled %}
                                             <span class="badge bg-success">Yes</span>
@@ -123,13 +123,21 @@
                                     </td>
                                 </tr>
                                 <tr>
-                                    <th>Fabric Sync Interval:</th>
-                                    <td>{{ object.sync_interval }} seconds</td>
+                                    <th class="text-info">Fabric Sync Interval:</th>
+                                    <td>
+                                        {% if not object.kubernetes_server %}
+                                            <span class="text-muted">{{ object.sync_interval }} seconds (requires Kubernetes configuration)</span>
+                                        {% else %}
+                                            {{ object.sync_interval }} seconds
+                                        {% endif %}
+                                    </td>
                                 </tr>
                                 <tr>
-                                    <th>Fabric Last Sync:</th>
+                                    <th class="text-info">Fabric Last Sync:</th>
                                     <td>
-                                        {% if object.last_sync %}
+                                        {% if not object.kubernetes_server %}
+                                            <span class="text-muted">No Kubernetes configured</span>
+                                        {% elif object.last_sync %}
                                             {{ object.last_sync|date:"Y-m-d H:i:s" }}
                                             <small class="text-muted">({{ object.last_sync|timesince }} ago)</small>
                                         {% else %}
@@ -143,7 +151,7 @@
                             <h5 class="mt-4"><i class="mdi mdi-compare"></i> Drift Detection</h5>
                             <table class="table table-borderless">
                                 <tr>
-                                    <th width="200">Drift Status:</th>
+                                    <th class="text-info" width="200">Drift Status:</th>
                                     <td>
                                         {% if object.drift_count > 0 %}
                                             <span class="badge bg-warning text-dark">{{ object.drift_count }} drift(s) detected</span>
@@ -153,11 +161,11 @@
                                     </td>
                                 </tr>
                                 <tr>
-                                    <th>Drift Count:</th>
+                                    <th class="text-info">Drift Count:</th>
                                     <td>{{ object.drift_count|default:"0" }}</td>
                                 </tr>
                                 <tr>
-                                    <th>Last Drift Check:</th>
+                                    <th class="text-info">Last Drift Check:</th>
                                     <td>
                                         {% if object.last_drift_check %}
                                             {{ object.last_drift_check|date:"Y-m-d H:i:s" }}
@@ -175,7 +183,7 @@
                             <table class="table table-borderless">
                                 {% if object.sync_error %}
                                 <tr>
-                                    <th width="200">Sync Error:</th>
+                                    <th class="text-info" width="200">Sync Error:</th>
                                     <td>
                                         <div class="alert alert-danger">
                                             <small>{{ object.sync_error }}</small>
@@ -185,7 +193,7 @@
                                 {% endif %}
                                 {% if object.connection_error %}
                                 <tr>
-                                    <th>Connection Error:</th>
+                                    <th class="text-info">Connection Error:</th>
                                     <td>
                                         <div class="alert alert-danger">
                                             <small>{{ object.connection_error }}</small>
@@ -201,23 +209,26 @@
                             <h4>Git Configuration</h4>
                             {% if object.git_repository %}
                                 <div class="alert alert-success">
-                                    <h6><i class="mdi mdi-git"></i> Git Repository Connected</h6>
                                     <table class="table table-borderless mb-0">
                                         <tr>
-                                            <th width="30%">Repository:</th>
+                                            <th class="text-info" width="40%">Status:</th>
+                                            <td><span class="badge bg-success"><i class="mdi mdi-git"></i> Connected</span></td>
+                                        </tr>
+                                        <tr>
+                                            <th class="text-info">Repository:</th>
                                             <td><span class="text-break">{{ object.git_repository }}</span></td>
                                         </tr>
                                         <tr>
-                                            <th>GitOps Directory:</th>
+                                            <th class="text-info">GitOps Directory:</th>
                                             <td><code class="text-break">{{ object.gitops_directory|default:"/" }}</code></td>
                                         </tr>
                                         {% if object.git_repository.url %}
                                             <tr>
-                                                <th>URL:</th>
+                                                <th class="text-info">URL:</th>
                                                 <td><span class="text-break" style="word-break: break-all; overflow-wrap: break-word;">{{ object.git_repository.url }}</span></td>
                                             </tr>
                                             <tr>
-                                                <th>Branch:</th>
+                                                <th class="text-info">Branch:</th>
                                                 <td><code class="text-break">{{ object.git_repository.default_branch|default:"main" }}</code></td>
                                             </tr>
                                         {% endif %}
@@ -225,18 +236,21 @@
                                 </div>
                             {% elif object.git_repository_url %}
                                 <div class="alert alert-warning">
-                                    <h6><i class="mdi mdi-git"></i> Legacy Git Configuration</h6>
                                     <table class="table table-borderless mb-0">
                                         <tr>
-                                            <th width="30%">Repository URL:</th>
+                                            <th class="text-info" width="40%">Status:</th>
+                                            <td><span class="badge bg-warning text-dark"><i class="mdi mdi-git"></i> Legacy</span></td>
+                                        </tr>
+                                        <tr>
+                                            <th class="text-info">Repository URL:</th>
                                             <td><span class="text-break" style="word-break: break-all; overflow-wrap: break-word;">{{ object.git_repository_url }}</span></td>
                                         </tr>
                                         <tr>
-                                            <th>GitOps Directory:</th>
+                                            <th class="text-info">GitOps Directory:</th>
                                             <td><code class="text-break">{{ object.gitops_directory|default:"/" }}</code></td>
                                         </tr>
                                         <tr>
-                                            <th>Branch:</th>
+                                            <th class="text-info">Branch:</th>
                                             <td><code class="text-break">{{ object.git_branch|default:"main" }}</code></td>
                                         </tr>
                                     </table>
@@ -244,14 +258,17 @@
                                 </div>
                             {% else %}
                                 <div class="alert alert-info">
-                                    <h6><i class="mdi mdi-information"></i> No Git Repository</h6>
                                     <table class="table table-borderless mb-0">
                                         <tr>
-                                            <th width="30%">Status:</th>
+                                            <th class="text-info" width="40%">Status:</th>
+                                            <td><span class="badge bg-secondary"><i class="mdi mdi-information"></i> Not Connected</span></td>
+                                        </tr>
+                                        <tr>
+                                            <th class="text-info">Description:</th>
                                             <td>This fabric is not connected to a Git repository.</td>
                                         </tr>
                                         <tr>
-                                            <th>GitOps Directory:</th>
+                                            <th class="text-info">GitOps Directory:</th>
                                             <td><code class="text-break">{{ object.gitops_directory|default:"/" }}</code></td>
                                         </tr>
                                     </table>
