@@ -1,0 +1,150 @@
+
+
+
+
+
+
+
+<!DOCTYPE html>
+<html
+  lang="en"
+  data-netbox-url-name="login"
+  data-netbox-version="4.3.3-Docker-3.3.0"
+  
+  >
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="initial-scale=1, maximum-scale=5, width=device-width, viewport-fit=cover" />
+    <meta name="htmx-config" content='{"scrollBehavior": "auto"}'>
+    <meta name="hostname" content="fecb7f94e536" />
+
+    
+    <title>Home | NetBox</title>
+
+    
+    <script
+      type="text/javascript"
+      src="/static/setmode.js?v=4.3.3"
+      onerror="window.location='/media-failure/?filename=setmode.js'">
+    </script>
+    <script type="text/javascript">
+      (function () {
+        initMode()
+      })();
+      window.CSRF_TOKEN = "d4MjS6ErzrpdaggUQVHtH3KdiYqAtxZb19vjrFxMbCYkonp00gFLVrb9LeTk4Ivq";
+    </script>
+
+    
+    <link
+      rel="stylesheet"
+      href="/static/netbox-external.css?v=4.3.3"
+      onerror="window.location='/media-failure/?filename=netbox-external.css'"
+    />
+    <link
+      rel="stylesheet"
+      href="/static/netbox.css?v=4.3.3"
+      onerror="window.location='/media-failure/?filename=netbox.css'"
+    />
+    <link rel="icon" type="image/png" href="/static/netbox.ico" />
+    <link rel="apple-touch-icon" type="image/png" href="/static/netbox_touch-icon-180.png" />
+
+    
+    <script
+      type="text/javascript"
+      src="/static/netbox.js?v=4.3.3"
+      onerror="window.location='/media-failure/?filename=netbox.js'">
+    </script>
+    
+
+    
+    
+    
+
+  </head>
+  <body>
+
+    
+    
+
+  <div class="page page-center">
+    <div class="container container-tight py-4">
+
+      
+      <div class="text-center mb-4">
+        <img src="/static/logo_netbox_dark_teal.svg" alt="NetBox Logo" height="80" class="hide-theme-dark logo">
+        <img src="/static/logo_netbox_bright_teal.svg" alt="NetBox Logo" height="80" class="hide-theme-light logo">
+        <div class="netbox-edition fw-semibold">Community</div>
+      </div>
+
+      
+      
+
+      
+      
+
+      <div class="card card-md">
+        
+          <div class="card-body">
+            <h2 class="text-center mb-4">Log In</h2>
+
+            
+            <form action="/login/" method="post">
+              <input type="hidden" name="csrfmiddlewaretoken" value="d4MjS6ErzrpdaggUQVHtH3KdiYqAtxZb19vjrFxMbCYkonp00gFLVrb9LeTk4Ivq">
+
+              
+              
+
+              <div class="form-group mb-3">
+                <label for="id_username" class="form-label">Username</label>
+                <input type="text" name="username"
+ autofocus autocapitalize="none" autocomplete="username" maxlength="150" required id="id_username"
+ class="form-control">
+                
+              </div>
+
+              <div class="form-group">
+                <label for="id_password" class="form-label">Password</label>
+                <input type="password" name="password"
+ autocomplete="current-password" required id="id_password"
+ class="form-control">
+                
+              </div>
+
+              <div class="form-footer">
+                <button type="submit" class="btn btn-primary w-100">
+                  Sign In
+                </button>
+              </div>
+            </form>
+          </div>
+        
+
+        
+        
+
+      </div>
+
+    </div>
+  </div>
+
+
+
+    
+    
+
+    
+    
+
+<div id="django-messages" class="toast-container position-fixed bottom-0 end-0 p-3" hx-swap-oob="true">
+
+  
+  
+
+  
+  
+
+</div>
+
+
+  </body>
+</html>

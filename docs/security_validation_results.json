@@ -1,0 +1,389 @@
+{
+  "timestamp": "2025-08-09",
+  "issue": "#33",
+  "templates": [
+    {
+      "has_form": false,
+      "has_csrf": false,
+      "needs_csrf": false,
+      "content_length": 9423,
+      "path": "/home/ubuntu/cc/hedgehog-netbox-plugin/netbox_hedgehog/templates/netbox_hedgehog/fabric_list_working.html"
+    },
+    {
+      "has_form": true,
+      "has_csrf": true,
+      "needs_csrf": false,
+      "content_length": 10894,
+      "path": "/home/ubuntu/cc/hedgehog-netbox-plugin/netbox_hedgehog/templates/netbox_hedgehog/fabric_edit.html"
+    },
+    {
+      "has_form": false,
+      "has_csrf": true,
+      "needs_csrf": false,
+      "content_length": 9548,
+      "path": "/home/ubuntu/cc/hedgehog-netbox-plugin/netbox_hedgehog/templates/netbox_hedgehog/fabric_list_clean.html"
+    },
+    {
+      "has_form": false,
+      "has_csrf": true,
+      "needs_csrf": false,
+      "content_length": 9221,
+      "path": "/home/ubuntu/cc/hedgehog-netbox-plugin/netbox_hedgehog/templates/netbox_hedgehog/fabric_crds.html"
+    },
+    {
+      "has_form": false,
+      "has_csrf": true,
+      "needs_csrf": false,
+      "content_length": 10981,
+      "path": "/home/ubuntu/cc/hedgehog-netbox-plugin/netbox_hedgehog/templates/netbox_hedgehog/fabric_detail_working.html"
+    },
+    {
+      "has_form": true,
+      "has_csrf": true,
+      "needs_csrf": false,
+      "content_length": 2334,
+      "path": "/home/ubuntu/cc/hedgehog-netbox-plugin/netbox_hedgehog/templates/netbox_hedgehog/fabric_delete_safe.html"
+    },
+    {
+      "has_form": false,
+      "has_csrf": false,
+      "needs_csrf": false,
+      "content_length": 4464,
+      "path": "/home/ubuntu/cc/hedgehog-netbox-plugin/netbox_hedgehog/templates/netbox_hedgehog/fabric_list_simple.html"
+    },
+    {
+      "has_form": false,
+      "has_csrf": true,
+      "needs_csrf": false,
+      "content_length": 30411,
+      "path": "/home/ubuntu/cc/hedgehog-netbox-plugin/netbox_hedgehog/templates/netbox_hedgehog/fabric_detail_simple.html"
+    },
+    {
+      "has_form": false,
+      "has_csrf": true,
+      "needs_csrf": false,
+      "content_length": 16378,
+      "path": "/home/ubuntu/cc/hedgehog-netbox-plugin/netbox_hedgehog/templates/netbox_hedgehog/fabric_list.html"
+    },
+    {
+      "has_form": true,
+      "has_csrf": true,
+      "needs_csrf": false,
+      "content_length": 10896,
+      "path": "/home/ubuntu/cc/hedgehog-netbox-plugin/netbox_hedgehog/templates/netbox_hedgehog/fabric_edit_simple.html"
+    },
+    {
+      "has_form": false,
+      "has_csrf": false,
+      "needs_csrf": false,
+      "content_length": 629,
+      "path": "/home/ubuntu/cc/hedgehog-netbox-plugin/netbox_hedgehog/templates/netbox_hedgehog/fabric_edit_minimal.html"
+    },
+    {
+      "has_form": false,
+      "has_csrf": false,
+      "needs_csrf": false,
+      "content_length": 9380,
+      "path": "/home/ubuntu/cc/hedgehog-netbox-plugin/netbox_hedgehog/templates/netbox_hedgehog/fabric_list_fixed.html"
+    },
+    {
+      "has_form": true,
+      "has_csrf": true,
+      "needs_csrf": false,
+      "content_length": 46948,
+      "path": "/home/ubuntu/cc/hedgehog-netbox-plugin/netbox_hedgehog/templates/netbox_hedgehog/fabric_creation_workflow.html"
+    },
+    {
+      "has_form": true,
+      "has_csrf": true,
+      "needs_csrf": false,
+      "content_length": 13051,
+      "path": "/home/ubuntu/cc/hedgehog-netbox-plugin/netbox_hedgehog/templates/netbox_hedgehog/fabric_confirm_delete.html"
+    },
+    {
+      "has_form": false,
+      "has_csrf": false,
+      "needs_csrf": false,
+      "content_length": 592,
+      "path": "/home/ubuntu/cc/hedgehog-netbox-plugin/netbox_hedgehog/templates/netbox_hedgehog/fabric_edit_debug.html"
+    },
+    {
+      "has_form": false,
+      "has_csrf": true,
+      "needs_csrf": false,
+      "content_length": 55920,
+      "path": "/home/ubuntu/cc/hedgehog-netbox-plugin/netbox_hedgehog/templates/netbox_hedgehog/pre_cluster_fabric_form.html"
+    },
+    {
+      "has_form": false,
+      "has_csrf": false,
+      "needs_csrf": false,
+      "content_length": 4003,
+      "path": "/home/ubuntu/cc/hedgehog-netbox-plugin/netbox_hedgehog/templates/netbox_hedgehog/fabric_detail_minimal.html"
+    },
+    {
+      "has_form": false,
+      "has_csrf": true,
+      "needs_csrf": false,
+      "content_length": 13346,
+      "path": "/home/ubuntu/cc/hedgehog-netbox-plugin/netbox_hedgehog/templates/netbox_hedgehog/fabric_detail_clean.html"
+    },
+    {
+      "has_form": false,
+      "has_csrf": true,
+      "needs_csrf": false,
+      "content_length": 22003,
+      "path": "/home/ubuntu/cc/hedgehog-netbox-plugin/netbox_hedgehog/templates/netbox_hedgehog/fabric_detail_enhanced.html"
+    },
+    {
+      "has_form": false,
+      "has_csrf": false,
+      "needs_csrf": false,
+      "content_length": 11848,
+      "path": "/home/ubuntu/cc/hedgehog-netbox-plugin/netbox_hedgehog/templates/netbox_hedgehog/fabric_detail_standalone.html"
+    },
+    {
+      "has_form": false,
+      "has_csrf": true,
+      "needs_csrf": false,
+      "content_length": 16440,
+      "path": "/home/ubuntu/cc/hedgehog-netbox-plugin/netbox_hedgehog/templates/netbox_hedgehog/fabric_overview.html"
+    },
+    {
+      "has_form": false,
+      "has_csrf": true,
+      "needs_csrf": false,
+      "content_length": 125072,
+      "path": "/home/ubuntu/cc/hedgehog-netbox-plugin/netbox_hedgehog/templates/netbox_hedgehog/fabric_detail.html"
+    },
+    {
+      "has_form": false,
+      "has_csrf": false,
+      "needs_csrf": false,
+      "content_length": 2051,
+      "path": "/home/ubuntu/cc/hedgehog-netbox-plugin/netbox_hedgehog/templates/netbox_hedgehog/components/fabric_filter_simple.html"
+    },
+    {
+      "has_form": false,
+      "has_csrf": false,
+      "needs_csrf": false,
+      "content_length": 4503,
+      "path": "/home/ubuntu/cc/hedgehog-netbox-plugin/netbox_hedgehog/templates/netbox_hedgehog/components/fabric_filter_enhanced.html"
+    },
+    {
+      "has_form": false,
+      "has_csrf": false,
+      "needs_csrf": false,
+      "content_length": 3196,
+      "path": "/home/ubuntu/cc/hedgehog-netbox-plugin/netbox_hedgehog/templates/netbox_hedgehog/components/fabric_filter.html"
+    },
+    {
+      "has_form": false,
+      "has_csrf": false,
+      "needs_csrf": false,
+      "content_length": 9423,
+      "path": "/home/ubuntu/cc/hedgehog-netbox-plugin/gitignore/netbox-docker/netbox_hedgehog/templates/netbox_hedgehog/fabric_list_working.html"
+    },
+    {
+      "has_form": true,
+      "has_csrf": true,
+      "needs_csrf": false,
+      "content_length": 10894,
+      "path": "/home/ubuntu/cc/hedgehog-netbox-plugin/gitignore/netbox-docker/netbox_hedgehog/templates/netbox_hedgehog/fabric_edit.html"
+    },
+    {
+      "has_form": false,
+      "has_csrf": true,
+      "needs_csrf": false,
+      "content_length": 9548,
+      "path": "/home/ubuntu/cc/hedgehog-netbox-plugin/gitignore/netbox-docker/netbox_hedgehog/templates/netbox_hedgehog/fabric_list_clean.html"
+    },
+    {
+      "has_form": false,
+      "has_csrf": true,
+      "needs_csrf": false,
+      "content_length": 9221,
+      "path": "/home/ubuntu/cc/hedgehog-netbox-plugin/gitignore/netbox-docker/netbox_hedgehog/templates/netbox_hedgehog/fabric_crds.html"
+    },
+    {
+      "has_form": false,
+      "has_csrf": true,
+      "needs_csrf": false,
+      "content_length": 10985,
+      "path": "/home/ubuntu/cc/hedgehog-netbox-plugin/gitignore/netbox-docker/netbox_hedgehog/templates/netbox_hedgehog/fabric_detail_working.html"
+    },
+    {
+      "has_form": true,
+      "has_csrf": true,
+      "needs_csrf": false,
+      "content_length": 2334,
+      "path": "/home/ubuntu/cc/hedgehog-netbox-plugin/gitignore/netbox-docker/netbox_hedgehog/templates/netbox_hedgehog/fabric_delete_safe.html"
+    },
+    {
+      "has_form": false,
+      "has_csrf": false,
+      "needs_csrf": false,
+      "content_length": 4464,
+      "path": "/home/ubuntu/cc/hedgehog-netbox-plugin/gitignore/netbox-docker/netbox_hedgehog/templates/netbox_hedgehog/fabric_list_simple.html"
+    },
+    {
+      "has_form": false,
+      "has_csrf": true,
+      "needs_csrf": false,
+      "content_length": 30411,
+      "path": "/home/ubuntu/cc/hedgehog-netbox-plugin/gitignore/netbox-docker/netbox_hedgehog/templates/netbox_hedgehog/fabric_detail_simple.html"
+    },
+    {
+      "has_form": false,
+      "has_csrf": true,
+      "needs_csrf": false,
+      "content_length": 16378,
+      "path": "/home/ubuntu/cc/hedgehog-netbox-plugin/gitignore/netbox-docker/netbox_hedgehog/templates/netbox_hedgehog/fabric_list.html"
+    },
+    {
+      "has_form": true,
+      "has_csrf": true,
+      "needs_csrf": false,
+      "content_length": 10896,
+      "path": "/home/ubuntu/cc/hedgehog-netbox-plugin/gitignore/netbox-docker/netbox_hedgehog/templates/netbox_hedgehog/fabric_edit_simple.html"
+    },
+    {
+      "has_form": false,
+      "has_csrf": false,
+      "needs_csrf": false,
+      "content_length": 629,
+      "path": "/home/ubuntu/cc/hedgehog-netbox-plugin/gitignore/netbox-docker/netbox_hedgehog/templates/netbox_hedgehog/fabric_edit_minimal.html"
+    },
+    {
+      "has_form": false,
+      "has_csrf": false,
+      "needs_csrf": false,
+      "content_length": 9380,
+      "path": "/home/ubuntu/cc/hedgehog-netbox-plugin/gitignore/netbox-docker/netbox_hedgehog/templates/netbox_hedgehog/fabric_list_fixed.html"
+    },
+    {
+      "has_form": true,
+      "has_csrf": true,
+      "needs_csrf": false,
+      "content_length": 46948,
+      "path": "/home/ubuntu/cc/hedgehog-netbox-plugin/gitignore/netbox-docker/netbox_hedgehog/templates/netbox_hedgehog/fabric_creation_workflow.html"
+    },
+    {
+      "has_form": true,
+      "has_csrf": true,
+      "needs_csrf": false,
+      "content_length": 13051,
+      "path": "/home/ubuntu/cc/hedgehog-netbox-plugin/gitignore/netbox-docker/netbox_hedgehog/templates/netbox_hedgehog/fabric_confirm_delete.html"
+    },
+    {
+      "has_form": false,
+      "has_csrf": false,
+      "needs_csrf": false,
+      "content_length": 592,
+      "path": "/home/ubuntu/cc/hedgehog-netbox-plugin/gitignore/netbox-docker/netbox_hedgehog/templates/netbox_hedgehog/fabric_edit_debug.html"
+    },
+    {
+      "has_form": false,
+      "has_csrf": true,
+      "needs_csrf": false,
+      "content_length": 55920,
+      "path": "/home/ubuntu/cc/hedgehog-netbox-plugin/gitignore/netbox-docker/netbox_hedgehog/templates/netbox_hedgehog/pre_cluster_fabric_form.html"
+    },
+    {
+      "has_form": false,
+      "has_csrf": false,
+      "needs_csrf": false,
+      "content_length": 4003,
+      "path": "/home/ubuntu/cc/hedgehog-netbox-plugin/gitignore/netbox-docker/netbox_hedgehog/templates/netbox_hedgehog/fabric_detail_minimal.html"
+    },
+    {
+      "has_form": false,
+      "has_csrf": true,
+      "needs_csrf": false,
+      "content_length": 13346,
+      "path": "/home/ubuntu/cc/hedgehog-netbox-plugin/gitignore/netbox-docker/netbox_hedgehog/templates/netbox_hedgehog/fabric_detail_clean.html"
+    },
+    {
+      "has_form": false,
+      "has_csrf": true,
+      "needs_csrf": false,
+      "content_length": 22003,
+      "path": "/home/ubuntu/cc/hedgehog-netbox-plugin/gitignore/netbox-docker/netbox_hedgehog/templates/netbox_hedgehog/fabric_detail_enhanced.html"
+    },
+    {
+      "has_form": false,
+      "has_csrf": false,
+      "needs_csrf": false,
+      "content_length": 11848,
+      "path": "/home/ubuntu/cc/hedgehog-netbox-plugin/gitignore/netbox-docker/netbox_hedgehog/templates/netbox_hedgehog/fabric_detail_standalone.html"
+    },
+    {
+      "has_form": false,
+      "has_csrf": true,
+      "needs_csrf": false,
+      "content_length": 16440,
+      "path": "/home/ubuntu/cc/hedgehog-netbox-plugin/gitignore/netbox-docker/netbox_hedgehog/templates/netbox_hedgehog/fabric_overview.html"
+    },
+    {
+      "has_form": false,
+      "has_csrf": true,
+      "needs_csrf": false,
+      "content_length": 125072,
+      "path": "/home/ubuntu/cc/hedgehog-netbox-plugin/gitignore/netbox-docker/netbox_hedgehog/templates/netbox_hedgehog/fabric_detail.html"
+    },
+    {
+      "has_form": false,
+      "has_csrf": false,
+      "needs_csrf": false,
+      "content_length": 2051,
+      "path": "/home/ubuntu/cc/hedgehog-netbox-plugin/gitignore/netbox-docker/netbox_hedgehog/templates/netbox_hedgehog/components/fabric_filter_simple.html"
+    },
+    {
+      "has_form": false,
+      "has_csrf": false,
+      "needs_csrf": false,
+      "content_length": 4503,
+      "path": "/home/ubuntu/cc/hedgehog-netbox-plugin/gitignore/netbox-docker/netbox_hedgehog/templates/netbox_hedgehog/components/fabric_filter_enhanced.html"
+    },
+    {
+      "has_form": false,
+      "has_csrf": false,
+      "needs_csrf": false,
+      "content_length": 3196,
+      "path": "/home/ubuntu/cc/hedgehog-netbox-plugin/gitignore/netbox-docker/netbox_hedgehog/templates/netbox_hedgehog/components/fabric_filter.html"
+    }
+  ],
+  "forms": [
+    {
+      "has_validation": true,
+      "has_sanitization": true,
+      "has_permission_checks": false,
+      "has_input_validation": true,
+      "content_length": 8713,
+      "path": "/home/ubuntu/cc/hedgehog-netbox-plugin/netbox_hedgehog/forms/fabric.py"
+    },
+    {
+      "has_validation": true,
+      "has_sanitization": false,
+      "has_permission_checks": false,
+      "has_input_validation": true,
+      "content_length": 25258,
+      "path": "/home/ubuntu/cc/hedgehog-netbox-plugin/netbox_hedgehog/forms/fabric_forms.py"
+    },
+    {
+      "has_validation": false,
+      "has_sanitization": false,
+      "has_permission_checks": true,
+      "has_input_validation": false,
+      "content_length": 4158,
+      "path": "/home/ubuntu/cc/hedgehog-netbox-plugin/netbox_hedgehog/views/fabric.py"
+    }
+  ],
+  "summary": {
+    "templates_total": 50,
+    "csrf_issues": 0,
+    "forms_total": 3,
+    "security_issues": 2,
+    "overall_status": "NEEDS_ATTENTION"
+  }
+}

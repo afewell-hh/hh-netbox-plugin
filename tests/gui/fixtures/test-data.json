@@ -1,0 +1,69 @@
+{
+  "testCredentials": {
+    "username": "admin",
+    "password": "admin"
+  },
+  "testFabrics": [
+    {
+      "name": "test-fabric-gui-01",
+      "description": "GUI test fabric for automation testing",
+      "tags": ["gui-test", "automation"]
+    },
+    {
+      "name": "test-fabric-gui-02", 
+      "description": "Secondary GUI test fabric",
+      "tags": ["gui-test", "secondary"]
+    }
+  ],
+  "testUrls": {
+    "pluginHome": "/plugins/hedgehog/",
+    "fabricList": "/plugins/hedgehog/fabrics/",
+    "gitRepoList": "/plugins/hedgehog/git-repositories/",
+    "gitRepoDetail": "/plugins/hedgehog/git-repositories/1/",
+    "fabricAdd": "/plugins/hedgehog/fabrics/add/"
+  },
+  "expectedElements": {
+    "navigationLinks": [
+      "Fabric",
+      "Git",
+      "Repository",
+      "Sync"
+    ],
+    "buttons": [
+      "Add",
+      "Edit", 
+      "Delete",
+      "Sync",
+      "Save"
+    ],
+    "statusIndicators": [
+      ".status",
+      ".badge", 
+      "[data-status]",
+      ".health-indicator",
+      ".sync-status"
+    ]
+  },
+  "bugPatterns": {
+    "htmlComments": [
+      "<!--[\\s\\S]*?<div[\\s\\S]*?>",
+      "<!--[\\s\\S]*?<form[\\s\\S]*?>", 
+      "<!--[\\s\\S]*?<table[\\s\\S]*?>",
+      "<!--[\\s\\S]*?class=[\\s\\S]*?>"
+    ],
+    "errorStrings": [
+      "DoesNotExist",
+      "OperationalError",
+      "Traceback",
+      "Server Error",
+      "AttributeError", 
+      "ImportError"
+    ]
+  },
+  "performanceThresholds": {
+    "pageLoadTimeout": 10000,
+    "actionTimeout": 30000,
+    "maxConsoleErrors": 3,
+    "maxSlowPageLoad": 5000
+  }
+}

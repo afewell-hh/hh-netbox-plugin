@@ -1,0 +1,59 @@
+<testsuites id="" name="" tests="6" failures="0" skipped="0" errors="0" time="13.96572">
+<testsuite name="netbox-hedgehog.spec.ts" timestamp="2025-08-09T22:27:49.221Z" hostname="chromium" tests="6" failures="0" skipped="0" time="11.724" errors="0">
+<testcase name="NetBox Hedgehog Plugin GUI Tests › NetBox login page loads correctly" classname="netbox-hedgehog.spec.ts" time="0.571">
+</testcase>
+<testcase name="NetBox Hedgehog Plugin GUI Tests › Hedgehog plugin home page accessibility" classname="netbox-hedgehog.spec.ts" time="2.799">
+<system-out>
+<![CDATA[✅ Accessed Hedgehog plugin directly
+✅ No JavaScript errors detected
+]]>
+</system-out>
+</testcase>
+<testcase name="NetBox Hedgehog Plugin GUI Tests › Hedgehog fabric page loads without critical errors" classname="netbox-hedgehog.spec.ts" time="0.588">
+<system-out>
+<![CDATA[Current URL: http://localhost:8000/plugins/hedgehog/fabrics/
+✅ Accessed fabrics page directly
+]]>
+</system-out>
+</testcase>
+<testcase name="NetBox Hedgehog Plugin GUI Tests › Hedgehog git repositories page loads without critical errors" classname="netbox-hedgehog.spec.ts" time="0.458">
+<system-out>
+<![CDATA[Git repositories page URL: http://localhost:8000/login/?next=/plugins/hedgehog/git-repositories/
+✅ Git repositories page redirects to login correctly
+]]>
+</system-out>
+</testcase>
+<testcase name="NetBox Hedgehog Plugin GUI Tests › No critical JavaScript errors on main pages" classname="netbox-hedgehog.spec.ts" time="6.654">
+<system-out>
+<![CDATA[Testing page: /plugins/hedgehog/
+✅ /plugins/hedgehog/ loaded without critical errors
+Testing page: /plugins/hedgehog/fabrics/
+✅ /plugins/hedgehog/fabrics/ loaded without critical errors
+Testing page: /plugins/hedgehog/git-repositories/
+✅ /plugins/hedgehog/git-repositories/ loaded without critical errors
+✅ JavaScript error test completed. Found 0 page errors and 2 console errors.
+]]>
+</system-out>
+<system-err>
+<![CDATA[Console Errors: [
+  [32m'Console Error: Failed to load resource: the server responded with a status of 404 (Not Found)'[39m,
+  [32m'Console Error: Failed to load resource: the server responded with a status of 404 (Not Found)'[39m
+]
+]]>
+</system-err>
+</testcase>
+<testcase name="NetBox Hedgehog Plugin GUI Tests › CSS and styling loads correctly" classname="netbox-hedgehog.spec.ts" time="0.654">
+<system-out>
+<![CDATA[Bootstrap/CSS classes found: [33mtrue[39m
+Body styles: {
+  fontFamily: [32m'Inter, system-ui, sans-serif'[39m,
+  fontSize: [32m'14px'[39m,
+  margin: [32m'0px'[39m,
+  backgroundColor: [32m'rgb(249, 250, 251)'[39m
+}
+✅ Basic CSS and styling verification passed
+]]>
+</system-out>
+</testcase>
+</testsuite>
+</testsuites>

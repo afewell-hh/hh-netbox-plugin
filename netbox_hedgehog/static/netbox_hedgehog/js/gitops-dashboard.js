@@ -1,24 +1,102 @@
 /**
- * GitOps Dashboard JavaScript
- * Handles real-time monitoring and management of GitOps file operations
+ * GitOps Management Dashboard JavaScript
+ * Professional interface for unified Phase 3 component management
  */
 
 class GitOpsDashboard {
-    constructor() {
-        this.refreshInterval = null;
-        this.autoRefreshEnabled = true;
-        this.refreshIntervalMs = 30000; // 30 seconds
-        this.charts = {};
+    constructor(options = {}) {
+        this.fabricId = options.fabricId || null;
+        this.apiBaseUrl = options.apiBaseUrl || '/api/plugins/netbox-hedgehog/';
+        this.websocketUrl = options.websocketUrl || null;
+        this.refreshInterval = options.refreshInterval || 30;
+        this.csrfToken = options.csrfToken || '';
         
-        this.init();
+        // State management
+        this.currentPath = '/';
+        this.fileBrowserHistory = [];
+        this.websocket = null;
+        this.refreshIntervalId = null;
+        this.charts = {};
+        this.connectionStatus = 'disconnected';
+        
+        // File browser state
+        this.selectedFiles = [];
+        this.fileSortColumn = 'name';
+        this.fileSortDirection = 'asc';
+        
+        // Dashboard components
+        this.components = {
+            fileBrowser: null,
+            visualDiff: null,
+            workflowStatus: null,
+            realtimeUpdates: null
+        };
     }
     
-    init() {
-        console.log('📊 Initializing GitOps Dashboard');
-        this.attachEventListeners();
+    initialize() {
+        console.log('📊 Initializing GitOps Management Dashboard');
+        this.initializeEventListeners();
+        this.initializeComponents();
         this.loadInitialData();
-        this.initializeCharts();
-        this.startAutoRefresh();
+        this.setupWebSocket();
+        this.updateConnectionStatus('connecting');
+        return this;
+    }
+    
+    initializeEventListeners() {
+        // Fabric selector
+        const fabricSelector = document.getElementById('fabricSelector');
+        if (fabricSelector) {
+            fabricSelector.addEventListener('change', (e) => this.onFabricChange(e.target.value));
+        }
+        
+        // Dashboard controls
+        this.attachEventListener('refreshDashboard', 'click', () => this.refreshDashboard());
+        this.attachEventListener('dashboardSettings', 'click', () => this.showDashboardSettings());
+        
+        // Quick actions
+        this.attachEventListener('syncFabric', 'click', () => this.syncCurrentFabric());
+        this.attachEventListener('generateTemplates', 'click', () => this.generateTemplates());
+        this.attachEventListener('resolveConflicts', 'click', () => this.resolveConflicts());
+        this.attachEventListener('initGitOps', 'click', () => this.initializeGitOps());
+        
+        // File browser controls
+        this.attachEventListener('fileBrowserRefresh', 'click', () => this.refreshFileBrowser());
+        this.attachEventListener('fileBrowserBack', 'click', () => this.navigateBack());
+        this.attachEventListener('fileBrowserUp', 'click', () => this.navigateUp());
+        this.attachEventListener('navigatePath', 'click', () => this.navigateToPath());
+        
+        // Visual diff controls
+        this.attachEventListener('refreshDiff', 'click', () => this.refreshVisualDiff());
+        document.querySelectorAll('[data-diff-view]').forEach(btn => {
+            btn.addEventListener('click', (e) => this.changeDiffView(e.target.dataset.diffView));
+        });
+        
+        // File operations
+        document.addEventListener('click', (e) => this.handleFileClick(e));
+        document.addEventListener('dblclick', (e) => this.handleFileDoubleClick(e));
+        
+        // Modal events
+        this.attachEventListener('editFileButton', 'click', () => this.editCurrentFile());
+        
+        // Keyboard shortcuts
+        document.addEventListener('keydown', (e) => this.handleKeyboardShortcuts(e));
+    }
+    
+    initializeComponents() {
+        // Initialize file browser component
+        this.components.fileBrowser = new FileBrowserComponent(this);
+        
+        // Initialize visual diff component
+        this.components.visualDiff = new VisualDiffComponent(this);
+        
+        // Initialize workflow status component
+        this.components.workflowStatus = new WorkflowStatusComponent(this);
+        
+        // Initialize real-time updates component
+        this.components.realtimeUpdates = new RealtimeUpdatesComponent(this);
+        
+        console.log('✅ Dashboard components initialized');
     }
     
     attachEventListeners() {
@@ -643,11 +721,445 @@ window.emergencyStop = function() {
     }
 };
 
-// Global dashboard instance
-let dashboard;
+    // Integration-specific methods
+    
+    attachEventListener(id, event, handler) {
+        const element = document.getElementById(id);
+        if (element) {
+            element.addEventListener(event, handler);
+        }
+    }
+    
+    async onFabricChange(fabricId) {
+        if (fabricId) {
+            this.fabricId = parseInt(fabricId);
+            await this.loadFabricData();
+            this.updateURL();
+        } else {
+            this.fabricId = null;
+            this.clearFabricData();
+        }
+    }
+    
+    async loadFabricData() {
+        if (!this.fabricId) return;
+        
+        try {
+            await Promise.all([
+                this.loadFileBrowserData('/'),
+                this.loadWorkflowStatus(),
+                this.refreshVisualDiff()
+            ]);
+        } catch (error) {
+            console.error('Failed to load fabric data:', error);
+            this.showNotification('Failed to load fabric data', 'error');
+        }
+    }
+    
+    async loadFileBrowserData(path = '/') {
+        if (!this.fabricId) return;
+        
+        this.showFileBrowserLoader();
+        
+        try {
+            const response = await this.apiRequest(`gitops-dashboard/${this.fabricId}/file-browser/?path=${encodeURIComponent(path)}`);
+            
+            if (response.success) {
+                this.components.fileBrowser.renderFileList(response.data);
+                this.currentPath = path;
+                this.updateFileBrowserNavigation();
+            } else {
+                throw new Error(response.error || 'Failed to load file browser data');
+            }
+        } catch (error) {
+            console.error('File browser error:', error);
+            this.showFileBrowserError(error.message);
+        }
+    }
+    
+    async loadWorkflowStatus() {
+        if (!this.fabricId) return;
+        
+        try {
+            const response = await this.apiRequest(`gitops-dashboard/${this.fabricId}/workflow-status/`);
+            
+            if (response.success) {
+                this.components.workflowStatus.updateStatus(response.data);
+            }
+        } catch (error) {
+            console.error('Workflow status error:', error);
+        }
+    }
+    
+    async refreshVisualDiff() {
+        if (!this.fabricId) return;
+        
+        try {
+            const response = await this.apiRequest(`gitops-dashboard/${this.fabricId}/visual-diff/`);
+            
+            if (response.success) {
+                this.components.visualDiff.renderDiff(response.data);
+            }
+        } catch (error) {
+            console.error('Visual diff error:', error);
+        }
+    }
+    
+    setupWebSocket() {
+        if (!this.websocketUrl || !this.fabricId) return;
+        
+        try {
+            const wsUrl = `${this.websocketUrl}fabric/${this.fabricId}/`;
+            this.websocket = new WebSocket(wsUrl);
+            
+            this.websocket.onopen = () => {
+                console.log('✅ WebSocket connected');
+                this.updateConnectionStatus('connected');
+            };
+            
+            this.websocket.onmessage = (event) => {
+                const data = JSON.parse(event.data);
+                this.handleWebSocketMessage(data);
+            };
+            
+            this.websocket.onclose = () => {
+                console.log('❌ WebSocket disconnected');
+                this.updateConnectionStatus('disconnected');
+                this.scheduleWebSocketReconnect();
+            };
+            
+            this.websocket.onerror = (error) => {
+                console.error('WebSocket error:', error);
+                this.updateConnectionStatus('error');
+            };
+        } catch (error) {
+            console.error('WebSocket setup failed:', error);
+            this.updateConnectionStatus('error');
+        }
+    }
+    
+    handleWebSocketMessage(data) {
+        switch (data.type) {
+            case 'file_changed':
+                this.refreshFileBrowser();
+                break;
+            case 'workflow_update':
+                this.components.workflowStatus.updateWorkflow(data.workflow, data.status);
+                break;
+            case 'diff_update':
+                this.refreshVisualDiff();
+                break;
+            case 'notification':
+                this.showNotification(data.message, data.level || 'info');
+                break;
+        }
+    }
+    
+    updateConnectionStatus(status) {
+        this.connectionStatus = status;
+        
+        const indicator = document.getElementById('connectionIndicator');
+        const statusText = document.getElementById('connectionStatusText');
+        const toast = document.getElementById('connectionStatus');
+        
+        if (indicator) {
+            indicator.className = `connection-indicator ${status}`;
+        }
+        
+        if (statusText) {
+            const statusMap = {
+                'connected': 'Connected',
+                'connecting': 'Connecting...',
+                'disconnected': 'Disconnected',
+                'error': 'Connection Error'
+            };
+            statusText.textContent = statusMap[status] || 'Unknown';
+        }
+        
+        if (toast && ['connecting', 'disconnected', 'error'].includes(status)) {
+            const bsToast = new bootstrap.Toast(toast);
+            bsToast.show();
+        }
+    }
+    
+    async apiRequest(endpoint, options = {}) {
+        const url = `${this.apiBaseUrl}${endpoint}`;
+        const defaultOptions = {
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRFToken': this.csrfToken
+            }
+        };
+        
+        const response = await fetch(url, { ...defaultOptions, ...options });
+        
+        if (!response.ok) {
+            throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+        }
+        
+        return await response.json();
+    }
+    
+    showNotification(message, type = 'info') {
+        const container = document.createElement('div');
+        container.className = 'toast-container position-fixed top-0 end-0 p-3';
+        container.style.zIndex = '11';
+        
+        const toast = document.createElement('div');
+        toast.className = 'toast align-items-center text-white bg-' + (type === 'error' ? 'danger' : type);
+        toast.setAttribute('role', 'alert');
+        
+        toast.innerHTML = `
+            <div class="d-flex">
+                <div class="toast-body">
+                    <i class="mdi mdi-${type === 'error' ? 'alert-circle' : 'information'}"></i>
+                    ${message}
+                </div>
+                <button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast"></button>
+            </div>
+        `;
+        
+        container.appendChild(toast);
+        document.body.appendChild(container);
+        
+        const bsToast = new bootstrap.Toast(toast);
+        bsToast.show();
+        
+        toast.addEventListener('hidden.bs.toast', () => {
+            container.remove();
+        });
+    }
+    
+    showFileBrowserLoader() {
+        document.getElementById('fileBrowserLoader')?.classList.remove('d-none');
+        document.getElementById('fileListContainer')?.classList.add('d-none');
+    }
+    
+    hideFileBrowserLoader() {
+        document.getElementById('fileBrowserLoader')?.classList.add('d-none');
+        document.getElementById('fileListContainer')?.classList.remove('d-none');
+    }
+    
+    showFileBrowserError(message) {
+        this.hideFileBrowserLoader();
+        // Show error state in file browser
+        const container = document.getElementById('fileBrowserContent');
+        if (container) {
+            container.innerHTML = `
+                <div class="text-center p-4 text-danger">
+                    <i class="mdi mdi-alert-circle" style="font-size: 3rem;"></i>
+                    <p class="mt-2">Error loading files: ${message}</p>
+                    <button class="btn btn-outline-primary" onclick="gitopsDashboard.refreshFileBrowser()">
+                        <i class="mdi mdi-refresh"></i> Retry
+                    </button>
+                </div>
+            `;
+        }
+    }
+    
+    updateURL() {
+        if (this.fabricId) {
+            const url = new URL(window.location);
+            url.searchParams.set('fabric_id', this.fabricId);
+            window.history.replaceState({}, '', url);
+        }
+    }
+}
 
-// Initialize dashboard when DOM is loaded
-document.addEventListener('DOMContentLoaded', function() {
-    console.log('🌟 GitOps Dashboard DOM loaded');
-    dashboard = new GitOpsDashboard();
-});
+// Component Classes
+class FileBrowserComponent {
+    constructor(dashboard) {
+        this.dashboard = dashboard;
+    }
+    
+    renderFileList(data) {
+        const tbody = document.getElementById('fileTableBody');
+        const emptyState = document.getElementById('emptyFileState');
+        
+        if (!tbody) return;
+        
+        tbody.innerHTML = '';
+        
+        if (data.directories.length === 0 && data.files.length === 0) {
+            emptyState?.classList.remove('d-none');
+            return;
+        }
+        
+        emptyState?.classList.add('d-none');
+        
+        // Render directories first
+        data.directories.forEach(dir => this.renderFileRow(dir, tbody));
+        
+        // Then render files
+        data.files.forEach(file => this.renderFileRow(file, tbody));
+        
+        this.dashboard.hideFileBrowserLoader();
+    }
+    
+    renderFileRow(item, tbody) {
+        const row = document.createElement('tr');
+        row.className = 'file-row';
+        row.dataset.path = item.path;
+        row.dataset.type = item.type;
+        
+        const icon = this.getFileIcon(item);
+        const size = item.type === 'directory' ? `${item.items_count || 0} items` : this.formatFileSize(item.size);
+        const modified = new Date(item.modified).toLocaleString();
+        
+        row.innerHTML = `
+            <td>
+                <div class="file-item">
+                    <i class="file-icon ${item.type} ${icon}"></i>
+                    <div>
+                        <div class="file-name">${item.name}</div>
+                        ${item.type === 'file' && item.can_preview ? '<small class="text-muted">Preview available</small>' : ''}
+                    </div>
+                </div>
+            </td>
+            <td><span class="badge bg-secondary">${item.type}</span></td>
+            <td><small>${size}</small></td>
+            <td><small>${modified}</small></td>
+        `;
+        
+        tbody.appendChild(row);
+    }
+    
+    getFileIcon(item) {
+        if (item.type === 'directory') {
+            return 'mdi mdi-folder';
+        }
+        
+        const iconMap = {
+            'yaml': 'mdi mdi-code-braces',
+            'json': 'mdi mdi-code-json',
+            'text': 'mdi mdi-file-document-outline',
+            'python': 'mdi mdi-language-python',
+            'shell': 'mdi mdi-console'
+        };
+        
+        return iconMap[item.file_type] || 'mdi mdi-file-outline';
+    }
+    
+    formatFileSize(bytes) {
+        if (bytes === 0) return '0 B';
+        const k = 1024;
+        const sizes = ['B', 'KB', 'MB', 'GB'];
+        const i = Math.floor(Math.log(bytes) / Math.log(k));
+        return Math.round((bytes / Math.pow(k, i)) * 100) / 100 + ' ' + sizes[i];
+    }
+}
+
+class VisualDiffComponent {
+    constructor(dashboard) {
+        this.dashboard = dashboard;
+    }
+    
+    renderDiff(data) {
+        const container = document.getElementById('diffContainer');
+        if (!container) return;
+        
+        if (data.differences.length === 0) {
+            container.innerHTML = `
+                <div class="text-center p-4">
+                    <i class="mdi mdi-check-circle text-success" style="font-size: 3rem;"></i>
+                    <p class="text-muted mt-2">No differences detected</p>
+                </div>
+            `;
+            return;
+        }
+        
+        // Render differences
+        container.innerHTML = `
+            <div class="diff-summary mb-3">
+                <span class="badge bg-success">+${data.summary.additions}</span>
+                <span class="badge bg-warning">~${data.summary.modifications}</span>
+                <span class="badge bg-danger">-${data.summary.deletions}</span>
+            </div>
+            <div class="diff-content">
+                ${data.differences.map(diff => this.renderDiffItem(diff)).join('')}
+            </div>
+        `;
+    }
+    
+    renderDiffItem(diff) {
+        return `
+            <div class="diff-item mb-2">
+                <div class="diff-header">
+                    <strong>${diff.file_path}</strong>
+                    <span class="badge bg-${diff.type === 'added' ? 'success' : diff.type === 'removed' ? 'danger' : 'warning'}">
+                        ${diff.type}
+                    </span>
+                </div>
+                <div class="diff-content">
+                    <pre><code>${diff.content}</code></pre>
+                </div>
+            </div>
+        `;
+    }
+}
+
+class WorkflowStatusComponent {
+    constructor(dashboard) {
+        this.dashboard = dashboard;
+    }
+    
+    updateStatus(data) {
+        this.updateWorkflow('syncWorkflow', data.workflows.sync_status);
+        this.updateWorkflow('templateWorkflow', data.workflows.template_generation);
+        this.updateWorkflow('conflictWorkflow', data.workflows.conflict_resolution);
+    }
+    
+    updateWorkflow(elementId, status) {
+        const element = document.getElementById(elementId);
+        if (!element) return;
+        
+        const badge = element.querySelector('.badge');
+        if (badge) {
+            badge.className = `badge bg-${this.getStatusColor(status.status)}`;
+            badge.textContent = status.status.charAt(0).toUpperCase() + status.status.slice(1);
+        }
+    }
+    
+    getStatusColor(status) {
+        const colorMap = {
+            'idle': 'secondary',
+            'running': 'primary',
+            'success': 'success',
+            'error': 'danger',
+            'warning': 'warning'
+        };
+        return colorMap[status] || 'secondary';
+    }
+}
+
+class RealtimeUpdatesComponent {
+    constructor(dashboard) {
+        this.dashboard = dashboard;
+    }
+    
+    // Real-time updates handling
+    handleUpdate(type, data) {
+        switch (type) {
+            case 'file_operation':
+                this.handleFileOperation(data);
+                break;
+            case 'workflow_status':
+                this.handleWorkflowStatus(data);
+                break;
+        }
+    }
+    
+    handleFileOperation(data) {
+        // Refresh file browser if current path affected
+        if (data.path.startsWith(this.dashboard.currentPath)) {
+            this.dashboard.refreshFileBrowser();
+        }
+    }
+    
+    handleWorkflowStatus(data) {
+        this.dashboard.components.workflowStatus.updateWorkflow(data.workflow_id, data.status);
+    }
+}
+
+// Global functions
+window.gitopsDashboard = null;

@@ -17,8 +17,14 @@ from netbox.views import generic
 from .views.fabric_views import FabricCreateView, FabricEditView as ProperFabricEditView
 from .views.debug_edit_view import DebugFabricEditView
 
-# Import git repository views - temporarily disabled to test
-# from .views.git_repository_views import GitRepositoryListView as ProperGitRepositoryListView, GitRepositoryView
+# Import git repository views
+from .views.git_repository_views import (
+    GitRepositoryListView as ProperGitRepositoryListView, 
+    GitRepositoryView,
+    GitRepositoryEditView,
+    GitRepositoryDeleteView,
+    GitRepositoryTestConnectionView
+)
 
 # Import drift dashboard views
 from .views.drift_dashboard import (
@@ -26,6 +32,12 @@ from .views.drift_dashboard import (
     FabricDriftDetailView,
     DriftAnalysisAPIView
 )
+
+# Import productivity dashboard views
+from .views.productivity_dashboard import productivity_urls
+
+# Import GitOps Dashboard views (Phase 3 Integration)
+from .views.gitops_dashboard import get_dashboard_urls
 
 app_name = 'netbox_hedgehog'
 
@@ -364,7 +376,9 @@ urlpatterns = [
     path('git-repositories/', WorkingGitRepositoryListView.as_view(), name='gitrepository_list'),
     path('repositories/', WorkingGitRepositoryListView.as_view(), name='gitrepository_list_alt'),
     path('git-repositories/<int:pk>/', GitRepositoryDetailView.as_view(), name='gitrepository_detail'),
-    path('git-repositories/<int:pk>/test-connection/', TemplateView.as_view(template_name='netbox_hedgehog/git_repository_detail_simple.html'), name='gitrepository_test_connection'),
+    path('git-repositories/<int:pk>/edit/', GitRepositoryEditView.as_view(), name='gitrepository_edit'),
+    path('git-repositories/<int:pk>/delete/', GitRepositoryDeleteView.as_view(), name='gitrepository_delete'),
+    path('git-repositories/<int:pk>/test-connection/', GitRepositoryTestConnectionView.as_view(), name='gitrepository_test_connection'),
     
     # Debug URL to test if specific pattern is the issue
     path('debug-repo-detail/', TemplateView.as_view(template_name='netbox_hedgehog/overview.html'), name='debug_repo_detail'),
@@ -437,6 +451,12 @@ urlpatterns = [
     
     # Additional git repository URLs moved to top section
 ]
+
+# Include productivity dashboard URLs
+urlpatterns += productivity_urls
+
+# Include GitOps Dashboard URLs (Phase 3 Integration)
+urlpatterns += get_dashboard_urls()
 
 # Add remaining placeholder pages for navigation
 placeholder_pages = [

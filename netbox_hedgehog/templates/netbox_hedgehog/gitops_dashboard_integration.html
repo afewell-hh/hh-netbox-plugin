@@ -1,0 +1,450 @@
+{% extends "base/layout.html" %}
+{% load static %}
+
+{% block title %}{{ page_title|default:"GitOps Management Dashboard" }}{% endblock %}
+
+{% block header %}
+    {{ block.super }}
+    <link rel="stylesheet" href="{% static 'netbox_hedgehog/css/hedgehog.css' %}">
+    <link rel="stylesheet" href="{% static 'netbox_hedgehog/css/gitops-dashboard.css' %}">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism.min.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-okaidia.min.css">
+{% endblock %}
+
+{% block content %}
+<!-- GitOps Management Dashboard - Professional Interface -->
+<div class="gitops-dashboard" id="gitopsDashboard">
+    
+    <!-- Dashboard Header -->
+    <div class="dashboard-header">
+        <div class="container-fluid">
+            <div class="row align-items-center">
+                <div class="col-md-6">
+                    <h1 class="dashboard-title">
+                        <i class="mdi mdi-git"></i>
+                        GitOps Management Dashboard
+                        {% if fabric %}
+                            <small class="text-muted">- {{ fabric.name }}</small>
+                        {% endif %}
+                    </h1>
+                    <div class="dashboard-breadcrumb">
+                        <nav aria-label="breadcrumb">
+                            <ol class="breadcrumb">
+                                <li class="breadcrumb-item"><a href="/">Home</a></li>
+                                <li class="breadcrumb-item"><a href="/plugins/hedgehog/">Hedgehog</a></li>
+                                <li class="breadcrumb-item active">GitOps Dashboard</li>
+                            </ol>
+                        </nav>
+                    </div>
+                </div>
+                <div class="col-md-6 text-end">
+                    <div class="dashboard-controls">
+                        <!-- Fabric Selector -->
+                        <div class="fabric-selector me-3" style="display: inline-block;">
+                            <select class="form-select" id="fabricSelector" style="width: auto;">
+                                <option value="">Select Fabric</option>
+                                {% for fab in available_fabrics %}
+                                    <option value="{{ fab.id }}" {% if fabric and fab.id == fabric.id %}selected{% endif %}>
+                                        {{ fab.name }}
+                                    </option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                        
+                        <!-- Dashboard Controls -->
+                        <div class="btn-group" role="group">
+                            <button type="button" class="btn btn-outline-primary" id="refreshDashboard" title="Refresh Dashboard">
+                                <i class="mdi mdi-refresh"></i>
+                            </button>
+                            <button type="button" class="btn btn-outline-secondary" id="dashboardSettings" title="Dashboard Settings">
+                                <i class="mdi mdi-cog"></i>
+                            </button>
+                            {% if can_manage_gitops %}
+                            <button type="button" class="btn btn-primary" id="quickActions" data-bs-toggle="dropdown">
+                                <i class="mdi mdi-lightning-bolt"></i> Actions
+                            </button>
+                            <ul class="dropdown-menu">
+                                <li><a class="dropdown-item" href="#" id="syncFabric"><i class="mdi mdi-sync"></i> Sync Now</a></li>
+                                <li><a class="dropdown-item" href="#" id="generateTemplates"><i class="mdi mdi-file-document-multiple"></i> Generate Templates</a></li>
+                                <li><a class="dropdown-item" href="#" id="resolveConflicts"><i class="mdi mdi-auto-fix"></i> Resolve Conflicts</a></li>
+                                <li><hr class="dropdown-divider"></li>
+                                <li><a class="dropdown-item" href="#" id="initGitOps"><i class="mdi mdi-rocket-launch"></i> Initialize GitOps</a></li>
+                            </ul>
+                            {% endif %}
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    {% if error %}
+    <div class="alert alert-danger alert-dismissible fade show" role="alert">
+        <i class="mdi mdi-alert-circle"></i>
+        <strong>Error:</strong> {{ error }}
+        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+    </div>
+    {% endif %}
+
+    <div class="container-fluid mt-4">
+        
+        <!-- Dashboard Overview Cards -->
+        <div class="row mb-4">
+            <div class="col-lg-3 col-md-6">
+                <div class="card status-card">
+                    <div class="card-body">
+                        <div class="d-flex align-items-center">
+                            <div class="status-icon bg-primary">
+                                <i class="mdi mdi-server-network text-white"></i>
+                            </div>
+                            <div class="ms-3">
+                                <h3 class="mb-0">{{ dashboard_data.summary.total_resources|default:0 }}</h3>
+                                <p class="text-muted mb-0">Resources</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="col-lg-3 col-md-6">
+                <div class="card status-card">
+                    <div class="card-body">
+                        <div class="d-flex align-items-center">
+                            <div class="status-icon bg-success">
+                                <i class="mdi mdi-check-circle text-white"></i>
+                            </div>
+                            <div class="ms-3">
+                                <h3 class="mb-0">{{ dashboard_data.conflicts.resolved_today|default:0 }}</h3>
+                                <p class="text-muted mb-0">Resolved Today</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="col-lg-3 col-md-6">
+                <div class="card status-card">
+                    <div class="card-body">
+                        <div class="d-flex align-items-center">
+                            <div class="status-icon bg-warning">
+                                <i class="mdi mdi-alert-triangle text-white"></i>
+                            </div>
+                            <div class="ms-3">
+                                <h3 class="mb-0">{{ dashboard_data.conflicts.active_conflicts|default:0 }}</h3>
+                                <p class="text-muted mb-0">Active Conflicts</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="col-lg-3 col-md-6">
+                <div class="card status-card">
+                    <div class="card-body">
+                        <div class="d-flex align-items-center">
+                            <div class="status-icon bg-info">
+                                <i class="mdi mdi-file-document-multiple text-white"></i>
+                            </div>
+                            <div class="ms-3">
+                                <h3 class="mb-0">{{ dashboard_data.templates.available_templates|default:0 }}</h3>
+                                <p class="text-muted mb-0">Templates</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Main Dashboard Content -->
+        <div class="row">
+            
+            <!-- File Browser Panel -->
+            <div class="col-lg-8">
+                <div class="card file-browser-card">
+                    <div class="card-header d-flex justify-content-between align-items-center">
+                        <h5 class="card-title mb-0">
+                            <i class="mdi mdi-folder-open"></i> File Browser
+                        </h5>
+                        <div class="file-browser-controls">
+                            <div class="btn-group btn-group-sm" role="group">
+                                <button type="button" class="btn btn-outline-secondary" id="fileBrowserRefresh">
+                                    <i class="mdi mdi-refresh"></i>
+                                </button>
+                                <button type="button" class="btn btn-outline-secondary" id="fileBrowserSettings">
+                                    <i class="mdi mdi-cog"></i>
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="card-body p-0">
+                        
+                        <!-- File Browser Navigation -->
+                        <div class="file-browser-nav border-bottom p-3">
+                            <div class="d-flex align-items-center">
+                                <button class="btn btn-sm btn-outline-secondary me-2" id="fileBrowserBack" disabled>
+                                    <i class="mdi mdi-arrow-left"></i>
+                                </button>
+                                <button class="btn btn-sm btn-outline-secondary me-2" id="fileBrowserUp">
+                                    <i class="mdi mdi-arrow-up"></i>
+                                </button>
+                                <div class="flex-grow-1">
+                                    <input type="text" class="form-control form-control-sm" id="currentPath" 
+                                           value="{{ dashboard_data.file_browser.current_path|default:'/' }}" readonly>
+                                </div>
+                                <button class="btn btn-sm btn-primary ms-2" id="navigatePath">
+                                    <i class="mdi mdi-arrow-right"></i>
+                                </button>
+                            </div>
+                        </div>
+                        
+                        <!-- File Browser Content -->
+                        <div class="file-browser-content" id="fileBrowserContent">
+                            <div class="loading-spinner text-center p-4" id="fileBrowserLoader">
+                                <div class="spinner-border text-primary" role="status">
+                                    <span class="visually-hidden">Loading...</span>
+                                </div>
+                                <p class="mt-2 text-muted">Loading files...</p>
+                            </div>
+                            
+                            <!-- File/Directory List Template -->
+                            <div class="file-list d-none" id="fileListContainer">
+                                <table class="table table-hover mb-0" id="fileTable">
+                                    <thead class="table-light">
+                                        <tr>
+                                            <th width="50%">Name</th>
+                                            <th width="15%">Type</th>
+                                            <th width="15%">Size</th>
+                                            <th width="20%">Modified</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="fileTableBody">
+                                        <!-- Files populated by JavaScript -->
+                                    </tbody>
+                                </table>
+                                
+                                <!-- Empty State -->
+                                <div class="empty-state text-center p-4 d-none" id="emptyFileState">
+                                    <i class="mdi mdi-folder-open-outline text-muted" style="font-size: 4rem;"></i>
+                                    <p class="text-muted mt-2">This directory is empty</p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Visual Diff Panel -->
+                <div class="card mt-4 visual-diff-card">
+                    <div class="card-header">
+                        <h5 class="card-title mb-0">
+                            <i class="mdi mdi-compare-horizontal"></i> Visual Diff - NetBox vs Git
+                        </h5>
+                    </div>
+                    <div class="card-body">
+                        <div class="diff-controls mb-3">
+                            <div class="btn-group" role="group">
+                                <button type="button" class="btn btn-sm btn-outline-primary active" data-diff-view="split">
+                                    Split View
+                                </button>
+                                <button type="button" class="btn btn-sm btn-outline-primary" data-diff-view="unified">
+                                    Unified View
+                                </button>
+                            </div>
+                            <button class="btn btn-sm btn-primary ms-2" id="refreshDiff">
+                                <i class="mdi mdi-refresh"></i> Refresh Diff
+                            </button>
+                        </div>
+                        
+                        <div class="diff-container" id="diffContainer">
+                            <div class="text-center p-4">
+                                <i class="mdi mdi-compare-horizontal text-muted" style="font-size: 3rem;"></i>
+                                <p class="text-muted mt-2">Select a fabric to view state differences</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Right Sidebar -->
+            <div class="col-lg-4">
+                
+                <!-- Workflow Status Panel -->
+                <div class="card workflow-status-card">
+                    <div class="card-header">
+                        <h5 class="card-title mb-0">
+                            <i class="mdi mdi-workflow"></i> Workflow Status
+                        </h5>
+                    </div>
+                    <div class="card-body">
+                        <div class="workflow-item" id="syncWorkflow">
+                            <div class="d-flex align-items-center justify-content-between">
+                                <div>
+                                    <span class="workflow-label">Git Sync</span>
+                                    <div class="workflow-status">
+                                        <span class="badge bg-secondary">Idle</span>
+                                    </div>
+                                </div>
+                                <button class="btn btn-sm btn-outline-primary">
+                                    <i class="mdi mdi-play"></i>
+                                </button>
+                            </div>
+                        </div>
+                        
+                        <div class="workflow-item" id="templateWorkflow">
+                            <div class="d-flex align-items-center justify-content-between">
+                                <div>
+                                    <span class="workflow-label">Template Generation</span>
+                                    <div class="workflow-status">
+                                        <span class="badge bg-secondary">Idle</span>
+                                    </div>
+                                </div>
+                                <button class="btn btn-sm btn-outline-primary">
+                                    <i class="mdi mdi-play"></i>
+                                </button>
+                            </div>
+                        </div>
+                        
+                        <div class="workflow-item" id="conflictWorkflow">
+                            <div class="d-flex align-items-center justify-content-between">
+                                <div>
+                                    <span class="workflow-label">Conflict Resolution</span>
+                                    <div class="workflow-status">
+                                        <span class="badge bg-secondary">Idle</span>
+                                    </div>
+                                </div>
+                                <button class="btn btn-sm btn-outline-primary">
+                                    <i class="mdi mdi-play"></i>
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Recent Operations Panel -->
+                <div class="card mt-4 recent-operations-card">
+                    <div class="card-header">
+                        <h5 class="card-title mb-0">
+                            <i class="mdi mdi-history"></i> Recent Operations
+                        </h5>
+                    </div>
+                    <div class="card-body">
+                        <div class="operations-timeline" id="operationsTimeline">
+                            {% if dashboard_data.recent_operations %}
+                                {% for operation in dashboard_data.recent_operations %}
+                                <div class="timeline-item">
+                                    <div class="timeline-marker bg-{{ operation.status|default:'primary' }}"></div>
+                                    <div class="timeline-content">
+                                        <div class="timeline-title">{{ operation.description }}</div>
+                                        <div class="timeline-time text-muted">{{ operation.timestamp|timesince }} ago</div>
+                                    </div>
+                                </div>
+                                {% endfor %}
+                            {% else %}
+                            <div class="text-center text-muted p-3">
+                                <i class="mdi mdi-clock-outline" style="font-size: 2rem;"></i>
+                                <p class="mt-2 mb-0">No recent operations</p>
+                            </div>
+                            {% endif %}
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Quick Stats Panel -->
+                <div class="card mt-4">
+                    <div class="card-header">
+                        <h5 class="card-title mb-0">
+                            <i class="mdi mdi-chart-line"></i> Quick Stats
+                        </h5>
+                    </div>
+                    <div class="card-body">
+                        <div class="stats-grid">
+                            <div class="stat-item">
+                                <div class="stat-label">Sync Rate</div>
+                                <div class="stat-value">{{ dashboard_data.conflicts.resolution_rate|default:0|floatformat:1 }}%</div>
+                            </div>
+                            <div class="stat-item">
+                                <div class="stat-label">Last Sync</div>
+                                <div class="stat-value">
+                                    {% if dashboard_data.summary.last_sync_time %}
+                                        {{ dashboard_data.summary.last_sync_time|timesince }} ago
+                                    {% else %}
+                                        Never
+                                    {% endif %}
+                                </div>
+                            </div>
+                            <div class="stat-item">
+                                <div class="stat-label">Health</div>
+                                <div class="stat-value">
+                                    <span class="badge bg-{{ dashboard_data.summary.system_health|default:'secondary' }}">
+                                        {{ dashboard_data.summary.system_health|default:'Unknown'|title }}
+                                    </span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- File Preview Modal -->
+<div class="modal fade" id="filePreviewModal" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">
+                    <i class="mdi mdi-file-document-outline"></i>
+                    <span id="previewFileName">File Preview</span>
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <div class="file-preview-container">
+                    <pre><code id="filePreviewContent" class="language-yaml"></code></pre>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                <button type="button" class="btn btn-primary" id="editFileButton">
+                    <i class="mdi mdi-pencil"></i> Edit
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Real-time Status Connection Indicator -->
+<div class="position-fixed bottom-0 end-0 p-3" style="z-index: 1050;">
+    <div class="toast" id="connectionStatus" role="alert">
+        <div class="toast-body d-flex align-items-center">
+            <div class="connection-indicator me-2" id="connectionIndicator"></div>
+            <span id="connectionStatusText">Connecting...</span>
+        </div>
+    </div>
+</div>
+
+{% endblock %}
+
+{% block javascript %}
+{{ block.super }}
+<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-core.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/plugins/autoloader/prism-autoloader.min.js"></script>
+<script src="{% static 'netbox_hedgehog/js/gitops-dashboard.js' %}"></script>
+
+<script>
+// Initialize GitOps Dashboard
+document.addEventListener('DOMContentLoaded', function() {
+    const dashboard = new GitOpsDashboard({
+        fabricId: {{ fabric.id|default:'null' }},
+        apiBaseUrl: '{{ api_base_url }}',
+        websocketUrl: '{{ websocket_url }}',
+        refreshInterval: {{ refresh_interval|default:30 }},
+        csrfToken: '{{ csrf_token }}'
+    });
+    
+    dashboard.initialize();
+    
+    // Global dashboard instance for debugging
+    window.gitopsDashboard = dashboard;
+    
+    console.log('✅ GitOps Management Dashboard initialized');
+});
+</script>
+{% endblock %}

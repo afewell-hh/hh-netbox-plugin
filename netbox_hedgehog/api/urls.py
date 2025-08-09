@@ -12,6 +12,14 @@ from .bidirectional_sync_api import (
     DirectoryManagementAPIView, SynchronizationControlAPIView, SyncOperationAPIView,
     ConflictManagementAPIView, ResourceFileMappingAPIView, get_api_urls
 )
+# Configuration Template Engine imports (Phase 3)
+from .template_engine_views import (
+    generate_fabric_config, regenerate_resource_config, validate_fabric_templates_api,
+    get_engine_status, list_templates, optimize_engine_performance,
+    clear_engine_caches, get_available_schemas, template_engine_health
+)
+# Unified GitOps API imports (Phase 3)
+from .gitops_api import get_gitops_api_urls
 # from .git_health_views import (
 #     GitHealthSummaryView, GitRepositoryHealthDetailView, 
 #     GitRepositoryHealthHistoryView, GitConnectionMetricsView, force_health_check
@@ -79,10 +87,22 @@ urlpatterns = router.urls + [
     # Bidirectional Sync endpoints (MVP3) - ACTIVATED for GitOps system
 ] + get_api_urls() + [
     
+    # Configuration Template Engine endpoints (Phase 3)
+    path('template-engine/health/', template_engine_health, name='template-engine-health'),
+    path('template-engine/schemas/', get_available_schemas, name='template-engine-schemas'),
+    path('template-engine/fabrics/<int:fabric_id>/generate/', generate_fabric_config, name='template-engine-generate'),
+    path('template-engine/fabrics/<int:fabric_id>/validate/', validate_fabric_templates_api, name='template-engine-validate'),
+    path('template-engine/fabrics/<int:fabric_id>/status/', get_engine_status, name='template-engine-status'),
+    path('template-engine/fabrics/<int:fabric_id>/templates/', list_templates, name='template-engine-templates'),
+    path('template-engine/fabrics/<int:fabric_id>/optimize/', optimize_engine_performance, name='template-engine-optimize'),
+    path('template-engine/fabrics/<int:fabric_id>/clear-cache/', clear_engine_caches, name='template-engine-clear-cache'),
+    path('template-engine/resources/<int:resource_id>/regenerate/', regenerate_resource_config, name='template-engine-resource-regenerate'),
+    
     # Git Repository Health Monitoring endpoints (Week 2 Integration) - Temporarily disabled
     # path('git-repositories/health-summary/', GitHealthSummaryView.as_view(), name='git-health-summary'),
     # path('git-repositories/<int:pk>/health-details/', GitRepositoryHealthDetailView.as_view(), name='git-health-details'),
     # path('git-repositories/<int:pk>/health-history/', GitRepositoryHealthHistoryView.as_view(), name='git-health-history'),
     # path('git-repositories/connection-metrics/', GitConnectionMetricsView.as_view(), name='git-connection-metrics'),
     # path('git-repositories/<int:pk>/force-health-check/', force_health_check, name='git-force-health-check'),
-]
+    
+] + get_gitops_api_urls()  # Include Unified GitOps API endpoints (Phase 3)

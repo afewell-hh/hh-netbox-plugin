@@ -25,6 +25,15 @@ black>=22.0.0
 flake8>=4.0.0
 pre-commit>=2.17.0
 
+# GUI Testing dependencies (Playwright)
+playwright>=1.40.0
+pytest-playwright>=0.4.0
+pytest-xvfb>=3.0.0
+
+# Visual regression testing dependencies
+pixelmatch>=0.3.0
+Pillow>=9.0.0
+
 # NetBox (for development)
 # Note: In production, NetBox should already be installed
 netbox>=3.4.0

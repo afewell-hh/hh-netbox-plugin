@@ -1,10 +1,12 @@
 """
 Celery tasks for Git synchronization operations
-Optimized for <30 second sync times with progress tracking
+Enhanced with Unified Status Synchronization Framework integration
+Optimized for <30 second sync times with progress tracking and real-time status updates
 """
 
 import logging
 import time
+import asyncio
 from typing import Dict, Any, Optional
 from datetime import timedelta
 from celery import shared_task
@@ -14,6 +16,8 @@ from django.utils import timezone
 
 from ..application.services.git_service import GitService
 from ..application.services.event_service import EventService
+from ..services.status_sync_service import get_status_sync_service, StatusUpdateRequest
+from ..tasks.status_reconciliation import StatusType, StatusState
 from ..models.fabric import HedgehogFabric
 from ..domain.interfaces.event_service_interface import EventPriority
 
@@ -22,19 +26,46 @@ logger = logging.getLogger('netbox_hedgehog.performance')
 @shared_task(bind=True, name='netbox_hedgehog.tasks.git_sync_fabric')
 def git_sync_fabric(self, fabric_id: int, force: bool = False) -> Dict[str, Any]:
     """
-    Perform Git sync for a fabric with real-time progress tracking
+    Perform Git sync for a fabric with real-time progress tracking and status synchronization
+    Enhanced with Unified Status Synchronization Framework
     Target: <30 seconds for large repositories
     """
     start_time = time.time()
     fabric = None
     event_service = EventService()
+    status_sync_service = get_status_sync_service()
+    
+    async def update_git_status(state: StatusState, message: str, metadata: dict = None):
+        """Helper to update Git sync status via unified framework"""
+        status_request = StatusUpdateRequest(
+            fabric_id=fabric_id,
+            status_type=StatusType.GIT_SYNC,
+            new_state=state,
+            message=message,
+            metadata=metadata or {},
+            source="git_sync_task",
+            priority=EventPriority.NORMAL
+        )
+        await status_sync_service.update_status(status_request)
     
     try:
         # Get fabric and validate
         fabric = HedgehogFabric.objects.get(id=fabric_id)
         logger.info(f"Starting Git sync for fabric {fabric.name} [{fabric_id}]")
         
-        # Publish start event
+        # Update status to syncing via unified framework
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        try:
+            loop.run_until_complete(update_git_status(
+                StatusState.SYNCING, 
+                f"Starting Git sync for {fabric.name}",
+                {"sync_started_at": start_time}
+            ))
+        finally:
+            loop.close()
+        
+        # Publish start event (legacy support)
         event_service.publish_sync_event(
             fabric_id=fabric_id,
             event_type='started',
@@ -122,7 +153,27 @@ def git_sync_fabric(self, fabric_id: int, force: bool = False) -> Dict[str, Any]
                 message="Finalizing sync"
             )
             
-            # Update fabric status
+            # Update fabric status via unified framework
+            duration = time.time() - start_time
+            
+            # Update to healthy state via unified framework
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+            try:
+                loop.run_until_complete(update_git_status(
+                    StatusState.HEALTHY, 
+                    f"Sync completed in {duration:.1f}s",
+                    {
+                        "sync_duration": duration,
+                        "crds_processed": crd_result.data.get('count', 0),
+                        "changes_detected": crd_result.data.get('changes', 0),
+                        "sync_completed_at": time.time()
+                    }
+                ))
+            finally:
+                loop.close()
+            
+            # Legacy fabric status update (will be removed in future versions)
             with transaction.atomic():
                 fabric.sync_status = 'synced'
                 fabric.last_sync = timezone.now()
@@ -135,9 +186,7 @@ def git_sync_fabric(self, fabric_id: int, force: bool = False) -> Dict[str, Any]
                 f"fabric_metrics_{fabric_id}"
             ])
             
-            duration = time.time() - start_time
-            
-            # Progress: 100% - Complete
+            # Progress: 100% - Complete (legacy event)
             event_service.publish_sync_event(
                 fabric_id=fabric_id,
                 event_type='completed',
@@ -169,7 +218,24 @@ def git_sync_fabric(self, fabric_id: int, force: bool = False) -> Dict[str, Any]
         
         logger.error(f"Git sync failed for fabric {fabric_id}: {error_msg}")
         
-        # Publish failure event
+        # Update status to error via unified framework
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        try:
+            loop.run_until_complete(update_git_status(
+                StatusState.ERROR, 
+                f"Sync failed: {error_msg}",
+                {
+                    "error": error_msg,
+                    "sync_duration": duration,
+                    "sync_failed_at": time.time(),
+                    "failure_reason": type(e).__name__
+                }
+            ))
+        finally:
+            loop.close()
+        
+        # Publish failure event (legacy support)
         event_service.publish_sync_event(
             fabric_id=fabric_id,
             event_type='failed',

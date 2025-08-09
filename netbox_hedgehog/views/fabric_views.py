@@ -387,10 +387,17 @@ class FabricCreateView(generic.ObjectEditView):
 
 
 class FabricEditView(generic.ObjectEditView):
-    """Edit view for fabrics"""
+    """Edit view for fabrics with comprehensive form including sync_interval"""
     queryset = HedgehogFabric.objects.all()
-    form = FabricForm
+    form = FabricForm  # Uses comprehensive form with sync_interval field
     template_name = 'netbox_hedgehog/fabric_edit_simple.html'
+    
+    def get_form_kwargs(self):
+        """Ensure form gets all necessary context for proper field rendering"""
+        kwargs = super().get_form_kwargs()
+        # Pass user context if needed for GitRepository access
+        kwargs['user'] = getattr(self.request, 'user', None)
+        return kwargs
 
 
 class FabricDeleteView(generic.ObjectDeleteView):

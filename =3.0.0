@@ -1,0 +1,43 @@
+Defaulting to user installation because normal site-packages is not writeable
+Collecting playwright
+  Downloading playwright-1.54.0-py3-none-manylinux1_x86_64.whl (45.9 MB)
+     ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 45.9/45.9 MB 20.4 MB/s eta 0:00:00
+Collecting pytest-playwright
+  Downloading pytest_playwright-0.7.0-py3-none-any.whl (16 kB)
+Collecting pytest-xvfb
+  Downloading pytest_xvfb-3.1.1-py3-none-any.whl (5.9 kB)
+Collecting greenlet<4.0.0,>=3.1.1
+  Downloading greenlet-3.2.4-cp310-cp310-manylinux_2_24_x86_64.manylinux_2_28_x86_64.whl (584 kB)
+     ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 584.4/584.4 KB 48.5 MB/s eta 0:00:00
+Collecting pyee<14,>=13
+  Downloading pyee-13.0.0-py3-none-any.whl (15 kB)
+Collecting python-slugify<9.0.0,>=6.0.0
+  Downloading python_slugify-8.0.4-py2.py3-none-any.whl (10 kB)
+Collecting pytest<9.0.0,>=6.2.4
+  Downloading pytest-8.4.1-py3-none-any.whl (365 kB)
+     ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 365.5/365.5 KB 19.9 MB/s eta 0:00:00
+Collecting pytest-base-url<3.0.0,>=1.0.0
+  Downloading pytest_base_url-2.1.0-py3-none-any.whl (5.3 kB)
+Collecting pyvirtualdisplay>=1.3
+  Downloading PyVirtualDisplay-3.0-py3-none-any.whl (15 kB)
+Collecting typing-extensions
+  Downloading typing_extensions-4.14.1-py3-none-any.whl (43 kB)
+     ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 43.9/43.9 KB 7.1 MB/s eta 0:00:00
+Collecting iniconfig>=1
+  Downloading iniconfig-2.1.0-py3-none-any.whl (6.0 kB)
+Collecting tomli>=1
+  Downloading tomli-2.2.1-py3-none-any.whl (14 kB)
+Collecting exceptiongroup>=1
+  Downloading exceptiongroup-1.3.0-py3-none-any.whl (16 kB)
+Collecting pluggy<2,>=1.5
+  Downloading pluggy-1.6.0-py3-none-any.whl (20 kB)
+Requirement already satisfied: packaging>=20 in /usr/lib/python3/dist-packages (from pytest<9.0.0,>=6.2.4->pytest-playwright) (21.3)
+Collecting pygments>=2.7.2
+  Downloading pygments-2.19.2-py3-none-any.whl (1.2 MB)
+     ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 1.2/1.2 MB 48.8 MB/s eta 0:00:00
+Requirement already satisfied: requests>=2.9 in /usr/lib/python3/dist-packages (from pytest-base-url<3.0.0,>=1.0.0->pytest-playwright) (2.25.1)
+Collecting text-unidecode>=1.3
+  Downloading text_unidecode-1.3-py2.py3-none-any.whl (78 kB)
+     ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 78.2/78.2 KB 12.3 MB/s eta 0:00:00
+Installing collected packages: text-unidecode, pyvirtualdisplay, typing-extensions, tomli, python-slugify, pygments, pluggy, iniconfig, greenlet, pyee, exceptiongroup, pytest, playwright, pytest-xvfb, pytest-base-url, pytest-playwright
+Successfully installed exceptiongroup-1.3.0 greenlet-3.2.4 iniconfig-2.1.0 playwright-1.54.0 pluggy-1.6.0 pyee-13.0.0 pygments-2.19.2 pytest-8.4.1 pytest-base-url-2.1.0 pytest-playwright-0.7.0 pytest-xvfb-3.1.1 python-slugify-8.0.4 pyvirtualdisplay-3.0 text-unidecode-1.3 tomli-2.2.1 typing-extensions-4.14.1

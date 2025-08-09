@@ -1342,6 +1342,34 @@ body[data-bs-theme="dark"] .badge {
         flex-direction: column;
         align-items: stretch;
     }
+    
+    /* Mobile optimization for GitOps Configuration tables */
+    .gitops-detail-section table.table-borderless th {
+        width: 35% !important; /* Larger on mobile for better readability */
+        min-width: 120px !important; /* Reduce minimum width for mobile */
+        font-size: 0.9rem !important; /* Slightly smaller for mobile */
+        padding: 1rem 0.75rem 1rem 0 !important; /* Reduce padding for mobile */
+    }
+    
+    .gitops-detail-section table.table-borderless td {
+        width: 65% !important; /* Adjust accordingly */
+        padding: 1rem 0 1rem 0.75rem !important; /* Reduce padding for mobile */
+        font-size: 0.9rem !important; /* Slightly smaller for mobile */
+    }
+    
+    /* Enhanced mobile fabric detail table */
+    html body .fabric-detail .table th {
+        width: 35% !important; /* Better balance on mobile */
+        min-width: 120px !important;
+        font-size: 0.9rem !important;
+        padding: 1rem 0.75rem !important; /* Reduce padding for mobile */
+    }
+    
+    html body .fabric-detail .table td {
+        width: 65% !important;
+        font-size: 0.9rem !important;
+        padding: 1rem 0.75rem !important; /* Reduce padding for mobile */
+    }
 }
 
 /* Utility Classes */
@@ -1620,39 +1648,43 @@ body[data-bs-theme="dark"] .badge {
     display: block;
 }
 
-/* Fix for GitOps Configuration Table Layout - IMPROVED SPACING */
+/* Fix for GitOps Configuration Table Layout - OPTIMIZED SPACING */
 .gitops-detail-section table.table-borderless {
     table-layout: fixed;
     width: 100%;
     border-spacing: 0;
     border-collapse: separate;
+    margin-bottom: 2rem !important; /* Add bottom margin for section separation */
 }
 
 .gitops-detail-section table.table-borderless th {
-    width: 30%;
-    min-width: 150px;
+    width: 22% !important; /* Reduced from 30% to 22% for more value space */
+    min-width: 180px !important; /* Increased minimum width for readability */
     vertical-align: top;
     white-space: nowrap;
     text-align: left;
     display: table-cell !important;
-    padding: 1.5rem 1rem 1.5rem 0 !important; /* Increased from 1rem to 1.5rem vertical padding */
-    min-height: 4rem !important; /* Increased from 3rem to 4rem */
+    padding: 1.75rem 1.5rem 1.75rem 0 !important; /* Increased horizontal padding */
+    min-height: 4.5rem !important; /* Increased from 4rem to 4.5rem */
     font-weight: 700 !important;
-    color: #212529 !important;
+    color: #000 !important; /* Changed from #212529 to pure black for maximum contrast */
     background-color: transparent !important;
     border: none !important;
+    font-size: 0.95rem !important; /* Consistent with other improvements */
+    letter-spacing: 0.02em !important; /* Add letter spacing for clarity */
 }
 
 .gitops-detail-section table.table-borderless td {
-    width: 70%;
+    width: 78% !important; /* Increased from 70% to 78% for more content space */
     vertical-align: top;
     word-wrap: break-word;
     display: table-cell !important;
-    padding: 1.5rem 0 1.5rem 1rem !important; /* Increased from 1rem to 1.5rem vertical padding */
+    padding: 1.75rem 0 1.75rem 1.5rem !important; /* Increased left padding for better separation */
     color: #000 !important;
     border: none !important;
-    min-height: 4rem !important; /* Increased from 3rem to 4rem */
-    line-height: 1.8 !important; /* Increased from 1.5 to 1.8 */
+    min-height: 4.5rem !important; /* Increased from 4rem to 4.5rem */
+    line-height: 1.8 !important; /* Maintain good line height */
+    font-size: 0.95rem !important; /* Consistent sizing */
 }
 
 .gitops-detail-section table.table-borderless tr {
@@ -1706,31 +1738,33 @@ body[data-bs-theme="dark"] .badge {
 /* Enhanced Fabric Detail Table Readability */
 html body .fabric-detail .table th,
 html body .fabric-detail table.table th {
-    width: 30%;
+    width: 25% !important; /* Reduced from 30% to 25% for better balance */
+    min-width: 200px !important; /* Ensure minimum readable width */
     font-weight: 700 !important; /* Bold weight for maximum readability */
     color: #000 !important; /* Pure black for maximum contrast */
     background-color: #e9ecef !important; /* Slightly darker background */
     vertical-align: middle;
     white-space: nowrap;
-    padding: 1rem !important; /* More generous padding */
+    padding: 1.25rem 1rem !important; /* More generous padding with emphasis on vertical */
     border-color: #adb5bd !important; /* Stronger border */
     border-width: 2px !important;
     text-shadow: none !important;
-    font-size: 0.9rem !important;
+    font-size: 0.95rem !important; /* Slightly larger for better readability */
     letter-spacing: 0.02em !important;
 }
 
 html body .fabric-detail .table td,
 html body .fabric-detail table.table td {
-    width: 70%;
+    width: 75% !important; /* Increased from 70% to 75% for more space */
     vertical-align: middle;
     word-wrap: break-word;
     color: #000 !important; /* Pure black for maximum contrast */
-    padding: 1rem !important; /* More generous padding */
+    padding: 1.25rem !important; /* More generous padding matching th */
     border-color: #dee2e6 !important;
     font-weight: 400 !important;
     text-shadow: none !important;
-    font-size: 0.9rem !important;
+    font-size: 0.95rem !important; /* Slightly larger for better readability */
+    line-height: 1.6 !important; /* Better line height for readability */
 }
 
 /* Enhanced readability utility classes */
@@ -1822,4 +1856,48 @@ html body .netbox-hedgehog .card-header h6 {
     color: #000 !important; /* Pure black for maximum contrast */
     font-weight: 700 !important;
     text-shadow: none !important;
+}
+
+/* Text Info Class for Field Names */
+.text-info {
+    color: #17a2b8 !important; /* Bootstrap info blue color */
+    font-weight: 700 !important; /* Bold for better visibility */
+    text-shadow: none !important;
+}
+
+/* Enhanced Field Name Typography for Fabric Detail Pages */
+.fabric-detail th,
+.gitops-detail-section th,
+.netbox-hedgehog th,
+.hedgehog-wrapper th {
+    color: #000 !important; /* Pure black for maximum contrast on field names */
+    font-weight: 700 !important; /* Bold for better visibility */
+    text-shadow: none !important;
+    font-size: 0.95rem !important; /* Consistent font size */
+    letter-spacing: 0.02em !important; /* Slight letter spacing for clarity */
+    background-color: rgba(233, 236, 239, 0.5) !important; /* Subtle background for field names */
+}
+
+/* Ensure all field labels throughout the page are readable */
+html body .netbox-hedgehog .info-label,
+html body .hedgehog-wrapper .info-label,
+html body .fabric-detail .info-label,
+html body .gitops-detail-section .info-label {
+    color: #000 !important; /* Pure black for maximum contrast */
+    font-weight: 700 !important; /* Bold for better visibility */
+    text-shadow: none !important;
+    font-size: 0.9rem !important;
+    letter-spacing: 0.5px !important;
+}
+
+/* Enhanced Typography for Status Indicators and Field Values */
+html body .netbox-hedgehog .info-value,
+html body .hedgehog-wrapper .info-value,
+html body .fabric-detail .info-value,
+html body .gitops-detail-section .info-value {
+    color: #212529 !important; /* Dark gray for good contrast */
+    font-size: 1rem !important;
+    font-weight: 500 !important; /* Medium weight for values */
+    text-shadow: none !important;
+    line-height: 1.5 !important;
 }

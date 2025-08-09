@@ -1,0 +1,541 @@
+{% extends "base/layout.html" %}
+{% load static %}
+
+{% block title %}Agent Productivity Dashboard - NetBox Hedgehog{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+    <!-- Header -->
+    <div class="row mb-4">
+        <div class="col-12">
+            <div class="d-flex justify-content-between align-items-center">
+                <h1 class="h3 mb-0">🎯 Agent Productivity Dashboard</h1>
+                <div class="btn-group" role="group">
+                    <button type="button" class="btn btn-outline-primary" onclick="refreshDashboard()">
+                        <i class="fas fa-sync-alt"></i> Refresh
+                    </button>
+                    <button type="button" class="btn btn-outline-success" onclick="startMeasurement()">
+                        <i class="fas fa-play"></i> Start Measurement
+                    </button>
+                    <button type="button" class="btn btn-outline-info" onclick="exportData()">
+                        <i class="fas fa-download"></i> Export
+                    </button>
+                </div>
+            </div>
+            <p class="text-muted">Real-time monitoring of SPARC methodology effectiveness (Issue #25)</p>
+        </div>
+    </div>
+
+    <!-- SPARC Validation Status -->
+    <div class="row mb-4">
+        <div class="col-12">
+            <div class="card border-primary">
+                <div class="card-header bg-primary text-white">
+                    <h5 class="mb-0">🏆 SPARC Methodology Validation Status</h5>
+                </div>
+                <div class="card-body" id="sparc-validation">
+                    <div class="d-flex justify-content-center">
+                        <div class="spinner-border" role="status">
+                            <span class="sr-only">Loading validation status...</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Summary Metrics -->
+    <div class="row mb-4">
+        <div class="col-md-3">
+            <div class="card bg-primary text-white">
+                <div class="card-body">
+                    <div class="d-flex justify-content-between">
+                        <div>
+                            <h5 class="card-title">Total Executions</h5>
+                            <h2 class="mb-0" id="total-executions">{{ dashboard_data.summary.total_executions|default:0 }}</h2>
+                        </div>
+                        <div>
+                            <i class="fas fa-tasks fa-2x opacity-75"></i>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card bg-success text-white">
+                <div class="card-body">
+                    <div class="d-flex justify-content-between">
+                        <div>
+                            <h5 class="card-title">Overall Success Rate</h5>
+                            <h2 class="mb-0" id="overall-success-rate">{{ dashboard_data.summary.overall_success_rate|floatformat:1 }}%</h2>
+                        </div>
+                        <div>
+                            <i class="fas fa-chart-line fa-2x opacity-75"></i>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card bg-info text-white">
+                <div class="card-body">
+                    <div class="d-flex justify-content-between">
+                        <div>
+                            <h5 class="card-title">Recent Success Rate</h5>
+                            <h2 class="mb-0" id="recent-success-rate">{{ dashboard_data.summary.recent_success_rate|floatformat:1 }}%</h2>
+                        </div>
+                        <div>
+                            <i class="fas fa-clock fa-2x opacity-75"></i>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card bg-warning text-white">
+                <div class="card-body">
+                    <div class="d-flex justify-content-between">
+                        <div>
+                            <h5 class="card-title">Active Measurements</h5>
+                            <h2 class="mb-0" id="active-measurements">0</h2>
+                        </div>
+                        <div>
+                            <i class="fas fa-play-circle fa-2x opacity-75"></i>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Charts Row -->
+    <div class="row mb-4">
+        <div class="col-md-6">
+            <div class="card">
+                <div class="card-header">
+                    <h5 class="mb-0">📊 Success Rate by Agent Type</h5>
+                </div>
+                <div class="card-body">
+                    <canvas id="agentTypeChart" height="300"></canvas>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-6">
+            <div class="card">
+                <div class="card-header">
+                    <h5 class="mb-0">⚖️ Baseline vs SPARC Comparison</h5>
+                </div>
+                <div class="card-body">
+                    <canvas id="comparisonChart" height="300"></canvas>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Trend Chart -->
+    <div class="row mb-4">
+        <div class="col-12">
+            <div class="card">
+                <div class="card-header d-flex justify-content-between align-items-center">
+                    <h5 class="mb-0">📈 Success Rate Trend</h5>
+                    <div class="btn-group btn-group-sm" role="group">
+                        <button type="button" class="btn btn-outline-secondary active" data-time-range="1h">1H</button>
+                        <button type="button" class="btn btn-outline-secondary" data-time-range="24h">24H</button>
+                        <button type="button" class="btn btn-outline-secondary" data-time-range="7d">7D</button>
+                    </div>
+                </div>
+                <div class="card-body">
+                    <canvas id="trendChart" height="200"></canvas>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Detailed Metrics Tables -->
+    <div class="row">
+        <div class="col-md-6">
+            <div class="card">
+                <div class="card-header">
+                    <h5 class="mb-0">🤖 Agent Type Performance</h5>
+                </div>
+                <div class="card-body">
+                    <div class="table-responsive">
+                        <table class="table table-sm">
+                            <thead>
+                                <tr>
+                                    <th>Agent Type</th>
+                                    <th>Success Rate</th>
+                                    <th>Executions</th>
+                                    <th>Avg Time</th>
+                                </tr>
+                            </thead>
+                            <tbody id="agent-type-table">
+                                {% for agent_type, metrics in dashboard_data.by_agent_type.items %}
+                                <tr>
+                                    <td>{{ agent_type|title }}</td>
+                                    <td>
+                                        <span class="badge badge-{% if metrics.success_rate >= 0.8 %}success{% elif metrics.success_rate >= 0.5 %}warning{% else %}danger{% endif %}">
+                                            {{ metrics.success_rate|floatformat:1 }}%
+                                        </span>
+                                    </td>
+                                    <td>{{ metrics.total }}</td>
+                                    <td>{{ metrics.avg_completion_time|floatformat:1 }}s</td>
+                                </tr>
+                                {% empty %}
+                                <tr>
+                                    <td colspan="4" class="text-center text-muted">No data available</td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-6">
+            <div class="card">
+                <div class="card-header">
+                    <h5 class="mb-0">📏 Measurement Mode Performance</h5>
+                </div>
+                <div class="card-body">
+                    <div class="table-responsive">
+                        <table class="table table-sm">
+                            <thead>
+                                <tr>
+                                    <th>Mode</th>
+                                    <th>Success Rate</th>
+                                    <th>Executions</th>
+                                    <th>Avg Time</th>
+                                </tr>
+                            </thead>
+                            <tbody id="measurement-mode-table">
+                                {% for mode, metrics in dashboard_data.by_mode.items %}
+                                <tr>
+                                    <td>
+                                        {% if mode == 'sparc' %}
+                                            <span class="badge badge-primary">SPARC Enhanced</span>
+                                        {% else %}
+                                            <span class="badge badge-secondary">{{ mode|title }}</span>
+                                        {% endif %}
+                                    </td>
+                                    <td>
+                                        <span class="badge badge-{% if metrics.success_rate >= 0.8 %}success{% elif metrics.success_rate >= 0.5 %}warning{% else %}danger{% endif %}">
+                                            {{ metrics.success_rate|floatformat:1 }}%
+                                        </span>
+                                    </td>
+                                    <td>{{ metrics.total }}</td>
+                                    <td>{{ metrics.avg_completion_time|floatformat:1 }}s</td>
+                                </tr>
+                                {% empty %}
+                                <tr>
+                                    <td colspan="4" class="text-center text-muted">No data available</td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Start Measurement Modal -->
+<div class="modal fade" id="startMeasurementModal" tabindex="-1" role="dialog">
+    <div class="modal-dialog" role="document">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Start New Measurement</h5>
+                <button type="button" class="close" data-dismiss="modal">
+                    <span>&times;</span>
+                </button>
+            </div>
+            <div class="modal-body">
+                <form id="measurementForm">
+                    <div class="form-group">
+                        <label for="agentType">Agent Type</label>
+                        <select class="form-control" id="agentType" name="agent_type" required>
+                            <option value="">Select Agent Type</option>
+                            {% for agent_type in agent_types %}
+                            <option value="{{ agent_type }}">{{ agent_type|title }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label for="iterations">Iterations</label>
+                        <input type="number" class="form-control" id="iterations" name="iterations" value="5" min="1" max="20">
+                    </div>
+                    <div class="form-group">
+                        <label for="measurementMode">Mode</label>
+                        <select class="form-control" id="measurementMode" name="mode">
+                            <option value="comparison">Baseline vs SPARC Comparison</option>
+                            <option value="baseline">Baseline Only</option>
+                            <option value="sparc">SPARC Only</option>
+                        </select>
+                    </div>
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-dismiss="modal">Cancel</button>
+                <button type="button" class="btn btn-primary" onclick="submitMeasurement()">Start Measurement</button>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block javascript %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script>
+let agentTypeChart, comparisonChart, trendChart;
+let currentTimeRange = '24h';
+
+// Initialize dashboard
+$(document).ready(function() {
+    initializeCharts();
+    loadSPARCValidation();
+    setupAutoRefresh();
+    setupTimeRangeButtons();
+});
+
+// Initialize charts
+function initializeCharts() {
+    // Agent Type Chart
+    const agentCtx = document.getElementById('agentTypeChart').getContext('2d');
+    agentTypeChart = new Chart(agentCtx, {
+        type: 'bar',
+        data: {
+            labels: [],
+            datasets: [{
+                label: 'Success Rate (%)',
+                data: [],
+                backgroundColor: ['#007bff', '#28a745', '#ffc107', '#dc3545', '#6f42c1'],
+                borderColor: ['#0056b3', '#1e7e34', '#d39e00', '#bd2130', '#5a2d91'],
+                borderWidth: 1
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            scales: {
+                y: {
+                    beginAtZero: true,
+                    max: 100
+                }
+            }
+        }
+    });
+
+    // Comparison Chart
+    const compCtx = document.getElementById('comparisonChart').getContext('2d');
+    comparisonChart = new Chart(compCtx, {
+        type: 'bar',
+        data: {
+            labels: ['Baseline', 'SPARC Enhanced'],
+            datasets: [{
+                label: 'Success Rate (%)',
+                data: [30, 80], // Default expected values
+                backgroundColor: ['#dc3545', '#28a745'],
+                borderColor: ['#bd2130', '#1e7e34'],
+                borderWidth: 1
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            scales: {
+                y: {
+                    beginAtZero: true,
+                    max: 100
+                }
+            }
+        }
+    });
+
+    // Trend Chart
+    const trendCtx = document.getElementById('trendChart').getContext('2d');
+    trendChart = new Chart(trendCtx, {
+        type: 'line',
+        data: {
+            labels: [],
+            datasets: [{
+                label: 'Success Rate (%)',
+                data: [],
+                borderColor: '#007bff',
+                backgroundColor: 'rgba(0, 123, 255, 0.1)',
+                tension: 0.4
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            scales: {
+                y: {
+                    beginAtZero: true,
+                    max: 100
+                }
+            }
+        }
+    });
+}
+
+// Load SPARC validation status
+function loadSPARCValidation() {
+    fetch('/api/productivity/validation/')
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                updateSPARCValidationDisplay(data.validation);
+            } else {
+                document.getElementById('sparc-validation').innerHTML = 
+                    `<div class="alert alert-warning">Error loading validation status: ${data.error}</div>`;
+            }
+        })
+        .catch(error => {
+            document.getElementById('sparc-validation').innerHTML = 
+                `<div class="alert alert-danger">Failed to load validation status</div>`;
+        });
+}
+
+// Update SPARC validation display
+function updateSPARCValidationDisplay(validation) {
+    const container = document.getElementById('sparc-validation');
+    
+    if (validation.status === 'insufficient_data') {
+        container.innerHTML = `
+            <div class="alert alert-info">
+                <h6>Insufficient Data</h6>
+                <p>${validation.message}</p>
+            </div>`;
+        return;
+    }
+
+    const isValidated = validation.overall_validated;
+    const alertClass = isValidated ? 'alert-success' : 'alert-warning';
+    const statusIcon = isValidated ? '✅' : '⚠️';
+    
+    container.innerHTML = `
+        <div class="alert ${alertClass}">
+            <div class="row">
+                <div class="col-md-6">
+                    <h6>${statusIcon} SPARC Claims Validation</h6>
+                    <p class="mb-1"><strong>Status:</strong> ${validation.status.replace('_', ' ').toUpperCase()}</p>
+                    <p class="mb-1"><strong>Baseline Success Rate:</strong> ${(validation.baseline_success_rate * 100).toFixed(1)}%</p>
+                    <p class="mb-1"><strong>SPARC Success Rate:</strong> ${(validation.sparc_success_rate * 100).toFixed(1)}%</p>
+                    <p class="mb-0"><strong>Improvement:</strong> ${validation.improvement_percent.toFixed(1)}%</p>
+                </div>
+                <div class="col-md-6">
+                    <h6>Validation Criteria</h6>
+                    ${Object.entries(validation.criteria_met).map(([criterion, met]) => 
+                        `<p class="mb-1">${met ? '✅' : '❌'} ${criterion.replace('_', ' ')}</p>`
+                    ).join('')}
+                </div>
+            </div>
+        </div>`;
+}
+
+// Refresh dashboard data
+function refreshDashboard() {
+    fetch(`/api/productivity/metrics/?time_range=${currentTimeRange}`)
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                updateDashboard(data.data);
+                loadSPARCValidation();
+            }
+        })
+        .catch(error => {
+            console.error('Error refreshing dashboard:', error);
+        });
+}
+
+// Update dashboard with new data
+function updateDashboard(data) {
+    // Update summary metrics
+    const summary = data.summary || {};
+    document.getElementById('total-executions').textContent = summary.total_executions || 0;
+    document.getElementById('overall-success-rate').textContent = ((summary.overall_success_rate || 0) * 100).toFixed(1) + '%';
+    document.getElementById('recent-success-rate').textContent = ((summary.recent_success_rate || 0) * 100).toFixed(1) + '%';
+
+    // Update agent type chart
+    const byAgentType = data.by_agent_type || {};
+    agentTypeChart.data.labels = Object.keys(byAgentType);
+    agentTypeChart.data.datasets[0].data = Object.values(byAgentType).map(m => (m.success_rate * 100).toFixed(1));
+    agentTypeChart.update();
+
+    // Update comparison chart
+    const byMode = data.by_mode || {};
+    if (byMode.baseline && byMode.sparc) {
+        comparisonChart.data.datasets[0].data = [
+            (byMode.baseline.success_rate * 100).toFixed(1),
+            (byMode.sparc.success_rate * 100).toFixed(1)
+        ];
+        comparisonChart.update();
+    }
+
+    // Update trend chart if realtime data is available
+    if (data.realtime && data.realtime.hourly_trend) {
+        const trendData = data.realtime.hourly_trend;
+        trendChart.data.labels = trendData.map(d => new Date(d.hour).toLocaleTimeString());
+        trendChart.data.datasets[0].data = trendData.map(d => (d.success_rate * 100).toFixed(1));
+        trendChart.update();
+    }
+}
+
+// Setup auto-refresh
+function setupAutoRefresh() {
+    setInterval(refreshDashboard, {{ refresh_interval }} * 1000);
+}
+
+// Setup time range buttons
+function setupTimeRangeButtons() {
+    $('[data-time-range]').click(function() {
+        $('[data-time-range]').removeClass('active');
+        $(this).addClass('active');
+        currentTimeRange = $(this).data('time-range');
+        refreshDashboard();
+    });
+}
+
+// Start measurement modal
+function startMeasurement() {
+    $('#startMeasurementModal').modal('show');
+}
+
+// Submit measurement
+function submitMeasurement() {
+    const formData = new FormData(document.getElementById('measurementForm'));
+    const data = Object.fromEntries(formData.entries());
+    
+    fetch('/api/productivity/start/', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'X-CSRFToken': $('[name=csrfmiddlewaretoken]').val()
+        },
+        body: JSON.stringify(data)
+    })
+    .then(response => response.json())
+    .then(result => {
+        if (result.success) {
+            $('#startMeasurementModal').modal('hide');
+            alert(`Measurement started: ${result.message}`);
+            setTimeout(refreshDashboard, 2000);
+        } else {
+            alert(`Error: ${result.error}`);
+        }
+    })
+    .catch(error => {
+        alert(`Failed to start measurement: ${error}`);
+    });
+}
+
+// Export data
+function exportData() {
+    const format = prompt('Export format (json, csv, report):', 'json');
+    if (format && ['json', 'csv', 'report'].includes(format)) {
+        window.open(`/api/productivity/export/?format=${format}&time_range=${currentTimeRange}`);
+    }
+}
+</script>
+{% endblock %}

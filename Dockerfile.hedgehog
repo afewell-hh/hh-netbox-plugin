@@ -1,0 +1,16 @@
+FROM netboxcommunity/netbox:v4.3-3.3.0
+
+# Switch to root to install
+USER root
+
+# Copy the hedgehog plugin
+COPY netbox_hedgehog/ /opt/netbox/netbox/netbox_hedgehog/
+
+# Set correct permissions first
+RUN chown -R unit:root /opt/netbox/netbox/netbox_hedgehog/
+
+# Install plugin (skip pip install for now, just copy files)
+# The plugin should be detected by NetBox if properly configured
+
+# Switch back to unit user
+USER unit:root

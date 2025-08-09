@@ -1,0 +1,23 @@
+{
+  "name": "netbox-hedgehog-gui-tests",
+  "version": "1.0.0",
+  "description": "GUI testing framework for NetBox Hedgehog plugin",
+  "scripts": {
+    "test:gui": "playwright test",
+    "test:gui:headed": "playwright test --headed",
+    "test:gui:debug": "playwright test --debug",
+    "test:gui:report": "playwright show-report",
+    "test:setup": "playwright install",
+    "test:install": "npm install && playwright install"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.40.0",
+    "@types/node": "^20.0.0"
+  },
+  "engines": {
+    "node": ">=16"
+  },
+  "dependencies": {
+    "claude-flow": "^2.0.0-alpha.88"
+  }
+}

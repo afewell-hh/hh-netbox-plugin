@@ -1,0 +1,359 @@
+{
+  "config": {
+    "configFile": "/home/ubuntu/cc/hedgehog-netbox-plugin/playwright.config.ts",
+    "rootDir": "/home/ubuntu/cc/hedgehog-netbox-plugin/tests/gui",
+    "forbidOnly": false,
+    "fullyParallel": false,
+    "globalSetup": "/home/ubuntu/cc/hedgehog-netbox-plugin/tests/gui/global-setup.ts",
+    "globalTeardown": "/home/ubuntu/cc/hedgehog-netbox-plugin/tests/gui/global-teardown.ts",
+    "globalTimeout": 0,
+    "grep": {},
+    "grepInvert": null,
+    "maxFailures": 0,
+    "metadata": {
+      "actualWorkers": 1
+    },
+    "preserveOutput": "always",
+    "reporter": [
+      [
+        "html",
+        null
+      ],
+      [
+        "json",
+        {
+          "outputFile": "test-results/gui-test-results.json"
+        }
+      ],
+      [
+        "junit",
+        {
+          "outputFile": "test-results/gui-results.xml"
+        }
+      ]
+    ],
+    "reportSlowTests": {
+      "max": 5,
+      "threshold": 300000
+    },
+    "quiet": false,
+    "projects": [
+      {
+        "outputDir": "/home/ubuntu/cc/hedgehog-netbox-plugin/test-results",
+        "repeatEach": 1,
+        "retries": 0,
+        "metadata": {
+          "actualWorkers": 1
+        },
+        "id": "chromium",
+        "name": "chromium",
+        "testDir": "/home/ubuntu/cc/hedgehog-netbox-plugin/tests/gui",
+        "testIgnore": [],
+        "testMatch": [
+          "**/*.@(spec|test).?(c|m)[jt]s?(x)"
+        ],
+        "timeout": 30000
+      }
+    ],
+    "shard": null,
+    "updateSnapshots": "missing",
+    "updateSourceMethod": "patch",
+    "version": "1.54.2",
+    "workers": 1,
+    "webServer": {
+      "command": "python manage.py runserver 8000",
+      "port": 8000,
+      "timeout": 120000,
+      "reuseExistingServer": true
+    }
+  },
+  "suites": [
+    {
+      "title": "netbox-hedgehog.spec.ts",
+      "file": "netbox-hedgehog.spec.ts",
+      "column": 0,
+      "line": 0,
+      "specs": [],
+      "suites": [
+        {
+          "title": "NetBox Hedgehog Plugin GUI Tests",
+          "file": "netbox-hedgehog.spec.ts",
+          "line": 3,
+          "column": 6,
+          "specs": [
+            {
+              "title": "NetBox login page loads correctly",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 571,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2025-08-09T22:27:49.978Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "d4c0a24d23914eed951a-3613a40f7c10acb2a137",
+              "file": "netbox-hedgehog.spec.ts",
+              "line": 9,
+              "column": 7
+            },
+            {
+              "title": "Hedgehog plugin home page accessibility",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 2799,
+                      "errors": [],
+                      "stdout": [
+                        {
+                          "text": "✅ Accessed Hedgehog plugin directly\n"
+                        },
+                        {
+                          "text": "✅ No JavaScript errors detected\n"
+                        }
+                      ],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2025-08-09T22:27:50.678Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "d4c0a24d23914eed951a-d96d6119f787c247cf0c",
+              "file": "netbox-hedgehog.spec.ts",
+              "line": 23,
+              "column": 7
+            },
+            {
+              "title": "Hedgehog fabric page loads without critical errors",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 588,
+                      "errors": [],
+                      "stdout": [
+                        {
+                          "text": "Current URL: http://localhost:8000/plugins/hedgehog/fabrics/\n"
+                        },
+                        {
+                          "text": "✅ Accessed fabrics page directly\n"
+                        }
+                      ],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2025-08-09T22:27:53.485Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "d4c0a24d23914eed951a-583c800f5922a6b1078d",
+              "file": "netbox-hedgehog.spec.ts",
+              "line": 61,
+              "column": 7
+            },
+            {
+              "title": "Hedgehog git repositories page loads without critical errors",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 458,
+                      "errors": [],
+                      "stdout": [
+                        {
+                          "text": "Git repositories page URL: http://localhost:8000/login/?next=/plugins/hedgehog/git-repositories/\n"
+                        },
+                        {
+                          "text": "✅ Git repositories page redirects to login correctly\n"
+                        }
+                      ],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2025-08-09T22:27:54.083Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "d4c0a24d23914eed951a-38c5d7c0a806ee916527",
+              "file": "netbox-hedgehog.spec.ts",
+              "line": 88,
+              "column": 7
+            },
+            {
+              "title": "No critical JavaScript errors on main pages",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 6654,
+                      "errors": [],
+                      "stdout": [
+                        {
+                          "text": "Testing page: /plugins/hedgehog/\n"
+                        },
+                        {
+                          "text": "✅ /plugins/hedgehog/ loaded without critical errors\n"
+                        },
+                        {
+                          "text": "Testing page: /plugins/hedgehog/fabrics/\n"
+                        },
+                        {
+                          "text": "✅ /plugins/hedgehog/fabrics/ loaded without critical errors\n"
+                        },
+                        {
+                          "text": "Testing page: /plugins/hedgehog/git-repositories/\n"
+                        },
+                        {
+                          "text": "✅ /plugins/hedgehog/git-repositories/ loaded without critical errors\n"
+                        },
+                        {
+                          "text": "✅ JavaScript error test completed. Found 0 page errors and 2 console errors.\n"
+                        }
+                      ],
+                      "stderr": [
+                        {
+                          "text": "Console Errors: [\n  \u001b[32m'Console Error: Failed to load resource: the server responded with a status of 404 (Not Found)'\u001b[39m,\n  \u001b[32m'Console Error: Failed to load resource: the server responded with a status of 404 (Not Found)'\u001b[39m\n]\n"
+                        }
+                      ],
+                      "retry": 0,
+                      "startTime": "2025-08-09T22:27:54.550Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "d4c0a24d23914eed951a-ed67b9b560d4d60cb094",
+              "file": "netbox-hedgehog.spec.ts",
+              "line": 135,
+              "column": 7
+            },
+            {
+              "title": "CSS and styling loads correctly",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 654,
+                      "errors": [],
+                      "stdout": [
+                        {
+                          "text": "Bootstrap/CSS classes found: \u001b[33mtrue\u001b[39m\n"
+                        },
+                        {
+                          "text": "Body styles: {\n  fontFamily: \u001b[32m'Inter, system-ui, sans-serif'\u001b[39m,\n  fontSize: \u001b[32m'14px'\u001b[39m,\n  margin: \u001b[32m'0px'\u001b[39m,\n  backgroundColor: \u001b[32m'rgb(249, 250, 251)'\u001b[39m\n}\n"
+                        },
+                        {
+                          "text": "✅ Basic CSS and styling verification passed\n"
+                        }
+                      ],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2025-08-09T22:28:01.212Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "d4c0a24d23914eed951a-ca8fc3448fc06d1073b7",
+              "file": "netbox-hedgehog.spec.ts",
+              "line": 184,
+              "column": 7
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "errors": [],
+  "stats": {
+    "startTime": "2025-08-09T22:27:47.997Z",
+    "duration": 13965.72,
+    "expected": 6,
+    "skipped": 0,
+    "unexpected": 0,
+    "flaky": 0
+  }
+}

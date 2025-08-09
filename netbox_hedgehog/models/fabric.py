@@ -473,12 +473,17 @@ class HedgehogFabric(NetBoxModel):
         """
         Calculate actual sync status based on configuration and timing.
         Returns proper status that reflects the real state.
+        FIXES: Prevents contradictory status like "synced" without kubernetes_server.
         """
         from django.utils import timezone
         
-        # If no Kubernetes server configured, can't sync
-        if not self.kubernetes_server:
+        # CRITICAL FIX: If no Kubernetes server configured, cannot be synced
+        if not self.kubernetes_server or not self.kubernetes_server.strip():
             return 'not_configured'
+        
+        # CRITICAL FIX: If sync is disabled, cannot be synced
+        if not self.sync_enabled:
+            return 'disabled'
         
         # If never synced, return never_synced
         if not self.last_sync:
@@ -488,8 +493,12 @@ class HedgehogFabric(NetBoxModel):
         time_since_sync = timezone.now() - self.last_sync
         sync_age_seconds = time_since_sync.total_seconds()
         
-        # If there's a sync error, return error status
+        # CRITICAL FIX: If there's a sync error, return error status
         if self.sync_error and self.sync_error.strip():
+            return 'error'
+            
+        # CRITICAL FIX: If there's a connection error, return error status  
+        if self.connection_error and self.connection_error.strip():
             return 'error'
         
         # If last sync is more than 2x sync interval, consider out of sync
@@ -510,9 +519,11 @@ class HedgehogFabric(NetBoxModel):
     def calculated_sync_status_display(self):
         """
         Get display-friendly version of calculated sync status.
+        FIXES: Adds missing status displays for data consistency.
         """
         status_map = {
             'not_configured': 'Not Configured',
+            'disabled': 'Sync Disabled',
             'never_synced': 'Never Synced',
             'in_sync': 'In Sync',
             'out_of_sync': 'Out of Sync',
@@ -524,9 +535,11 @@ class HedgehogFabric(NetBoxModel):
     def calculated_sync_status_badge_class(self):
         """
         Get Bootstrap badge class for sync status display.
+        FIXES: Adds missing badge class for disabled status.
         """
         status_classes = {
             'not_configured': 'bg-secondary text-white',
+            'disabled': 'bg-secondary text-white',
             'never_synced': 'bg-warning text-dark',
             'in_sync': 'bg-success text-white',
             'out_of_sync': 'bg-danger text-white',

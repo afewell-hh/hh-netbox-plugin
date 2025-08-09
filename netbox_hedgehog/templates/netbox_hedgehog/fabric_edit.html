@@ -1,0 +1,206 @@
+{% extends "base/layout.html" %}
+
+{% block title %}{{ title }}{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+    <h1>{{ title }}</h1>
+    
+    {% if error_type %}
+        <div class="alert alert-danger">
+            <h4>L {{ error_type }} Detected!</h4>
+            <p><strong>Error:</strong> {{ error_message }}</p>
+            
+            {% if error_traceback %}
+                <details>
+                    <summary>Full Traceback (Click to expand)</summary>
+                    <pre style="background: #f8f9fa; padding: 10px; margin-top: 10px; font-size: 12px;">{{ error_traceback }}</pre>
+                </details>
+            {% endif %}
+        </div>
+    {% elif error %}
+        <div class="alert alert-danger">
+            <strong>L Error Detected!</strong>
+            <p>{{ error }}</p>
+        </div>
+    {% else %}
+        <div class="alert alert-success">
+            <strong> Edit Form Working!</strong>
+            <p>The 500 error has been successfully fixed. You can now edit fabric settings.</p>
+        </div>
+    {% endif %}
+    
+    {% if not error_type %}
+    <form method="post">
+        {% csrf_token %}
+        
+        <!-- Basic Information -->
+        <div class="card mb-4">
+            <div class="card-header">
+                <h4 class="card-title mb-0"><i class="mdi mdi-information"></i> Basic Information</h4>
+            </div>
+            <div class="card-body">
+                <div class="row">
+                    <div class="col-md-6">
+                        <div class="mb-3">
+                            <label for="id_name" class="form-label">Name *</label>
+                            <input type="text" name="name" class="form-control" id="id_name" value="{{ object.name|default:'' }}" required>
+                        </div>
+                    </div>
+                    <div class="col-md-6">
+                        <div class="mb-3">
+                            <label for="id_status" class="form-label">Status</label>
+                            <select name="status" class="form-control" id="id_status">
+                                <option value="planned" {% if object.status == 'planned' %}selected{% endif %}>Planned</option>
+                                <option value="active" {% if object.status == 'active' %}selected{% endif %}>Active</option>
+                                <option value="deprecated" {% if object.status == 'deprecated' %}selected{% endif %}>Deprecated</option>
+                            </select>
+                        </div>
+                    </div>
+                </div>
+                <div class="mb-3">
+                    <label for="id_description" class="form-label">Description</label>
+                    <textarea name="description" class="form-control" id="id_description" rows="3">{{ object.description|default:'' }}</textarea>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Kubernetes Configuration -->
+        <div class="card mb-4">
+            <div class="card-header">
+                <h4 class="card-title mb-0"><i class="mdi mdi-kubernetes"></i> Kubernetes Configuration</h4>
+            </div>
+            <div class="card-body">
+                <div class="row">
+                    <div class="col-md-6">
+                        <div class="mb-3">
+                            <label for="id_kubernetes_server" class="form-label">Kubernetes Server URL</label>
+                            <input type="url" name="kubernetes_server" class="form-control" id="id_kubernetes_server" value="{{ object.kubernetes_server|default:'' }}" placeholder="https://kubernetes.example.com:6443">
+                            <div class="form-text">Leave empty to use default kubeconfig</div>
+                        </div>
+                    </div>
+                    <div class="col-md-6">
+                        <div class="mb-3">
+                            <label for="id_kubernetes_namespace" class="form-label">Kubernetes Namespace</label>
+                            <input type="text" name="kubernetes_namespace" class="form-control" id="id_kubernetes_namespace" value="{{ object.kubernetes_namespace|default:'default' }}">
+                            <div class="form-text">Default namespace for this fabric's CRDs</div>
+                        </div>
+                    </div>
+                </div>
+                <div class="row">
+                    <div class="col-md-12">
+                        <div class="mb-3">
+                            <label for="id_kubernetes_token" class="form-label">Kubernetes Token</label>
+                            <textarea name="kubernetes_token" class="form-control" id="id_kubernetes_token" rows="3" placeholder="Bearer token for authentication">{{ object.kubernetes_token|default:'' }}</textarea>
+                            <div class="form-text">Service account token (leave empty to use kubeconfig)</div>
+                        </div>
+                    </div>
+                </div>
+                <div class="row">
+                    <div class="col-md-12">
+                        <div class="mb-3">
+                            <label for="id_kubernetes_ca_cert" class="form-label">Kubernetes CA Certificate</label>
+                            <textarea name="kubernetes_ca_cert" class="form-control" id="id_kubernetes_ca_cert" rows="4" placeholder="-----BEGIN CERTIFICATE-----
+...
+-----END CERTIFICATE-----">{{ object.kubernetes_ca_cert|default:'' }}</textarea>
+                            <div class="form-text">CA certificate for SSL verification (leave empty to use kubeconfig)</div>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Kubernetes Sync Settings -->
+                <h5 class="mt-4 mb-3"><i class="mdi mdi-sync"></i> Kubernetes Sync Settings</h5>
+                <div class="row">
+                    <div class="col-md-6">
+                        <div class="mb-3">
+                            <div class="form-check">
+                                <input type="checkbox" name="sync_enabled" class="form-check-input" id="id_sync_enabled" {% if object.sync_enabled %}checked{% endif %}>
+                                <label class="form-check-label" for="id_sync_enabled">
+                                    Enable Kubernetes Synchronization
+                                </label>
+                            </div>
+                            <div class="form-text">Enable automatic sync from Kubernetes cluster</div>
+                            {% if form.sync_enabled.errors %}
+                                <div class="text-danger">{{ form.sync_enabled.errors.0 }}</div>
+                            {% endif %}
+                        </div>
+                    </div>
+                    <div class="col-md-6">
+                        <div class="mb-3">
+                            <label for="id_sync_interval" class="form-label">Kubernetes Sync Interval (seconds)</label>
+                            <input type="number" name="sync_interval" class="form-control" id="id_sync_interval" value="{{ object.sync_interval|default:300 }}" min="0">
+                            <div class="form-text">How often to sync from Kubernetes (0 = manual only)</div>
+                        </div>
+                    </div>
+                </div>
+                <div class="row">
+                    <div class="col-md-12">
+                        <div class="mb-3">
+                            <div class="form-check">
+                                <input type="checkbox" name="watch_enabled" class="form-check-input" id="id_watch_enabled" {% if object.watch_enabled %}checked{% endif %}>
+                                <label class="form-check-label" for="id_watch_enabled">
+                                    Enable Real-time Watching
+                                </label>
+                            </div>
+                            <div class="form-text">Watch for Kubernetes CRD changes in real-time (requires sync to be enabled)</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Git Repository Configuration -->
+        <div class="card mb-4">
+            <div class="card-header">
+                <h4 class="card-title mb-0"><i class="mdi mdi-git"></i> Git Repository Configuration</h4>
+            </div>
+            <div class="card-body">
+                <div class="row">
+                    <div class="col-md-6">
+                        <div class="mb-3">
+                            <label for="id_git_repository" class="form-label">Git Repository</label>
+                            <select name="git_repository" class="form-control" id="id_git_repository">
+                                <option value="">Select a Git Repository...</option>
+                                <!-- Git repository options would be populated here -->
+                            </select>
+                            <div class="form-text">Select an authenticated Git repository</div>
+                        </div>
+                    </div>
+                    <div class="col-md-6">
+                        <div class="mb-3">
+                            <label for="id_gitops_directory" class="form-label">GitOps Directory</label>
+                            <input type="text" name="gitops_directory" class="form-control" id="id_gitops_directory" value="{{ object.gitops_directory|default:'/' }}">
+                            <div class="form-text">Directory path within repository for this fabric's CRDs</div>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Git Sync Settings -->
+                <h5 class="mt-4 mb-3"><i class="mdi mdi-sync"></i> Git Sync Settings</h5>
+                <div class="row">
+                    <div class="col-md-12">
+                        <div class="alert alert-info">
+                            <i class="mdi mdi-information"></i> <strong>Note:</strong> Git sync settings are managed at the repository level. 
+                            To configure Git sync, edit the selected Git repository's settings.
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        
+        <!-- Form Actions -->
+        <div class="card">
+            <div class="card-body">
+                <button type="submit" class="btn btn-primary">
+                    <i class="mdi mdi-content-save"></i> Save Changes
+                </button>
+                <a href="{% url 'plugins:netbox_hedgehog:fabric_detail' pk=object.pk %}" class="btn btn-secondary">
+                    <i class="mdi mdi-arrow-left"></i> Cancel
+                </a>
+            </div>
+        </div>
+    </form>
+    {% endif %}
+</div>
+{% endblock %}

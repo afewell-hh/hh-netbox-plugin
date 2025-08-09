@@ -1,0 +1,1371 @@
+{
+  "models": [
+    {
+      "model_name": "BaseCRD",
+      "file_path": "/home/ubuntu/cc/hedgehog-netbox-plugin/netbox_hedgehog/models/base.py",
+      "table_name": "netbox_hedgehog_basecrd",
+      "fields": [
+        {
+          "name": "fabric",
+          "type": "ForeignKey",
+          "required": true,
+          "related_model": "HedgehogFabric",
+          "help_text": "Hedgehog fabric this CRD belongs to"
+        },
+        {
+          "name": "name",
+          "type": "CharField",
+          "required": true,
+          "max_length": 253,
+          "help_text": "Kubernetes resource name (must be DNS-1123 compliant)"
+        },
+        {
+          "name": "namespace",
+          "type": "CharField",
+          "required": false,
+          "max_length": 253,
+          "default": "default",
+          "help_text": "Kubernetes namespace for this resource"
+        },
+        {
+          "name": "spec",
+          "type": "JSONField",
+          "required": true,
+          "help_text": "CRD specification as JSON"
+        },
+        {
+          "name": "raw_spec",
+          "type": "JSONField",
+          "required": false,
+          "default": "dict",
+          "help_text": "Raw spec from YAML file (preserves structure)"
+        },
+        {
+          "name": "labels",
+          "type": "JSONField",
+          "required": false,
+          "default": "dict",
+          "help_text": "Kubernetes labels as JSON"
+        },
+        {
+          "name": "annotations",
+          "type": "JSONField",
+          "required": false,
+          "default": "dict",
+          "help_text": "Kubernetes annotations as JSON"
+        },
+        {
+          "name": "kubernetes_status",
+          "type": "CharField",
+          "required": false,
+          "max_length": 20,
+          "choices": ["LIVE", "APPLIED", "PENDING", "SYNCING", "ERROR", "DELETING", "UNKNOWN"],
+          "default": "UNKNOWN",
+          "help_text": "Current status in Kubernetes"
+        },
+        {
+          "name": "kubernetes_uid",
+          "type": "CharField",
+          "required": false,
+          "max_length": 36,
+          "help_text": "Kubernetes resource UID"
+        },
+        {
+          "name": "kubernetes_resource_version",
+          "type": "CharField",
+          "required": false,
+          "max_length": 50,
+          "help_text": "Kubernetes resource version"
+        },
+        {
+          "name": "last_applied",
+          "type": "DateTimeField",
+          "required": false,
+          "help_text": "When this CRD was last applied to Kubernetes"
+        },
+        {
+          "name": "last_synced",
+          "type": "DateTimeField",
+          "required": false,
+          "help_text": "When this CRD was last synced from Kubernetes"
+        },
+        {
+          "name": "sync_error",
+          "type": "TextField",
+          "required": false,
+          "help_text": "Last sync error message (if any)"
+        },
+        {
+          "name": "git_file_path",
+          "type": "CharField",
+          "required": false,
+          "max_length": 500,
+          "help_text": "Path to this resource in Git repository"
+        },
+        {
+          "name": "auto_sync",
+          "type": "BooleanField",
+          "required": false,
+          "default": true,
+          "help_text": "Enable automatic sync for this resource"
+        }
+      ],
+      "relationships": [
+        {
+          "type": "ForeignKey",
+          "related_model": "HedgehogFabric",
+          "field_name": "fabric",
+          "reverse_name": "%(class)s_set"
+        }
+      ],
+      "crud_operations": {
+        "create": true,
+        "read": true,
+        "update": true,
+        "delete": true
+      },
+      "admin_registered": false,
+      "unique_constraints": ["fabric", "namespace", "name"],
+      "ordering": ["fabric", "namespace", "name"],
+      "permissions": ["add", "change", "delete", "view"]
+    },
+    {
+      "model_name": "HedgehogFabric",
+      "file_path": "/home/ubuntu/cc/hedgehog-netbox-plugin/netbox_hedgehog/models/fabric.py",
+      "table_name": "netbox_hedgehog_hedgehogfabric",
+      "fields": [
+        {
+          "name": "name",
+          "type": "CharField",
+          "required": true,
+          "max_length": 100,
+          "unique": true,
+          "help_text": "Unique name for this Hedgehog fabric"
+        },
+        {
+          "name": "description",
+          "type": "TextField",
+          "required": false,
+          "help_text": "Optional description of this fabric"
+        },
+        {
+          "name": "status",
+          "type": "CharField",
+          "required": false,
+          "max_length": 20,
+          "choices": ["PLANNED", "ACTIVE", "DECOMMISSIONED"],
+          "default": "PLANNED",
+          "help_text": "Configuration status - whether this fabric is planned, active, etc."
+        },
+        {
+          "name": "connection_status",
+          "type": "CharField",
+          "required": false,
+          "max_length": 20,
+          "choices": ["UNKNOWN", "CONNECTED", "FAILED", "TESTING"],
+          "default": "UNKNOWN",
+          "help_text": "Connection status - whether NetBox can connect to this fabric"
+        },
+        {
+          "name": "sync_status",
+          "type": "CharField",
+          "required": false,
+          "max_length": 20,
+          "choices": ["NEVER_SYNCED", "IN_SYNC", "OUT_OF_SYNC", "SYNCING", "ERROR"],
+          "default": "NEVER_SYNCED",
+          "help_text": "Sync status - whether data is synchronized with Kubernetes"
+        },
+        {
+          "name": "kubernetes_server",
+          "type": "URLField",
+          "required": false,
+          "help_text": "Kubernetes API server URL (optional if using default kubeconfig)"
+        },
+        {
+          "name": "kubernetes_token",
+          "type": "TextField",
+          "required": false,
+          "help_text": "Kubernetes service account token (leave empty to use kubeconfig)"
+        },
+        {
+          "name": "kubernetes_ca_cert",
+          "type": "TextField",
+          "required": false,
+          "help_text": "Kubernetes CA certificate (leave empty to use kubeconfig)"
+        },
+        {
+          "name": "kubernetes_namespace",
+          "type": "CharField",
+          "required": false,
+          "max_length": 253,
+          "default": "default",
+          "help_text": "Default namespace for this fabric's CRDs"
+        },
+        {
+          "name": "sync_enabled",
+          "type": "BooleanField",
+          "required": false,
+          "default": true,
+          "help_text": "Enable automatic synchronization with Kubernetes"
+        },
+        {
+          "name": "sync_interval",
+          "type": "PositiveIntegerField",
+          "required": false,
+          "default": 300,
+          "help_text": "Sync interval in seconds (0 to disable automatic sync)"
+        },
+        {
+          "name": "last_sync",
+          "type": "DateTimeField",
+          "required": false,
+          "help_text": "Timestamp of last successful sync"
+        },
+        {
+          "name": "sync_error",
+          "type": "TextField",
+          "required": false,
+          "help_text": "Last sync error message (if any)"
+        },
+        {
+          "name": "connection_error",
+          "type": "TextField",
+          "required": false,
+          "help_text": "Last connection error message (if any)"
+        },
+        {
+          "name": "git_repository",
+          "type": "ForeignKey",
+          "required": false,
+          "related_model": "GitRepository",
+          "help_text": "Reference to authenticated git repository (separated architecture)"
+        },
+        {
+          "name": "gitops_directory",
+          "type": "CharField",
+          "required": false,
+          "max_length": 500,
+          "default": "/",
+          "help_text": "Directory path within repository for this fabric's CRDs"
+        },
+        {
+          "name": "git_repository_url",
+          "type": "URLField",
+          "required": false,
+          "help_text": "[DEPRECATED] Git repository URL - use git_repository field instead"
+        },
+        {
+          "name": "git_branch",
+          "type": "CharField",
+          "required": false,
+          "max_length": 100,
+          "default": "main",
+          "help_text": "[DEPRECATED] Git branch - managed by GitRepository"
+        },
+        {
+          "name": "git_path",
+          "type": "CharField",
+          "required": false,
+          "max_length": 255,
+          "default": "hedgehog/",
+          "help_text": "[DEPRECATED] Git path - use gitops_directory field instead"
+        }
+      ],
+      "relationships": [
+        {
+          "type": "ForeignKey",
+          "related_model": "GitRepository",
+          "field_name": "git_repository",
+          "reverse_name": "fabrics"
+        }
+      ],
+      "crud_operations": {
+        "create": true,
+        "read": true,
+        "update": true,
+        "delete": true
+      },
+      "admin_registered": false,
+      "unique_constraints": ["git_repository", "gitops_directory"],
+      "ordering": ["name"],
+      "permissions": ["add", "change", "delete", "view"]
+    },
+    {
+      "model_name": "GitRepository",
+      "file_path": "/home/ubuntu/cc/hedgehog-netbox-plugin/netbox_hedgehog/models/git_repository.py",
+      "table_name": "netbox_hedgehog_gitrepository",
+      "fields": [
+        {
+          "name": "name",
+          "type": "CharField",
+          "required": true,
+          "max_length": 200,
+          "help_text": "User-friendly name for this git repository"
+        },
+        {
+          "name": "url",
+          "type": "URLField",
+          "required": true,
+          "max_length": 500,
+          "help_text": "Git repository URL (https:// or git@)"
+        },
+        {
+          "name": "provider",
+          "type": "CharField",
+          "required": false,
+          "max_length": 20,
+          "choices": ["GITHUB", "GITLAB", "BITBUCKET", "GENERIC"],
+          "default": "GENERIC",
+          "help_text": "Git provider type"
+        },
+        {
+          "name": "authentication_type",
+          "type": "CharField",
+          "required": false,
+          "max_length": 20,
+          "choices": ["TOKEN", "BASIC", "SSH", "OAUTH"],
+          "default": "TOKEN",
+          "help_text": "Authentication method for this repository"
+        },
+        {
+          "name": "encrypted_credentials",
+          "type": "TextField",
+          "required": false,
+          "help_text": "Encrypted authentication credentials (JSON)"
+        },
+        {
+          "name": "connection_status",
+          "type": "CharField",
+          "required": false,
+          "max_length": 20,
+          "choices": ["PENDING", "CONNECTED", "FAILED", "TESTING"],
+          "default": "PENDING",
+          "help_text": "Current connection status"
+        },
+        {
+          "name": "last_validated",
+          "type": "DateTimeField",
+          "required": false,
+          "help_text": "Timestamp of last successful connection test"
+        },
+        {
+          "name": "validation_error",
+          "type": "TextField",
+          "required": false,
+          "help_text": "Last validation error message (if any)"
+        },
+        {
+          "name": "default_branch",
+          "type": "CharField",
+          "required": false,
+          "max_length": 100,
+          "default": "main",
+          "help_text": "Default branch for this repository"
+        },
+        {
+          "name": "is_private",
+          "type": "BooleanField",
+          "required": false,
+          "default": false,
+          "help_text": "Whether this repository is private"
+        },
+        {
+          "name": "fabric_count",
+          "type": "PositiveIntegerField",
+          "required": false,
+          "default": 0,
+          "help_text": "Number of fabrics using this repository"
+        },
+        {
+          "name": "created_by",
+          "type": "ForeignKey",
+          "required": false,
+          "related_model": "User",
+          "help_text": "User who added this repository"
+        },
+        {
+          "name": "description",
+          "type": "TextField",
+          "required": false,
+          "help_text": "Optional description of this repository"
+        },
+        {
+          "name": "validate_ssl",
+          "type": "BooleanField",
+          "required": false,
+          "default": true,
+          "help_text": "Validate SSL certificates when connecting"
+        },
+        {
+          "name": "timeout_seconds",
+          "type": "PositiveIntegerField",
+          "required": false,
+          "default": 30,
+          "help_text": "Connection timeout in seconds"
+        }
+      ],
+      "relationships": [
+        {
+          "type": "ForeignKey",
+          "related_model": "User",
+          "field_name": "created_by",
+          "reverse_name": "git_repositories"
+        }
+      ],
+      "crud_operations": {
+        "create": true,
+        "read": true,
+        "update": true,
+        "delete": true
+      },
+      "admin_registered": false,
+      "unique_constraints": [],
+      "ordering": ["name"],
+      "permissions": ["add", "change", "delete", "view"]
+    },
+    {
+      "model_name": "HedgehogResource",
+      "file_path": "/home/ubuntu/cc/hedgehog-netbox-plugin/netbox_hedgehog/models/gitops.py",
+      "table_name": "netbox_hedgehog_hedgehogresource",
+      "fields": [
+        {
+          "name": "fabric",
+          "type": "ForeignKey",
+          "required": true,
+          "related_model": "HedgehogFabric",
+          "help_text": "Hedgehog fabric this resource belongs to"
+        },
+        {
+          "name": "name",
+          "type": "CharField",
+          "required": true,
+          "max_length": 253,
+          "help_text": "Kubernetes resource name (DNS-1123 compliant)"
+        },
+        {
+          "name": "namespace",
+          "type": "CharField",
+          "required": false,
+          "max_length": 253,
+          "default": "default",
+          "help_text": "Kubernetes namespace for this resource"
+        },
+        {
+          "name": "kind",
+          "type": "CharField",
+          "required": true,
+          "max_length": 50,
+          "help_text": "Kubernetes resource kind (VPC, Connection, Server, etc.)"
+        },
+        {
+          "name": "api_version",
+          "type": "CharField",
+          "required": false,
+          "max_length": 100,
+          "default": "unknown/v1",
+          "help_text": "Kubernetes API version"
+        },
+        {
+          "name": "content_type",
+          "type": "ForeignKey",
+          "required": false,
+          "related_model": "ContentType",
+          "help_text": "Content type of the linked CRD object"
+        },
+        {
+          "name": "object_id",
+          "type": "PositiveIntegerField",
+          "required": false,
+          "help_text": "ID of the linked CRD object"
+        },
+        {
+          "name": "desired_spec",
+          "type": "JSONField",
+          "required": false,
+          "help_text": "Desired resource specification from Git repository"
+        },
+        {
+          "name": "desired_commit",
+          "type": "CharField",
+          "required": false,
+          "max_length": 40,
+          "help_text": "Git commit SHA containing this desired state"
+        },
+        {
+          "name": "desired_file_path",
+          "type": "CharField",
+          "required": false,
+          "max_length": 500,
+          "help_text": "Path to YAML file in Git repository"
+        },
+        {
+          "name": "desired_updated",
+          "type": "DateTimeField",
+          "required": false,
+          "help_text": "When desired state was last updated from Git"
+        },
+        {
+          "name": "draft_spec",
+          "type": "JSONField",
+          "required": false,
+          "help_text": "Draft resource specification (uncommitted)"
+        },
+        {
+          "name": "draft_updated",
+          "type": "DateTimeField",
+          "required": false,
+          "help_text": "When draft was last updated"
+        },
+        {
+          "name": "draft_updated_by",
+          "type": "ForeignKey",
+          "required": false,
+          "related_model": "User",
+          "help_text": "User who last updated draft"
+        },
+        {
+          "name": "actual_spec",
+          "type": "JSONField",
+          "required": false,
+          "help_text": "Actual resource specification from Kubernetes"
+        },
+        {
+          "name": "actual_status",
+          "type": "JSONField",
+          "required": false,
+          "help_text": "Actual resource status from Kubernetes"
+        },
+        {
+          "name": "actual_resource_version",
+          "type": "CharField",
+          "required": false,
+          "max_length": 50,
+          "help_text": "Kubernetes resource version"
+        },
+        {
+          "name": "actual_updated",
+          "type": "DateTimeField",
+          "required": false,
+          "help_text": "When actual state was last updated from Kubernetes"
+        },
+        {
+          "name": "resource_state",
+          "type": "CharField",
+          "required": false,
+          "max_length": 20,
+          "choices": ["draft", "committed", "synced", "drifted", "orphaned", "pending"],
+          "default": "draft",
+          "help_text": "Current resource state"
+        },
+        {
+          "name": "last_state_change",
+          "type": "DateTimeField",
+          "required": false,
+          "help_text": "Timestamp of last state change"
+        },
+        {
+          "name": "state_change_reason",
+          "type": "TextField",
+          "required": false,
+          "help_text": "Reason for last state change"
+        },
+        {
+          "name": "drift_status",
+          "type": "CharField",
+          "required": false,
+          "max_length": 20,
+          "choices": ["in_sync", "spec_drift", "desired_only", "actual_only", "creation_pending", "deletion_pending"],
+          "default": "in_sync",
+          "help_text": "Current drift status between desired and actual state"
+        },
+        {
+          "name": "drift_details",
+          "type": "JSONField",
+          "required": false,
+          "default": "dict",
+          "help_text": "Detailed drift analysis including specific differences"
+        },
+        {
+          "name": "drift_score",
+          "type": "FloatField",
+          "required": false,
+          "default": 0.0,
+          "help_text": "Numerical drift score (0.0 = no drift, 1.0 = complete drift)"
+        }
+      ],
+      "relationships": [
+        {
+          "type": "ForeignKey",
+          "related_model": "HedgehogFabric",
+          "field_name": "fabric",
+          "reverse_name": "gitops_resources"
+        },
+        {
+          "type": "ForeignKey",
+          "related_model": "ContentType",
+          "field_name": "content_type",
+          "reverse_name": "hedgehog_resources"
+        },
+        {
+          "type": "ForeignKey",
+          "related_model": "User",
+          "field_name": "draft_updated_by",
+          "reverse_name": "draft_resources"
+        },
+        {
+          "type": "ManyToMany",
+          "related_model": "HedgehogResource",
+          "field_name": "dependent_resources",
+          "reverse_name": "dependency_of"
+        }
+      ],
+      "crud_operations": {
+        "create": true,
+        "read": true,
+        "update": true,
+        "delete": true
+      },
+      "admin_registered": false,
+      "unique_constraints": ["fabric", "namespace", "name", "kind"],
+      "ordering": ["fabric", "namespace", "kind", "name"],
+      "permissions": ["add", "change", "delete", "view"]
+    },
+    {
+      "model_name": "StateTransitionHistory",
+      "file_path": "/home/ubuntu/cc/hedgehog-netbox-plugin/netbox_hedgehog/models/gitops.py",
+      "table_name": "netbox_hedgehog_statetransitionhistory",
+      "fields": [
+        {
+          "name": "resource",
+          "type": "ForeignKey",
+          "required": true,
+          "related_model": "HedgehogResource",
+          "help_text": "Resource this transition belongs to"
+        },
+        {
+          "name": "from_state",
+          "type": "CharField",
+          "required": true,
+          "max_length": 20,
+          "choices": ["draft", "committed", "synced", "drifted", "orphaned", "pending"],
+          "help_text": "Previous state"
+        },
+        {
+          "name": "to_state",
+          "type": "CharField",
+          "required": true,
+          "max_length": 20,
+          "choices": ["draft", "committed", "synced", "drifted", "orphaned", "pending"],
+          "help_text": "New state"
+        },
+        {
+          "name": "trigger",
+          "type": "CharField",
+          "required": true,
+          "max_length": 50,
+          "help_text": "What triggered the transition"
+        },
+        {
+          "name": "reason",
+          "type": "TextField",
+          "required": false,
+          "help_text": "Reason for transition"
+        },
+        {
+          "name": "context",
+          "type": "JSONField",
+          "required": false,
+          "default": "dict",
+          "help_text": "Transition context"
+        },
+        {
+          "name": "timestamp",
+          "type": "DateTimeField",
+          "required": false,
+          "help_text": "When transition occurred"
+        },
+        {
+          "name": "user",
+          "type": "ForeignKey",
+          "required": false,
+          "related_model": "User",
+          "help_text": "User who triggered transition"
+        }
+      ],
+      "relationships": [
+        {
+          "type": "ForeignKey",
+          "related_model": "HedgehogResource",
+          "field_name": "resource",
+          "reverse_name": "state_history"
+        },
+        {
+          "type": "ForeignKey",
+          "related_model": "User",
+          "field_name": "user",
+          "reverse_name": "state_transitions"
+        }
+      ],
+      "crud_operations": {
+        "create": true,
+        "read": true,
+        "update": true,
+        "delete": true
+      },
+      "admin_registered": false,
+      "unique_constraints": [],
+      "ordering": ["-timestamp"],
+      "permissions": ["add", "change", "delete", "view"]
+    },
+    {
+      "model_name": "ReconciliationAlert",
+      "file_path": "/home/ubuntu/cc/hedgehog-netbox-plugin/netbox_hedgehog/models/reconciliation.py",
+      "table_name": "netbox_hedgehog_reconciliationalert",
+      "fields": [
+        {
+          "name": "fabric",
+          "type": "ForeignKey",
+          "required": true,
+          "related_model": "HedgehogFabric",
+          "help_text": "Hedgehog fabric this alert belongs to"
+        },
+        {
+          "name": "resource",
+          "type": "ForeignKey",
+          "required": true,
+          "related_model": "HedgehogResource",
+          "help_text": "Resource this alert is for"
+        },
+        {
+          "name": "alert_type",
+          "type": "CharField",
+          "required": true,
+          "max_length": 50,
+          "choices": ["drift_detected", "orphaned_resource", "creation_pending", "deletion_pending", "sync_failure", "validation_error", "conflict_detected"],
+          "help_text": "Type of reconciliation alert"
+        },
+        {
+          "name": "severity",
+          "type": "CharField",
+          "required": false,
+          "max_length": 20,
+          "choices": ["low", "medium", "high", "critical"],
+          "default": "medium",
+          "help_text": "Alert severity level"
+        },
+        {
+          "name": "status",
+          "type": "CharField",
+          "required": false,
+          "max_length": 20,
+          "choices": ["active", "acknowledged", "resolved", "suppressed"],
+          "default": "active",
+          "help_text": "Current alert status"
+        },
+        {
+          "name": "title",
+          "type": "CharField",
+          "required": true,
+          "max_length": 200,
+          "help_text": "Alert title"
+        },
+        {
+          "name": "message",
+          "type": "TextField",
+          "required": true,
+          "help_text": "Detailed alert message"
+        },
+        {
+          "name": "alert_context",
+          "type": "JSONField",
+          "required": false,
+          "default": "dict",
+          "help_text": "Additional context for the alert"
+        },
+        {
+          "name": "drift_details",
+          "type": "JSONField",
+          "required": false,
+          "default": "dict",
+          "help_text": "Drift analysis details"
+        },
+        {
+          "name": "suggested_action",
+          "type": "CharField",
+          "required": false,
+          "max_length": 30,
+          "choices": ["import_to_git", "delete_from_cluster", "update_git", "ignore", "manual_review"],
+          "default": "manual_review",
+          "help_text": "Suggested resolution action"
+        },
+        {
+          "name": "resolved_action",
+          "type": "CharField",
+          "required": false,
+          "max_length": 30,
+          "choices": ["import_to_git", "delete_from_cluster", "update_git", "ignore", "manual_review"],
+          "help_text": "Action taken to resolve the alert"
+        },
+        {
+          "name": "resolution_metadata",
+          "type": "JSONField",
+          "required": false,
+          "default": "dict",
+          "help_text": "Metadata about the resolution"
+        },
+        {
+          "name": "created",
+          "type": "DateTimeField",
+          "required": false,
+          "help_text": "When alert was created"
+        },
+        {
+          "name": "acknowledged_at",
+          "type": "DateTimeField",
+          "required": false,
+          "help_text": "When alert was acknowledged"
+        },
+        {
+          "name": "resolved_at",
+          "type": "DateTimeField",
+          "required": false,
+          "help_text": "When alert was resolved"
+        },
+        {
+          "name": "expires_at",
+          "type": "DateTimeField",
+          "required": false,
+          "help_text": "When alert expires if not resolved"
+        },
+        {
+          "name": "created_by",
+          "type": "ForeignKey",
+          "required": false,
+          "related_model": "User",
+          "help_text": "User who created this alert"
+        },
+        {
+          "name": "acknowledged_by",
+          "type": "ForeignKey",
+          "required": false,
+          "related_model": "User",
+          "help_text": "User who acknowledged this alert"
+        },
+        {
+          "name": "resolved_by",
+          "type": "ForeignKey",
+          "required": false,
+          "related_model": "User",
+          "help_text": "User who resolved this alert"
+        }
+      ],
+      "relationships": [
+        {
+          "type": "ForeignKey",
+          "related_model": "HedgehogFabric",
+          "field_name": "fabric",
+          "reverse_name": "reconciliation_alerts"
+        },
+        {
+          "type": "ForeignKey",
+          "related_model": "HedgehogResource",
+          "field_name": "resource",
+          "reverse_name": "reconciliation_alerts"
+        },
+        {
+          "type": "ForeignKey",
+          "related_model": "User",
+          "field_name": "created_by",
+          "reverse_name": "created_alerts"
+        },
+        {
+          "type": "ForeignKey",
+          "related_model": "User",
+          "field_name": "acknowledged_by",
+          "reverse_name": "acknowledged_alerts"
+        },
+        {
+          "type": "ForeignKey",
+          "related_model": "User",
+          "field_name": "resolved_by",
+          "reverse_name": "resolved_alerts"
+        },
+        {
+          "type": "ManyToMany",
+          "related_model": "ReconciliationAlert",
+          "field_name": "related_alerts",
+          "reverse_name": "related_alerts_reverse"
+        }
+      ],
+      "crud_operations": {
+        "create": true,
+        "read": true,
+        "update": true,
+        "delete": true
+      },
+      "admin_registered": false,
+      "unique_constraints": [],
+      "ordering": ["-created", "queue_priority"],
+      "permissions": ["add", "change", "delete", "view"]
+    },
+    {
+      "model_name": "VPC",
+      "file_path": "/home/ubuntu/cc/hedgehog-netbox-plugin/netbox_hedgehog/models/vpc_api.py",
+      "table_name": "netbox_hedgehog_vpc",
+      "fields": [],
+      "relationships": [
+        {
+          "type": "ForeignKey",
+          "related_model": "HedgehogFabric",
+          "field_name": "fabric",
+          "reverse_name": "vpc_set"
+        }
+      ],
+      "crud_operations": {
+        "create": true,
+        "read": true,
+        "update": true,
+        "delete": true
+      },
+      "admin_registered": false,
+      "unique_constraints": ["fabric", "namespace", "name"],
+      "ordering": ["fabric", "namespace", "name"],
+      "permissions": ["add", "change", "delete", "view"]
+    },
+    {
+      "model_name": "External",
+      "file_path": "/home/ubuntu/cc/hedgehog-netbox-plugin/netbox_hedgehog/models/vpc_api.py",
+      "table_name": "netbox_hedgehog_external",
+      "fields": [],
+      "relationships": [
+        {
+          "type": "ForeignKey",
+          "related_model": "HedgehogFabric",
+          "field_name": "fabric",
+          "reverse_name": "external_set"
+        }
+      ],
+      "crud_operations": {
+        "create": true,
+        "read": true,
+        "update": true,
+        "delete": true
+      },
+      "admin_registered": false,
+      "unique_constraints": ["fabric", "namespace", "name"],
+      "ordering": ["fabric", "namespace", "name"],
+      "permissions": ["add", "change", "delete", "view"]
+    },
+    {
+      "model_name": "ExternalAttachment",
+      "file_path": "/home/ubuntu/cc/hedgehog-netbox-plugin/netbox_hedgehog/models/vpc_api.py",
+      "table_name": "netbox_hedgehog_externalattachment",
+      "fields": [],
+      "relationships": [
+        {
+          "type": "ForeignKey",
+          "related_model": "HedgehogFabric",
+          "field_name": "fabric",
+          "reverse_name": "externalattachment_set"
+        }
+      ],
+      "crud_operations": {
+        "create": true,
+        "read": true,
+        "update": true,
+        "delete": true
+      },
+      "admin_registered": false,
+      "unique_constraints": ["fabric", "namespace", "name"],
+      "ordering": ["fabric", "namespace", "name"],
+      "permissions": ["add", "change", "delete", "view"]
+    },
+    {
+      "model_name": "ExternalPeering",
+      "file_path": "/home/ubuntu/cc/hedgehog-netbox-plugin/netbox_hedgehog/models/vpc_api.py",
+      "table_name": "netbox_hedgehog_externalpeering",
+      "fields": [],
+      "relationships": [
+        {
+          "type": "ForeignKey",
+          "related_model": "HedgehogFabric",
+          "field_name": "fabric",
+          "reverse_name": "externalpeering_set"
+        }
+      ],
+      "crud_operations": {
+        "create": true,
+        "read": true,
+        "update": true,
+        "delete": true
+      },
+      "admin_registered": false,
+      "unique_constraints": ["fabric", "namespace", "name"],
+      "ordering": ["fabric", "namespace", "name"],
+      "permissions": ["add", "change", "delete", "view"]
+    },
+    {
+      "model_name": "IPv4Namespace",
+      "file_path": "/home/ubuntu/cc/hedgehog-netbox-plugin/netbox_hedgehog/models/vpc_api.py",
+      "table_name": "netbox_hedgehog_ipv4namespace",
+      "fields": [],
+      "relationships": [
+        {
+          "type": "ForeignKey",
+          "related_model": "HedgehogFabric",
+          "field_name": "fabric",
+          "reverse_name": "ipv4namespace_set"
+        }
+      ],
+      "crud_operations": {
+        "create": true,
+        "read": true,
+        "update": true,
+        "delete": true
+      },
+      "admin_registered": false,
+      "unique_constraints": ["fabric", "namespace", "name"],
+      "ordering": ["fabric", "namespace", "name"],
+      "permissions": ["add", "change", "delete", "view"]
+    },
+    {
+      "model_name": "VPCAttachment",
+      "file_path": "/home/ubuntu/cc/hedgehog-netbox-plugin/netbox_hedgehog/models/vpc_api.py",
+      "table_name": "netbox_hedgehog_vpcattachment",
+      "fields": [],
+      "relationships": [
+        {
+          "type": "ForeignKey",
+          "related_model": "HedgehogFabric",
+          "field_name": "fabric",
+          "reverse_name": "vpcattachment_set"
+        }
+      ],
+      "crud_operations": {
+        "create": true,
+        "read": true,
+        "update": true,
+        "delete": true
+      },
+      "admin_registered": false,
+      "unique_constraints": ["fabric", "namespace", "name"],
+      "ordering": ["fabric", "namespace", "name"],
+      "permissions": ["add", "change", "delete", "view"]
+    },
+    {
+      "model_name": "VPCPeering",
+      "file_path": "/home/ubuntu/cc/hedgehog-netbox-plugin/netbox_hedgehog/models/vpc_api.py",
+      "table_name": "netbox_hedgehog_vpcpeering",
+      "fields": [],
+      "relationships": [
+        {
+          "type": "ForeignKey",
+          "related_model": "HedgehogFabric",
+          "field_name": "fabric",
+          "reverse_name": "vpcpeering_set"
+        }
+      ],
+      "crud_operations": {
+        "create": true,
+        "read": true,
+        "update": true,
+        "delete": true
+      },
+      "admin_registered": false,
+      "unique_constraints": ["fabric", "namespace", "name"],
+      "ordering": ["fabric", "namespace", "name"],
+      "permissions": ["add", "change", "delete", "view"]
+    },
+    {
+      "model_name": "Connection",
+      "file_path": "/home/ubuntu/cc/hedgehog-netbox-plugin/netbox_hedgehog/models/wiring_api.py",
+      "table_name": "netbox_hedgehog_connection",
+      "fields": [],
+      "relationships": [
+        {
+          "type": "ForeignKey",
+          "related_model": "HedgehogFabric",
+          "field_name": "fabric",
+          "reverse_name": "connection_set"
+        }
+      ],
+      "crud_operations": {
+        "create": true,
+        "read": true,
+        "update": true,
+        "delete": true
+      },
+      "admin_registered": false,
+      "unique_constraints": ["fabric", "namespace", "name"],
+      "ordering": ["fabric", "namespace", "name"],
+      "permissions": ["add", "change", "delete", "view"]
+    },
+    {
+      "model_name": "Server",
+      "file_path": "/home/ubuntu/cc/hedgehog-netbox-plugin/netbox_hedgehog/models/wiring_api.py",
+      "table_name": "netbox_hedgehog_server",
+      "fields": [],
+      "relationships": [
+        {
+          "type": "ForeignKey",
+          "related_model": "HedgehogFabric",
+          "field_name": "fabric",
+          "reverse_name": "server_set"
+        }
+      ],
+      "crud_operations": {
+        "create": true,
+        "read": true,
+        "update": true,
+        "delete": true
+      },
+      "admin_registered": false,
+      "unique_constraints": ["fabric", "namespace", "name"],
+      "ordering": ["fabric", "namespace", "name"],
+      "permissions": ["add", "change", "delete", "view"]
+    },
+    {
+      "model_name": "Switch",
+      "file_path": "/home/ubuntu/cc/hedgehog-netbox-plugin/netbox_hedgehog/models/wiring_api.py",
+      "table_name": "netbox_hedgehog_switch",
+      "fields": [],
+      "relationships": [
+        {
+          "type": "ForeignKey",
+          "related_model": "HedgehogFabric",
+          "field_name": "fabric",
+          "reverse_name": "switch_set"
+        }
+      ],
+      "crud_operations": {
+        "create": true,
+        "read": true,
+        "update": true,
+        "delete": true
+      },
+      "admin_registered": false,
+      "unique_constraints": ["fabric", "namespace", "name"],
+      "ordering": ["fabric", "namespace", "name"],
+      "permissions": ["add", "change", "delete", "view"]
+    },
+    {
+      "model_name": "SwitchGroup",
+      "file_path": "/home/ubuntu/cc/hedgehog-netbox-plugin/netbox_hedgehog/models/wiring_api.py",
+      "table_name": "netbox_hedgehog_switchgroup",
+      "fields": [],
+      "relationships": [
+        {
+          "type": "ForeignKey",
+          "related_model": "HedgehogFabric",
+          "field_name": "fabric",
+          "reverse_name": "switchgroup_set"
+        }
+      ],
+      "crud_operations": {
+        "create": true,
+        "read": true,
+        "update": true,
+        "delete": true
+      },
+      "admin_registered": false,
+      "unique_constraints": ["fabric", "namespace", "name"],
+      "ordering": ["fabric", "namespace", "name"],
+      "permissions": ["add", "change", "delete", "view"]
+    },
+    {
+      "model_name": "VLANNamespace",
+      "file_path": "/home/ubuntu/cc/hedgehog-netbox-plugin/netbox_hedgehog/models/wiring_api.py",
+      "table_name": "netbox_hedgehog_vlannamespace",
+      "fields": [],
+      "relationships": [
+        {
+          "type": "ForeignKey",
+          "related_model": "HedgehogFabric",
+          "field_name": "fabric",
+          "reverse_name": "vlannamespace_set"
+        }
+      ],
+      "crud_operations": {
+        "create": true,
+        "read": true,
+        "update": true,
+        "delete": true
+      },
+      "admin_registered": false,
+      "unique_constraints": ["fabric", "namespace", "name"],
+      "ordering": ["fabric", "namespace", "name"],
+      "permissions": ["add", "change", "delete", "view"]
+    }
+  ],
+  "model_relationships": [
+    {
+      "from_model": "BaseCRD",
+      "to_model": "HedgehogFabric",
+      "relationship_type": "ForeignKey",
+      "field_name": "fabric"
+    },
+    {
+      "from_model": "HedgehogFabric",
+      "to_model": "GitRepository",
+      "relationship_type": "ForeignKey",
+      "field_name": "git_repository"
+    },
+    {
+      "from_model": "GitRepository",
+      "to_model": "User",
+      "relationship_type": "ForeignKey",
+      "field_name": "created_by"
+    },
+    {
+      "from_model": "HedgehogResource",
+      "to_model": "HedgehogFabric",
+      "relationship_type": "ForeignKey",
+      "field_name": "fabric"
+    },
+    {
+      "from_model": "HedgehogResource",
+      "to_model": "ContentType",
+      "relationship_type": "ForeignKey",
+      "field_name": "content_type"
+    },
+    {
+      "from_model": "HedgehogResource",
+      "to_model": "User",
+      "relationship_type": "ForeignKey",
+      "field_name": "draft_updated_by"
+    },
+    {
+      "from_model": "HedgehogResource",
+      "to_model": "HedgehogResource",
+      "relationship_type": "ManyToMany",
+      "field_name": "dependent_resources"
+    },
+    {
+      "from_model": "StateTransitionHistory",
+      "to_model": "HedgehogResource",
+      "relationship_type": "ForeignKey",
+      "field_name": "resource"
+    },
+    {
+      "from_model": "StateTransitionHistory",
+      "to_model": "User",
+      "relationship_type": "ForeignKey",
+      "field_name": "user"
+    },
+    {
+      "from_model": "ReconciliationAlert",
+      "to_model": "HedgehogFabric",
+      "relationship_type": "ForeignKey",
+      "field_name": "fabric"
+    },
+    {
+      "from_model": "ReconciliationAlert",
+      "to_model": "HedgehogResource",
+      "relationship_type": "ForeignKey",
+      "field_name": "resource"
+    },
+    {
+      "from_model": "ReconciliationAlert",
+      "to_model": "User",
+      "relationship_type": "ForeignKey",
+      "field_name": "created_by"
+    },
+    {
+      "from_model": "ReconciliationAlert",
+      "to_model": "User",
+      "relationship_type": "ForeignKey",
+      "field_name": "acknowledged_by"
+    },
+    {
+      "from_model": "ReconciliationAlert",
+      "to_model": "User",
+      "relationship_type": "ForeignKey",
+      "field_name": "resolved_by"
+    },
+    {
+      "from_model": "ReconciliationAlert",
+      "to_model": "ReconciliationAlert",
+      "relationship_type": "ManyToMany",
+      "field_name": "related_alerts"
+    },
+    {
+      "from_model": "VPC",
+      "to_model": "HedgehogFabric",
+      "relationship_type": "ForeignKey",
+      "field_name": "fabric"
+    },
+    {
+      "from_model": "External",
+      "to_model": "HedgehogFabric",
+      "relationship_type": "ForeignKey",
+      "field_name": "fabric"
+    },
+    {
+      "from_model": "ExternalAttachment",
+      "to_model": "HedgehogFabric",
+      "relationship_type": "ForeignKey",
+      "field_name": "fabric"
+    },
+    {
+      "from_model": "ExternalPeering",
+      "to_model": "HedgehogFabric",
+      "relationship_type": "ForeignKey",
+      "field_name": "fabric"
+    },
+    {
+      "from_model": "IPv4Namespace",
+      "to_model": "HedgehogFabric",
+      "relationship_type": "ForeignKey",
+      "field_name": "fabric"
+    },
+    {
+      "from_model": "VPCAttachment",
+      "to_model": "HedgehogFabric",
+      "relationship_type": "ForeignKey",
+      "field_name": "fabric"
+    },
+    {
+      "from_model": "VPCPeering",
+      "to_model": "HedgehogFabric",
+      "relationship_type": "ForeignKey",
+      "field_name": "fabric"
+    },
+    {
+      "from_model": "Connection",
+      "to_model": "HedgehogFabric",
+      "relationship_type": "ForeignKey",
+      "field_name": "fabric"
+    },
+    {
+      "from_model": "Server",
+      "to_model": "HedgehogFabric",
+      "relationship_type": "ForeignKey",
+      "field_name": "fabric"
+    },
+    {
+      "from_model": "Switch",
+      "to_model": "HedgehogFabric",
+      "relationship_type": "ForeignKey",
+      "field_name": "fabric"
+    },
+    {
+      "from_model": "SwitchGroup",
+      "to_model": "HedgehogFabric",
+      "relationship_type": "ForeignKey",
+      "field_name": "fabric"
+    },
+    {
+      "from_model": "VLANNamespace",
+      "to_model": "HedgehogFabric",
+      "relationship_type": "ForeignKey",
+      "field_name": "fabric"
+    }
+  ],
+  "summary": {
+    "total_models": 17,
+    "models_with_admin": 0,
+    "total_fields": 120,
+    "total_relationships": 25,
+    "crud_enabled_models": 17
+  }
+}
