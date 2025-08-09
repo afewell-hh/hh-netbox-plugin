@@ -6,6 +6,9 @@
 {% block header %}
     {{ block.super }}
     <link rel="stylesheet" href="{% static 'netbox_hedgehog/css/hedgehog.css' %}">
+    <link rel="stylesheet" href="{% static 'netbox_hedgehog/css/fabric-detail-enhanced.css' %}">
+    <link rel="stylesheet" href="{% static 'netbox_hedgehog/css/responsive-fabric.css' %}">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
     <style>
         /* Progressive Disclosure UI Styles */
         .progressive-dashboard { display: grid; gap: 1.5rem; margin-bottom: 2rem; }
@@ -118,28 +121,33 @@
     <div class="row">
         <div class="col-12">
             <div class="card">
-                <div class="card-header d-flex justify-content-between">
-                    <h3><i class="mdi mdi-server-network"></i> {{ object.name }}</h3>
-                    <div>
-                        <a href="{% url 'plugins:netbox_hedgehog:fabric_list' %}" class="btn btn-outline-secondary">
-                            <i class="mdi mdi-arrow-left"></i> Back to Fabrics
+                <div class="card-header d-flex flex-column flex-md-row justify-content-between align-items-start align-items-md-center">
+                    <h3 class="mb-2 mb-md-0"><i class="mdi mdi-server-network"></i> {{ object.name }}</h3>
+                    <div class="d-flex flex-column flex-md-row gap-2 w-100 w-md-auto justify-content-end">
+                        <a href="{% url 'plugins:netbox_hedgehog:fabric_list' %}" 
+                           class="btn btn-outline-secondary"
+                           aria-label="Return to fabric list">
+                            <i class="mdi mdi-arrow-left d-md-inline d-none"></i>
+                            <span class="d-md-none">←</span> Back to Fabrics
                         </a>
-                        <a href="{% url 'plugins:netbox_hedgehog:fabric_edit' pk=object.pk %}" class="btn btn-outline-primary">
+                        <a href="{% url 'plugins:netbox_hedgehog:fabric_edit' pk=object.pk %}" 
+                           class="btn btn-outline-primary"
+                           aria-label="Edit fabric configuration">
                             <i class="mdi mdi-pencil"></i> Edit
                         </a>
                     </div>
                 </div>
                 <div class="card-body">
                     <!-- Sync Status Summary -->
-                    <div class="row mb-4">
-                        <div class="col-md-6">
-                            <div class="card border-primary">
+                    <div class="row g-3 mb-4">
+                        <div class="col-12 col-md-6">
+                            <div class="card border-primary h-100">
                                 <div class="card-header bg-primary text-white">
                                     <h5 class="mb-0"><i class="mdi mdi-git"></i> Git Repository Sync</h5>
-                                    <small>Syncing FROM Git TO NetBox</small>
+                                    <small class="d-block">Syncing FROM Git TO NetBox</small>
                                 </div>
                                 <div class="card-body">
-                                    <div class="d-flex justify-content-between align-items-center mb-3">
+                                    <div class="d-flex flex-column flex-sm-row justify-content-between align-items-start align-items-sm-center mb-3">
                                         <div>
                                             <h6 class="mb-0">Status</h6>
                                             {% if object.git_repository_url %}
@@ -177,7 +185,10 @@
                                                 <i class="mdi mdi-open-in-new"></i> {{ object.git_repository_url|truncatechars:40 }}
                                             </a>
                                         </div>
-                                        <button class="btn btn-sm btn-primary" onclick="syncFromGit(); return false;">
+                                        <button class="btn btn-sm btn-primary" 
+                                               id="git-sync-from-repo-btn" 
+                                               data-fabric-id="{{ object.pk }}" 
+                                               aria-label="Synchronize fabric configuration from Git repository">
                                             <i class="mdi mdi-sync"></i> Sync from Git
                                         </button>
                                     {% else %}
@@ -190,14 +201,14 @@
                             </div>
                         </div>
                         
-                        <div class="col-md-6">
-                            <div class="card border-info">
+                        <div class="col-12 col-md-6">
+                            <div class="card border-info h-100">
                                 <div class="card-header bg-info text-white">
                                     <h5 class="mb-0"><i class="mdi mdi-kubernetes"></i> HCKC (Kubernetes) Sync</h5>
-                                    <small>Syncing FROM NetBox TO Kubernetes</small>
+                                    <small class="d-block">Syncing FROM NetBox TO Kubernetes</small>
                                 </div>
                                 <div class="card-body">
-                                    <div class="d-flex justify-content-between align-items-center mb-3">
+                                    <div class="d-flex flex-column flex-sm-row justify-content-between align-items-start align-items-sm-center mb-3">
                                         <div>
                                             <h6 class="mb-0">Status</h6>
                                             {% if object.sync_status == 'in_sync' %}
@@ -235,7 +246,10 @@
                                             <small>{{ object.sync_error|truncatechars:100 }}</small>
                                         </div>
                                     {% endif %}
-                                    <button id="sync-now-btn" class="btn btn-sm btn-info" data-fabric-id="{{ object.pk }}">
+                                    <button id="sync-now-btn" 
+                                           class="btn btn-sm btn-info" 
+                                           data-fabric-id="{{ object.pk }}"
+                                           aria-label="Synchronize fabric configuration to Kubernetes cluster">
                                         <i class="mdi mdi-sync"></i> Sync to Kubernetes
                                     </button>
                                 </div>
@@ -332,31 +346,46 @@
                         
                         <div class="drift-actions">
                             {% if drift_summary.count > 0 %}
-                                <button class="drift-action-btn" onclick="showDriftAnalysis({{ object.pk }})">
+                                <button class="drift-action-btn" 
+                                       data-fabric-id="{{ object.pk }}"
+                                       aria-label="Analyze configuration drift details">
                                     <i class="mdi mdi-chart-line"></i> Analyze Drift
                                 </button>
-                                <button class="drift-action-btn" onclick="syncFromGit()">
+                                <button class="drift-action-btn" 
+                                       data-fabric-id="{{ object.pk }}"
+                                       id="drift-sync-from-git-btn"
+                                       aria-label="Synchronize from Git to resolve drift">
                                     <i class="mdi mdi-sync"></i> Sync from Git
                                 </button>
                             {% else %}
-                                <button class="drift-action-btn" onclick="checkForDrift({{ object.pk }})">
+                                <button class="drift-action-btn" 
+                                       data-fabric-id="{{ object.pk }}"
+                                       id="check-drift-btn"
+                                       aria-label="Check for configuration drift">
                                     <i class="mdi mdi-magnify"></i> Check for Drift
                                 </button>
-                                <button class="drift-action-btn" onclick="viewDriftHistory({{ object.pk }})">
+                                <button class="drift-action-btn" 
+                                       data-fabric-id="{{ object.pk }}"
+                                       id="drift-history-btn"
+                                       aria-label="View drift detection history">
                                     <i class="mdi mdi-history"></i> View History
                                 </button>
                             {% endif %}
-                            <button class="drift-action-btn" onclick="configureDriftSettings({{ object.pk }})">
+                            <button class="drift-action-btn" 
+                                   data-fabric-id="{{ object.pk }}"
+                                   id="drift-config-btn"
+                                   aria-label="Configure drift detection settings">
                                 <i class="mdi mdi-cog"></i> Configure Detection
                             </button>
                         </div>
                     </div>
                     {% endif %}
                     
-                    <div class="row">
-                        <div class="col-md-8">
+                    <div class="row g-4">
+                        <div class="col-12 col-lg-8">
                             <h4 class="readable-text">Fabric Information</h4>
-                            <table class="table table-borderless fabric-detail">
+                            <div class="table-responsive">
+                                <table class="table table-borderless fabric-detail">
                                 <tr>
                                     <th width="200">Name:</th>
                                     <td>{{ object.name }}</td>
@@ -562,38 +591,39 @@
                                     </td>
                                 </tr>
                                 {% endif %}
-                            </table>
+                                </table>
+                            </div>
                         </div>
                         
-                        <div class="col-md-4">
+                        <div class="col-12 col-lg-4">
                             <h4>Statistics</h4>
-                            <div class="row">
-                                <div class="col-6">
-                                    <div class="card bg-info text-white text-center">
+                            <div class="row g-3">
+                                <div class="col-6 col-sm-12 col-lg-6">
+                                    <div class="card bg-info text-white text-center h-100">
                                         <div class="card-body">
                                             <h3 data-crd-count>{{ object.crd_count }}</h3>
                                             <small>Total CRDs</small>
                                         </div>
                                     </div>
                                 </div>
-                                <div class="col-6">
-                                    <div class="card bg-success text-white text-center">
+                                <div class="col-6 col-sm-12 col-lg-6">
+                                    <div class="card bg-success text-white text-center h-100">
                                         <div class="card-body">
                                             <h3>{{ object.active_crd_count }}</h3>
                                             <small>Active CRDs</small>
                                         </div>
                                     </div>
                                 </div>
-                                <div class="col-6 mt-2">
-                                    <div class="card bg-danger text-white text-center">
+                                <div class="col-6 col-sm-12 col-lg-6">
+                                    <div class="card bg-danger text-white text-center h-100">
                                         <div class="card-body">
                                             <h3>{{ object.error_crd_count }}</h3>
                                             <small>Error CRDs</small>
                                         </div>
                                     </div>
                                 </div>
-                                <div class="col-6 mt-2">
-                                    <div class="card bg-warning text-white text-center">
+                                <div class="col-6 col-sm-12 col-lg-6">
+                                    <div class="card bg-warning text-white text-center h-100">
                                         <div class="card-body">
                                             <h3>0</h3>
                                             <small>Pending</small>
@@ -605,10 +635,16 @@
                             <div class="mt-3">
                                 <h5>Actions</h5>
                                 <div class="d-grid gap-2">
-                                    <button id="test-connection-btn" class="btn btn-outline-info" data-fabric-id="{{ object.pk }}">
+                                    <button id="test-connection-btn" 
+                                           class="btn btn-outline-info" 
+                                           data-fabric-id="{{ object.pk }}"
+                                           aria-label="Test connection to Kubernetes cluster">
                                         <i class="mdi mdi-test-tube"></i> Test Connection
                                     </button>
-                                    <button id="sync-now-btn" class="btn btn-primary" data-fabric-id="{{ object.pk }}">
+                                    <button id="sync-now-btn" 
+                                           class="btn btn-primary" 
+                                           data-fabric-id="{{ object.pk }}"
+                                           aria-label="Synchronize fabric configuration now">
                                         <i class="mdi mdi-sync"></i> Sync Now
                                     </button>
                                     {% if object.crd_count > 0 %}
@@ -676,7 +712,10 @@
                                                         <i class="mdi mdi-compare-horizontal"></i> 
                                                         {{ object.drift_count }} resource{{ object.drift_count|pluralize }} with configuration drift
                                                     </span>
-                                                    <button class="btn btn-sm btn-outline-warning ms-2" onclick="showDriftAnalysis({{ object.pk }})">
+                                                    <button class="btn btn-sm btn-outline-warning ms-2" 
+                                                           data-fabric-id="{{ object.pk }}"
+                                                           id="inline-drift-analysis-btn"
+                                                           aria-label="Analyze configuration drift">
                                                         <i class="mdi mdi-chart-line"></i> Analyze
                                                     </button>
                                                 </div>
@@ -724,15 +763,24 @@
                                 <h5>GitOps Actions</h5>
                                 <div class="d-grid gap-2">
                                     {% if object.git_repository_url %}
-                                        <button id="git-sync-btn" class="btn btn-primary" data-fabric-id="{{ object.pk }}">
+                                        <button id="git-sync-btn" 
+                                               class="btn btn-primary" 
+                                               data-fabric-id="{{ object.pk }}"
+                                               aria-label="Synchronize configuration from Git repository">
                                             <i class="mdi mdi-sync"></i> Sync from Git
                                         </button>
                                         {% if object.drift_count > 0 %}
-                                            <button id="drift-report-btn" class="btn btn-warning" data-fabric-id="{{ object.pk }}">
+                                            <button id="drift-report-btn" 
+                                                   class="btn btn-warning" 
+                                                   data-fabric-id="{{ object.pk }}"
+                                                   aria-label="View detailed drift analysis report">
                                                 <i class="mdi mdi-alert-circle"></i> View Drift Report
                                             </button>
                                         {% endif %}
-                                        <button id="git-status-btn" class="btn btn-info" data-fabric-id="{{ object.pk }}">
+                                        <button id="git-status-btn" 
+                                               class="btn btn-info" 
+                                               data-fabric-id="{{ object.pk }}"
+                                               aria-label="Check Git repository status">
                                             <i class="mdi mdi-information"></i> Git Status
                                         </button>
                                     {% else %}
@@ -820,7 +868,10 @@
                                     <div class="card-body">
                                         <div class="d-grid gap-2">
                                             <div class="text-muted">GitOps file management tools not available</div>
-                                            <button class="btn btn-primary" onclick="processAllFiles({{ object.pk }})">
+                                            <button class="btn btn-primary" 
+                                                   data-fabric-id="{{ object.pk }}"
+                                                   id="process-files-btn"
+                                                   aria-label="Process all GitOps files for this fabric">
                                                 <i class="mdi mdi-play"></i> Process All Files
                                             </button>
                                         </div>
@@ -831,19 +882,19 @@
                                                 <div class="d-flex justify-content-between align-items-center mb-2">
                                                     <span>Auto Processing:</span>
                                                     <div class="form-check form-switch">
-                                                        <input class="form-check-input" type="checkbox" id="auto-processing" checked>
+                                                        <input class="form-check-input" type="checkbox" id="auto-processing" checked aria-label="Enable automatic file processing">
                                                     </div>
                                                 </div>
                                                 <div class="d-flex justify-content-between align-items-center mb-2">
                                                     <span>File Validation:</span>
                                                     <div class="form-check form-switch">
-                                                        <input class="form-check-input" type="checkbox" id="file-validation" checked>
+                                                        <input class="form-check-input" type="checkbox" id="file-validation" checked aria-label="Enable file validation">
                                                     </div>
                                                 </div>
                                                 <div class="d-flex justify-content-between align-items-center">
                                                     <span>Create Backups:</span>
                                                     <div class="form-check form-switch">
-                                                        <input class="form-check-input" type="checkbox" id="create-backups" checked>
+                                                        <input class="form-check-input" type="checkbox" id="create-backups" checked aria-label="Create backups before processing">
                                                     </div>
                                                 </div>
                                             </div>
@@ -883,7 +934,10 @@
                                         </div>
                                         
                                         <div class="mt-3">
-                                            <button class="btn btn-sm btn-outline-warning w-100" onclick="optimizeStorage({{ object.pk }})">
+                                            <button class="btn btn-sm btn-outline-warning w-100" 
+                                                   data-fabric-id="{{ object.pk }}"
+                                                   id="optimize-storage-btn"
+                                                   aria-label="Optimize GitOps storage and clean up old files">
                                                 <i class="mdi mdi-speedometer"></i> Optimize Storage
                                             </button>
                                         </div>
@@ -929,10 +983,12 @@
 
 {% block javascript %}
 {{ block.super }}
+<script src="{% static 'netbox_hedgehog/js/responsive-enhancements.js' %}"></script>
 <script src="{% static 'netbox_hedgehog/js/sync-handler.js' %}?v={{ "now"|date:"U" }}"></script>
 <script src="{% static 'netbox_hedgehog/js/emergency-sync-fix.js' %}?v={{ "now"|date:"U" }}"></script>
 <script type="text/javascript">
-document.addEventListener('DOMContentLoaded', function() {
+// Use safe ready function to prevent errors
+window.safeReady(function() {
     console.log('🚀 Fabric detail JavaScript loading...');
     
     // Get CSRF token
@@ -988,7 +1044,12 @@ document.addEventListener('DOMContentLoaded', function() {
                 if (data.success) {
                     this.innerHTML = '<i class="mdi mdi-check"></i> Connected!';
                     this.className = 'btn btn-success';
-                    alert('Connection test successful!');
+                    const successMessage = 'Connection test successful!';
+                    if (window.Hedgehog && window.Hedgehog.utils && window.Hedgehog.utils.showNotification) {
+                        window.Hedgehog.utils.showNotification(successMessage, 'success');
+                    } else {
+                        alert(successMessage);
+                    }
                     // Reload page to show updated status
                     setTimeout(() => location.reload(), 2000);
                 } else {
@@ -1049,7 +1110,12 @@ document.addEventListener('DOMContentLoaded', function() {
                 if (data.success) {
                     this.innerHTML = '<i class="mdi mdi-check"></i> Synchronized!';
                     this.className = 'btn btn-success';
-                    alert('Sync completed successfully!');
+                    const successMessage = 'Sync completed successfully!';
+                    if (window.Hedgehog && window.Hedgehog.utils && window.Hedgehog.utils.showNotification) {
+                        window.Hedgehog.utils.showNotification(successMessage, 'success');
+                    } else {
+                        alert(successMessage);
+                    }
                     // Reset button after delay
                     setTimeout(() => {
                         this.innerHTML = originalText;
@@ -1168,12 +1234,9 @@ document.addEventListener('DOMContentLoaded', function() {
             const fabricId = this.getAttribute('data-fabric-id');
             console.log('📊 Drift Report clicked for fabric:', fabricId);
             
-            // Make API call for drift report
-            fetch(`/api/plugins/hedgehog/gitops-fabrics/${fabricId}/drift_report/`, {
+            // Make API call for drift report using safe fetch
+            window.safeFetch(`/api/plugins/hedgehog/gitops-fabrics/${fabricId}/drift_report/`, {
                 method: 'GET',
-                headers: {
-                    'X-CSRFToken': csrfToken.value,
-                },
                 credentials: 'same-origin'
             })
             .then(response => response.json())
@@ -1195,12 +1258,9 @@ document.addEventListener('DOMContentLoaded', function() {
             const fabricId = this.getAttribute('data-fabric-id');
             console.log('📈 Git Status clicked for fabric:', fabricId);
             
-            // Make API call for Git status
-            fetch(`/api/plugins/hedgehog/gitops-fabrics/${fabricId}/git_status/`, {
+            // Make API call for Git status using safe fetch
+            window.safeFetch(`/api/plugins/hedgehog/gitops-fabrics/${fabricId}/git_status/`, {
                 method: 'GET',
-                headers: {
-                    'X-CSRFToken': csrfToken.value,
-                },
                 credentials: 'same-origin'
             })
             .then(response => response.json())
@@ -2133,7 +2193,7 @@ function showDriftAnalysisModal(data) {
                         <button type="button" class="btn btn-warning" onclick="exportDriftReport()">
                             <i class="mdi mdi-download"></i> Export Report
                         </button>
-                        <button type="button" class="btn btn-primary" onclick="syncFromGit()">
+                        <button type="button" class="btn btn-primary" id="modal-git-sync-btn" data-fabric-id="{{ object.pk }}" aria-label="Sync from Git repository">
                             <i class="mdi mdi-sync"></i> Sync from Git
                         </button>
                     </div>
@@ -2346,14 +2406,17 @@ async function syncFromGit() {
         
         if (result.success) {
             button.innerHTML = '<i class="mdi mdi-check"></i> Sync Completed';
+            showNotification('Sync completed successfully!', 'success');
             setTimeout(() => location.reload(), 2000);
         } else {
             button.innerHTML = '<i class="mdi mdi-alert"></i> Sync Failed';
-            console.error('Sync failed:', result.error);
+            console.error('Sync failed:', result.error || 'Unknown error');
+            showNotification('Sync failed: ' + (result.error || 'Unknown error'), 'error');
         }
     } catch (error) {
         button.innerHTML = '<i class="mdi mdi-alert"></i> Error';
-        console.error('Network error:', error);
+        console.error('Network error:', error.message || 'Unknown error');
+        showNotification('Network error: ' + (error.message || 'Unknown error'), 'error');
     }
     
     setTimeout(() => {
@@ -2385,14 +2448,17 @@ async function initGitOps() {
         
         if (result.success) {
             button.innerHTML = '<i class="mdi mdi-check"></i> Initialized';
+            showNotification('GitOps initialization completed!', 'success');
             setTimeout(() => location.reload(), 2000);
         } else {
             button.innerHTML = '<i class="mdi mdi-alert"></i> Failed';
-            console.error('Init failed:', result.error);
+            console.error('Init failed:', result.error || 'Unknown error');
+            showNotification('Init failed: ' + (result.error || 'Unknown error'), 'error');
         }
     } catch (error) {
         button.innerHTML = '<i class="mdi mdi-alert"></i> Error';
-        console.error('Network error:', error);
+        console.error('Network error:', error.message || 'Unknown error');
+        showNotification('Network error: ' + (error.message || 'Unknown error'), 'error');
     }
     
     setTimeout(() => {
@@ -2400,5 +2466,33 @@ async function initGitOps() {
         button.style.pointerEvents = 'auto';
     }, 3000);
 }
+</script>
+
+<!-- Enhanced Interactive Elements JavaScript -->
+<script src="{% static 'netbox_hedgehog/js/fabric-detail-enhanced.js' %}"></script>
+<script>
+// Initialize enhanced interactive elements when document is ready
+document.addEventListener('DOMContentLoaded', function() {
+    console.log('🚀 Enhanced Fabric Detail Interactions Loaded');
+    
+    // Override existing onclick handlers with enhanced versions
+    const buttons = document.querySelectorAll('[onclick*="showDriftAnalysis"], [onclick*="syncFromGit"], [onclick*="configureDriftSettings"]');
+    buttons.forEach(button => {
+        button.removeAttribute('onclick');
+    });
+    
+    // Add enhanced error handling
+    window.addEventListener('error', function(event) {
+        console.error('JavaScript Error:', event.error);
+        if (window.FabricDetailEnhanced && window.FabricDetailEnhanced.Utils) {
+            window.FabricDetailEnhanced.Utils.showNotification(
+                'An unexpected error occurred. Please try again.',
+                'error'
+            );
+        }
+    });
+    
+    console.log('✅ All interactive elements enhanced successfully');
+});
 </script>
 {% endblock %}

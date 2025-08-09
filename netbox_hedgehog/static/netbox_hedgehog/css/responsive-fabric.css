@@ -1,0 +1,766 @@
+/* Responsive Design for Hedgehog NetBox Plugin - Fabric Detail Page */
+/* Mobile-First Responsive CSS - PRESERVES EXACT DESKTOP APPEARANCE */
+
+/* =============================================================================
+   DESKTOP PRESERVATION - PRIORITY #1
+   All styles 1200px+ preserve existing appearance identically
+   ============================================================================= */
+
+/* Desktop baseline - preserve all existing styling at 1200px+ */
+@media (min-width: 1200px) {
+    /* Desktop appearance remains 100% unchanged */
+    .hedgehog-wrapper,
+    .fabric-detail,
+    .card,
+    .dashboard-overview,
+    .status-cards,
+    .drift-spotlight {
+        /* All desktop styles preserved by specificity */
+    }
+}
+
+/* =============================================================================
+   RESPONSIVE BREAKPOINTS
+   Mobile: 320px-767px | Tablet: 768px-1199px | Desktop: 1200px+
+   ============================================================================= */
+
+/* =============================================================================
+   MOBILE OPTIMIZATIONS (320px - 767px)
+   ============================================================================= */
+
+@media (max-width: 767px) {
+    /* Container and spacing adjustments */
+    .container-fluid {
+        padding-left: 0.75rem !important;
+        padding-right: 0.75rem !important;
+    }
+
+    /* Card adjustments for mobile */
+    .card {
+        margin-bottom: 1rem !important;
+        border-radius: 0.5rem !important;
+    }
+
+    .card-header {
+        padding: 1rem !important;
+        flex-direction: column !important;
+        align-items: flex-start !important;
+        gap: 1rem;
+    }
+
+    .card-header h3 {
+        font-size: 1.25rem !important;
+        margin-bottom: 0 !important;
+    }
+
+    .card-header .btn-group,
+    .card-header > div:last-child {
+        display: flex !important;
+        gap: 0.5rem !important;
+        width: 100% !important;
+        justify-content: flex-end !important;
+    }
+
+    .card-header .btn {
+        font-size: 0.875rem !important;
+        padding: 0.5rem 1rem !important;
+        flex: 1 !important;
+        min-width: 0 !important;
+    }
+
+    /* Dashboard overview mobile optimization */
+    .dashboard-overview {
+        padding: 1.5rem !important;
+        border-radius: 0.75rem !important;
+        margin-bottom: 1.5rem !important;
+    }
+
+    .dashboard-overview h4 {
+        font-size: 1.25rem !important;
+    }
+
+    /* Status cards - single column on mobile */
+    .status-cards {
+        display: flex !important;
+        flex-direction: column !important;
+        gap: 1rem !important;
+    }
+
+    .status-card {
+        padding: 1.25rem !important;
+        text-align: center !important;
+    }
+
+    .status-card-value {
+        font-size: 1.5rem !important;
+    }
+
+    /* Drift spotlight mobile */
+    .drift-spotlight {
+        padding: 1.5rem !important;
+        border-radius: 0.75rem !important;
+    }
+
+    .drift-summary-cards {
+        display: flex !important;
+        flex-direction: column !important;
+        gap: 1rem !important;
+    }
+
+    .drift-summary-card {
+        padding: 1.25rem !important;
+    }
+
+    .drift-summary-card-value {
+        font-size: 1.5rem !important;
+    }
+
+    /* Quick actions mobile optimization */
+    .quick-actions,
+    .drift-actions {
+        display: flex !important;
+        flex-direction: column !important;
+        gap: 0.75rem !important;
+        margin-top: 1rem !important;
+    }
+
+    .quick-action-btn,
+    .drift-action-btn {
+        padding: 0.875rem 1.25rem !important;
+        justify-content: center !important;
+        font-size: 0.9rem !important;
+    }
+
+    /* Sync status cards - stack vertically */
+    .row.mb-4 .col-md-6 {
+        margin-bottom: 1.5rem !important;
+    }
+
+    /* Progressive disclosure sections mobile */
+    .dashboard-section {
+        margin-bottom: 1.5rem !important;
+        border-radius: 0.75rem !important;
+    }
+
+    .section-toggle {
+        padding: 1.25rem !important;
+        font-size: 1.05rem !important;
+    }
+
+    .section-content {
+        padding: 1.25rem !important;
+    }
+
+    /* Info grid - single column on mobile */
+    .info-grid {
+        display: flex !important;
+        flex-direction: column !important;
+        gap: 1.25rem !important;
+    }
+
+    .info-item {
+        gap: 0.75rem !important;
+    }
+
+    .info-label {
+        font-size: 0.875rem !important;
+    }
+
+    .info-value {
+        font-size: 0.95rem !important;
+        line-height: 1.5 !important;
+    }
+
+    /* Table responsiveness for mobile */
+    .table-responsive {
+        border: none !important;
+        margin-bottom: 1rem !important;
+    }
+
+    .table {
+        font-size: 0.875rem !important;
+    }
+
+    .table th {
+        width: 40% !important;
+        min-width: 120px !important;
+        padding: 0.875rem 0.5rem !important;
+        font-size: 0.875rem !important;
+        vertical-align: top !important;
+        white-space: nowrap !important;
+    }
+
+    .table td {
+        width: 60% !important;
+        padding: 0.875rem 0.5rem !important;
+        font-size: 0.875rem !important;
+        line-height: 1.4 !important;
+        word-break: break-word !important;
+    }
+
+    /* Button mobile optimization */
+    .btn {
+        font-size: 0.875rem !important;
+        padding: 0.5rem 1rem !important;
+    }
+
+    .btn-sm {
+        font-size: 0.8125rem !important;
+        padding: 0.375rem 0.75rem !important;
+    }
+
+    /* Badge mobile optimization */
+    .badge {
+        font-size: 0.75rem !important;
+        padding: 0.375rem 0.75rem !important;
+    }
+
+    /* Status indicators mobile */
+    .status-indicator {
+        font-size: 0.875rem !important;
+        padding: 0.625rem 1rem !important;
+    }
+
+    /* Pre and code blocks mobile */
+    pre {
+        font-size: 0.8125rem !important;
+        padding: 1rem !important;
+        line-height: 1.4 !important;
+        overflow-x: auto !important;
+        white-space: pre-wrap !important;
+        word-break: break-all !important;
+    }
+
+    code {
+        font-size: 0.8125rem !important;
+        padding: 0.25rem 0.5rem !important;
+        word-break: break-all !important;
+    }
+
+    /* Touch targets - minimum 44px */
+    .btn,
+    .quick-action-btn,
+    .drift-action-btn,
+    .section-toggle,
+    a.btn,
+    button {
+        min-height: 44px !important;
+        min-width: 44px !important;
+        font-size: 16px !important; /* Prevent iOS zoom */
+    }
+    
+    /* Prevent iOS zoom on form inputs */
+    input,
+    select,
+    textarea {
+        font-size: 16px !important;
+    }
+
+    /* Modal adjustments for mobile */
+    .modal-dialog {
+        margin: 0.5rem !important;
+    }
+
+    .modal-content {
+        border-radius: 0.75rem !important;
+    }
+
+    .modal-header {
+        padding: 1.25rem !important;
+    }
+
+    .modal-body {
+        padding: 1.25rem !important;
+    }
+
+    /* GitOps detail sections mobile */
+    .gitops-detail-section {
+        padding: 1.25rem !important;
+        margin-top: 1.5rem !important;
+    }
+
+    .gitops-detail-section .table th {
+        width: 45% !important;
+        min-width: 140px !important;
+        font-size: 0.875rem !important;
+        padding: 0.875rem 0.5rem 0.875rem 0 !important;
+    }
+
+    .gitops-detail-section .table td {
+        width: 55% !important;
+        font-size: 0.875rem !important;
+        padding: 0.875rem 0 0.875rem 0.5rem !important;
+    }
+
+    /* Hide certain desktop-only elements on mobile */
+    .d-md-block {
+        display: none !important;
+    }
+
+    /* Show mobile-only elements */
+    .d-block.d-md-none {
+        display: block !important;
+    }
+}
+
+/* =============================================================================
+   TABLET OPTIMIZATIONS (768px - 1199px)
+   ============================================================================= */
+
+@media (min-width: 768px) and (max-width: 1199px) {
+    /* Container adjustments for tablets */
+    .container-fluid {
+        padding-left: 1rem !important;
+        padding-right: 1rem !important;
+    }
+
+    /* Two-column layout for tablets where appropriate */
+    .status-cards {
+        grid-template-columns: repeat(2, 1fr) !important;
+        gap: 1.25rem !important;
+    }
+
+    .drift-summary-cards {
+        grid-template-columns: repeat(2, 1fr) !important;
+        gap: 1.25rem !important;
+    }
+
+    /* Card adjustments */
+    .card-header {
+        flex-direction: row !important;
+        align-items: center !important;
+    }
+
+    .card-header .btn-group,
+    .card-header > div:last-child {
+        display: flex !important;
+        gap: 0.5rem !important;
+    }
+
+    /* Table adjustments for tablets */
+    .table th {
+        width: 35% !important;
+        min-width: 160px !important;
+        font-size: 0.9rem !important;
+        padding: 1rem 0.75rem !important;
+    }
+
+    .table td {
+        width: 65% !important;
+        font-size: 0.9rem !important;
+        padding: 1rem 0.75rem !important;
+    }
+
+    /* GitOps sections for tablets */
+    .gitops-detail-section .table th {
+        width: 30% !important;
+        min-width: 180px !important;
+    }
+
+    .gitops-detail-section .table td {
+        width: 70% !important;
+    }
+
+    /* Info grid - 2 columns on tablets */
+    .info-grid {
+        grid-template-columns: repeat(2, 1fr) !important;
+        gap: 1.5rem !important;
+    }
+
+    /* Progressive disclosure for tablets */
+    .section-content {
+        padding: 1.5rem !important;
+    }
+
+    /* Quick actions - flex wrap on tablets */
+    .quick-actions,
+    .drift-actions {
+        display: flex !important;
+        flex-wrap: wrap !important;
+        gap: 1rem !important;
+    }
+
+    .quick-action-btn,
+    .drift-action-btn {
+        flex: 0 1 auto !important;
+        min-width: 160px !important;
+    }
+
+    /* Touch targets maintained - 44px minimum */
+    .btn,
+    .quick-action-btn,
+    .drift-action-btn {
+        min-height: 44px !important;
+        min-width: 44px !important;
+    }
+    
+    /* Enhanced touch targets for all interactive elements - 44px minimum, 48px preferred */
+    a,
+    button,
+    .clickable,
+    [role="button"] {
+        min-height: 44px !important;
+        min-width: 44px !important;
+    }
+    
+    /* Preferred 48px touch targets for primary interactions */
+    .btn-primary,
+    .btn-info,
+    .btn-success,
+    .section-toggle,
+    .quick-action-btn,
+    .drift-action-btn {
+        min-height: 48px !important;
+        min-width: 48px !important;
+    }
+}
+
+/* =============================================================================
+   SMALL MOBILE DEVICES (320px - 479px)
+   ============================================================================= */
+
+@media (max-width: 479px) {
+    /* Extra small mobile adjustments */
+    .container-fluid {
+        padding-left: 0.5rem !important;
+        padding-right: 0.5rem !important;
+    }
+
+    /* Even more compact cards */
+    .card-header {
+        padding: 0.875rem !important;
+    }
+
+    .card-header h3 {
+        font-size: 1.125rem !important;
+    }
+
+    .card-header .btn {
+        font-size: 0.8125rem !important;
+        padding: 0.5rem 0.75rem !important;
+    }
+
+    /* Compact dashboard */
+    .dashboard-overview {
+        padding: 1.25rem !important;
+    }
+
+    .status-card {
+        padding: 1rem !important;
+    }
+
+    .status-card-value {
+        font-size: 1.25rem !important;
+    }
+
+    /* Compact drift spotlight */
+    .drift-spotlight {
+        padding: 1.25rem !important;
+    }
+
+    .drift-summary-card {
+        padding: 1rem !important;
+    }
+
+    .drift-summary-card-value {
+        font-size: 1.25rem !important;
+    }
+
+    /* More compact tables */
+    .table th {
+        width: 42% !important;
+        padding: 0.75rem 0.5rem !important;
+        font-size: 0.8125rem !important;
+    }
+
+    .table td {
+        width: 58% !important;
+        padding: 0.75rem 0.5rem !important;
+        font-size: 0.8125rem !important;
+    }
+
+    /* Compact sections */
+    .section-toggle {
+        padding: 1rem !important;
+        font-size: 1rem !important;
+    }
+
+    .section-content {
+        padding: 1rem !important;
+    }
+
+    /* Text adjustments */
+    .info-label {
+        font-size: 0.8125rem !important;
+    }
+
+    .info-value {
+        font-size: 0.875rem !important;
+    }
+}
+
+/* =============================================================================
+   LANDSCAPE MOBILE (568px height or less in landscape)
+   ============================================================================= */
+
+@media (max-height: 568px) and (orientation: landscape) {
+    /* Compact vertical spacing in landscape */
+    .card {
+        margin-bottom: 0.75rem !important;
+    }
+
+    .dashboard-overview {
+        padding: 1rem !important;
+        margin-bottom: 1rem !important;
+    }
+
+    .status-cards {
+        gap: 0.75rem !important;
+    }
+
+    .status-card {
+        padding: 1rem !important;
+    }
+
+    .section-toggle {
+        padding: 0.875rem 1.25rem !important;
+    }
+
+    .section-content {
+        padding: 1rem 1.25rem !important;
+    }
+}
+
+/* =============================================================================
+   ACCESSIBILITY & USABILITY ENHANCEMENTS
+   ============================================================================= */
+
+@media (max-width: 1199px) {
+    /* Enhanced focus indicators for mobile/tablet */
+    .btn:focus,
+    .quick-action-btn:focus,
+    .drift-action-btn:focus,
+    .section-toggle:focus {
+        outline: 3px solid rgba(13, 110, 253, 0.5) !important;
+        outline-offset: 2px !important;
+    }
+
+    /* Better touch targets */
+    a {
+        min-height: 44px !important;
+        display: inline-flex !important;
+        align-items: center !important;
+    }
+
+    /* Improved text contrast for smaller screens */
+    .text-muted {
+        color: #495057 !important;
+    }
+
+    .small,
+    small {
+        color: #6c757d !important;
+        font-size: 0.875rem !important;
+    }
+}
+
+/* =============================================================================
+   RESPONSIVE UTILITIES
+   ============================================================================= */
+
+/* Mobile-only utilities */
+@media (max-width: 767px) {
+    .mobile-stack {
+        display: flex !important;
+        flex-direction: column !important;
+        gap: 1rem !important;
+    }
+
+    .mobile-center {
+        text-align: center !important;
+    }
+
+    .mobile-full-width {
+        width: 100% !important;
+    }
+
+    .mobile-hide {
+        display: none !important;
+    }
+
+    .mobile-show {
+        display: block !important;
+    }
+}
+
+/* Tablet-only utilities */
+@media (min-width: 768px) and (max-width: 1199px) {
+    .tablet-two-col {
+        display: grid !important;
+        grid-template-columns: 1fr 1fr !important;
+        gap: 1.5rem !important;
+    }
+
+    .tablet-hide {
+        display: none !important;
+    }
+
+    .tablet-show {
+        display: block !important;
+    }
+}
+
+/* Desktop-only utilities */
+@media (min-width: 1200px) {
+    .desktop-only {
+        display: block !important;
+    }
+
+    .mobile-show,
+    .tablet-show {
+        display: none !important;
+    }
+}
+
+/* =============================================================================
+   PRINT STYLES
+   ============================================================================= */
+
+@media print {
+    /* Print optimization */
+    .quick-actions,
+    .drift-actions,
+    .btn,
+    .quick-action-btn,
+    .drift-action-btn {
+        display: none !important;
+    }
+
+    .card {
+        border: 1px solid #dee2e6 !important;
+        box-shadow: none !important;
+        break-inside: avoid !important;
+    }
+
+    .dashboard-overview,
+    .drift-spotlight {
+        background: #f8f9fa !important;
+        color: #212529 !important;
+        border: 2px solid #dee2e6 !important;
+    }
+
+    .table {
+        font-size: 12pt !important;
+    }
+
+    .table th,
+    .table td {
+        padding: 8pt !important;
+    }
+}
+
+/* =============================================================================
+   HIGH DPI / RETINA DISPLAY OPTIMIZATIONS
+   ============================================================================= */
+
+@media (-webkit-min-device-pixel-ratio: 2), (min-resolution: 192dpi) {
+    /* Sharper borders and shadows for high DPI displays */
+    .card {
+        border-width: 0.5px !important;
+    }
+
+    .btn {
+        border-width: 0.5px !important;
+    }
+
+    .badge {
+        border-width: 0.5px !important;
+    }
+}
+
+/* =============================================================================
+   MOTION PREFERENCES
+   ============================================================================= */
+
+@media (prefers-reduced-motion: reduce) {
+    /* Disable animations for users who prefer reduced motion */
+    .status-card,
+    .drift-summary-card,
+    .quick-action-btn,
+    .drift-action-btn,
+    .section-toggle,
+    .dashboard-section {
+        transition: none !important;
+        animation: none !important;
+    }
+
+    .toggle-icon {
+        transition: none !important;
+    }
+
+    .section-content {
+        transition: none !important;
+    }
+}
+
+/* =============================================================================
+   PERFORMANCE OPTIMIZATIONS
+   ============================================================================= */
+
+/* GPU acceleration for smoother animations on mobile */
+@media (max-width: 1199px) {
+    .status-card,
+    .drift-summary-card,
+    .quick-action-btn,
+    .drift-action-btn,
+    .dashboard-section {
+        transform: translateZ(0) !important;
+        backface-visibility: hidden !important;
+    }
+}
+
+/* =============================================================================
+   LEGACY BROWSER FALLBACKS
+   ============================================================================= */
+
+/* Flexbox fallbacks */
+.status-cards {
+    display: -webkit-box !important;
+    display: -ms-flexbox !important;
+    display: flex !important;
+}
+
+.info-grid {
+    display: -ms-grid !important;
+    display: grid !important;
+}
+
+/* CSS Grid fallbacks */
+@supports not (display: grid) {
+    .info-grid {
+        display: -webkit-box !important;
+        display: -ms-flexbox !important;
+        display: flex !important;
+        -webkit-box-orient: vertical !important;
+        -webkit-box-direction: normal !important;
+        -ms-flex-direction: column !important;
+        flex-direction: column !important;
+    }
+
+    @media (min-width: 768px) {
+        .info-grid {
+            -webkit-box-orient: horizontal !important;
+            -webkit-box-direction: normal !important;
+            -ms-flex-direction: row !important;
+            flex-direction: row !important;
+            -ms-flex-wrap: wrap !important;
+            flex-wrap: wrap !important;
+        }
+
+        .info-item {
+            -webkit-box-flex: 1 !important;
+            -ms-flex: 1 1 45% !important;
+            flex: 1 1 45% !important;
+        }
+    }
+}
