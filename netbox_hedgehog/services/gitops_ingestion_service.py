@@ -542,6 +542,11 @@ class GitOpsIngestionService:
             
             self.ingestion_result['files_created'].append(created_file_info)
             
+            # DRIFT DETECTION: Also create/update HedgehogResource with desired_spec
+            self._create_or_update_hedgehog_resource(
+                document=document, original_file=original_file, target_file=target_file
+            )
+            
             logger.info(f"Successfully normalized {kind}/{name} to {target_file} ({file_size} bytes)")
             return created_file_info
             
@@ -1085,3 +1090,55 @@ class GitOpsIngestionService:
         summary_parts.append(f"Total time: {perf['total_execution_time']:.2f}s")
         
         return " | ".join(summary_parts) if summary_parts else "No operations performed"
+    
+    def _create_or_update_hedgehog_resource(self, document: Dict[str, Any], 
+                                          original_file: Path, target_file: Path):
+        """
+        Create or update HedgehogResource object for drift detection.
+        This method adds drift detection capability alongside traditional GitOps file processing.
+        """
+        try:
+            from ..models.gitops import HedgehogResource
+            from django.utils import timezone
+            
+            # Extract document metadata
+            kind = document.get('kind')
+            metadata = document.get('metadata', {})
+            name = metadata.get('name')
+            namespace = metadata.get('namespace', 'default')
+            spec = document.get('spec', {})
+            
+            if not kind or not name:
+                logger.warning(f"DRIFT DETECTION: Skipping resource without kind or name")
+                return
+            
+            # Create or update HedgehogResource with desired_spec populated from GitOps
+            resource, created = HedgehogResource.objects.update_or_create(
+                fabric=self.fabric,
+                kind=kind,
+                name=name,
+                namespace=namespace,
+                defaults={
+                    'api_version': document.get('apiVersion', 'unknown/v1'),
+                    'desired_spec': spec,
+                    'desired_file_path': str(original_file.name),
+                    'managed_file_path': str(target_file),
+                    'desired_updated': timezone.now(),
+                    # Preserve existing actual_spec if it exists
+                    # (will be populated by K8s sync from Step 1)
+                }
+            )
+            
+            action = 'created' if created else 'updated'
+            logger.debug(f"DRIFT DETECTION: {action} HedgehogResource {kind}/{name} with desired_spec from GitOps")
+            
+            # Recalculate drift if both desired and actual specs are available
+            if resource.desired_spec and resource.actual_spec:
+                drift_result = resource.calculate_drift()
+                if drift_result.get('success'):
+                    logger.info(f"DRIFT DETECTION: Calculated drift for {kind}/{name} - status: {resource.drift_status}")
+            
+        except Exception as e:
+            logger.error(f"DRIFT DETECTION: Failed to create/update HedgehogResource for {kind}/{name}: {e}")
+            # Don't let this failure break the traditional GitOps processing
+            pass

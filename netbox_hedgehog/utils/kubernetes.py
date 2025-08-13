@@ -358,6 +358,12 @@ class KubernetesClient:
         
         # Default to applied if no conditions available
         return KubernetesStatusChoices.APPLIED
+    
+    def _save_with_user_context(self, model_instance):
+        """Save model instance with proper user context for audit logging"""
+        # Simple save since KubernetesClient doesn't have user context
+        # This method is kept for compatibility with KubernetesSync pattern
+        model_instance.save()
 
 class KubernetesSync:
     """
@@ -605,6 +611,13 @@ class KubernetesSync:
                             results['updated'] += 1
                             logger.debug(f"Updated {kind}: {name}")
                             
+                            # DRIFT DETECTION: Also create/update HedgehogResource with actual_spec
+                            self._create_or_update_hedgehog_resource(
+                                kind=kind, name=name, namespace=namespace,
+                                actual_spec=spec, actual_status=status,
+                                resource_version=resource_version, operation='update'
+                            )
+                            
                         except Exception as e:
                             logger.error(f"DEBUG: Exception during {kind} {name} update: {type(e).__name__}: {e}")
                             import traceback
@@ -625,6 +638,13 @@ class KubernetesSync:
                             logger.info(f"DEBUG: Successfully created {kind}: {name}")
                             results['created'] += 1
                             logger.debug(f"Created {kind}: {name}")
+                            
+                            # DRIFT DETECTION: Also create/update HedgehogResource with actual_spec
+                            self._create_or_update_hedgehog_resource(
+                                kind=kind, name=name, namespace=namespace,
+                                actual_spec=spec, actual_status=status,
+                                resource_version=resource_version, operation='create'
+                            )
                             
                         except Exception as e:
                             logger.error(f"DEBUG: Exception during {kind} {name} creation: {type(e).__name__}: {e}")
@@ -655,6 +675,47 @@ class KubernetesSync:
                    f"{results['updated']} updated, {results['errors']} errors")
         
         return results
+    
+    def _create_or_update_hedgehog_resource(self, kind: str, name: str, namespace: str,
+                                          actual_spec: dict, actual_status: dict,
+                                          resource_version: str, operation: str):
+        """
+        Create or update HedgehogResource object for drift detection.
+        This method adds drift detection capability alongside traditional CRD sync.
+        """
+        try:
+            from ..models.gitops import HedgehogResource
+            from django.utils import timezone
+            
+            # Create or update HedgehogResource with actual_spec populated from Kubernetes
+            resource, created = HedgehogResource.objects.update_or_create(
+                fabric=self.fabric,
+                kind=kind,
+                name=name,
+                namespace=namespace,
+                defaults={
+                    'actual_spec': actual_spec,
+                    'actual_status': actual_status,
+                    'actual_resource_version': resource_version,
+                    'actual_updated': timezone.now(),
+                    # Preserve existing desired_spec if it exists
+                    # (will be populated by GitOps sync in Step 2)
+                }
+            )
+            
+            action = 'created' if created else 'updated'
+            logger.debug(f"DRIFT DETECTION: {action} HedgehogResource {kind}/{name} with actual_spec from K8s")
+            
+            # Recalculate drift if both desired and actual specs are available
+            if resource.desired_spec and resource.actual_spec:
+                drift_result = resource.calculate_drift()
+                if drift_result.get('success'):
+                    logger.debug(f"DRIFT DETECTION: Calculated drift for {kind}/{name} - status: {resource.drift_status}")
+            
+        except Exception as e:
+            logger.error(f"DRIFT DETECTION: Failed to create/update HedgehogResource for {kind}/{name}: {e}")
+            # Don't let this failure break the traditional CRD sync
+            pass
     
     def list_custom_resources(self, api_version: str, namespace: str = None) -> List[Dict[str, Any]]:
         """
