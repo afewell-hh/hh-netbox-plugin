@@ -1,0 +1,12 @@
+-rw-rw-r-- 1 ubuntu ubuntu 19964 Jul 25 02:47 netbox_hedgehog/static/netbox_hedgehog/js/progressive-disclosure.js
+-rw-rw-r-- 1 ubuntu ubuntu 12533 Jul 18 03:37 netbox_hedgehog/static/netbox_hedgehog/js/sync-handler.js
+-rw-rw-r-- 1 ubuntu ubuntu 27433 Jul 25 02:47 netbox_hedgehog/static/netbox_hedgehog/js/raw-directory-monitor.js
+-rw-rw-r-- 1 ubuntu ubuntu 10926 Aug  9 22:40 netbox_hedgehog/static/netbox_hedgehog/js/error-handler.js
+-rw-rw-r-- 1 ubuntu ubuntu 4799 Jul 18 03:58 netbox_hedgehog/static/netbox_hedgehog/js/emergency-sync-fix.js
+-rw-rw-r-- 1 ubuntu ubuntu 47597 Aug  9 23:01 netbox_hedgehog/static/netbox_hedgehog/js/fabric-detail-enhanced.js
+-rw-rw-r-- 1 ubuntu ubuntu 23663 Jul  2 16:38 netbox_hedgehog/static/netbox_hedgehog/js/hedgehog.js
+-rw-rw-r-- 1 ubuntu ubuntu 15049 Aug  9 23:22 netbox_hedgehog/static/netbox_hedgehog/js/responsive-enhancements.js
+-rw-rw-r-- 1 ubuntu ubuntu 22560 Jul 25 02:47 netbox_hedgehog/static/netbox_hedgehog/js/gitops-onboarding.js
+-rw-rw-r-- 1 ubuntu ubuntu 34276 Jul 25 02:47 netbox_hedgehog/static/netbox_hedgehog/js/archive-browser.js
+-rw-rw-r-- 1 ubuntu ubuntu 17868 Jul 25 02:47 netbox_hedgehog/static/netbox_hedgehog/js/websocket-client.js
+-rw-rw-r-- 1 ubuntu ubuntu 12177 Aug  9 22:47 netbox_hedgehog/static/netbox_hedgehog/js/gitops-dashboard.js

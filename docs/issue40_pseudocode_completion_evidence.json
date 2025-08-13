@@ -1,0 +1,199 @@
+{
+  "timestamp": "2025-08-10T19:45:00Z",
+  "issue": "Issue #40: Fabric Sync Status Contradictions",
+  "phase": "SPARC Pseudocode Phase - COMPLETE",
+  "methodology": "Evidence-based algorithmic design following Issue #31 patterns",
+  
+  "completion_evidence": {
+    "deliverables_created": [
+      "/home/ubuntu/cc/hedgehog-netbox-plugin/docs/pseudocode_design_20250810_193125.json",
+      "/home/ubuntu/cc/hedgehog-netbox-plugin/docs/issue40_pseudocode_validation_scenarios.json", 
+      "/home/ubuntu/cc/hedgehog-netbox-plugin/docs/implementation_pseudocode_ready_for_coding.md"
+    ],
+    "algorithms_designed": [
+      {
+        "name": "calculated_sync_status",
+        "type": "@property",
+        "complexity": "O(1) time, O(1) space",
+        "purpose": "Calculate actual sync status based on configuration",
+        "fixes": "Prevents contradictory states like 'synced' without kubernetes_server"
+      },
+      {
+        "name": "calculated_sync_status_display", 
+        "type": "@property",
+        "complexity": "O(1) time, O(1) space",
+        "purpose": "User-friendly display text for sync status",
+        "fixes": "Provides consistent status messaging"
+      },
+      {
+        "name": "calculated_sync_status_badge_class",
+        "type": "@property", 
+        "complexity": "O(1) time, O(1) space",
+        "purpose": "Bootstrap CSS classes for visual status indication",
+        "fixes": "Provides accurate visual status representation"
+      },
+      {
+        "name": "validate_sync_status_consistency",
+        "type": "validation method",
+        "complexity": "O(1) time, O(1) space", 
+        "purpose": "Prevent contradictory sync status during save",
+        "fixes": "Data integrity validation"
+      },
+      {
+        "name": "auto_correct_sync_status",
+        "type": "pre-save hook",
+        "complexity": "O(1) time, O(1) space",
+        "purpose": "Automatically fix contradictory states",
+        "fixes": "Self-healing data consistency"
+      }
+    ]
+  },
+  
+  "contradiction_analysis": {
+    "fabric_evidence": {
+      "fabric_id": 35,
+      "raw_sync_status": "synced",
+      "kubernetes_server": "EMPTY_STRING",
+      "connection_error": "401 Unauthorized",
+      "sync_enabled": true,
+      "sync_interval": 60,
+      "last_sync": "2025-08-09T06:40:52Z",
+      "hours_since_sync": 36.9
+    },
+    "contradictions_identified": [
+      {
+        "id": 1,
+        "description": "sync_status='synced' but kubernetes_server is empty",
+        "severity": "CRITICAL",
+        "algorithm_fix": "calculated_sync_status returns 'not_configured'"
+      },
+      {
+        "id": 2,
+        "description": "sync_status='synced' but connection_error exists",
+        "severity": "CRITICAL", 
+        "algorithm_fix": "calculated_sync_status returns 'error'"
+      },
+      {
+        "id": 3,
+        "description": "sync_status='synced' but 36.9h gap > 0.033h limit",
+        "severity": "HIGH",
+        "algorithm_fix": "calculated_sync_status returns 'out_of_sync'"
+      }
+    ],
+    "resolution_priority": "kubernetes_server empty is highest priority (not_configured)"
+  },
+  
+  "algorithm_validation": {
+    "test_scenarios_designed": 8,
+    "edge_cases_covered": [
+      "Empty string vs null kubernetes_server",
+      "Multiple error conditions",
+      "Zero sync interval (manual mode)",
+      "Timezone-aware datetime calculations",
+      "Very large time gaps",
+      "Disabled sync scenarios"
+    ],
+    "validation_matrix": {
+      "not_configured": "Empty/null kubernetes_server",
+      "disabled": "sync_enabled=false",
+      "never_synced": "last_sync=null",
+      "error": "connection_error or sync_error present",
+      "out_of_sync": "Time gap > 2x sync_interval",
+      "stale": "Time gap between 1x and 2x sync_interval", 
+      "in_sync": "Time gap <= sync_interval"
+    }
+  },
+  
+  "implementation_requirements": {
+    "model_changes": [
+      "Add calculated_sync_status @property",
+      "Add calculated_sync_status_display @property",
+      "Add calculated_sync_status_badge_class @property",
+      "Add validation logic (optional)",
+      "Add auto-correction logic (optional)"
+    ],
+    "template_changes": [
+      "Replace {{ fabric.sync_status }} with {{ fabric.calculated_sync_status }}",
+      "Replace hardcoded badge classes with {{ fabric.calculated_sync_status_badge_class }}",
+      "Update conditional logic to use calculated status"
+    ],
+    "dependencies": [
+      "django.utils.timezone (already imported)",
+      "No additional database queries required",
+      "No new model fields required"
+    ],
+    "backwards_compatibility": "Maintained - old sync_status field remains unchanged"
+  },
+  
+  "performance_analysis": {
+    "time_complexity": "O(1) for all algorithms",
+    "space_complexity": "O(1) for all algorithms", 
+    "database_impact": "0 additional queries - uses existing fields",
+    "caching_strategy": "No caching needed - calculations are fast and real-time",
+    "concurrent_access": "Thread-safe - read-only property calculations"
+  },
+  
+  "security_considerations": {
+    "data_exposure": "Properties don't expose sensitive connection details",
+    "audit_trail": "Auto-corrections logged for security review",
+    "permission_model": "Properties respect existing model permissions",
+    "rate_limiting": "O(1) properties safe for frequent access",
+    "validation": "Input sanitization for error message handling"
+  },
+  
+  "deployment_strategy": {
+    "phase_1_safe_addition": [
+      "Add calculated properties to model",
+      "Deploy without template changes",
+      "Run validation tests in parallel"
+    ],
+    "phase_2_template_migration": [
+      "Update fabric detail templates",
+      "Update admin interface",
+      "Monitor for any display issues"
+    ],
+    "phase_3_full_integration": [
+      "Add auto-correction (if desired)",
+      "Remove old template references", 
+      "Complete migration"
+    ]
+  },
+  
+  "success_criteria": {
+    "issue_resolution": [
+      "Fabric ID 35 shows 'Not Configured' instead of 'Synced'",
+      "All 3 contradictions resolved by calculated_sync_status",
+      "Templates display accurate status based on configuration",
+      "No AttributeError for missing properties"
+    ],
+    "quality_metrics": [
+      "All edge case scenarios pass unit tests",
+      "No performance regression in fabric list views", 
+      "Backward compatibility maintained",
+      "Code coverage >95% for new properties"
+    ]
+  },
+  
+  "next_phase_readiness": {
+    "sparc_phase_next": "Refinement (TDD Implementation)",
+    "artifacts_ready": [
+      "Complete pseudocode algorithms",
+      "Edge case test scenarios",
+      "Implementation patterns", 
+      "Performance specifications",
+      "Security requirements"
+    ],
+    "blocking_issues": "None - ready for coding phase",
+    "estimated_implementation_time": "2-4 hours for core properties + tests"
+  },
+  
+  "methodology_compliance": {
+    "issue31_pattern_followed": true,
+    "evidence_based_design": true,
+    "container_validation_attempted": true,
+    "comprehensive_edge_case_analysis": true,
+    "sparc_pseudocode_standards": true,
+    "performance_analysis_complete": true,
+    "security_review_complete": true
+  }
+}

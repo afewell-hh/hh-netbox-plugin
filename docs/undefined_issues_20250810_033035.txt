@@ -1,0 +1,6 @@
+netbox_hedgehog/templates/netbox_hedgehog/fabric_crds.html:        if (typeof UnifiedSync !== 'undefined') {
+netbox_hedgehog/templates/netbox_hedgehog/fabric_list_consolidated.html:        if (typeof UnifiedSync !== 'undefined') {
+netbox_hedgehog/templates/netbox_hedgehog/fabric_list.html:    if (typeof UnifiedSync !== 'undefined') {
+netbox_hedgehog/templates/netbox_hedgehog/ipv4namespace_detail.html:        if (typeof UnifiedSync !== 'undefined' && csrfToken) {
+netbox_hedgehog/templates/netbox_hedgehog/ipv4namespace_detail.html:        if (typeof UnifiedSync !== 'undefined' && csrfToken) {
+netbox_hedgehog/templates/netbox_hedgehog/fabric_overview.html:    if (typeof UnifiedSync !== 'undefined') {

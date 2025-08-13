@@ -1,0 +1,13 @@
+   905 netbox_hedgehog/static/netbox_hedgehog/js/archive-browser.js
+   132 netbox_hedgehog/static/netbox_hedgehog/js/emergency-sync-fix.js
+   294 netbox_hedgehog/static/netbox_hedgehog/js/error-handler.js
+  1184 netbox_hedgehog/static/netbox_hedgehog/js/fabric-detail-enhanced.js
+   319 netbox_hedgehog/static/netbox_hedgehog/js/gitops-dashboard.js
+   556 netbox_hedgehog/static/netbox_hedgehog/js/gitops-onboarding.js
+   591 netbox_hedgehog/static/netbox_hedgehog/js/hedgehog.js
+   572 netbox_hedgehog/static/netbox_hedgehog/js/progressive-disclosure.js
+   723 netbox_hedgehog/static/netbox_hedgehog/js/raw-directory-monitor.js
+   407 netbox_hedgehog/static/netbox_hedgehog/js/responsive-enhancements.js
+   309 netbox_hedgehog/static/netbox_hedgehog/js/sync-handler.js
+   654 netbox_hedgehog/static/netbox_hedgehog/js/websocket-client.js
+  6646 total

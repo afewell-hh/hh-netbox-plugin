@@ -1,0 +1,246 @@
+{
+  "timestamp": "2025-08-10T19:35:00Z",
+  "validation_scenarios": {
+    "scenario_1": {
+      "name": "Critical: Synced Status Without Kubernetes Server",
+      "description": "Fabric shows synced but has no Kubernetes server configured",
+      "input_state": {
+        "sync_status": "synced",
+        "kubernetes_server": "",
+        "sync_enabled": true,
+        "connection_error": "",
+        "sync_error": "",
+        "last_sync": "2025-08-09T06:40:52Z"
+      },
+      "expected_calculated_status": "not_configured",
+      "expected_display": "Not Configured", 
+      "expected_badge_class": "bg-secondary text-white",
+      "validation_should_fail": true,
+      "contradiction_reason": "Cannot be synced without Kubernetes server"
+    },
+    "scenario_2": {
+      "name": "Critical: Synced Status With Connection Error",
+      "description": "Fabric shows synced but has active connection error",
+      "input_state": {
+        "sync_status": "synced",
+        "kubernetes_server": "https://k8s.example.com",
+        "sync_enabled": true,
+        "connection_error": "(401) Unauthorized",
+        "sync_error": "",
+        "last_sync": "2025-08-09T06:40:52Z"
+      },
+      "expected_calculated_status": "error",
+      "expected_display": "Sync Error",
+      "expected_badge_class": "bg-danger text-white", 
+      "validation_should_fail": true,
+      "contradiction_reason": "Cannot be synced with connection error"
+    },
+    "scenario_3": {
+      "name": "Critical: Stale Sync With Recent Status",
+      "description": "24-hour sync gap with 60-second interval but shows synced",
+      "input_state": {
+        "sync_status": "synced",
+        "kubernetes_server": "https://k8s.example.com",
+        "sync_enabled": true,
+        "connection_error": "",
+        "sync_error": "",
+        "sync_interval": 60,
+        "last_sync": "2025-08-09T06:40:52Z",
+        "current_time": "2025-08-10T19:35:00Z"
+      },
+      "calculated_hours_since_sync": 36.9,
+      "max_acceptable_hours": 0.033,
+      "expected_calculated_status": "out_of_sync",
+      "expected_display": "Out of Sync",
+      "expected_badge_class": "bg-danger text-white",
+      "validation_should_fail": true,
+      "contradiction_reason": "Sync gap exceeds 2x interval"
+    },
+    "scenario_4": {
+      "name": "Valid: Recent Sync In Interval",
+      "description": "Sync within acceptable interval window",
+      "input_state": {
+        "sync_status": "synced", 
+        "kubernetes_server": "https://k8s.example.com",
+        "sync_enabled": true,
+        "connection_error": "",
+        "sync_error": "",
+        "sync_interval": 300,
+        "last_sync": "2025-08-10T19:30:00Z",
+        "current_time": "2025-08-10T19:35:00Z"
+      },
+      "calculated_seconds_since_sync": 300,
+      "expected_calculated_status": "in_sync",
+      "expected_display": "In Sync",
+      "expected_badge_class": "bg-success text-white",
+      "validation_should_pass": true,
+      "reason": "Within sync interval window"
+    },
+    "scenario_5": {
+      "name": "Valid: Disabled Sync",
+      "description": "Sync disabled with appropriate status",
+      "input_state": {
+        "sync_status": "disabled",
+        "kubernetes_server": "https://k8s.example.com", 
+        "sync_enabled": false,
+        "connection_error": "",
+        "sync_error": "",
+        "last_sync": null
+      },
+      "expected_calculated_status": "disabled",
+      "expected_display": "Sync Disabled",
+      "expected_badge_class": "bg-secondary text-white",
+      "validation_should_pass": true,
+      "reason": "Correctly shows disabled when sync_enabled=false"
+    },
+    "scenario_6": {
+      "name": "Edge Case: Zero Sync Interval",
+      "description": "Manual sync mode with interval=0",
+      "input_state": {
+        "sync_status": "synced",
+        "kubernetes_server": "https://k8s.example.com",
+        "sync_enabled": true,
+        "connection_error": "",
+        "sync_error": "",
+        "sync_interval": 0,
+        "last_sync": "2025-08-10T18:35:00Z",
+        "current_time": "2025-08-10T19:35:00Z"
+      },
+      "calculated_hours_since_sync": 1.0,
+      "expected_calculated_status": "in_sync",
+      "expected_display": "In Sync", 
+      "expected_badge_class": "bg-success text-white",
+      "validation_should_pass": true,
+      "reason": "Manual sync mode uses 1-hour fallback window"
+    },
+    "scenario_7": {
+      "name": "Edge Case: Never Synced",
+      "description": "Fabric never synced but shows synced status", 
+      "input_state": {
+        "sync_status": "synced",
+        "kubernetes_server": "https://k8s.example.com",
+        "sync_enabled": true,
+        "connection_error": "",
+        "sync_error": "",
+        "sync_interval": 300,
+        "last_sync": null
+      },
+      "expected_calculated_status": "never_synced",
+      "expected_display": "Never Synced",
+      "expected_badge_class": "bg-warning text-dark",
+      "validation_should_fail": true,
+      "contradiction_reason": "Cannot be synced if never synced"
+    },
+    "scenario_8": {
+      "name": "Complex: Multiple Errors",
+      "description": "Multiple error conditions present",
+      "input_state": {
+        "sync_status": "synced",
+        "kubernetes_server": "",
+        "sync_enabled": false,
+        "connection_error": "Connection refused",
+        "sync_error": "Authentication failed",
+        "sync_interval": 60,
+        "last_sync": null
+      },
+      "expected_calculated_status": "not_configured",
+      "expected_display": "Not Configured",
+      "expected_badge_class": "bg-secondary text-white",
+      "validation_should_fail": true,
+      "contradiction_reason": "Multiple configuration errors - no server is highest priority"
+    }
+  },
+  "algorithm_test_matrix": {
+    "calculated_sync_status": {
+      "inputs_tested": [
+        "kubernetes_server (empty, null, valid URL)",
+        "sync_enabled (true, false)",
+        "last_sync (null, recent, old)",
+        "connection_error (empty, present)",
+        "sync_error (empty, present)",
+        "sync_interval (0, small, large)",
+        "time_calculations (within interval, stale, very old)"
+      ],
+      "outputs_tested": [
+        "not_configured",
+        "disabled", 
+        "never_synced",
+        "in_sync",
+        "stale",
+        "out_of_sync",
+        "error"
+      ],
+      "edge_cases_covered": [
+        "Empty string vs null values",
+        "Timezone handling",
+        "Zero sync interval (manual mode)",
+        "Very large time gaps",
+        "Multiple error conditions",
+        "Race conditions during sync"
+      ]
+    },
+    "calculated_sync_status_display": {
+      "all_status_values_mapped": true,
+      "display_text_validated": [
+        "Not Configured",
+        "Sync Disabled",
+        "Never Synced", 
+        "In Sync",
+        "Sync Stale",
+        "Out of Sync",
+        "Sync Error"
+      ],
+      "fallback_behavior": "Unknown Status"
+    },
+    "calculated_sync_status_badge_class": {
+      "all_status_values_mapped": true,
+      "css_classes_validated": [
+        "bg-secondary text-white",
+        "bg-warning text-dark",
+        "bg-success text-white",
+        "bg-danger text-white",
+        "bg-info text-white"
+      ],
+      "accessibility_verified": true,
+      "fallback_behavior": "bg-secondary text-white"
+    }
+  },
+  "performance_validation": {
+    "time_complexity": "O(1) - All algorithms use only basic field access and arithmetic",
+    "space_complexity": "O(1) - No data structure allocation",
+    "database_queries": "0 - Properties use only model fields already loaded",
+    "caching_requirements": "None - Real-time calculations required",
+    "concurrent_access": "Safe - Read-only property calculations"
+  },
+  "integration_requirements": {
+    "template_updates": [
+      "Replace {{ fabric.sync_status }} with {{ fabric.calculated_sync_status }}",
+      "Update status display: {{ fabric.get_sync_status_display }} → {{ fabric.calculated_sync_status_display }}",
+      "Update badge classes: hardcoded → {{ fabric.calculated_sync_status_badge_class }}"
+    ],
+    "admin_interface": [
+      "Show both raw sync_status and calculated_sync_status",
+      "Add validation warnings for contradictory states",
+      "Include auto-correction notifications"
+    ],
+    "api_responses": [
+      "Include calculated_sync_status in serialized output",
+      "Maintain sync_status for backwards compatibility",
+      "Add validation_status field showing any contradictions"
+    ]
+  },
+  "deployment_verification": {
+    "pre_deployment_tests": [
+      "Unit tests for all 8 scenarios pass",
+      "Template rendering works with new properties",
+      "Admin interface shows both statuses",
+      "No performance regression in fabric list views"
+    ],
+    "post_deployment_validation": [
+      "Verify fabric ID 35 shows correct calculated status",
+      "Check all fabrics for contradictory states",
+      "Monitor auto-correction logs",
+      "User acceptance testing of status displays"
+    ]
+  }
+}

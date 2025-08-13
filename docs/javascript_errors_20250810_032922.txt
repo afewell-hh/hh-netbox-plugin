@@ -1,0 +1,417 @@
+netbox_hedgehog/static/netbox_hedgehog/css/fabric-detail-enhanced.css:/* Error Button State */
+netbox_hedgehog/static/netbox_hedgehog/css/hedgehog.css:.health-error {
+netbox_hedgehog/static/netbox_hedgehog/js/gitops-dashboard.js.backup:            if (typeof FileBrowserComponent !== 'undefined') {
+netbox_hedgehog/static/netbox_hedgehog/js/gitops-dashboard.js.backup:            if (typeof VisualDiffComponent !== 'undefined') {
+netbox_hedgehog/static/netbox_hedgehog/js/gitops-dashboard.js.backup:            if (typeof WorkflowStatusComponent !== 'undefined') {
+netbox_hedgehog/static/netbox_hedgehog/js/gitops-dashboard.js.backup:            if (typeof RealtimeUpdatesComponent !== 'undefined') {
+netbox_hedgehog/static/netbox_hedgehog/js/gitops-dashboard.js.backup:        } catch (error) {
+netbox_hedgehog/static/netbox_hedgehog/js/gitops-dashboard.js.backup:            console.error('❌ Error initializing components:', error);
+netbox_hedgehog/static/netbox_hedgehog/js/gitops-dashboard.js.backup:            // Initialize with stub components to prevent errors
+netbox_hedgehog/static/netbox_hedgehog/js/gitops-dashboard.js.backup:        } catch (error) {
+netbox_hedgehog/static/netbox_hedgehog/js/gitops-dashboard.js.backup:            console.error('❌ Failed to load initial data:', error);
+netbox_hedgehog/static/netbox_hedgehog/js/gitops-dashboard.js.backup:            this.showError('Failed to load dashboard data');
+netbox_hedgehog/static/netbox_hedgehog/js/gitops-dashboard.js.backup:            document.getElementById('error-count').textContent = stats.error_count || 0;
+netbox_hedgehog/static/netbox_hedgehog/js/gitops-dashboard.js.backup:        } catch (error) {
+netbox_hedgehog/static/netbox_hedgehog/js/gitops-dashboard.js.backup:            console.error('Failed to load overview stats:', error);
+netbox_hedgehog/static/netbox_hedgehog/js/gitops-dashboard.js.backup:        } catch (error) {
+netbox_hedgehog/static/netbox_hedgehog/js/gitops-dashboard.js.backup:            console.error('Failed to load fabrics list:', error);
+netbox_hedgehog/static/netbox_hedgehog/js/gitops-dashboard.js.backup:            'error': { class: 'bg-danger', icon: 'alert-circle', text: 'Error' },
+netbox_hedgehog/static/netbox_hedgehog/js/gitops-dashboard.js.backup:        } catch (error) {
+netbox_hedgehog/static/netbox_hedgehog/js/gitops-dashboard.js.backup:            console.error('Failed to load recent activity:', error);
+netbox_hedgehog/static/netbox_hedgehog/js/gitops-dashboard.js.backup:            'file_error': 'file-alert',
+netbox_hedgehog/static/netbox_hedgehog/js/gitops-dashboard.js.backup:        } catch (error) {
+netbox_hedgehog/static/netbox_hedgehog/js/gitops-dashboard.js.backup:            console.error('Failed to load system health:', error);
+netbox_hedgehog/static/netbox_hedgehog/js/gitops-dashboard.js.backup:        element.classList.remove('healthy', 'warning', 'error');
+netbox_hedgehog/static/netbox_hedgehog/js/gitops-dashboard.js.backup:        } else if (status === 'error' || status === 'critical') {
+netbox_hedgehog/static/netbox_hedgehog/js/gitops-dashboard.js.backup:            element.classList.add('error');
+netbox_hedgehog/static/netbox_hedgehog/js/gitops-dashboard.js.backup:        } catch (error) {
+netbox_hedgehog/static/netbox_hedgehog/js/gitops-dashboard.js.backup:            console.error('Failed to load storage stats:', error);
+netbox_hedgehog/static/netbox_hedgehog/js/gitops-dashboard.js.backup:        if (typeof Chart === 'undefined') {
+netbox_hedgehog/static/netbox_hedgehog/js/gitops-dashboard.js.backup:        if (stats.error_count > 0) {
+netbox_hedgehog/static/netbox_hedgehog/js/gitops-dashboard.js.backup:            document.getElementById('error-count').closest('.card').classList.add('border-danger');
+netbox_hedgehog/static/netbox_hedgehog/js/gitops-dashboard.js.backup:            } else if (filterId === 'filter-errors') {
+netbox_hedgehog/static/netbox_hedgehog/js/gitops-dashboard.js.backup:                this.showError(result.error || 'Global sync failed');
+netbox_hedgehog/static/netbox_hedgehog/js/gitops-dashboard.js.backup:        } catch (error) {
+netbox_hedgehog/static/netbox_hedgehog/js/gitops-dashboard.js.backup:            console.error('Global sync failed:', error);
+netbox_hedgehog/static/netbox_hedgehog/js/gitops-dashboard.js.backup:            this.showError('Failed to trigger global sync');
+netbox_hedgehog/static/netbox_hedgehog/js/gitops-dashboard.js.backup:                this.showError(result.error || 'Processing failed');
+netbox_hedgehog/static/netbox_hedgehog/js/gitops-dashboard.js.backup:        } catch (error) {
+netbox_hedgehog/static/netbox_hedgehog/js/gitops-dashboard.js.backup:            console.error('Process pending files failed:', error);
+netbox_hedgehog/static/netbox_hedgehog/js/gitops-dashboard.js.backup:            this.showError('Failed to process pending files');
+netbox_hedgehog/static/netbox_hedgehog/js/gitops-dashboard.js.backup:                this.showError(result.error || 'Health check failed');
+netbox_hedgehog/static/netbox_hedgehog/js/gitops-dashboard.js.backup:        } catch (error) {
+netbox_hedgehog/static/netbox_hedgehog/js/gitops-dashboard.js.backup:            console.error('Health check failed:', error);
+netbox_hedgehog/static/netbox_hedgehog/js/gitops-dashboard.js.backup:            this.showError('Failed to perform health check');
+netbox_hedgehog/static/netbox_hedgehog/js/gitops-dashboard.js.backup:            case 'error-count':
+netbox_hedgehog/static/netbox_hedgehog/js/gitops-dashboard.js.backup:                title = 'Processing Errors';
+netbox_hedgehog/static/netbox_hedgehog/js/gitops-dashboard.js.backup:                content = 'Detailed error information and resolution steps would be shown here.';
+netbox_hedgehog/static/netbox_hedgehog/js/gitops-dashboard.js.backup:    showError(message) {
+netbox_hedgehog/static/netbox_hedgehog/js/gitops-dashboard.js.backup:        if (typeof bootstrap !== 'undefined' && bootstrap.Modal) {
+netbox_hedgehog/static/netbox_hedgehog/js/gitops-dashboard.js.backup:        if (window.gitopsDashboard && typeof window.gitopsDashboard.showError === 'function') {
+netbox_hedgehog/static/netbox_hedgehog/js/gitops-dashboard.js.backup:            window.gitopsDashboard.showError('Emergency stop activated - all processing halted');
+netbox_hedgehog/static/netbox_hedgehog/js/gitops-dashboard.js.backup:        } catch (error) {
+netbox_hedgehog/static/netbox_hedgehog/js/gitops-dashboard.js.backup:            console.error('Failed to load fabric data:', error);
+netbox_hedgehog/static/netbox_hedgehog/js/gitops-dashboard.js.backup:            this.showNotification('Failed to load fabric data', 'error');
+netbox_hedgehog/static/netbox_hedgehog/js/gitops-dashboard.js.backup:                throw new Error(response.error || 'Failed to load file browser data');
+netbox_hedgehog/static/netbox_hedgehog/js/gitops-dashboard.js.backup:        } catch (error) {
+netbox_hedgehog/static/netbox_hedgehog/js/gitops-dashboard.js.backup:            console.error('File browser error:', error);
+netbox_hedgehog/static/netbox_hedgehog/js/gitops-dashboard.js.backup:            this.showFileBrowserError(error.message || 'Unknown error occurred');
+netbox_hedgehog/static/netbox_hedgehog/js/gitops-dashboard.js.backup:        } catch (error) {
+netbox_hedgehog/static/netbox_hedgehog/js/gitops-dashboard.js.backup:            console.error('Workflow status error:', error);
+netbox_hedgehog/static/netbox_hedgehog/js/gitops-dashboard.js.backup:        } catch (error) {
+netbox_hedgehog/static/netbox_hedgehog/js/gitops-dashboard.js.backup:            console.error('Visual diff error:', error);
+netbox_hedgehog/static/netbox_hedgehog/js/gitops-dashboard.js.backup:            this.websocket.onerror = (error) => {
+netbox_hedgehog/static/netbox_hedgehog/js/gitops-dashboard.js.backup:                console.error('WebSocket error:', error);
+netbox_hedgehog/static/netbox_hedgehog/js/gitops-dashboard.js.backup:                this.updateConnectionStatus('error');
+netbox_hedgehog/static/netbox_hedgehog/js/gitops-dashboard.js.backup:        } catch (error) {
+netbox_hedgehog/static/netbox_hedgehog/js/gitops-dashboard.js.backup:            console.error('WebSocket setup failed:', error);
+netbox_hedgehog/static/netbox_hedgehog/js/gitops-dashboard.js.backup:            this.updateConnectionStatus('error');
+netbox_hedgehog/static/netbox_hedgehog/js/gitops-dashboard.js.backup:                'error': 'Connection Error'
+netbox_hedgehog/static/netbox_hedgehog/js/gitops-dashboard.js.backup:        if (toast && ['connecting', 'disconnected', 'error'].includes(status)) {
+netbox_hedgehog/static/netbox_hedgehog/js/gitops-dashboard.js.backup:            throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+netbox_hedgehog/static/netbox_hedgehog/js/gitops-dashboard.js.backup:        toast.className = 'toast align-items-center text-white bg-' + (type === 'error' ? 'danger' : type);
+netbox_hedgehog/static/netbox_hedgehog/js/gitops-dashboard.js.backup:                    <i class="mdi mdi-${type === 'error' ? 'alert-circle' : 'information'}"></i>
+netbox_hedgehog/static/netbox_hedgehog/js/gitops-dashboard.js.backup:    showFileBrowserError(message) {
+netbox_hedgehog/static/netbox_hedgehog/js/gitops-dashboard.js.backup:        // Show error state in file browser
+netbox_hedgehog/static/netbox_hedgehog/js/gitops-dashboard.js.backup:            const safeMessage = (message || 'Unknown error').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+netbox_hedgehog/static/netbox_hedgehog/js/gitops-dashboard.js.backup:                    <p class="mt-2">Error loading files: ${safeMessage}</p>
+netbox_hedgehog/static/netbox_hedgehog/js/gitops-dashboard.js.backup:            'error': 'danger',
+netbox_hedgehog/static/netbox_hedgehog/js/progressive-disclosure.js:            'error': { class: 'bg-danger', text: 'Error' },
+netbox_hedgehog/static/netbox_hedgehog/js/progressive-disclosure.js:                this.showOperationError(button, progressContainer, result.error || 'Sync failed');
+netbox_hedgehog/static/netbox_hedgehog/js/progressive-disclosure.js:        } catch (error) {
+netbox_hedgehog/static/netbox_hedgehog/js/progressive-disclosure.js:            this.showOperationError(button, progressContainer, 'Network error occurred');
+netbox_hedgehog/static/netbox_hedgehog/js/progressive-disclosure.js:                this.showOperationError(button, progressContainer, result.error || 'Initialization failed');
+netbox_hedgehog/static/netbox_hedgehog/js/progressive-disclosure.js:        } catch (error) {
+netbox_hedgehog/static/netbox_hedgehog/js/progressive-disclosure.js:            this.showOperationError(button, progressContainer, 'Network error occurred');
+netbox_hedgehog/static/netbox_hedgehog/js/progressive-disclosure.js:    showOperationError(button, progressContainer, message) {
+netbox_hedgehog/static/netbox_hedgehog/js/progressive-disclosure.js:            // Ignore storage errors
+netbox_hedgehog/static/netbox_hedgehog/js/progressive-disclosure.js:        } catch (error) {
+netbox_hedgehog/static/netbox_hedgehog/js/progressive-disclosure.js:            console.warn('Failed to update status:', error);
+netbox_hedgehog/static/netbox_hedgehog/js/sync-handler.js:// Unified Sync Handler with Cache-Busting and Error Handling
+netbox_hedgehog/static/netbox_hedgehog/js/sync-handler.js:        // Django endpoint as fallback (may have Python errors but returns JSON)
+netbox_hedgehog/static/netbox_hedgehog/js/sync-handler.js:            'error': 'alert-danger',
+netbox_hedgehog/static/netbox_hedgehog/js/sync-handler.js:            // Check if response is HTML (common error case)
+netbox_hedgehog/static/netbox_hedgehog/js/sync-handler.js:                throw new Error(`Server returned HTML page instead of JSON (HTTP ${response.status}). This indicates the sync endpoint is not properly configured. Content-Type: ${contentType}`);
+netbox_hedgehog/static/netbox_hedgehog/js/sync-handler.js:            } catch (parseError) {
+netbox_hedgehog/static/netbox_hedgehog/js/sync-handler.js:                throw new Error(`Failed to parse JSON response: ${parseError.message}. Content-Type: ${contentType}. Response: ${responseText.substring(0, 200)}...`);
+netbox_hedgehog/static/netbox_hedgehog/js/sync-handler.js:                throw new Error(data.error || `HTTP ${response.status}: ${response.statusText}`);
+netbox_hedgehog/static/netbox_hedgehog/js/sync-handler.js:        } catch (error) {
+netbox_hedgehog/static/netbox_hedgehog/js/sync-handler.js:            if (error.name === 'AbortError') {
+netbox_hedgehog/static/netbox_hedgehog/js/sync-handler.js:                throw new Error('Request timeout - server took too long to respond');
+netbox_hedgehog/static/netbox_hedgehog/js/sync-handler.js:            throw error;
+netbox_hedgehog/static/netbox_hedgehog/js/sync-handler.js:                    throw new Error(result.error || 'Sync failed without error message');
+netbox_hedgehog/static/netbox_hedgehog/js/sync-handler.js:            } catch (error) {
+netbox_hedgehog/static/netbox_hedgehog/js/sync-handler.js:                console.error('Sync error:', error);
+netbox_hedgehog/static/netbox_hedgehog/js/sync-handler.js:                // Update button to error state
+netbox_hedgehog/static/netbox_hedgehog/js/sync-handler.js:                // Show error notification
+netbox_hedgehog/static/netbox_hedgehog/js/sync-handler.js:                showNotification(`Sync failed: ${error.message}`, 'error');
+netbox_hedgehog/static/netbox_hedgehog/js/sync-handler.js:                return { success: false, error: error.message };
+netbox_hedgehog/static/netbox_hedgehog/js/sync-handler.js:            if (crdCount && data.total_crds !== undefined) {
+netbox_hedgehog/static/netbox_hedgehog/js/sync-handler.js:            // Update any error counts to zero
+netbox_hedgehog/static/netbox_hedgehog/js/sync-handler.js:            const errorCount = document.querySelector('[data-error-count]');
+netbox_hedgehog/static/netbox_hedgehog/js/sync-handler.js:            if (errorCount) {
+netbox_hedgehog/static/netbox_hedgehog/js/sync-handler.js:                errorCount.textContent = '0';
+netbox_hedgehog/static/netbox_hedgehog/js/sync-handler.js:            } catch (error) {
+netbox_hedgehog/static/netbox_hedgehog/js/sync-handler.js:                showNotification(`Connection test failed: ${error.message}`, 'error');
+netbox_hedgehog/static/netbox_hedgehog/js/sync-handler.js:                return { success: false, error: error.message };
+netbox_hedgehog/static/netbox_hedgehog/js/sync-handler.js:            showNotification('Unable to determine fabric ID', 'error');
+netbox_hedgehog/static/netbox_hedgehog/js/raw-directory-monitor.js:        } catch (error) {
+netbox_hedgehog/static/netbox_hedgehog/js/raw-directory-monitor.js:            console.error('❌ Failed to load initial data:', error);
+netbox_hedgehog/static/netbox_hedgehog/js/raw-directory-monitor.js:            this.showError('Failed to load monitor data');
+netbox_hedgehog/static/netbox_hedgehog/js/raw-directory-monitor.js:            document.getElementById('error-count').textContent = stats.errors || 0;
+netbox_hedgehog/static/netbox_hedgehog/js/raw-directory-monitor.js:        } catch (error) {
+netbox_hedgehog/static/netbox_hedgehog/js/raw-directory-monitor.js:            console.error('Failed to load status counts:', error);
+netbox_hedgehog/static/netbox_hedgehog/js/raw-directory-monitor.js:        } catch (error) {
+netbox_hedgehog/static/netbox_hedgehog/js/raw-directory-monitor.js:            console.error('Failed to load files list:', error);
+netbox_hedgehog/static/netbox_hedgehog/js/raw-directory-monitor.js:            'error': { class: 'bg-danger', icon: 'alert-circle', text: 'Error' },
+netbox_hedgehog/static/netbox_hedgehog/js/raw-directory-monitor.js:        } catch (error) {
+netbox_hedgehog/static/netbox_hedgehog/js/raw-directory-monitor.js:            console.error('Failed to load processing queue:', error);
+netbox_hedgehog/static/netbox_hedgehog/js/raw-directory-monitor.js:        } catch (error) {
+netbox_hedgehog/static/netbox_hedgehog/js/raw-directory-monitor.js:            console.error('Failed to load fabrics:', error);
+netbox_hedgehog/static/netbox_hedgehog/js/raw-directory-monitor.js:            } else if (filterId === 'filter-errors') {
+netbox_hedgehog/static/netbox_hedgehog/js/raw-directory-monitor.js:                show = status === 'error';
+netbox_hedgehog/static/netbox_hedgehog/js/raw-directory-monitor.js:                this.showError(result.error || 'Processing failed');
+netbox_hedgehog/static/netbox_hedgehog/js/raw-directory-monitor.js:        } catch (error) {
+netbox_hedgehog/static/netbox_hedgehog/js/raw-directory-monitor.js:            console.error('Process all files failed:', error);
+netbox_hedgehog/static/netbox_hedgehog/js/raw-directory-monitor.js:            this.showError('Failed to process files');
+netbox_hedgehog/static/netbox_hedgehog/js/raw-directory-monitor.js:                this.showError(result.error || 'Processing failed');
+netbox_hedgehog/static/netbox_hedgehog/js/raw-directory-monitor.js:                this.addLogEntry('error', `Processing failed for file: ${result.filename}`);
+netbox_hedgehog/static/netbox_hedgehog/js/raw-directory-monitor.js:        } catch (error) {
+netbox_hedgehog/static/netbox_hedgehog/js/raw-directory-monitor.js:            console.error('Process file failed:', error);
+netbox_hedgehog/static/netbox_hedgehog/js/raw-directory-monitor.js:            this.showError('Failed to process file');
+netbox_hedgehog/static/netbox_hedgehog/js/raw-directory-monitor.js:                this.showError(result.error || 'Delete failed');
+netbox_hedgehog/static/netbox_hedgehog/js/raw-directory-monitor.js:        } catch (error) {
+netbox_hedgehog/static/netbox_hedgehog/js/raw-directory-monitor.js:            console.error('Delete file failed:', error);
+netbox_hedgehog/static/netbox_hedgehog/js/raw-directory-monitor.js:            this.showError('Failed to delete file');
+netbox_hedgehog/static/netbox_hedgehog/js/raw-directory-monitor.js:                                <tr><th>Error Count:</th><td>${details.error_count || 0}</td></tr>
+netbox_hedgehog/static/netbox_hedgehog/js/raw-directory-monitor.js:        } catch (error) {
+netbox_hedgehog/static/netbox_hedgehog/js/raw-directory-monitor.js:            console.error('Failed to load file details:', error);
+netbox_hedgehog/static/netbox_hedgehog/js/raw-directory-monitor.js:            this.showError('Failed to load file details');
+netbox_hedgehog/static/netbox_hedgehog/js/raw-directory-monitor.js:            this.showError('Please select files to upload');
+netbox_hedgehog/static/netbox_hedgehog/js/raw-directory-monitor.js:            this.showError('Please select a target fabric');
+netbox_hedgehog/static/netbox_hedgehog/js/raw-directory-monitor.js:                this.showError(result.error || 'Upload failed');
+netbox_hedgehog/static/netbox_hedgehog/js/raw-directory-monitor.js:        } catch (error) {
+netbox_hedgehog/static/netbox_hedgehog/js/raw-directory-monitor.js:            console.error('File upload failed:', error);
+netbox_hedgehog/static/netbox_hedgehog/js/raw-directory-monitor.js:            this.showError('Failed to upload files');
+netbox_hedgehog/static/netbox_hedgehog/js/raw-directory-monitor.js:            this.showError('No log entries to export');
+netbox_hedgehog/static/netbox_hedgehog/js/raw-directory-monitor.js:        } catch (error) {
+netbox_hedgehog/static/netbox_hedgehog/js/raw-directory-monitor.js:            console.error('Failed to refresh monitor:', error);
+netbox_hedgehog/static/netbox_hedgehog/js/raw-directory-monitor.js:    showError(message) {
+netbox_hedgehog/static/netbox_hedgehog/js/raw-directory-monitor.js:        monitor.showError('No files selected');
+netbox_hedgehog/static/netbox_hedgehog/js/raw-directory-monitor.js:        monitor.showError('No files selected');
+netbox_hedgehog/static/netbox_hedgehog/js/raw-directory-monitor.js:        monitor.showError('No files selected');
+netbox_hedgehog/static/netbox_hedgehog/js/error-handler.js: * Comprehensive Error Handler for Hedgehog NetBox Plugin
+netbox_hedgehog/static/netbox_hedgehog/js/error-handler.js: * Eliminates JavaScript errors and provides fallbacks
+netbox_hedgehog/static/netbox_hedgehog/js/error-handler.js:    // Global error handler to catch unhandled errors
+netbox_hedgehog/static/netbox_hedgehog/js/error-handler.js:    window.addEventListener('error', function(event) {
+netbox_hedgehog/static/netbox_hedgehog/js/error-handler.js:        console.warn('🛡️ Error caught by global handler:', {
+netbox_hedgehog/static/netbox_hedgehog/js/error-handler.js:            error: event.error
+netbox_hedgehog/static/netbox_hedgehog/js/error-handler.js:        // Prevent errors from breaking the page
+netbox_hedgehog/static/netbox_hedgehog/js/error-handler.js:    // Safe function caller - prevents undefined function errors
+netbox_hedgehog/static/netbox_hedgehog/js/error-handler.js:        } catch (error) {
+netbox_hedgehog/static/netbox_hedgehog/js/error-handler.js:            console.warn(`Error calling ${funcName}:`, error);
+netbox_hedgehog/static/netbox_hedgehog/js/error-handler.js:    // Safe object access - prevents undefined object errors
+netbox_hedgehog/static/netbox_hedgehog/js/error-handler.js:        } catch (error) {
+netbox_hedgehog/static/netbox_hedgehog/js/error-handler.js:            console.warn(`Error accessing ${path}:`, error);
+netbox_hedgehog/static/netbox_hedgehog/js/error-handler.js:            const alertClass = type === 'error' ? 'danger' : type;
+netbox_hedgehog/static/netbox_hedgehog/js/error-handler.js:            if (typeof bootstrap !== 'undefined' && bootstrap.Modal) {
+netbox_hedgehog/static/netbox_hedgehog/js/error-handler.js:                } catch (error) {
+netbox_hedgehog/static/netbox_hedgehog/js/error-handler.js:                    console.warn('Error in ready callback:', error);
+netbox_hedgehog/static/netbox_hedgehog/js/error-handler.js:            } catch (error) {
+netbox_hedgehog/static/netbox_hedgehog/js/error-handler.js:                console.warn('Error in immediate callback:', error);
+netbox_hedgehog/static/netbox_hedgehog/js/error-handler.js:    // Safe fetch wrapper with better error handling
+netbox_hedgehog/static/netbox_hedgehog/js/error-handler.js:                    throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+netbox_hedgehog/static/netbox_hedgehog/js/error-handler.js:            .catch(error => {
+netbox_hedgehog/static/netbox_hedgehog/js/error-handler.js:                console.warn('Fetch error for', url, ':', error.message);
+netbox_hedgehog/static/netbox_hedgehog/js/error-handler.js:                throw error;
+netbox_hedgehog/static/netbox_hedgehog/js/error-handler.js:    if (typeof Chart === 'undefined') {
+netbox_hedgehog/static/netbox_hedgehog/js/error-handler.js:    if (typeof bootstrap === 'undefined') {
+netbox_hedgehog/static/netbox_hedgehog/js/error-handler.js:    // Global function fallbacks to prevent undefined errors
+netbox_hedgehog/static/netbox_hedgehog/js/error-handler.js:        if (typeof window[funcName] === 'undefined') {
+netbox_hedgehog/static/netbox_hedgehog/js/error-handler.js:    console.log('🛡️ Error handler initialized - JavaScript errors should be prevented');
+netbox_hedgehog/static/netbox_hedgehog/js/emergency-sync-fix.js:            throw new Error('🔧 Still receiving HTML instead of JSON - check network setup');
+netbox_hedgehog/static/netbox_hedgehog/js/emergency-sync-fix.js:            throw new Error(data.error || 'Sync failed without specific error');
+netbox_hedgehog/static/netbox_hedgehog/js/emergency-sync-fix.js:    .catch(error => {
+netbox_hedgehog/static/netbox_hedgehog/js/emergency-sync-fix.js:        console.error('🔧 Emergency fix error:', error);
+netbox_hedgehog/static/netbox_hedgehog/js/emergency-sync-fix.js:        const errorMsg = '❌ Sync failed: ' + error.message;
+netbox_hedgehog/static/netbox_hedgehog/js/emergency-sync-fix.js:            window.showNotification(errorMsg, 'error');
+netbox_hedgehog/static/netbox_hedgehog/js/emergency-sync-fix.js:            alert(errorMsg);
+netbox_hedgehog/static/netbox_hedgehog/js/fabric-detail-enhanced.js:            error: { type: 'error', duration: 8000 },
+netbox_hedgehog/static/netbox_hedgehog/js/fabric-detail-enhanced.js:                error: {
+netbox_hedgehog/static/netbox_hedgehog/js/fabric-detail-enhanced.js:                    text: options.errorText || 'Error',
+netbox_hedgehog/static/netbox_hedgehog/js/fabric-detail-enhanced.js:            // Auto-reset after delay for success/error states
+netbox_hedgehog/static/netbox_hedgehog/js/fabric-detail-enhanced.js:            if (state === 'success' || state === 'error') {
+netbox_hedgehog/static/netbox_hedgehog/js/fabric-detail-enhanced.js:                error: 'mdi-alert-circle',
+netbox_hedgehog/static/netbox_hedgehog/js/fabric-detail-enhanced.js:                    this.showFieldError(input, 'This field is required');
+netbox_hedgehog/static/netbox_hedgehog/js/fabric-detail-enhanced.js:                    this.clearFieldError(input);
+netbox_hedgehog/static/netbox_hedgehog/js/fabric-detail-enhanced.js:        // Field error display
+netbox_hedgehog/static/netbox_hedgehog/js/fabric-detail-enhanced.js:        showFieldError(field, message) {
+netbox_hedgehog/static/netbox_hedgehog/js/fabric-detail-enhanced.js:            this.clearFieldError(field);
+netbox_hedgehog/static/netbox_hedgehog/js/fabric-detail-enhanced.js:        // Clear field error
+netbox_hedgehog/static/netbox_hedgehog/js/fabric-detail-enhanced.js:        clearFieldError(field) {
+netbox_hedgehog/static/netbox_hedgehog/js/fabric-detail-enhanced.js:                    throw new Error(data.error || `HTTP ${response.status}: ${response.statusText}`);
+netbox_hedgehog/static/netbox_hedgehog/js/fabric-detail-enhanced.js:            } catch (error) {
+netbox_hedgehog/static/netbox_hedgehog/js/fabric-detail-enhanced.js:                console.error('API Request failed:', error);
+netbox_hedgehog/static/netbox_hedgehog/js/fabric-detail-enhanced.js:                throw error;
+netbox_hedgehog/static/netbox_hedgehog/js/fabric-detail-enhanced.js:                Utils.showNotification('Fabric ID not found', 'error');
+netbox_hedgehog/static/netbox_hedgehog/js/fabric-detail-enhanced.js:                    Utils.setButtonState(button, 'error', { 
+netbox_hedgehog/static/netbox_hedgehog/js/fabric-detail-enhanced.js:                        errorText: 'Connection Failed' 
+netbox_hedgehog/static/netbox_hedgehog/js/fabric-detail-enhanced.js:                        result.error || 'Connection test failed', 
+netbox_hedgehog/static/netbox_hedgehog/js/fabric-detail-enhanced.js:                        'error'
+netbox_hedgehog/static/netbox_hedgehog/js/fabric-detail-enhanced.js:            } catch (error) {
+netbox_hedgehog/static/netbox_hedgehog/js/fabric-detail-enhanced.js:                Utils.setButtonState(button, 'error', { 
+netbox_hedgehog/static/netbox_hedgehog/js/fabric-detail-enhanced.js:                    errorText: 'Test Failed' 
+netbox_hedgehog/static/netbox_hedgehog/js/fabric-detail-enhanced.js:                    `Connection test error: ${error.message}`, 
+netbox_hedgehog/static/netbox_hedgehog/js/fabric-detail-enhanced.js:                    'error'
+netbox_hedgehog/static/netbox_hedgehog/js/fabric-detail-enhanced.js:                Utils.showNotification('Fabric ID not found', 'error');
+netbox_hedgehog/static/netbox_hedgehog/js/fabric-detail-enhanced.js:                    Utils.setButtonState(button, 'error', { 
+netbox_hedgehog/static/netbox_hedgehog/js/fabric-detail-enhanced.js:                        errorText: 'Sync Failed' 
+netbox_hedgehog/static/netbox_hedgehog/js/fabric-detail-enhanced.js:                        result.error || 'Synchronization failed', 
+netbox_hedgehog/static/netbox_hedgehog/js/fabric-detail-enhanced.js:                        'error'
+netbox_hedgehog/static/netbox_hedgehog/js/fabric-detail-enhanced.js:            } catch (error) {
+netbox_hedgehog/static/netbox_hedgehog/js/fabric-detail-enhanced.js:                Utils.setButtonState(button, 'error', { 
+netbox_hedgehog/static/netbox_hedgehog/js/fabric-detail-enhanced.js:                    errorText: 'Sync Error' 
+netbox_hedgehog/static/netbox_hedgehog/js/fabric-detail-enhanced.js:                    `Sync error: ${error.message}`, 
+netbox_hedgehog/static/netbox_hedgehog/js/fabric-detail-enhanced.js:                    'error'
+netbox_hedgehog/static/netbox_hedgehog/js/fabric-detail-enhanced.js:                Utils.showNotification('Fabric ID not found', 'error');
+netbox_hedgehog/static/netbox_hedgehog/js/fabric-detail-enhanced.js:                    Utils.setButtonState(button, 'error', { 
+netbox_hedgehog/static/netbox_hedgehog/js/fabric-detail-enhanced.js:                        errorText: 'Git Sync Failed' 
+netbox_hedgehog/static/netbox_hedgehog/js/fabric-detail-enhanced.js:                        result.error || 'Git synchronization failed', 
+netbox_hedgehog/static/netbox_hedgehog/js/fabric-detail-enhanced.js:                        'error'
+netbox_hedgehog/static/netbox_hedgehog/js/fabric-detail-enhanced.js:            } catch (error) {
+netbox_hedgehog/static/netbox_hedgehog/js/fabric-detail-enhanced.js:                Utils.setButtonState(button, 'error', { 
+netbox_hedgehog/static/netbox_hedgehog/js/fabric-detail-enhanced.js:                    errorText: 'Git Sync Error' 
+netbox_hedgehog/static/netbox_hedgehog/js/fabric-detail-enhanced.js:                    `Git sync error: ${error.message}`, 
+netbox_hedgehog/static/netbox_hedgehog/js/fabric-detail-enhanced.js:                    'error'
+netbox_hedgehog/static/netbox_hedgehog/js/fabric-detail-enhanced.js:                Utils.showNotification('Fabric ID not found', 'error');
+netbox_hedgehog/static/netbox_hedgehog/js/fabric-detail-enhanced.js:                        result.error || 'Drift analysis failed', 
+netbox_hedgehog/static/netbox_hedgehog/js/fabric-detail-enhanced.js:                        'error'
+netbox_hedgehog/static/netbox_hedgehog/js/fabric-detail-enhanced.js:            } catch (error) {
+netbox_hedgehog/static/netbox_hedgehog/js/fabric-detail-enhanced.js:                    `Drift analysis error: ${error.message}`, 
+netbox_hedgehog/static/netbox_hedgehog/js/fabric-detail-enhanced.js:                    'error'
+netbox_hedgehog/static/netbox_hedgehog/js/fabric-detail-enhanced.js:                            Utils.showFieldError(input, 'This field is required');
+netbox_hedgehog/static/netbox_hedgehog/js/fabric-detail-enhanced.js:                            Utils.clearFieldError(input);
+netbox_hedgehog/static/netbox_hedgehog/js/fabric-detail-enhanced.js:                Utils.showNotification('Please correct the errors below', 'warning');
+netbox_hedgehog/static/netbox_hedgehog/js/fabric-detail-enhanced.js:            } catch (error) {
+netbox_hedgehog/static/netbox_hedgehog/js/fabric-detail-enhanced.js:                Utils.setButtonState(button, 'error', { 
+netbox_hedgehog/static/netbox_hedgehog/js/fabric-detail-enhanced.js:                    errorText: 'Processing Failed' 
+netbox_hedgehog/static/netbox_hedgehog/js/fabric-detail-enhanced.js:                    `File processing error: ${error.message}`, 
+netbox_hedgehog/static/netbox_hedgehog/js/fabric-detail-enhanced.js:                    'error'
+netbox_hedgehog/static/netbox_hedgehog/js/fabric-detail-enhanced.js:            } catch (error) {
+netbox_hedgehog/static/netbox_hedgehog/js/fabric-detail-enhanced.js:                Utils.setButtonState(button, 'error', { 
+netbox_hedgehog/static/netbox_hedgehog/js/fabric-detail-enhanced.js:                    errorText: 'Optimization Failed' 
+netbox_hedgehog/static/netbox_hedgehog/js/fabric-detail-enhanced.js:                    `Storage optimization error: ${error.message}`, 
+netbox_hedgehog/static/netbox_hedgehog/js/fabric-detail-enhanced.js:                    'error'
+netbox_hedgehog/static/netbox_hedgehog/js/fabric-detail-enhanced.js:            } catch (error) {
+netbox_hedgehog/static/netbox_hedgehog/js/fabric-detail-enhanced.js:                Utils.setButtonState(button, 'error', { 
+netbox_hedgehog/static/netbox_hedgehog/js/fabric-detail-enhanced.js:                    errorText: 'Check Failed' 
+netbox_hedgehog/static/netbox_hedgehog/js/fabric-detail-enhanced.js:                    `Drift check error: ${error.message}`, 
+netbox_hedgehog/static/netbox_hedgehog/js/fabric-detail-enhanced.js:                    'error'
+netbox_hedgehog/static/netbox_hedgehog/js/fabric-detail-enhanced.js:            } catch (error) {
+netbox_hedgehog/static/netbox_hedgehog/js/fabric-detail-enhanced.js:                Utils.setButtonState(button, 'error', { 
+netbox_hedgehog/static/netbox_hedgehog/js/fabric-detail-enhanced.js:                    errorText: 'Load Failed' 
+netbox_hedgehog/static/netbox_hedgehog/js/fabric-detail-enhanced.js:                    `History load error: ${error.message}`, 
+netbox_hedgehog/static/netbox_hedgehog/js/fabric-detail-enhanced.js:                    'error'
+netbox_hedgehog/static/netbox_hedgehog/js/fabric-detail-enhanced.js:            } catch (error) {
+netbox_hedgehog/static/netbox_hedgehog/js/fabric-detail-enhanced.js:                Utils.setButtonState(button, 'error', { 
+netbox_hedgehog/static/netbox_hedgehog/js/fabric-detail-enhanced.js:                    errorText: 'Git Check Failed' 
+netbox_hedgehog/static/netbox_hedgehog/js/fabric-detail-enhanced.js:                    `Git status error: ${error.message}`, 
+netbox_hedgehog/static/netbox_hedgehog/js/fabric-detail-enhanced.js:                    'error'
+netbox_hedgehog/static/netbox_hedgehog/js/fabric-detail-enhanced.js:            } catch (error) {
+netbox_hedgehog/static/netbox_hedgehog/js/fabric-detail-enhanced.js:                Utils.setButtonState(button, 'error', { 
+netbox_hedgehog/static/netbox_hedgehog/js/fabric-detail-enhanced.js:                    errorText: 'Report Failed' 
+netbox_hedgehog/static/netbox_hedgehog/js/fabric-detail-enhanced.js:                    `Report generation error: ${error.message}`, 
+netbox_hedgehog/static/netbox_hedgehog/js/fabric-detail-enhanced.js:                    'error'
+netbox_hedgehog/static/netbox_hedgehog/js/hedgehog.js:            .catch(error => {
+netbox_hedgehog/static/netbox_hedgehog/js/hedgehog.js:                console.error('Status refresh failed:', error);
+netbox_hedgehog/static/netbox_hedgehog/js/hedgehog.js:                        Hedgehog.utils.showNotification(data.error || 'Operation failed', 'danger');
+netbox_hedgehog/static/netbox_hedgehog/js/hedgehog.js:                .catch(error => {
+netbox_hedgehog/static/netbox_hedgehog/js/hedgehog.js:                    Hedgehog.utils.showNotification('Operation failed: ' + error.message, 'danger');
+netbox_hedgehog/static/netbox_hedgehog/js/hedgehog.js:        if (typeof bootstrap !== 'undefined' && bootstrap.Tooltip) {
+netbox_hedgehog/static/netbox_hedgehog/js/hedgehog.js:            const errors = [];
+netbox_hedgehog/static/netbox_hedgehog/js/hedgehog.js:                errors.push('Invalid subnet CIDR');
+netbox_hedgehog/static/netbox_hedgehog/js/hedgehog.js:                errors.push('Invalid gateway IP');
+netbox_hedgehog/static/netbox_hedgehog/js/hedgehog.js:                errors.push('VLAN must be between 1 and 4094');
+netbox_hedgehog/static/netbox_hedgehog/js/hedgehog.js:            return errors;
+netbox_hedgehog/static/netbox_hedgehog/js/hedgehog.js:                        // Show error state
+netbox_hedgehog/static/netbox_hedgehog/js/hedgehog.js:                        Hedgehog.utils.showNotification('Connection test failed: ' + data.error, 'danger');
+netbox_hedgehog/static/netbox_hedgehog/js/hedgehog.js:                .catch(error => {
+netbox_hedgehog/static/netbox_hedgehog/js/hedgehog.js:                    button.innerHTML = '<i class="mdi mdi-close"></i> Error';
+netbox_hedgehog/static/netbox_hedgehog/js/hedgehog.js:                    Hedgehog.utils.showNotification('Connection test failed: ' + error.message, 'danger');
+netbox_hedgehog/static/netbox_hedgehog/js/hedgehog.js:                        if (crdCountElement && data.stats && data.stats.total_crds !== undefined) {
+netbox_hedgehog/static/netbox_hedgehog/js/hedgehog.js:                        // Show error state
+netbox_hedgehog/static/netbox_hedgehog/js/hedgehog.js:                        Hedgehog.utils.showNotification('Sync failed: ' + data.error, 'danger');
+netbox_hedgehog/static/netbox_hedgehog/js/hedgehog.js:                .catch(error => {
+netbox_hedgehog/static/netbox_hedgehog/js/hedgehog.js:                    button.innerHTML = '<i class="mdi mdi-close"></i> Error';
+netbox_hedgehog/static/netbox_hedgehog/js/hedgehog.js:                    Hedgehog.utils.showNotification('Sync failed: ' + error.message, 'danger');
+netbox_hedgehog/static/netbox_hedgehog/js/hedgehog.js:        console.error('❌ Hedgehog.fabric.sync not available');
+netbox_hedgehog/static/netbox_hedgehog/js/hedgehog.js:        console.error('❌ Hedgehog.fabric.testConnection not available');
+netbox_hedgehog/static/netbox_hedgehog/js/hedgehog.js:if (typeof module !== 'undefined' && module.exports) {
+netbox_hedgehog/static/netbox_hedgehog/js/gitops-onboarding.js:        } catch (error) {
+netbox_hedgehog/static/netbox_hedgehog/js/gitops-onboarding.js:            console.error('Failed to load fabrics:', error);
+netbox_hedgehog/static/netbox_hedgehog/js/gitops-onboarding.js:            this.showError('Failed to load available fabrics');
+netbox_hedgehog/static/netbox_hedgehog/js/gitops-onboarding.js:        } catch (error) {
+netbox_hedgehog/static/netbox_hedgehog/js/gitops-onboarding.js:            console.error('File detection failed:', error);
+netbox_hedgehog/static/netbox_hedgehog/js/gitops-onboarding.js:            this.showError('File detection failed: ' + error.message);
+netbox_hedgehog/static/netbox_hedgehog/js/gitops-onboarding.js:                throw new Error(`Setup failed: ${response.statusText}`);
+netbox_hedgehog/static/netbox_hedgehog/js/gitops-onboarding.js:        } catch (error) {
+netbox_hedgehog/static/netbox_hedgehog/js/gitops-onboarding.js:            console.error('Processing failed:', error);
+netbox_hedgehog/static/netbox_hedgehog/js/gitops-onboarding.js:            this.showProcessingError(error);
+netbox_hedgehog/static/netbox_hedgehog/js/gitops-onboarding.js:    showProcessingError(error) {
+netbox_hedgehog/static/netbox_hedgehog/js/gitops-onboarding.js:        const errorContainer = document.getElementById('processing-error');
+netbox_hedgehog/static/netbox_hedgehog/js/gitops-onboarding.js:        const errorMessage = document.getElementById('error-message');
+netbox_hedgehog/static/netbox_hedgehog/js/gitops-onboarding.js:        const errorDetails = document.getElementById('error-details');
+netbox_hedgehog/static/netbox_hedgehog/js/gitops-onboarding.js:        errorMessage.textContent = error.message;
+netbox_hedgehog/static/netbox_hedgehog/js/gitops-onboarding.js:        errorDetails.textContent = error.stack || 'No additional details available';
+netbox_hedgehog/static/netbox_hedgehog/js/gitops-onboarding.js:        errorContainer.style.display = 'block';
+netbox_hedgehog/static/netbox_hedgehog/js/gitops-onboarding.js:    showError(message) {
+netbox_hedgehog/static/netbox_hedgehog/js/gitops-onboarding.js:        // Create and show error notification
+netbox_hedgehog/static/netbox_hedgehog/js/archive-browser.js:        } catch (error) {
+netbox_hedgehog/static/netbox_hedgehog/js/archive-browser.js:            console.error('❌ Failed to load initial data:', error);
+netbox_hedgehog/static/netbox_hedgehog/js/archive-browser.js:            this.showError('Failed to load archive data');
+netbox_hedgehog/static/netbox_hedgehog/js/archive-browser.js:        } catch (error) {
+netbox_hedgehog/static/netbox_hedgehog/js/archive-browser.js:            console.error('Failed to load archive stats:', error);
+netbox_hedgehog/static/netbox_hedgehog/js/archive-browser.js:        } catch (error) {
+netbox_hedgehog/static/netbox_hedgehog/js/archive-browser.js:            console.error('Failed to load archives list:', error);
+netbox_hedgehog/static/netbox_hedgehog/js/archive-browser.js:            'error': { class: 'bg-danger', text: 'Error Recovery' }
+netbox_hedgehog/static/netbox_hedgehog/js/archive-browser.js:        } catch (error) {
+netbox_hedgehog/static/netbox_hedgehog/js/archive-browser.js:            console.error('Failed to load fabrics:', error);
+netbox_hedgehog/static/netbox_hedgehog/js/archive-browser.js:        } catch (error) {
+netbox_hedgehog/static/netbox_hedgehog/js/archive-browser.js:            console.error('Failed to load storage info:', error);
+netbox_hedgehog/static/netbox_hedgehog/js/archive-browser.js:        } catch (error) {
+netbox_hedgehog/static/netbox_hedgehog/js/archive-browser.js:            console.error('Failed to preview archive:', error);
+netbox_hedgehog/static/netbox_hedgehog/js/archive-browser.js:            this.showError('Failed to load archive preview');
+netbox_hedgehog/static/netbox_hedgehog/js/archive-browser.js:        } catch (error) {
+netbox_hedgehog/static/netbox_hedgehog/js/archive-browser.js:            console.error('Failed to load restore details:', error);
+netbox_hedgehog/static/netbox_hedgehog/js/archive-browser.js:            this.showError('Failed to load restore details');
+netbox_hedgehog/static/netbox_hedgehog/js/archive-browser.js:                this.showError(result.error || 'Restore failed');
+netbox_hedgehog/static/netbox_hedgehog/js/archive-browser.js:        } catch (error) {
+netbox_hedgehog/static/netbox_hedgehog/js/archive-browser.js:            console.error('Restore failed:', error);
+netbox_hedgehog/static/netbox_hedgehog/js/archive-browser.js:            this.showError('Failed to restore archive');
+netbox_hedgehog/static/netbox_hedgehog/js/archive-browser.js:        } catch (error) {
+netbox_hedgehog/static/netbox_hedgehog/js/archive-browser.js:            console.error('Download failed:', error);
+netbox_hedgehog/static/netbox_hedgehog/js/archive-browser.js:            this.showError('Failed to download archive');
+netbox_hedgehog/static/netbox_hedgehog/js/archive-browser.js:                this.showError('No archives selected');
+netbox_hedgehog/static/netbox_hedgehog/js/archive-browser.js:                this.showError(result.error || 'Export failed');
+netbox_hedgehog/static/netbox_hedgehog/js/archive-browser.js:        } catch (error) {
+netbox_hedgehog/static/netbox_hedgehog/js/archive-browser.js:            console.error('Export failed:', error);
+netbox_hedgehog/static/netbox_hedgehog/js/archive-browser.js:            this.showError('Failed to export archives');
+netbox_hedgehog/static/netbox_hedgehog/js/archive-browser.js:                this.showError(result.error || 'Optimization failed');
+netbox_hedgehog/static/netbox_hedgehog/js/archive-browser.js:        } catch (error) {
+netbox_hedgehog/static/netbox_hedgehog/js/archive-browser.js:            console.error('Storage optimization failed:', error);
+netbox_hedgehog/static/netbox_hedgehog/js/archive-browser.js:            this.showError('Failed to optimize storage');
+netbox_hedgehog/static/netbox_hedgehog/js/archive-browser.js:                this.showError(result.error || 'Cleanup failed');
+netbox_hedgehog/static/netbox_hedgehog/js/archive-browser.js:        } catch (error) {
+netbox_hedgehog/static/netbox_hedgehog/js/archive-browser.js:            console.error('Archive cleanup failed:', error);
+netbox_hedgehog/static/netbox_hedgehog/js/archive-browser.js:            this.showError('Failed to cleanup archives');
+netbox_hedgehog/static/netbox_hedgehog/js/archive-browser.js:    showError(message) {
+netbox_hedgehog/static/netbox_hedgehog/js/archive-browser.js:        archiveBrowser.showError('No archives selected');
+netbox_hedgehog/static/netbox_hedgehog/js/archive-browser.js:        archiveBrowser.showError('No archives selected');
+netbox_hedgehog/static/netbox_hedgehog/js/archive-browser.js:        archiveBrowser.showError('No archives selected');
+netbox_hedgehog/static/netbox_hedgehog/js/websocket-client.js:        this.onError = this.onError.bind(this);
+netbox_hedgehog/static/netbox_hedgehog/js/websocket-client.js:            this.socket.onerror = this.onError;
+netbox_hedgehog/static/netbox_hedgehog/js/websocket-client.js:        } catch (error) {
+netbox_hedgehog/static/netbox_hedgehog/js/websocket-client.js:            this.log('Connection failed', { error });
+netbox_hedgehog/static/netbox_hedgehog/js/websocket-client.js:        } catch (error) {
+netbox_hedgehog/static/netbox_hedgehog/js/websocket-client.js:            this.log('Failed to send message', { error, message });
+netbox_hedgehog/static/netbox_hedgehog/js/websocket-client.js:        } catch (error) {
+netbox_hedgehog/static/netbox_hedgehog/js/websocket-client.js:            this.log('Failed to parse message', { error, data: event.data });
+netbox_hedgehog/static/netbox_hedgehog/js/websocket-client.js:    onError(event) {
+netbox_hedgehog/static/netbox_hedgehog/js/websocket-client.js:        this.log('WebSocket error', { error: event });
+netbox_hedgehog/static/netbox_hedgehog/js/websocket-client.js:        this.emit('error', { fabricId: this.fabricId, error: event });
+netbox_hedgehog/static/netbox_hedgehog/js/websocket-client.js:                } catch (error) {
+netbox_hedgehog/static/netbox_hedgehog/js/websocket-client.js:                    this.log('Event handler error', { error, eventType });
+netbox_hedgehog/static/netbox_hedgehog/js/websocket-client.js:        this.onError = this.onError.bind(this);
+netbox_hedgehog/static/netbox_hedgehog/js/websocket-client.js:            this.socket.onerror = this.onError;
+netbox_hedgehog/static/netbox_hedgehog/js/websocket-client.js:        } catch (error) {
+netbox_hedgehog/static/netbox_hedgehog/js/websocket-client.js:            this.log('System WebSocket connection failed', { error });
+netbox_hedgehog/static/netbox_hedgehog/js/websocket-client.js:        } catch (error) {
+netbox_hedgehog/static/netbox_hedgehog/js/websocket-client.js:            this.log('Failed to parse system message', { error });
+netbox_hedgehog/static/netbox_hedgehog/js/websocket-client.js:    onError(event) {
+netbox_hedgehog/static/netbox_hedgehog/js/websocket-client.js:        this.log('System WebSocket error', { error: event });
+netbox_hedgehog/static/netbox_hedgehog/js/websocket-client.js:        this.emit('error', { error: event });
+netbox_hedgehog/static/netbox_hedgehog/js/websocket-client.js:                } catch (error) {
+netbox_hedgehog/static/netbox_hedgehog/js/websocket-client.js:                    this.log('System event handler error', { error, eventType });
+netbox_hedgehog/static/netbox_hedgehog/js/websocket-client.js:                } catch (error) {
+netbox_hedgehog/static/netbox_hedgehog/js/websocket-client.js:                    console.error('Global handler error:', error);
+netbox_hedgehog/static/netbox_hedgehog/js/gitops-dashboard.js: * Fixed version with proper syntax and error handling
+netbox_hedgehog/static/netbox_hedgehog/js/gitops-dashboard.js:        } catch (error) {
+netbox_hedgehog/static/netbox_hedgehog/js/gitops-dashboard.js:            console.error('❌ Error initializing dashboard:', error);
+netbox_hedgehog/static/netbox_hedgehog/js/gitops-dashboard.js:        } catch (error) {
+netbox_hedgehog/static/netbox_hedgehog/js/gitops-dashboard.js:            console.error('❌ Error initializing components:', error);
+netbox_hedgehog/static/netbox_hedgehog/js/gitops-dashboard.js:        } catch (error) {
+netbox_hedgehog/static/netbox_hedgehog/js/gitops-dashboard.js:            console.error('❌ Error initializing event listeners:', error);
+netbox_hedgehog/static/netbox_hedgehog/js/gitops-dashboard.js:        } catch (error) {
+netbox_hedgehog/static/netbox_hedgehog/js/gitops-dashboard.js:            console.warn(`Failed to attach listener for ${id}:`, error);
+netbox_hedgehog/static/netbox_hedgehog/js/gitops-dashboard.js:        } catch (error) {
+netbox_hedgehog/static/netbox_hedgehog/js/gitops-dashboard.js:            console.error('❌ Failed to load initial data:', error);
+netbox_hedgehog/static/netbox_hedgehog/js/gitops-dashboard.js:            this.showError('Failed to load dashboard data');
+netbox_hedgehog/static/netbox_hedgehog/js/gitops-dashboard.js:        const alertClass = type === 'error' ? 'danger' : type;
+netbox_hedgehog/static/netbox_hedgehog/js/gitops-dashboard.js:    showError(message) {
+netbox_hedgehog/static/netbox_hedgehog/js/gitops-dashboard.js:        if (typeof bootstrap !== 'undefined' && bootstrap.Modal) {
+netbox_hedgehog/static/netbox_hedgehog/js/gitops-dashboard.js:        } catch (error) {
+netbox_hedgehog/static/netbox_hedgehog/js/gitops-dashboard.js:            console.error('❌ Failed to refresh dashboard:', error);
+netbox_hedgehog/static/netbox_hedgehog/js/gitops-dashboard.js:            this.showError('Failed to refresh dashboard');
+netbox_hedgehog/static/netbox_hedgehog/js/gitops-dashboard.js:        if (window.gitopsDashboard && typeof window.gitopsDashboard.showError === 'function') {
+netbox_hedgehog/static/netbox_hedgehog/js/gitops-dashboard.js:            window.gitopsDashboard.showError('Emergency stop activated - all processing halted');
+netbox_hedgehog/static/netbox_hedgehog/js/gitops-dashboard.js:    if (typeof GitOpsDashboard !== 'undefined') {

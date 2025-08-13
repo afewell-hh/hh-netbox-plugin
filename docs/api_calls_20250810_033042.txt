@@ -1,0 +1,43 @@
+netbox_hedgehog/static/netbox_hedgehog/js/gitops-dashboard.js.backup:            const response = await fetch('/plugins/hedgehog/api/gitops/overview/');
+netbox_hedgehog/static/netbox_hedgehog/js/gitops-dashboard.js.backup:            const response = await fetch('/plugins/hedgehog/api/gitops/fabrics/');
+netbox_hedgehog/static/netbox_hedgehog/js/gitops-dashboard.js.backup:            const response = await fetch('/plugins/hedgehog/api/gitops/activity/');
+netbox_hedgehog/static/netbox_hedgehog/js/gitops-dashboard.js.backup:            const response = await fetch('/plugins/hedgehog/api/gitops/health/');
+netbox_hedgehog/static/netbox_hedgehog/js/gitops-dashboard.js.backup:            const response = await fetch('/plugins/hedgehog/api/gitops/storage/');
+netbox_hedgehog/static/netbox_hedgehog/js/gitops-dashboard.js.backup:            const response = await fetch('/plugins/hedgehog/api/gitops/sync-all/', {
+netbox_hedgehog/static/netbox_hedgehog/js/gitops-dashboard.js.backup:            const response = await fetch('/plugins/hedgehog/api/gitops/process-pending/', {
+netbox_hedgehog/static/netbox_hedgehog/js/gitops-dashboard.js.backup:            const response = await fetch('/plugins/hedgehog/api/gitops/health-check/', {
+netbox_hedgehog/static/netbox_hedgehog/js/gitops-dashboard.js.backup:        const response = await fetch(url, { ...defaultOptions, ...options });
+netbox_hedgehog/static/netbox_hedgehog/js/progressive-disclosure.js:            const response = await fetch(`/api/plugins/hedgehog/gitops-fabrics/${fabricId}/gitops_sync/`, {
+netbox_hedgehog/static/netbox_hedgehog/js/progressive-disclosure.js:            const response = await fetch(`/api/plugins/hedgehog/fabrics/${fabricId}/init-gitops/`, {
+netbox_hedgehog/static/netbox_hedgehog/js/progressive-disclosure.js:            const response = await fetch(`/api/plugins/hedgehog/fabrics/${this.fabricId}/gitops-status/`, {
+netbox_hedgehog/static/netbox_hedgehog/js/sync-handler.js:            const response = await fetch(url, {
+netbox_hedgehog/static/netbox_hedgehog/js/sync-handler.js:                    'X-Requested-With': 'XMLHttpRequest'
+netbox_hedgehog/static/netbox_hedgehog/js/raw-directory-monitor.js:            const response = await fetch('/plugins/hedgehog/api/gitops/raw-status/');
+netbox_hedgehog/static/netbox_hedgehog/js/raw-directory-monitor.js:            const response = await fetch('/plugins/hedgehog/api/gitops/raw-files/');
+netbox_hedgehog/static/netbox_hedgehog/js/raw-directory-monitor.js:            const response = await fetch('/plugins/hedgehog/api/gitops/processing-queue/');
+netbox_hedgehog/static/netbox_hedgehog/js/raw-directory-monitor.js:            const response = await fetch('/plugins/hedgehog/api/fabrics/');
+netbox_hedgehog/static/netbox_hedgehog/js/raw-directory-monitor.js:            const response = await fetch('/plugins/hedgehog/api/gitops/process-all/', {
+netbox_hedgehog/static/netbox_hedgehog/js/raw-directory-monitor.js:            const response = await fetch(`/plugins/hedgehog/api/gitops/process-file/${fileId}/`, {
+netbox_hedgehog/static/netbox_hedgehog/js/raw-directory-monitor.js:            const response = await fetch(`/plugins/hedgehog/api/gitops/delete-file/${fileId}/`, {
+netbox_hedgehog/static/netbox_hedgehog/js/raw-directory-monitor.js:            const response = await fetch(`/plugins/hedgehog/api/gitops/file-details/${fileId}/`);
+netbox_hedgehog/static/netbox_hedgehog/js/raw-directory-monitor.js:            const response = await fetch('/plugins/hedgehog/api/gitops/upload-files/', {
+netbox_hedgehog/static/netbox_hedgehog/js/error-handler.js:    // Safe fetch wrapper with better error handling
+netbox_hedgehog/static/netbox_hedgehog/js/error-handler.js:        return fetch(url, mergedOptions)
+netbox_hedgehog/static/netbox_hedgehog/js/emergency-sync-fix.js:    fetch(url, {
+netbox_hedgehog/static/netbox_hedgehog/js/fabric-detail-enhanced.js:                const response = await fetch(url, config);
+netbox_hedgehog/static/netbox_hedgehog/js/hedgehog.js:            return fetch(url, mergedOptions);
+netbox_hedgehog/static/netbox_hedgehog/js/hedgehog.js:        fetch(endpoint)
+netbox_hedgehog/static/netbox_hedgehog/js/hedgehog.js:                fetch(endpoint, {
+netbox_hedgehog/static/netbox_hedgehog/js/gitops-onboarding.js:            const response = await fetch('/plugins/hedgehog/api/fabrics/');
+netbox_hedgehog/static/netbox_hedgehog/js/gitops-onboarding.js:            const response = await fetch('/plugins/hedgehog/api/gitops/detect-files/', {
+netbox_hedgehog/static/netbox_hedgehog/js/gitops-onboarding.js:            const response = await fetch('/plugins/hedgehog/api/gitops/setup/', {
+netbox_hedgehog/static/netbox_hedgehog/js/archive-browser.js:            const response = await fetch('/plugins/hedgehog/api/gitops/archive-stats/');
+netbox_hedgehog/static/netbox_hedgehog/js/archive-browser.js:            const response = await fetch(`/plugins/hedgehog/api/gitops/archives/?${params}`);
+netbox_hedgehog/static/netbox_hedgehog/js/archive-browser.js:            const response = await fetch('/plugins/hedgehog/api/fabrics/');
+netbox_hedgehog/static/netbox_hedgehog/js/archive-browser.js:            const response = await fetch('/plugins/hedgehog/api/gitops/archive-storage/');
+netbox_hedgehog/static/netbox_hedgehog/js/archive-browser.js:            const response = await fetch(`/plugins/hedgehog/api/gitops/archive-content/${archiveId}/`);
+netbox_hedgehog/static/netbox_hedgehog/js/archive-browser.js:            const response = await fetch(`/plugins/hedgehog/api/gitops/archive-details/${archiveId}/`);
+netbox_hedgehog/static/netbox_hedgehog/js/archive-browser.js:            const response = await fetch(`/plugins/hedgehog/api/gitops/restore-archive/${archiveId}/`, {
+netbox_hedgehog/static/netbox_hedgehog/js/archive-browser.js:            const response = await fetch('/plugins/hedgehog/api/gitops/export-archives/', {
+netbox_hedgehog/static/netbox_hedgehog/js/archive-browser.js:            const response = await fetch('/plugins/hedgehog/api/gitops/optimize-storage/', {
+netbox_hedgehog/static/netbox_hedgehog/js/archive-browser.js:            const response = await fetch('/plugins/hedgehog/api/gitops/cleanup-archives/', {

@@ -1,0 +1,2 @@
+netbox_hedgehog/static/netbox_hedgehog/js/error-handler.js:    // Safe function caller - prevents undefined function errors
+netbox_hedgehog/static/netbox_hedgehog/js/error-handler.js:    // Global function fallbacks to prevent undefined errors

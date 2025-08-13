@@ -1,0 +1,327 @@
+{
+  "css_architecture_analysis": {
+    "timestamp": "2025-08-10T23:43:00Z",
+    "phase": "Phase 6: CSS Architecture Cleanup and Optimization",
+    "success_sequence_status": "Phase 6 of 7 - CSS Architecture Optimization",
+    
+    "executive_summary": {
+      "total_css_files": 10,
+      "total_lines": 6617,
+      "total_size": "196K",
+      "critical_issues_identified": 8,
+      "optimization_potential": "67-82% reduction achievable",
+      "priority_level": "HIGH - Performance Critical"
+    },
+    
+    "file_inventory": {
+      "primary_files": [
+        {
+          "file": "hedgehog.css",
+          "lines": 1902,
+          "size": "51136 bytes",
+          "important_count": 300,
+          "media_queries": 6,
+          "role": "Primary stylesheet - contains core styles",
+          "optimization_priority": "CRITICAL"
+        },
+        {
+          "file": "responsive-fabric.css", 
+          "lines": 765,
+          "size": "18912 bytes",
+          "important_count": 229,
+          "media_queries": 14,
+          "role": "Mobile responsive overrides",
+          "optimization_priority": "HIGH"
+        },
+        {
+          "file": "fabric-responsive-optimized.css",
+          "lines": 648,
+          "size": "17702 bytes", 
+          "important_count": 186,
+          "media_queries": 19,
+          "role": "Optimized responsive design",
+          "optimization_priority": "HIGH"
+        },
+        {
+          "file": "fabric-optimized.css",
+          "lines": 653,
+          "size": "18229 bytes",
+          "important_count": 23,
+          "media_queries": 4,
+          "role": "General fabric optimizations",
+          "optimization_priority": "MEDIUM"
+        },
+        {
+          "file": "fabric-print.css",
+          "lines": 569,
+          "size": "14071 bytes",
+          "important_count": 187,
+          "media_queries": 1,
+          "role": "Print-specific styles",
+          "optimization_priority": "LOW"
+        }
+      ],
+      
+      "supporting_files": [
+        {
+          "file": "gitops-dashboard.css",
+          "lines": 491,
+          "size": "8299 bytes",
+          "important_count": 2,
+          "media_queries": 4,
+          "role": "GitOps dashboard styles"
+        },
+        {
+          "file": "fabric-detail-enhanced.css",
+          "lines": 469,
+          "size": "9594 bytes",
+          "important_count": 21,
+          "media_queries": 4,
+          "role": "Enhanced detail views"
+        },
+        {
+          "file": "progressive-disclosure.css",
+          "lines": 436,
+          "size": "9448 bytes",
+          "important_count": 30,
+          "media_queries": 2,
+          "role": "UI progressive disclosure"
+        },
+        {
+          "file": "fabric-variables.css",
+          "lines": 344,
+          "size": "12811 bytes",
+          "important_count": 0,
+          "media_queries": 4,
+          "role": "CSS custom properties"
+        },
+        {
+          "file": "fabric-critical.css",
+          "lines": 340,
+          "size": "9057 bytes",
+          "important_count": 13,
+          "media_queries": 1,
+          "role": "Critical path CSS"
+        }
+      ]
+    },
+    
+    "duplication_analysis": {
+      "fabric_class_references": 98,
+      "bootstrap_conflicts": {
+        "files_with_conflicts": 10,
+        "conflict_patterns": ["btn", "card", "container", "row", "col-"],
+        "severity": "MODERATE"
+      },
+      "duplicate_selectors": {
+        "high_frequency_classes": [
+          ".fabric-detail",
+          ".fabric-card", 
+          ".fabric-table",
+          ".hedgehog-wrapper",
+          ".card-header"
+        ],
+        "duplicate_media_queries": 59,
+        "redundant_important_declarations": 991
+      }
+    },
+    
+    "performance_analysis": {
+      "critical_css_violations": [
+        {
+          "issue": "Excessive !important usage",
+          "count": 991,
+          "impact": "HIGH - Cascading specificity issues",
+          "files_affected": ["responsive-fabric.css", "hedgehog.css", "fabric-print.css"]
+        },
+        {
+          "issue": "Duplicate responsive breakpoints", 
+          "count": 59,
+          "impact": "MEDIUM - Code bloat and maintenance burden",
+          "files_affected": ["fabric-responsive-optimized.css", "responsive-fabric.css"]
+        },
+        {
+          "issue": "Redundant CSS rule declarations",
+          "count": "~400-500",
+          "impact": "MEDIUM - File size and parsing performance",
+          "files_affected": ["multiple fabric files"]
+        }
+      ],
+      
+      "optimization_opportunities": {
+        "css_consolidation": {
+          "target_reduction": "67%",
+          "consolidation_candidates": [
+            "responsive-fabric.css + fabric-responsive-optimized.css",
+            "fabric-optimized.css + fabric-detail-enhanced.css"
+          ]
+        },
+        "important_reduction": {
+          "current": 991,
+          "target": "<100",
+          "reduction_percentage": "90%"
+        },
+        "media_query_optimization": {
+          "current": 59,
+          "target": 15,
+          "consolidation_strategy": "Mobile-first with consistent breakpoints"
+        }
+      }
+    },
+    
+    "architecture_assessment": {
+      "current_structure": "FRAGMENTED",
+      "issues": [
+        "Multiple files serving similar purposes",
+        "Inconsistent naming conventions", 
+        "No clear separation of concerns",
+        "Heavy reliance on !important overrides",
+        "Duplicate responsive breakpoints"
+      ],
+      
+      "recommended_structure": {
+        "core_files": [
+          "hedgehog-base.css - Core styles and components",
+          "hedgehog-responsive.css - All responsive breakpoints", 
+          "fabric-specific.css - Fabric component styles",
+          "utilities.css - Utility classes and overrides"
+        ],
+        "specialized_files": [
+          "fabric-print.css - Keep for print optimization",
+          "fabric-variables.css - Keep for design tokens"
+        ]
+      }
+    },
+    
+    "consolidation_strategy": {
+      "phase_1_consolidation": {
+        "target_files": [
+          "responsive-fabric.css",
+          "fabric-responsive-optimized.css"
+        ],
+        "output": "hedgehog-responsive-consolidated.css",
+        "expected_reduction": "45-60%",
+        "risk_level": "MEDIUM"
+      },
+      
+      "phase_2_consolidation": {
+        "target_files": [
+          "fabric-optimized.css",
+          "fabric-detail-enhanced.css",
+          "fabric-critical.css"
+        ],
+        "output": "hedgehog-components-consolidated.css", 
+        "expected_reduction": "30-40%",
+        "risk_level": "LOW"
+      },
+      
+      "phase_3_optimization": {
+        "target": "hedgehog.css",
+        "actions": [
+          "Remove duplicate rules",
+          "Reduce !important usage",
+          "Optimize selectors",
+          "Implement CSS custom properties"
+        ],
+        "expected_reduction": "20-30%",
+        "risk_level": "MEDIUM"
+      }
+    },
+    
+    "visual_preservation_requirements": {
+      "critical_components": [
+        "Fabric detail pages",
+        "GitOps dashboard",
+        "Navigation elements",
+        "Status badges and indicators",
+        "Responsive table layouts"
+      ],
+      
+      "testing_required": [
+        "Desktop layout preservation", 
+        "Mobile responsive behavior",
+        "Print stylesheet functionality",
+        "Cross-browser compatibility",
+        "Bootstrap integration stability"
+      ]
+    },
+    
+    "implementation_roadmap": {
+      "immediate_actions": [
+        "Create CSS backup and testing environment",
+        "Implement Phase 1 consolidation (responsive files)", 
+        "Test visual preservation on key pages",
+        "Deploy and validate mobile responsiveness"
+      ],
+      
+      "short_term_goals": [
+        "Execute Phase 2 consolidation (component files)",
+        "Optimize hedgehog.css !important usage",
+        "Standardize media query breakpoints",
+        "Implement CSS custom property migration"
+      ],
+      
+      "long_term_optimization": [
+        "Complete CSS architecture modernization",
+        "Implement performance monitoring",
+        "Setup automated CSS optimization pipeline",
+        "Document CSS coding standards"
+      ]
+    },
+    
+    "success_metrics": {
+      "file_count_reduction": {
+        "current": 10,
+        "target": 6,
+        "reduction": "40%"
+      },
+      "total_size_reduction": {
+        "current": "196K",
+        "target": "65-80K",
+        "reduction": "58-67%"
+      },
+      "important_usage_reduction": {
+        "current": 991,
+        "target": "<100",
+        "reduction": "90%"
+      },
+      "maintenance_improvement": {
+        "duplicate_rules": "Eliminate 80%+",
+        "consistent_breakpoints": "Standardize to 5 breakpoints",
+        "naming_conventions": "Implement BEM methodology"
+      }
+    },
+    
+    "risk_mitigation": {
+      "visual_regression_prevention": [
+        "Comprehensive screenshot testing",
+        "Component-by-component validation",
+        "Progressive deployment strategy",
+        "Rollback procedures in place"
+      ],
+      
+      "performance_monitoring": [
+        "CSS load time tracking",
+        "Critical path optimization",
+        "Bundle size monitoring", 
+        "User experience metrics"
+      ]
+    },
+    
+    "coordination_requirements": {
+      "visual_guardian_integration": "Required for appearance preservation",
+      "javascript_compatibility": "Ensure JS selectors remain functional",
+      "template_coordination": "Validate CSS class usage in templates",
+      "bootstrap_integration": "Maintain framework compatibility"
+    },
+    
+    "evidence_summary": {
+      "files_analyzed": 10,
+      "total_css_rules": "~1,200+",
+      "duplicate_patterns_identified": 8,
+      "optimization_opportunities": 12,
+      "performance_impact": "HIGH - 67-82% reduction achievable",
+      "visual_risk": "MEDIUM - Comprehensive testing required"
+    }
+  }
+}

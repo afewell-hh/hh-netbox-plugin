@@ -1,0 +1,302 @@
+netbox_hedgehog/templates/netbox_hedgehog/productivity_dashboard.html:                    <button type="button" class="btn btn-outline-primary" onclick="refreshDashboard()">
+netbox_hedgehog/templates/netbox_hedgehog/productivity_dashboard.html:                    <button type="button" class="btn btn-outline-success" onclick="startMeasurement()">
+netbox_hedgehog/templates/netbox_hedgehog/productivity_dashboard.html:                    <button type="button" class="btn btn-outline-info" onclick="exportData()">
+netbox_hedgehog/templates/netbox_hedgehog/productivity_dashboard.html:                <button type="button" class="btn btn-primary" onclick="submitMeasurement()">Start Measurement</button>
+netbox_hedgehog/templates/netbox_hedgehog/productivity_dashboard.html:    $('[data-time-range]').click(function() {
+netbox_hedgehog/templates/netbox_hedgehog/argocd_setup_wizard.html:                                        <button type="button" class="btn btn-primary" onclick="runPrerequisitesCheck()">
+netbox_hedgehog/templates/netbox_hedgehog/argocd_setup_wizard.html:                        <button type="button" class="btn btn-primary" onclick="nextStep()" disabled id="next-step-1">
+netbox_hedgehog/templates/netbox_hedgehog/argocd_setup_wizard.html:                        <button type="button" class="btn btn-secondary" onclick="previousStep()">
+netbox_hedgehog/templates/netbox_hedgehog/argocd_setup_wizard.html:                        <button type="button" class="btn btn-primary" onclick="nextStep()">
+netbox_hedgehog/templates/netbox_hedgehog/argocd_setup_wizard.html:                                    <button type="button" class="btn btn-outline-info" onclick="testRepositoryConnection()">
+netbox_hedgehog/templates/netbox_hedgehog/argocd_setup_wizard.html:                        <button type="button" class="btn btn-secondary" onclick="previousStep()">
+netbox_hedgehog/templates/netbox_hedgehog/argocd_setup_wizard.html:                        <button type="button" class="btn btn-primary" onclick="nextStep()" disabled id="next-step-3">
+netbox_hedgehog/templates/netbox_hedgehog/argocd_setup_wizard.html:                        <button type="button" class="btn btn-secondary" onclick="previousStep()">
+netbox_hedgehog/templates/netbox_hedgehog/argocd_setup_wizard.html:                        <button type="button" class="btn btn-primary" onclick="nextStep()">
+netbox_hedgehog/templates/netbox_hedgehog/argocd_setup_wizard.html:                                        <button type="button" class="btn btn-success" onclick="startInstallation()" id="start-installation-btn">
+netbox_hedgehog/templates/netbox_hedgehog/argocd_setup_wizard.html:                                        <button type="button" class="btn btn-warning hedgehog-hidden" onclick="retryInstallation()" id="retry-installation-btn">
+netbox_hedgehog/templates/netbox_hedgehog/argocd_setup_wizard.html:                        <button type="button" class="btn btn-secondary" onclick="previousStep()" id="previous-step-5">
+netbox_hedgehog/templates/netbox_hedgehog/argocd_setup_wizard.html:                        <button type="button" class="btn btn-outline-secondary" onclick="resetWizard()">
+netbox_hedgehog/templates/netbox_hedgehog/argocd_setup_wizard.html:document.addEventListener('DOMContentLoaded', function() {
+netbox_hedgehog/templates/netbox_hedgehog/argocd_setup_wizard.html:        option.addEventListener('click', function() {
+netbox_hedgehog/templates/netbox_hedgehog/argocd_setup_wizard.html:            // Add selection to clicked option
+netbox_hedgehog/templates/netbox_hedgehog/argocd_setup_wizard.html:    authSelect.addEventListener('change', function() {
+netbox_hedgehog/templates/netbox_hedgehog/fabric_list_working.html:document.addEventListener('DOMContentLoaded', function() {
+netbox_hedgehog/templates/netbox_hedgehog/fabric_list_working.html:        btn.addEventListener('click', function() {
+netbox_hedgehog/templates/netbox_hedgehog/fabric_list_clean.html:document.addEventListener('DOMContentLoaded', function() {
+netbox_hedgehog/templates/netbox_hedgehog/fabric_list_clean.html:        btn.addEventListener('click', function() {
+netbox_hedgehog/templates/netbox_hedgehog/fabric_crds.html:document.addEventListener('DOMContentLoaded', function() {
+netbox_hedgehog/templates/netbox_hedgehog/fabric_crds.html:            syncBtn.addEventListener('click', function(e) {
+netbox_hedgehog/templates/netbox_hedgehog/fabric_crds.html:                console.log('🔄 Sync fabric clicked for fabric:', fabricId);
+netbox_hedgehog/templates/netbox_hedgehog/fabric_crds.html:            syncBtn.addEventListener('click', function(e) {
+netbox_hedgehog/templates/netbox_hedgehog/fabric_crds.html:        btn.addEventListener('click', function(e) {
+netbox_hedgehog/templates/netbox_hedgehog/fabric_list_consolidated.html:    document.addEventListener('DOMContentLoaded', function() {
+netbox_hedgehog/templates/netbox_hedgehog/fabric_list_consolidated.html:                btn.addEventListener('click', function(e) {
+netbox_hedgehog/templates/netbox_hedgehog/gitops/file_dashboard.html:                                <li><a class="dropdown-item" href="#" onclick="cleanupArchives()">
+netbox_hedgehog/templates/netbox_hedgehog/gitops/file_dashboard.html:                                <li><a class="dropdown-item" href="#" onclick="optimizeStorage()">
+netbox_hedgehog/templates/netbox_hedgehog/gitops/file_dashboard.html:                                <li><a class="dropdown-item" href="#" onclick="validateIntegrity()">
+netbox_hedgehog/templates/netbox_hedgehog/gitops/file_dashboard.html:                                <li><a class="dropdown-item text-danger" href="#" onclick="emergencyStop()">
+netbox_hedgehog/templates/netbox_hedgehog/gitops/onboarding_wizard.html:                                <button class="btn btn-info btn-sm" onclick="showFilePreview()">
+netbox_hedgehog/templates/netbox_hedgehog/gitops/onboarding_wizard.html:                                <button class="btn btn-outline-danger" onclick="retryProcessing()">
+netbox_hedgehog/templates/netbox_hedgehog/gitops/onboarding_wizard.html:                                <button class="btn btn-outline-secondary" onclick="skipStep()">
+netbox_hedgehog/templates/netbox_hedgehog/gitops/raw_directory.html:                        <button class="btn btn-primary" onclick="uploadFiles()">
+netbox_hedgehog/templates/netbox_hedgehog/gitops/raw_directory.html:                            <button class="btn btn-success" onclick="bulkProcess()">
+netbox_hedgehog/templates/netbox_hedgehog/gitops/raw_directory.html:                            <button class="btn btn-warning" onclick="bulkPrioritize()">
+netbox_hedgehog/templates/netbox_hedgehog/gitops/raw_directory.html:                            <button class="btn btn-danger" onclick="bulkDelete()">
+netbox_hedgehog/templates/netbox_hedgehog/gitops/raw_directory.html:                        <button class="btn btn-outline-secondary" onclick="clearLog()">
+netbox_hedgehog/templates/netbox_hedgehog/gitops/raw_directory.html:                        <button class="btn btn-outline-secondary" onclick="exportLog()">
+netbox_hedgehog/templates/netbox_hedgehog/gitops/vpc_edit.html:                                    <button type="button" class="btn btn-outline-info" onclick="previewChanges()">
+netbox_hedgehog/templates/netbox_hedgehog/gitops/vpc_edit.html:                                    <button type="button" class="btn btn-outline-warning" onclick="validateYAML()">
+netbox_hedgehog/templates/netbox_hedgehog/gitops/generic_cr_edit.html:                                    <button type="button" class="btn btn-outline-info" onclick="previewChanges()">
+netbox_hedgehog/templates/netbox_hedgehog/gitops/generic_cr_edit.html:                                    <button type="button" class="btn btn-outline-warning" onclick="validateYAML()">
+netbox_hedgehog/templates/netbox_hedgehog/gitops/archive_browser.html:                            <li><a class="dropdown-item" href="#" onclick="exportArchives('selected')">
+netbox_hedgehog/templates/netbox_hedgehog/gitops/archive_browser.html:                            <li><a class="dropdown-item" href="#" onclick="exportArchives('all')">
+netbox_hedgehog/templates/netbox_hedgehog/gitops/archive_browser.html:                            <li><a class="dropdown-item" href="#" onclick="exportArchives('metadata')">
+netbox_hedgehog/templates/netbox_hedgehog/gitops/archive_browser.html:                            <button class="btn btn-outline-secondary" onclick="changeView('list')" id="list-view-btn">
+netbox_hedgehog/templates/netbox_hedgehog/gitops/archive_browser.html:                            <button class="btn btn-outline-secondary" onclick="changeView('grid')" id="grid-view-btn">
+netbox_hedgehog/templates/netbox_hedgehog/gitops/archive_browser.html:                        <button class="btn btn-outline-primary" onclick="clearFilters()">
+netbox_hedgehog/templates/netbox_hedgehog/gitops/archive_browser.html:                            <button class="btn btn-success" onclick="bulkRestore()">
+netbox_hedgehog/templates/netbox_hedgehog/gitops/archive_browser.html:                            <button class="btn btn-info" onclick="bulkDownload()">
+netbox_hedgehog/templates/netbox_hedgehog/gitops/archive_browser.html:                            <button class="btn btn-danger" onclick="bulkDelete()">
+netbox_hedgehog/templates/netbox_hedgehog/gitops/archive_browser.html:                        <button class="btn btn-primary" onclick="previewArchive()">
+netbox_hedgehog/templates/netbox_hedgehog/gitops/archive_browser.html:                        <button class="btn btn-success" onclick="restoreArchive()">
+netbox_hedgehog/templates/netbox_hedgehog/gitops/archive_browser.html:                        <button class="btn btn-info" onclick="downloadArchive()">
+netbox_hedgehog/templates/netbox_hedgehog/gitops/archive_browser.html:                        <button class="btn btn-warning btn-sm" onclick="optimizeStorage()">
+netbox_hedgehog/templates/netbox_hedgehog/gitops/archive_browser.html:                        <button class="btn btn-outline-danger btn-sm" onclick="cleanupOldArchives()">
+netbox_hedgehog/templates/netbox_hedgehog/gitops/archive_browser.html:                                    <button class="btn btn-outline-secondary" onclick="formatContent('yaml')">YAML</button>
+netbox_hedgehog/templates/netbox_hedgehog/gitops/archive_browser.html:                                    <button class="btn btn-outline-secondary" onclick="formatContent('json')">JSON</button>
+netbox_hedgehog/templates/netbox_hedgehog/gitops/archive_browser.html:                                    <button class="btn btn-outline-secondary" onclick="formatContent('raw')">Raw</button>
+netbox_hedgehog/templates/netbox_hedgehog/gitops/archive_browser.html:                <button type="button" class="btn btn-info" onclick="downloadArchiveFromModal()">
+netbox_hedgehog/templates/netbox_hedgehog/gitops/archive_browser.html:                <button type="button" class="btn btn-success" onclick="restoreArchiveFromModal()">
+netbox_hedgehog/templates/netbox_hedgehog/fabric_detail_working.html:            <a href="#" class="quick-action-btn" onclick="syncFromGit(); return false;">
+netbox_hedgehog/templates/netbox_hedgehog/fabric_detail_working.html:                <button class="btn btn-primary" onclick="syncFromGit()">
+netbox_hedgehog/templates/netbox_hedgehog/gitops_onboarding_wizard.html:                        <button type="button" class="btn btn-primary" onclick="nextStep()">Next</button>
+netbox_hedgehog/templates/netbox_hedgehog/gitops_onboarding_wizard.html:                                <select class="form-select" id="auth-method" onchange="toggleAuthMethod()">
+netbox_hedgehog/templates/netbox_hedgehog/gitops_onboarding_wizard.html:                                        <a href="#" class="progressive-disclosure-toggle" onclick="toggleDisclosure('token-help')">
+netbox_hedgehog/templates/netbox_hedgehog/gitops_onboarding_wizard.html:                                    <button type="button" class="btn btn-outline-info" onclick="testConnection()">
+netbox_hedgehog/templates/netbox_hedgehog/gitops_onboarding_wizard.html:                        <button type="button" class="btn btn-secondary" onclick="previousStep()">Previous</button>
+netbox_hedgehog/templates/netbox_hedgehog/gitops_onboarding_wizard.html:                        <button type="button" class="btn btn-primary" onclick="nextStep()">Next</button>
+netbox_hedgehog/templates/netbox_hedgehog/gitops_onboarding_wizard.html:                                <select class="form-select" id="fabric-mode" onchange="toggleFabricMode()">
+netbox_hedgehog/templates/netbox_hedgehog/gitops_onboarding_wizard.html:                        <button type="button" class="btn btn-secondary" onclick="previousStep()">Previous</button>
+netbox_hedgehog/templates/netbox_hedgehog/gitops_onboarding_wizard.html:                        <button type="button" class="btn btn-primary" onclick="nextStep()">Next</button>
+netbox_hedgehog/templates/netbox_hedgehog/gitops_onboarding_wizard.html:                                    <button type="button" class="btn btn-primary" onclick="discoverYAMLFiles()">
+netbox_hedgehog/templates/netbox_hedgehog/gitops_onboarding_wizard.html:                                    <button type="button" class="btn btn-outline-success" onclick="initializeStructure()">
+netbox_hedgehog/templates/netbox_hedgehog/gitops_onboarding_wizard.html:                        <button type="button" class="btn btn-secondary" onclick="previousStep()">Previous</button>
+netbox_hedgehog/templates/netbox_hedgehog/gitops_onboarding_wizard.html:                        <button type="button" class="btn btn-primary" onclick="nextStep()">Next</button>
+netbox_hedgehog/templates/netbox_hedgehog/gitops_onboarding_wizard.html:                                    <button type="button" class="btn btn-success w-100" onclick="createFabric()">
+netbox_hedgehog/templates/netbox_hedgehog/gitops_onboarding_wizard.html:                        <button type="button" class="btn btn-secondary" onclick="previousStep()">Previous</button>
+netbox_hedgehog/templates/netbox_hedgehog/gitops_onboarding_wizard.html:                        <button type="button" class="btn btn-outline-secondary" onclick="resetWizard()">Start Over</button>
+netbox_hedgehog/templates/netbox_hedgehog/gitops_onboarding_wizard.html:document.addEventListener('DOMContentLoaded', function() {
+netbox_hedgehog/templates/netbox_hedgehog/gitops_onboarding_wizard.html:        provider.addEventListener('click', function() {
+netbox_hedgehog/templates/netbox_hedgehog/gitops_onboarding_wizard.html:            // Add selection to clicked provider
+netbox_hedgehog/templates/netbox_hedgehog/git_repository_edit.html:document.addEventListener('DOMContentLoaded', function() {
+netbox_hedgehog/templates/netbox_hedgehog/git_repository_edit.html:    authTypeField.addEventListener('change', showAuthFields);
+netbox_hedgehog/templates/netbox_hedgehog/fabric_detail_simple.html:                                    <button id="sync-button" class="btn btn-outline-info" onclick="triggerSync({{ object.pk }})">
+netbox_hedgehog/templates/netbox_hedgehog/fabric_detail_simple.html:                                <button id="sync-fabric-button" class="btn btn-outline-primary" onclick="syncFromFabric({{ object.pk }})">
+netbox_hedgehog/templates/netbox_hedgehog/fabric_detail_simple.html:                                <button id="test-connection-button" class="btn btn-outline-info" onclick="testConnection({{ object.pk }})">
+netbox_hedgehog/templates/netbox_hedgehog/fabric_detail.html.backup:                                        <button class="btn btn-sm btn-primary" onclick="syncFromGit(); return false;">
+netbox_hedgehog/templates/netbox_hedgehog/fabric_detail.html.backup:                                <button class="drift-action-btn" onclick="showDriftAnalysis({{ object.pk }})">
+netbox_hedgehog/templates/netbox_hedgehog/fabric_detail.html.backup:                                <button class="drift-action-btn" onclick="syncFromGit()">
+netbox_hedgehog/templates/netbox_hedgehog/fabric_detail.html.backup:                                <button class="drift-action-btn" onclick="checkForDrift({{ object.pk }})">
+netbox_hedgehog/templates/netbox_hedgehog/fabric_detail.html.backup:                                <button class="drift-action-btn" onclick="viewDriftHistory({{ object.pk }})">
+netbox_hedgehog/templates/netbox_hedgehog/fabric_detail.html.backup:                            <button class="drift-action-btn" onclick="configureDriftSettings({{ object.pk }})">
+netbox_hedgehog/templates/netbox_hedgehog/fabric_detail.html.backup:                                            <button class="btn btn-sm btn-outline-primary" onclick="triggerGitSync()">
+netbox_hedgehog/templates/netbox_hedgehog/fabric_detail.html.backup:                                            <button class="btn btn-sm btn-outline-success" onclick="showResourceStates()">
+netbox_hedgehog/templates/netbox_hedgehog/fabric_detail.html.backup:                                            <button class="btn btn-sm btn-outline-warning" onclick="showDriftDetails()">
+netbox_hedgehog/templates/netbox_hedgehog/fabric_detail.html.backup:                                                    <button class="btn btn-sm btn-outline-warning ms-2" onclick="showDriftAnalysis({{ object.pk }})">
+netbox_hedgehog/templates/netbox_hedgehog/fabric_detail.html.backup:                                            <button class="btn btn-primary" onclick="processAllFiles({{ object.pk }})">
+netbox_hedgehog/templates/netbox_hedgehog/fabric_detail.html.backup:                                            <button class="btn btn-sm btn-outline-warning w-100" onclick="optimizeStorage({{ object.pk }})">
+netbox_hedgehog/templates/netbox_hedgehog/fabric_detail.html.backup:document.addEventListener('DOMContentLoaded', function() {
+netbox_hedgehog/templates/netbox_hedgehog/fabric_detail.html.backup:        testBtn.addEventListener('click', function(e) {
+netbox_hedgehog/templates/netbox_hedgehog/fabric_detail.html.backup:            console.log('🔍 Test Connection clicked for fabric:', fabricId);
+netbox_hedgehog/templates/netbox_hedgehog/fabric_detail.html.backup:        syncBtn.addEventListener('click', function(e) {
+netbox_hedgehog/templates/netbox_hedgehog/fabric_detail.html.backup:            console.log('🔄 Sync Now clicked for fabric:', fabricId);
+netbox_hedgehog/templates/netbox_hedgehog/fabric_detail.html.backup:        gitSyncBtn.addEventListener('click', function(e) {
+netbox_hedgehog/templates/netbox_hedgehog/fabric_detail.html.backup:            console.log('🔄 Git Sync clicked for fabric:', fabricId);
+netbox_hedgehog/templates/netbox_hedgehog/fabric_detail.html.backup:        driftReportBtn.addEventListener('click', function(e) {
+netbox_hedgehog/templates/netbox_hedgehog/fabric_detail.html.backup:            console.log('📊 Drift Report clicked for fabric:', fabricId);
+netbox_hedgehog/templates/netbox_hedgehog/fabric_detail.html.backup:        gitStatusBtn.addEventListener('click', function(e) {
+netbox_hedgehog/templates/netbox_hedgehog/fabric_detail.html.backup:            console.log('📈 Git Status clicked for fabric:', fabricId);
+netbox_hedgehog/templates/netbox_hedgehog/fabric_detail.html.backup:                            <button type="button" class="btn btn-primary" onclick="location.reload()">Refresh Status</button>
+netbox_hedgehog/templates/netbox_hedgehog/fabric_detail.html.backup:                        <button type="button" class="btn btn-primary" onclick="refreshGitOpsStatus()">Refresh Status</button>
+netbox_hedgehog/templates/netbox_hedgehog/fabric_detail.html.backup:document.addEventListener('DOMContentLoaded', function() {
+netbox_hedgehog/templates/netbox_hedgehog/fabric_detail.html.backup:                                                    <button class="btn btn-sm btn-outline-primary" onclick="viewResourceDrift('${item.name}')">
+netbox_hedgehog/templates/netbox_hedgehog/fabric_detail.html.backup:                        <button type="button" class="btn btn-warning" onclick="exportDriftReport()">
+netbox_hedgehog/templates/netbox_hedgehog/fabric_detail.html.backup:                        <button type="button" class="btn btn-primary" onclick="syncFromGit()">
+netbox_hedgehog/templates/netbox_hedgehog/fabric_detail.html.backup:                        <button type="button" class="btn btn-primary" onclick="saveDriftSettings(${fabricId})">
+netbox_hedgehog/templates/netbox_hedgehog/gitops_dashboard.html:document.addEventListener('DOMContentLoaded', function() {
+netbox_hedgehog/templates/netbox_hedgehog/fabric_edit_consolidated.html:    document.addEventListener('DOMContentLoaded', function() {
+netbox_hedgehog/templates/netbox_hedgehog/fabric_edit_consolidated.html:            form.addEventListener('submit', function(e) {
+netbox_hedgehog/templates/netbox_hedgehog/fabric_edit_consolidated.html:            syncEnabledCheckbox.addEventListener('change', toggleSyncFields);
+netbox_hedgehog/templates/netbox_hedgehog/fabric_detail_optimized_example.html:    <link rel="preload" href="{% static 'netbox_hedgehog/css/fabric-variables.css' %}" as="style" onload="this.onload=null;this.rel='stylesheet'">
+netbox_hedgehog/templates/netbox_hedgehog/fabric_detail_optimized_example.html:    <link rel="preload" href="{% static 'netbox_hedgehog/css/fabric-optimized.css' %}" as="style" onload="this.onload=null;this.rel='stylesheet'">
+netbox_hedgehog/templates/netbox_hedgehog/fabric_detail_optimized_example.html:    <link rel="preload" href="{% static 'netbox_hedgehog/css/fabric-responsive-optimized.css' %}" as="style" onload="this.onload=null;this.rel='stylesheet'">
+netbox_hedgehog/templates/netbox_hedgehog/fabric_detail_optimized_example.html:    <link rel="preload" href="{% static 'netbox_hedgehog/css/fabric-print.css' %}" as="style" media="print" onload="this.onload=null;this.rel='stylesheet'">
+netbox_hedgehog/templates/netbox_hedgehog/fabric_detail_optimized_example.html:    window.addEventListener('load', function() {
+netbox_hedgehog/templates/netbox_hedgehog/fabric_detail_optimized_example.html:document.addEventListener('DOMContentLoaded', function() {
+netbox_hedgehog/templates/netbox_hedgehog/fabric_detail_optimized_example.html:        toggle.addEventListener('click', function() {
+netbox_hedgehog/templates/netbox_hedgehog/fabric_list.html:document.addEventListener('DOMContentLoaded', function() {
+netbox_hedgehog/templates/netbox_hedgehog/fabric_list.html:            btn.addEventListener('click', function(e) {
+netbox_hedgehog/templates/netbox_hedgehog/fabric_list.html:                console.log('🔄 Quick Git sync clicked for fabric:', fabricId);
+netbox_hedgehog/templates/netbox_hedgehog/fabric_list.html:            btn.addEventListener('click', function(e) {
+netbox_hedgehog/templates/netbox_hedgehog/drift_detection_dashboard.html:document.addEventListener('DOMContentLoaded', function() {
+netbox_hedgehog/templates/netbox_hedgehog/drift_detection_dashboard.html:    document.getElementById('refresh-drift').addEventListener('click', function() {
+netbox_hedgehog/templates/netbox_hedgehog/drift_detection_dashboard.html:        button.addEventListener('click', function() {
+netbox_hedgehog/templates/netbox_hedgehog/drift_detection_dashboard.html:        button.addEventListener('click', function() {
+netbox_hedgehog/templates/netbox_hedgehog/drift_detection_dashboard.html:        select.addEventListener('change', function() {
+netbox_hedgehog/templates/netbox_hedgehog/drift_detection_dashboard.html:    document.getElementById('export-report').addEventListener('click', function() {
+netbox_hedgehog/templates/netbox_hedgehog/drift_detection_dashboard.html:    toast.addEventListener('hidden.bs.toast', function() {
+netbox_hedgehog/templates/netbox_hedgehog/fabric_list_fixed.html:document.addEventListener('DOMContentLoaded', function() {
+netbox_hedgehog/templates/netbox_hedgehog/fabric_list_fixed.html:        btn.addEventListener('click', function() {
+netbox_hedgehog/templates/netbox_hedgehog/ipv4namespace_detail.html:                        <button class="btn btn-success" onclick="applyToKubernetes()">
+netbox_hedgehog/templates/netbox_hedgehog/ipv4namespace_detail.html:                        <button class="btn btn-info" onclick="syncFromKubernetes()">
+netbox_hedgehog/templates/netbox_hedgehog/ipv4namespace_detail.html:                        <button class="btn btn-warning" onclick="updateInKubernetes()">
+netbox_hedgehog/templates/netbox_hedgehog/ipv4namespace_detail.html:                        <button class="btn btn-danger" onclick="deleteFromKubernetes()">
+netbox_hedgehog/templates/netbox_hedgehog/ipv4namespace_detail.html:document.addEventListener('DOMContentLoaded', function() {
+netbox_hedgehog/templates/netbox_hedgehog/fabric_creation_workflow.html:                        <div class="git-repo-option" data-option="existing" onclick="selectRepoOption('existing')">
+netbox_hedgehog/templates/netbox_hedgehog/fabric_creation_workflow.html:                        <div class="git-repo-option" data-option="new" onclick="selectRepoOption('new')">
+netbox_hedgehog/templates/netbox_hedgehog/fabric_creation_workflow.html:                                    <div class="auth-type-option selected" data-auth="token" onclick="selectAuthType('token')">
+netbox_hedgehog/templates/netbox_hedgehog/fabric_creation_workflow.html:                                    <div class="auth-type-option" data-auth="basic" onclick="selectAuthType('basic')">
+netbox_hedgehog/templates/netbox_hedgehog/fabric_creation_workflow.html:                                    <div class="auth-type-option" data-auth="ssh_key" onclick="selectAuthType('ssh_key')">
+netbox_hedgehog/templates/netbox_hedgehog/fabric_creation_workflow.html:                            <button type="button" class="btn btn-outline-primary btn-sm mt-2" onclick="testKubernetesConnection()">
+netbox_hedgehog/templates/netbox_hedgehog/fabric_creation_workflow.html:                    <button type="button" class="btn btn-outline-secondary hedgehog-wizard-nav" id="prev-step" onclick="previousStep()">
+netbox_hedgehog/templates/netbox_hedgehog/fabric_creation_workflow.html:                    <button type="button" class="btn btn-outline-secondary me-2" onclick="cancelWorkflow()">
+netbox_hedgehog/templates/netbox_hedgehog/fabric_creation_workflow.html:                    <button type="button" class="btn btn-primary" id="next-step" onclick="nextStep()">
+netbox_hedgehog/templates/netbox_hedgehog/fabric_creation_workflow.html:document.addEventListener('DOMContentLoaded', function() {
+netbox_hedgehog/templates/netbox_hedgehog/fabric_creation_workflow.html:                <button type="button" class="btn btn-outline-primary btn-sm mt-2" onclick="testKubernetesConnection()">
+netbox_hedgehog/templates/netbox_hedgehog/fabric_creation_workflow.html:        nameField.addEventListener('input', function() {
+netbox_hedgehog/templates/netbox_hedgehog/fabric_creation_workflow.html:    form.addEventListener('submit', function(e) {
+netbox_hedgehog/templates/netbox_hedgehog/fabric_confirm_delete.html:document.addEventListener('DOMContentLoaded', function() {
+netbox_hedgehog/templates/netbox_hedgehog/fabric_confirm_delete.html:    confirmCheckbox.addEventListener('change', function() {
+netbox_hedgehog/templates/netbox_hedgehog/fabric_confirm_delete.html:    deleteForm.addEventListener('submit', function(e) {
+netbox_hedgehog/templates/netbox_hedgehog/vpc_create.html:document.addEventListener('DOMContentLoaded', function() {
+netbox_hedgehog/templates/netbox_hedgehog/vpc_create.html:        card.addEventListener('click', function() {
+netbox_hedgehog/templates/netbox_hedgehog/vpc_create.html:    fabricSelect.addEventListener('change', function() {
+netbox_hedgehog/templates/netbox_hedgehog/vpc_create.html:    document.getElementById('add-subnet').addEventListener('click', addSubnetForm);
+netbox_hedgehog/templates/netbox_hedgehog/vpc_create.html:        removeBtn.addEventListener('click', function() {
+netbox_hedgehog/templates/netbox_hedgehog/vpc_create.html:    form.addEventListener('submit', function(e) {
+netbox_hedgehog/templates/netbox_hedgehog/pre_cluster_fabric_form.html:                                    <select class="form-select" id="fabric-environment" name="fabric_environment" onchange="updateEnvironmentConfig()">
+netbox_hedgehog/templates/netbox_hedgehog/pre_cluster_fabric_form.html:                                    <select class="form-select" id="fabric-size" name="fabric_size" onchange="updateSizeRecommendations()">
+netbox_hedgehog/templates/netbox_hedgehog/pre_cluster_fabric_form.html:                                <button type="button" class="btn btn-outline-secondary" onclick="validateConfiguration()">
+netbox_hedgehog/templates/netbox_hedgehog/pre_cluster_fabric_form.html:                                <button type="button" class="btn btn-outline-secondary me-2" onclick="resetForm()">
+netbox_hedgehog/templates/netbox_hedgehog/pre_cluster_fabric_form.html:                                <button type="button" class="btn btn-primary" onclick="createFabric()">
+netbox_hedgehog/templates/netbox_hedgehog/pre_cluster_fabric_form.html:document.addEventListener('DOMContentLoaded', function() {
+netbox_hedgehog/templates/netbox_hedgehog/pre_cluster_fabric_form.html:        option.addEventListener('click', function() {
+netbox_hedgehog/templates/netbox_hedgehog/pre_cluster_fabric_form.html:            // Add selection to clicked option
+netbox_hedgehog/templates/netbox_hedgehog/pre_cluster_fabric_form.html:        option.addEventListener('click', function() {
+netbox_hedgehog/templates/netbox_hedgehog/pre_cluster_fabric_form.html:            // Add selection to clicked option
+netbox_hedgehog/templates/netbox_hedgehog/pre_cluster_fabric_form.html:        option.addEventListener('click', function() {
+netbox_hedgehog/templates/netbox_hedgehog/pre_cluster_fabric_form.html:            // Add selection to clicked option
+netbox_hedgehog/templates/netbox_hedgehog/pre_cluster_fabric_form.html:    form.addEventListener('input', function(e) {
+netbox_hedgehog/templates/netbox_hedgehog/pre_cluster_fabric_form.html:    form.addEventListener('change', function(e) {
+netbox_hedgehog/templates/netbox_hedgehog/pre_cluster_fabric_form.html:                    <button type="button" class="btn btn-primary" onclick="window.location.href='/plugins/hedgehog/fabrics/'">
+netbox_hedgehog/templates/netbox_hedgehog/fabric_detail_minimal.html:                        <button class="btn btn-primary" onclick="syncFromGit()">
+netbox_hedgehog/templates/netbox_hedgehog/fabric_detail_clean.html:document.addEventListener('DOMContentLoaded', function() {
+netbox_hedgehog/templates/netbox_hedgehog/fabric_detail_clean.html:        btn.addEventListener('click', function() {
+netbox_hedgehog/templates/netbox_hedgehog/fabric_detail_clean.html:        btn.addEventListener('click', function() {
+netbox_hedgehog/templates/netbox_hedgehog/components/fabric_filter_simple.html:                    <select name="fabric" id="fabric-select" class="form-select hedgehog-select-auto" onchange="this.form.submit()">
+netbox_hedgehog/templates/netbox_hedgehog/components/yaml_discovery_results.html:                    <button type="button" class="btn btn-sm btn-outline-primary" onclick="refreshDiscovery('{{ component_id|default:'default' }}')">
+netbox_hedgehog/templates/netbox_hedgehog/components/yaml_discovery_results.html:                    <button type="button" class="btn btn-sm btn-outline-success" onclick="validateAllFiles('{{ component_id|default:'default' }}')">
+netbox_hedgehog/templates/netbox_hedgehog/components/yaml_discovery_results.html:    document.addEventListener('DOMContentLoaded', function() {
+netbox_hedgehog/templates/netbox_hedgehog/components/yaml_discovery_results.html:            input.addEventListener('change', function() {
+netbox_hedgehog/templates/netbox_hedgehog/components/yaml_discovery_results.html:            input.addEventListener('change', function() {
+netbox_hedgehog/templates/netbox_hedgehog/components/yaml_discovery_results.html:                <div class="file-header" onclick="toggleFileDetails('${componentId}', '${file.name}')">
+netbox_hedgehog/templates/netbox_hedgehog/components/yaml_discovery_results.html:                <div class="file-header" onclick="toggleFileDetails('${componentId}', '${file.name}')">
+netbox_hedgehog/templates/netbox_hedgehog/components/yaml_discovery_results.html:                <button class="btn btn-outline-primary" onclick="viewFileContent('${componentId}', '${file.name}')">
+netbox_hedgehog/templates/netbox_hedgehog/components/yaml_discovery_results.html:                <button class="btn btn-outline-info" onclick="validateFile('${componentId}', '${file.name}')">
+netbox_hedgehog/templates/netbox_hedgehog/components/yaml_discovery_results.html:                <button class="btn btn-outline-warning" onclick="editFile('${componentId}', '${file.name}')">
+netbox_hedgehog/templates/netbox_hedgehog/components/yaml_discovery_results.html:                        <button type="button" class="btn-close" onclick="this.closest('.modal').remove()"></button>
+netbox_hedgehog/templates/netbox_hedgehog/components/fabric_filter_enhanced.html:document.addEventListener('DOMContentLoaded', function() {
+netbox_hedgehog/templates/netbox_hedgehog/components/fabric_filter_enhanced.html:    fabricSelect.addEventListener('change', function() {
+netbox_hedgehog/templates/netbox_hedgehog/components/fabric_filter_enhanced.html:        clearFilterBtn.addEventListener('click', function(e) {
+netbox_hedgehog/templates/netbox_hedgehog/components/realtime_status_indicators.html:document.addEventListener('DOMContentLoaded', function() {
+netbox_hedgehog/templates/netbox_hedgehog/components/realtime_status_indicators.html:        clearEventsBtn.addEventListener('click', function() {
+netbox_hedgehog/templates/netbox_hedgehog/components/realtime_status_indicators.html:        pauseEventsBtn.addEventListener('click', function() {
+netbox_hedgehog/templates/netbox_hedgehog/components/six_state_indicators.html:                            <button class="btn btn-sm btn-primary" onclick="refreshState('{{ component_id|default:'default' }}')">
+netbox_hedgehog/templates/netbox_hedgehog/components/six_state_indicators.html:                                    <button class="btn btn-outline-primary btn-sm" onclick="syncFromGit('{{ component_id|default:'default' }}')">
+netbox_hedgehog/templates/netbox_hedgehog/components/six_state_indicators.html:                                    <button class="btn btn-outline-warning btn-sm" onclick="checkDrift('{{ component_id|default:'default' }}')">
+netbox_hedgehog/templates/netbox_hedgehog/components/six_state_indicators.html:                                    <button class="btn btn-outline-info btn-sm" onclick="viewHistory('{{ component_id|default:'default' }}')">
+netbox_hedgehog/templates/netbox_hedgehog/components/six_state_indicators.html:                                    <button class="btn btn-outline-primary btn-sm" onclick="forceSync('{{ component_id|default:'default' }}')">
+netbox_hedgehog/templates/netbox_hedgehog/components/six_state_indicators.html:                                    <button class="btn btn-outline-warning btn-sm" onclick="calculateDrift('{{ component_id|default:'default' }}')">
+netbox_hedgehog/templates/netbox_hedgehog/components/six_state_indicators.html:                                    <button class="btn btn-outline-danger btn-sm" onclick="resetState('{{ component_id|default:'default' }}')">
+netbox_hedgehog/templates/netbox_hedgehog/components/six_state_indicators.html:                                    <button class="btn btn-outline-secondary btn-sm" onclick="exportLogs('{{ component_id|default:'default' }}')">
+netbox_hedgehog/templates/netbox_hedgehog/components/six_state_indicators.html:    document.addEventListener('DOMContentLoaded', function() {
+netbox_hedgehog/templates/netbox_hedgehog/components/six_state_indicators.html:            input.addEventListener('change', function() {
+netbox_hedgehog/templates/netbox_hedgehog/components/six_state_indicators.html:            badge.addEventListener('click', function() {
+netbox_hedgehog/templates/netbox_hedgehog/components/six_state_indicators.html:                        <button type="button" class="btn-close" onclick="this.closest('.modal').remove()"></button>
+netbox_hedgehog/templates/netbox_hedgehog/components/state_transition_workflow.html:                                <button type="button" class="btn btn-secondary" onclick="cancelTransition('{{ component_id|default:'default' }}')">Cancel</button>
+netbox_hedgehog/templates/netbox_hedgehog/components/state_transition_workflow.html:    document.addEventListener('DOMContentLoaded', function() {
+netbox_hedgehog/templates/netbox_hedgehog/components/state_transition_workflow.html:            form.addEventListener('submit', function(e) {
+netbox_hedgehog/templates/netbox_hedgehog/components/state_transition_workflow.html:                 onclick="selectTransition('${componentId}', '${currentState}', '${transition.to}', '${transition.name}')">
+netbox_hedgehog/templates/netbox_hedgehog/components/fabric/action_buttons.html:document.addEventListener('DOMContentLoaded', function() {
+netbox_hedgehog/templates/netbox_hedgehog/components/fabric/action_buttons.html:    document.addEventListener('click', function(e) {
+netbox_hedgehog/templates/netbox_hedgehog/components/fabric/common_scripts.html:    document.addEventListener('DOMContentLoaded', function() {
+netbox_hedgehog/templates/netbox_hedgehog/components/fabric/common_scripts.html:        document.addEventListener('click', function(e) {
+netbox_hedgehog/templates/netbox_hedgehog/components/fabric/common_scripts.html:        document.addEventListener('click', function(e) {
+netbox_hedgehog/templates/netbox_hedgehog/components/gitops_edit_button.html:                                <button type="button" class="btn btn-outline-info" onclick="previewYAML('{{ cr_type }}', {{ object.pk }})">
+netbox_hedgehog/templates/netbox_hedgehog/components/gitops_edit_button.html:                                <button type="button" class="btn btn-outline-secondary" onclick="checkWorkflowStatus('{{ cr_type }}', {{ object.pk }})">
+netbox_hedgehog/templates/netbox_hedgehog/components/conflict_visualization.html:                    <button class="btn btn-primary" onclick="applyGitToCluster('{{ component_id|default:'default' }}')">
+netbox_hedgehog/templates/netbox_hedgehog/components/conflict_visualization.html:                    <button class="btn btn-warning" onclick="importClusterToGit('{{ component_id|default:'default' }}')">
+netbox_hedgehog/templates/netbox_hedgehog/components/conflict_visualization.html:                    <button class="btn btn-outline-secondary" onclick="ignoreConflict('{{ component_id|default:'default' }}')">
+netbox_hedgehog/templates/netbox_hedgehog/components/fabric_filter.html:                        <select name="fabric" class="form-select" onchange="this.form.submit()">
+netbox_hedgehog/templates/netbox_hedgehog/components/alert_queue_dashboard.html:                    <button class="btn btn-sm btn-outline-primary" onclick="refreshAlerts('{{ component_id|default:'default' }}')">
+netbox_hedgehog/templates/netbox_hedgehog/components/alert_queue_dashboard.html:                    <button class="btn btn-sm btn-outline-success" onclick="resolveAllSelected('{{ component_id|default:'default' }}')">
+netbox_hedgehog/templates/netbox_hedgehog/components/alert_queue_dashboard.html:    document.addEventListener('DOMContentLoaded', function() {
+netbox_hedgehog/templates/netbox_hedgehog/components/alert_queue_dashboard.html:                element.addEventListener('change', () => filterAlerts(componentId));
+netbox_hedgehog/templates/netbox_hedgehog/components/alert_queue_dashboard.html:                element.addEventListener('input', () => filterAlerts(componentId));
+netbox_hedgehog/templates/netbox_hedgehog/components/alert_queue_dashboard.html:                    <button class="btn btn-sm btn-outline-secondary" onclick="showAlertDetails(${alert.id})">
+netbox_hedgehog/templates/netbox_hedgehog/components/alert_queue_dashboard.html:                        <button class="btn btn-sm btn-outline-primary" onclick="resolveAlert(${alert.id}, '${action}')">
+netbox_hedgehog/templates/netbox_hedgehog/components/git_auth_component.html:                        <button class="btn btn-outline-secondary" type="button" onclick="togglePasswordVisibility('git-token-{{ component_id|default:'default' }}')">
+netbox_hedgehog/templates/netbox_hedgehog/components/git_auth_component.html:                            <a href="#" class="disclosure-toggle" onclick="toggleTokenHelp('{{ component_id|default:'default' }}')">
+netbox_hedgehog/templates/netbox_hedgehog/components/git_auth_component.html:                    <button type="button" class="btn btn-outline-info btn-sm" onclick="validateToken('{{ component_id|default:'default' }}')">
+netbox_hedgehog/templates/netbox_hedgehog/components/git_auth_component.html:                        <button class="btn btn-outline-secondary" type="button" onclick="togglePasswordVisibility('ssh-passphrase-{{ component_id|default:'default' }}')">
+netbox_hedgehog/templates/netbox_hedgehog/components/git_auth_component.html:                    <button type="button" class="btn btn-outline-info btn-sm" onclick="validateSSHKey('{{ component_id|default:'default' }}')">
+netbox_hedgehog/templates/netbox_hedgehog/components/git_auth_component.html:                        <a href="#" class="disclosure-toggle" onclick="toggleSSHHelp('{{ component_id|default:'default' }}')">
+netbox_hedgehog/templates/netbox_hedgehog/components/git_auth_component.html:                                    <button class="btn btn-outline-secondary btn-sm ms-2" onclick="copyToClipboard('ssh-keygen -t ed25519 -C \"your-email@example.com\"')">
+netbox_hedgehog/templates/netbox_hedgehog/components/git_auth_component.html:                        <button class="btn btn-outline-secondary" type="button" onclick="togglePasswordVisibility('git-password-{{ component_id|default:'default' }}')">
+netbox_hedgehog/templates/netbox_hedgehog/components/git_auth_component.html:                    <button type="button" class="btn btn-outline-info btn-sm" onclick="validateBasicAuth('{{ component_id|default:'default' }}')">
+netbox_hedgehog/templates/netbox_hedgehog/components/git_auth_component.html:                            <button type="button" class="btn btn-primary btn-sm" onclick="testGitConnection('{{ component_id|default:'default' }}')">
+netbox_hedgehog/templates/netbox_hedgehog/components/git_auth_component.html:    document.addEventListener('DOMContentLoaded', function() {
+netbox_hedgehog/templates/netbox_hedgehog/components/git_auth_component.html:            method.addEventListener('change', function() {
+netbox_hedgehog/templates/netbox_hedgehog/gitops_dashboard_integration.html:document.addEventListener('DOMContentLoaded', function() {
+netbox_hedgehog/templates/netbox_hedgehog/switch_detail.html:document.addEventListener('DOMContentLoaded', function() {
+netbox_hedgehog/templates/netbox_hedgehog/fabric_detail_standalone.html:                <a href="#" class="quick-action-btn" onclick="syncFromGit(); return false;">
+netbox_hedgehog/templates/netbox_hedgehog/fabric_detail_standalone.html:                    <button class="btn btn-primary" onclick="syncFromGit()">
+netbox_hedgehog/templates/netbox_hedgehog/fabric_overview.html:document.addEventListener('DOMContentLoaded', function() {
+netbox_hedgehog/templates/netbox_hedgehog/fabric_overview.html:            btn.addEventListener('click', function() {
+netbox_hedgehog/templates/netbox_hedgehog/fabric_overview.html:                console.log('🔄 Sync fabric clicked for fabric:', fabricId);
+netbox_hedgehog/templates/netbox_hedgehog/fabric_overview.html:            btn.addEventListener('click', function() {
+netbox_hedgehog/templates/netbox_hedgehog/fabric_overview.html:        btn.addEventListener('click', function() {
+netbox_hedgehog/templates/netbox_hedgehog/fabric_detail.html:                                            <button class="btn btn-sm btn-outline-primary" onclick="triggerGitSync()">
+netbox_hedgehog/templates/netbox_hedgehog/fabric_detail.html:                                            <button class="btn btn-sm btn-outline-success" onclick="showResourceStates()">
+netbox_hedgehog/templates/netbox_hedgehog/fabric_detail.html:                                            <button class="btn btn-sm btn-outline-warning" onclick="showDriftDetails()">
+netbox_hedgehog/templates/netbox_hedgehog/fabric_detail.html:        testBtn.addEventListener('click', function(e) {
+netbox_hedgehog/templates/netbox_hedgehog/fabric_detail.html:            console.log('🔍 Test Connection clicked for fabric:', fabricId);
+netbox_hedgehog/templates/netbox_hedgehog/fabric_detail.html:        syncBtn.addEventListener('click', function(e) {
+netbox_hedgehog/templates/netbox_hedgehog/fabric_detail.html:            console.log('🔄 Sync Now clicked for fabric:', fabricId);
+netbox_hedgehog/templates/netbox_hedgehog/fabric_detail.html:        gitSyncBtn.addEventListener('click', function(e) {
+netbox_hedgehog/templates/netbox_hedgehog/fabric_detail.html:            console.log('🔄 Git Sync clicked for fabric:', fabricId);
+netbox_hedgehog/templates/netbox_hedgehog/fabric_detail.html:        driftReportBtn.addEventListener('click', function(e) {
+netbox_hedgehog/templates/netbox_hedgehog/fabric_detail.html:            console.log('📊 Drift Report clicked for fabric:', fabricId);
+netbox_hedgehog/templates/netbox_hedgehog/fabric_detail.html:        gitStatusBtn.addEventListener('click', function(e) {
+netbox_hedgehog/templates/netbox_hedgehog/fabric_detail.html:            console.log('📈 Git Status clicked for fabric:', fabricId);
+netbox_hedgehog/templates/netbox_hedgehog/fabric_detail.html:                            <button type="button" class="btn btn-primary" onclick="location.reload()">Refresh Status</button>
+netbox_hedgehog/templates/netbox_hedgehog/fabric_detail.html:                        <button type="button" class="btn btn-primary" onclick="refreshGitOpsStatus()">Refresh Status</button>
+netbox_hedgehog/templates/netbox_hedgehog/fabric_detail.html:document.addEventListener('DOMContentLoaded', function() {
+netbox_hedgehog/templates/netbox_hedgehog/fabric_detail.html:                                                    <button class="btn btn-sm btn-outline-primary" onclick="viewResourceDrift('${item.name}')">
+netbox_hedgehog/templates/netbox_hedgehog/fabric_detail.html:                        <button type="button" class="btn btn-warning" onclick="exportDriftReport()">
+netbox_hedgehog/templates/netbox_hedgehog/fabric_detail.html:                        <button type="button" class="btn btn-primary" onclick="saveDriftSettings(${fabricId})">
+netbox_hedgehog/templates/netbox_hedgehog/fabric_detail.html:document.addEventListener('DOMContentLoaded', function() {
+netbox_hedgehog/templates/netbox_hedgehog/fabric_detail.html:    // Override existing onclick handlers with enhanced versions
+netbox_hedgehog/templates/netbox_hedgehog/fabric_detail.html:    const buttons = document.querySelectorAll('[onclick*="showDriftAnalysis"], [onclick*="syncFromGit"], [onclick*="configureDriftSettings"]');
+netbox_hedgehog/templates/netbox_hedgehog/fabric_detail.html:        button.removeAttribute('onclick');
+netbox_hedgehog/templates/netbox_hedgehog/fabric_detail.html:    window.addEventListener('error', function(event) {
+netbox_hedgehog/templates/netbox_hedgehog/vpc_detail.html:                                              onclick="toggleDisclosure(this, 'detailed')"
+netbox_hedgehog/templates/netbox_hedgehog/vpc_detail.html:                                                    onclick="toggleDisclosure(this, 'expert')"
+netbox_hedgehog/templates/netbox_hedgehog/vpc_detail.html:document.addEventListener('DOMContentLoaded', function() {
+netbox_hedgehog/templates/netbox_hedgehog/vpc_detail.html:            // Handle disclosure toggle clicks
+netbox_hedgehog/templates/netbox_hedgehog/vpc_detail.html:                element.addEventListener('click', (e) => {
+netbox_hedgehog/templates/netbox_hedgehog/vpc_detail.html:            // Handle expert toggle clicks
+netbox_hedgehog/templates/netbox_hedgehog/vpc_detail.html:                element.addEventListener('click', (e) => {
+netbox_hedgehog/templates/netbox_hedgehog/vpc_detail.html:            // Handle drift resolution button clicks
+netbox_hedgehog/templates/netbox_hedgehog/vpc_detail.html:                button.addEventListener('click', (e) => {
+netbox_hedgehog/templates/netbox_hedgehog/vpc_detail.html:// Global function for template onclick handlers

@@ -1,0 +1,269 @@
+netbox_hedgehog/static/netbox_hedgehog/css/fabric-print.css:  .alert .btn-close,
+netbox_hedgehog/static/netbox_hedgehog/js/gitops-dashboard.js.backup:        console.log('📊 Initializing GitOps Management Dashboard');
+netbox_hedgehog/static/netbox_hedgehog/js/gitops-dashboard.js.backup:                    renderFileList: (data) => console.warn('FileBrowserComponent not loaded'),
+netbox_hedgehog/static/netbox_hedgehog/js/gitops-dashboard.js.backup:                    renderDiff: (data) => console.warn('VisualDiffComponent not loaded'),
+netbox_hedgehog/static/netbox_hedgehog/js/gitops-dashboard.js.backup:                    updateStatus: (data) => console.warn('WorkflowStatusComponent not loaded'),
+netbox_hedgehog/static/netbox_hedgehog/js/gitops-dashboard.js.backup:                    handleUpdate: (type, data) => console.warn('RealtimeUpdatesComponent not loaded'),
+netbox_hedgehog/static/netbox_hedgehog/js/gitops-dashboard.js.backup:            console.log('✅ Dashboard components initialized');
+netbox_hedgehog/static/netbox_hedgehog/js/gitops-dashboard.js.backup:            console.error('❌ Error initializing components:', error);
+netbox_hedgehog/static/netbox_hedgehog/js/gitops-dashboard.js.backup:            console.log('📥 Loading initial dashboard data...');
+netbox_hedgehog/static/netbox_hedgehog/js/gitops-dashboard.js.backup:            console.log('✅ Initial data loaded successfully');
+netbox_hedgehog/static/netbox_hedgehog/js/gitops-dashboard.js.backup:            console.error('❌ Failed to load initial data:', error);
+netbox_hedgehog/static/netbox_hedgehog/js/gitops-dashboard.js.backup:            console.error('Failed to load overview stats:', error);
+netbox_hedgehog/static/netbox_hedgehog/js/gitops-dashboard.js.backup:            console.error('Failed to load fabrics list:', error);
+netbox_hedgehog/static/netbox_hedgehog/js/gitops-dashboard.js.backup:            'error': { class: 'bg-danger', icon: 'alert-circle', text: 'Error' },
+netbox_hedgehog/static/netbox_hedgehog/js/gitops-dashboard.js.backup:            console.error('Failed to load recent activity:', error);
+netbox_hedgehog/static/netbox_hedgehog/js/gitops-dashboard.js.backup:            'file_error': 'file-alert',
+netbox_hedgehog/static/netbox_hedgehog/js/gitops-dashboard.js.backup:            console.error('Failed to load system health:', error);
+netbox_hedgehog/static/netbox_hedgehog/js/gitops-dashboard.js.backup:            console.error('Failed to load storage stats:', error);
+netbox_hedgehog/static/netbox_hedgehog/js/gitops-dashboard.js.backup:            console.warn('Chart.js not loaded, skipping chart initialization');
+netbox_hedgehog/static/netbox_hedgehog/js/gitops-dashboard.js.backup:            console.error('Global sync failed:', error);
+netbox_hedgehog/static/netbox_hedgehog/js/gitops-dashboard.js.backup:            console.error('Process pending files failed:', error);
+netbox_hedgehog/static/netbox_hedgehog/js/gitops-dashboard.js.backup:            console.error('Health check failed:', error);
+netbox_hedgehog/static/netbox_hedgehog/js/gitops-dashboard.js.backup:        console.log('🔄 Refreshing dashboard...');
+netbox_hedgehog/static/netbox_hedgehog/js/gitops-dashboard.js.backup:        notification.className = `alert alert-${type} alert-dismissible fade show position-fixed`;
+netbox_hedgehog/static/netbox_hedgehog/js/gitops-dashboard.js.backup:            <i class="mdi mdi-${type === 'success' ? 'check-circle' : 'alert-circle'}"></i>
+netbox_hedgehog/static/netbox_hedgehog/js/gitops-dashboard.js.backup:            <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+netbox_hedgehog/static/netbox_hedgehog/js/gitops-dashboard.js.backup:            console.warn('Bootstrap Modal not available, showing simple alert');
+netbox_hedgehog/static/netbox_hedgehog/js/gitops-dashboard.js.backup:            alert(title + '\n\n' + content.replace(/<[^>]*>/g, ''));
+netbox_hedgehog/static/netbox_hedgehog/js/gitops-dashboard.js.backup:    console.log('👁️ Viewing fabric details:', fabricId);
+netbox_hedgehog/static/netbox_hedgehog/js/gitops-dashboard.js.backup:    console.log('🔄 Syncing fabric:', fabricId);
+netbox_hedgehog/static/netbox_hedgehog/js/gitops-dashboard.js.backup:        console.log(`Sync initiated for fabric ${fabricId}`);
+netbox_hedgehog/static/netbox_hedgehog/js/gitops-dashboard.js.backup:    console.log('⚙️ Managing fabric:', fabricId);
+netbox_hedgehog/static/netbox_hedgehog/js/gitops-dashboard.js.backup:        // Fallback to simple alert
+netbox_hedgehog/static/netbox_hedgehog/js/gitops-dashboard.js.backup:        alert('Fabric Management\n\n' + content);
+netbox_hedgehog/static/netbox_hedgehog/js/gitops-dashboard.js.backup:    console.log('🧹 Cleaning up archives...');
+netbox_hedgehog/static/netbox_hedgehog/js/gitops-dashboard.js.backup:        console.log('Archive cleanup initiated');
+netbox_hedgehog/static/netbox_hedgehog/js/gitops-dashboard.js.backup:    console.log('⚡ Optimizing storage...');
+netbox_hedgehog/static/netbox_hedgehog/js/gitops-dashboard.js.backup:        console.log('Storage optimization initiated');
+netbox_hedgehog/static/netbox_hedgehog/js/gitops-dashboard.js.backup:    console.log('🛡️ Validating integrity...');
+netbox_hedgehog/static/netbox_hedgehog/js/gitops-dashboard.js.backup:        console.log('Integrity validation initiated');
+netbox_hedgehog/static/netbox_hedgehog/js/gitops-dashboard.js.backup:        console.log('🛑 Emergency stop initiated...');
+netbox_hedgehog/static/netbox_hedgehog/js/gitops-dashboard.js.backup:            alert('Emergency stop activated - all processing halted');
+netbox_hedgehog/static/netbox_hedgehog/js/gitops-dashboard.js.backup:            console.error('Failed to load fabric data:', error);
+netbox_hedgehog/static/netbox_hedgehog/js/gitops-dashboard.js.backup:            console.error('File browser error:', error);
+netbox_hedgehog/static/netbox_hedgehog/js/gitops-dashboard.js.backup:            console.error('Workflow status error:', error);
+netbox_hedgehog/static/netbox_hedgehog/js/gitops-dashboard.js.backup:            console.error('Visual diff error:', error);
+netbox_hedgehog/static/netbox_hedgehog/js/gitops-dashboard.js.backup:                console.log('✅ WebSocket connected');
+netbox_hedgehog/static/netbox_hedgehog/js/gitops-dashboard.js.backup:                console.log('❌ WebSocket disconnected');
+netbox_hedgehog/static/netbox_hedgehog/js/gitops-dashboard.js.backup:                console.error('WebSocket error:', error);
+netbox_hedgehog/static/netbox_hedgehog/js/gitops-dashboard.js.backup:            console.error('WebSocket setup failed:', error);
+netbox_hedgehog/static/netbox_hedgehog/js/gitops-dashboard.js.backup:        toast.setAttribute('role', 'alert');
+netbox_hedgehog/static/netbox_hedgehog/js/gitops-dashboard.js.backup:                    <i class="mdi mdi-${type === 'error' ? 'alert-circle' : 'information'}"></i>
+netbox_hedgehog/static/netbox_hedgehog/js/gitops-dashboard.js.backup:                    <i class="mdi mdi-alert-circle" style="font-size: 3rem;"></i>
+netbox_hedgehog/static/netbox_hedgehog/js/progressive-disclosure.js:                icon: 'mdi-alert-circle',
+netbox_hedgehog/static/netbox_hedgehog/js/progressive-disclosure.js:        button.innerHTML = `<i class="mdi mdi-alert"></i> ${message}`;
+netbox_hedgehog/static/netbox_hedgehog/js/progressive-disclosure.js:            console.warn('Failed to update status:', error);
+netbox_hedgehog/static/netbox_hedgehog/js/sync-handler.js:        const alertClass = {
+netbox_hedgehog/static/netbox_hedgehog/js/sync-handler.js:            'success': 'alert-success',
+netbox_hedgehog/static/netbox_hedgehog/js/sync-handler.js:            'error': 'alert-danger',
+netbox_hedgehog/static/netbox_hedgehog/js/sync-handler.js:            'danger': 'alert-danger',
+netbox_hedgehog/static/netbox_hedgehog/js/sync-handler.js:            'warning': 'alert-warning',
+netbox_hedgehog/static/netbox_hedgehog/js/sync-handler.js:            'info': 'alert-info'
+netbox_hedgehog/static/netbox_hedgehog/js/sync-handler.js:        }[type] || 'alert-info';
+netbox_hedgehog/static/netbox_hedgehog/js/sync-handler.js:        notification.className = `alert ${alertClass} alert-dismissible fade show`;
+netbox_hedgehog/static/netbox_hedgehog/js/sync-handler.js:            <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+netbox_hedgehog/static/netbox_hedgehog/js/sync-handler.js:        console.log(`Sync attempt ${attempt} to: ${url}`);
+netbox_hedgehog/static/netbox_hedgehog/js/sync-handler.js:                console.log(`Retrying with fallback endpoint...`);
+netbox_hedgehog/static/netbox_hedgehog/js/sync-handler.js:            console.log('UnifiedSync.sync called:', { fabricId, button });
+netbox_hedgehog/static/netbox_hedgehog/js/sync-handler.js:                console.error('Sync error:', error);
+netbox_hedgehog/static/netbox_hedgehog/js/sync-handler.js:                    button.innerHTML = '<i class="mdi mdi-alert"></i> Sync Failed';
+netbox_hedgehog/static/netbox_hedgehog/js/sync-handler.js:        console.log('UnifiedSync initialized and ready');
+netbox_hedgehog/static/netbox_hedgehog/js/raw-directory-monitor.js:        console.log('📁 Initializing Raw Directory Monitor');
+netbox_hedgehog/static/netbox_hedgehog/js/raw-directory-monitor.js:            console.log('📥 Loading initial monitor data...');
+netbox_hedgehog/static/netbox_hedgehog/js/raw-directory-monitor.js:            console.log('✅ Initial monitor data loaded');
+netbox_hedgehog/static/netbox_hedgehog/js/raw-directory-monitor.js:            console.error('❌ Failed to load initial data:', error);
+netbox_hedgehog/static/netbox_hedgehog/js/raw-directory-monitor.js:            console.error('Failed to load status counts:', error);
+netbox_hedgehog/static/netbox_hedgehog/js/raw-directory-monitor.js:            console.error('Failed to load files list:', error);
+netbox_hedgehog/static/netbox_hedgehog/js/raw-directory-monitor.js:            'error': { class: 'bg-danger', icon: 'alert-circle', text: 'Error' },
+netbox_hedgehog/static/netbox_hedgehog/js/raw-directory-monitor.js:            console.error('Failed to load processing queue:', error);
+netbox_hedgehog/static/netbox_hedgehog/js/raw-directory-monitor.js:            console.error('Failed to load fabrics:', error);
+netbox_hedgehog/static/netbox_hedgehog/js/raw-directory-monitor.js:            console.error('Process all files failed:', error);
+netbox_hedgehog/static/netbox_hedgehog/js/raw-directory-monitor.js:            console.error('Process file failed:', error);
+netbox_hedgehog/static/netbox_hedgehog/js/raw-directory-monitor.js:            console.error('Delete file failed:', error);
+netbox_hedgehog/static/netbox_hedgehog/js/raw-directory-monitor.js:        console.log('👁️ Viewing file details:', fileId);
+netbox_hedgehog/static/netbox_hedgehog/js/raw-directory-monitor.js:            console.error('Failed to load file details:', error);
+netbox_hedgehog/static/netbox_hedgehog/js/raw-directory-monitor.js:            console.error('File upload failed:', error);
+netbox_hedgehog/static/netbox_hedgehog/js/raw-directory-monitor.js:        console.log('🔄 Refreshing raw directory monitor...');
+netbox_hedgehog/static/netbox_hedgehog/js/raw-directory-monitor.js:            console.error('Failed to refresh monitor:', error);
+netbox_hedgehog/static/netbox_hedgehog/js/raw-directory-monitor.js:        notification.className = `alert alert-${type} alert-dismissible fade show position-fixed`;
+netbox_hedgehog/static/netbox_hedgehog/js/raw-directory-monitor.js:            <i class="mdi mdi-${type === 'success' ? 'check-circle' : 'alert-circle'}"></i>
+netbox_hedgehog/static/netbox_hedgehog/js/raw-directory-monitor.js:            <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+netbox_hedgehog/static/netbox_hedgehog/js/raw-directory-monitor.js:        console.log('🔄 Bulk processing files:', monitor.selectedFiles);
+netbox_hedgehog/static/netbox_hedgehog/js/raw-directory-monitor.js:    console.log('⭐ Prioritizing files:', monitor.selectedFiles);
+netbox_hedgehog/static/netbox_hedgehog/js/raw-directory-monitor.js:        console.log('🗑️ Bulk deleting files:', monitor.selectedFiles);
+netbox_hedgehog/static/netbox_hedgehog/js/raw-directory-monitor.js:    console.log('🌟 Raw Directory Monitor DOM loaded');
+netbox_hedgehog/static/netbox_hedgehog/js/error-handler.js:        console.warn('🛡️ Error caught by global handler:', {
+netbox_hedgehog/static/netbox_hedgehog/js/error-handler.js:        console.warn('🛡️ Unhandled promise rejection:', event.reason);
+netbox_hedgehog/static/netbox_hedgehog/js/error-handler.js:                console.warn(`Function ${funcName} not found, skipping call`);
+netbox_hedgehog/static/netbox_hedgehog/js/error-handler.js:            console.warn(`Error calling ${funcName}:`, error);
+netbox_hedgehog/static/netbox_hedgehog/js/error-handler.js:            console.warn(`Error accessing ${path}:`, error);
+netbox_hedgehog/static/netbox_hedgehog/js/error-handler.js:            const alertClass = type === 'error' ? 'danger' : type;
+netbox_hedgehog/static/netbox_hedgehog/js/error-handler.js:            notification.className = `alert alert-${alertClass} alert-dismissible fade show position-fixed`;
+netbox_hedgehog/static/netbox_hedgehog/js/error-handler.js:                warning: 'alert-circle',
+netbox_hedgehog/static/netbox_hedgehog/js/error-handler.js:                danger: 'alert-circle',
+netbox_hedgehog/static/netbox_hedgehog/js/error-handler.js:                <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+netbox_hedgehog/static/netbox_hedgehog/js/error-handler.js:                // Fallback to alert
+netbox_hedgehog/static/netbox_hedgehog/js/error-handler.js:                alert((title || 'Modal') + '\n\n' + cleanContent);
+netbox_hedgehog/static/netbox_hedgehog/js/error-handler.js:                    console.warn('Error in ready callback:', error);
+netbox_hedgehog/static/netbox_hedgehog/js/error-handler.js:                console.warn('Error in immediate callback:', error);
+netbox_hedgehog/static/netbox_hedgehog/js/error-handler.js:                console.warn('Fetch error for', url, ':', error.message);
+netbox_hedgehog/static/netbox_hedgehog/js/error-handler.js:            console.warn('Chart.js not loaded, chart creation skipped');
+netbox_hedgehog/static/netbox_hedgehog/js/error-handler.js:                        console.warn('Bootstrap Modal not loaded, using fallback');
+netbox_hedgehog/static/netbox_hedgehog/js/error-handler.js:                console.warn(`Function ${funcName} called but not defined, args:`, args);
+netbox_hedgehog/static/netbox_hedgehog/js/error-handler.js:                        alert(`${funcName} not implemented yet`);
+netbox_hedgehog/static/netbox_hedgehog/js/error-handler.js:    console.log('🛡️ Error handler initialized - JavaScript errors should be prevented');
+netbox_hedgehog/static/netbox_hedgehog/js/emergency-sync-fix.js:console.log('🔧 Emergency Sync Fix Loading...');
+netbox_hedgehog/static/netbox_hedgehog/js/emergency-sync-fix.js:    console.log('🔧 Emergency sync fix triggered for fabric:', fabricId);
+netbox_hedgehog/static/netbox_hedgehog/js/emergency-sync-fix.js:    console.log('🔧 Emergency fix making request to:', url);
+netbox_hedgehog/static/netbox_hedgehog/js/emergency-sync-fix.js:        console.log('🔧 Emergency fix response status:', response.status);
+netbox_hedgehog/static/netbox_hedgehog/js/emergency-sync-fix.js:        console.log('🔧 Emergency fix response (first 100 chars):', text.substring(0, 100));
+netbox_hedgehog/static/netbox_hedgehog/js/emergency-sync-fix.js:        console.log('🔧 Emergency fix parsed data:', data);
+netbox_hedgehog/static/netbox_hedgehog/js/emergency-sync-fix.js:                alert('✅ Sync Success: ' + message);
+netbox_hedgehog/static/netbox_hedgehog/js/emergency-sync-fix.js:                console.log('🔧 Emergency fix: Reloading page...');
+netbox_hedgehog/static/netbox_hedgehog/js/emergency-sync-fix.js:        console.error('🔧 Emergency fix error:', error);
+netbox_hedgehog/static/netbox_hedgehog/js/emergency-sync-fix.js:            alert(errorMsg);
+netbox_hedgehog/static/netbox_hedgehog/js/emergency-sync-fix.js:        console.log('🔧 syncFabric called, redirecting to triggerGitSync');
+netbox_hedgehog/static/netbox_hedgehog/js/emergency-sync-fix.js:        console.log('🔧 UnifiedSync.sync called, redirecting to emergency fix');
+netbox_hedgehog/static/netbox_hedgehog/js/emergency-sync-fix.js:    console.log('🔧 Emergency fix: Setting up button handlers...');
+netbox_hedgehog/static/netbox_hedgehog/js/emergency-sync-fix.js:        console.log(`🔧 Emergency fix: Overriding button ${index + 1}:`, button);
+netbox_hedgehog/static/netbox_hedgehog/js/emergency-sync-fix.js:    console.log(`🔧 Emergency fix: Overrode ${syncButtons.length} sync buttons`);
+netbox_hedgehog/static/netbox_hedgehog/js/emergency-sync-fix.js:console.log('🔧 Emergency Sync Fix Loaded Successfully');
+netbox_hedgehog/static/netbox_hedgehog/js/fabric-detail-enhanced.js:                    icon: 'mdi-alert-circle',
+netbox_hedgehog/static/netbox_hedgehog/js/fabric-detail-enhanced.js:            notification.className = `alert alert-${type} enhanced-notification`;
+netbox_hedgehog/static/netbox_hedgehog/js/fabric-detail-enhanced.js:                error: 'mdi-alert-circle',
+netbox_hedgehog/static/netbox_hedgehog/js/fabric-detail-enhanced.js:                warning: 'mdi-alert',
+netbox_hedgehog/static/netbox_hedgehog/js/fabric-detail-enhanced.js:                console.error('API Request failed:', error);
+netbox_hedgehog/static/netbox_hedgehog/js/fabric-detail-enhanced.js:            console.log('✅ Enhanced interactive elements initialized');
+netbox_hedgehog/static/netbox_hedgehog/js/fabric-detail-enhanced.js:                    <div class="alert alert-info">
+netbox_hedgehog/static/netbox_hedgehog/js/fabric-detail-enhanced.js:                    element.innerHTML = `<i class="mdi mdi-alert-circle"></i> ${result.drift_count} Drift(s)`;
+netbox_hedgehog/static/netbox_hedgehog/js/hedgehog.js:        debug: false
+netbox_hedgehog/static/netbox_hedgehog/js/hedgehog.js:            const alertClass = `alert-${type}`;
+netbox_hedgehog/static/netbox_hedgehog/js/hedgehog.js:                warning: 'alert-circle',
+netbox_hedgehog/static/netbox_hedgehog/js/hedgehog.js:                danger: 'alert-circle',
+netbox_hedgehog/static/netbox_hedgehog/js/hedgehog.js:            const alert = document.createElement('div');
+netbox_hedgehog/static/netbox_hedgehog/js/hedgehog.js:            alert.className = `alert ${alertClass} alert-dismissible fade show`;
+netbox_hedgehog/static/netbox_hedgehog/js/hedgehog.js:            alert.innerHTML = `
+netbox_hedgehog/static/netbox_hedgehog/js/hedgehog.js:                <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+netbox_hedgehog/static/netbox_hedgehog/js/hedgehog.js:            container.insertBefore(alert, container.firstChild);
+netbox_hedgehog/static/netbox_hedgehog/js/hedgehog.js:                if (alert.parentNode) {
+netbox_hedgehog/static/netbox_hedgehog/js/hedgehog.js:                    alert.remove();
+netbox_hedgehog/static/netbox_hedgehog/js/hedgehog.js:                console.error('Status refresh failed:', error);
+netbox_hedgehog/static/netbox_hedgehog/js/hedgehog.js:            console.log('Hedgehog.fabric.testConnection called:', fabricId);
+netbox_hedgehog/static/netbox_hedgehog/js/hedgehog.js:            console.log('Making API request to test connection...');
+netbox_hedgehog/static/netbox_hedgehog/js/hedgehog.js:            console.log('Hedgehog.fabric.sync called:', fabricId);
+netbox_hedgehog/static/netbox_hedgehog/js/hedgehog.js:            console.log('Making API request to sync fabric...');
+netbox_hedgehog/static/netbox_hedgehog/js/hedgehog.js:        if (Hedgehog.config.debug) {
+netbox_hedgehog/static/netbox_hedgehog/js/hedgehog.js:            console.log('Hedgehog plugin initialized');
+netbox_hedgehog/static/netbox_hedgehog/js/hedgehog.js:    console.log('🚀 syncFabric called with fabricId:', fabricId);
+netbox_hedgehog/static/netbox_hedgehog/js/hedgehog.js:    console.log('Button element:', button);
+netbox_hedgehog/static/netbox_hedgehog/js/hedgehog.js:        console.log('✅ Calling Hedgehog.fabric.sync...');
+netbox_hedgehog/static/netbox_hedgehog/js/hedgehog.js:        console.error('❌ Hedgehog.fabric.sync not available');
+netbox_hedgehog/static/netbox_hedgehog/js/hedgehog.js:        alert('Sync functionality not loaded. Please refresh the page.');
+netbox_hedgehog/static/netbox_hedgehog/js/hedgehog.js:    console.log('🔍 testConnection called with fabricId:', fabricId);
+netbox_hedgehog/static/netbox_hedgehog/js/hedgehog.js:    console.log('Button element:', button);
+netbox_hedgehog/static/netbox_hedgehog/js/hedgehog.js:        console.log('✅ Calling Hedgehog.fabric.testConnection...');
+netbox_hedgehog/static/netbox_hedgehog/js/hedgehog.js:        console.error('❌ Hedgehog.fabric.testConnection not available');
+netbox_hedgehog/static/netbox_hedgehog/js/hedgehog.js:        alert('Test connection functionality not loaded. Please refresh the page.');
+netbox_hedgehog/static/netbox_hedgehog/js/responsive-enhancements.js:            console.log('Left swipe detected - implement additional mobile features');
+netbox_hedgehog/static/netbox_hedgehog/js/responsive-enhancements.js:    // Make ResponsiveEnhancer globally available for debugging
+netbox_hedgehog/static/netbox_hedgehog/js/gitops-onboarding.js:        console.log('🚀 Initializing GitOps Onboarding Wizard');
+netbox_hedgehog/static/netbox_hedgehog/js/gitops-onboarding.js:            console.error('Failed to load fabrics:', error);
+netbox_hedgehog/static/netbox_hedgehog/js/gitops-onboarding.js:        console.log('📋 Processing Step 1 - Configuration collected:', this.processData);
+netbox_hedgehog/static/netbox_hedgehog/js/gitops-onboarding.js:        console.log('🔍 Starting file detection...');
+netbox_hedgehog/static/netbox_hedgehog/js/gitops-onboarding.js:            console.error('File detection failed:', error);
+netbox_hedgehog/static/netbox_hedgehog/js/gitops-onboarding.js:        console.log('📁 Processing Step 2 - Files detected:', this.processData.detectedFiles?.length || 0);
+netbox_hedgehog/static/netbox_hedgehog/js/gitops-onboarding.js:        console.log('🔧 Processing Step 3 - Strategy selected:', this.selectedStrategy);
+netbox_hedgehog/static/netbox_hedgehog/js/gitops-onboarding.js:        console.log('⚙️ Starting GitOps setup processing...');
+netbox_hedgehog/static/netbox_hedgehog/js/gitops-onboarding.js:            console.error('Processing failed:', error);
+netbox_hedgehog/static/netbox_hedgehog/js/gitops-onboarding.js:        console.log('✅ Processing Step 4 - Setup completed');
+netbox_hedgehog/static/netbox_hedgehog/js/gitops-onboarding.js:        notification.className = 'alert alert-danger alert-dismissible fade show position-fixed';
+netbox_hedgehog/static/netbox_hedgehog/js/gitops-onboarding.js:            <i class="mdi mdi-alert-circle"></i>
+netbox_hedgehog/static/netbox_hedgehog/js/gitops-onboarding.js:            <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+netbox_hedgehog/static/netbox_hedgehog/js/gitops-onboarding.js:    console.log('📄 Opening file preview modal...');
+netbox_hedgehog/static/netbox_hedgehog/js/gitops-onboarding.js:    alert('File preview functionality would be implemented here');
+netbox_hedgehog/static/netbox_hedgehog/js/gitops-onboarding.js:    console.log('👁️ Previewing file:', filePath);
+netbox_hedgehog/static/netbox_hedgehog/js/gitops-onboarding.js:    alert(`Preview file: ${filePath}`);
+netbox_hedgehog/static/netbox_hedgehog/js/gitops-onboarding.js:    console.log('🔄 Retrying operation...');
+netbox_hedgehog/static/netbox_hedgehog/js/gitops-onboarding.js:    console.log('🔄 Retrying processing...');
+netbox_hedgehog/static/netbox_hedgehog/js/gitops-onboarding.js:    console.log('⏭️ Skipping step...');
+netbox_hedgehog/static/netbox_hedgehog/js/gitops-onboarding.js:    console.log('🌟 GitOps Onboarding Wizard DOM loaded');
+netbox_hedgehog/static/netbox_hedgehog/js/archive-browser.js:        console.log('📁 Initializing Archive Browser');
+netbox_hedgehog/static/netbox_hedgehog/js/archive-browser.js:            console.log('📥 Loading initial archive data...');
+netbox_hedgehog/static/netbox_hedgehog/js/archive-browser.js:            console.log('✅ Initial archive data loaded');
+netbox_hedgehog/static/netbox_hedgehog/js/archive-browser.js:            console.error('❌ Failed to load initial data:', error);
+netbox_hedgehog/static/netbox_hedgehog/js/archive-browser.js:            console.error('Failed to load archive stats:', error);
+netbox_hedgehog/static/netbox_hedgehog/js/archive-browser.js:            console.error('Failed to load archives list:', error);
+netbox_hedgehog/static/netbox_hedgehog/js/archive-browser.js:            console.error('Failed to load fabrics:', error);
+netbox_hedgehog/static/netbox_hedgehog/js/archive-browser.js:            console.error('Failed to load storage info:', error);
+netbox_hedgehog/static/netbox_hedgehog/js/archive-browser.js:        console.log('🔍 Applying filters:', this.filters);
+netbox_hedgehog/static/netbox_hedgehog/js/archive-browser.js:            console.error('Failed to preview archive:', error);
+netbox_hedgehog/static/netbox_hedgehog/js/archive-browser.js:            console.error('Failed to load restore details:', error);
+netbox_hedgehog/static/netbox_hedgehog/js/archive-browser.js:            console.error('Restore failed:', error);
+netbox_hedgehog/static/netbox_hedgehog/js/archive-browser.js:            console.error('Download failed:', error);
+netbox_hedgehog/static/netbox_hedgehog/js/archive-browser.js:        console.log('📤 Exporting archives:', type);
+netbox_hedgehog/static/netbox_hedgehog/js/archive-browser.js:            console.error('Export failed:', error);
+netbox_hedgehog/static/netbox_hedgehog/js/archive-browser.js:            console.error('Storage optimization failed:', error);
+netbox_hedgehog/static/netbox_hedgehog/js/archive-browser.js:            console.error('Archive cleanup failed:', error);
+netbox_hedgehog/static/netbox_hedgehog/js/archive-browser.js:        console.log('🔄 Refreshing archives...');
+netbox_hedgehog/static/netbox_hedgehog/js/archive-browser.js:        notification.className = `alert alert-${type} alert-dismissible fade show position-fixed`;
+netbox_hedgehog/static/netbox_hedgehog/js/archive-browser.js:            <i class="mdi mdi-${type === 'success' ? 'check-circle' : 'alert-circle'}"></i>
+netbox_hedgehog/static/netbox_hedgehog/js/archive-browser.js:            <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+netbox_hedgehog/static/netbox_hedgehog/js/archive-browser.js:    console.log('🔧 Formatting content as:', format);
+netbox_hedgehog/static/netbox_hedgehog/js/archive-browser.js:    console.log('📥 Download archive from modal');
+netbox_hedgehog/static/netbox_hedgehog/js/archive-browser.js:    console.log('🔄 Restore archive from modal');
+netbox_hedgehog/static/netbox_hedgehog/js/archive-browser.js:        console.log('🔄 Bulk restoring archives:', archiveBrowser.selectedArchives);
+netbox_hedgehog/static/netbox_hedgehog/js/archive-browser.js:    console.log('📥 Bulk downloading archives:', archiveBrowser.selectedArchives);
+netbox_hedgehog/static/netbox_hedgehog/js/archive-browser.js:        console.log('🗑️ Bulk deleting archives:', archiveBrowser.selectedArchives);
+netbox_hedgehog/static/netbox_hedgehog/js/archive-browser.js:    console.log('🌟 Archive Browser DOM loaded');
+netbox_hedgehog/static/netbox_hedgehog/js/websocket-client.js:            debug: false,
+netbox_hedgehog/static/netbox_hedgehog/js/websocket-client.js:        if (this.options.debug) {
+netbox_hedgehog/static/netbox_hedgehog/js/websocket-client.js:            console.log(`[HedgehogWS:${this.fabricId}] ${message}`, data);
+netbox_hedgehog/static/netbox_hedgehog/js/websocket-client.js:            debug: false,
+netbox_hedgehog/static/netbox_hedgehog/js/websocket-client.js:        if (this.options.debug) {
+netbox_hedgehog/static/netbox_hedgehog/js/websocket-client.js:            console.log(`[HedgehogSystemWS] ${message}`, data);
+netbox_hedgehog/static/netbox_hedgehog/js/websocket-client.js:            debug: false,
+netbox_hedgehog/static/netbox_hedgehog/js/websocket-client.js:                    console.error('Global handler error:', error);
+netbox_hedgehog/static/netbox_hedgehog/js/gitops-dashboard.js:                renderFileList: (data) => console.warn('FileBrowserComponent not loaded'),
+netbox_hedgehog/static/netbox_hedgehog/js/gitops-dashboard.js:                renderDiff: (data) => console.warn('VisualDiffComponent not loaded'),
+netbox_hedgehog/static/netbox_hedgehog/js/gitops-dashboard.js:                updateStatus: (data) => console.warn('WorkflowStatusComponent not loaded'),
+netbox_hedgehog/static/netbox_hedgehog/js/gitops-dashboard.js:                handleUpdate: (type, data) => console.warn('RealtimeUpdatesComponent not loaded'),
+netbox_hedgehog/static/netbox_hedgehog/js/gitops-dashboard.js:        console.log('📊 Initializing GitOps Management Dashboard');
+netbox_hedgehog/static/netbox_hedgehog/js/gitops-dashboard.js:            console.error('❌ Error initializing dashboard:', error);
+netbox_hedgehog/static/netbox_hedgehog/js/gitops-dashboard.js:            console.log('✅ Dashboard components initialized with safe fallbacks');
+netbox_hedgehog/static/netbox_hedgehog/js/gitops-dashboard.js:            console.error('❌ Error initializing components:', error);
+netbox_hedgehog/static/netbox_hedgehog/js/gitops-dashboard.js:            console.log('✅ Event listeners initialized');
+netbox_hedgehog/static/netbox_hedgehog/js/gitops-dashboard.js:            console.error('❌ Error initializing event listeners:', error);
+netbox_hedgehog/static/netbox_hedgehog/js/gitops-dashboard.js:            console.warn(`Failed to attach listener for ${id}:`, error);
+netbox_hedgehog/static/netbox_hedgehog/js/gitops-dashboard.js:            console.log('📥 Loading initial dashboard data...');
+netbox_hedgehog/static/netbox_hedgehog/js/gitops-dashboard.js:            console.log('✅ Initial data loaded successfully');
+netbox_hedgehog/static/netbox_hedgehog/js/gitops-dashboard.js:            console.error('❌ Failed to load initial data:', error);
+netbox_hedgehog/static/netbox_hedgehog/js/gitops-dashboard.js:        const alertClass = type === 'error' ? 'danger' : type;
+netbox_hedgehog/static/netbox_hedgehog/js/gitops-dashboard.js:        notification.className = `alert alert-${alertClass} alert-dismissible fade show position-fixed`;
+netbox_hedgehog/static/netbox_hedgehog/js/gitops-dashboard.js:            warning: 'alert-circle',
+netbox_hedgehog/static/netbox_hedgehog/js/gitops-dashboard.js:            danger: 'alert-circle',
+netbox_hedgehog/static/netbox_hedgehog/js/gitops-dashboard.js:            <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+netbox_hedgehog/static/netbox_hedgehog/js/gitops-dashboard.js:            // Fallback to alert
+netbox_hedgehog/static/netbox_hedgehog/js/gitops-dashboard.js:            alert((title || 'Modal') + '\n\n' + cleanContent);
+netbox_hedgehog/static/netbox_hedgehog/js/gitops-dashboard.js:        console.log('🔄 Refreshing dashboard...');
+netbox_hedgehog/static/netbox_hedgehog/js/gitops-dashboard.js:            console.error('❌ Failed to refresh dashboard:', error);
+netbox_hedgehog/static/netbox_hedgehog/js/gitops-dashboard.js:        console.log('🔌 WebSocket setup (placeholder)');
+netbox_hedgehog/static/netbox_hedgehog/js/gitops-dashboard.js:        console.log('🔗 Connection status:', status);
+netbox_hedgehog/static/netbox_hedgehog/js/gitops-dashboard.js:        console.log('📊 Fabric changed:', fabricId);
+netbox_hedgehog/static/netbox_hedgehog/js/gitops-dashboard.js:        console.log('📥 Loading fabric data for:', this.fabricId);
+netbox_hedgehog/static/netbox_hedgehog/js/gitops-dashboard.js:    console.log('👁️ Viewing fabric details:', fabricId);
+netbox_hedgehog/static/netbox_hedgehog/js/gitops-dashboard.js:    console.log('🔄 Syncing fabric:', fabricId);
+netbox_hedgehog/static/netbox_hedgehog/js/gitops-dashboard.js:        console.log(`Sync initiated for fabric ${fabricId}`);
+netbox_hedgehog/static/netbox_hedgehog/js/gitops-dashboard.js:    console.log('⚙️ Managing fabric:', fabricId);
+netbox_hedgehog/static/netbox_hedgehog/js/gitops-dashboard.js:        // Fallback to simple alert
+netbox_hedgehog/static/netbox_hedgehog/js/gitops-dashboard.js:        alert('Fabric Management\n\n' + content);
+netbox_hedgehog/static/netbox_hedgehog/js/gitops-dashboard.js:    console.log('🧹 Cleaning up archives...');
+netbox_hedgehog/static/netbox_hedgehog/js/gitops-dashboard.js:        console.log('Archive cleanup initiated');
+netbox_hedgehog/static/netbox_hedgehog/js/gitops-dashboard.js:    console.log('⚡ Optimizing storage...');
+netbox_hedgehog/static/netbox_hedgehog/js/gitops-dashboard.js:        console.log('Storage optimization initiated');
+netbox_hedgehog/static/netbox_hedgehog/js/gitops-dashboard.js:    console.log('🛡️ Validating integrity...');
+netbox_hedgehog/static/netbox_hedgehog/js/gitops-dashboard.js:        console.log('Integrity validation initiated');
+netbox_hedgehog/static/netbox_hedgehog/js/gitops-dashboard.js:        console.log('🛑 Emergency stop initiated...');
+netbox_hedgehog/static/netbox_hedgehog/js/gitops-dashboard.js:            alert('Emergency stop activated - all processing halted');
+netbox_hedgehog/static/netbox_hedgehog/js/gitops-dashboard.js:        console.log('✅ GitOps Dashboard initialized');
+netbox_hedgehog/static/netbox_hedgehog/js/gitops-dashboard.js:        console.warn('⚠️ GitOpsDashboard class not found');

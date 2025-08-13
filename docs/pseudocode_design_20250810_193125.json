@@ -1,0 +1,414 @@
+{
+  "timestamp": "2025-08-10T19:31:25Z",
+  "issue": "Issue #40: Fabric Sync Status Contradictions",
+  "phase": "SPARC Pseudocode Design",
+  "evidence_analyzed": {
+    "critical_findings": [
+      "Templates reference missing calculated_sync_status properties causing AttributeError",
+      "Raw sync_status field shows 'synced' despite empty kubernetes_server and 401 errors",
+      "24-hour sync gap contradicts 60-second sync_interval"
+    ],
+    "data_evidence": {
+      "fabric_id": 35,
+      "raw_sync_status": "synced",
+      "kubernetes_server": "",
+      "connection_error": "401 Unauthorized",
+      "sync_enabled": true,
+      "sync_interval": 60,
+      "last_sync": "2025-08-09 06:40:52.767057+00:00",
+      "time_gap_hours": 24
+    }
+  },
+  "pseudocode_algorithms": {
+    "algorithm_1": {
+      "name": "calculated_sync_status Property",
+      "purpose": "Determine actual sync status based on configuration and timing",
+      "complexity": {
+        "time": "O(1)",
+        "space": "O(1)"
+      },
+      "pseudocode": [
+        "ALGORITHM: calculated_sync_status",
+        "INPUT: self (HedgehogFabric instance)",
+        "OUTPUT: status_string (valid sync status)",
+        "",
+        "BEGIN",
+        "    // CRITICAL FIX: Validate Kubernetes configuration",
+        "    IF kubernetes_server is empty OR kubernetes_server.strip() == \"\" THEN",
+        "        RETURN 'not_configured'",
+        "    END IF",
+        "    ",
+        "    // CRITICAL FIX: Check if sync is disabled",
+        "    IF sync_enabled == false THEN",
+        "        RETURN 'disabled'",
+        "    END IF",
+        "    ",
+        "    // Check if never synced",
+        "    IF last_sync is null THEN",
+        "        RETURN 'never_synced'",
+        "    END IF",
+        "    ",
+        "    // Import timezone utilities",
+        "    current_time ← get_current_timezone_aware_time()",
+        "    time_since_sync ← current_time - last_sync",
+        "    sync_age_seconds ← time_since_sync.total_seconds()",
+        "    ",
+        "    // CRITICAL FIX: Check for sync errors",
+        "    IF sync_error is not empty AND sync_error.strip() != \"\" THEN",
+        "        RETURN 'error'",
+        "    END IF",
+        "    ",
+        "    // CRITICAL FIX: Check for connection errors",
+        "    IF connection_error is not empty AND connection_error.strip() != \"\" THEN",
+        "        RETURN 'error'",
+        "    END IF",
+        "    ",
+        "    // Calculate sync staleness based on interval",
+        "    IF sync_interval > 0 THEN",
+        "        max_acceptable_age ← sync_interval * 2  // 2x grace period",
+        "        ",
+        "        IF sync_age_seconds > max_acceptable_age THEN",
+        "            RETURN 'out_of_sync'",
+        "        ELSE IF sync_age_seconds <= sync_interval THEN",
+        "            RETURN 'in_sync'",
+        "        ELSE",
+        "            RETURN 'stale'  // Between 1x and 2x interval",
+        "        END IF",
+        "    END IF",
+        "    ",
+        "    // Fallback for interval = 0 (manual sync only)",
+        "    one_hour_seconds ← 3600",
+        "    IF sync_age_seconds <= one_hour_seconds THEN",
+        "        RETURN 'in_sync'",
+        "    ELSE",
+        "        RETURN 'out_of_sync'",
+        "    END IF",
+        "END"
+      ],
+      "edge_cases": [
+        "Empty kubernetes_server string vs null",
+        "Sync interval of 0 (manual sync mode)",
+        "Very old last_sync timestamp",
+        "Timezone aware vs naive datetime comparisons",
+        "Race conditions during sync operations"
+      ]
+    },
+    "algorithm_2": {
+      "name": "calculated_sync_status_display Property",
+      "purpose": "Provide user-friendly display text for sync status",
+      "complexity": {
+        "time": "O(1)",
+        "space": "O(1)"
+      },
+      "pseudocode": [
+        "ALGORITHM: calculated_sync_status_display",
+        "INPUT: self (HedgehogFabric instance)",
+        "OUTPUT: display_string (human-readable status)",
+        "",
+        "BEGIN",
+        "    // Get actual calculated status",
+        "    actual_status ← self.calculated_sync_status",
+        "    ",
+        "    // Define status display mapping",
+        "    status_display_map ← {",
+        "        'not_configured': 'Not Configured',",
+        "        'disabled': 'Sync Disabled',",
+        "        'never_synced': 'Never Synced',",
+        "        'in_sync': 'In Sync',",
+        "        'stale': 'Sync Stale',",
+        "        'out_of_sync': 'Out of Sync',",
+        "        'error': 'Sync Error',",
+        "        'syncing': 'Syncing...'",
+        "    }",
+        "    ",
+        "    // Return mapped display text with fallback",
+        "    display_text ← status_display_map.get(actual_status, 'Unknown Status')",
+        "    RETURN display_text",
+        "END"
+      ],
+      "validation_logic": [
+        "All possible calculated_sync_status values must have display mappings",
+        "Display text should be concise (2-3 words maximum)",
+        "Text should be immediately understandable to users",
+        "Consistent capitalization and formatting"
+      ]
+    },
+    "algorithm_3": {
+      "name": "calculated_sync_status_badge_class Property",
+      "purpose": "Provide Bootstrap CSS classes for visual status indication",
+      "complexity": {
+        "time": "O(1)",
+        "space": "O(1)"
+      },
+      "pseudocode": [
+        "ALGORITHM: calculated_sync_status_badge_class",
+        "INPUT: self (HedgehogFabric instance)",
+        "OUTPUT: css_class_string (Bootstrap badge classes)",
+        "",
+        "BEGIN",
+        "    // Get actual calculated status",
+        "    actual_status ← self.calculated_sync_status",
+        "    ",
+        "    // Define Bootstrap CSS class mapping",
+        "    badge_class_map ← {",
+        "        'not_configured': 'bg-secondary text-white',",
+        "        'disabled': 'bg-secondary text-white',",
+        "        'never_synced': 'bg-warning text-dark',",
+        "        'in_sync': 'bg-success text-white',",
+        "        'stale': 'bg-warning text-dark',",
+        "        'out_of_sync': 'bg-danger text-white',",
+        "        'error': 'bg-danger text-white',",
+        "        'syncing': 'bg-info text-white'",
+        "    }",
+        "    ",
+        "    // Return mapped CSS classes with fallback",
+        "    css_classes ← badge_class_map.get(actual_status, 'bg-secondary text-white')",
+        "    RETURN css_classes",
+        "END"
+      ],
+      "visual_design_rules": [
+        "Red (bg-danger) for error states requiring immediate attention",
+        "Green (bg-success) for healthy in-sync state", 
+        "Yellow (bg-warning) for concerning but not critical states",
+        "Gray (bg-secondary) for inactive/unconfigured states",
+        "Blue (bg-info) for transitional states",
+        "Ensure sufficient color contrast for accessibility"
+      ]
+    },
+    "algorithm_4": {
+      "name": "Validation Logic - Prevent Contradictory States",
+      "purpose": "Prevent sync_status from contradicting actual configuration",
+      "complexity": {
+        "time": "O(1)",
+        "space": "O(1)"
+      },
+      "pseudocode": [
+        "ALGORITHM: validate_sync_status_consistency",
+        "INPUT: self (HedgehogFabric instance)",
+        "OUTPUT: validation_result (success/error with details)",
+        "",
+        "BEGIN",
+        "    validation_errors ← []",
+        "    ",
+        "    // Rule 1: Cannot be 'synced' without kubernetes_server",
+        "    IF sync_status == 'synced' AND (kubernetes_server is empty OR kubernetes_server.strip() == \"\") THEN",
+        "        validation_errors.append('Cannot have sync_status=synced without kubernetes_server configured')",
+        "    END IF",
+        "    ",
+        "    // Rule 2: Cannot be 'synced' with connection errors",
+        "    IF sync_status == 'synced' AND connection_error is not empty AND connection_error.strip() != \"\" THEN",
+        "        validation_errors.append('Cannot have sync_status=synced with active connection_error')",
+        "    END IF",
+        "    ",
+        "    // Rule 3: Cannot be 'synced' with sync errors",
+        "    IF sync_status == 'synced' AND sync_error is not empty AND sync_error.strip() != \"\" THEN",
+        "        validation_errors.append('Cannot have sync_status=synced with active sync_error')",
+        "    END IF",
+        "    ",
+        "    // Rule 4: Cannot be 'synced' if sync is disabled",
+        "    IF sync_status == 'synced' AND sync_enabled == false THEN",
+        "        validation_errors.append('Cannot have sync_status=synced when sync_enabled=False')",
+        "    END IF",
+        "    ",
+        "    // Rule 5: Cannot be 'synced' without recent sync when interval is set",
+        "    IF sync_status == 'synced' AND sync_interval > 0 AND last_sync is not null THEN",
+        "        current_time ← get_current_timezone_aware_time()",
+        "        time_since_sync ← current_time - last_sync",
+        "        sync_age_seconds ← time_since_sync.total_seconds()",
+        "        ",
+        "        IF sync_age_seconds > (sync_interval * 3) THEN  // 3x grace period for validation",
+        "            validation_errors.append('Cannot have sync_status=synced when last sync exceeds 3x sync_interval')",
+        "        END IF",
+        "    END IF",
+        "    ",
+        "    // Return validation result",
+        "    IF validation_errors is empty THEN",
+        "        RETURN {",
+        "            'valid': true,",
+        "            'message': 'Sync status is consistent with configuration'",
+        "        }",
+        "    ELSE",
+        "        RETURN {",
+        "            'valid': false,",
+        "            'errors': validation_errors,",
+        "            'suggested_status': self.calculated_sync_status",
+        "        }",
+        "    END IF",
+        "END"
+      ]
+    },
+    "algorithm_5": {
+      "name": "Auto-Correction Logic",
+      "purpose": "Automatically fix contradictory sync status during save operations",
+      "complexity": {
+        "time": "O(1)",
+        "space": "O(1)"
+      },
+      "pseudocode": [
+        "ALGORITHM: auto_correct_sync_status",
+        "INPUT: self (HedgehogFabric instance)",
+        "OUTPUT: correction_applied (boolean), old_status, new_status",
+        "",
+        "BEGIN",
+        "    // Store original status for logging",
+        "    original_status ← self.sync_status",
+        "    ",
+        "    // Get calculated (correct) status",
+        "    correct_status ← self.calculated_sync_status",
+        "    ",
+        "    // Check if correction is needed",
+        "    IF original_status != correct_status THEN",
+        "        // Apply correction",
+        "        self.sync_status ← correct_status",
+        "        ",
+        "        // Log the correction for audit trail",
+        "        log_message ← CREATE_LOG_MESSAGE(",
+        "            fabric_id=self.id,",
+        "            fabric_name=self.name,",
+        "            old_status=original_status,",
+        "            new_status=correct_status,",
+        "            reason='Auto-correction applied to resolve contradiction'",
+        "        )",
+        "        ",
+        "        WRITE_TO_LOG(log_message)",
+        "        ",
+        "        RETURN {",
+        "            'correction_applied': true,",
+        "            'old_status': original_status,",
+        "            'new_status': correct_status",
+        "        }",
+        "    ELSE",
+        "        RETURN {",
+        "            'correction_applied': false,",
+        "            'old_status': original_status,",
+        "            'new_status': original_status",
+        "        }",
+        "    END IF",
+        "END"
+      ]
+    }
+  },
+  "implementation_requirements": {
+    "property_implementations": [
+      {
+        "property": "calculated_sync_status",
+        "type": "@property",
+        "return_type": "str",
+        "dependencies": ["django.utils.timezone"],
+        "caching": false,
+        "notes": "Core logic property - must be real-time accurate"
+      },
+      {
+        "property": "calculated_sync_status_display", 
+        "type": "@property",
+        "return_type": "str",
+        "dependencies": ["calculated_sync_status"],
+        "caching": false,
+        "notes": "Display wrapper - calls calculated_sync_status"
+      },
+      {
+        "property": "calculated_sync_status_badge_class",
+        "type": "@property", 
+        "return_type": "str",
+        "dependencies": ["calculated_sync_status"],
+        "caching": false,
+        "notes": "CSS class wrapper - calls calculated_sync_status"
+      }
+    ],
+    "model_integration": {
+      "pre_save_hook": "Apply auto_correct_sync_status before save",
+      "validation_method": "Add validate_sync_status_consistency to model",
+      "admin_integration": "Update admin to show both raw and calculated status",
+      "template_updates": "Replace sync_status with calculated_sync_status in templates"
+    }
+  },
+  "test_cases": {
+    "edge_case_scenarios": [
+      {
+        "scenario": "Empty kubernetes_server with sync_status=synced",
+        "expected_calculated_status": "not_configured",
+        "test_data": {
+          "kubernetes_server": "",
+          "sync_status": "synced",
+          "sync_enabled": true,
+          "last_sync": "2025-08-09T06:40:52Z"
+        }
+      },
+      {
+        "scenario": "401 error with sync_status=synced",
+        "expected_calculated_status": "error",
+        "test_data": {
+          "kubernetes_server": "https://k8s.example.com",
+          "sync_status": "synced",
+          "connection_error": "401 Unauthorized",
+          "sync_enabled": true,
+          "last_sync": "2025-08-09T06:40:52Z"
+        }
+      },
+      {
+        "scenario": "24-hour gap with 60-second interval",
+        "expected_calculated_status": "out_of_sync",
+        "test_data": {
+          "kubernetes_server": "https://k8s.example.com",
+          "sync_status": "synced",
+          "sync_enabled": true,
+          "sync_interval": 60,
+          "last_sync": "2025-08-09T06:40:52Z",
+          "current_time": "2025-08-10T19:31:25Z"
+        }
+      },
+      {
+        "scenario": "Sync disabled with sync_status=synced",
+        "expected_calculated_status": "disabled",
+        "test_data": {
+          "kubernetes_server": "https://k8s.example.com",
+          "sync_status": "synced",
+          "sync_enabled": false,
+          "last_sync": "2025-08-09T06:40:52Z"
+        }
+      },
+      {
+        "scenario": "Never synced scenario",
+        "expected_calculated_status": "never_synced",
+        "test_data": {
+          "kubernetes_server": "https://k8s.example.com",
+          "sync_status": "synced",
+          "sync_enabled": true,
+          "last_sync": null
+        }
+      }
+    ],
+    "validation_test_cases": [
+      "Test all status transitions are valid",
+      "Test auto-correction triggers correctly",
+      "Test template rendering with new properties",
+      "Test admin interface displays both statuses",
+      "Test API responses include calculated status"
+    ]
+  },
+  "security_considerations": {
+    "audit_trail": "Log all auto-corrections for security review",
+    "permission_checks": "Ensure calculated properties respect user permissions",
+    "sensitive_data": "Avoid exposing connection details in error messages",
+    "rate_limiting": "Properties should be lightweight for frequent access"
+  },
+  "performance_optimization": {
+    "database_queries": "Properties use only existing model fields - no additional queries",
+    "computation_cost": "All algorithms are O(1) time complexity",
+    "caching_strategy": "No caching needed - calculations are fast and need to be real-time",
+    "memory_usage": "Minimal memory footprint - no data structure allocation"
+  },
+  "backwards_compatibility": {
+    "template_migration": "Templates must be updated to use new properties",
+    "api_compatibility": "Include both old and new status fields during transition",
+    "database_migration": "No database schema changes required",
+    "existing_code": "Existing sync_status field remains unchanged for compatibility"
+  },
+  "validation_evidence_required": {
+    "unit_tests": "Test all edge cases with specific fabric configurations",
+    "integration_tests": "Test template rendering with new properties",
+    "performance_tests": "Verify property calculations don't impact page load times",
+    "user_acceptance": "Verify UI shows correct status for all fabric scenarios",
+    "regression_tests": "Ensure existing functionality remains intact"
+  }
+}

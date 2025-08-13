@@ -1,0 +1,20 @@
+{
+  "timestamp": "2025-08-10T00:00:00Z",
+  "issue": "Issue #40 - Fabric Sync Status Contradictions",
+  "pre_deployment_state": {
+    "fabric_id": 35,
+    "fabric_name": "Test Lab K3s Cluster", 
+    "current_sync_status": "synced",
+    "kubernetes_server": "",
+    "missing_properties": {
+      "calculated_sync_status": false,
+      "calculated_sync_status_display": false,
+      "calculated_sync_status_badge_class": false
+    },
+    "contradiction_evidence": {
+      "status_shows_synced": true,
+      "kubernetes_server_empty": true,
+      "problem": "Status shows 'synced' but kubernetes_server is empty, indicating it cannot actually be synced"
+    }
+  }
+}

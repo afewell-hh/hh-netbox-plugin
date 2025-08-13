@@ -1,0 +1,340 @@
+netbox_hedgehog/static/netbox_hedgehog/css/fabric-responsive-optimized.css:  /* Maintain essential functionality without motion */
+netbox_hedgehog/static/netbox_hedgehog/js/gitops-dashboard.js.backup:        document.querySelectorAll('[data-diff-view]').forEach(btn => {
+netbox_hedgehog/static/netbox_hedgehog/js/gitops-dashboard.js.backup:                    renderFileRow: () => {},
+netbox_hedgehog/static/netbox_hedgehog/js/gitops-dashboard.js.backup:                    updateWorkflow: () => {},
+netbox_hedgehog/static/netbox_hedgehog/js/gitops-dashboard.js.backup:                    handleFileOperation: () => {},
+netbox_hedgehog/static/netbox_hedgehog/js/gitops-dashboard.js.backup:                    handleWorkflowStatus: () => {}
+netbox_hedgehog/static/netbox_hedgehog/js/gitops-dashboard.js.backup:            renderFileList: () => {},
+netbox_hedgehog/static/netbox_hedgehog/js/gitops-dashboard.js.backup:            renderFileRow: () => {},
+netbox_hedgehog/static/netbox_hedgehog/js/gitops-dashboard.js.backup:            renderDiff: () => {},
+netbox_hedgehog/static/netbox_hedgehog/js/gitops-dashboard.js.backup:            updateStatus: () => {},
+netbox_hedgehog/static/netbox_hedgehog/js/gitops-dashboard.js.backup:            updateWorkflow: () => {},
+netbox_hedgehog/static/netbox_hedgehog/js/gitops-dashboard.js.backup:            handleUpdate: () => {},
+netbox_hedgehog/static/netbox_hedgehog/js/gitops-dashboard.js.backup:            handleFileOperation: () => {},
+netbox_hedgehog/static/netbox_hedgehog/js/gitops-dashboard.js.backup:            handleWorkflowStatus: () => {}
+netbox_hedgehog/static/netbox_hedgehog/js/gitops-dashboard.js.backup:        document.querySelectorAll('input[name="fabric-filter"]').forEach(radio => {
+netbox_hedgehog/static/netbox_hedgehog/js/gitops-dashboard.js.backup:        document.querySelectorAll('.gitops-status-card').forEach(card => {
+netbox_hedgehog/static/netbox_hedgehog/js/gitops-dashboard.js.backup:        rows.forEach(row => {
+netbox_hedgehog/static/netbox_hedgehog/js/gitops-dashboard.js.backup:            this.refreshInterval = setInterval(() => {
+netbox_hedgehog/static/netbox_hedgehog/js/gitops-dashboard.js.backup:    // Utility functions
+netbox_hedgehog/static/netbox_hedgehog/js/gitops-dashboard.js.backup:        setTimeout(() => {
+netbox_hedgehog/static/netbox_hedgehog/js/gitops-dashboard.js.backup:// Global functions for template callbacks
+netbox_hedgehog/static/netbox_hedgehog/js/gitops-dashboard.js.backup:window.viewFabricDetails = function(fabricId) {
+netbox_hedgehog/static/netbox_hedgehog/js/gitops-dashboard.js.backup:window.syncFabric = function(fabricId) {
+netbox_hedgehog/static/netbox_hedgehog/js/gitops-dashboard.js.backup:    if (window.gitopsDashboard && typeof window.gitopsDashboard.showSuccess === 'function') {
+netbox_hedgehog/static/netbox_hedgehog/js/gitops-dashboard.js.backup:window.manageFabric = function(fabricId) {
+netbox_hedgehog/static/netbox_hedgehog/js/gitops-dashboard.js.backup:    if (window.gitopsDashboard && typeof window.gitopsDashboard.showModal === 'function') {
+netbox_hedgehog/static/netbox_hedgehog/js/gitops-dashboard.js.backup:window.cleanupArchives = function() {
+netbox_hedgehog/static/netbox_hedgehog/js/gitops-dashboard.js.backup:    if (window.gitopsDashboard && typeof window.gitopsDashboard.showSuccess === 'function') {
+netbox_hedgehog/static/netbox_hedgehog/js/gitops-dashboard.js.backup:window.optimizeStorage = function() {
+netbox_hedgehog/static/netbox_hedgehog/js/gitops-dashboard.js.backup:    if (window.gitopsDashboard && typeof window.gitopsDashboard.showSuccess === 'function') {
+netbox_hedgehog/static/netbox_hedgehog/js/gitops-dashboard.js.backup:window.validateIntegrity = function() {
+netbox_hedgehog/static/netbox_hedgehog/js/gitops-dashboard.js.backup:    if (window.gitopsDashboard && typeof window.gitopsDashboard.showSuccess === 'function') {
+netbox_hedgehog/static/netbox_hedgehog/js/gitops-dashboard.js.backup:window.emergencyStop = function() {
+netbox_hedgehog/static/netbox_hedgehog/js/gitops-dashboard.js.backup:        if (window.gitopsDashboard && typeof window.gitopsDashboard.showError === 'function') {
+netbox_hedgehog/static/netbox_hedgehog/js/gitops-dashboard.js.backup:            this.websocket.onopen = () => {
+netbox_hedgehog/static/netbox_hedgehog/js/gitops-dashboard.js.backup:            this.websocket.onmessage = (event) => {
+netbox_hedgehog/static/netbox_hedgehog/js/gitops-dashboard.js.backup:            this.websocket.onclose = () => {
+netbox_hedgehog/static/netbox_hedgehog/js/gitops-dashboard.js.backup:            this.websocket.onerror = (error) => {
+netbox_hedgehog/static/netbox_hedgehog/js/gitops-dashboard.js.backup:        toast.addEventListener('hidden.bs.toast', () => {
+netbox_hedgehog/static/netbox_hedgehog/js/gitops-dashboard.js.backup:// Global functions
+netbox_hedgehog/static/netbox_hedgehog/js/progressive-disclosure.js:        document.querySelectorAll('.section-toggle').forEach(toggle => {
+netbox_hedgehog/static/netbox_hedgehog/js/progressive-disclosure.js:            toggle.addEventListener('click', (e) => {
+netbox_hedgehog/static/netbox_hedgehog/js/progressive-disclosure.js:            toggle.addEventListener('keydown', (e) => {
+netbox_hedgehog/static/netbox_hedgehog/js/progressive-disclosure.js:        setTimeout(() => {
+netbox_hedgehog/static/netbox_hedgehog/js/progressive-disclosure.js:        setTimeout(() => {
+netbox_hedgehog/static/netbox_hedgehog/js/progressive-disclosure.js:        this.realtimeUpdater.onUpdate = (data) => {
+netbox_hedgehog/static/netbox_hedgehog/js/progressive-disclosure.js:            Object.keys(data.crd_counts).forEach(type => {
+netbox_hedgehog/static/netbox_hedgehog/js/progressive-disclosure.js:        const interval = setInterval(() => {
+netbox_hedgehog/static/netbox_hedgehog/js/progressive-disclosure.js:            lastSyncElements.forEach(element => {
+netbox_hedgehog/static/netbox_hedgehog/js/progressive-disclosure.js:            syncButton.addEventListener('click', (e) => {
+netbox_hedgehog/static/netbox_hedgehog/js/progressive-disclosure.js:            gitopsSyncButton.addEventListener('click', (e) => {
+netbox_hedgehog/static/netbox_hedgehog/js/progressive-disclosure.js:            initGitOpsButton.addEventListener('click', (e) => {
+netbox_hedgehog/static/netbox_hedgehog/js/progressive-disclosure.js:        setTimeout(() => {
+netbox_hedgehog/static/netbox_hedgehog/js/progressive-disclosure.js:        setTimeout(() => {
+netbox_hedgehog/static/netbox_hedgehog/js/progressive-disclosure.js:        document.addEventListener('keydown', (e) => {
+netbox_hedgehog/static/netbox_hedgehog/js/progressive-disclosure.js:        this.sections.forEach((data, sectionId) => {
+netbox_hedgehog/static/netbox_hedgehog/js/progressive-disclosure.js:        this.sections.forEach((data, sectionId) => {
+netbox_hedgehog/static/netbox_hedgehog/js/progressive-disclosure.js:        Object.keys(this.preferences).forEach(sectionId => {
+netbox_hedgehog/static/netbox_hedgehog/js/progressive-disclosure.js:document.addEventListener('DOMContentLoaded', () => {
+netbox_hedgehog/static/netbox_hedgehog/js/sync-handler.js:(function(window) {
+netbox_hedgehog/static/netbox_hedgehog/js/sync-handler.js:    function addCacheBuster(url) {
+netbox_hedgehog/static/netbox_hedgehog/js/sync-handler.js:    function getCsrfToken() {
+netbox_hedgehog/static/netbox_hedgehog/js/sync-handler.js:    function showNotification(message, type = 'info', duration = 5000) {
+netbox_hedgehog/static/netbox_hedgehog/js/sync-handler.js:        setTimeout(() => {
+netbox_hedgehog/static/netbox_hedgehog/js/sync-handler.js:    // Main sync function with retry logic
+netbox_hedgehog/static/netbox_hedgehog/js/sync-handler.js:    async function performSync(fabricId, endpoint, attempt = 1) {
+netbox_hedgehog/static/netbox_hedgehog/js/sync-handler.js:        // Main sync function
+netbox_hedgehog/static/netbox_hedgehog/js/sync-handler.js:        sync: async function(fabricId, button) {
+netbox_hedgehog/static/netbox_hedgehog/js/sync-handler.js:                    setTimeout(() => {
+netbox_hedgehog/static/netbox_hedgehog/js/sync-handler.js:                setTimeout(() => {
+netbox_hedgehog/static/netbox_hedgehog/js/sync-handler.js:        updatePageElements: function(data) {
+netbox_hedgehog/static/netbox_hedgehog/js/sync-handler.js:        testConnection: async function(fabricId) {
+netbox_hedgehog/static/netbox_hedgehog/js/sync-handler.js:    // Global helper functions for backwards compatibility
+netbox_hedgehog/static/netbox_hedgehog/js/sync-handler.js:    window.triggerGitSync = function() {
+netbox_hedgehog/static/netbox_hedgehog/js/sync-handler.js:    window.syncFabric = function(fabricId) {
+netbox_hedgehog/static/netbox_hedgehog/js/sync-handler.js:    function initializeSyncHandlers() {
+netbox_hedgehog/static/netbox_hedgehog/js/sync-handler.js:        document.querySelectorAll('.btn-sync-fabric, [data-sync-button]').forEach(button => {
+netbox_hedgehog/static/netbox_hedgehog/js/sync-handler.js:            button.addEventListener('click', function(e) {
+netbox_hedgehog/static/netbox_hedgehog/js/raw-directory-monitor.js:        document.querySelectorAll('input[name="file-filter"]').forEach(radio => {
+netbox_hedgehog/static/netbox_hedgehog/js/raw-directory-monitor.js:        document.querySelectorAll('[onclick="clearLog()"]').forEach(btn => {
+netbox_hedgehog/static/netbox_hedgehog/js/raw-directory-monitor.js:        document.querySelectorAll('[onclick="exportLog()"]').forEach(btn => {
+netbox_hedgehog/static/netbox_hedgehog/js/raw-directory-monitor.js:                queue.items.forEach((item, index) => {
+netbox_hedgehog/static/netbox_hedgehog/js/raw-directory-monitor.js:                fabrics.forEach(fabric => {
+netbox_hedgehog/static/netbox_hedgehog/js/raw-directory-monitor.js:        rows.forEach(row => {
+netbox_hedgehog/static/netbox_hedgehog/js/raw-directory-monitor.js:        checkboxes.forEach(checkbox => {
+netbox_hedgehog/static/netbox_hedgehog/js/raw-directory-monitor.js:            this.refreshInterval = setInterval(() => {
+netbox_hedgehog/static/netbox_hedgehog/js/raw-directory-monitor.js:    // Utility functions
+netbox_hedgehog/static/netbox_hedgehog/js/raw-directory-monitor.js:        setTimeout(() => {
+netbox_hedgehog/static/netbox_hedgehog/js/raw-directory-monitor.js:// Global functions for template callbacks
+netbox_hedgehog/static/netbox_hedgehog/js/raw-directory-monitor.js:window.uploadFiles = function() {
+netbox_hedgehog/static/netbox_hedgehog/js/raw-directory-monitor.js:window.bulkProcess = function() {
+netbox_hedgehog/static/netbox_hedgehog/js/raw-directory-monitor.js:window.bulkPrioritize = function() {
+netbox_hedgehog/static/netbox_hedgehog/js/raw-directory-monitor.js:window.bulkDelete = function() {
+netbox_hedgehog/static/netbox_hedgehog/js/raw-directory-monitor.js:document.addEventListener('DOMContentLoaded', function() {
+netbox_hedgehog/static/netbox_hedgehog/js/error-handler.js:(function() {
+netbox_hedgehog/static/netbox_hedgehog/js/error-handler.js:    window.addEventListener('error', function(event) {
+netbox_hedgehog/static/netbox_hedgehog/js/error-handler.js:    window.addEventListener('unhandledrejection', function(event) {
+netbox_hedgehog/static/netbox_hedgehog/js/error-handler.js:    // Safe function caller - prevents undefined function errors
+netbox_hedgehog/static/netbox_hedgehog/js/error-handler.js:    window.safeCall = function(funcName, ...args) {
+netbox_hedgehog/static/netbox_hedgehog/js/error-handler.js:            if (typeof func === 'function') {
+netbox_hedgehog/static/netbox_hedgehog/js/error-handler.js:    window.safeAccess = function(obj, path, defaultValue = null) {
+netbox_hedgehog/static/netbox_hedgehog/js/error-handler.js:        window.Hedgehog.utils.showNotification = function(message, type = 'info') {
+netbox_hedgehog/static/netbox_hedgehog/js/error-handler.js:            setTimeout(() => {
+netbox_hedgehog/static/netbox_hedgehog/js/error-handler.js:        window.showModal = function(title, content) {
+netbox_hedgehog/static/netbox_hedgehog/js/error-handler.js:    // Safe DOM ready function
+netbox_hedgehog/static/netbox_hedgehog/js/error-handler.js:    window.safeReady = function(callback) {
+netbox_hedgehog/static/netbox_hedgehog/js/error-handler.js:            document.addEventListener('DOMContentLoaded', function() {
+netbox_hedgehog/static/netbox_hedgehog/js/error-handler.js:    window.safeFetch = function(url, options = {}) {
+netbox_hedgehog/static/netbox_hedgehog/js/error-handler.js:            .then(response => {
+netbox_hedgehog/static/netbox_hedgehog/js/error-handler.js:            .catch(error => {
+netbox_hedgehog/static/netbox_hedgehog/js/error-handler.js:        window.Chart = function() {
+netbox_hedgehog/static/netbox_hedgehog/js/error-handler.js:                update: function() {},
+netbox_hedgehog/static/netbox_hedgehog/js/error-handler.js:                destroy: function() {},
+netbox_hedgehog/static/netbox_hedgehog/js/error-handler.js:            Modal: function(element) {
+netbox_hedgehog/static/netbox_hedgehog/js/error-handler.js:                    show: function() {
+netbox_hedgehog/static/netbox_hedgehog/js/error-handler.js:                    hide: function() {
+netbox_hedgehog/static/netbox_hedgehog/js/error-handler.js:            Toast: function(element) {
+netbox_hedgehog/static/netbox_hedgehog/js/error-handler.js:                    show: function() {
+netbox_hedgehog/static/netbox_hedgehog/js/error-handler.js:                    hide: function() {
+netbox_hedgehog/static/netbox_hedgehog/js/error-handler.js:            Tooltip: function(element) {
+netbox_hedgehog/static/netbox_hedgehog/js/error-handler.js:                return { show: function() {}, hide: function() {} };
+netbox_hedgehog/static/netbox_hedgehog/js/error-handler.js:    // Global function fallbacks to prevent undefined errors
+netbox_hedgehog/static/netbox_hedgehog/js/error-handler.js:    globalFunctions.forEach(funcName => {
+netbox_hedgehog/static/netbox_hedgehog/js/error-handler.js:            window[funcName] = function(...args) {
+netbox_hedgehog/static/netbox_hedgehog/js/emergency-sync-fix.js:// Emergency Sync Fix - Direct override for sync functionality
+netbox_hedgehog/static/netbox_hedgehog/js/emergency-sync-fix.js:// This script overrides all sync functions to use the working endpoint
+netbox_hedgehog/static/netbox_hedgehog/js/emergency-sync-fix.js:// Override the problematic triggerGitSync function
+netbox_hedgehog/static/netbox_hedgehog/js/emergency-sync-fix.js:window.triggerGitSync = function() {
+netbox_hedgehog/static/netbox_hedgehog/js/emergency-sync-fix.js:    .then(response => {
+netbox_hedgehog/static/netbox_hedgehog/js/emergency-sync-fix.js:    .then(text => {
+netbox_hedgehog/static/netbox_hedgehog/js/emergency-sync-fix.js:            setTimeout(() => {
+netbox_hedgehog/static/netbox_hedgehog/js/emergency-sync-fix.js:    .catch(error => {
+netbox_hedgehog/static/netbox_hedgehog/js/emergency-sync-fix.js:// Override any other sync functions that might exist
+netbox_hedgehog/static/netbox_hedgehog/js/emergency-sync-fix.js:    window.syncFabric = function(fabricId) {
+netbox_hedgehog/static/netbox_hedgehog/js/emergency-sync-fix.js:    window.UnifiedSync.sync = function(fabricId, button) {
+netbox_hedgehog/static/netbox_hedgehog/js/emergency-sync-fix.js:document.addEventListener('DOMContentLoaded', function() {
+netbox_hedgehog/static/netbox_hedgehog/js/emergency-sync-fix.js:    syncButtons.forEach((button, index) => {
+netbox_hedgehog/static/netbox_hedgehog/js/emergency-sync-fix.js:        button.addEventListener('click', function(e) {
+netbox_hedgehog/static/netbox_hedgehog/js/fabric-detail-enhanced.js:(function(window) {
+netbox_hedgehog/static/netbox_hedgehog/js/fabric-detail-enhanced.js:                setTimeout(() => {
+netbox_hedgehog/static/netbox_hedgehog/js/fabric-detail-enhanced.js:            setTimeout(() => {
+netbox_hedgehog/static/netbox_hedgehog/js/fabric-detail-enhanced.js:            const removeNotification = () => {
+netbox_hedgehog/static/netbox_hedgehog/js/fabric-detail-enhanced.js:            inputs.forEach(input => {
+netbox_hedgehog/static/netbox_hedgehog/js/fabric-detail-enhanced.js:            syncBtns.forEach(btn => {
+netbox_hedgehog/static/netbox_hedgehog/js/fabric-detail-enhanced.js:            driftBtns.forEach(btn => {
+netbox_hedgehog/static/netbox_hedgehog/js/fabric-detail-enhanced.js:            configBtns.forEach(btn => {
+netbox_hedgehog/static/netbox_hedgehog/js/fabric-detail-enhanced.js:            Object.entries(additionalBtns).forEach(([id, handler]) => {
+netbox_hedgehog/static/netbox_hedgehog/js/fabric-detail-enhanced.js:                    setTimeout(() => {
+netbox_hedgehog/static/netbox_hedgehog/js/fabric-detail-enhanced.js:                    setTimeout(() => {
+netbox_hedgehog/static/netbox_hedgehog/js/fabric-detail-enhanced.js:            forms.forEach(form => {
+netbox_hedgehog/static/netbox_hedgehog/js/fabric-detail-enhanced.js:                inputs.forEach(input => {
+netbox_hedgehog/static/netbox_hedgehog/js/fabric-detail-enhanced.js:                    input.addEventListener('blur', () => {
+netbox_hedgehog/static/netbox_hedgehog/js/fabric-detail-enhanced.js:            modals.forEach(modal => {
+netbox_hedgehog/static/netbox_hedgehog/js/fabric-detail-enhanced.js:                modal.addEventListener('show.bs.modal', () => {
+netbox_hedgehog/static/netbox_hedgehog/js/fabric-detail-enhanced.js:                modal.addEventListener('hidden.bs.modal', () => {
+netbox_hedgehog/static/netbox_hedgehog/js/fabric-detail-enhanced.js:            buttons.forEach(button => {
+netbox_hedgehog/static/netbox_hedgehog/js/fabric-detail-enhanced.js:            interactiveElements.forEach(element => {
+netbox_hedgehog/static/netbox_hedgehog/js/fabric-detail-enhanced.js:            clickableElements.forEach(element => {
+netbox_hedgehog/static/netbox_hedgehog/js/fabric-detail-enhanced.js:            cards.forEach(card => {
+netbox_hedgehog/static/netbox_hedgehog/js/fabric-detail-enhanced.js:            buttons.forEach(button => {
+netbox_hedgehog/static/netbox_hedgehog/js/fabric-detail-enhanced.js:            statusElements.forEach(element => {
+netbox_hedgehog/static/netbox_hedgehog/js/fabric-detail-enhanced.js:            driftElements.forEach(element => {
+netbox_hedgehog/static/netbox_hedgehog/js/fabric-detail-enhanced.js:        document.addEventListener('DOMContentLoaded', () => {
+netbox_hedgehog/static/netbox_hedgehog/js/hedgehog.js: * Common functionality for interactive elements
+netbox_hedgehog/static/netbox_hedgehog/js/hedgehog.js:(function(Hedgehog) {
+netbox_hedgehog/static/netbox_hedgehog/js/hedgehog.js:    Hedgehog.init = function() {
+netbox_hedgehog/static/netbox_hedgehog/js/hedgehog.js:    // Utility functions
+netbox_hedgehog/static/netbox_hedgehog/js/hedgehog.js:        setButtonLoading: function(button, loading = true) {
+netbox_hedgehog/static/netbox_hedgehog/js/hedgehog.js:        showNotification: function(message, type = 'info') {
+netbox_hedgehog/static/netbox_hedgehog/js/hedgehog.js:            setTimeout(() => {
+netbox_hedgehog/static/netbox_hedgehog/js/hedgehog.js:        formatTimestamp: function(timestamp) {
+netbox_hedgehog/static/netbox_hedgehog/js/hedgehog.js:        isValidIP: function(ip) {
+netbox_hedgehog/static/netbox_hedgehog/js/hedgehog.js:        isValidCIDR: function(cidr) {
+netbox_hedgehog/static/netbox_hedgehog/js/hedgehog.js:        calculateSubnet: function(cidr) {
+netbox_hedgehog/static/netbox_hedgehog/js/hedgehog.js:    // API functions
+netbox_hedgehog/static/netbox_hedgehog/js/hedgehog.js:        request: function(url, options = {}) {
+netbox_hedgehog/static/netbox_hedgehog/js/hedgehog.js:        testConnection: function(fabricId) {
+netbox_hedgehog/static/netbox_hedgehog/js/hedgehog.js:        syncFabric: function(fabricId) {
+netbox_hedgehog/static/netbox_hedgehog/js/hedgehog.js:        applyVPC: function(vpcId) {
+netbox_hedgehog/static/netbox_hedgehog/js/hedgehog.js:        bulkAction: function(endpoint, data) {
+netbox_hedgehog/static/netbox_hedgehog/js/hedgehog.js:    Hedgehog.initStatusUpdates = function() {
+netbox_hedgehog/static/netbox_hedgehog/js/hedgehog.js:        statusElements.forEach(function(element) {
+netbox_hedgehog/static/netbox_hedgehog/js/hedgehog.js:            setInterval(function() {
+netbox_hedgehog/static/netbox_hedgehog/js/hedgehog.js:    Hedgehog.refreshStatus = function(element) {
+netbox_hedgehog/static/netbox_hedgehog/js/hedgehog.js:            .then(data => {
+netbox_hedgehog/static/netbox_hedgehog/js/hedgehog.js:            .catch(error => {
+netbox_hedgehog/static/netbox_hedgehog/js/hedgehog.js:    Hedgehog.initFormValidation = function() {
+netbox_hedgehog/static/netbox_hedgehog/js/hedgehog.js:        vpcNameInputs.forEach(function(input) {
+netbox_hedgehog/static/netbox_hedgehog/js/hedgehog.js:            input.addEventListener('input', function() {
+netbox_hedgehog/static/netbox_hedgehog/js/hedgehog.js:        ipInputs.forEach(function(input) {
+netbox_hedgehog/static/netbox_hedgehog/js/hedgehog.js:            input.addEventListener('blur', function() {
+netbox_hedgehog/static/netbox_hedgehog/js/hedgehog.js:        cidrInputs.forEach(function(input) {
+netbox_hedgehog/static/netbox_hedgehog/js/hedgehog.js:            input.addEventListener('blur', function() {
+netbox_hedgehog/static/netbox_hedgehog/js/hedgehog.js:    Hedgehog.initBulkActions = function() {
+netbox_hedgehog/static/netbox_hedgehog/js/hedgehog.js:        bulkForms.forEach(function(form) {
+netbox_hedgehog/static/netbox_hedgehog/js/hedgehog.js:            // Select all functionality
+netbox_hedgehog/static/netbox_hedgehog/js/hedgehog.js:                selectAllCheckbox.addEventListener('change', function() {
+netbox_hedgehog/static/netbox_hedgehog/js/hedgehog.js:                    itemCheckboxes.forEach(function(checkbox) {
+netbox_hedgehog/static/netbox_hedgehog/js/hedgehog.js:            function updateBulkActionState() {
+netbox_hedgehog/static/netbox_hedgehog/js/hedgehog.js:            itemCheckboxes.forEach(function(checkbox) {
+netbox_hedgehog/static/netbox_hedgehog/js/hedgehog.js:            form.addEventListener('submit', function(e) {
+netbox_hedgehog/static/netbox_hedgehog/js/hedgehog.js:                .then(data => {
+netbox_hedgehog/static/netbox_hedgehog/js/hedgehog.js:                .catch(error => {
+netbox_hedgehog/static/netbox_hedgehog/js/hedgehog.js:                .finally(() => {
+netbox_hedgehog/static/netbox_hedgehog/js/hedgehog.js:    Hedgehog.initTooltips = function() {
+netbox_hedgehog/static/netbox_hedgehog/js/hedgehog.js:            tooltipTriggerList.map(function(tooltipTriggerEl) {
+netbox_hedgehog/static/netbox_hedgehog/js/hedgehog.js:    // VPC specific functions
+netbox_hedgehog/static/netbox_hedgehog/js/hedgehog.js:        updateSubnetPreview: function(baseNetwork, baseVlan, template) {
+netbox_hedgehog/static/netbox_hedgehog/js/hedgehog.js:        validateSubnetConfig: function(config) {
+netbox_hedgehog/static/netbox_hedgehog/js/hedgehog.js:    // Fabric specific functions
+netbox_hedgehog/static/netbox_hedgehog/js/hedgehog.js:        testConnection: function(fabricId, button) {
+netbox_hedgehog/static/netbox_hedgehog/js/hedgehog.js:                .then(data => {
+netbox_hedgehog/static/netbox_hedgehog/js/hedgehog.js:                        setTimeout(() => {
+netbox_hedgehog/static/netbox_hedgehog/js/hedgehog.js:                        setTimeout(() => {
+netbox_hedgehog/static/netbox_hedgehog/js/hedgehog.js:                .catch(error => {
+netbox_hedgehog/static/netbox_hedgehog/js/hedgehog.js:                    setTimeout(() => {
+netbox_hedgehog/static/netbox_hedgehog/js/hedgehog.js:        sync: function(fabricId, button) {
+netbox_hedgehog/static/netbox_hedgehog/js/hedgehog.js:                .then(data => {
+netbox_hedgehog/static/netbox_hedgehog/js/hedgehog.js:                        setTimeout(() => {
+netbox_hedgehog/static/netbox_hedgehog/js/hedgehog.js:                        setTimeout(() => {
+netbox_hedgehog/static/netbox_hedgehog/js/hedgehog.js:                .catch(error => {
+netbox_hedgehog/static/netbox_hedgehog/js/hedgehog.js:                    setTimeout(() => {
+netbox_hedgehog/static/netbox_hedgehog/js/hedgehog.js:    document.addEventListener('DOMContentLoaded', function() {
+netbox_hedgehog/static/netbox_hedgehog/js/hedgehog.js:// Global helper functions for template use
+netbox_hedgehog/static/netbox_hedgehog/js/hedgehog.js:function syncFabric(fabricId) {
+netbox_hedgehog/static/netbox_hedgehog/js/hedgehog.js:        alert('Sync functionality not loaded. Please refresh the page.');
+netbox_hedgehog/static/netbox_hedgehog/js/hedgehog.js:        setTimeout(() => {
+netbox_hedgehog/static/netbox_hedgehog/js/hedgehog.js:function testConnection(fabricId) {
+netbox_hedgehog/static/netbox_hedgehog/js/hedgehog.js:        alert('Test connection functionality not loaded. Please refresh the page.');
+netbox_hedgehog/static/netbox_hedgehog/js/hedgehog.js:        setTimeout(() => {
+netbox_hedgehog/static/netbox_hedgehog/js/responsive-enhancements.js: * Mobile-first interactive improvements while preserving desktop functionality
+netbox_hedgehog/static/netbox_hedgehog/js/responsive-enhancements.js:(function() {
+netbox_hedgehog/static/netbox_hedgehog/js/responsive-enhancements.js:            window.addEventListener('resize', this.debounce(() => {
+netbox_hedgehog/static/netbox_hedgehog/js/responsive-enhancements.js:            touchElements.forEach(element => {
+netbox_hedgehog/static/netbox_hedgehog/js/responsive-enhancements.js:                element.addEventListener('touchstart', () => {
+netbox_hedgehog/static/netbox_hedgehog/js/responsive-enhancements.js:                element.addEventListener('touchend', () => {
+netbox_hedgehog/static/netbox_hedgehog/js/responsive-enhancements.js:                    setTimeout(() => {
+netbox_hedgehog/static/netbox_hedgehog/js/responsive-enhancements.js:                element.addEventListener('touchcancel', () => {
+netbox_hedgehog/static/netbox_hedgehog/js/responsive-enhancements.js:            tables.forEach(table => {
+netbox_hedgehog/static/netbox_hedgehog/js/responsive-enhancements.js:            tableContainer.addEventListener('scroll', () => {
+netbox_hedgehog/static/netbox_hedgehog/js/responsive-enhancements.js:            setTimeout(() => {
+netbox_hedgehog/static/netbox_hedgehog/js/responsive-enhancements.js:                    setTimeout(() => {
+netbox_hedgehog/static/netbox_hedgehog/js/responsive-enhancements.js:            modals.forEach(modal => {
+netbox_hedgehog/static/netbox_hedgehog/js/responsive-enhancements.js:            modalContent.addEventListener('touchstart', (e) => {
+netbox_hedgehog/static/netbox_hedgehog/js/responsive-enhancements.js:            modalContent.addEventListener('touchmove', (e) => {
+netbox_hedgehog/static/netbox_hedgehog/js/responsive-enhancements.js:            modalContent.addEventListener('touchend', () => {
+netbox_hedgehog/static/netbox_hedgehog/js/responsive-enhancements.js:            toggles.forEach(toggle => {
+netbox_hedgehog/static/netbox_hedgehog/js/responsive-enhancements.js:                toggle.addEventListener('keydown', (e) => {
+netbox_hedgehog/static/netbox_hedgehog/js/responsive-enhancements.js:            document.addEventListener('touchstart', (e) => {
+netbox_hedgehog/static/netbox_hedgehog/js/responsive-enhancements.js:            document.addEventListener('touchend', (e) => {
+netbox_hedgehog/static/netbox_hedgehog/js/responsive-enhancements.js:                setTimeout(() => {
+netbox_hedgehog/static/netbox_hedgehog/js/responsive-enhancements.js:            window.addEventListener('orientationchange', () => {
+netbox_hedgehog/static/netbox_hedgehog/js/responsive-enhancements.js:                setTimeout(() => {
+netbox_hedgehog/static/netbox_hedgehog/js/responsive-enhancements.js:        // Utility: Debounce function
+netbox_hedgehog/static/netbox_hedgehog/js/responsive-enhancements.js:            return function executedFunction(...args) {
+netbox_hedgehog/static/netbox_hedgehog/js/responsive-enhancements.js:                const later = () => {
+netbox_hedgehog/static/netbox_hedgehog/js/responsive-enhancements.js:        document.addEventListener('DOMContentLoaded', () => {
+netbox_hedgehog/static/netbox_hedgehog/js/gitops-onboarding.js:        document.querySelectorAll('.strategy-card').forEach(card => {
+netbox_hedgehog/static/netbox_hedgehog/js/gitops-onboarding.js:        document.getElementById('confirm-strategy')?.addEventListener('change', (e) => {
+netbox_hedgehog/static/netbox_hedgehog/js/gitops-onboarding.js:                fabrics.forEach(fabric => {
+netbox_hedgehog/static/netbox_hedgehog/js/gitops-onboarding.js:        document.querySelectorAll('.wizard-step').forEach(step => {
+netbox_hedgehog/static/netbox_hedgehog/js/gitops-onboarding.js:        document.querySelectorAll('.step').forEach((step, index) => {
+netbox_hedgehog/static/netbox_hedgehog/js/gitops-onboarding.js:        const progressInterval = setInterval(() => {
+netbox_hedgehog/static/netbox_hedgehog/js/gitops-onboarding.js:            setTimeout(() => {
+netbox_hedgehog/static/netbox_hedgehog/js/gitops-onboarding.js:            result.files.forEach(file => {
+netbox_hedgehog/static/netbox_hedgehog/js/gitops-onboarding.js:        document.querySelectorAll('.strategy-card').forEach(c => {
+netbox_hedgehog/static/netbox_hedgehog/js/gitops-onboarding.js:            strategyInfo.actions.forEach(action => {
+netbox_hedgehog/static/netbox_hedgehog/js/gitops-onboarding.js:    // Utility functions
+netbox_hedgehog/static/netbox_hedgehog/js/gitops-onboarding.js:        setTimeout(() => {
+netbox_hedgehog/static/netbox_hedgehog/js/gitops-onboarding.js:// Global functions for template callbacks
+netbox_hedgehog/static/netbox_hedgehog/js/gitops-onboarding.js:window.showFilePreview = function() {
+netbox_hedgehog/static/netbox_hedgehog/js/gitops-onboarding.js:    alert('File preview functionality would be implemented here');
+netbox_hedgehog/static/netbox_hedgehog/js/gitops-onboarding.js:window.previewFile = function(filePath) {
+netbox_hedgehog/static/netbox_hedgehog/js/gitops-onboarding.js:window.retryOperation = function() {
+netbox_hedgehog/static/netbox_hedgehog/js/gitops-onboarding.js:window.retryProcessing = function() {
+netbox_hedgehog/static/netbox_hedgehog/js/gitops-onboarding.js:window.skipStep = function() {
+netbox_hedgehog/static/netbox_hedgehog/js/gitops-onboarding.js:document.addEventListener('DOMContentLoaded', function() {
+netbox_hedgehog/static/netbox_hedgehog/js/archive-browser.js:        document.getElementById('search-input')?.addEventListener('input', (e) => {
+netbox_hedgehog/static/netbox_hedgehog/js/archive-browser.js:        document.getElementById('fabric-filter')?.addEventListener('change', (e) => {
+netbox_hedgehog/static/netbox_hedgehog/js/archive-browser.js:        document.getElementById('date-range')?.addEventListener('change', (e) => {
+netbox_hedgehog/static/netbox_hedgehog/js/archive-browser.js:        document.getElementById('archive-type')?.addEventListener('change', (e) => {
+netbox_hedgehog/static/netbox_hedgehog/js/archive-browser.js:        document.getElementById('timeline-view')?.addEventListener('change', (e) => {
+netbox_hedgehog/static/netbox_hedgehog/js/archive-browser.js:        document.getElementById('select-all-archives')?.addEventListener('change', (e) => {
+netbox_hedgehog/static/netbox_hedgehog/js/archive-browser.js:        document.querySelectorAll('[onclick^="exportArchives"]').forEach(btn => {
+netbox_hedgehog/static/netbox_hedgehog/js/archive-browser.js:        document.querySelectorAll('[onclick="optimizeStorage()"]').forEach(btn => {
+netbox_hedgehog/static/netbox_hedgehog/js/archive-browser.js:        document.querySelectorAll('[onclick="cleanupOldArchives()"]').forEach(btn => {
+netbox_hedgehog/static/netbox_hedgehog/js/archive-browser.js:        archives.forEach(archive => {
+netbox_hedgehog/static/netbox_hedgehog/js/archive-browser.js:            row.addEventListener('click', (e) => {
+netbox_hedgehog/static/netbox_hedgehog/js/archive-browser.js:        archives.forEach(archive => {
+netbox_hedgehog/static/netbox_hedgehog/js/archive-browser.js:            cardElement.addEventListener('click', (e) => {
+netbox_hedgehog/static/netbox_hedgehog/js/archive-browser.js:        Object.entries(groupedArchives).forEach(([date, dayArchives]) => {
+netbox_hedgehog/static/netbox_hedgehog/js/archive-browser.js:        archives.forEach(archive => {
+netbox_hedgehog/static/netbox_hedgehog/js/archive-browser.js:                fabrics.forEach(fabric => {
+netbox_hedgehog/static/netbox_hedgehog/js/archive-browser.js:        document.querySelectorAll('.archive-row, .archive-card').forEach(el => {
+netbox_hedgehog/static/netbox_hedgehog/js/archive-browser.js:        checkboxes.forEach(checkbox => {
+netbox_hedgehog/static/netbox_hedgehog/js/archive-browser.js:        this.searchTimeout = setTimeout(() => {
+netbox_hedgehog/static/netbox_hedgehog/js/archive-browser.js:            document.getElementById('confirm-restore-btn').onclick = () => {
+netbox_hedgehog/static/netbox_hedgehog/js/archive-browser.js:    // Utility functions
+netbox_hedgehog/static/netbox_hedgehog/js/archive-browser.js:        setTimeout(() => {
+netbox_hedgehog/static/netbox_hedgehog/js/archive-browser.js:// Global functions for template callbacks
+netbox_hedgehog/static/netbox_hedgehog/js/archive-browser.js:window.changeView = function(view) {
+netbox_hedgehog/static/netbox_hedgehog/js/archive-browser.js:window.clearFilters = function() {
+netbox_hedgehog/static/netbox_hedgehog/js/archive-browser.js:window.formatContent = function(format) {
+netbox_hedgehog/static/netbox_hedgehog/js/archive-browser.js:window.downloadArchiveFromModal = function() {
+netbox_hedgehog/static/netbox_hedgehog/js/archive-browser.js:window.restoreArchiveFromModal = function() {
+netbox_hedgehog/static/netbox_hedgehog/js/archive-browser.js:window.bulkRestore = function() {
+netbox_hedgehog/static/netbox_hedgehog/js/archive-browser.js:window.bulkDownload = function() {
+netbox_hedgehog/static/netbox_hedgehog/js/archive-browser.js:window.bulkDelete = function() {
+netbox_hedgehog/static/netbox_hedgehog/js/archive-browser.js:document.addEventListener('DOMContentLoaded', function() {
+netbox_hedgehog/static/netbox_hedgehog/js/websocket-client.js:            handlers.forEach(handler => {
+netbox_hedgehog/static/netbox_hedgehog/js/websocket-client.js:        this.reconnectTimer = setTimeout(() => {
+netbox_hedgehog/static/netbox_hedgehog/js/websocket-client.js:            this.heartbeatTimer = setInterval(() => {
+netbox_hedgehog/static/netbox_hedgehog/js/websocket-client.js:            handlers.forEach(handler => {
+netbox_hedgehog/static/netbox_hedgehog/js/websocket-client.js:        this.reconnectTimer = setTimeout(() => {
+netbox_hedgehog/static/netbox_hedgehog/js/websocket-client.js:        client.on('message', (data) => {
+netbox_hedgehog/static/netbox_hedgehog/js/websocket-client.js:        client.on('connected', () => {
+netbox_hedgehog/static/netbox_hedgehog/js/websocket-client.js:        client.on('disconnected', () => {
+netbox_hedgehog/static/netbox_hedgehog/js/websocket-client.js:        this.systemClient.on('message', (data) => {
+netbox_hedgehog/static/netbox_hedgehog/js/websocket-client.js:            handlers.forEach(handler => {
+netbox_hedgehog/static/netbox_hedgehog/js/websocket-client.js:        this.fabricClients.forEach((client, fabricId) => {
+netbox_hedgehog/static/netbox_hedgehog/js/gitops-dashboard.js:                renderFileRow: () => {},
+netbox_hedgehog/static/netbox_hedgehog/js/gitops-dashboard.js:                updateWorkflow: () => {},
+netbox_hedgehog/static/netbox_hedgehog/js/gitops-dashboard.js:                handleFileOperation: () => {},
+netbox_hedgehog/static/netbox_hedgehog/js/gitops-dashboard.js:                handleWorkflowStatus: () => {}
+netbox_hedgehog/static/netbox_hedgehog/js/gitops-dashboard.js:        setTimeout(() => {
+netbox_hedgehog/static/netbox_hedgehog/js/gitops-dashboard.js:// Global functions for template callbacks
+netbox_hedgehog/static/netbox_hedgehog/js/gitops-dashboard.js:window.viewFabricDetails = function(fabricId) {
+netbox_hedgehog/static/netbox_hedgehog/js/gitops-dashboard.js:window.syncFabric = function(fabricId) {
+netbox_hedgehog/static/netbox_hedgehog/js/gitops-dashboard.js:    if (window.gitopsDashboard && typeof window.gitopsDashboard.showSuccess === 'function') {
+netbox_hedgehog/static/netbox_hedgehog/js/gitops-dashboard.js:window.manageFabric = function(fabricId) {
+netbox_hedgehog/static/netbox_hedgehog/js/gitops-dashboard.js:    if (window.gitopsDashboard && typeof window.gitopsDashboard.showModal === 'function') {
+netbox_hedgehog/static/netbox_hedgehog/js/gitops-dashboard.js:window.cleanupArchives = function() {
+netbox_hedgehog/static/netbox_hedgehog/js/gitops-dashboard.js:    if (window.gitopsDashboard && typeof window.gitopsDashboard.showSuccess === 'function') {
+netbox_hedgehog/static/netbox_hedgehog/js/gitops-dashboard.js:window.optimizeStorage = function() {
+netbox_hedgehog/static/netbox_hedgehog/js/gitops-dashboard.js:    if (window.gitopsDashboard && typeof window.gitopsDashboard.showSuccess === 'function') {
+netbox_hedgehog/static/netbox_hedgehog/js/gitops-dashboard.js:window.validateIntegrity = function() {
+netbox_hedgehog/static/netbox_hedgehog/js/gitops-dashboard.js:    if (window.gitopsDashboard && typeof window.gitopsDashboard.showSuccess === 'function') {
+netbox_hedgehog/static/netbox_hedgehog/js/gitops-dashboard.js:window.emergencyStop = function() {
+netbox_hedgehog/static/netbox_hedgehog/js/gitops-dashboard.js:        if (window.gitopsDashboard && typeof window.gitopsDashboard.showError === 'function') {
+netbox_hedgehog/static/netbox_hedgehog/js/gitops-dashboard.js:document.addEventListener('DOMContentLoaded', function() {

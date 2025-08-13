@@ -1,0 +1,274 @@
+netbox_hedgehog/static/netbox_hedgehog/js/gitops-dashboard.js.backup:        const fabricSelector = document.getElementById('fabricSelector');
+netbox_hedgehog/static/netbox_hedgehog/js/gitops-dashboard.js.backup:        document.querySelectorAll('[data-diff-view]').forEach(btn => {
+netbox_hedgehog/static/netbox_hedgehog/js/gitops-dashboard.js.backup:        document.getElementById('refresh-dashboard')?.addEventListener('click', () => this.refreshDashboard());
+netbox_hedgehog/static/netbox_hedgehog/js/gitops-dashboard.js.backup:        document.getElementById('auto-refresh')?.addEventListener('change', (e) => this.toggleAutoRefresh(e.target.checked));
+netbox_hedgehog/static/netbox_hedgehog/js/gitops-dashboard.js.backup:        document.querySelectorAll('input[name="fabric-filter"]').forEach(radio => {
+netbox_hedgehog/static/netbox_hedgehog/js/gitops-dashboard.js.backup:        document.getElementById('trigger-global-sync')?.addEventListener('click', () => this.triggerGlobalSync());
+netbox_hedgehog/static/netbox_hedgehog/js/gitops-dashboard.js.backup:        document.getElementById('process-pending-files')?.addEventListener('click', () => this.processPendingFiles());
+netbox_hedgehog/static/netbox_hedgehog/js/gitops-dashboard.js.backup:        document.getElementById('check-system-health')?.addEventListener('click', () => this.checkSystemHealth());
+netbox_hedgehog/static/netbox_hedgehog/js/gitops-dashboard.js.backup:        document.querySelectorAll('.gitops-status-card').forEach(card => {
+netbox_hedgehog/static/netbox_hedgehog/js/gitops-dashboard.js.backup:            document.getElementById('total-fabrics').textContent = stats.total_fabrics || 0;
+netbox_hedgehog/static/netbox_hedgehog/js/gitops-dashboard.js.backup:            document.getElementById('pending-files').textContent = stats.pending_files || 0;
+netbox_hedgehog/static/netbox_hedgehog/js/gitops-dashboard.js.backup:            document.getElementById('processed-today').textContent = stats.processed_today || 0;
+netbox_hedgehog/static/netbox_hedgehog/js/gitops-dashboard.js.backup:            document.getElementById('error-count').textContent = stats.error_count || 0;
+netbox_hedgehog/static/netbox_hedgehog/js/gitops-dashboard.js.backup:            const tbody = document.getElementById('fabrics-tbody');
+netbox_hedgehog/static/netbox_hedgehog/js/gitops-dashboard.js.backup:            const emptyState = document.getElementById('fabrics-empty');
+netbox_hedgehog/static/netbox_hedgehog/js/gitops-dashboard.js.backup:            const timeline = document.getElementById('activity-timeline');
+netbox_hedgehog/static/netbox_hedgehog/js/gitops-dashboard.js.backup:            const emptyState = document.getElementById('activity-empty');
+netbox_hedgehog/static/netbox_hedgehog/js/gitops-dashboard.js.backup:            document.getElementById('avg-processing-time').textContent = health.avg_processing_time || '--';
+netbox_hedgehog/static/netbox_hedgehog/js/gitops-dashboard.js.backup:            document.getElementById('success-rate').textContent = health.success_rate || '--';
+netbox_hedgehog/static/netbox_hedgehog/js/gitops-dashboard.js.backup:            document.getElementById('queue-depth').textContent = health.queue_depth || '--';
+netbox_hedgehog/static/netbox_hedgehog/js/gitops-dashboard.js.backup:        const element = document.getElementById(elementId);
+netbox_hedgehog/static/netbox_hedgehog/js/gitops-dashboard.js.backup:            document.getElementById('raw-storage').textContent = this.formatStorage(storage.raw_storage);
+netbox_hedgehog/static/netbox_hedgehog/js/gitops-dashboard.js.backup:            document.getElementById('managed-storage').textContent = this.formatStorage(storage.managed_storage);
+netbox_hedgehog/static/netbox_hedgehog/js/gitops-dashboard.js.backup:            document.getElementById('archive-storage').textContent = this.formatStorage(storage.archive_storage);
+netbox_hedgehog/static/netbox_hedgehog/js/gitops-dashboard.js.backup:        const ctx = document.getElementById('storage-usage-chart');
+netbox_hedgehog/static/netbox_hedgehog/js/gitops-dashboard.js.backup:            document.getElementById('error-count').closest('.card').classList.add('border-danger');
+netbox_hedgehog/static/netbox_hedgehog/js/gitops-dashboard.js.backup:            document.getElementById('pending-files').closest('.card').classList.add('border-warning');
+netbox_hedgehog/static/netbox_hedgehog/js/gitops-dashboard.js.backup:        const rows = document.querySelectorAll('.fabric-row');
+netbox_hedgehog/static/netbox_hedgehog/js/gitops-dashboard.js.backup:        const refreshBtn = document.getElementById('refresh-dashboard');
+netbox_hedgehog/static/netbox_hedgehog/js/gitops-dashboard.js.backup:        const button = document.getElementById(buttonId);
+netbox_hedgehog/static/netbox_hedgehog/js/gitops-dashboard.js.backup:        const button = document.getElementById(buttonId);
+netbox_hedgehog/static/netbox_hedgehog/js/gitops-dashboard.js.backup:        const token = document.querySelector('[name=csrfmiddlewaretoken]');
+netbox_hedgehog/static/netbox_hedgehog/js/gitops-dashboard.js.backup:        const existingModal = document.getElementById('statusDetailsModal');
+netbox_hedgehog/static/netbox_hedgehog/js/gitops-dashboard.js.backup:            const modal = new bootstrap.Modal(document.getElementById('statusDetailsModal'));
+netbox_hedgehog/static/netbox_hedgehog/js/gitops-dashboard.js.backup:        const element = document.getElementById(id);
+netbox_hedgehog/static/netbox_hedgehog/js/gitops-dashboard.js.backup:        const indicator = document.getElementById('connectionIndicator');
+netbox_hedgehog/static/netbox_hedgehog/js/gitops-dashboard.js.backup:        const statusText = document.getElementById('connectionStatusText');
+netbox_hedgehog/static/netbox_hedgehog/js/gitops-dashboard.js.backup:        const toast = document.getElementById('connectionStatus');
+netbox_hedgehog/static/netbox_hedgehog/js/gitops-dashboard.js.backup:        document.getElementById('fileBrowserLoader')?.classList.remove('d-none');
+netbox_hedgehog/static/netbox_hedgehog/js/gitops-dashboard.js.backup:        document.getElementById('fileListContainer')?.classList.add('d-none');
+netbox_hedgehog/static/netbox_hedgehog/js/gitops-dashboard.js.backup:        document.getElementById('fileBrowserLoader')?.classList.add('d-none');
+netbox_hedgehog/static/netbox_hedgehog/js/gitops-dashboard.js.backup:        document.getElementById('fileListContainer')?.classList.remove('d-none');
+netbox_hedgehog/static/netbox_hedgehog/js/gitops-dashboard.js.backup:        const container = document.getElementById('fileBrowserContent');
+netbox_hedgehog/static/netbox_hedgehog/js/gitops-dashboard.js.backup:        const tbody = document.getElementById('fileTableBody');
+netbox_hedgehog/static/netbox_hedgehog/js/gitops-dashboard.js.backup:        const emptyState = document.getElementById('emptyFileState');
+netbox_hedgehog/static/netbox_hedgehog/js/gitops-dashboard.js.backup:        const container = document.getElementById('diffContainer');
+netbox_hedgehog/static/netbox_hedgehog/js/gitops-dashboard.js.backup:        const element = document.getElementById(elementId);
+netbox_hedgehog/static/netbox_hedgehog/js/progressive-disclosure.js:        document.querySelectorAll('.section-toggle').forEach(toggle => {
+netbox_hedgehog/static/netbox_hedgehog/js/progressive-disclosure.js:        const connectionStatus = document.querySelector('[data-connection-status]');
+netbox_hedgehog/static/netbox_hedgehog/js/progressive-disclosure.js:        const syncStatus = document.querySelector('[data-sync-status]');
+netbox_hedgehog/static/netbox_hedgehog/js/progressive-disclosure.js:                const element = document.querySelector(`[data-crd-count="${type}"]`);
+netbox_hedgehog/static/netbox_hedgehog/js/progressive-disclosure.js:            const gitopsSection = document.querySelector('[data-section="gitops"]');
+netbox_hedgehog/static/netbox_hedgehog/js/progressive-disclosure.js:            const lastSyncElements = document.querySelectorAll('[data-last-sync]');
+netbox_hedgehog/static/netbox_hedgehog/js/progressive-disclosure.js:        const syncButton = document.querySelector('[data-operation="sync-git"]');
+netbox_hedgehog/static/netbox_hedgehog/js/progressive-disclosure.js:        const gitopsSyncButton = document.querySelector('[data-operation="gitops-sync"]');
+netbox_hedgehog/static/netbox_hedgehog/js/progressive-disclosure.js:        const initGitOpsButton = document.querySelector('[data-operation="init-gitops"]');
+netbox_hedgehog/static/netbox_hedgehog/js/progressive-disclosure.js:        const progressContainer = document.querySelector('#sync-progress');
+netbox_hedgehog/static/netbox_hedgehog/js/progressive-disclosure.js:        const progressContainer = document.querySelector('#init-gitops-progress');
+netbox_hedgehog/static/netbox_hedgehog/js/progressive-disclosure.js:        const meta = document.querySelector('meta[name="api-token"]');
+netbox_hedgehog/static/netbox_hedgehog/js/progressive-disclosure.js:        const meta = document.querySelector('meta[name="api-token"]');
+netbox_hedgehog/static/netbox_hedgehog/js/sync-handler.js:            const syncStatus = document.querySelector('[data-sync-status]');
+netbox_hedgehog/static/netbox_hedgehog/js/sync-handler.js:            const crdCount = document.querySelector('[data-crd-count]');
+netbox_hedgehog/static/netbox_hedgehog/js/sync-handler.js:            const lastSync = document.querySelector('[data-last-sync]');
+netbox_hedgehog/static/netbox_hedgehog/js/sync-handler.js:            const errorCount = document.querySelector('[data-error-count]');
+netbox_hedgehog/static/netbox_hedgehog/js/sync-handler.js:        const fabricId = window.currentFabricId || document.querySelector('[data-fabric-id]')?.dataset.fabricId;
+netbox_hedgehog/static/netbox_hedgehog/js/sync-handler.js:        document.querySelectorAll('.btn-sync-fabric, [data-sync-button]').forEach(button => {
+netbox_hedgehog/static/netbox_hedgehog/js/raw-directory-monitor.js:        document.getElementById('refresh-monitor')?.addEventListener('click', () => this.refreshMonitor());
+netbox_hedgehog/static/netbox_hedgehog/js/raw-directory-monitor.js:        document.getElementById('toggle-auto-refresh')?.addEventListener('click', () => this.toggleAutoRefresh());
+netbox_hedgehog/static/netbox_hedgehog/js/raw-directory-monitor.js:        document.getElementById('process-all-files')?.addEventListener('click', () => this.processAllFiles());
+netbox_hedgehog/static/netbox_hedgehog/js/raw-directory-monitor.js:        document.querySelectorAll('input[name="file-filter"]').forEach(radio => {
+netbox_hedgehog/static/netbox_hedgehog/js/raw-directory-monitor.js:        document.getElementById('select-all-files')?.addEventListener('change', (e) => this.selectAllFiles(e.target.checked));
+netbox_hedgehog/static/netbox_hedgehog/js/raw-directory-monitor.js:        document.getElementById('upload-files-btn')?.addEventListener('click', () => this.uploadFiles());
+netbox_hedgehog/static/netbox_hedgehog/js/raw-directory-monitor.js:        document.querySelectorAll('[onclick="clearLog()"]').forEach(btn => {
+netbox_hedgehog/static/netbox_hedgehog/js/raw-directory-monitor.js:        document.querySelectorAll('[onclick="exportLog()"]').forEach(btn => {
+netbox_hedgehog/static/netbox_hedgehog/js/raw-directory-monitor.js:            document.getElementById('pending-count').textContent = stats.pending || 0;
+netbox_hedgehog/static/netbox_hedgehog/js/raw-directory-monitor.js:            document.getElementById('processing-count').textContent = stats.processing || 0;
+netbox_hedgehog/static/netbox_hedgehog/js/raw-directory-monitor.js:            document.getElementById('completed-count').textContent = stats.completed_today || 0;
+netbox_hedgehog/static/netbox_hedgehog/js/raw-directory-monitor.js:            document.getElementById('error-count').textContent = stats.errors || 0;
+netbox_hedgehog/static/netbox_hedgehog/js/raw-directory-monitor.js:            const tbody = document.getElementById('files-tbody');
+netbox_hedgehog/static/netbox_hedgehog/js/raw-directory-monitor.js:            const emptyState = document.getElementById('files-empty');
+netbox_hedgehog/static/netbox_hedgehog/js/raw-directory-monitor.js:            const queueItems = document.getElementById('queue-items');
+netbox_hedgehog/static/netbox_hedgehog/js/raw-directory-monitor.js:            const queueEmpty = document.getElementById('queue-empty');
+netbox_hedgehog/static/netbox_hedgehog/js/raw-directory-monitor.js:            const queueStatus = document.getElementById('queue-status');
+netbox_hedgehog/static/netbox_hedgehog/js/raw-directory-monitor.js:            const queueProgress = document.getElementById('queue-progress');
+netbox_hedgehog/static/netbox_hedgehog/js/raw-directory-monitor.js:            const currentProcessing = document.getElementById('current-processing');
+netbox_hedgehog/static/netbox_hedgehog/js/raw-directory-monitor.js:            const queueTotal = document.getElementById('queue-total');
+netbox_hedgehog/static/netbox_hedgehog/js/raw-directory-monitor.js:            const fabricSelect = document.getElementById('fabric-select');
+netbox_hedgehog/static/netbox_hedgehog/js/raw-directory-monitor.js:        const rows = document.querySelectorAll('.file-row');
+netbox_hedgehog/static/netbox_hedgehog/js/raw-directory-monitor.js:        const checkboxes = document.querySelectorAll('.file-checkbox');
+netbox_hedgehog/static/netbox_hedgehog/js/raw-directory-monitor.js:        const bulkActions = document.getElementById('bulk-actions');
+netbox_hedgehog/static/netbox_hedgehog/js/raw-directory-monitor.js:        const selectedCount = document.getElementById('selected-count');
+netbox_hedgehog/static/netbox_hedgehog/js/raw-directory-monitor.js:        document.getElementById('showing-start').textContent = totalFiles > 0 ? '1' : '0';
+netbox_hedgehog/static/netbox_hedgehog/js/raw-directory-monitor.js:        document.getElementById('showing-end').textContent = totalFiles.toString();
+netbox_hedgehog/static/netbox_hedgehog/js/raw-directory-monitor.js:        document.getElementById('total-files').textContent = totalFiles.toString();
+netbox_hedgehog/static/netbox_hedgehog/js/raw-directory-monitor.js:            const modalBody = document.getElementById('file-details-body');
+netbox_hedgehog/static/netbox_hedgehog/js/raw-directory-monitor.js:                const modal = new bootstrap.Modal(document.getElementById('fileDetailsModal'));
+netbox_hedgehog/static/netbox_hedgehog/js/raw-directory-monitor.js:        const fileInput = document.getElementById('file-input');
+netbox_hedgehog/static/netbox_hedgehog/js/raw-directory-monitor.js:        const fabricSelect = document.getElementById('fabric-select');
+netbox_hedgehog/static/netbox_hedgehog/js/raw-directory-monitor.js:        const autoProcess = document.getElementById('auto-process');
+netbox_hedgehog/static/netbox_hedgehog/js/raw-directory-monitor.js:                const modal = bootstrap.Modal.getInstance(document.getElementById('fileUploadModal'));
+netbox_hedgehog/static/netbox_hedgehog/js/raw-directory-monitor.js:        const logContainer = document.getElementById('processing-log');
+netbox_hedgehog/static/netbox_hedgehog/js/raw-directory-monitor.js:        const logContainer = document.getElementById('processing-log');
+netbox_hedgehog/static/netbox_hedgehog/js/raw-directory-monitor.js:        const btn = document.getElementById('toggle-auto-refresh');
+netbox_hedgehog/static/netbox_hedgehog/js/raw-directory-monitor.js:        const button = document.getElementById(buttonId);
+netbox_hedgehog/static/netbox_hedgehog/js/raw-directory-monitor.js:        const button = document.getElementById(buttonId);
+netbox_hedgehog/static/netbox_hedgehog/js/raw-directory-monitor.js:        const token = document.querySelector('[name=csrfmiddlewaretoken]');
+netbox_hedgehog/static/netbox_hedgehog/js/raw-directory-monitor.js:    const modal = new bootstrap.Modal(document.getElementById('fileUploadModal'));
+netbox_hedgehog/static/netbox_hedgehog/js/error-handler.js:                const existingModal = document.getElementById('fallbackModal');
+netbox_hedgehog/static/netbox_hedgehog/js/error-handler.js:                const modal = new bootstrap.Modal(document.getElementById('fallbackModal'));
+netbox_hedgehog/static/netbox_hedgehog/js/error-handler.js:        const csrfToken = document.querySelector('[name=csrfmiddlewaretoken]');
+netbox_hedgehog/static/netbox_hedgehog/js/emergency-sync-fix.js:    const syncButtons = document.querySelectorAll('[onclick*="triggerGitSync"], [onclick*="syncFabric"], .btn-sync-fabric, [data-sync-button]');
+netbox_hedgehog/static/netbox_hedgehog/js/fabric-detail-enhanced.js:            const token = document.querySelector('[name=csrfmiddlewaretoken]')?.value ||
+netbox_hedgehog/static/netbox_hedgehog/js/fabric-detail-enhanced.js:                         document.querySelector('meta[name=csrf-token]')?.getAttribute('content') ||
+netbox_hedgehog/static/netbox_hedgehog/js/fabric-detail-enhanced.js:            const existing = document.querySelectorAll('.enhanced-notification');
+netbox_hedgehog/static/netbox_hedgehog/js/fabric-detail-enhanced.js:            if (!document.getElementById('notification-styles')) {
+netbox_hedgehog/static/netbox_hedgehog/js/fabric-detail-enhanced.js:            const existing = document.getElementById(id);
+netbox_hedgehog/static/netbox_hedgehog/js/fabric-detail-enhanced.js:            const testBtn = document.getElementById('test-connection-btn');
+netbox_hedgehog/static/netbox_hedgehog/js/fabric-detail-enhanced.js:            const syncBtns = document.querySelectorAll('#sync-now-btn, [id$="sync-btn"]');
+netbox_hedgehog/static/netbox_hedgehog/js/fabric-detail-enhanced.js:            const driftBtns = document.querySelectorAll('[onclick*="showDriftAnalysis"]');
+netbox_hedgehog/static/netbox_hedgehog/js/fabric-detail-enhanced.js:            const configBtns = document.querySelectorAll('[onclick*="configureDriftSettings"], #drift-config-btn');
+netbox_hedgehog/static/netbox_hedgehog/js/fabric-detail-enhanced.js:                const btn = document.getElementById(id);
+netbox_hedgehog/static/netbox_hedgehog/js/fabric-detail-enhanced.js:            const modalGitSyncBtn = document.getElementById('modal-git-sync-btn');
+netbox_hedgehog/static/netbox_hedgehog/js/fabric-detail-enhanced.js:            const form = document.getElementById('driftConfigForm');
+netbox_hedgehog/static/netbox_hedgehog/js/fabric-detail-enhanced.js:                checkInterval: document.getElementById('checkInterval').value,
+netbox_hedgehog/static/netbox_hedgehog/js/fabric-detail-enhanced.js:                enableNotifications: document.getElementById('enableNotifications').checked,
+netbox_hedgehog/static/netbox_hedgehog/js/fabric-detail-enhanced.js:                autoSync: document.getElementById('autoSync').checked
+netbox_hedgehog/static/netbox_hedgehog/js/fabric-detail-enhanced.js:            bootstrap.Modal.getInstance(document.getElementById('driftConfigModal')).hide();
+netbox_hedgehog/static/netbox_hedgehog/js/fabric-detail-enhanced.js:            const forms = document.querySelectorAll('form');
+netbox_hedgehog/static/netbox_hedgehog/js/fabric-detail-enhanced.js:            const modals = document.querySelectorAll('.modal');
+netbox_hedgehog/static/netbox_hedgehog/js/fabric-detail-enhanced.js:                    if (!document.querySelector('.modal.show')) {
+netbox_hedgehog/static/netbox_hedgehog/js/fabric-detail-enhanced.js:            const buttons = document.querySelectorAll('button:not([aria-label]):not([aria-labelledby])');
+netbox_hedgehog/static/netbox_hedgehog/js/fabric-detail-enhanced.js:            const interactiveElements = document.querySelectorAll('[onclick], .btn, .dropdown-toggle');
+netbox_hedgehog/static/netbox_hedgehog/js/fabric-detail-enhanced.js:            const clickableElements = document.querySelectorAll('.drift-action-btn, .quick-action-btn');
+netbox_hedgehog/static/netbox_hedgehog/js/fabric-detail-enhanced.js:            const cards = document.querySelectorAll('.card');
+netbox_hedgehog/static/netbox_hedgehog/js/fabric-detail-enhanced.js:            const buttons = document.querySelectorAll('.btn');
+netbox_hedgehog/static/netbox_hedgehog/js/fabric-detail-enhanced.js:            const statusElements = document.querySelectorAll('[data-status-type="connection"]');
+netbox_hedgehog/static/netbox_hedgehog/js/fabric-detail-enhanced.js:            const driftElements = document.querySelectorAll('[data-status-type="drift"]');
+netbox_hedgehog/static/netbox_hedgehog/js/hedgehog.js:        const csrfInput = document.querySelector('[name=csrfmiddlewaretoken]');
+netbox_hedgehog/static/netbox_hedgehog/js/hedgehog.js:            const container = document.querySelector('.hedgehog-wrapper') || document.body;
+netbox_hedgehog/static/netbox_hedgehog/js/hedgehog.js:        const statusElements = document.querySelectorAll('[data-auto-refresh]');
+netbox_hedgehog/static/netbox_hedgehog/js/hedgehog.js:        const vpcNameInputs = document.querySelectorAll('input[name="name"][data-vpc-name]');
+netbox_hedgehog/static/netbox_hedgehog/js/hedgehog.js:        const ipInputs = document.querySelectorAll('input[data-validate-ip]');
+netbox_hedgehog/static/netbox_hedgehog/js/hedgehog.js:        const cidrInputs = document.querySelectorAll('input[data-validate-cidr]');
+netbox_hedgehog/static/netbox_hedgehog/js/hedgehog.js:        const bulkForms = document.querySelectorAll('[data-bulk-form]');
+netbox_hedgehog/static/netbox_hedgehog/js/hedgehog.js:            const tooltipTriggerList = [].slice.call(document.querySelectorAll('[data-bs-toggle="tooltip"]'));
+netbox_hedgehog/static/netbox_hedgehog/js/hedgehog.js:            const preview = document.getElementById('subnet-preview');
+netbox_hedgehog/static/netbox_hedgehog/js/hedgehog.js:                        const statusElement = document.querySelector('[data-connection-status]');
+netbox_hedgehog/static/netbox_hedgehog/js/hedgehog.js:                        const syncStatusElement = document.querySelector('[data-sync-status]');
+netbox_hedgehog/static/netbox_hedgehog/js/hedgehog.js:                        const crdCountElement = document.querySelector('[data-crd-count]');
+netbox_hedgehog/static/netbox_hedgehog/js/responsive-enhancements.js:            const touchElements = document.querySelectorAll('.btn, .quick-action-btn, .drift-action-btn, .section-toggle, .card[data-toggle]');
+netbox_hedgehog/static/netbox_hedgehog/js/responsive-enhancements.js:            if (!document.querySelector('#responsive-touch-styles')) {
+netbox_hedgehog/static/netbox_hedgehog/js/responsive-enhancements.js:            const tables = document.querySelectorAll('.table');
+netbox_hedgehog/static/netbox_hedgehog/js/responsive-enhancements.js:            const modals = document.querySelectorAll('.modal');
+netbox_hedgehog/static/netbox_hedgehog/js/responsive-enhancements.js:            const toggles = document.querySelectorAll('.section-toggle');
+netbox_hedgehog/static/netbox_hedgehog/js/responsive-enhancements.js:            const backButton = document.querySelector('a[href*="fabric_list"]');
+netbox_hedgehog/static/netbox_hedgehog/js/gitops-onboarding.js:        document.getElementById('configure-next-btn')?.addEventListener('click', () => this.nextStep());
+netbox_hedgehog/static/netbox_hedgehog/js/gitops-onboarding.js:        document.getElementById('detect-back-btn')?.addEventListener('click', () => this.previousStep());
+netbox_hedgehog/static/netbox_hedgehog/js/gitops-onboarding.js:        document.getElementById('detect-next-btn')?.addEventListener('click', () => this.nextStep());
+netbox_hedgehog/static/netbox_hedgehog/js/gitops-onboarding.js:        document.getElementById('strategy-back-btn')?.addEventListener('click', () => this.previousStep());
+netbox_hedgehog/static/netbox_hedgehog/js/gitops-onboarding.js:        document.getElementById('strategy-next-btn')?.addEventListener('click', () => this.nextStep());
+netbox_hedgehog/static/netbox_hedgehog/js/gitops-onboarding.js:        document.getElementById('processing-back-btn')?.addEventListener('click', () => this.previousStep());
+netbox_hedgehog/static/netbox_hedgehog/js/gitops-onboarding.js:        document.getElementById('processing-next-btn')?.addEventListener('click', () => this.nextStep());
+netbox_hedgehog/static/netbox_hedgehog/js/gitops-onboarding.js:        document.querySelectorAll('.strategy-card').forEach(card => {
+netbox_hedgehog/static/netbox_hedgehog/js/gitops-onboarding.js:        document.getElementById('confirm-strategy')?.addEventListener('change', (e) => {
+netbox_hedgehog/static/netbox_hedgehog/js/gitops-onboarding.js:            document.getElementById('strategy-next-btn').disabled = !e.target.checked;
+netbox_hedgehog/static/netbox_hedgehog/js/gitops-onboarding.js:        document.getElementById('gitops-config-form')?.addEventListener('input', () => this.validateStep1());
+netbox_hedgehog/static/netbox_hedgehog/js/gitops-onboarding.js:            const fabricSelector = document.getElementById('fabric-selector');
+netbox_hedgehog/static/netbox_hedgehog/js/gitops-onboarding.js:        document.querySelectorAll('.wizard-step').forEach(step => {
+netbox_hedgehog/static/netbox_hedgehog/js/gitops-onboarding.js:        const currentStepElement = document.getElementById(`step-${stepNumber}`);
+netbox_hedgehog/static/netbox_hedgehog/js/gitops-onboarding.js:        document.querySelectorAll('.step').forEach((step, index) => {
+netbox_hedgehog/static/netbox_hedgehog/js/gitops-onboarding.js:        const form = document.getElementById('gitops-config-form');
+netbox_hedgehog/static/netbox_hedgehog/js/gitops-onboarding.js:        const gitopsDirectory = document.getElementById('gitops-directory').value.trim();
+netbox_hedgehog/static/netbox_hedgehog/js/gitops-onboarding.js:        const fabricId = document.getElementById('fabric-selector').value;
+netbox_hedgehog/static/netbox_hedgehog/js/gitops-onboarding.js:        document.getElementById('configure-next-btn').disabled = !isValid;
+netbox_hedgehog/static/netbox_hedgehog/js/gitops-onboarding.js:            this.processData.rawDirectory = document.getElementById('raw-directory').value.trim();
+netbox_hedgehog/static/netbox_hedgehog/js/gitops-onboarding.js:            this.processData.managedDirectory = document.getElementById('managed-directory').value.trim();
+netbox_hedgehog/static/netbox_hedgehog/js/gitops-onboarding.js:        return !document.getElementById('detect-next-btn').disabled;
+netbox_hedgehog/static/netbox_hedgehog/js/gitops-onboarding.js:        return this.selectedStrategy && document.getElementById('confirm-strategy')?.checked;
+netbox_hedgehog/static/netbox_hedgehog/js/gitops-onboarding.js:        const progressBar = document.querySelector('#scanning-progress .progress-bar');
+netbox_hedgehog/static/netbox_hedgehog/js/gitops-onboarding.js:        const scanningProgress = document.getElementById('scanning-progress');
+netbox_hedgehog/static/netbox_hedgehog/js/gitops-onboarding.js:        const detectionResults = document.getElementById('file-detection-results');
+netbox_hedgehog/static/netbox_hedgehog/js/gitops-onboarding.js:                document.getElementById('detect-next-btn').disabled = false;
+netbox_hedgehog/static/netbox_hedgehog/js/gitops-onboarding.js:        const existingFilesWarning = document.getElementById('existing-files-warning');
+netbox_hedgehog/static/netbox_hedgehog/js/gitops-onboarding.js:        const noFilesFound = document.getElementById('no-files-found');
+netbox_hedgehog/static/netbox_hedgehog/js/gitops-onboarding.js:        const fileListing = document.getElementById('file-listing');
+netbox_hedgehog/static/netbox_hedgehog/js/gitops-onboarding.js:        const fileCount = document.getElementById('file-count');
+netbox_hedgehog/static/netbox_hedgehog/js/gitops-onboarding.js:        const filesTbody = document.getElementById('detected-files-tbody');
+netbox_hedgehog/static/netbox_hedgehog/js/gitops-onboarding.js:        document.querySelectorAll('.strategy-card').forEach(c => {
+netbox_hedgehog/static/netbox_hedgehog/js/gitops-onboarding.js:        document.getElementById('strategy-confirmation').style.display = 'block';
+netbox_hedgehog/static/netbox_hedgehog/js/gitops-onboarding.js:        document.getElementById('confirm-strategy').checked = false;
+netbox_hedgehog/static/netbox_hedgehog/js/gitops-onboarding.js:        document.getElementById('strategy-next-btn').disabled = true;
+netbox_hedgehog/static/netbox_hedgehog/js/gitops-onboarding.js:        const detailsContainer = document.getElementById('strategy-details');
+netbox_hedgehog/static/netbox_hedgehog/js/gitops-onboarding.js:        const title = document.getElementById('strategy-title');
+netbox_hedgehog/static/netbox_hedgehog/js/gitops-onboarding.js:        const description = document.getElementById('strategy-description');
+netbox_hedgehog/static/netbox_hedgehog/js/gitops-onboarding.js:        const actions = document.getElementById('strategy-actions');
+netbox_hedgehog/static/netbox_hedgehog/js/gitops-onboarding.js:        const progressBar = document.getElementById('processing-progress-bar');
+netbox_hedgehog/static/netbox_hedgehog/js/gitops-onboarding.js:        const statusElement = document.getElementById('processing-status');
+netbox_hedgehog/static/netbox_hedgehog/js/gitops-onboarding.js:        const percentageElement = document.getElementById('processing-percentage');
+netbox_hedgehog/static/netbox_hedgehog/js/gitops-onboarding.js:        const logContainer = document.getElementById('processing-log');
+netbox_hedgehog/static/netbox_hedgehog/js/gitops-onboarding.js:            document.getElementById('processing-next-btn').disabled = false;
+netbox_hedgehog/static/netbox_hedgehog/js/gitops-onboarding.js:        const progressBar = document.getElementById('processing-progress-bar');
+netbox_hedgehog/static/netbox_hedgehog/js/gitops-onboarding.js:        const statusElement = document.getElementById('processing-status');
+netbox_hedgehog/static/netbox_hedgehog/js/gitops-onboarding.js:        const percentageElement = document.getElementById('processing-percentage');
+netbox_hedgehog/static/netbox_hedgehog/js/gitops-onboarding.js:        const logContainer = document.getElementById('processing-log');
+netbox_hedgehog/static/netbox_hedgehog/js/gitops-onboarding.js:        document.getElementById('summary-gitops-dir').textContent = this.processData.gitopsDirectory;
+netbox_hedgehog/static/netbox_hedgehog/js/gitops-onboarding.js:        document.getElementById('summary-raw-dir').textContent = this.processData.rawDirectory;
+netbox_hedgehog/static/netbox_hedgehog/js/gitops-onboarding.js:        document.getElementById('summary-managed-dir').textContent = this.processData.managedDirectory;
+netbox_hedgehog/static/netbox_hedgehog/js/gitops-onboarding.js:        const strategyBadge = document.getElementById('summary-strategy');
+netbox_hedgehog/static/netbox_hedgehog/js/gitops-onboarding.js:        document.getElementById('summary-files-processed').textContent = this.processData.detectedFiles?.length || 0;
+netbox_hedgehog/static/netbox_hedgehog/js/gitops-onboarding.js:        document.getElementById('summary-resources-created').textContent = Math.floor(Math.random() * 20) + 5; // Simulated
+netbox_hedgehog/static/netbox_hedgehog/js/gitops-onboarding.js:        document.getElementById('summary-files-archived').textContent = this.processData.detectedFiles?.length || 0;
+netbox_hedgehog/static/netbox_hedgehog/js/gitops-onboarding.js:        document.getElementById('summary-processing-time').textContent = '2.3s'; // Simulated
+netbox_hedgehog/static/netbox_hedgehog/js/gitops-onboarding.js:        const errorContainer = document.getElementById('processing-error');
+netbox_hedgehog/static/netbox_hedgehog/js/gitops-onboarding.js:        const errorMessage = document.getElementById('error-message');
+netbox_hedgehog/static/netbox_hedgehog/js/gitops-onboarding.js:        const errorDetails = document.getElementById('error-details');
+netbox_hedgehog/static/netbox_hedgehog/js/gitops-onboarding.js:        const token = document.querySelector('[name=csrfmiddlewaretoken]');
+netbox_hedgehog/static/netbox_hedgehog/js/archive-browser.js:        document.getElementById('refresh-archives')?.addEventListener('click', () => this.refreshArchives());
+netbox_hedgehog/static/netbox_hedgehog/js/archive-browser.js:        document.getElementById('cleanup-archives')?.addEventListener('click', () => this.cleanupArchives());
+netbox_hedgehog/static/netbox_hedgehog/js/archive-browser.js:        document.getElementById('search-input')?.addEventListener('input', (e) => {
+netbox_hedgehog/static/netbox_hedgehog/js/archive-browser.js:        document.getElementById('fabric-filter')?.addEventListener('change', (e) => {
+netbox_hedgehog/static/netbox_hedgehog/js/archive-browser.js:        document.getElementById('date-range')?.addEventListener('change', (e) => {
+netbox_hedgehog/static/netbox_hedgehog/js/archive-browser.js:        document.getElementById('archive-type')?.addEventListener('change', (e) => {
+netbox_hedgehog/static/netbox_hedgehog/js/archive-browser.js:        document.getElementById('apply-filters')?.addEventListener('click', () => this.applyFilters());
+netbox_hedgehog/static/netbox_hedgehog/js/archive-browser.js:        document.getElementById('timeline-view')?.addEventListener('change', (e) => {
+netbox_hedgehog/static/netbox_hedgehog/js/archive-browser.js:        document.getElementById('select-all-archives')?.addEventListener('change', (e) => {
+netbox_hedgehog/static/netbox_hedgehog/js/archive-browser.js:        document.querySelectorAll('[onclick^="exportArchives"]').forEach(btn => {
+netbox_hedgehog/static/netbox_hedgehog/js/archive-browser.js:        document.querySelectorAll('[onclick="optimizeStorage()"]').forEach(btn => {
+netbox_hedgehog/static/netbox_hedgehog/js/archive-browser.js:        document.querySelectorAll('[onclick="cleanupOldArchives()"]').forEach(btn => {
+netbox_hedgehog/static/netbox_hedgehog/js/archive-browser.js:            document.getElementById('total-archives').textContent = stats.total_archives || 0;
+netbox_hedgehog/static/netbox_hedgehog/js/archive-browser.js:            document.getElementById('migration-archives').textContent = stats.migration_archives || 0;
+netbox_hedgehog/static/netbox_hedgehog/js/archive-browser.js:            document.getElementById('backup-archives').textContent = stats.backup_archives || 0;
+netbox_hedgehog/static/netbox_hedgehog/js/archive-browser.js:            document.getElementById('total-size').textContent = this.formatStorage(stats.total_size || 0);
+netbox_hedgehog/static/netbox_hedgehog/js/archive-browser.js:            const tbody = document.getElementById('archives-tbody');
+netbox_hedgehog/static/netbox_hedgehog/js/archive-browser.js:            const grid = document.getElementById('archives-grid');
+netbox_hedgehog/static/netbox_hedgehog/js/archive-browser.js:            const timeline = document.getElementById('archives-timeline');
+netbox_hedgehog/static/netbox_hedgehog/js/archive-browser.js:            const emptyState = document.getElementById('archives-empty');
+netbox_hedgehog/static/netbox_hedgehog/js/archive-browser.js:            const fabricFilter = document.getElementById('fabric-filter');
+netbox_hedgehog/static/netbox_hedgehog/js/archive-browser.js:            document.getElementById('storage-used').textContent = this.formatStorage(storage.used || 0);
+netbox_hedgehog/static/netbox_hedgehog/js/archive-browser.js:            document.getElementById('storage-percentage').textContent = `${storage.percentage || 0}%`;
+netbox_hedgehog/static/netbox_hedgehog/js/archive-browser.js:            const progressBar = document.getElementById('storage-progress');
+netbox_hedgehog/static/netbox_hedgehog/js/archive-browser.js:        const ctx = document.getElementById('archive-trends-chart');
+netbox_hedgehog/static/netbox_hedgehog/js/archive-browser.js:        document.querySelectorAll('.archive-row, .archive-card').forEach(el => {
+netbox_hedgehog/static/netbox_hedgehog/js/archive-browser.js:        const element = document.querySelector(`[data-archive-id="${archive.id}"]`);
+netbox_hedgehog/static/netbox_hedgehog/js/archive-browser.js:        const detailsCard = document.getElementById('archive-details-card');
+netbox_hedgehog/static/netbox_hedgehog/js/archive-browser.js:        const detailsBody = document.getElementById('archive-details-body');
+netbox_hedgehog/static/netbox_hedgehog/js/archive-browser.js:        const checkboxes = document.querySelectorAll('.archive-checkbox');
+netbox_hedgehog/static/netbox_hedgehog/js/archive-browser.js:        const bulkActions = document.getElementById('bulk-actions');
+netbox_hedgehog/static/netbox_hedgehog/js/archive-browser.js:        const selectedCount = document.getElementById('selected-count');
+netbox_hedgehog/static/netbox_hedgehog/js/archive-browser.js:        const customRange = document.getElementById('custom-date-range');
+netbox_hedgehog/static/netbox_hedgehog/js/archive-browser.js:        const dateRange = document.getElementById('date-range');
+netbox_hedgehog/static/netbox_hedgehog/js/archive-browser.js:        const listView = document.getElementById('list-view');
+netbox_hedgehog/static/netbox_hedgehog/js/archive-browser.js:        const gridView = document.getElementById('grid-view');
+netbox_hedgehog/static/netbox_hedgehog/js/archive-browser.js:        const timelineViewContent = document.getElementById('timeline-view-content');
+netbox_hedgehog/static/netbox_hedgehog/js/archive-browser.js:            document.getElementById('archive-content').textContent = content.content || '';
+netbox_hedgehog/static/netbox_hedgehog/js/archive-browser.js:            document.getElementById('archive-metadata-content').innerHTML = this.formatArchiveMetadata(content.metadata);
+netbox_hedgehog/static/netbox_hedgehog/js/archive-browser.js:            const modal = new bootstrap.Modal(document.getElementById('archivePreviewModal'));
+netbox_hedgehog/static/netbox_hedgehog/js/archive-browser.js:        const modal = new bootstrap.Modal(document.getElementById('restoreConfirmationModal'));
+netbox_hedgehog/static/netbox_hedgehog/js/archive-browser.js:            document.getElementById('restore-details').innerHTML = `
+netbox_hedgehog/static/netbox_hedgehog/js/archive-browser.js:            document.getElementById('confirm-restore-btn').onclick = () => {
+netbox_hedgehog/static/netbox_hedgehog/js/archive-browser.js:            const overwriteExisting = document.getElementById('overwrite-existing').checked;
+netbox_hedgehog/static/netbox_hedgehog/js/archive-browser.js:        const refreshBtn = document.getElementById('refresh-archives');
+netbox_hedgehog/static/netbox_hedgehog/js/archive-browser.js:        const token = document.querySelector('[name=csrfmiddlewaretoken]');
+netbox_hedgehog/static/netbox_hedgehog/js/archive-browser.js:    document.getElementById('list-view-btn').classList.toggle('active', view === 'list');
+netbox_hedgehog/static/netbox_hedgehog/js/archive-browser.js:    document.getElementById('grid-view-btn').classList.toggle('active', view === 'grid');
+netbox_hedgehog/static/netbox_hedgehog/js/archive-browser.js:    const listView = document.getElementById('list-view');
+netbox_hedgehog/static/netbox_hedgehog/js/archive-browser.js:    const gridView = document.getElementById('grid-view');
+netbox_hedgehog/static/netbox_hedgehog/js/archive-browser.js:    document.getElementById('search-input').value = '';
+netbox_hedgehog/static/netbox_hedgehog/js/archive-browser.js:    document.getElementById('fabric-filter').value = '';
+netbox_hedgehog/static/netbox_hedgehog/js/archive-browser.js:    document.getElementById('date-range').value = 'all';
+netbox_hedgehog/static/netbox_hedgehog/js/archive-browser.js:    document.getElementById('archive-type').value = '';
+netbox_hedgehog/static/netbox_hedgehog/js/gitops-dashboard.js:            const fabricSelector = document.getElementById('fabricSelector');
+netbox_hedgehog/static/netbox_hedgehog/js/gitops-dashboard.js:            const element = document.getElementById(id);
+netbox_hedgehog/static/netbox_hedgehog/js/gitops-dashboard.js:            const existingModal = document.getElementById('dashboardModal');
+netbox_hedgehog/static/netbox_hedgehog/js/gitops-dashboard.js:            const modal = new bootstrap.Modal(document.getElementById('dashboardModal'));
