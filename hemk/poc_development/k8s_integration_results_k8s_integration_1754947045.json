@@ -1,0 +1,47 @@
+{
+  "session_id": "k8s_integration_1754947045",
+  "timestamp": "2025-08-11T21:17:25.525983",
+  "test_type": "Kubernetes Integration Testing",
+  "k8s_endpoint": "vlab-art.l.hhdev.io:6443",
+  "results": [
+    {
+      "test_name": "Kubernetes Connectivity",
+      "status": "FAIL",
+      "duration": 0.04068589210510254,
+      "error": "No connectivity data returned",
+      "details": {
+        "stdout": "",
+        "stderr": "permission denied while trying to connect to the Docker daemon socket at unix:///var/run/docker.sock: Get \"http://%2Fvar%2Frun%2Fdocker.sock/v1.48/containers/b05eb5eff181/json\": dial unix /var/run/docker.sock: connect: permission denied\n"
+      }
+    },
+    {
+      "test_name": "Kubernetes Authentication",
+      "status": "FAIL",
+      "duration": 0.03148198127746582,
+      "error": "Could not retrieve authentication configuration"
+    },
+    {
+      "test_name": "CRD Synchronization",
+      "status": "FAIL",
+      "duration": 0.03537297248840332,
+      "error": "No CRD test data returned"
+    }
+  ],
+  "summary": {
+    "total_tests": 3,
+    "passed": 0,
+    "failed": 3,
+    "errors": 0
+  },
+  "recommendations": [
+    "Install kubernetes Python client: pip install kubernetes",
+    "Verify network connectivity to vlab-art.l.hhdev.io:6443",
+    "Mount kubeconfig file or set KUBECONFIG environment variable",
+    "Check firewall rules and DNS resolution",
+    "Check custom resource permissions and RBAC",
+    "Configure Kubernetes service account in container",
+    "Confirm Kubernetes cluster is running and accessible",
+    "Verify RBAC permissions for the service account",
+    "Verify CRD definitions are installed in the cluster"
+  ]
+}

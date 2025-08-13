@@ -1,0 +1,41 @@
+{% load static %}
+
+<div class="card mb-4">
+    <div class="card-header">
+        <h4 class="card-title mb-0"><i class="mdi mdi-information"></i> Basic Information</h4>
+    </div>
+    <div class="card-body">
+        <div class="row">
+            <div class="col-md-6">
+                <div class="mb-3">
+                    <label for="id_name" class="form-label">Name *</label>
+                    <input type="text" name="name" class="form-control" id="id_name" 
+                           value="{{ object.name|default:'' }}" required>
+                    {% if form.name.errors %}
+                        <div class="text-danger">{{ form.name.errors.0 }}</div>
+                    {% endif %}
+                </div>
+            </div>
+            <div class="col-md-6">
+                <div class="mb-3">
+                    <label for="id_status" class="form-label">Status</label>
+                    <select name="status" class="form-control" id="id_status">
+                        <option value="planned" {% if object.status == 'planned' %}selected{% endif %}>Planned</option>
+                        <option value="active" {% if object.status == 'active' %}selected{% endif %}>Active</option>
+                        <option value="deprecated" {% if object.status == 'deprecated' %}selected{% endif %}>Deprecated</option>
+                    </select>
+                    {% if form.status.errors %}
+                        <div class="text-danger">{{ form.status.errors.0 }}</div>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+        <div class="mb-3">
+            <label for="id_description" class="form-label">Description</label>
+            <textarea name="description" class="form-control" id="id_description" rows="3">{{ object.description|default:'' }}</textarea>
+            {% if form.description.errors %}
+                <div class="text-danger">{{ form.description.errors.0 }}</div>
+            {% endif %}
+        </div>
+    </div>
+</div>

@@ -40,9 +40,10 @@ class NetboxHedgehogConfig(AppConfig):
             # Import signals to connect them to Django's signal system
             from . import signals
             
-            # Import and connect template engine signals
-            from .services.template_engine_signals import connect_template_engine_signals
-            connect_template_engine_signals()
+            # Temporarily disable template engine signals to fix startup
+            # TODO: Re-enable once typing issues are resolved
+            # from .services.template_engine_signals import connect_template_engine_signals
+            # connect_template_engine_signals()
             
             import logging
             logger = logging.getLogger(__name__)

@@ -1,0 +1,76 @@
+{
+  "timestamp": "2025-08-11T21:46:01.778178",
+  "validation_phases": {
+    "server": {
+      "tests": {
+        "accessibility": {
+          "status": "PASS",
+          "details": {
+            "status_code": 200
+          },
+          "timestamp": "2025-08-11T21:46:01.850117"
+        }
+      },
+      "status": "IN_PROGRESS"
+    },
+    "routing": {
+      "tests": {
+        "url__": {
+          "status": "PASS",
+          "details": {
+            "status_code": 200
+          },
+          "timestamp": "2025-08-11T21:46:01.908989"
+        },
+        "url__35_": {
+          "status": "PASS",
+          "details": {
+            "status_code": 200
+          },
+          "timestamp": "2025-08-11T21:46:01.958105"
+        },
+        "url__35_sync_": {
+          "status": "PASS",
+          "details": {
+            "status_code": 200
+          },
+          "timestamp": "2025-08-11T21:46:01.981541"
+        }
+      },
+      "status": "IN_PROGRESS"
+    },
+    "auth_ux": {
+      "tests": {
+        "json_error_response": {
+          "status": "FAIL",
+          "details": {
+            "status_code": 403,
+            "content_type": "text/html; charset=utf-8",
+            "is_html_redirect": false
+          },
+          "timestamp": "2025-08-11T21:46:01.997217"
+        }
+      },
+      "status": "IN_PROGRESS"
+    },
+    "sync": {
+      "tests": {
+        "endpoint_exists": {
+          "status": "PASS",
+          "details": {
+            "status_code": 403
+          },
+          "timestamp": "2025-08-11T21:46:02.007605"
+        }
+      },
+      "status": "IN_PROGRESS"
+    }
+  },
+  "overall_status": "PASS",
+  "summary": {
+    "total_tests": 6,
+    "passed_tests": 5,
+    "success_rate": 83.33,
+    "overall_status": "PASS"
+  }
+}

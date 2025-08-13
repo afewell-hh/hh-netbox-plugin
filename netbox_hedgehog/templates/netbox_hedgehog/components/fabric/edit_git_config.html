@@ -1,0 +1,69 @@
+{% load static %}
+
+<div class="card mb-4">
+    <div class="card-header">
+        <h4 class="card-title mb-0"><i class="mdi mdi-git"></i> Git Repository Configuration</h4>
+    </div>
+    <div class="card-body">
+        <div class="row">
+            <div class="col-md-6">
+                <div class="mb-3">
+                    <label for="id_git_repository" class="form-label">Git Repository</label>
+                    <select name="git_repository" class="form-control" id="id_git_repository">
+                        <option value="">Select a Git Repository...</option>
+                        {% for repo in git_repositories %}
+                            <option value="{{ repo.pk }}" 
+                                    {% if object.git_repository_id == repo.pk %}selected{% endif %}>
+                                {{ repo.name }} - {{ repo.url }}
+                            </option>
+                        {% endfor %}
+                    </select>
+                    <div class="form-text">Select an authenticated Git repository</div>
+                    {% if form.git_repository.errors %}
+                        <div class="text-danger">{{ form.git_repository.errors.0 }}</div>
+                    {% endif %}
+                </div>
+            </div>
+            <div class="col-md-6">
+                <div class="mb-3">
+                    <label for="id_gitops_directory" class="form-label">GitOps Directory</label>
+                    <input type="text" name="gitops_directory" class="form-control" id="id_gitops_directory" 
+                           value="{{ object.gitops_directory|default:'/' }}">
+                    <div class="form-text">Directory path within repository for this fabric's CRDs</div>
+                    {% if form.gitops_directory.errors %}
+                        <div class="text-danger">{{ form.gitops_directory.errors.0 }}</div>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+        
+        <!-- Legacy Git Configuration (if exists) -->
+        {% if object.git_repository_url %}
+        <div class="alert alert-warning">
+            <h6><i class="mdi mdi-information"></i> Legacy Git Configuration Detected</h6>
+            <p>This fabric has legacy Git configuration. Consider migrating to the new Git Repository system.</p>
+            <div class="row">
+                <div class="col-md-6">
+                    <strong>Legacy Git URL:</strong><br>
+                    <code>{{ object.git_repository_url }}</code>
+                </div>
+                <div class="col-md-6">
+                    <strong>Legacy Branch:</strong><br>
+                    <code>{{ object.git_branch|default:"main" }}</code>
+                </div>
+            </div>
+        </div>
+        {% endif %}
+        
+        <!-- Git Sync Settings -->
+        <h5 class="mt-4 mb-3"><i class="mdi mdi-sync"></i> Git Sync Settings</h5>
+        <div class="row">
+            <div class="col-md-12">
+                <div class="alert alert-info">
+                    <i class="mdi mdi-information"></i> <strong>Note:</strong> Git sync settings are managed at the repository level. 
+                    To configure Git sync, edit the selected Git repository's settings.
+                </div>
+            </div>
+        </div>
+    </div>
+</div>

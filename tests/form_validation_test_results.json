@@ -1,0 +1,112 @@
+{
+  "timestamp": "2025-08-13T06:08:56.032512",
+  "test_type": "standalone_form_validation",
+  "tests": {
+    "form_field_validation_logic": {
+      "status": "passed",
+      "validation_results": [
+        {
+          "interval": 30,
+          "expected_valid": true,
+          "actual_valid": true,
+          "passed": true,
+          "message": "Valid",
+          "description": "Valid positive interval"
+        },
+        {
+          "interval": 60,
+          "expected_valid": true,
+          "actual_valid": true,
+          "passed": true,
+          "message": "Valid",
+          "description": "Valid interval change"
+        },
+        {
+          "interval": -1,
+          "expected_valid": false,
+          "actual_valid": false,
+          "passed": true,
+          "message": "Sync interval cannot be negative.",
+          "description": "Negative interval should fail"
+        },
+        {
+          "interval": 86401,
+          "expected_valid": false,
+          "actual_valid": false,
+          "passed": true,
+          "message": "Sync interval cannot exceed 24 hours (86400 seconds).",
+          "description": "Too large interval should fail"
+        },
+        {
+          "interval": 0,
+          "expected_valid": true,
+          "actual_valid": true,
+          "passed": true,
+          "message": "Valid",
+          "description": "Zero interval should be valid"
+        },
+        {
+          "interval": null,
+          "expected_valid": true,
+          "actual_valid": true,
+          "passed": true,
+          "message": "Valid",
+          "description": "None interval should be valid"
+        }
+      ],
+      "total_cases": 6,
+      "passed_cases": 6
+    },
+    "form_structure_requirements": {
+      "status": "passed",
+      "expected_fields": [
+        "name",
+        "description",
+        "status",
+        "kubernetes_server",
+        "kubernetes_namespace",
+        "kubernetes_token",
+        "kubernetes_ca_cert",
+        "git_repository",
+        "gitops_directory",
+        "sync_enabled",
+        "sync_interval",
+        "watch_enabled"
+      ],
+      "field_count": 12,
+      "required_validations": {
+        "name": "Should validate name format",
+        "description": "Should sanitize and validate length",
+        "kubernetes_server": "Should require HTTPS",
+        "sync_interval": "Should validate range 0-86400"
+      },
+      "has_sync_interval": true,
+      "has_description": true
+    },
+    "form_submission_workflow": {
+      "status": "passed",
+      "workflow_steps": [
+        "Load edit form page",
+        "Extract CSRF token",
+        "Populate form fields",
+        "Validate form data",
+        "Submit POST request",
+        "Handle validation errors",
+        "Process successful submission",
+        "Redirect to detail page",
+        "Display success message"
+      ],
+      "test_data_scenarios": [
+        "valid_data",
+        "invalid_data",
+        "boundary_data"
+      ],
+      "form_submission_flow": "GET form -> POST data -> Validate -> Save -> Redirect"
+    }
+  },
+  "summary": {
+    "total": 3,
+    "passed": 3,
+    "failed": 0
+  }
+}

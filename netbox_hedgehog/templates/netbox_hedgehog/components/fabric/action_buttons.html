@@ -1,0 +1,124 @@
+{% load static %}
+
+<div class="fabric-actions card">
+    <div class="card-header">
+        <h5 class="card-title mb-0">
+            <i class="mdi mdi-lightning-bolt"></i> Actions
+        </h5>
+    </div>
+    <div class="card-body">
+        <div class="d-grid gap-2">
+            <!-- Primary Actions -->
+            {% if object.sync_enabled %}
+                <button class="btn btn-outline-info fabric-sync-btn" 
+                        data-fabric-id="{{ object.pk }}" 
+                        data-sync-type="git">
+                    <i class="mdi mdi-sync"></i> Sync from Git
+                </button>
+            {% else %}
+                <button class="btn btn-outline-secondary" disabled>
+                    <i class="mdi mdi-sync-off"></i> Sync Disabled
+                </button>
+            {% endif %}
+            
+            <button class="btn btn-outline-primary fabric-sync-btn" 
+                    data-fabric-id="{{ object.pk }}" 
+                    data-sync-type="kubernetes">
+                <i class="mdi mdi-kubernetes"></i> Sync from Fabric
+            </button>
+            
+            <button class="btn btn-outline-info fabric-test-connection-btn" 
+                    data-fabric-id="{{ object.pk }}">
+                <i class="mdi mdi-test-tube"></i> Test Connection
+            </button>
+            
+            <!-- Secondary Actions -->
+            <hr class="my-2">
+            
+            <a href="{% url 'plugins:netbox_hedgehog:fabric_edit' pk=object.pk %}" 
+               class="btn btn-outline-secondary">
+                <i class="mdi mdi-pencil"></i> Edit Configuration
+            </a>
+            
+            {% if object.git_repository_url %}
+                {% if not object.gitops_initialized %}
+                <button class="btn btn-outline-success fabric-gitops-init-btn" 
+                        data-fabric-id="{{ object.pk }}">
+                    <i class="mdi mdi-folder-plus"></i> Initialize GitOps
+                </button>
+                {% else %}
+                <a href="/plugins/netbox_hedgehog/gitops/dashboard/{{ object.pk }}/" 
+                   class="btn btn-outline-success">
+                    <i class="mdi mdi-view-dashboard"></i> GitOps Dashboard
+                </a>
+                {% endif %}
+            {% endif %}
+            
+            <!-- Danger Zone -->
+            {% if show_delete_actions|default:False %}
+            <hr class="my-2">
+            <div class="text-center">
+                <small class="text-muted">Danger Zone</small>
+            </div>
+            
+            <a href="{% url 'plugins:netbox_hedgehog:fabric_delete' pk=object.pk %}" 
+               class="btn btn-outline-danger btn-sm">
+                <i class="mdi mdi-delete"></i> Delete Fabric
+            </a>
+            {% endif %}
+        </div>
+    </div>
+</div>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    // GitOps initialization button
+    document.addEventListener('click', function(e) {
+        if (e.target.closest('.fabric-gitops-init-btn')) {
+            e.preventDefault();
+            const button = e.target.closest('.fabric-gitops-init-btn');
+            const fabricId = button.dataset.fabricId;
+            
+            if (confirm('This will initialize the GitOps structure for this fabric. Continue?')) {
+                initializeGitOps(fabricId, button);
+            }
+        }
+    });
+    
+    function initializeGitOps(fabricId, button) {
+        const originalHtml = button.innerHTML;
+        const originalDisabled = button.disabled;
+        
+        button.disabled = true;
+        button.innerHTML = '<i class="mdi mdi-folder-plus mdi-spin"></i> Initializing...';
+        
+        const baseUrl = window.location.origin;
+        const initUrl = `${baseUrl}/plugins/hedgehog/fabrics/${fabricId}/init-gitops/`;
+        
+        fetch(initUrl, {
+            method: 'POST',
+            headers: {
+                'X-CSRFToken': window.FabricCommon.getCsrfToken(),
+                'Content-Type': 'application/json'
+            }
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                window.FabricCommon.showAlert('success', data.message || 'GitOps initialized successfully');
+                setTimeout(() => location.reload(), 2000);
+            } else {
+                window.FabricCommon.showAlert('danger', data.error || 'GitOps initialization failed');
+            }
+        })
+        .catch(error => {
+            console.error('GitOps initialization error:', error);
+            window.FabricCommon.showAlert('danger', 'GitOps initialization failed: ' + error.message);
+        })
+        .finally(() => {
+            button.disabled = originalDisabled;
+            button.innerHTML = originalHtml;
+        });
+    }
+});
+</script>

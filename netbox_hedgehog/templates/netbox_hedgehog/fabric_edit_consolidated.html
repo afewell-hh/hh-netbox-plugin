@@ -1,0 +1,136 @@
+{% extends "fabric_master.html" %}
+{% load static %}
+
+{% block fabric_title %}{{ title }}{% endblock %}
+
+{% block fabric_header_title %}{{ title }}{% endblock %}
+
+{% block fabric_header_actions %}
+    <div class="btn-group">
+        <a href="{% if object %}{% url 'plugins:netbox_hedgehog:fabric_detail' pk=object.pk %}{% else %}{% url 'plugins:netbox_hedgehog:fabric_list' %}{% endif %}" 
+           class="btn btn-outline-secondary">
+            <i class="mdi mdi-arrow-left"></i> Cancel
+        </a>
+    </div>
+{% endblock %}
+
+{% block fabric_breadcrumbs %}
+    {% if object %}
+        <li class="breadcrumb-item">
+            <a href="{% url 'plugins:netbox_hedgehog:fabric_detail' pk=object.pk %}">{{ object.name }}</a>
+        </li>
+        <li class="breadcrumb-item active">Edit</li>
+    {% else %}
+        <li class="breadcrumb-item active">Create Fabric</li>
+    {% endif %}
+{% endblock %}
+
+{% with show_status_bar=False %}
+{% block fabric_content %}
+    <div class="fabric-edit-content">
+        {% if error_type %}
+            <div class="alert alert-danger">
+                <h4><i class="mdi mdi-alert-circle"></i> {{ error_type }} Detected!</h4>
+                <p><strong>Error:</strong> {{ error_message }}</p>
+                
+                {% if error_traceback %}
+                    <details>
+                        <summary>Full Traceback (Click to expand)</summary>
+                        <pre style="background: #f8f9fa; padding: 10px; margin-top: 10px; font-size: 12px;">{{ error_traceback }}</pre>
+                    </details>
+                {% endif %}
+            </div>
+        {% elif error %}
+            <div class="alert alert-danger">
+                <strong><i class="mdi mdi-alert-circle"></i> Error Detected!</strong>
+                <p>{{ error }}</p>
+            </div>
+        {% else %}
+            <div class="alert alert-success">
+                <strong><i class="mdi mdi-check-circle"></i> Edit Form Working!</strong>
+                <p>The fabric configuration form is ready for editing.</p>
+            </div>
+        {% endif %}
+        
+        {% if not error_type %}
+        <form method="post" class="fabric-edit-form">
+            {% csrf_token %}
+            
+            <!-- Basic Information -->
+            {% include "components/fabric/edit_basic_info.html" %}
+            
+            <!-- Kubernetes Configuration -->
+            {% include "components/fabric/edit_kubernetes_config.html" %}
+            
+            <!-- Git Repository Configuration -->
+            {% include "components/fabric/edit_git_config.html" %}
+            
+            <!-- Form Actions -->
+            <div class="card">
+                <div class="card-body">
+                    <div class="d-flex justify-content-between">
+                        <button type="submit" class="btn btn-primary">
+                            <i class="mdi mdi-content-save"></i> Save Changes
+                        </button>
+                        
+                        <a href="{% if object %}{% url 'plugins:netbox_hedgehog:fabric_detail' pk=object.pk %}{% else %}{% url 'plugins:netbox_hedgehog:fabric_list' %}{% endif %}" 
+                           class="btn btn-secondary">
+                            <i class="mdi mdi-arrow-left"></i> Cancel
+                        </a>
+                    </div>
+                </div>
+            </div>
+        </form>
+        {% endif %}
+    </div>
+{% endblock %}
+{% endwith %}
+
+{% block fabric_scripts %}
+    <script>
+    document.addEventListener('DOMContentLoaded', function() {
+        // Form validation and enhancement
+        const form = document.querySelector('.fabric-edit-form');
+        if (form) {
+            // Add form validation logic here
+            form.addEventListener('submit', function(e) {
+                // Basic validation
+                const nameField = form.querySelector('input[name="name"]');
+                if (nameField && !nameField.value.trim()) {
+                    e.preventDefault();
+                    alert('Fabric name is required');
+                    nameField.focus();
+                    return false;
+                }
+                
+                // Show loading state
+                const submitBtn = form.querySelector('button[type="submit"]');
+                if (submitBtn) {
+                    submitBtn.disabled = true;
+                    submitBtn.innerHTML = '<i class="mdi mdi-loading mdi-spin"></i> Saving...';
+                }
+            });
+        }
+
+        // Conditional field visibility
+        const syncEnabledCheckbox = document.querySelector('#id_sync_enabled');
+        const syncIntervalField = document.querySelector('#id_sync_interval');
+        const watchEnabledCheckbox = document.querySelector('#id_watch_enabled');
+
+        function toggleSyncFields() {
+            const isEnabled = syncEnabledCheckbox && syncEnabledCheckbox.checked;
+            if (syncIntervalField) {
+                syncIntervalField.closest('.mb-3').style.display = isEnabled ? 'block' : 'none';
+            }
+            if (watchEnabledCheckbox) {
+                watchEnabledCheckbox.closest('.mb-3').style.display = isEnabled ? 'block' : 'none';
+            }
+        }
+
+        if (syncEnabledCheckbox) {
+            syncEnabledCheckbox.addEventListener('change', toggleSyncFields);
+            toggleSyncFields(); // Initial state
+        }
+    });
+    </script>
+{% endblock %}

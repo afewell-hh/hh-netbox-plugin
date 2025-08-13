@@ -1,0 +1,570 @@
+/**
+ * Print Styles for Hedgehog NetBox Plugin
+ * Professional print optimization for fabric detail pages
+ * Designed for high-quality printed documentation
+ */
+
+@media print {
+  /* =============================================================================
+     PAGE SETUP AND RESET
+     ============================================================================= */
+  
+  * {
+    color-adjust: exact;
+    -webkit-print-color-adjust: exact;
+  }
+  
+  @page {
+    margin: 1.5cm 2cm;
+    size: A4;
+  }
+  
+  @page :first {
+    margin-top: 2cm;
+  }
+  
+  html, body {
+    font-size: 12pt;
+    line-height: 1.4;
+    color: #000000;
+    background: #ffffff;
+  }
+  
+  /* =============================================================================
+     LAYOUT OPTIMIZATIONS
+     ============================================================================= */
+  
+  .container-fluid {
+    width: 100% !important;
+    max-width: none !important;
+    padding: 0 !important;
+    margin: 0 !important;
+  }
+  
+  .row {
+    margin: 0 !important;
+  }
+  
+  .col-12,
+  .col-md-8,
+  .col-md-4 {
+    width: 100% !important;
+    padding: 0 !important;
+    margin-bottom: 1rem !important;
+  }
+  
+  /* =============================================================================
+     HIDE INTERACTIVE ELEMENTS
+     ============================================================================= */
+  
+  .btn,
+  .quick-actions,
+  .quick-action-btn,
+  .drift-actions,
+  .drift-action-btn,
+  .section-toggle .toggle-icon,
+  .form-control,
+  .form-select,
+  input,
+  textarea,
+  select,
+  button,
+  .nav,
+  .navbar,
+  .breadcrumb,
+  .pagination,
+  .modal,
+  .dropdown-menu,
+  .tooltip,
+  .popover,
+  .alert .btn-close,
+  [data-bs-dismiss],
+  [data-bs-toggle] {
+    display: none !important;
+  }
+  
+  /* =============================================================================
+     HEADER AND TITLE OPTIMIZATION
+     ============================================================================= */
+  
+  .card-header {
+    background: #f8f9fa !important;
+    border: 2px solid #000000 !important;
+    border-bottom: 1px solid #000000 !important;
+    padding: 1rem !important;
+    margin-bottom: 0 !important;
+    page-break-after: avoid;
+  }
+  
+  .card-title,
+  .card-header h1,
+  .card-header h2,
+  .card-header h3,
+  .card-header h4,
+  .card-header h5,
+  .card-header h6 {
+    font-size: 16pt !important;
+    font-weight: bold !important;
+    color: #000000 !important;
+    margin: 0 !important;
+    text-align: left !important;
+  }
+  
+  h1, h2, h3, h4, h5, h6 {
+    color: #000000 !important;
+    font-weight: bold !important;
+    page-break-after: avoid;
+    margin-top: 1.5rem !important;
+    margin-bottom: 0.5rem !important;
+  }
+  
+  h1 { font-size: 18pt !important; }
+  h2 { font-size: 16pt !important; }
+  h3 { font-size: 14pt !important; }
+  h4 { font-size: 13pt !important; }
+  h5 { font-size: 12pt !important; }
+  h6 { font-size: 11pt !important; }
+  
+  /* =============================================================================
+     CARD AND CONTENT OPTIMIZATION
+     ============================================================================= */
+  
+  .card {
+    border: 2px solid #000000 !important;
+    border-radius: 0 !important;
+    box-shadow: none !important;
+    background: #ffffff !important;
+    margin-bottom: 1.5rem !important;
+    page-break-inside: avoid;
+  }
+  
+  .card-body {
+    padding: 1rem !important;
+    background: #ffffff !important;
+  }
+  
+  .dashboard-overview,
+  .drift-spotlight {
+    background: #f8f9fa !important;
+    color: #000000 !important;
+    border: 3px solid #000000 !important;
+    border-radius: 0 !important;
+    padding: 1rem !important;
+    margin-bottom: 1rem !important;
+  }
+  
+  .dashboard-overview h4,
+  .drift-spotlight h4 {
+    color: #000000 !important;
+    font-weight: bold !important;
+    font-size: 14pt !important;
+    margin-bottom: 0.5rem !important;
+  }
+  
+  /* =============================================================================
+     TABLE OPTIMIZATION
+     ============================================================================= */
+  
+  .table {
+    border-collapse: collapse !important;
+    width: 100% !important;
+    margin-bottom: 1rem !important;
+    font-size: 10pt !important;
+    line-height: 1.3 !important;
+  }
+  
+  .table th {
+    background: #e9ecef !important;
+    color: #000000 !important;
+    font-weight: bold !important;
+    border: 2px solid #000000 !important;
+    padding: 8pt !important;
+    text-align: left !important;
+    vertical-align: top !important;
+    font-size: 10pt !important;
+  }
+  
+  .table td {
+    border: 1px solid #000000 !important;
+    padding: 8pt !important;
+    color: #000000 !important;
+    vertical-align: top !important;
+    font-size: 10pt !important;
+    line-height: 1.3 !important;
+    word-wrap: break-word !important;
+  }
+  
+  .table tbody tr {
+    page-break-inside: avoid;
+  }
+  
+  .table thead {
+    display: table-header-group;
+  }
+  
+  .table tfoot {
+    display: table-footer-group;
+  }
+  
+  /* Fabric detail table specific */
+  .fabric-detail .table th {
+    width: 25% !important;
+    min-width: auto !important;
+    max-width: none !important;
+  }
+  
+  .fabric-detail .table td {
+    width: 75% !important;
+  }
+  
+  .gitops-detail-section .table-borderless th {
+    border: 1px solid #000000 !important;
+    background: #f8f9fa !important;
+    width: 30% !important;
+  }
+  
+  .gitops-detail-section .table-borderless td {
+    border: 1px solid #000000 !important;
+    width: 70% !important;
+  }
+  
+  /* =============================================================================
+     STATUS AND BADGES
+     ============================================================================= */
+  
+  .badge {
+    color: #000000 !important;
+    background: #ffffff !important;
+    border: 1px solid #000000 !important;
+    padding: 2pt 4pt !important;
+    font-size: 9pt !important;
+    font-weight: bold !important;
+    border-radius: 0 !important;
+    display: inline !important;
+  }
+  
+  .badge.bg-success::after {
+    content: " [SUCCESS]";
+    font-weight: bold;
+  }
+  
+  .badge.bg-danger::after {
+    content: " [ERROR]";
+    font-weight: bold;
+  }
+  
+  .badge.bg-warning::after {
+    content: " [WARNING]";
+    font-weight: bold;
+  }
+  
+  .badge.bg-info::after {
+    content: " [INFO]";
+    font-weight: bold;
+  }
+  
+  .badge.bg-primary::after {
+    content: " [PRIMARY]";
+    font-weight: bold;
+  }
+  
+  .badge.bg-secondary::after {
+    content: " [SECONDARY]";
+    font-weight: bold;
+  }
+  
+  .status-indicator {
+    color: #000000 !important;
+    background: #ffffff !important;
+    border: 1px solid #000000 !important;
+    padding: 2pt 4pt !important;
+    display: inline !important;
+    font-size: 10pt !important;
+  }
+  
+  /* =============================================================================
+     CODE AND PREFORMATTED TEXT
+     ============================================================================= */
+  
+  pre {
+    color: #000000 !important;
+    background: #ffffff !important;
+    border: 1px solid #000000 !important;
+    padding: 8pt !important;
+    font-size: 9pt !important;
+    line-height: 1.2 !important;
+    white-space: pre-wrap !important;
+    word-wrap: break-word !important;
+    overflow: visible !important;
+    page-break-inside: avoid;
+    margin: 0.5rem 0 !important;
+  }
+  
+  code {
+    color: #000000 !important;
+    background: #f8f9fa !important;
+    border: 1px solid #000000 !important;
+    padding: 1pt 2pt !important;
+    font-size: 9pt !important;
+    font-family: "Courier New", monospace !important;
+    page-break-inside: avoid;
+  }
+  
+  /* =============================================================================
+     PROGRESSIVE DISCLOSURE - PRINT LAYOUT
+     ============================================================================= */
+  
+  .dashboard-section {
+    border: 1px solid #000000 !important;
+    margin-bottom: 1rem !important;
+    page-break-inside: avoid;
+    background: #ffffff !important;
+  }
+  
+  .section-toggle {
+    background: #e9ecef !important;
+    color: #000000 !important;
+    border: none !important;
+    border-bottom: 1px solid #000000 !important;
+    padding: 8pt !important;
+    font-weight: bold !important;
+    font-size: 12pt !important;
+    display: block !important;
+    width: 100% !important;
+    text-align: left !important;
+  }
+  
+  .section-toggle::after {
+    content: "";
+    display: none !important;
+  }
+  
+  .section-content {
+    padding: 1rem !important;
+    display: block !important;
+    max-height: none !important;
+    opacity: 1 !important;
+    background: #ffffff !important;
+  }
+  
+  .section-content.collapsed {
+    display: block !important;
+    max-height: none !important;
+    padding: 1rem !important;
+    opacity: 1 !important;
+  }
+  
+  /* =============================================================================
+     TEXT AND TYPOGRAPHY
+     ============================================================================= */
+  
+  p, div, span {
+    color: #000000 !important;
+    font-size: 10pt !important;
+    line-height: 1.3 !important;
+  }
+  
+  .text-muted {
+    color: #000000 !important;
+    font-style: italic !important;
+  }
+  
+  .small, small {
+    font-size: 9pt !important;
+    color: #000000 !important;
+  }
+  
+  strong, b {
+    font-weight: bold !important;
+    color: #000000 !important;
+  }
+  
+  /* =============================================================================
+     INFO GRID PRINT LAYOUT
+     ============================================================================= */
+  
+  .info-grid {
+    display: block !important;
+  }
+  
+  .info-item {
+    margin-bottom: 0.5rem !important;
+    page-break-inside: avoid;
+    display: block !important;
+  }
+  
+  .info-label {
+    font-weight: bold !important;
+    color: #000000 !important;
+    background: #f8f9fa !important;
+    border: 1px solid #000000 !important;
+    padding: 4pt 6pt !important;
+    display: inline-block !important;
+    font-size: 9pt !important;
+    margin-bottom: 2pt !important;
+  }
+  
+  .info-value {
+    color: #000000 !important;
+    background: #ffffff !important;
+    border: 1px solid #000000 !important;
+    padding: 4pt 6pt !important;
+    display: block !important;
+    font-size: 10pt !important;
+    line-height: 1.3 !important;
+    margin-bottom: 0.5rem !important;
+  }
+  
+  /* =============================================================================
+     GITOPS SECTION PRINT LAYOUT
+     ============================================================================= */
+  
+  .gitops-detail-section {
+    background: #ffffff !important;
+    border: 2px solid #000000 !important;
+    border-left: 5px solid #000000 !important;
+    padding: 1rem !important;
+    margin: 1rem 0 !important;
+    page-break-inside: avoid;
+  }
+  
+  .gitops-detail-section::before {
+    display: none !important;
+  }
+  
+  .gitops-detail-section h4,
+  .gitops-detail-section h5 {
+    color: #000000 !important;
+    font-weight: bold !important;
+    margin-bottom: 0.5rem !important;
+    font-size: 12pt !important;
+  }
+  
+  /* =============================================================================
+     PAGE BREAKS AND FLOW
+     ============================================================================= */
+  
+  .page-break-before {
+    page-break-before: always;
+  }
+  
+  .page-break-after {
+    page-break-after: always;
+  }
+  
+  .no-break {
+    page-break-inside: avoid;
+  }
+  
+  /* Avoid breaks after headings */
+  h1, h2, h3, h4, h5, h6,
+  .card-header,
+  .section-toggle {
+    page-break-after: avoid;
+  }
+  
+  /* Avoid breaks before important content */
+  .card-body,
+  .section-content,
+  .table,
+  .info-grid {
+    page-break-before: avoid;
+  }
+  
+  /* =============================================================================
+     STATUS CARDS PRINT LAYOUT
+     ============================================================================= */
+  
+  .status-cards {
+    display: block !important;
+  }
+  
+  .status-card {
+    background: #f8f9fa !important;
+    border: 2px solid #000000 !important;
+    padding: 8pt !important;
+    margin-bottom: 0.5rem !important;
+    display: block !important;
+    page-break-inside: avoid;
+  }
+  
+  .status-card-title {
+    font-weight: bold !important;
+    color: #000000 !important;
+    font-size: 10pt !important;
+    margin-bottom: 2pt !important;
+  }
+  
+  .status-card-value {
+    color: #000000 !important;
+    font-size: 14pt !important;
+    font-weight: bold !important;
+    margin-bottom: 2pt !important;
+  }
+  
+  .status-card-subtitle {
+    color: #000000 !important;
+    font-size: 9pt !important;
+    font-style: italic !important;
+  }
+  
+  /* =============================================================================
+     FOOTER INFORMATION
+     ============================================================================= */
+  
+  @page {
+    @bottom-right {
+      content: "Page " counter(page) " of " counter(pages);
+      font-size: 9pt;
+      color: #666666;
+    }
+    
+    @bottom-left {
+      content: "Generated on " date;
+      font-size: 9pt;
+      color: #666666;
+    }
+  }
+  
+  /* =============================================================================
+     LINK HANDLING
+     ============================================================================= */
+  
+  a {
+    color: #000000 !important;
+    text-decoration: underline !important;
+  }
+  
+  a[href]:after {
+    content: " (" attr(href) ")";
+    font-size: 9pt;
+    color: #666666;
+  }
+  
+  a[href^="mailto:"]:after,
+  a[href^="tel:"]:after,
+  a[href^="#"]:after,
+  a[href^="javascript:"]:after {
+    content: "";
+  }
+  
+  /* =============================================================================
+     UTILITY CLASSES FOR PRINT
+     ============================================================================= */
+  
+  .print-only {
+    display: block !important;
+  }
+  
+  .screen-only {
+    display: none !important;
+  }
+  
+  .print-page-break {
+    page-break-after: always;
+  }
+  
+  .print-no-break {
+    page-break-inside: avoid;
+  }
+}

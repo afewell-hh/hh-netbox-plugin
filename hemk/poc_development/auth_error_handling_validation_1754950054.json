@@ -1,0 +1,47 @@
+{
+  "timestamp": "2025-08-11T22:07:34.099845",
+  "summary": {
+    "total_tests": 4,
+    "passed": 0,
+    "failed": 4,
+    "success_rate": "0.0%"
+  },
+  "test_results": [
+    {
+      "timestamp": "2025-08-11T22:07:32.048979",
+      "test": "Unauthenticated Sync JSON Response",
+      "success": false,
+      "details": {
+        "message": "Expected 401 status, got 403",
+        "status_code": 403
+      }
+    },
+    {
+      "timestamp": "2025-08-11T22:07:32.570826",
+      "test": "Session Expiry Detection",
+      "success": false,
+      "details": {
+        "message": "Expected 401 for expired session, got 403",
+        "status_code": 403
+      }
+    },
+    {
+      "timestamp": "2025-08-11T22:07:33.086092",
+      "test": "GitHub Sync Authentication",
+      "success": false,
+      "details": {
+        "message": "GitHub sync unexpected status: 403",
+        "status_code": 403
+      }
+    },
+    {
+      "timestamp": "2025-08-11T22:07:33.598901",
+      "test": "Authenticated Sync Request",
+      "success": false,
+      "details": {
+        "message": "Login failed with status 403",
+        "response": "<!DOCTYPE html>\n<html lang=\"en\">\n<head>\n  <meta http-equiv=\"content-type\" content=\"text/html; charset=utf-8\">\n  <meta name=\"robots\" content=\"NONE,NOARCHIVE\">\n  <title>403 Forbidden</title>\n  <style>\n "
+      }
+    }
+  ]
+}

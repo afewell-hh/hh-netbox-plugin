@@ -1,0 +1,24 @@
+{% load static %}
+
+<div class="btn-group btn-group-sm" role="group">
+    <a href="{% url 'plugins:netbox_hedgehog:fabric_detail' pk=fabric.pk %}" 
+       class="btn btn-outline-primary" title="View Details">
+        <i class="mdi mdi-eye"></i>
+    </a>
+    <a href="{% url 'plugins:netbox_hedgehog:fabric_edit' pk=fabric.pk %}" 
+       class="btn btn-outline-secondary" title="Edit">
+        <i class="mdi mdi-pencil"></i>
+    </a>
+    {% if fabric.git_repository_url %}
+        <button class="btn btn-outline-info fabric-sync-btn" 
+                data-fabric-id="{{ fabric.pk }}" 
+                data-sync-type="git"
+                title="Quick Git Sync">
+            <i class="mdi mdi-git"></i>
+        </button>
+    {% else %}
+        <button class="btn btn-outline-secondary" disabled title="Configure Git first">
+            <i class="mdi mdi-sync"></i>
+        </button>
+    {% endif %}
+</div>

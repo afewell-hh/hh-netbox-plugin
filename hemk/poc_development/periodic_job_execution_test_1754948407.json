@@ -1,0 +1,13 @@
+{
+  "timestamp": "2025-08-11T21:39:56.370940",
+  "tests_run": 4,
+  "tests_passed": 0,
+  "tests_failed": 4,
+  "job_executions": [],
+  "errors": [
+    "Job scheduling error: Traceback (most recent call last):\n  File \"<string>\", line 29, in <module>\nAttributeError: 'Job' object has no attribute 'scheduled_time'\n",
+    "Fabric sync scheduling error: Traceback (most recent call last):\n  File \"<string>\", line 27, in <module>\nAttributeError: 'FabricSyncJob' object has no attribute 'schedule_fabric_sync'. Did you mean: 'execute_fabric_sync'?\n",
+    "Monitoring error: Traceback (most recent call last):\n  File \"<string>\", line 14, in <module>\nAttributeError: 'FabricSyncJob' object has no attribute 'get_scheduled_jobs_status'\n",
+    "Periodic timer error: Traceback (most recent call last):\n  File \"<string>\", line 9, in <module>\n  File \"/opt/netbox/netbox/netbox_hedgehog/tasks/__init__.py\", line 12, in <module>\n    from .sync_scheduler import (\n  File \"/opt/netbox/netbox/netbox_hedgehog/tasks/sync_scheduler.py\", line 20, in <module>\n    from celery import shared_task, group, chord\nModuleNotFoundError: No module named 'celery'\n"
+  ]
+}

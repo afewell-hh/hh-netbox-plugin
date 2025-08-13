@@ -1,0 +1,45 @@
+{% load static %}
+
+<div class="fabric-status-bar card mb-4">
+    <div class="card-body">
+        <div class="row align-items-center">
+            <div class="col-md-8">
+                <div class="fabric-status-indicators d-flex flex-wrap gap-3">
+                    {% include "components/fabric/status_indicator.html" with type="connection" status=object.connection_status label="Connection" %}
+                    {% include "components/fabric/status_indicator.html" with type="sync" status=object.calculated_sync_status label="Sync Status" %}
+                    {% if object.git_repository_url %}
+                        {% include "components/fabric/status_indicator.html" with type="git" status="connected" label="Git" %}
+                        {% include "components/fabric/status_indicator.html" with type="drift" status=object.drift_status label="Drift" count=object.drift_count %}
+                    {% else %}
+                        {% include "components/fabric/status_indicator.html" with type="git" status="not_configured" label="Git" %}
+                    {% endif %}
+                </div>
+            </div>
+            <div class="col-md-4 text-end">
+                <div class="fabric-quick-actions btn-group" role="group">
+                    {% block fabric_quick_actions %}
+                        {% if object.sync_enabled %}
+                            <button class="btn btn-sm btn-outline-primary fabric-sync-btn" 
+                                    data-fabric-id="{{ object.pk }}" 
+                                    data-sync-type="git"
+                                    title="Sync from Git">
+                                <i class="mdi mdi-sync"></i>
+                            </button>
+                        {% endif %}
+                        <button class="btn btn-sm btn-outline-secondary fabric-sync-btn" 
+                                data-fabric-id="{{ object.pk }}" 
+                                data-sync-type="kubernetes"
+                                title="Sync from Kubernetes">
+                            <i class="mdi mdi-kubernetes"></i>
+                        </button>
+                        <button class="btn btn-sm btn-outline-info fabric-test-connection-btn" 
+                                data-fabric-id="{{ object.pk }}"
+                                title="Test Connection">
+                            <i class="mdi mdi-test-tube"></i>
+                        </button>
+                    {% endblock %}
+                </div>
+            </div>
+        </div>
+    </div>
+</div>

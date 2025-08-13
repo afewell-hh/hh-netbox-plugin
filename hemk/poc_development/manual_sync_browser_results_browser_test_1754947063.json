@@ -1,0 +1,65 @@
+{
+  "session_id": "browser_test_1754947063",
+  "timestamp": "2025-08-11T21:17:46.174409",
+  "test_type": "Manual Sync Browser Testing",
+  "results": [
+    {
+      "test_name": "Sync Button Presence",
+      "status": "FAIL",
+      "duration": 0.18054485321044922,
+      "details": {
+        "page_status": 404,
+        "page_size": 15051,
+        "sync_indicators_found": 0,
+        "button_html_snippet": ""
+      },
+      "error": "Sync button not found on fabric detail page"
+    },
+    {
+      "test_name": "Sync Button Click",
+      "status": "FAIL",
+      "duration": 0.02880096435546875,
+      "details": {
+        "csrf_token_found": false,
+        "sync_status_code": 404,
+        "sync_response_length": 15066,
+        "sync_response_preview": "\n\n\n\n\n\n\n<!DOCTYPE html>\n<html\n  lang=\"en\"\n  data-netbox-url-name=\"\"\n  data-netbox-version=\"4.3.3-Docker-3.3.0\"\n  \n  >\n  <head>\n    <meta charset=\"UTF-8\" />\n    <meta name=\"viewport\" content=\"initial-scale=1, maximum-scale=5, width=device-width, viewport-fit=cover\" />\n    <meta name=\"htmx-config\" cont",
+        "response_headers": {
+          "Content-Type": "text/html; charset=utf-8",
+          "Vary": "HX-Request, Accept-Language, Cookie, origin",
+          "X-Request-ID": "89d19dcf-9fdd-4fc3-9902-1473a9a8bcd8",
+          "X-Content-Type-Options": "nosniff",
+          "Referrer-Policy": "same-origin",
+          "Cross-Origin-Opener-Policy": "same-origin",
+          "X-Frame-Options": "SAMEORIGIN",
+          "Content-Length": "15070",
+          "Content-Language": "en",
+          "Set-Cookie": "csrftoken=cw7EJpNw0vjZJRsaYjSp6gbyNKosBLrr; expires=Mon, 10 Aug 2026 21:17:44 GMT; Max-Age=31449600; Path=/; SameSite=Lax",
+          "Server": "Unit/1.34.2",
+          "Date": "Mon, 11 Aug 2025 21:17:44 GMT"
+        }
+      },
+      "error": "Sync request failed with status 404: \n\n\n\n\n\n\n<!DOCTYPE html>\n<html\n  lang=\"en\"\n  data-netbox-url-name=\"\"\n  data-netbox-version=\"4.3.3-Docker-3.3.0\"\n  \n  >\n  <head>\n    <meta charset=\"UTF-8\" />\n    <meta name=\"viewport\" content=\"initial-sc"
+    },
+    {
+      "test_name": "Sync Response Handling",
+      "status": "FAIL",
+      "duration": 2.062791585922241,
+      "details": {
+        "sync_status_code": 404,
+        "content_changed_after_sync": true,
+        "has_success_message": false,
+        "has_error_message": true,
+        "sync_response_size": 15066,
+        "response_type": "text/html; charset=utf-8"
+      },
+      "error": "Sync response contains error message: \n\n\n\n\n\n\n<!DOCTYPE html>\n<html\n  lang=\"en\"\n  data-netbox-url-name=\"\"\n  data-netbox-version=\"4.3.3-Docker-3.3.0\"\n  \n  >\n  <head>\n    <meta charset=\"UTF-8\" />\n    <meta name=\"viewport\" content=\"initial-sc"
+    }
+  ],
+  "summary": {
+    "total_tests": 3,
+    "passed": 0,
+    "failed": 3,
+    "errors": 0
+  }
+}

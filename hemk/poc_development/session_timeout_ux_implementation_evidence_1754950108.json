@@ -1,0 +1,125 @@
+{
+  "timestamp": "2025-08-11T22:08:28.183240",
+  "implementation": "Session Timeout Authentication UX Fix",
+  "problem_description": {
+    "issue": "Users see sync button as \"not working\" when session expires",
+    "root_cause": "Session timeout returns HTML login page instead of JSON error",
+    "user_experience": "Confusing - button appears broken instead of showing login needed"
+  },
+  "solution_implemented": {
+    "backend_changes": [
+      "Created AjaxAuthenticationMixin for consistent AJAX auth handling",
+      "Updated FabricSyncView to use LoginRequiredAjaxMixin",
+      "Added proper JSON error responses for expired sessions",
+      "Enhanced existing sync views authentication checks"
+    ],
+    "frontend_changes": [
+      "Created SessionAuthHandler for centralized auth error handling",
+      "Updated sync JavaScript functions to use enhanced auth handling",
+      "Added session expiry detection and user-friendly messages",
+      "Implemented automatic redirect to login after session timeout"
+    ]
+  },
+  "files_modified": [
+    {
+      "file": "netbox_hedgehog/mixins/auth.py",
+      "type": "created",
+      "description": "Authentication mixins for AJAX session handling"
+    },
+    {
+      "file": "netbox_hedgehog/views/fabric_views.py",
+      "type": "modified",
+      "description": "Added LoginRequiredAjaxMixin to FabricSyncView"
+    },
+    {
+      "file": "netbox_hedgehog/static/netbox_hedgehog/js/session-auth-handler.js",
+      "type": "created",
+      "description": "JavaScript handler for session timeout and auth errors"
+    },
+    {
+      "file": "netbox_hedgehog/templates/netbox_hedgehog/fabric_detail_simple.html",
+      "type": "modified",
+      "description": "Updated sync functions to use SessionAuthHandler"
+    }
+  ],
+  "authentication_flow": {
+    "before_fix": [
+      "User clicks sync button",
+      "Session expired - server returns HTML login page",
+      "JavaScript tries to parse HTML as JSON - fails",
+      "User sees generic \"sync failed\" message",
+      "User thinks sync button is broken"
+    ],
+    "after_fix": [
+      "User clicks sync button",
+      "Session expired - server detects AJAX request",
+      "Server returns proper JSON with requires_login: true",
+      "JavaScript detects authentication error",
+      "User sees clear \"Session expired. Redirecting to login...\" message",
+      "User automatically redirected to login page",
+      "After login, user can retry sync successfully"
+    ]
+  },
+  "technical_implementation": {
+    "backend_mixin": {
+      "class": "AjaxAuthenticationMixin",
+      "method": "dispatch override",
+      "detection": "X-Requested-With: XMLHttpRequest header",
+      "response": {
+        "status": 401,
+        "json_fields": [
+          "success",
+          "error",
+          "requires_login",
+          "action",
+          "login_url"
+        ]
+      }
+    },
+    "frontend_handler": {
+      "class": "SessionAuthHandler",
+      "methods": [
+        "fetchWithAuth",
+        "handleAuthError",
+        "handleSessionTimeout"
+      ],
+      "features": [
+        "Automatic redirect",
+        "Button disabling",
+        "Clear error messages"
+      ]
+    }
+  },
+  "validation_approach": {
+    "test_scenarios": [
+      "Sync request with valid authentication",
+      "Sync request without authentication",
+      "Sync request with expired session",
+      "JavaScript error handling validation",
+      "User experience flow validation"
+    ],
+    "expected_behavior": {
+      "unauthenticated_ajax_request": {
+        "http_status": 401,
+        "response_type": "application/json",
+        "required_fields": [
+          "success: false",
+          "requires_login: true",
+          "error message"
+        ]
+      },
+      "user_experience": {
+        "message": "Clear session expired notification",
+        "action": "Automatic redirect to login",
+        "recovery": "User can retry after login"
+      }
+    }
+  },
+  "benefits": [
+    "Users get clear feedback about session expiry",
+    "No more confusion about \"broken\" sync buttons",
+    "Automatic recovery flow guides users back to working state",
+    "Consistent authentication handling across all sync endpoints",
+    "Better user experience reduces support tickets"
+  ]
+}

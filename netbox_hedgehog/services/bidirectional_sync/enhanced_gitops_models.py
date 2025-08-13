@@ -105,10 +105,10 @@ class SyncOperation(NetBoxModel):
         verbose_name_plural = "Sync Operations"
         ordering = ['-started_at']
         indexes = [
-            models.Index(fields=['fabric', 'status']),
-            models.Index(fields=['operation_type', 'status']),
-            models.Index(fields=['started_at']),
-            models.Index(fields=['fabric', 'operation_type', 'started_at']),
+            models.Index(fields=['fabric', 'status'], name='hnp_enhanced_syncop_fab_status_idx'),
+            models.Index(fields=['operation_type', 'status'], name='hnp_enhanced_syncop_optype_status_idx'),
+            models.Index(fields=['started_at'], name='hnp_enhanced_syncop_started_idx'),
+            models.Index(fields=['fabric', 'operation_type', 'started_at'], name='hnp_enhanced_syncop_fab_type_start_idx'),
         ]
     
     def __str__(self):

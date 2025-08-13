@@ -1,0 +1,352 @@
+{
+  "timestamp": "2025-08-12T17:48:39.056518",
+  "tests_performed": [
+    {
+      "test_name": "Sync Endpoints Validation",
+      "results": [
+        {
+          "endpoint": "/plugins/hedgehog/fabrics/",
+          "get_status": 200,
+          "post_status": 403,
+          "get_accessible": true,
+          "post_accessible": true,
+          "contains_sync_content": true
+        },
+        {
+          "endpoint": "/plugins/hedgehog/fabrics/1/sync/",
+          "get_status": 200,
+          "post_status": 403,
+          "get_accessible": true,
+          "post_accessible": true,
+          "contains_sync_content": true
+        },
+        {
+          "endpoint": "/plugins/netbox_hedgehog/fabrics/",
+          "get_status": 404,
+          "post_status": 404,
+          "get_accessible": false,
+          "post_accessible": false,
+          "contains_sync_content": false
+        },
+        {
+          "endpoint": "/plugins/netbox_hedgehog/fabrics/1/sync/",
+          "get_status": 404,
+          "post_status": 404,
+          "get_accessible": false,
+          "post_accessible": false,
+          "contains_sync_content": true
+        },
+        {
+          "endpoint": "/api/plugins/hedgehog/sync/",
+          "get_status": 403,
+          "post_status": 403,
+          "get_accessible": true,
+          "post_accessible": true,
+          "contains_sync_content": false
+        },
+        {
+          "endpoint": "/hedgehog/sync/",
+          "get_status": 404,
+          "post_status": 404,
+          "get_accessible": false,
+          "post_accessible": false,
+          "contains_sync_content": true
+        }
+      ]
+    },
+    {
+      "test_name": "Plugin Files Validation",
+      "results": {
+        "models/__init__.py": {
+          "exists": true,
+          "size": 869,
+          "sync_mentions": 2,
+          "has_content": true
+        },
+        "models/fabric.py": {
+          "exists": true,
+          "size": 70208,
+          "sync_mentions": 231,
+          "has_content": true
+        },
+        "views/fabric_views.py": {
+          "exists": true,
+          "size": 27998,
+          "sync_mentions": 43,
+          "has_content": true
+        },
+        "views/sync_views.py": {
+          "exists": true,
+          "size": 18311,
+          "sync_mentions": 109,
+          "has_content": true
+        },
+        "urls.py": {
+          "exists": true,
+          "size": 22765,
+          "sync_mentions": 44,
+          "has_content": true
+        },
+        "__init__.py": {
+          "exists": true,
+          "size": 3857,
+          "sync_mentions": 20,
+          "has_content": true
+        }
+      }
+    },
+    {
+      "test_name": "Static Files Validation",
+      "results": {
+        "javascript_files": [
+          {
+            "filename": "progressive-disclosure.js",
+            "size": 19964,
+            "sync_functions": 0,
+            "ajax_calls": 3,
+            "is_sync_related": false
+          },
+          {
+            "filename": "sync-handler.js",
+            "size": 16846,
+            "sync_functions": 8,
+            "ajax_calls": 2,
+            "is_sync_related": true
+          },
+          {
+            "filename": "raw-directory-monitor.js",
+            "size": 27402,
+            "sync_functions": 0,
+            "ajax_calls": 9,
+            "is_sync_related": false
+          },
+          {
+            "filename": "error-handler.js",
+            "size": 10911,
+            "sync_functions": 0,
+            "ajax_calls": 4,
+            "is_sync_related": false
+          },
+          {
+            "filename": "emergency-sync-fix.js",
+            "size": 4748,
+            "sync_functions": 7,
+            "ajax_calls": 1,
+            "is_sync_related": true
+          },
+          {
+            "filename": "fabric-detail-enhanced.js",
+            "size": 63306,
+            "sync_functions": 0,
+            "ajax_calls": 1,
+            "is_sync_related": false
+          },
+          {
+            "filename": "session-auth-handler.js",
+            "size": 6883,
+            "sync_functions": 0,
+            "ajax_calls": 5,
+            "is_sync_related": false
+          },
+          {
+            "filename": "hedgehog.js",
+            "size": 23649,
+            "sync_functions": 4,
+            "ajax_calls": 3,
+            "is_sync_related": true
+          },
+          {
+            "filename": "responsive-enhancements.js",
+            "size": 15049,
+            "sync_functions": 0,
+            "ajax_calls": 0,
+            "is_sync_related": false
+          },
+          {
+            "filename": "gitops-onboarding.js",
+            "size": 22518,
+            "sync_functions": 0,
+            "ajax_calls": 3,
+            "is_sync_related": false
+          },
+          {
+            "filename": "archive-browser.js",
+            "size": 34230,
+            "sync_functions": 0,
+            "ajax_calls": 10,
+            "is_sync_related": false
+          },
+          {
+            "filename": "websocket-client.js",
+            "size": 17868,
+            "sync_functions": 0,
+            "ajax_calls": 0,
+            "is_sync_related": false
+          },
+          {
+            "filename": "gitops-dashboard.js",
+            "size": 12591,
+            "sync_functions": 1,
+            "ajax_calls": 0,
+            "is_sync_related": true
+          }
+        ],
+        "css_files": [
+          {
+            "filename": "fabric-inline-styles.css",
+            "size": 6772,
+            "is_sync_related": false
+          },
+          {
+            "filename": "fabric-consolidated.css",
+            "size": 12399,
+            "is_sync_related": false
+          },
+          {
+            "filename": "responsive-fabric.css",
+            "size": 18912,
+            "is_sync_related": false
+          },
+          {
+            "filename": "hedgehog-responsive-consolidated.css",
+            "size": 23851,
+            "is_sync_related": false
+          },
+          {
+            "filename": "fabric-optimized.css",
+            "size": 18229,
+            "is_sync_related": false
+          },
+          {
+            "filename": "fabric-print.css",
+            "size": 14071,
+            "is_sync_related": false
+          },
+          {
+            "filename": "fabric-responsive-optimized.css",
+            "size": 17702,
+            "is_sync_related": false
+          },
+          {
+            "filename": "fabric-consolidated.min.css",
+            "size": 8501,
+            "is_sync_related": false
+          },
+          {
+            "filename": "gitops-dashboard.css",
+            "size": 8299,
+            "is_sync_related": false
+          },
+          {
+            "filename": "fabric-variables.css",
+            "size": 12811,
+            "is_sync_related": false
+          },
+          {
+            "filename": "fabric-detail-enhanced.css",
+            "size": 9594,
+            "is_sync_related": false
+          },
+          {
+            "filename": "progressive-disclosure.css",
+            "size": 9448,
+            "is_sync_related": false
+          },
+          {
+            "filename": "fabric-inline-styles.min.css",
+            "size": 4926,
+            "is_sync_related": false
+          },
+          {
+            "filename": "fabric-critical.css",
+            "size": 9057,
+            "is_sync_related": false
+          },
+          {
+            "filename": "hedgehog.css",
+            "size": 51136,
+            "is_sync_related": false
+          }
+        ],
+        "sync_related_files": [
+          {
+            "filename": "sync-handler.js",
+            "size": 16846,
+            "sync_functions": 8,
+            "ajax_calls": 2,
+            "is_sync_related": true
+          },
+          {
+            "filename": "emergency-sync-fix.js",
+            "size": 4748,
+            "sync_functions": 7,
+            "ajax_calls": 1,
+            "is_sync_related": true
+          },
+          {
+            "filename": "hedgehog.js",
+            "size": 23649,
+            "sync_functions": 4,
+            "ajax_calls": 3,
+            "is_sync_related": true
+          },
+          {
+            "filename": "gitops-dashboard.js",
+            "size": 12591,
+            "sync_functions": 1,
+            "ajax_calls": 0,
+            "is_sync_related": true
+          }
+        ]
+      }
+    },
+    {
+      "test_name": "Database Structure Validation",
+      "results": {
+        "database_found": false,
+        "database_path": null,
+        "tables": [],
+        "hedgehog_tables": []
+      }
+    },
+    {
+      "test_name": "Configuration Validation",
+      "results": {
+        "setup_py_exists": true,
+        "urls_configured": true,
+        "views_configured": false
+      }
+    }
+  ],
+  "evidence_collected": [],
+  "detected_failures": [
+    {
+      "category": "Database",
+      "severity": "high",
+      "description": "No database file found",
+      "evidence": {
+        "database_found": false,
+        "database_path": null,
+        "tables": [],
+        "hedgehog_tables": []
+      }
+    },
+    {
+      "category": "Configuration",
+      "severity": "high",
+      "description": "Missing configurations: ['views_configured']",
+      "evidence": {
+        "setup_py_exists": true,
+        "urls_configured": true,
+        "views_configured": false
+      }
+    }
+  ],
+  "summary": {
+    "total_tests": 5,
+    "total_failures": 2,
+    "critical_failures": 0,
+    "high_failures": 2,
+    "failure_rate": 40.0
+  }
+}

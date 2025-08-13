@@ -7,7 +7,7 @@ from django.contrib.auth.mixins import LoginRequiredMixin
 from netbox.views import generic
 from django.urls import reverse
 
-from ..services import GitOpsEditService
+from ..services import get_gitops_edit_service
 from ..models.fabric import HedgehogFabric
 from ..models.vpc_api import VPC, External, ExternalAttachment, ExternalPeering, IPv4Namespace, VPCAttachment, VPCPeering
 from ..models.wiring_api import Connection, Server, Switch, SwitchGroup, VLANNamespace
@@ -36,7 +36,7 @@ class GitOpsEditMixin:
         
         # Apply GitOps workflow
         try:
-            gitops_service = GitOpsEditService()
+            gitops_service = get_gitops_edit_service()()
             result = gitops_service.update_and_commit_cr(
                 cr_instance=self.object,
                 form_data=form.cleaned_data,
@@ -198,7 +198,7 @@ class YAMLPreviewView(LoginRequiredMixin, View):
             cr_instance = get_object_or_404(model_class, pk=object_id)
             
             # Generate YAML preview
-            gitops_service = GitOpsEditService()
+            gitops_service = get_gitops_edit_service()()
             preview_result = gitops_service.preview_yaml_changes(cr_instance, form_data)
             
             return JsonResponse({
@@ -241,7 +241,7 @@ class YAMLValidationView(LoginRequiredMixin, View):
             yaml_content = request.POST.get('yaml_content', '')
             cr_type = request.POST.get('cr_type', '')
             
-            gitops_service = GitOpsEditService()
+            gitops_service = get_gitops_edit_service()()
             validation_result = gitops_service.validate_yaml_schema(yaml_content, cr_type)
             
             return JsonResponse({

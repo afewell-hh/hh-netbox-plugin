@@ -1,0 +1,510 @@
+# Test and Validation Artifacts - Generated Files
+# These patterns should be added to .gitignore to exclude test artifacts
+
+# Test execution and validation files
+*test*.py
+*validation*.py
+*evidence*.py
+*diagnosis*.py
+*comprehensive*.py
+*standalone*.py
+*manual*.py
+*simple*.py
+*real*.py
+*practical*.py
+*quick*.py
+*lightweight*.py
+*direct*.py
+*detailed*.py
+*final*.py
+*critical*.py
+*live*.py
+*layer5*.py
+behavioral_evidence_collector.py
+execute_validation_gatekeeper.py
+sync_validation_gatekeeper.py
+
+# Test results and evidence files
+*.json
+!package.json
+!tsconfig.json
+!.vscode/settings.json
+*evidence*.json
+*validation*.json
+*test*.json
+*results*.json
+*report*.json
+*analysis*.json
+*metrics*.json
+*baseline*.json
+*assessment*.json
+*diagnosis*.json
+404_fix_evidence.json
+AUTHENTICATION_UX_IMPLEMENTATION_EVIDENCE.json
+FINAL_EVIDENCE_PACKAGE.json
+FINAL_GUI_VALIDATION_EVIDENCE_SUMMARY.json
+FINAL_VALIDATION_EVIDENCE_PACKAGE.json
+INDEPENDENT_VALIDATION_RESULTS_*.json
+PHASE*_*.json
+PRODUCTION_SYNC_EVIDENCE_PACKAGE_*.json
+PRODUCTION_VALIDATION_SUMMARY_*.json
+SYNC_FAILURE_ROOT_CAUSE_ANALYSIS_*.json
+VALIDATION_SUMMARY_METRICS.json
+
+# Report and documentation artifacts
+*REPORT*.md
+*REPORT.md
+*ANALYSIS*.md
+*ANALYSIS.md
+*SUMMARY*.md
+*SUMMARY.md
+*EVIDENCE*.md
+*EVIDENCE.md
+*COMPLETE*.md
+*COMPLETE.md
+*DETERMINATION*.md
+*DETERMINATION.md
+*GUIDE*.md
+*GUIDE.md
+*IMPLEMENTATION*.md
+*IMPLEMENTATION.md
+*VALIDATION*.md
+*VALIDATION.md
+*FRAUD*.md
+*FRAUD.md
+*AUTHORITY*.md
+*AUTHORITY.md
+*SPECIFICATION*.md
+*SPECIFICATION.md
+*DEPLOYMENT*.md
+*DEPLOYMENT.md
+*ORCHESTRATION*.md
+*ORCHESTRATION.md
+*COMPLETION*.md
+*COMPLETION.md
+*ARCHITECTURE*.md
+*ARCHITECTURE.md
+*OPTIMIZATION*.md
+*OPTIMIZATION.md
+*CONSOLIDATION*.md
+*CONSOLIDATION.md
+*DELIVERABLES*.md
+*DELIVERABLES.md
+*TDD*.md
+*TDD.md
+*SUCCESS*.md
+*SUCCESS.md
+*OPERATIONS*.md
+*OPERATIONS.md
+*AUTHENTICATION*.md
+*AUTHENTICATION.md
+*DIAGNOSTIC*.md
+*DIAGNOSTIC.md
+*TESTING*.md
+*TESTING.md
+*FRAMEWORK*.md
+*FRAMEWORK.md
+*PROCEDURES*.md
+*PROCEDURES.md
+
+# HTML test and validation files
+*test*.html
+*validation*.html
+*evidence*.html
+*baseline*.html
+*verification*.html
+*current*.html
+*deployed*.html
+*desktop*.html
+*mobile*.html
+*tablet*.html
+*post*.html
+*pre*.html
+*working*.html
+*optimized*.html
+*proof*.html
+*visual*.html
+*fabric_page*.html
+*gui_validation*.html
+*interactive_status*.html
+*baseline_fabric*.html
+emergency_sync_test.html
+
+# Text files from validation
+*.txt
+!requirements.txt
+!README.txt
+*validation*.txt
+*evidence*.txt
+*test*.txt
+*analysis*.txt
+*baseline*.txt
+*inventory*.txt
+*verification*.txt
+*optimization*.txt
+*css*.txt
+*js*.txt
+*template*.txt
+*component*.txt
+*performance*.txt
+*interactive*.txt
+*responsive*.txt
+*deployment*.txt
+*gui*.txt
+*function*.txt
+*error*.txt
+*undefined*.txt
+*url*.txt
+*form*.txt
+*navigation*.txt
+*onclick*.txt
+*media*.txt
+*viewport*.txt
+*touch*.txt
+current_*.txt
+deployed_*.txt
+final_*.txt
+post_*.txt
+pre_*.txt
+
+# Script files for testing/validation
+test_*.sh
+validate_*.sh
+execute_*.sh
+deploy_*.sh
+bootstrap_*.sh
+configure_*.sh
+verify_*.sh
+k8s_connection_validation_script.sh
+
+# Batch files and command files
+*.bat
+*.cmd
+claude-swarm.*
+ruv-swarm-wrapper*
+
+# Backup files
+*.backup
+*.bak
+*.old
+CLAUDE.md.backup.*
+
+# Log files from validation
+*.log
+!django.log
+*test*.log
+*validation*.log
+*minimal*.log
+
+# Generated CSS/JS for testing
+fabric-*.css
+fabric-*.js
+fabric-*.min.css
+fabric-*.min.js
+hedgehog-*.css
+session-auth-handler.js
+error-handler.js
+fabric-detail-enhanced.js
+gitops-dashboard.js.backup
+
+# SQL files for testing
+*.sql
+update_fabric_k8s_config.sql
+
+# Validation directories
+test-results/
+tests/
+analysis/
+backups/
+containerized_validation_*/
+simple_validation_*/
+environment_inspection_*/
+FINAL_PRODUCTION_EVIDENCE_*/
+media_test/
+static_test/
+test_file_backups/
+docs/evidence/
+docs/issues/
+docs/architecture/
+hemk/poc_development/
+
+# PID files
+*.pid
+.claude-flow.pid
+
+# Configuration backup files
+claude-flow.config.json.back*
+.mcp.json
+
+# Test data files
+*_test_*
+test_data_*
+sample_*
+
+# Migration test files
+*migration*test*
+
+# Performance test files
+*performance*test*
+*benchmark*test*
+
+# Browser test files
+*browser*test*
+
+# Sync test files
+*sync*test*
+*sync*validation*
+
+# K8s test files
+*k8s*test*
+*k8s*validation*
+*kubernetes*test*
+
+# Periodic sync test files
+*periodic*sync*test*
+*periodic*sync*validation*
+
+# RQ test files
+*rq*test*
+*rq*validation*
+
+# Container test files
+*container*test*
+*container*validation*
+
+# Production test files
+*production*test*
+*production*validation*
+
+# Authentication test files
+*auth*test*
+*auth*validation*
+
+# Session test files
+*session*test*
+*session*validation*
+
+# Scheduler test files
+*scheduler*test*
+*scheduler*validation*
+
+# Database test files
+*database*test*
+*database*validation*
+
+# FGD test files
+*fgd*test*
+*fgd*validation*
+
+# GUI test files
+*gui*test*
+*gui*validation*
+
+# URL test files
+*url*test*
+*url*validation*
+
+# Template test files
+*template*test*
+*template*validation*
+
+# CSS test files
+*css*test*
+*css*validation*
+
+# JavaScript test files
+*js*test*
+*js*validation*
+
+# Fabric test files
+*fabric*test*
+*fabric*validation*
+
+# GitOps test files
+*gitops*test*
+*gitops*validation*
+
+# Issue-specific test files
+*issue*test*
+*issue*validation*
+
+# TDD test files
+*tdd*test*
+*tdd*validation*
+
+# Integration test files
+*integration*test*
+*integration*validation*
+
+# End-to-end test files
+*e2e*test*
+*end*to*end*test*
+
+# Workflow test files
+*workflow*test*
+*workflow*validation*
+
+# Signal test files
+*signal*test*
+*signal*validation*
+
+# Error handling test files
+*error*handling*test*
+*error*handling*validation*
+
+# Ingestion test files
+*ingestion*test*
+*ingestion*validation*
+
+# Sync failure test files
+*sync*failure*test*
+*sync*failure*validation*
+
+# Recovery test files
+*recovery*test*
+*recovery*validation*
+
+# Crash test files
+*crash*test*
+*crash*validation*
+
+# Debug test files
+*debug*test*
+*debug*validation*
+
+# Minimal test files
+*minimal*test*
+*minimal*validation*
+
+# Emergency test files
+*emergency*test*
+*emergency*validation*
+
+# Timer test files
+*timer*test*
+*timer*validation*
+
+# Precision test files
+*precision*test*
+*precision*validation*
+
+# Timeout test files
+*timeout*test*
+*timeout*validation*
+
+# Hypothesis test files
+*hypothesis*test*
+*hypothesis*validation*
+
+# Capture test files
+*capture*test*
+*capture*validation*
+
+# Monitor test files
+*monitor*test*
+*monitor*validation*
+
+# Fix test files
+*fix*test*
+*fix*validation*
+
+# Executor test files
+*executor*test*
+*executor*validation*
+
+# Framework test files
+*framework*test*
+*framework*validation*
+
+# Gatekeeper test files
+*gatekeeper*test*
+*gatekeeper*validation*
+
+# Fraud detection test files
+*fraud*test*
+*fraud*validation*
+
+# Temporary NumPy files (if any)
+*.npy
+*.npz
+
+# Editor temporary files
+*~
+.*.swp
+.*.swo
+
+# OS generated files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Windows
+desktop.ini
+
+# Claude Flow specific validation artifacts
+.claude-flow/
+.swarm/
+.hive-mind/
+memory/sessions/*/
+coordination/
+.claude-flow.pid
+
+# Documentation that is test-related
+AUTOMATION_SUMMARY.md
+manual_validation_checklist.md
+testing_framework_spec.md
+
+# Evidence packages and directories
+*evidence*/
+*EVIDENCE*/
+*Evidence*/
+
+# Validation packages and directories
+*validation*/
+*VALIDATION*/
+*Validation*/
+
+# Test packages and directories
+*test*/
+*TEST*/
+*Test*/
+
+# Analysis packages and directories
+*analysis*/
+*ANALYSIS*/
+*Analysis*/
+
+# Results packages and directories
+*results*/
+*RESULTS*/
+*Results*/
+
+# Reports packages and directories
+*reports*/
+*REPORTS*/
+*Reports*/
+
+# Diagnosis packages and directories
+*diagnosis*/
+*DIAGNOSIS*/
+*Diagnosis*/
+
+# Metrics packages and directories
+*metrics*/
+*METRICS*/
+*Metrics*/
+
+# Sync specific directories
+sync_service/
+COMPREHENSIVE_SYNC_FIX_STRATEGY_*/
+PRODUCTION_SYNC_TESTING_EVIDENCE_*/
+CRITICAL_SYNC_FIXES_*/
+
+# Project status and completion files
+PROJECT_STATUS_REPORT.md
+SYNC_BUTTON_FIX_REPORT.md
+IMPLEMENTATION_COMPLETE_SUMMARY.md

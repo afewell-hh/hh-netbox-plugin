@@ -1,0 +1,13 @@
+{
+  "timestamp": "2025-08-13T06:07:17.839532",
+  "authentication_required": true,
+  "form_submission_results": {
+    "status": "authentication_required",
+    "message": "Form requires authentication to test submission",
+    "login_form_has_username": true,
+    "login_form_has_password": true,
+    "recommendation": "Provide credentials or test in authenticated session"
+  },
+  "login_redirect": "http://localhost:8000/login/?next=/plugins/hedgehog/fabrics/35/edit/",
+  "login_form_accessible": true
+}

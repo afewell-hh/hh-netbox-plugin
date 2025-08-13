@@ -1,0 +1,153 @@
+{% load static %}
+
+<div class="git-config-panel card">
+    <div class="card-header">
+        <h5 class="card-title mb-0">
+            <i class="mdi mdi-git"></i> Git Configuration
+        </h5>
+    </div>
+    <div class="card-body">
+        {% if object.git_repository %}
+            <div class="alert alert-success">
+                <div class="info-grid">
+                    <div class="info-item">
+                        <div class="info-label">Status</div>
+                        <div class="info-value">
+                            <span class="badge bg-success">
+                                <i class="mdi mdi-git"></i> Connected
+                            </span>
+                        </div>
+                    </div>
+                    
+                    <div class="info-item">
+                        <div class="info-label">Repository</div>
+                        <div class="info-value">
+                            <span class="text-break">{{ object.git_repository }}</span>
+                        </div>
+                    </div>
+                    
+                    <div class="info-item">
+                        <div class="info-label">GitOps Directory</div>
+                        <div class="info-value">
+                            <code class="text-break">{{ object.gitops_directory|default:"/" }}</code>
+                        </div>
+                    </div>
+                    
+                    {% if object.git_repository.url %}
+                    <div class="info-item">
+                        <div class="info-label">URL</div>
+                        <div class="info-value">
+                            <span class="text-break" style="word-break: break-all;">
+                                {{ object.git_repository.url }}
+                            </span>
+                        </div>
+                    </div>
+                    
+                    <div class="info-item">
+                        <div class="info-label">Branch</div>
+                        <div class="info-value">
+                            <code class="text-break">{{ object.git_repository.default_branch|default:"main" }}</code>
+                        </div>
+                    </div>
+                    {% endif %}
+                </div>
+            </div>
+        {% elif object.git_repository_url %}
+            <div class="alert alert-warning">
+                <div class="info-grid">
+                    <div class="info-item">
+                        <div class="info-label">Status</div>
+                        <div class="info-value">
+                            <span class="badge bg-warning text-dark">
+                                <i class="mdi mdi-git"></i> Legacy
+                            </span>
+                        </div>
+                    </div>
+                    
+                    <div class="info-item">
+                        <div class="info-label">Repository URL</div>
+                        <div class="info-value">
+                            <span class="text-break" style="word-break: break-all;">
+                                {{ object.git_repository_url }}
+                            </span>
+                        </div>
+                    </div>
+                    
+                    <div class="info-item">
+                        <div class="info-label">GitOps Directory</div>
+                        <div class="info-value">
+                            <code class="text-break">{{ object.gitops_directory|default:"/" }}</code>
+                        </div>
+                    </div>
+                    
+                    <div class="info-item">
+                        <div class="info-label">Branch</div>
+                        <div class="info-value">
+                            <code class="text-break">{{ object.git_branch|default:"main" }}</code>
+                        </div>
+                    </div>
+                </div>
+                <small class="text-muted d-block mt-2">
+                    Consider migrating to the new Git Repository architecture.
+                </small>
+            </div>
+        {% else %}
+            <div class="alert alert-info">
+                <div class="info-grid">
+                    <div class="info-item">
+                        <div class="info-label">Status</div>
+                        <div class="info-value">
+                            <span class="badge bg-secondary">
+                                <i class="mdi mdi-information"></i> Not Connected
+                            </span>
+                        </div>
+                    </div>
+                    
+                    <div class="info-item">
+                        <div class="info-label">Description</div>
+                        <div class="info-value">
+                            This fabric is not connected to a Git repository.
+                        </div>
+                    </div>
+                    
+                    <div class="info-item">
+                        <div class="info-label">GitOps Directory</div>
+                        <div class="info-value">
+                            <code class="text-break">{{ object.gitops_directory|default:"/" }}</code>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        {% endif %}
+        
+        {% if object.git_repository_url %}
+        <div class="git-sync-info mt-3">
+            <h6><i class="mdi mdi-sync"></i> Sync Information</h6>
+            <div class="info-grid">
+                <div class="info-item">
+                    <div class="info-label">Git Sync Enabled</div>
+                    <div class="info-value">
+                        {% if object.sync_enabled %}
+                            <span class="badge bg-success">Yes</span>
+                        {% else %}
+                            <span class="badge bg-secondary">No</span>
+                        {% endif %}
+                    </div>
+                </div>
+                
+                <div class="info-item">
+                    <div class="info-label">Last Git Sync</div>
+                    <div class="info-value">
+                        {% if object.last_sync %}
+                            {{ object.last_sync|date:"Y-m-d H:i:s" }}
+                            <small class="text-muted">({{ object.last_sync|timesince }} ago)</small>
+                        {% else %}
+                            <span class="text-muted">Never</span>
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+        </div>
+        {% endif %}
+    </div>
+</div>

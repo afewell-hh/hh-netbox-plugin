@@ -4,10 +4,14 @@ Automatically maintains GitOps tracking when CRDs are created, updated, or delet
 """
 
 from django.db.models.signals import post_save, post_delete, pre_delete
-from django.dispatch import receiver
+from django.dispatch import receiver, Signal
 from django.apps import apps
 import logging
 import traceback
+
+# Custom signals for GitOps integration
+fabric_configuration_updated = Signal()
+resource_drift_detected = Signal()
 
 logger = logging.getLogger(__name__)
 

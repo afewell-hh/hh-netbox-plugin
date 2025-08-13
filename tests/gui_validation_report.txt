@@ -1,0 +1,59 @@
+=== MICRO-SCOPE GUI VALIDATION REPORT ===
+Task: gui-validate-1
+Timestamp: 2025-08-12 20:14:00 UTC
+Time Limit: 15 minutes
+Scope: Test sync button presence ONLY in GUI
+
+=== FINDINGS ===
+
+1. SERVICE AVAILABILITY:
+   - Target URL: http://localhost:8000/plugins/hedgehog/fabrics/35/
+   - Status: SERVICE UNAVAILABLE (Connection refused)
+   - NetBox container: STARTING (was exited, restarted during test)
+   - Container health: Starting (not yet healthy)
+
+2. CONTAINER STATUS:
+   - NetBox main container: netbox-docker-netbox-1
+   - Previous state: Exited (1) 
+   - Current state: Up (health: starting)
+   - Port mapping: 0.0.0.0:8000->8080/tcp
+
+3. SERVICE DISCOVERY:
+   - Port 8000: CLOSED (target port)
+   - Port 8080: OPEN (Python HTTP server - unrelated)
+   - No Django/NetBox processes running on host
+
+4. SYNC BUTTON TEST RESULT:
+   ❌ UNABLE TO COMPLETE
+   - Reason: NetBox service not accessible
+   - Container startup issues preventing page load
+   - Authentication test not possible
+
+=== STARTUP ISSUES IDENTIFIED ===
+
+From container logs:
+- Database connection delays ("Waiting on DB...")
+- Config loading attempts with plugins.py
+- Possible database constraint violations (historical context)
+
+=== RECOMMENDATIONS ===
+
+For next validation attempt:
+1. Ensure database is fully ready before NetBox starts
+2. Check for migration issues (Django index name errors mentioned in context)
+3. Allow 2-3 minutes for full container startup
+4. Verify fabric ID 35 exists in database
+5. Test authentication with admin/admin credentials
+
+=== VALIDATION STATUS ===
+INCOMPLETE - Service startup issues prevented GUI testing
+Sync button presence/absence: UNKNOWN
+Page loading: FAILED (connection refused)
+Error messages: NOT ACCESSIBLE
+Browser console errors: NOT TESTABLE
+
+=== NEXT STEPS ===
+1. Fix container startup issues
+2. Retry validation once service is stable
+3. Complete sync button element detection
+4. Document any authentication requirements

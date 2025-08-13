@@ -1,0 +1,115 @@
+{
+  "investigation": {
+    "title": "Production Sync Failure Root Cause Analysis",
+    "timestamp": "2025-08-11T21:59:43Z",
+    "investigator": "Production Validation Agent Swarm",
+    "status": "COMPLETE"
+  },
+  "executive_summary": {
+    "root_cause": "Django Session Authentication Timeout",
+    "impact": "HIGH - Users believe sync is broken when it's actually working",
+    "complexity": "LOW - Standard authentication handling fix",
+    "user_experience": "CRITICAL - Causes loss of confidence in system"
+  },
+  "evidence_chain": {
+    "1_successful_sync": {
+      "timestamp": "2025-08-11T21:55:04Z",
+      "status": "HTTP 200",
+      "content_length": 177,
+      "user_agent": "Browser",
+      "result": "SUCCESS - Real user sync worked"
+    },
+    "2_failed_sync": {
+      "timestamp": "2025-08-11T21:59:43Z", 
+      "status": "HTTP 200",
+      "content_length": 3517,
+      "response_type": "HTML Login Page",
+      "result": "FAILURE - Session expired, redirected to login"
+    },
+    "3_database_state": {
+      "sync_status": "synced",
+      "calculated_sync_status": "out_of_sync",
+      "last_sync": "2025-08-11 21:43:02.885677+00:00",
+      "discrepancy": "Status field not updated properly"
+    },
+    "4_session_pattern": {
+      "login_redirect": "input[name='next'][value='/plugins/hedgehog/fabrics/35/sync/']",
+      "session_timeout": "~15-20 minutes",
+      "authentication_required": true
+    }
+  },
+  "technical_analysis": {
+    "primary_issue": {
+      "description": "Django session expires after inactivity",
+      "manifestation": "Sync button returns login HTML instead of JSON response",
+      "user_perception": "Button appears broken"
+    },
+    "secondary_issues": [
+      {
+        "issue": "Status field inconsistency",
+        "detail": "sync_status not updated after operations"
+      },
+      {
+        "issue": "Poor error handling",
+        "detail": "No graceful authentication failure messages"
+      },
+      {
+        "issue": "UI/UX confusion", 
+        "detail": "Users don't understand they need to re-login"
+      }
+    ]
+  },
+  "reproduction_steps": [
+    "1. Login to NetBox fabric detail page",
+    "2. Wait 15-20 minutes without browser activity", 
+    "3. Click 'Sync from Fabric' button",
+    "4. Observe: Button appears to fail (actually auth redirect)"
+  ],
+  "fix_requirements": {
+    "immediate": [
+      "Add session validation before sync requests",
+      "Return proper JSON error for expired sessions", 
+      "Update UI to handle authentication errors gracefully"
+    ],
+    "improvements": [
+      "Fix sync_status field consistency",
+      "Add session timeout warnings",
+      "Implement auto-refresh for long-running pages"
+    ]
+  },
+  "validation_evidence": {
+    "log_analysis": {
+      "successful_request": "POST /plugins/hedgehog/fabrics/35/sync/ HTTP/1.1 200 177",
+      "failed_pattern": "HTTP 200 with 3517-byte HTML login page",
+      "timeline_gap": "16 minutes between last auto-sync and manual attempt"
+    },
+    "response_analysis": {
+      "working_sync": "Small JSON response (~177 bytes)",
+      "failing_sync": "Large HTML response (~3517 bytes)", 
+      "authentication_indicator": "login form with sync URL as 'next' parameter"
+    }
+  },
+  "business_impact": {
+    "severity": "HIGH",
+    "affected_users": "All fabric management users",
+    "perception": "System appears unreliable when it's actually working",
+    "urgency": "HIGH - Damages user confidence"
+  },
+  "recommended_solution": {
+    "approach": "Standard Django authentication patterns",
+    "effort": "LOW - Well-established patterns",
+    "risk": "LOW - No functional changes to sync logic",
+    "timeline": "Can be implemented immediately"
+  },
+  "files_to_examine": [
+    "netbox_hedgehog/views.py - Sync endpoint authentication",
+    "netbox_hedgehog/static/netbox_hedgehog/js/gitops-dashboard.js - Frontend error handling",
+    "netbox_hedgehog/templates/netbox_hedgehog/fabric_detail.html - UI templates",
+    "netbox_hedgehog/models/fabric.py - Status field consistency"
+  ],
+  "evidence_files": [
+    "sync_error_capture_20250811_215900.json",
+    "session_timeout_validation_[timestamp].json", 
+    "SYNC_FAILURE_ROOT_CAUSE_ANALYSIS_COMPLETE.md"
+  ]
+}

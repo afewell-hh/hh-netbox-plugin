@@ -1,0 +1,110 @@
+{% load static %}
+
+<div class="card mb-4">
+    <div class="card-header">
+        <h4 class="card-title mb-0"><i class="mdi mdi-kubernetes"></i> Kubernetes Configuration</h4>
+    </div>
+    <div class="card-body">
+        <div class="row">
+            <div class="col-md-6">
+                <div class="mb-3">
+                    <label for="id_kubernetes_server" class="form-label">Kubernetes Server URL</label>
+                    <input type="url" name="kubernetes_server" class="form-control" id="id_kubernetes_server" 
+                           value="{{ object.kubernetes_server|default:'' }}" 
+                           placeholder="https://kubernetes.example.com:6443">
+                    <div class="form-text">Leave empty to use default kubeconfig</div>
+                    {% if form.kubernetes_server.errors %}
+                        <div class="text-danger">{{ form.kubernetes_server.errors.0 }}</div>
+                    {% endif %}
+                </div>
+            </div>
+            <div class="col-md-6">
+                <div class="mb-3">
+                    <label for="id_kubernetes_namespace" class="form-label">Kubernetes Namespace</label>
+                    <input type="text" name="kubernetes_namespace" class="form-control" id="id_kubernetes_namespace" 
+                           value="{{ object.kubernetes_namespace|default:'default' }}">
+                    <div class="form-text">Default namespace for this fabric's CRDs</div>
+                    {% if form.kubernetes_namespace.errors %}
+                        <div class="text-danger">{{ form.kubernetes_namespace.errors.0 }}</div>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+        <div class="row">
+            <div class="col-md-12">
+                <div class="mb-3">
+                    <label for="id_kubernetes_token" class="form-label">Kubernetes Token</label>
+                    <textarea name="kubernetes_token" class="form-control" id="id_kubernetes_token" rows="3" 
+                              placeholder="Bearer token for authentication">{{ object.kubernetes_token|default:'' }}</textarea>
+                    <div class="form-text">Service account token (leave empty to use kubeconfig)</div>
+                    {% if form.kubernetes_token.errors %}
+                        <div class="text-danger">{{ form.kubernetes_token.errors.0 }}</div>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+        <div class="row">
+            <div class="col-md-12">
+                <div class="mb-3">
+                    <label for="id_kubernetes_ca_cert" class="form-label">Kubernetes CA Certificate</label>
+                    <textarea name="kubernetes_ca_cert" class="form-control" id="id_kubernetes_ca_cert" rows="4" 
+                              placeholder="-----BEGIN CERTIFICATE-----
+...
+-----END CERTIFICATE-----">{{ object.kubernetes_ca_cert|default:'' }}</textarea>
+                    <div class="form-text">CA certificate for SSL verification (leave empty to use kubeconfig)</div>
+                    {% if form.kubernetes_ca_cert.errors %}
+                        <div class="text-danger">{{ form.kubernetes_ca_cert.errors.0 }}</div>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+        
+        <!-- Kubernetes Sync Settings -->
+        <h5 class="mt-4 mb-3"><i class="mdi mdi-sync"></i> Kubernetes Sync Settings</h5>
+        <div class="row">
+            <div class="col-md-6">
+                <div class="mb-3">
+                    <div class="form-check">
+                        <input type="checkbox" name="sync_enabled" class="form-check-input" id="id_sync_enabled" 
+                               {% if object.sync_enabled %}checked{% endif %}>
+                        <label class="form-check-label" for="id_sync_enabled">
+                            Enable Kubernetes Synchronization
+                        </label>
+                    </div>
+                    <div class="form-text">Enable automatic sync from Kubernetes cluster</div>
+                    {% if form.sync_enabled.errors %}
+                        <div class="text-danger">{{ form.sync_enabled.errors.0 }}</div>
+                    {% endif %}
+                </div>
+            </div>
+            <div class="col-md-6">
+                <div class="mb-3">
+                    <label for="id_sync_interval" class="form-label">Kubernetes Sync Interval (seconds)</label>
+                    <input type="number" name="sync_interval" class="form-control" id="id_sync_interval" 
+                           value="{{ object.sync_interval|default:300 }}" min="0">
+                    <div class="form-text">How often to sync from Kubernetes (0 = manual only)</div>
+                    {% if form.sync_interval.errors %}
+                        <div class="text-danger">{{ form.sync_interval.errors.0 }}</div>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+        <div class="row">
+            <div class="col-md-12">
+                <div class="mb-3">
+                    <div class="form-check">
+                        <input type="checkbox" name="watch_enabled" class="form-check-input" id="id_watch_enabled" 
+                               {% if object.watch_enabled %}checked{% endif %}>
+                        <label class="form-check-label" for="id_watch_enabled">
+                            Enable Real-time Watching
+                        </label>
+                    </div>
+                    <div class="form-text">Watch for Kubernetes CRD changes in real-time (requires sync to be enabled)</div>
+                    {% if form.watch_enabled.errors %}
+                        <div class="text-danger">{{ form.watch_enabled.errors.0 }}</div>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+</div>

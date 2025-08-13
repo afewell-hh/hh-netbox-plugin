@@ -1,0 +1,152 @@
+{% extends "fabric_master.html" %}
+{% load static %}
+
+{% block fabric_title %}Fabric Management{% endblock %}
+
+{% block fabric_header_title %}Fabric Management{% endblock %}
+{% block fabric_subtitle_content %}
+    <p class="text-muted mb-0">Manage multiple Hedgehog fabric installations from this central interface.</p>
+{% endblock %}
+
+{% block fabric_header_actions %}
+    <div class="btn-toolbar">
+        <div class="btn-group me-2">
+            <a href="{% url 'plugins:netbox_hedgehog:overview' %}" class="btn btn-outline-secondary">
+                <i class="mdi mdi-arrow-left"></i> Back to Dashboard
+            </a>
+        </div>
+        <div class="btn-group">
+            <a href="{% url 'plugins:netbox_hedgehog:gitops_onboarding' %}" class="btn btn-primary">
+                <i class="mdi mdi-plus"></i> Add Fabric
+            </a>
+            <a href="{% url 'plugins:netbox_hedgehog:gitrepository_list' %}" class="btn btn-outline-secondary">
+                <i class="mdi mdi-git"></i> Git Repositories
+            </a>
+        </div>
+    </div>
+{% endblock %}
+
+{% block fabric_breadcrumbs %}
+    <li class="breadcrumb-item active">Fabrics</li>
+{% endblock %}
+
+{% with show_status_bar=False %}
+{% block fabric_content %}
+    <div class="fabric-list-content">
+        {% if fabrics %}
+            <div class="table-responsive">
+                <table class="table table-striped">
+                    <thead>
+                        <tr>
+                            <th>Name</th>
+                            <th>Description</th>
+                            <th>Config Status</th>
+                            <th>Connection</th>
+                            <th>Sync Status</th>
+                            <th>Namespace</th>
+                            <th>Last Sync</th>
+                            <th>CRDs</th>
+                            <th>Git Status</th>
+                            <th>Drift Status</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for fabric in fabrics %}
+                        <tr>
+                            <td>
+                                <a href="{% url 'plugins:netbox_hedgehog:fabric_detail' pk=fabric.pk %}">
+                                    <strong>{{ fabric.name }}</strong>
+                                </a>
+                            </td>
+                            <td>{{ fabric.description|truncatechars:50|default:"—" }}</td>
+                            <td>
+                                {% include "components/fabric/status_indicator.html" with type="config" status=fabric.status %}
+                            </td>
+                            <td>
+                                {% include "components/fabric/status_indicator.html" with type="connection" status=fabric.connection_status %}
+                            </td>
+                            <td>
+                                {% include "components/fabric/status_indicator.html" with type="sync" status=fabric.sync_status %}
+                            </td>
+                            <td><code>{{ fabric.kubernetes_namespace }}</code></td>
+                            <td>
+                                {% if fabric.last_sync %}
+                                    <span title="{{ fabric.last_sync }}">{{ fabric.last_sync|timesince }} ago</span>
+                                {% else %}
+                                    <span class="text-muted">Never</span>
+                                {% endif %}
+                            </td>
+                            <td>
+                                <span class="badge bg-info">{{ fabric.crd_count }}</span>
+                                {% if fabric.error_crd_count %}
+                                    <span class="badge bg-danger">{{ fabric.error_crd_count }} errors</span>
+                                {% endif %}
+                            </td>
+                            <td>
+                                {% if fabric.git_repository_url %}
+                                    {% include "components/fabric/status_indicator.html" with type="git" status="connected" %}
+                                {% else %}
+                                    {% include "components/fabric/status_indicator.html" with type="git" status="not_configured" %}
+                                {% endif %}
+                            </td>
+                            <td>
+                                {% if fabric.git_repository_url %}
+                                    {% include "components/fabric/status_indicator.html" with type="drift" status=fabric.drift_status count=fabric.drift_count %}
+                                {% else %}
+                                    <span class="badge bg-light text-dark" title="GitOps not configured">
+                                        <i class="mdi mdi-minus"></i> N/A
+                                    </span>
+                                {% endif %}
+                            </td>
+                            <td>
+                                {% include "components/fabric/table_action_buttons.html" with fabric=fabric %}
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+            
+            <!-- Pagination -->
+            {% if is_paginated %}
+                {% include "components/fabric/pagination.html" %}
+            {% endif %}
+            
+        {% else %}
+            <div class="alert alert-info">
+                <h5><i class="mdi mdi-information"></i> No Fabrics Found</h5>
+                <p>No Hedgehog fabrics have been configured yet. Create your first fabric to get started.</p>
+                <a href="{% url 'plugins:netbox_hedgehog:gitops_onboarding' %}" class="btn btn-primary">
+                    <i class="mdi mdi-plus"></i> Add Fabric
+                </a>
+            </div>
+        {% endif %}
+    </div>
+{% endblock %}
+{% endwith %}
+
+{% block fabric_scripts %}
+    <script>
+    document.addEventListener('DOMContentLoaded', function() {
+        console.log('🚀 Fabric list JavaScript loading...');
+        
+        // Check if UnifiedSync is available for enhanced sync handling
+        if (typeof UnifiedSync !== 'undefined') {
+            console.log('✅ UnifiedSync handler available');
+            
+            // Handle quick Git sync buttons
+            document.querySelectorAll('.fabric-sync-btn[data-sync-type="git"]').forEach(function(btn) {
+                btn.addEventListener('click', function(e) {
+                    e.preventDefault();
+                    const fabricId = this.getAttribute('data-fabric-id');
+                    UnifiedSync.performSync(fabricId, 'git', this);
+                });
+            });
+        } else {
+            console.log('✅ Using FabricCommon sync handlers');
+            // FabricCommon handlers from common_scripts.html will handle sync buttons
+        }
+    });
+    </script>
+{% endblock %}

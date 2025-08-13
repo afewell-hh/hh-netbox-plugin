@@ -1,0 +1,259 @@
+{
+  "issue_analysis": {
+    "issue_id": 40,
+    "title": "Fabric Detail Page - Multiple issues with fabric kubernetes cluster settings",
+    "analysis_timestamp": "2025-08-10T19:31:23Z",
+    "methodology": "SPARC Specification Phase",
+    "analyst": "Claude SPARC Specification Agent"
+  },
+  "current_state_documentation": {
+    "fabric_id": 35,
+    "fabric_name": "Test Lab K3s Cluster",
+    "database_values": {
+      "kubernetes_server": "",
+      "sync_enabled": true,
+      "sync_interval": 60,
+      "last_sync": "2025-08-09 06:40:52.767057+00:00",
+      "status": "planned"
+    },
+    "displayed_values": {
+      "fabric_kubernetes_server": "Not configured",
+      "fabric_sync_status": "synced",
+      "fabric_sync_enabled": "Yes",
+      "fabric_sync_interval": "60 seconds",
+      "fabric_last_sync": "2025-08-09 06:40:52 (1 day, 12 hours ago)"
+    },
+    "contradictions_identified": [
+      {
+        "contradiction_id": "C1",
+        "description": "Sync Status vs Server Configuration",
+        "details": "Display shows 'synced' status but 'Not configured' server",
+        "severity": "critical",
+        "logic_violation": "Cannot be synced without kubernetes_server configured"
+      },
+      {
+        "contradiction_id": "C2", 
+        "description": "Sync Timing vs Interval",
+        "details": "60-second interval but 24+ hour gap since last sync",
+        "severity": "high",
+        "logic_violation": "Sync should have occurred multiple times in 24 hours with 60s interval"
+      },
+      {
+        "contradiction_id": "C3",
+        "description": "Sync Enabled vs Configuration State",
+        "details": "Sync enabled=true but no server to sync with",
+        "severity": "medium",
+        "logic_violation": "Enabled sync requires valid kubernetes_server"
+      }
+    ]
+  },
+  "root_cause_analysis": {
+    "primary_causes": [
+      {
+        "cause_id": "RC1",
+        "description": "Template Logic Error",
+        "location": "/netbox_hedgehog/templates/netbox_hedgehog/fabric_detail.html",
+        "issue": "Template uses direct object.sync_status instead of calculated_sync_status property",
+        "evidence": "Line shows {{ object.sync_status }} displaying database value without validation"
+      },
+      {
+        "cause_id": "RC2", 
+        "description": "Model Property Implementation Gap",
+        "location": "/netbox_hedgehog/models/fabric.py",
+        "issue": "calculated_sync_status property exists but not used in template",
+        "evidence": "Lines 472-532 show proper logic but template bypasses it"
+      },
+      {
+        "cause_id": "RC3",
+        "description": "Data Validation Missing",
+        "location": "Database/Model Save Logic",
+        "issue": "No validation prevents contradictory states during save",
+        "evidence": "Database allows sync_status='synced' with empty kubernetes_server"
+      }
+    ],
+    "logic_inconsistencies": [
+      {
+        "inconsistency_id": "LI1",
+        "description": "Sync Status Logic Bypass",
+        "problem": "Template directly accesses sync_status field ignoring business logic",
+        "fix_required": "Use calculated_sync_status property in template"
+      },
+      {
+        "inconsistency_id": "LI2",
+        "description": "Missing Kubernetes Server Validation",
+        "problem": "No check for kubernetes_server before allowing 'synced' status",
+        "fix_required": "Add model validation and property usage"
+      }
+    ]
+  },
+  "requirements_specification": {
+    "functional_requirements": [
+      {
+        "req_id": "FR-40-001",
+        "category": "sync_status_display",
+        "description": "Sync status display MUST reflect actual capability to sync",
+        "acceptance_criteria": [
+          "If kubernetes_server is empty/null, status MUST be 'Not Configured'",
+          "If sync_enabled is false, status MUST be 'Disabled'",
+          "If never synced, status MUST be 'Never Synced'",
+          "If sync errors exist, status MUST be 'Error'",
+          "If last sync > 2x sync_interval, status MUST be 'Out of Sync'"
+        ],
+        "priority": "critical"
+      },
+      {
+        "req_id": "FR-40-002",
+        "category": "kubernetes_configuration_validation",
+        "description": "Kubernetes server configuration MUST be validated before enabling sync",
+        "acceptance_criteria": [
+          "Empty kubernetes_server MUST prevent 'synced' status",
+          "Template MUST use calculated_sync_status property",
+          "Display MUST be consistent with configuration state"
+        ],
+        "priority": "critical"
+      },
+      {
+        "req_id": "FR-40-003",
+        "category": "sync_timing_validation",
+        "description": "Sync timing MUST be validated against configured intervals",
+        "acceptance_criteria": [
+          "If sync_interval=60s, last_sync should be within reasonable range",
+          "Long gaps between syncs MUST update status to 'Out of Sync'",
+          "Sync failure MUST update status to 'Error' with error message"
+        ],
+        "priority": "high"
+      }
+    ],
+    "non_functional_requirements": [
+      {
+        "req_id": "NFR-40-001",
+        "category": "data_consistency",
+        "description": "Display data MUST be consistent with actual fabric state",
+        "measurement": "Zero contradictory status displays",
+        "target": "100% consistency between displayed and actual state"
+      },
+      {
+        "req_id": "NFR-40-002",
+        "category": "user_experience",
+        "description": "Status information MUST be clear and actionable",
+        "measurement": "User can determine next action from status display",
+        "target": "Status messages provide clear next steps"
+      }
+    ]
+  },
+  "validation_rules": {
+    "business_rules": [
+      {
+        "rule_id": "BR-40-001",
+        "description": "Sync Status Dependency Rule",
+        "logic": "sync_status == 'synced' IF AND ONLY IF kubernetes_server is configured AND last successful sync within interval",
+        "implementation": "Use calculated_sync_status property"
+      },
+      {
+        "rule_id": "BR-40-002", 
+        "description": "Configuration Completeness Rule",
+        "logic": "sync_enabled == true REQUIRES kubernetes_server to be non-empty",
+        "implementation": "Model validation in clean() method"
+      },
+      {
+        "rule_id": "BR-40-003",
+        "description": "Temporal Consistency Rule", 
+        "logic": "IF sync_interval > 0 AND sync_enabled == true, THEN last_sync SHOULD be within 2x sync_interval",
+        "implementation": "Calculated status considers sync timing"
+      }
+    ],
+    "validation_checks": [
+      {
+        "check_id": "VC-40-001",
+        "type": "pre_display",
+        "description": "Validate sync status before template rendering",
+        "implementation": "Template uses calculated_sync_status not raw sync_status"
+      },
+      {
+        "check_id": "VC-40-002",
+        "type": "data_integrity",
+        "description": "Prevent contradictory states in database",
+        "implementation": "Model clean() method validates kubernetes_server vs sync_status"
+      }
+    ]
+  },
+  "proposed_solution": {
+    "immediate_fixes": [
+      {
+        "fix_id": "FIX-40-001",
+        "description": "Update template to use calculated_sync_status",
+        "location": "fabric_detail.html line with sync_status display",
+        "change": "Replace object.sync_status with object.calculated_sync_status",
+        "impact": "Eliminates primary contradiction"
+      },
+      {
+        "fix_id": "FIX-40-002", 
+        "description": "Update template to use calculated badge classes",
+        "location": "fabric_detail.html badge class assignment",
+        "change": "Use object.calculated_sync_status_badge_class",
+        "impact": "Consistent visual representation"
+      }
+    ],
+    "validation_enhancements": [
+      {
+        "enhancement_id": "ENH-40-001",
+        "description": "Add model validation",
+        "implementation": "Override clean() method to validate kubernetes_server vs sync settings",
+        "benefit": "Prevents contradictory data entry"
+      }
+    ]
+  },
+  "test_scenarios": [
+    {
+      "scenario_id": "TS-40-001",
+      "description": "Empty kubernetes_server with sync_enabled=true",
+      "expected_result": "Status shows 'Not Configured', not 'synced'",
+      "test_data": {
+        "kubernetes_server": "",
+        "sync_enabled": true,
+        "sync_status": "synced"
+      }
+    },
+    {
+      "scenario_id": "TS-40-002",
+      "description": "Old last_sync with short interval",
+      "expected_result": "Status shows 'Out of Sync'",
+      "test_data": {
+        "kubernetes_server": "https://k8s.example.com:6443",
+        "sync_enabled": true,
+        "sync_interval": 60,
+        "last_sync": "24 hours ago"
+      }
+    },
+    {
+      "scenario_id": "TS-40-003",
+      "description": "Sync error condition",
+      "expected_result": "Status shows 'Error' with error message",
+      "test_data": {
+        "kubernetes_server": "https://k8s.example.com:6443",
+        "sync_enabled": true,
+        "sync_error": "Connection timeout"
+      }
+    }
+  ],
+  "evidence_files": [
+    {
+      "file": "fabric_detail.html",
+      "evidence": "Template directly uses object.sync_status without validation"
+    },
+    {
+      "file": "fabric.py",  
+      "evidence": "calculated_sync_status property exists with proper logic"
+    },
+    {
+      "file": "Database query results",
+      "evidence": "Fabric ID 35 has empty kubernetes_server but sync_status='synced'"
+    }
+  ],
+  "compliance": {
+    "issue_31_methodology": "✓ Evidence-based analysis conducted",
+    "sparc_specification": "✓ Comprehensive requirements defined",
+    "data_consistency": "✓ Root causes identified with evidence",
+    "validation_rules": "✓ Business rules and validation checks specified"
+  }
+}

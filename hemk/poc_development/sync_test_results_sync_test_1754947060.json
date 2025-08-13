@@ -1,0 +1,82 @@
+{
+  "session_id": "sync_test_1754947060",
+  "timestamp": "2025-08-11T21:17:42.741959",
+  "summary": {
+    "total_tests": 5,
+    "passed": 0,
+    "failed": 5,
+    "errors": 0,
+    "pass_rate": 0.0
+  },
+  "test_results": [
+    {
+      "test_name": "Manual Sync GUI Test",
+      "status": "FAIL",
+      "duration": 0.02471446990966797,
+      "error_message": "Fabric page not accessible: 404",
+      "details": null,
+      "timestamp": "2025-08-11T21:17:40.556722"
+    },
+    {
+      "test_name": "Periodic Sync Scheduler Test",
+      "status": "FAIL",
+      "duration": 0.07654976844787598,
+      "error_message": "Periodic sync job not found in RQ scheduler",
+      "details": {
+        "rq_scheduler_output": "",
+        "rq_scheduler_error": "permission denied while trying to connect to the Docker daemon socket at unix:///var/run/docker.sock: Get \"http://%2Fvar%2Frun%2Fdocker.sock/v1.48/containers/b05eb5eff181/json\": dial unix /var/run/docker.sock: connect: permission denied\n",
+        "scheduled_jobs_count": "ERROR"
+      },
+      "timestamp": "2025-08-11T21:17:40.633354"
+    },
+    {
+      "test_name": "Kubernetes Integration Test",
+      "status": "FAIL",
+      "duration": 0.0409085750579834,
+      "error_message": "K8s connection failed: permission denied while trying to connect to the Docker daemon socket at unix:///var/run/docker.sock: Get \"http://%2Fvar%2Frun%2Fdocker.sock/v1.48/containers/b05eb5eff181/json\": dial unix /var/run/docker.sock: connect: permission denied\n",
+      "details": {
+        "k8s_test_output": "",
+        "k8s_test_error": "permission denied while trying to connect to the Docker daemon socket at unix:///var/run/docker.sock: Get \"http://%2Fvar%2Frun%2Fdocker.sock/v1.48/containers/b05eb5eff181/json\": dial unix /var/run/docker.sock: connect: permission denied",
+        "return_code": 1
+      },
+      "timestamp": "2025-08-11T21:17:40.674364"
+    },
+    {
+      "test_name": "End-to-End Workflow Test",
+      "status": "FAIL",
+      "duration": 2.0664520263671875,
+      "error_message": "E2E workflow failed validation checks",
+      "details": {
+        "initial_status": 404,
+        "sync_status": 404,
+        "final_status": 404,
+        "sync_response": "\n\n\n\n\n\n\n<!DOCTYPE html>\n<html\n  lang=\"en\"\n  data-netbox-url-name=\"\"\n  data-netbox-version=\"4.3.3-Docker-3.3.0\"\n  \n  >\n  <head>\n    <meta charset=\"UTF-8\" />\n    <meta name=\"viewport\" content=\"initial-sc",
+        "workflow_duration": 2.066187858581543
+      },
+      "timestamp": "2025-08-11T21:17:42.740916"
+    },
+    {
+      "test_name": "Error Handling Test",
+      "status": "FAIL",
+      "duration": 0.03080582618713379,
+      "error_message": "Error handling not working as expected",
+      "details": {
+        "invalid_fabric_status": 404,
+        "invalid_fabric_response": "\n\n\n\n\n\n\n<!DOCTYPE html>\n<html\n  lang=\"en\"\n  data-netbox-url-name=\"\"\n  data-netbox-version=\"4.3.3-Docker-3.3.0\"\n  \n  >\n  <head>\n    <meta charset=\"UTF-8\" />\n    <meta name=\"viewport\" content=\"initial-sc",
+        "malformed_request_status": 404,
+        "malformed_request_response": "\n\n\n\n\n\n\n<!DOCTYPE html>\n<html\n  lang=\"en\"\n  data-netbox-url-name=\"\"\n  data-netbox-version=\"4.3.3-Docker-3.3.0\"\n  \n  >\n  <head>\n    <meta charset=\"UTF-8\" />\n    <meta name=\"viewport\" content=\"initial-sc"
+      },
+      "timestamp": "2025-08-11T21:17:40.745584"
+    }
+  ],
+  "recommendations": [
+    "Review complete sync workflow for async processing issues",
+    "Verify Kubernetes authentication configuration",
+    "Check for missing error handling in sync operations",
+    "Check network connectivity to K8s cluster",
+    "Check Django URL routing and view configuration for manual sync endpoint",
+    "Verify CSRF token handling for AJAX requests",
+    "Check Django-RQ settings and Redis connection",
+    "Verify RQ scheduler is running with correct job configuration"
+  ]
+}

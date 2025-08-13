@@ -1,0 +1,654 @@
+/**
+ * Optimized Fabric Detail CSS - Performance Enhanced
+ * Consolidated and optimized styles for maximum performance
+ * This file loads after critical CSS for progressive enhancement
+ */
+
+/* =============================================================================
+   ENHANCED BUTTON SYSTEM
+   ============================================================================= */
+
+.btn:hover:not(:disabled) {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(var(--hedgehog-primary-rgb, 13, 110, 253), 0.15);
+  will-change: var(--hedgehog-will-change-transform);
+}
+
+.btn:active {
+  transform: translateY(0);
+  transition-duration: var(--hedgehog-duration-75);
+}
+
+.btn:focus {
+  outline: var(--hedgehog-focus-ring-width) solid var(--hedgehog-focus-ring-color);
+  outline-offset: var(--hedgehog-focus-ring-offset);
+}
+
+.btn-success:hover {
+  background-color: var(--hedgehog-success-dark, #146c43);
+  border-color: var(--hedgehog-success-dark, #146c43);
+}
+
+.btn-danger:hover {
+  background-color: var(--hedgehog-danger-dark, #b02a37);
+  border-color: var(--hedgehog-danger-dark, #b02a37);
+}
+
+.btn-warning {
+  color: var(--hedgehog-black, #000000);
+  background-color: var(--hedgehog-warning, #ffc107);
+  border-color: var(--hedgehog-warning, #ffc107);
+}
+
+.btn-warning:hover {
+  background-color: var(--hedgehog-warning-dark, #e0a800);
+  border-color: var(--hedgehog-warning-dark, #e0a800);
+}
+
+.btn-info {
+  background-color: var(--hedgehog-info, #0dcaf0);
+  border-color: var(--hedgehog-info, #0dcaf0);
+}
+
+.btn-info:hover {
+  background-color: var(--hedgehog-info-dark, #087990);
+  border-color: var(--hedgehog-info-dark, #087990);
+}
+
+/* Loading states */
+.btn .mdi-loading,
+.btn .mdi-spin {
+  animation: spin var(--hedgehog-duration-1000) linear infinite;
+}
+
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+/* =============================================================================
+   ENHANCED CARD SYSTEM
+   ============================================================================= */
+
+.card:hover {
+  box-shadow: var(--hedgehog-shadow-lg);
+  transform: translateY(-2px);
+  will-change: var(--hedgehog-will-change-transform);
+}
+
+.card-header .d-flex {
+  justify-content: space-between;
+  align-items: center;
+}
+
+.card-header .btn-group {
+  display: flex;
+  gap: var(--hedgehog-space-2);
+}
+
+/* =============================================================================
+   ENHANCED BADGE SYSTEM
+   ============================================================================= */
+
+.badge:hover {
+  transform: scale(1.05);
+  will-change: var(--hedgehog-will-change-transform);
+}
+
+.bg-info {
+  background-color: var(--hedgehog-info, #0dcaf0) !important;
+}
+
+.bg-light {
+  background-color: var(--hedgehog-light, #f8f9fa) !important;
+  color: var(--hedgehog-black, #000000) !important;
+  border: 1px solid var(--hedgehog-gray-400, #ced4da) !important;
+}
+
+.bg-dark {
+  background-color: var(--hedgehog-dark, #212529) !important;
+}
+
+/* =============================================================================
+   ENHANCED TABLE SYSTEM
+   ============================================================================= */
+
+.table-responsive {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  border-radius: var(--hedgehog-border-radius);
+}
+
+.table th {
+  font-size: var(--hedgehog-font-size-sm);
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+  border-bottom-width: 2px;
+}
+
+.table td {
+  line-height: var(--hedgehog-line-height-base);
+}
+
+.table tbody tr:hover {
+  background-color: rgba(var(--hedgehog-primary-rgb, 13, 110, 253), 0.05);
+  transform: translateX(2px);
+  transition: all var(--hedgehog-duration-150) var(--hedgehog-ease-out);
+}
+
+/* Fabric detail table optimizations */
+.fabric-detail .table th {
+  width: 25%;
+  min-width: 180px;
+  padding: var(--hedgehog-space-4) var(--hedgehog-space-3);
+  background-color: var(--hedgehog-table-header-bg);
+  font-weight: var(--hedgehog-font-weight-bold);
+}
+
+.fabric-detail .table td {
+  width: 75%;
+  padding: var(--hedgehog-space-4);
+  word-wrap: break-word;
+}
+
+/* =============================================================================
+   PROGRESSIVE DISCLOSURE ENHANCEMENTS
+   ============================================================================= */
+
+.section-toggle:hover {
+  background-color: rgba(var(--hedgehog-info-rgb, 13, 202, 240), 0.1);
+  transform: translateY(-1px);
+}
+
+.toggle-icon {
+  transition: transform var(--hedgehog-duration-300) var(--hedgehog-ease-in-out);
+  font-size: var(--hedgehog-font-size-lg);
+}
+
+.section-toggle.collapsed .toggle-icon {
+  transform: rotate(-90deg);
+}
+
+.section-content {
+  transition: all var(--hedgehog-duration-300) var(--hedgehog-ease-in-out);
+  overflow: hidden;
+}
+
+.section-content.collapsed {
+  max-height: 0;
+  padding-top: 0;
+  padding-bottom: 0;
+  opacity: 0;
+}
+
+/* Info grid system */
+.info-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+  gap: var(--hedgehog-space-6);
+}
+
+.info-item {
+  display: flex;
+  flex-direction: column;
+  gap: var(--hedgehog-space-2);
+}
+
+.info-label {
+  font-weight: var(--hedgehog-font-weight-bold);
+  color: var(--hedgehog-dark);
+  font-size: var(--hedgehog-font-size-sm);
+  text-transform: uppercase;
+  letter-spacing: 0.75px;
+  background-color: rgba(var(--hedgehog-gray-100-rgb, 248, 249, 250), 0.8);
+  padding: var(--hedgehog-space-2) var(--hedgehog-space-3);
+  border-radius: var(--hedgehog-border-radius-sm);
+  border: 1px solid var(--hedgehog-gray-300);
+}
+
+.info-value {
+  color: var(--hedgehog-dark);
+  font-size: var(--hedgehog-font-size-base);
+  line-height: var(--hedgehog-line-height-lg);
+  font-weight: var(--hedgehog-font-weight-medium);
+  padding: var(--hedgehog-space-3);
+  background-color: var(--hedgehog-white);
+  border: 1px solid var(--hedgehog-gray-200);
+  border-radius: var(--hedgehog-border-radius);
+}
+
+/* =============================================================================
+   STATUS INDICATORS
+   ============================================================================= */
+
+.status-indicator {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--hedgehog-space-2);
+  padding: var(--hedgehog-space-2) var(--hedgehog-space-4);
+  border-radius: var(--hedgehog-border-radius-full);
+  font-size: var(--hedgehog-font-size-sm);
+  font-weight: var(--hedgehog-font-weight-medium);
+  transition: all var(--hedgehog-duration-200) var(--hedgehog-ease-in-out);
+}
+
+.status-indicator:hover {
+  transform: translateY(-1px);
+  box-shadow: var(--hedgehog-shadow-sm);
+}
+
+.status-indicator.success {
+  background-color: rgba(var(--hedgehog-success-rgb, 25, 135, 84), 0.1);
+  color: var(--hedgehog-success-dark);
+  border: 1px solid rgba(var(--hedgehog-success-rgb, 25, 135, 84), 0.2);
+}
+
+.status-indicator.warning {
+  background-color: rgba(var(--hedgehog-warning-rgb, 255, 193, 7), 0.1);
+  color: var(--hedgehog-warning-dark);
+  border: 1px solid rgba(var(--hedgehog-warning-rgb, 255, 193, 7), 0.2);
+}
+
+.status-indicator.danger {
+  background-color: rgba(var(--hedgehog-danger-rgb, 220, 53, 69), 0.1);
+  color: var(--hedgehog-danger-dark);
+  border: 1px solid rgba(var(--hedgehog-danger-rgb, 220, 53, 69), 0.2);
+}
+
+.status-indicator.info {
+  background-color: rgba(var(--hedgehog-info-rgb, 13, 202, 240), 0.1);
+  color: var(--hedgehog-info-dark);
+  border: 1px solid rgba(var(--hedgehog-info-rgb, 13, 202, 240), 0.2);
+}
+
+/* =============================================================================
+   CODE AND PRE ELEMENTS
+   ============================================================================= */
+
+pre {
+  color: var(--hedgehog-dark);
+  background-color: var(--hedgehog-white);
+  border: 2px solid var(--hedgehog-gray-400);
+  font-family: var(--hedgehog-font-family-mono);
+  font-size: var(--hedgehog-font-size-sm);
+  line-height: var(--hedgehog-line-height-xl);
+  padding: var(--hedgehog-space-6);
+  border-radius: var(--hedgehog-border-radius);
+  white-space: pre-wrap;
+  word-wrap: break-word;
+  overflow-wrap: break-word;
+  margin: var(--hedgehog-space-4) 0;
+  min-height: 3rem;
+  box-shadow: var(--hedgehog-shadow-xs);
+}
+
+code {
+  color: var(--hedgehog-dark);
+  background-color: var(--hedgehog-white);
+  border: 1px solid var(--hedgehog-gray-400);
+  border-radius: var(--hedgehog-border-radius-sm);
+  padding: var(--hedgehog-space-1) var(--hedgehog-space-2);
+  font-family: var(--hedgehog-font-family-mono);
+  font-size: var(--hedgehog-font-size-sm);
+  font-weight: var(--hedgehog-font-weight-medium);
+}
+
+/* =============================================================================
+   FORM ENHANCEMENTS
+   ============================================================================= */
+
+.form-control,
+.form-select {
+  transition: all var(--hedgehog-duration-200) var(--hedgehog-ease-in-out);
+  border-radius: var(--hedgehog-border-radius);
+}
+
+.form-control:focus,
+.form-select:focus {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(var(--hedgehog-primary-rgb, 13, 110, 253), 0.25);
+  border-color: var(--hedgehog-primary);
+}
+
+.form-label {
+  font-weight: var(--hedgehog-font-weight-semibold);
+  color: var(--hedgehog-dark);
+  font-size: var(--hedgehog-font-size-sm);
+  margin-bottom: var(--hedgehog-space-2);
+}
+
+/* =============================================================================
+   GITOPS SPECIFIC STYLES
+   ============================================================================= */
+
+.gitops-detail-section {
+  background: linear-gradient(135deg, rgba(var(--hedgehog-info-rgb, 13, 202, 240), 0.05) 0%, rgba(var(--hedgehog-info-rgb, 13, 202, 240), 0.02) 100%);
+  border-left: 4px solid var(--hedgehog-info);
+  padding: var(--hedgehog-space-6);
+  border-radius: var(--hedgehog-border-radius);
+  margin-top: var(--hedgehog-space-6);
+  position: relative;
+}
+
+.gitops-detail-section::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 2px;
+  background: linear-gradient(90deg, var(--hedgehog-info) 0%, rgba(var(--hedgehog-info-rgb, 13, 202, 240), 0.3) 100%);
+  border-radius: var(--hedgehog-border-radius) var(--hedgehog-border-radius) 0 0;
+}
+
+.gitops-detail-section .table-borderless {
+  table-layout: fixed;
+  width: 100%;
+}
+
+.gitops-detail-section .table-borderless th {
+  width: 22%;
+  min-width: 180px;
+  padding: var(--hedgehog-space-5) var(--hedgehog-space-4) var(--hedgehog-space-5) 0;
+  font-weight: var(--hedgehog-font-weight-bold);
+  font-size: var(--hedgehog-font-size-sm);
+  letter-spacing: 0.5px;
+  vertical-align: top;
+  white-space: nowrap;
+  border: none;
+}
+
+.gitops-detail-section .table-borderless td {
+  width: 78%;
+  padding: var(--hedgehog-space-5) 0 var(--hedgehog-space-5) var(--hedgehog-space-4);
+  line-height: var(--hedgehog-line-height-lg);
+  font-size: var(--hedgehog-font-size-sm);
+  vertical-align: top;
+  word-wrap: break-word;
+  border: none;
+}
+
+.gitops-detail-section .table-borderless tr {
+  border-bottom: 1px solid rgba(0, 0, 0, 0.1);
+  margin-bottom: var(--hedgehog-space-4);
+}
+
+.gitops-detail-section .table-borderless tr:last-child {
+  border-bottom: none;
+}
+
+/* =============================================================================
+   DRIFT DETECTION SYSTEM
+   ============================================================================= */
+
+.drift-spotlight {
+  background: linear-gradient(135deg, #ff6b6b 0%, #ee5a24 100%);
+  color: white;
+  border-radius: var(--hedgehog-border-radius-xl);
+  padding: var(--hedgehog-space-8);
+  margin-bottom: var(--hedgehog-space-6);
+  box-shadow: var(--hedgehog-shadow-lg);
+}
+
+.drift-summary-cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: var(--hedgehog-space-4);
+  margin-bottom: var(--hedgehog-space-4);
+}
+
+.drift-summary-card {
+  background: rgba(255, 255, 255, 0.1);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: var(--hedgehog-border-radius);
+  padding: var(--hedgehog-space-4);
+  text-align: center;
+  backdrop-filter: blur(10px);
+  transition: all var(--hedgehog-duration-300) var(--hedgehog-ease-in-out);
+}
+
+.drift-summary-card:hover {
+  background: rgba(255, 255, 255, 0.2);
+  transform: translateY(-2px);
+  box-shadow: var(--hedgehog-shadow);
+}
+
+.drift-summary-card-value {
+  font-size: var(--hedgehog-font-size-2xl);
+  font-weight: var(--hedgehog-font-weight-bold);
+  margin-bottom: var(--hedgehog-space-2);
+}
+
+/* =============================================================================
+   QUICK ACTIONS
+   ============================================================================= */
+
+.quick-actions {
+  display: flex;
+  gap: var(--hedgehog-space-4);
+  flex-wrap: wrap;
+  margin-top: var(--hedgehog-space-4);
+}
+
+.quick-action-btn {
+  background: rgba(255, 255, 255, 0.1);
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  color: white;
+  padding: var(--hedgehog-space-3) var(--hedgehog-space-5);
+  border-radius: var(--hedgehog-border-radius);
+  text-decoration: none;
+  font-weight: var(--hedgehog-font-weight-medium);
+  transition: all var(--hedgehog-duration-200) var(--hedgehog-ease-in-out);
+  display: flex;
+  align-items: center;
+  gap: var(--hedgehog-space-2);
+  min-height: var(--hedgehog-touch-target-min);
+}
+
+.quick-action-btn:hover {
+  background: rgba(255, 255, 255, 0.2);
+  color: white;
+  text-decoration: none;
+  transform: translateY(-2px);
+  box-shadow: 0 6px 18px rgba(255, 255, 255, 0.25);
+}
+
+/* =============================================================================
+   TIMELINE AND ACTIVITY
+   ============================================================================= */
+
+.timeline {
+  position: relative;
+  padding-left: var(--hedgehog-space-6);
+}
+
+.timeline::before {
+  content: '';
+  position: absolute;
+  left: var(--hedgehog-space-2);
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  background-color: var(--hedgehog-gray-300);
+}
+
+.timeline-item {
+  position: relative;
+  margin-bottom: var(--hedgehog-space-6);
+}
+
+.timeline-marker {
+  position: absolute;
+  left: calc(-1 * var(--hedgehog-space-6) - 1px);
+  top: var(--hedgehog-space-1);
+  width: var(--hedgehog-space-3);
+  height: var(--hedgehog-space-3);
+  border-radius: 50%;
+  border: 2px solid var(--hedgehog-white);
+  background-color: var(--hedgehog-primary);
+  box-shadow: 0 0 0 2px var(--hedgehog-gray-300);
+}
+
+.timeline-content {
+  background: var(--hedgehog-white);
+  border: 1px solid var(--hedgehog-gray-200);
+  border-radius: var(--hedgehog-border-radius);
+  padding: var(--hedgehog-space-4);
+  box-shadow: var(--hedgehog-shadow-xs);
+}
+
+/* =============================================================================
+   EMPTY STATES
+   ============================================================================= */
+
+.empty-state {
+  text-align: center;
+  padding: var(--hedgehog-space-12) var(--hedgehog-space-4);
+  color: var(--hedgehog-gray-600);
+}
+
+.empty-state .mdi {
+  font-size: 4rem;
+  opacity: 0.5;
+  margin-bottom: var(--hedgehog-space-4);
+  color: var(--hedgehog-gray-400);
+}
+
+/* =============================================================================
+   RESPONSIVE ENHANCEMENTS
+   ============================================================================= */
+
+@media (max-width: 767px) {
+  .info-grid {
+    grid-template-columns: 1fr;
+    gap: var(--hedgehog-space-4);
+  }
+  
+  .quick-actions {
+    flex-direction: column;
+    gap: var(--hedgehog-space-3);
+  }
+  
+  .quick-action-btn {
+    justify-content: center;
+    min-height: var(--hedgehog-touch-target-preferred);
+  }
+  
+  .drift-summary-cards {
+    grid-template-columns: 1fr;
+    gap: var(--hedgehog-space-3);
+  }
+  
+  .status-cards {
+    grid-template-columns: 1fr;
+    gap: var(--hedgehog-space-3);
+  }
+}
+
+@media (min-width: 768px) and (max-width: 1199px) {
+  .status-cards,
+  .drift-summary-cards {
+    grid-template-columns: repeat(2, 1fr);
+  }
+  
+  .info-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+/* =============================================================================
+   PERFORMANCE OPTIMIZATIONS
+   ============================================================================= */
+
+/* GPU acceleration for smooth animations */
+.status-card,
+.drift-summary-card,
+.quick-action-btn,
+.dashboard-section,
+.card {
+  will-change: var(--hedgehog-will-change-auto);
+}
+
+.status-card:hover,
+.drift-summary-card:hover,
+.quick-action-btn:hover,
+.dashboard-section:hover,
+.card:hover {
+  will-change: var(--hedgehog-will-change-transform);
+}
+
+/* Contain layout and paint for performance */
+.dashboard-overview,
+.drift-spotlight,
+.gitops-detail-section {
+  contain: layout style;
+}
+
+/* =============================================================================
+   ACCESSIBILITY ENHANCEMENTS
+   ============================================================================= */
+
+/* Enhanced focus indicators */
+.btn:focus,
+.quick-action-btn:focus,
+.section-toggle:focus {
+  outline: var(--hedgehog-focus-ring-width) solid var(--hedgehog-focus-ring-color);
+  outline-offset: var(--hedgehog-focus-ring-offset);
+}
+
+/* Minimum touch targets */
+@media (max-width: 1199px) {
+  .btn,
+  .quick-action-btn,
+  .section-toggle {
+    min-height: var(--hedgehog-touch-target-min);
+    min-width: var(--hedgehog-touch-target-min);
+  }
+}
+
+/* Screen reader only content */
+.sr-only {
+  position: absolute !important;
+  width: 1px !important;
+  height: 1px !important;
+  padding: 0 !important;
+  margin: -1px !important;
+  overflow: hidden !important;
+  clip: rect(0, 0, 0, 0) !important;
+  white-space: nowrap !important;
+  border: 0 !important;
+}
+
+/* =============================================================================
+   PRINT OPTIMIZATIONS
+   ============================================================================= */
+
+@media print {
+  .btn,
+  .quick-actions,
+  .quick-action-btn {
+    display: none !important;
+  }
+  
+  .card {
+    border: 2px solid var(--hedgehog-black) !important;
+    box-shadow: none !important;
+    break-inside: avoid !important;
+  }
+  
+  .dashboard-overview,
+  .drift-spotlight {
+    background: var(--hedgehog-light) !important;
+    color: var(--hedgehog-dark) !important;
+    border: 2px solid var(--hedgehog-gray-300) !important;
+  }
+  
+  .table {
+    font-size: 12pt !important;
+  }
+  
+  .table th,
+  .table td {
+    padding: 8pt !important;
+  }
+}

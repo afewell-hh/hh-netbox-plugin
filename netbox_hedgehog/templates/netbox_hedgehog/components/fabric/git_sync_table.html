@@ -1,0 +1,39 @@
+{% load static %}
+
+<table class="table table-borderless">
+    <tr>
+        <th class="text-info" width="200">Git Sync Status:</th>
+        <td>
+            <span class="badge {% if object.git_repository %}bg-success{% else %}bg-secondary{% endif %}">
+                {% if object.git_repository %}Connected{% else %}Not Configured{% endif %}
+            </span>
+        </td>
+    </tr>
+    <tr>
+        <th class="text-info">Git Sync Enabled:</th>
+        <td>
+            {% if object.git_repository %}
+                {% if object.sync_enabled %}
+                    <span class="badge bg-success">Yes</span>
+                {% else %}
+                    <span class="badge bg-secondary">No</span>
+                {% endif %}
+            {% else %}
+                <span class="badge bg-secondary">No Repository</span>
+            {% endif %}
+        </td>
+    </tr>
+    {% if object.git_repository %}
+    <tr>
+        <th class="text-info">Git Last Sync:</th>
+        <td>
+            {% if object.last_sync %}
+                {{ object.last_sync|date:"Y-m-d H:i:s" }}
+                <small class="text-muted">({{ object.last_sync|timesince }} ago)</small>
+            {% else %}
+                <span class="text-muted">Never</span>
+            {% endif %}
+        </td>
+    </tr>
+    {% endif %}
+</table>

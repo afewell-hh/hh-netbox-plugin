@@ -243,14 +243,14 @@ class ReconciliationAlert(NetBoxModel):
         verbose_name_plural = "Reconciliation Alerts"
         ordering = ['-created', 'queue_priority']
         indexes = [
-            models.Index(fields=['fabric', 'status']),
-            models.Index(fields=['resource', 'status']),
-            models.Index(fields=['status', 'queue_priority']),
-            models.Index(fields=['alert_type', 'severity']),
-            models.Index(fields=['created', 'status']),
-            models.Index(fields=['expires_at']),
-            models.Index(fields=['batch_id']),
-            models.Index(fields=['fabric', 'alert_type', 'status']),
+            models.Index(fields=['fabric', 'status'], name='hnp_reconcile_fab_status_idx'),
+            models.Index(fields=['resource', 'status'], name='hnp_reconcile_res_status_idx'),
+            models.Index(fields=['status', 'queue_priority'], name='hnp_reconcile_status_prio_idx'),
+            models.Index(fields=['alert_type', 'severity'], name='hnp_reconcile_type_sev_idx'),
+            models.Index(fields=['created', 'status'], name='hnp_reconcile_created_idx'),
+            models.Index(fields=['expires_at'], name='hnp_reconcile_expires_idx'),
+            models.Index(fields=['batch_id'], name='hnp_reconcile_batch_idx'),
+            models.Index(fields=['fabric', 'alert_type', 'status'], name='hnp_reconcile_fab_type_idx'),
         ]
     
     def __str__(self):

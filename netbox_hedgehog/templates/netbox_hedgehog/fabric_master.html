@@ -1,0 +1,111 @@
+{# Fabric Master Template - Django Template Standards #}
+{# Purpose: Unified fabric template with optimized inheritance #}
+{# Security: CSRF protection, XSS prevention, secure headers #}
+{# Performance: Conditional loading, optimized block structure #}
+{# Accessibility: ARIA labels, semantic HTML structure #}
+{% extends "base/layout.html" %}
+{% load static %}
+{% load i18n %}
+{% load humanize %}
+
+{# Page Title Block - SEO and Accessibility Optimized #}
+{% block title %}
+    {% block fabric_title %}{{ object.name|default:_('Fabric') }}{% endblock %} - {% block fabric_subtitle %}{% trans 'Hedgehog' %}{% endblock %}
+{% endblock %}
+
+{# Header Block - Django Performance Standards #}
+{# CSS Loading: Media-specific optimization #}
+{# Security: Proper CSRF token handling #}
+{% block header %}
+    {{ block.super }}
+    <link rel="stylesheet" href="{% static 'netbox_hedgehog/css/hedgehog.css' %}" media="all">
+    {% block fabric_styles %}{% endblock %}
+    <meta name="csrf-token" content="{{ csrf_token }}">
+    <meta name="description" content="{% blocktrans with name=object.name|default:_('Fabric') %}Management interface for {{ name }}{% endblocktrans %}">
+    {% csrf_token %}
+{% endblock %}
+
+{% block content %}
+<div class="fabric-wrapper container-fluid">
+    {% block fabric_alerts %}
+        {% if messages %}
+            {% for message in messages %}
+                <div class="alert alert-{{ message.tags }} alert-dismissible fade show" role="alert">
+                    {{ message }}
+                    <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+                </div>
+            {% endfor %}
+        {% endif %}
+    {% endblock %}
+
+    {% block fabric_header %}
+        <div class="fabric-header d-flex justify-content-between align-items-center mb-4">
+            <div class="fabric-header-info">
+                <h1 class="h2 mb-0">
+                    {% block fabric_icon %}<i class="mdi mdi-server-network text-primary"></i>{% endblock %}
+                    {% block fabric_header_title %}{{ object.name|default:"Fabric Management" }}{% endblock %}
+                </h1>
+                {% block fabric_subtitle_content %}{% endblock %}
+            </div>
+            <div class="fabric-header-actions">
+                {% block fabric_header_actions %}{% endblock %}
+            </div>
+        </div>
+    {% endblock %}
+
+    {% block fabric_navigation %}
+        {% if show_breadcrumbs|default:True %}
+            <nav aria-label="breadcrumb">
+                <ol class="breadcrumb">
+                    <li class="breadcrumb-item">
+                        <a href="{% url 'plugins:netbox_hedgehog:overview' %}">
+                            <i class="mdi mdi-view-dashboard"></i> Hedgehog
+                        </a>
+                    </li>
+                    <li class="breadcrumb-item">
+                        <a href="{% url 'plugins:netbox_hedgehog:fabric_list' %}">
+                            <i class="mdi mdi-server-network"></i> Fabrics
+                        </a>
+                    </li>
+                    {% block fabric_breadcrumbs %}{% endblock %}
+                </ol>
+            </nav>
+        {% endif %}
+    {% endblock %}
+
+    {% block fabric_content_wrapper %}
+        <div class="fabric-content">
+            {% block fabric_status_bar %}
+                {% if object and show_status_bar|default:True %}
+                    {% include "components/fabric/status_bar.html" with object=object %}
+                {% endif %}
+            {% endblock %}
+
+            {% block fabric_main_content %}
+                <div class="row">
+                    {% block fabric_content_left %}
+                        <div class="col-12 {% if fabric_sidebar %}col-lg-8{% endif %}">
+                            {% block fabric_content %}{% endblock %}
+                        </div>
+                    {% endblock %}
+
+                    {% if fabric_sidebar %}
+                        {% block fabric_content_right %}
+                            <div class="col-12 col-lg-4">
+                                {% block fabric_sidebar %}{% endblock %}
+                            </div>
+                        {% endblock %}
+                    {% endif %}
+                </div>
+            {% endblock %}
+        </div>
+    {% endblock %}
+</div>
+{% endblock %}
+
+{% block javascript %}
+    {{ block.super }}
+    <script src="{% static 'netbox_hedgehog/js/hedgehog.js' %}"></script>
+    {% include "components/fabric/common_scripts.html" %}
+    {% block fabric_scripts %}{% endblock %}
+{% endblock %}

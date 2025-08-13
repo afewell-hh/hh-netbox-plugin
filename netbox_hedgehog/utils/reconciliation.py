@@ -7,7 +7,7 @@ import json
 import hashlib
 from datetime import datetime, timedelta
 from typing import Dict, List, Tuple, Optional, Set
-from kubernetes import client
+from kubernetes import client, config
 from kubernetes.client.rest import ApiException
 import logging
 
@@ -43,12 +43,24 @@ class ReconciliationManager:
         try:
             kubeconfig_data = self.fabric.get_kubernetes_config()
             if kubeconfig_data:
-                client.load_kube_config_from_dict(kubeconfig_data)
+                # Configure client directly from fabric settings
+                configuration = client.Configuration()
+                configuration.host = kubeconfig_data.get('host')
+                configuration.verify_ssl = kubeconfig_data.get('verify_ssl', True)
+                
+                if 'api_key' in kubeconfig_data:
+                    configuration.api_key = kubeconfig_data['api_key']
+                
+                # Create API clients with custom configuration
+                api_client = client.ApiClient(configuration)
+                self.custom_api = client.CustomObjectsApi(api_client)
+                self.core_api = client.CoreV1Api(api_client)
             else:
-                client.load_kube_config()
+                # Load from default kubeconfig
+                config.load_kube_config()
+                self.custom_api = client.CustomObjectsApi()
+                self.core_api = client.CoreV1Api()
             
-            self.custom_api = client.CustomObjectsApi()
-            self.core_api = client.CoreV1Api()
             return True
             
         except Exception as e:
@@ -318,13 +330,19 @@ class ReconciliationManager:
         reconciliation_result['initialization_success'] = True
         
         try:
+            logger.info(f"DEBUG: Starting reconciliation for fabric {self.fabric.name}")
+            
             # Get current state from both sides
             cluster_resources = self.get_cluster_resources(namespace)
+            logger.info(f"DEBUG: Got {len(cluster_resources)} cluster resource types")
+            
             netbox_resources = self.get_netbox_resources()
+            logger.info(f"DEBUG: Got {len(netbox_resources)} netbox resource types")
             
             # Detect changes
             changes = self.detect_changes(cluster_resources, netbox_resources)
             reconciliation_result['changes_detected'] = changes
+            logger.info(f"DEBUG: Detected changes: {changes}")
             
             # Create notification if changes detected
             if any(changes.values()):
@@ -332,6 +350,7 @@ class ReconciliationManager:
                 reconciliation_result['notifications'].append(notification)
             
             if not dry_run:
+                logger.info(f"DEBUG: Running in non-dry-run mode")
                 # Apply changes
                 actions_taken = {
                     'imported_to_netbox': 0,
@@ -341,7 +360,9 @@ class ReconciliationManager:
                 }
                 
                 # Import new cluster resources to NetBox
+                print(f"DEBUG PRINT: About to process {len(changes.get('new_in_cluster', {}))} cluster resource types")
                 for resource_type, resources in changes.get('new_in_cluster', {}).items():
+                    print(f"DEBUG PRINT: Processing {len(resources)} resources of type {resource_type}")
                     for resource in resources:
                         success, message = self.reconcile_resource_to_netbox(resource_type, resource)
                         if success:
@@ -349,8 +370,10 @@ class ReconciliationManager:
                         else:
                             actions_taken['errors'] += 1
                             reconciliation_result['errors'].append(message)
+                print(f"DEBUG PRINT: Completed cluster resource import")
                 
                 # Apply NetBox resources to cluster
+                print(f"DEBUG PRINT: About to process {len(changes.get('new_in_netbox', {}))} netbox resource types")
                 for resource_type, resources in changes.get('new_in_netbox', {}).items():
                     for resource in resources:
                         success, message = self.reconcile_resource_to_cluster(resource_type, resource)
@@ -359,18 +382,60 @@ class ReconciliationManager:
                         else:
                             actions_taken['errors'] += 1
                             reconciliation_result['errors'].append(message)
+                print(f"DEBUG PRINT: Completed netbox resource apply")
                 
                 reconciliation_result['actions_taken'] = actions_taken
+                print(f"DEBUG PRINT: Actions taken set: {actions_taken}")
+            else:
+                logger.info(f"DEBUG: Running in dry-run mode")
             
-            # Update fabric sync status
-            self.fabric.last_sync = datetime.utcnow()
-            self.fabric.sync_status = 'synced' if not reconciliation_result['errors'] else 'error'
+            # Update fabric sync status with timezone-aware datetime
+            from django.utils import timezone
+            new_sync_time = timezone.now()
+            print(f"DEBUG PRINT: About to update fabric {self.fabric.name} last_sync from {self.fabric.last_sync} to {new_sync_time}")
+            self.fabric.last_sync = new_sync_time
+            self.fabric.sync_status = 'in_sync' if not reconciliation_result['errors'] else 'error'
+            print(f"DEBUG PRINT: About to call save() on fabric {self.fabric.name}")
+            self.fabric.save()  # CRITICAL: Must save to persist the updated sync status!
+            print(f"DEBUG PRINT: Fabric {self.fabric.name} save completed, last_sync should now be {new_sync_time}")
             
         except Exception as e:
             logger.error(f"Reconciliation failed: {e}")
             reconciliation_result['errors'].append(f"Reconciliation failed: {str(e)}")
         
         return reconciliation_result
+    
+    def update_sync_timestamp_only(self) -> Dict:
+        """Simple method to just update sync timestamp without full reconciliation"""
+        try:
+            from django.utils import timezone
+            new_sync_time = timezone.now()
+            old_sync_time = self.fabric.last_sync
+            
+            print(f"SIMPLE UPDATE: Updating fabric {self.fabric.name} last_sync from {old_sync_time} to {new_sync_time}")
+            
+            self.fabric.last_sync = new_sync_time
+            self.fabric.sync_status = 'in_sync'
+            self.fabric.save()
+            
+            # Verify the save worked
+            self.fabric.refresh_from_db()
+            print(f"SIMPLE UPDATE: Verification - fabric now has last_sync: {self.fabric.last_sync}")
+            
+            return {
+                'success': True,
+                'message': 'Timestamp updated successfully',
+                'old_sync_time': old_sync_time.isoformat() if old_sync_time else None,
+                'new_sync_time': new_sync_time.isoformat(),
+                'verified_sync_time': self.fabric.last_sync.isoformat()
+            }
+            
+        except Exception as e:
+            print(f"SIMPLE UPDATE ERROR: {e}")
+            return {
+                'success': False,
+                'error': str(e)
+            }
     
     def schedule_reconciliation(self, interval_minutes: int = 5) -> Dict:
         """Schedule periodic reconciliation (mock implementation)"""

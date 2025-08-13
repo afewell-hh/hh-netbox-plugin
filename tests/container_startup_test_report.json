@@ -1,0 +1,26 @@
+{
+  "test_timestamp": "2025-01-12T15:30:00Z",
+  "container_restart_status": "PARTIAL_SUCCESS",
+  "database_connectivity": "FAILED",
+  "service_availability": "UNAVAILABLE",
+  "summary": {
+    "container_starts": true,
+    "database_connection": false,
+    "web_service_ready": false,
+    "fabric_page_accessible": false
+  },
+  "issues_identified": [
+    "NetBox container cannot connect to PostgreSQL database",
+    "Database wait timeout after 30 seconds",
+    "Web service not responding on localhost:8000",
+    "Possible network or configuration issue between containers"
+  ],
+  "recommendations": [
+    "Check database connection configuration in netbox.env",
+    "Verify docker network connectivity between containers",
+    "Review PostgreSQL authentication settings",
+    "Consider rebuilding containers from clean state"
+  ],
+  "test_duration_minutes": 5,
+  "scope_completed": "Container restart attempted but service not available"
+}

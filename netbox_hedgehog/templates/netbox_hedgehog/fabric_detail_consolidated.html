@@ -1,0 +1,224 @@
+{% extends "fabric_master.html" %}
+{% load static %}
+
+{% block fabric_title %}{{ object.name }}{% endblock %}
+{% block fabric_subtitle %}Fabric Details{% endblock %}
+
+{% block fabric_styles %}
+    <link rel="stylesheet" href="{% static 'netbox_hedgehog/css/fabric-detail-enhanced.css' %}">
+    {% if view_mode == "enhanced" %}
+        <link rel="stylesheet" href="{% static 'netbox_hedgehog/css/progressive-disclosure.css' %}">
+    {% endif %}
+{% endblock %}
+
+{% block fabric_header_title %}
+    {{ object.name }}
+    {% if object.description %}
+        <small class="text-muted d-block">{{ object.description }}</small>
+    {% endif %}
+{% endblock %}
+
+{% block fabric_header_actions %}
+    <div class="btn-toolbar">
+        <div class="btn-group me-2">
+            <a href="{% url 'plugins:netbox_hedgehog:fabric_list' %}" class="btn btn-outline-secondary">
+                <i class="mdi mdi-arrow-left"></i> Back to Fabrics
+            </a>
+        </div>
+        <div class="btn-group">
+            <a href="{% url 'plugins:netbox_hedgehog:fabric_edit' pk=object.pk %}" class="btn btn-outline-primary">
+                <i class="mdi mdi-pencil"></i> Edit
+            </a>
+            <button type="button" class="btn btn-outline-secondary dropdown-toggle dropdown-toggle-split" data-bs-toggle="dropdown">
+                <span class="sr-only">Toggle Dropdown</span>
+            </button>
+            <ul class="dropdown-menu">
+                <li><a class="dropdown-item fabric-sync-btn" href="#" data-fabric-id="{{ object.pk }}" data-sync-type="git">
+                    <i class="mdi mdi-sync"></i> Sync from Git
+                </a></li>
+                <li><a class="dropdown-item fabric-sync-btn" href="#" data-fabric-id="{{ object.pk }}" data-sync-type="kubernetes">
+                    <i class="mdi mdi-kubernetes"></i> Sync from Fabric
+                </a></li>
+                <li><a class="dropdown-item fabric-test-connection-btn" href="#" data-fabric-id="{{ object.pk }}">
+                    <i class="mdi mdi-test-tube"></i> Test Connection
+                </a></li>
+                <li><hr class="dropdown-divider"></li>
+                <li><a class="dropdown-item" href="{% url 'plugins:netbox_hedgehog:fabric_crds' pk=object.pk %}">
+                    <i class="mdi mdi-format-list-bulleted-type"></i> View CRDs
+                </a></li>
+            </ul>
+        </div>
+    </div>
+{% endblock %}
+
+{% block fabric_breadcrumbs %}
+    <li class="breadcrumb-item active">{{ object.name }}</li>
+{% endblock %}
+
+{% with fabric_sidebar=True %}
+{% block fabric_content %}
+    {% if view_mode == "enhanced" %}
+        <!-- Enhanced Progressive Disclosure View -->
+        <div class="progressive-dashboard">
+            <div class="dashboard-overview">
+                <div class="status-cards">
+                    <div class="status-card">
+                        <div class="status-card-title">Connection Status</div>
+                        <div class="status-card-value">
+                            {% if object.connection_status == 'connected' %}
+                                <i class="mdi mdi-check-circle text-success"></i>
+                            {% elif object.connection_status == 'error' %}
+                                <i class="mdi mdi-alert-circle text-danger"></i>
+                            {% else %}
+                                <i class="mdi mdi-help-circle text-muted"></i>
+                            {% endif %}
+                        </div>
+                        <div class="status-card-subtitle">{{ object.get_connection_status_display }}</div>
+                    </div>
+                    
+                    <div class="status-card">
+                        <div class="status-card-title">Sync Status</div>
+                        <div class="status-card-value">
+                            {% if object.sync_status == 'in_sync' %}
+                                <i class="mdi mdi-sync text-success"></i>
+                            {% elif object.sync_status == 'syncing' %}
+                                <i class="mdi mdi-sync mdi-spin text-info"></i>
+                            {% elif object.sync_status == 'error' %}
+                                <i class="mdi mdi-sync-alert text-danger"></i>
+                            {% else %}
+                                <i class="mdi mdi-sync-off text-muted"></i>
+                            {% endif %}
+                        </div>
+                        <div class="status-card-subtitle">{{ object.get_sync_status_display }}</div>
+                    </div>
+                    
+                    <div class="status-card">
+                        <div class="status-card-title">Total CRDs</div>
+                        <div class="status-card-value">{{ object.cached_crd_count|default:0 }}</div>
+                        <div class="status-card-subtitle">
+                            {% if object.last_sync %}
+                                Last synced {{ object.last_sync|timesince }} ago
+                            {% else %}
+                                Never synchronized
+                            {% endif %}
+                        </div>
+                    </div>
+                    
+                    <div class="status-card">
+                        <div class="status-card-title">GitOps Status</div>
+                        <div class="status-card-value">
+                            {% if object.gitops_initialized %}
+                                <i class="mdi mdi-git text-success"></i>
+                            {% else %}
+                                <i class="mdi mdi-git text-muted"></i>
+                            {% endif %}
+                        </div>
+                        <div class="status-card-subtitle">
+                            {% if object.gitops_initialized %}
+                                Initialized
+                            {% else %}
+                                Not Initialized
+                            {% endif %}
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="quick-actions">
+                    <a href="#" class="quick-action-btn fabric-sync-btn" data-fabric-id="{{ object.pk }}" data-sync-type="git">
+                        <i class="mdi mdi-sync"></i> Sync from Git
+                    </a>
+                    {% if object.git_repository_url %}
+                        <a href="{{ object.git_repository_url }}" target="_blank" class="quick-action-btn">
+                            <i class="mdi mdi-open-in-new"></i> View Repository
+                        </a>
+                    {% endif %}
+                    {% if not object.gitops_initialized %}
+                        <a href="#" class="quick-action-btn fabric-gitops-init-btn" data-fabric-id="{{ object.pk }}">
+                            <i class="mdi mdi-folder-plus"></i> Initialize GitOps
+                        </a>
+                    {% endif %}
+                </div>
+            </div>
+
+            <!-- Collapsible sections with progressive disclosure -->
+            <div class="dashboard-section" data-section="basic">
+                <button class="section-toggle" aria-expanded="true">
+                    <span class="section-icon">📋</span>
+                    <span class="section-title">Basic Information</span>
+                    <span class="toggle-icon">▼</span>
+                </button>
+                <div class="section-content">
+                    {% include "components/fabric/basic_info_table.html" %}
+                </div>
+            </div>
+
+            {% if object.git_repository_url %}
+            <div class="dashboard-section" data-section="gitops">
+                <button class="section-toggle" aria-expanded="true">
+                    <span class="section-icon">🔀</span>
+                    <span class="section-title">GitOps Configuration</span>
+                    <span class="toggle-icon">▼</span>
+                </button>
+                <div class="section-content">
+                    {% include "components/fabric/gitops_info_table.html" %}
+                </div>
+            </div>
+            {% endif %}
+
+            <div class="dashboard-section" data-section="statistics" data-level="operational">
+                <button class="section-toggle collapsed" aria-expanded="false">
+                    <span class="section-icon">📊</span>
+                    <span class="section-title">Resource Statistics</span>
+                    <span class="toggle-icon">▶</span>
+                </button>
+                <div class="section-content collapsed">
+                    {% include "components/fabric/resource_stats_table.html" %}
+                </div>
+            </div>
+        </div>
+    {% else %}
+        <!-- Simple Traditional View -->
+        <div class="traditional-fabric-detail">
+            <h4>Fabric Information</h4>
+            {% include "components/fabric/basic_info_table.html" %}
+
+            <h5 class="mt-4"><i class="mdi mdi-git"></i> Git Repository Sync</h5>
+            {% include "components/fabric/git_sync_table.html" %}
+
+            <h5 class="mt-4"><i class="mdi mdi-kubernetes"></i> Hedgehog Fabric Sync</h5>
+            {% include "components/fabric/kubernetes_sync_table.html" %}
+
+            <h5 class="mt-4"><i class="mdi mdi-compare"></i> Drift Detection</h5>
+            {% include "components/fabric/drift_info_table.html" %}
+
+            {% if object.sync_error or object.connection_error %}
+            <h5 class="mt-4"><i class="mdi mdi-alert-circle"></i> Error Information</h5>
+            {% include "components/fabric/error_info_table.html" %}
+            {% endif %}
+        </div>
+    {% endif %}
+{% endblock %}
+
+{% block fabric_sidebar %}
+    {% include "components/fabric/git_config_panel.html" %}
+    {% include "components/fabric/action_buttons.html" %}
+    {% include "components/fabric/crd_stats_panel.html" %}
+{% endblock %}
+{% endwith %}
+
+{% block fabric_scripts %}
+    {% if view_mode == "enhanced" %}
+        <script src="{% static 'netbox_hedgehog/js/progressive-disclosure.js' %}"></script>
+        <script>
+            // Show keyboard shortcuts on first visit
+            if (!localStorage.getItem('hedgehog-shortcuts-shown')) {
+                setTimeout(() => {
+                    if (document.getElementById('keyboard-help')) {
+                        new bootstrap.Toast(document.getElementById('keyboard-help')).show();
+                        localStorage.setItem('hedgehog-shortcuts-shown', 'true');
+                    }
+                }, 2000);
+            }
+        </script>
+    {% endif %}
+{% endblock %}

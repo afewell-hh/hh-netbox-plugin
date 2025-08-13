@@ -1,0 +1,35 @@
+{
+  "validation_timestamp": "2025-08-11T21:01:58.569656+00:00",
+  "container_id": "b05eb5eff181",
+  "fixes_applied": {
+    "fabric_sync_placeholder_fix": {
+      "success": false,
+      "error": "File not found: netbox_hedgehog/jobs/fabric_sync.py"
+    },
+    "kubernetes_timeout_fix": {
+      "success": false,
+      "error": "File not found: netbox_hedgehog/utils/kubernetes.py"
+    },
+    "sync_method_name_fix": {
+      "success": false,
+      "error": "File not found: netbox_hedgehog/tasks/sync_tasks.py"
+    }
+  },
+  "overall_success": false,
+  "evidence_package": {
+    "before_after_comparisons": {
+      "fabric_sync_fix": {
+        "before": "                # TODO: Implement actual K8s sync when cluster is available\n                # For now, simulate successful sync",
+        "after": "                from ..utils.kubernetes import KubernetesSync\n                k8s_sync = KubernetesSync(fabric)\n                sync_result = k8s_sync.sync_all_crds()"
+      },
+      "kubernetes_timeout_fix": {
+        "before": "                configuration = client.Configuration()\n                configuration.host = fabric_config['host']\n                configuration.verify_ssl = fabric_config.get('verify_ssl', True)",
+        "after": "                configuration = client.Configuration()\n                configuration.host = fabric_config['host']\n                configuration.verify_ssl = fabric_config.get('verify_ssl', True)\n                \n                # Add critical timeout and connection limits to prevent hangs\n                configuration.timeout = 30  # 30 second timeout for all operations\n                configuration.connection_pool_maxsize = 10\n                configuration.retries = 2"
+      },
+      "sync_method_fix": {
+        "before": "        sync_result = k8s_sync.sync_fabric()",
+        "after": "        sync_result = k8s_sync.sync_all_crds()"
+      }
+    }
+  }
+}

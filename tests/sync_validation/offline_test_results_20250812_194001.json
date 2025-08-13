@@ -1,0 +1,9 @@
+{
+  "timestamp": "2025-08-12T19:40:01.550126",
+  "fabric_id": 35,
+  "tests": {},
+  "django_info": {
+    "setup_success": false,
+    "error": "No module named 'netbox'"
+  }
+}

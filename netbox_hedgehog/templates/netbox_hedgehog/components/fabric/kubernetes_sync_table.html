@@ -1,0 +1,62 @@
+{% load static %}
+
+<table class="table table-borderless">
+    <tr>
+        <th class="text-info" width="200">Fabric Kubernetes Server:</th>
+        <td>
+            {% if object.kubernetes_server and object.kubernetes_server|length > 0 %}
+                <code>{{ object.kubernetes_server }}</code>
+            {% else %}
+                <span class="text-warning">
+                    <i class="mdi mdi-alert-circle"></i> Not configured
+                </span>
+                <small class="text-muted ms-2">(Kubernetes connection required for sync)</small>
+            {% endif %}
+        </td>
+    </tr>
+    <tr>
+        <th class="text-info">Fabric Kubernetes Namespace:</th>
+        <td><code>{{ object.kubernetes_namespace }}</code></td>
+    </tr>
+    <tr>
+        <th class="text-info">Fabric Sync Status:</th>
+        <td>
+            <span class="badge {{ object.calculated_sync_status_badge_class|default:'bg-secondary' }}">
+                {{ object.calculated_sync_status_display|default:"Unknown" }}
+            </span>
+        </td>
+    </tr>
+    <tr>
+        <th class="text-info">Fabric Sync Enabled:</th>
+        <td>
+            {% if object.sync_enabled %}
+                <span class="badge bg-success">Yes</span>
+            {% else %}
+                <span class="badge bg-secondary">No</span>
+            {% endif %}
+        </td>
+    </tr>
+    <tr>
+        <th class="text-info">Fabric Sync Interval:</th>
+        <td>
+            {% if not object.kubernetes_server %}
+                <span class="text-muted">{{ object.sync_interval }} seconds (requires Kubernetes configuration)</span>
+            {% else %}
+                {{ object.sync_interval }} seconds
+            {% endif %}
+        </td>
+    </tr>
+    <tr>
+        <th class="text-info">Fabric Last Sync:</th>
+        <td>
+            {% if not object.kubernetes_server %}
+                <span class="text-muted">No Kubernetes configured</span>
+            {% elif object.last_sync %}
+                {{ object.last_sync|date:"Y-m-d H:i:s" }}
+                <small class="text-muted">({{ object.last_sync|timesince }} ago)</small>
+            {% else %}
+                <span class="text-muted">Never</span>
+            {% endif %}
+        </td>
+    </tr>
+</table>

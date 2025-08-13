@@ -1,0 +1,649 @@
+/**
+ * Responsive Optimized CSS for Hedgehog NetBox Plugin
+ * Mobile-first responsive design with performance optimizations
+ * Preserves desktop appearance while optimizing for mobile devices
+ */
+
+/* =============================================================================
+   MOBILE-FIRST BASE STYLES
+   ============================================================================= */
+
+/* Base styles for all screen sizes */
+.hedgehog-wrapper {
+  min-height: calc(100vh - 200px);
+  font-size: var(--hedgehog-font-size-base);
+  line-height: var(--hedgehog-line-height-base);
+}
+
+/* =============================================================================
+   SMALL DEVICES (320px - 575px) - MOBILE ENHANCEMENT ONLY
+   ============================================================================= */
+
+@media (max-width: 575px) {
+  /* Container adjustments for mobile */
+  .container-fluid {
+    padding-left: var(--hedgehog-space-3, 0.75rem) !important;
+    padding-right: var(--hedgehog-space-3, 0.75rem) !important;
+  }
+  
+  /* Critical mobile table enhancement - horizontal scroll */
+  .table-responsive {
+    overflow-x: auto !important;
+    -webkit-overflow-scrolling: touch !important;
+    display: block !important;
+    white-space: nowrap !important;
+  }
+  
+  .table-responsive table {
+    width: max-content !important;
+    min-width: 100% !important;
+  }
+
+  /* Typography scaling */
+  h1 { font-size: var(--hedgehog-font-size-xl) !important; }
+  h2 { font-size: var(--hedgehog-font-size-lg) !important; }
+  h3 { font-size: var(--hedgehog-font-size-base) !important; }
+  h4 { font-size: var(--hedgehog-font-size-sm) !important; }
+
+  /* Card system mobile optimization */
+  .card {
+    margin-bottom: var(--hedgehog-space-4) !important;
+    border-radius: var(--hedgehog-border-radius) !important;
+  }
+
+  .card-header {
+    padding: var(--hedgehog-space-4) !important;
+    flex-direction: column !important;
+    align-items: stretch !important;
+    gap: var(--hedgehog-space-3) !important;
+  }
+
+  .card-body {
+    padding: var(--hedgehog-space-4) !important;
+  }
+
+  /* Dashboard overview mobile */
+  .dashboard-overview {
+    padding: var(--hedgehog-space-5) !important;
+    margin-bottom: var(--hedgehog-space-5) !important;
+    border-radius: var(--hedgehog-border-radius-lg) !important;
+  }
+
+  /* Status cards - vertical stack */
+  .status-cards {
+    display: flex !important;
+    flex-direction: column !important;
+    gap: var(--hedgehog-space-3) !important;
+  }
+
+  .status-card {
+    padding: var(--hedgehog-space-4) !important;
+    text-align: center !important;
+  }
+
+  .status-card-value {
+    font-size: var(--hedgehog-font-size-xl) !important;
+  }
+
+  /* Table optimization for small screens */
+  .table-responsive {
+    font-size: var(--hedgehog-font-size-xs) !important;
+    margin-bottom: var(--hedgehog-space-4) !important;
+  }
+
+  .table th {
+    width: 35% !important;
+    min-width: 100px !important;
+    padding: var(--hedgehog-space-2) var(--hedgehog-space-1) !important;
+    font-size: var(--hedgehog-font-size-xs) !important;
+    white-space: nowrap !important;
+    overflow: hidden !important;
+    text-overflow: ellipsis !important;
+  }
+
+  .table td {
+    width: 65% !important;
+    padding: var(--hedgehog-space-2) var(--hedgehog-space-1) !important;
+    font-size: var(--hedgehog-font-size-xs) !important;
+    line-height: var(--hedgehog-line-height-sm) !important;
+    word-break: break-word !important;
+  }
+
+  /* Button optimization */
+  .btn {
+    font-size: var(--hedgehog-font-size-sm) !important;
+    padding: var(--hedgehog-space-2) var(--hedgehog-space-3) !important;
+    min-height: var(--hedgehog-touch-target-min) !important;
+    min-width: var(--hedgehog-touch-target-min) !important;
+  }
+
+  /* Badge optimization */
+  .badge {
+    font-size: var(--hedgehog-font-size-xs) !important;
+    padding: var(--hedgehog-space-1) var(--hedgehog-space-2) !important;
+  }
+
+  /* Quick actions mobile */
+  .quick-actions {
+    display: flex !important;
+    flex-direction: column !important;
+    gap: var(--hedgehog-space-2) !important;
+    margin-top: var(--hedgehog-space-3) !important;
+  }
+
+  .quick-action-btn {
+    padding: var(--hedgehog-space-3) var(--hedgehog-space-4) !important;
+    justify-content: center !important;
+    font-size: var(--hedgehog-font-size-sm) !important;
+    min-height: var(--hedgehog-touch-target-preferred) !important;
+    border-radius: var(--hedgehog-border-radius) !important;
+  }
+
+  /* Progressive disclosure mobile */
+  .section-toggle {
+    padding: var(--hedgehog-space-4) !important;
+    font-size: var(--hedgehog-font-size-base) !important;
+  }
+
+  .section-content {
+    padding: var(--hedgehog-space-4) !important;
+  }
+
+  /* Info grid mobile */
+  .info-grid {
+    display: flex !important;
+    flex-direction: column !important;
+    gap: var(--hedgehog-space-4) !important;
+  }
+
+  .info-label {
+    font-size: var(--hedgehog-font-size-xs) !important;
+    padding: var(--hedgehog-space-1) var(--hedgehog-space-2) !important;
+  }
+
+  .info-value {
+    font-size: var(--hedgehog-font-size-sm) !important;
+    padding: var(--hedgehog-space-2) !important;
+  }
+
+  /* Code blocks mobile */
+  pre {
+    font-size: var(--hedgehog-font-size-xs) !important;
+    padding: var(--hedgehog-space-3) !important;
+    line-height: var(--hedgehog-line-height-sm) !important;
+    overflow-x: auto !important;
+  }
+
+  code {
+    font-size: var(--hedgehog-font-size-xs) !important;
+    padding: var(--hedgehog-space-1) var(--hedgehog-space-2) !important;
+  }
+
+  /* Prevent iOS zoom on inputs */
+  input,
+  select,
+  textarea {
+    font-size: 16px !important; /* Minimum to prevent zoom */
+  }
+
+  /* Modal adjustments */
+  .modal-dialog {
+    margin: var(--hedgehog-space-2) !important;
+  }
+
+  .modal-content {
+    border-radius: var(--hedgehog-border-radius-lg) !important;
+  }
+}
+
+/* =============================================================================
+   MEDIUM DEVICES - TABLETS (576px - 767px)
+   ============================================================================= */
+
+@media (min-width: 576px) and (max-width: 767px) {
+  .container-fluid {
+    padding-left: var(--hedgehog-space-4) !important;
+    padding-right: var(--hedgehog-space-4) !important;
+  }
+
+  /* Two-column status cards for tablets */
+  .status-cards {
+    display: grid !important;
+    grid-template-columns: 1fr 1fr !important;
+    gap: var(--hedgehog-space-4) !important;
+  }
+
+  .status-card {
+    padding: var(--hedgehog-space-5) !important;
+  }
+
+  /* Table improvements for tablets */
+  .table th {
+    width: 30% !important;
+    min-width: 120px !important;
+    padding: var(--hedgehog-space-3) var(--hedgehog-space-2) !important;
+    font-size: var(--hedgehog-font-size-sm) !important;
+  }
+
+  .table td {
+    width: 70% !important;
+    padding: var(--hedgehog-space-3) var(--hedgehog-space-2) !important;
+    font-size: var(--hedgehog-font-size-sm) !important;
+  }
+
+  /* Quick actions tablet layout */
+  .quick-actions {
+    display: flex !important;
+    flex-wrap: wrap !important;
+    gap: var(--hedgehog-space-3) !important;
+  }
+
+  .quick-action-btn {
+    flex: 0 1 calc(50% - var(--hedgehog-space-2)) !important;
+    min-width: 140px !important;
+  }
+}
+
+/* =============================================================================
+   LARGE TABLETS (768px - 991px)
+   ============================================================================= */
+
+@media (min-width: 768px) and (max-width: 991px) {
+  .container-fluid {
+    padding-left: var(--hedgehog-space-5) !important;
+    padding-right: var(--hedgehog-space-5) !important;
+  }
+
+  /* Grid layouts for tablets */
+  .status-cards {
+    grid-template-columns: repeat(3, 1fr) !important;
+    gap: var(--hedgehog-space-5) !important;
+  }
+
+  .info-grid {
+    grid-template-columns: repeat(2, 1fr) !important;
+    gap: var(--hedgehog-space-5) !important;
+  }
+
+  /* Table optimization */
+  .table th {
+    width: 25% !important;
+    min-width: 150px !important;
+    font-size: var(--hedgehog-font-size-base) !important;
+  }
+
+  .table td {
+    width: 75% !important;
+    font-size: var(--hedgehog-font-size-base) !important;
+  }
+
+  /* GitOps sections for tablets */
+  .gitops-detail-section .table-borderless th {
+    width: 28% !important;
+    min-width: 160px !important;
+  }
+
+  .gitops-detail-section .table-borderless td {
+    width: 72% !important;
+  }
+
+  /* Quick actions flex layout */
+  .quick-actions {
+    display: flex !important;
+    flex-wrap: wrap !important;
+    gap: var(--hedgehog-space-4) !important;
+  }
+
+  .quick-action-btn {
+    flex: 0 1 auto !important;
+    min-width: 160px !important;
+  }
+}
+
+/* =============================================================================
+   SMALL LAPTOPS (992px - 1199px)
+   ============================================================================= */
+
+@media (min-width: 992px) and (max-width: 1199px) {
+  /* Standard grid layouts */
+  .status-cards {
+    grid-template-columns: repeat(4, 1fr) !important;
+  }
+
+  .info-grid {
+    grid-template-columns: repeat(3, 1fr) !important;
+  }
+
+  /* Maintain desktop table proportions */
+  .table th {
+    width: 25% !important;
+    min-width: 180px !important;
+  }
+
+  .table td {
+    width: 75% !important;
+  }
+
+  .gitops-detail-section .table-borderless th {
+    width: 22% !important;
+    min-width: 180px !important;
+  }
+
+  .gitops-detail-section .table-borderless td {
+    width: 78% !important;
+  }
+}
+
+/* =============================================================================
+   DESKTOP PRESERVATION (1200px+)
+   ALL EXISTING DESKTOP STYLES PRESERVED - CRITICAL FOR VISUAL GUARDIAN
+   ============================================================================= */
+
+@media (min-width: 1200px) {
+  /* Desktop styles remain unchanged - preserved by specificity */
+  .hedgehog-wrapper,
+  .fabric-detail,
+  .card,
+  .dashboard-overview,
+  .status-cards,
+  .drift-spotlight,
+  .gitops-detail-section {
+    /* All existing desktop appearance preserved - ZERO visual changes */
+  }
+
+  /* Maintain original grid proportions - desktop layout intact */
+  .status-cards {
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  }
+
+  .info-grid {
+    grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+  }
+  
+  /* Explicitly preserve desktop table styling */
+  .table th {
+    width: auto !important; /* Reset mobile constraints */
+    min-width: auto !important;
+    font-size: inherit !important;
+    padding: inherit !important;
+  }
+  
+  .table td {
+    width: auto !important; /* Reset mobile constraints */
+    font-size: inherit !important;
+    padding: inherit !important;
+    word-break: inherit !important;
+  }
+  
+  /* Preserve desktop button styling */
+  .btn {
+    font-size: inherit !important;
+    padding: inherit !important;
+    min-height: auto !important;
+    min-width: auto !important;
+  }
+  
+  /* Preserve desktop card styling */
+  .card-header {
+    flex-direction: inherit !important;
+    align-items: inherit !important;
+    gap: inherit !important;
+    padding: inherit !important;
+  }
+  
+  .card-body {
+    padding: inherit !important;
+  }
+}
+
+/* =============================================================================
+   LANDSCAPE MODE OPTIMIZATIONS
+   ============================================================================= */
+
+@media (max-height: 600px) and (orientation: landscape) {
+  /* Compact vertical spacing in landscape */
+  .card {
+    margin-bottom: var(--hedgehog-space-3) !important;
+  }
+
+  .dashboard-overview {
+    padding: var(--hedgehog-space-4) !important;
+    margin-bottom: var(--hedgehog-space-4) !important;
+  }
+
+  .status-cards {
+    gap: var(--hedgehog-space-3) !important;
+  }
+
+  .status-card {
+    padding: var(--hedgehog-space-3) !important;
+  }
+
+  .section-toggle {
+    padding: var(--hedgehog-space-3) var(--hedgehog-space-5) !important;
+  }
+
+  .section-content {
+    padding: var(--hedgehog-space-4) var(--hedgehog-space-5) !important;
+  }
+}
+
+/* =============================================================================
+   TOUCH TARGET OPTIMIZATIONS
+   ============================================================================= */
+
+@media (max-width: 1199px) {
+  /* Enhanced touch targets for all interactive elements */
+  .btn,
+  .quick-action-btn,
+  .section-toggle,
+  a[role="button"],
+  button,
+  .badge:hover,
+  .status-indicator {
+    min-height: var(--hedgehog-touch-target-min) !important;
+    min-width: var(--hedgehog-touch-target-min) !important;
+  }
+
+  /* Preferred touch targets for primary actions */
+  .btn-primary,
+  .btn-success,
+  .btn-info,
+  .quick-action-btn {
+    min-height: var(--hedgehog-touch-target-preferred) !important;
+    min-width: var(--hedgehog-touch-target-preferred) !important;
+  }
+
+  /* Enhanced focus indicators */
+  .btn:focus,
+  .quick-action-btn:focus,
+  .section-toggle:focus {
+    outline: 3px solid rgba(var(--hedgehog-primary-rgb), var(--hedgehog-focus-ring-opacity)) !important;
+    outline-offset: var(--hedgehog-focus-ring-offset) !important;
+  }
+
+  /* Improved tap targets spacing */
+  .btn-group .btn {
+    margin-right: var(--hedgehog-space-1) !important;
+  }
+
+  .btn-group .btn:last-child {
+    margin-right: 0 !important;
+  }
+}
+
+/* =============================================================================
+   PERFORMANCE OPTIMIZATIONS FOR MOBILE
+   ============================================================================= */
+
+@media (max-width: 991px) {
+  /* GPU acceleration for smooth scrolling and animations */
+  .card,
+  .status-card,
+  .quick-action-btn,
+  .section-toggle,
+  .dashboard-section {
+    transform: var(--hedgehog-gpu-acceleration);
+    backface-visibility: hidden;
+  }
+
+  /* Optimize repaints */
+  .table tbody tr {
+    contain: layout style;
+  }
+
+  /* Reduce animation complexity on mobile */
+  * {
+    animation-duration: var(--hedgehog-duration-150) !important;
+  }
+}
+
+/* =============================================================================
+   ACCESSIBILITY ENHANCEMENTS
+   ============================================================================= */
+
+@media (max-width: 1199px) {
+  /* Enhanced contrast for small screens */
+  .text-muted {
+    color: var(--hedgehog-gray-700) !important;
+  }
+
+  .small, small {
+    color: var(--hedgehog-gray-700) !important;
+    font-size: var(--hedgehog-font-size-sm) !important;
+  }
+
+  /* Better link accessibility */
+  a {
+    min-height: var(--hedgehog-touch-target-min) !important;
+    display: inline-flex !important;
+    align-items: center !important;
+    text-decoration: underline !important;
+  }
+
+  /* Form accessibility */
+  .form-control,
+  .form-select {
+    min-height: var(--hedgehog-touch-target-min) !important;
+    font-size: 16px !important; /* Prevent iOS zoom */
+  }
+
+  .form-label {
+    font-size: var(--hedgehog-font-size-base) !important;
+    font-weight: var(--hedgehog-font-weight-semibold) !important;
+  }
+}
+
+/* =============================================================================
+   RESPONSIVE UTILITY CLASSES
+   ============================================================================= */
+
+/* Show/hide utilities */
+@media (max-width: 575px) {
+  .d-xs-none { display: none !important; }
+  .d-xs-block { display: block !important; }
+  .d-xs-flex { display: flex !important; }
+}
+
+@media (min-width: 576px) and (max-width: 767px) {
+  .d-sm-none { display: none !important; }
+  .d-sm-block { display: block !important; }
+  .d-sm-flex { display: flex !important; }
+}
+
+@media (min-width: 768px) and (max-width: 991px) {
+  .d-md-none { display: none !important; }
+  .d-md-block { display: block !important; }
+  .d-md-flex { display: flex !important; }
+}
+
+@media (min-width: 992px) and (max-width: 1199px) {
+  .d-lg-none { display: none !important; }
+  .d-lg-block { display: block !important; }
+  .d-lg-flex { display: flex !important; }
+}
+
+@media (min-width: 1200px) {
+  .d-xl-none { display: none !important; }
+  .d-xl-block { display: block !important; }
+  .d-xl-flex { display: flex !important; }
+}
+
+/* Spacing utilities for responsive design */
+.mobile-stack {
+  display: flex;
+  flex-direction: column;
+  gap: var(--hedgehog-space-3);
+}
+
+@media (min-width: 768px) {
+  .mobile-stack {
+    flex-direction: row;
+    gap: var(--hedgehog-space-4);
+  }
+}
+
+.mobile-center {
+  text-align: center;
+}
+
+@media (min-width: 768px) {
+  .mobile-center {
+    text-align: left;
+  }
+}
+
+.mobile-full-width {
+  width: 100%;
+}
+
+@media (min-width: 768px) {
+  .mobile-full-width {
+    width: auto;
+  }
+}
+
+/* =============================================================================
+   HIGH DPI DISPLAY OPTIMIZATIONS
+   ============================================================================= */
+
+@media (-webkit-min-device-pixel-ratio: 2), (min-resolution: 192dpi) {
+  /* Sharper borders and elements for retina displays */
+  .card,
+  .btn,
+  .badge,
+  .table {
+    border-width: 0.5px;
+  }
+
+  /* Optimize icon rendering */
+  .mdi {
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+}
+
+/* =============================================================================
+   REDUCED MOTION PREFERENCES
+   ============================================================================= */
+
+@media (prefers-reduced-motion: reduce) {
+  /* Disable all animations and transitions for reduced motion preference */
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+
+  /* Maintain essential functionality without motion */
+  .section-toggle .toggle-icon {
+    transform: none !important;
+  }
+
+  .section-content.collapsed {
+    display: none !important;
+  }
+}

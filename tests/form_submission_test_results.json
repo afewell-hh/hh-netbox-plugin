@@ -1,0 +1,60 @@
+{
+  "timestamp": "2025-08-13T06:06:28.563529",
+  "fabric_id": 35,
+  "tests": {
+    "load_edit_form": {
+      "status": "passed",
+      "response_code": 200,
+      "has_form": true,
+      "has_description_field": false,
+      "has_sync_interval_field": false,
+      "has_save_button": true,
+      "csrf_token_found": true,
+      "form_size": 3517
+    },
+    "extract_current_values": {
+      "status": "passed",
+      "current_values": {}
+    },
+    "submit_form_changes": {
+      "status": "passed",
+      "submit_response_code": 302,
+      "form_data_sent": {
+        "description": " - Updated",
+        "sync_interval": "60",
+        "csrfmiddlewaretoken": "f9zNr9AnByjeskiQgnLAp9stz13bwcePf0Lm6fc5MsZnxRm6n10ZDZSs1H5heqBw"
+      },
+      "has_redirect": true,
+      "redirect_location": "/login/?next=/plugins/hedgehog/fabrics/35/edit/",
+      "response_content_length": 0
+    },
+    "follow_redirect_check_success": {
+      "status": "passed",
+      "redirect_response_code": 200,
+      "redirect_url": "http://localhost:8000/login/?next=/plugins/hedgehog/fabrics/35/edit/",
+      "has_success_message": false,
+      "has_error_message": true,
+      "page_title_contains_fabric": true
+    },
+    "verify_changes_persisted": {
+      "status": "passed",
+      "detail_response_code": 200,
+      "updated_description_found": false,
+      "sync_interval_60_found": false,
+      "description_searched": " - Updated"
+    },
+    "test_required_field_validation": {
+      "status": "passed",
+      "validation_response_code": 302,
+      "has_validation_errors": false,
+      "stayed_on_form": false,
+      "no_redirect_on_error": false
+    }
+  },
+  "summary": {
+    "total_tests": 6,
+    "passed": 6,
+    "failed": 0,
+    "errors": []
+  }
+}

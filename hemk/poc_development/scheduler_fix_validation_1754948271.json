@@ -1,0 +1,14 @@
+{
+  "timestamp": "2025-08-11T21:37:42.713900",
+  "tests_run": 4,
+  "tests_passed": 3,
+  "tests_failed": 1,
+  "errors": [
+    "Fabric sync fix validation error: Traceback (most recent call last):\n  File \"<string>\", line 12, in <module>\n  File \"/opt/netbox/venv/lib/python3.12/site-packages/django_rq/queues.py\", line 363, in get_scheduler\n    connection = get_connection(name)\n                 ^^^^^^^^^^^^^^^^^^^^\n  File \"/opt/netbox/venv/lib/python3.12/site-packages/django_rq/queues.py\", line 157, in get_connection\n    return get_redis_connection(QUEUES[name], use_strict_redis)\n                                ~~~~~~^^^^^^\nKeyError: 'hedgehog_sync'\n"
+  ],
+  "fixes_validated": [
+    "scheduler.get_jobs() generator fix",
+    "periodic sync monitoring generator fix",
+    "RQ scheduler service running"
+  ]
+}

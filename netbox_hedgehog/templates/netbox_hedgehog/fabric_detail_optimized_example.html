@@ -1,0 +1,264 @@
+{% extends "netbox_hedgehog/base.html" %}
+{% load static %}
+
+{% comment %}
+Optimized CSS Loading Strategy Example for Fabric Detail Page
+This template demonstrates the performance-optimized CSS architecture
+{% endcomment %}
+
+{% block title %}{{ fabric.name }} - Hedgehog Fabric Detail{% endblock %}
+
+{% block head %}
+    {% comment %} Critical CSS - Inline for immediate rendering {% endcomment %}
+    <style>
+        {% comment %} Include fabric-critical.css content here for production {% endcomment %}
+        {% comment %} This should be inlined and minified for optimal performance {% endcomment %}
+    </style>
+    
+    {% comment %} CSS Custom Properties - Load first for design system {% endcomment %}
+    <link rel="preload" href="{% static 'netbox_hedgehog/css/fabric-variables.css' %}" as="style" onload="this.onload=null;this.rel='stylesheet'">
+    
+    {% comment %} Main optimized CSS - Load with high priority {% endcomment %}
+    <link rel="preload" href="{% static 'netbox_hedgehog/css/fabric-optimized.css' %}" as="style" onload="this.onload=null;this.rel='stylesheet'">
+    
+    {% comment %} Responsive CSS - Load after main styles {% endcomment %}
+    <link rel="preload" href="{% static 'netbox_hedgehog/css/fabric-responsive-optimized.css' %}" as="style" onload="this.onload=null;this.rel='stylesheet'">
+    
+    {% comment %} Print styles - Load with low priority {% endcomment %}
+    <link rel="preload" href="{% static 'netbox_hedgehog/css/fabric-print.css' %}" as="style" media="print" onload="this.onload=null;this.rel='stylesheet'">
+    
+    {% comment %} Fallback for browsers that don't support preload {% endcomment %}
+    <noscript>
+        <link rel="stylesheet" href="{% static 'netbox_hedgehog/css/fabric-variables.css' %}">
+        <link rel="stylesheet" href="{% static 'netbox_hedgehog/css/fabric-optimized.css' %}">
+        <link rel="stylesheet" href="{% static 'netbox_hedgehog/css/fabric-responsive-optimized.css' %}">
+        <link rel="stylesheet" href="{% static 'netbox_hedgehog/css/fabric-print.css' %}" media="print">
+    </noscript>
+    
+    {% comment %} Resource hints for performance {% endcomment %}
+    <link rel="dns-prefetch" href="//fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    
+    {% comment %} Viewport meta for responsive design {% endcomment %}
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+    
+    {% comment %} Theme color for mobile browsers {% endcomment %}
+    <meta name="theme-color" content="#0d6efd">
+    <meta name="msapplication-navbutton-color" content="#0d6efd">
+    <meta name="apple-mobile-web-app-status-bar-style" content="default">
+{% endblock %}
+
+{% block content %}
+<div class="hedgehog-wrapper">
+    <div class="container-fluid">
+        <div class="row">
+            <div class="col-12">
+                {% comment %} Dashboard Overview - Above the fold {% endcomment %}
+                <div class="dashboard-overview fade-in">
+                    <div class="d-flex justify-content-between align-items-center mb-4">
+                        <div>
+                            <h4 class="mb-0">{{ fabric.name }}</h4>
+                            <small class="opacity-75">Hedgehog Network Fabric</small>
+                        </div>
+                        <div class="quick-actions">
+                            <a href="{% url 'plugins:netbox_hedgehog:fabric_edit' pk=fabric.pk %}" class="quick-action-btn">
+                                <i class="mdi mdi-pencil" aria-hidden="true"></i>
+                                Edit Fabric
+                            </a>
+                            <a href="{% url 'plugins:netbox_hedgehog:fabric_list' %}" class="quick-action-btn">
+                                <i class="mdi mdi-view-list" aria-hidden="true"></i>
+                                All Fabrics
+                            </a>
+                        </div>
+                    </div>
+
+                    {% comment %} Status Cards - Critical above-the-fold content {% endcomment %}
+                    <div class="status-cards">
+                        <div class="status-card">
+                            <div class="status-card-title">Fabric Status</div>
+                            <div class="status-card-value">
+                                <span class="badge bg-success">Active</span>
+                            </div>
+                            <div class="status-card-subtitle">Operational</div>
+                        </div>
+                        <div class="status-card">
+                            <div class="status-card-title">Total Switches</div>
+                            <div class="status-card-value">{{ fabric.switches.count }}</div>
+                            <div class="status-card-subtitle">Connected</div>
+                        </div>
+                        <div class="status-card">
+                            <div class="status-card-title">Total VPCs</div>
+                            <div class="status-card-value">{{ fabric.vpcs.count }}</div>
+                            <div class="status-card-subtitle">Configured</div>
+                        </div>
+                        <div class="status-card">
+                            <div class="status-card-title">Sync Status</div>
+                            <div class="status-card-value">
+                                <span class="badge bg-info">Synced</span>
+                            </div>
+                            <div class="status-card-subtitle">Last: Recently</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="row">
+            <div class="col-md-8">
+                {% comment %} Progressive Disclosure Sections {% endcomment %}
+                <div class="dashboard-section">
+                    <button class="section-toggle" type="button" data-bs-toggle="collapse" data-bs-target="#fabric-details" aria-expanded="true" aria-controls="fabric-details">
+                        <span class="d-flex align-items-center">
+                            <i class="mdi mdi-information section-icon" aria-hidden="true"></i>
+                            <span class="section-title">Fabric Details</span>
+                        </span>
+                        <i class="mdi mdi-chevron-down toggle-icon" aria-hidden="true"></i>
+                    </button>
+                    <div class="section-content collapse show" id="fabric-details">
+                        <div class="info-grid">
+                            <div class="info-item">
+                                <div class="info-label">Name</div>
+                                <div class="info-value">{{ fabric.name }}</div>
+                            </div>
+                            <div class="info-item">
+                                <div class="info-label">Description</div>
+                                <div class="info-value">{{ fabric.description|default:"No description provided" }}</div>
+                            </div>
+                            <div class="info-item">
+                                <div class="info-label">Created</div>
+                                <div class="info-value">{{ fabric.created|date:"M d, Y" }}</div>
+                            </div>
+                            <div class="info-item">
+                                <div class="info-label">Last Modified</div>
+                                <div class="info-value">{{ fabric.last_updated|date:"M d, Y H:i" }}</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                {% comment %} GitOps Configuration Section {% endcomment %}
+                {% if fabric.git_repository %}
+                <div class="gitops-detail-section">
+                    <h4><i class="mdi mdi-git" aria-hidden="true"></i> GitOps Configuration</h4>
+                    <div class="table-responsive">
+                        <table class="table table-borderless">
+                            <tbody>
+                                <tr>
+                                    <th>Repository</th>
+                                    <td>
+                                        <a href="{{ fabric.git_repository.url }}" target="_blank" rel="noopener noreferrer">
+                                            {{ fabric.git_repository.name }}
+                                            <i class="mdi mdi-open-in-new" aria-hidden="true"></i>
+                                        </a>
+                                    </td>
+                                </tr>
+                                <tr>
+                                    <th>Branch</th>
+                                    <td><code>{{ fabric.git_repository.branch|default:"main" }}</code></td>
+                                </tr>
+                                <tr>
+                                    <th>Last Sync</th>
+                                    <td>
+                                        {{ fabric.git_repository.last_sync|date:"M d, Y H:i"|default:"Never" }}
+                                        <span class="badge bg-success ms-2">
+                                            <i class="mdi mdi-check" aria-hidden="true"></i>
+                                            Synchronized
+                                        </span>
+                                    </td>
+                                </tr>
+                                <tr>
+                                    <th>Sync Status</th>
+                                    <td>
+                                        <span class="status-indicator success">
+                                            <i class="mdi mdi-check-circle" aria-hidden="true"></i>
+                                            All resources synchronized
+                                        </span>
+                                    </td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+                {% endif %}
+
+                {% comment %} Additional sections can be added here with progressive disclosure {% endcomment %}
+            </div>
+
+            <div class="col-md-4">
+                {% comment %} Sidebar content {% endcomment %}
+                <div class="card">
+                    <div class="card-header">
+                        <h5 class="card-title mb-0">
+                            <i class="mdi mdi-cog" aria-hidden="true"></i>
+                            Quick Actions
+                        </h5>
+                    </div>
+                    <div class="card-body">
+                        <div class="d-grid gap-2">
+                            <a href="{% url 'plugins:netbox_hedgehog:fabric_edit' pk=fabric.pk %}" class="btn btn-primary">
+                                <i class="mdi mdi-pencil" aria-hidden="true"></i>
+                                Edit Fabric
+                            </a>
+                            <a href="#" class="btn btn-info">
+                                <i class="mdi mdi-sync" aria-hidden="true"></i>
+                                Sync with Git
+                            </a>
+                            <a href="#" class="btn btn-secondary">
+                                <i class="mdi mdi-download" aria-hidden="true"></i>
+                                Export Configuration
+                            </a>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+{% comment %} Performance monitoring script {% endcomment %}
+<script>
+// Optional: Performance monitoring
+if ('performance' in window && 'timing' in performance) {
+    window.addEventListener('load', function() {
+        setTimeout(function() {
+            const perfData = performance.timing;
+            const loadTime = perfData.loadEventEnd - perfData.navigationStart;
+            console.log('Page load time:', loadTime + 'ms');
+            
+            // Optional: Send performance data to analytics
+            // analytics.track('page_load_time', { duration: loadTime, page: 'fabric_detail' });
+        }, 0);
+    });
+}
+
+// Progressive enhancement for interactive elements
+document.addEventListener('DOMContentLoaded', function() {
+    // Add fade-in animation to status cards
+    const statusCards = document.querySelectorAll('.status-card');
+    statusCards.forEach((card, index) => {
+        card.style.animationDelay = (index * 0.1) + 's';
+        card.classList.add('fade-in');
+    });
+    
+    // Enhance section toggles
+    const sectionToggles = document.querySelectorAll('.section-toggle');
+    sectionToggles.forEach(toggle => {
+        toggle.addEventListener('click', function() {
+            this.classList.toggle('collapsed');
+        });
+    });
+});
+</script>
+{% endblock %}
+
+{% comment %}
+Performance Optimization Notes:
+1. Critical CSS is inlined for immediate rendering
+2. Non-critical CSS is loaded asynchronously with preload
+3. Resource hints optimize network requests
+4. Progressive disclosure reduces initial DOM size
+5. Status cards are above-the-fold for immediate visibility
+6. Mobile-first responsive design
+7. Semantic HTML for accessibility
+8. Performance monitoring for optimization tracking
+{% endcomment %}

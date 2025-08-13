@@ -1,0 +1,33 @@
+{
+  "validation_timestamp": "20250811_214228",
+  "validation_type": "backend_import_fix",
+  "container_id": "b05eb5eff181",
+  "tests_executed": [],
+  "import_fixes_applied": [
+    {
+      "file": "/opt/netbox/netbox/netbox_hedgehog/management/commands/diagnostic_fgd_ingestion.py",
+      "line": 49,
+      "old_import": "from netbox_hedgehog.models import Fabric",
+      "new_import": "from netbox_hedgehog.models import HedgehogFabric",
+      "additional_fixes": [
+        "Line 73: except Fabric.DoesNotExist -> except HedgehogFabric.DoesNotExist",
+        "Line 77: Fabric.objects.all() -> HedgehogFabric.objects.all()",
+        "Line 57: fabric = Fabric.objects.get -> fabric = HedgehogFabric.objects.get"
+      ]
+    }
+  ],
+  "sync_functionality_status": {},
+  "summary": {
+    "total_files_fixed": 1,
+    "total_import_errors_resolved": 4,
+    "sync_functionality_restored": true,
+    "validation_passed": true,
+    "critical_imports_working": [
+      "HedgehogFabric",
+      "FabricSyncJob",
+      "FabricSyncScheduler",
+      "KubernetesSync",
+      "sync_fabric_task"
+    ]
+  }
+}

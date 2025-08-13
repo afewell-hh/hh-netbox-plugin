@@ -1,0 +1,83 @@
+{
+  "test_type": "periodic_sync_execution_monitoring",
+  "test_timestamp": "2025-08-13T04:23:39Z",
+  "monitoring_period": "60_seconds",
+  "rq_workers_status": {
+    "workers_running": true,
+    "worker_processes": 2,
+    "worker_command": "python manage.py rqworker default high low",
+    "worker_pids": [6320, 6401]
+  },
+  "initial_state": {
+    "timestamp": "2025-08-13T04:23:39Z",
+    "fabric_status": {
+      "fabric_35": {
+        "name": "Test Lab K3s Cluster",
+        "status": "OUT_OF_SYNC",
+        "sync_interval": "30s",
+        "last_sync": "2025-08-13T04:17:16Z"
+      },
+      "fabric_disabled": {
+        "name": "Test Sync Status",
+        "status": "DISABLED",
+        "sync_interval": "300s",
+        "last_sync": "2025-08-12T06:29:34Z"
+      }
+    },
+    "rq_queue_stats": {
+      "default": {"queued": 0, "active": 0, "deferred": 0, "finished": 1, "failed": 3, "workers": 1},
+      "high": {"queued": 0, "active": 0, "deferred": 0, "finished": 0, "failed": 0, "workers": 1},
+      "low": {"queued": 0, "active": 0, "deferred": 0, "finished": 0, "failed": 0, "workers": 1}
+    }
+  },
+  "post_monitoring_state": {
+    "timestamp": "2025-08-13T04:25:11Z",
+    "fabric_status": {
+      "fabric_35": {
+        "name": "Test Lab K3s Cluster",
+        "status": "OUT_OF_SYNC",
+        "sync_interval": "30s",
+        "last_sync": "2025-08-13T04:17:16Z"
+      }
+    },
+    "rq_queue_stats": {
+      "default": {"queued": 0, "active": 0, "deferred": 0, "finished": 1, "failed": 3, "workers": 1},
+      "high": {"queued": 0, "active": 0, "deferred": 0, "finished": 0, "failed": 0, "workers": 1},
+      "low": {"queued": 0, "active": 0, "deferred": 0, "finished": 0, "failed": 0, "workers": 1}
+    }
+  },
+  "periodic_sync_execution_results": {
+    "automatic_job_execution": false,
+    "job_queue_changes": false,
+    "fabric_status_changes": false,
+    "last_sync_timestamp_changed": false,
+    "expected_sync_time": "2025-08-13T04:17:46Z",
+    "actual_monitoring_window": "2025-08-13T04:23:39Z to 2025-08-13T04:25:11Z",
+    "sync_window_overlap": false
+  },
+  "analysis": {
+    "periodic_sync_functioning": false,
+    "reasons": [
+      "No new jobs appeared in RQ queues during 60-second monitoring period",
+      "Fabric 35 last_sync timestamp remained unchanged (04:17:16)",
+      "Expected next sync at 04:17:46 (30s after last sync) was before monitoring window",
+      "No job processing activity detected in worker logs",
+      "RQ queue statistics remained static (1 finished, 3 failed jobs)"
+    ],
+    "potential_issues": [
+      "Periodic sync scheduler may not be properly configured",
+      "RQ scheduler service may not be running",
+      "Celery dependency missing (ModuleNotFoundError: No module named 'celery')",
+      "Sync tasks may be failing during job creation phase"
+    ]
+  },
+  "evidence": {
+    "worker_processes_active": true,
+    "queue_monitoring_completed": true,
+    "fabric_status_monitoring_completed": true,
+    "no_new_jobs_detected": true,
+    "no_sync_timestamp_updates": true,
+    "celery_import_error": true
+  },
+  "conclusion": "PERIODIC SYNC NOT EXECUTING - RQ workers are running but no automatic sync jobs are being created or executed during expected intervals"
+}

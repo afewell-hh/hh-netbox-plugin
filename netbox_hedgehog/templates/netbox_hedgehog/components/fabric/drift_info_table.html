@@ -1,0 +1,29 @@
+{% load static %}
+
+<table class="table table-borderless">
+    <tr>
+        <th class="text-info" width="200">Drift Status:</th>
+        <td>
+            {% if object.drift_count > 0 %}
+                <span class="badge bg-warning text-dark">{{ object.drift_count }} drift(s) detected</span>
+            {% else %}
+                <span class="badge bg-success">No drift detected</span>
+            {% endif %}
+        </td>
+    </tr>
+    <tr>
+        <th class="text-info">Drift Count:</th>
+        <td>{{ object.drift_count|default:"0" }}</td>
+    </tr>
+    <tr>
+        <th class="text-info">Last Drift Check:</th>
+        <td>
+            {% if object.last_drift_check %}
+                {{ object.last_drift_check|date:"Y-m-d H:i:s" }}
+                <small class="text-muted">({{ object.last_drift_check|timesince }} ago)</small>
+            {% else %}
+                <span class="text-muted">Never</span>
+            {% endif %}
+        </td>
+    </tr>
+</table>

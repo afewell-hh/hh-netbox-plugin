@@ -313,15 +313,15 @@ class HedgehogResource(NetBoxModel):
         unique_together = [['fabric', 'namespace', 'name', 'kind']]
         ordering = ['fabric', 'namespace', 'kind', 'name']
         indexes = [
-            models.Index(fields=['fabric', 'resource_state']),
-            models.Index(fields=['fabric', 'kind']),
-            models.Index(fields=['resource_state', 'last_state_change']),
-            models.Index(fields=['desired_commit']),
-            models.Index(fields=['actual_updated']),
-            models.Index(fields=['drift_status', 'drift_score']),
-            models.Index(fields=['fabric', 'kind', 'drift_status']),
-            models.Index(fields=['last_reconciliation']),
-            models.Index(fields=['fabric', 'kind', 'resource_state']),
+            models.Index(fields=['fabric', 'resource_state'], name='hnp_gitops_fab_state_idx'),
+            models.Index(fields=['fabric', 'kind'], name='hnp_gitops_fab_kind_idx'),
+            models.Index(fields=['resource_state', 'last_state_change'], name='hnp_gitops_state_change_idx'),
+            models.Index(fields=['desired_commit'], name='hnp_gitops_desired_commit_idx'),
+            models.Index(fields=['actual_updated'], name='hnp_gitops_actual_updated_idx'),
+            models.Index(fields=['drift_status', 'drift_score'], name='hnp_gitops_drift_score_idx'),
+            models.Index(fields=['fabric', 'kind', 'drift_status'], name='hnp_gitops_fab_kind_drift_idx'),
+            models.Index(fields=['last_reconciliation'], name='hnp_gitops_last_recon_idx'),
+            models.Index(fields=['fabric', 'kind', 'resource_state'], name='hnp_gitops_fab_kind_state_idx'),
         ]
     
     def __str__(self):

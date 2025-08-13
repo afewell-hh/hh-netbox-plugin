@@ -1,0 +1,78 @@
+{
+  "timestamp": "2025-08-12T17:45:41.894668",
+  "test_results": [
+    {
+      "test_name": "Basic NetBox Access Test",
+      "passed": true,
+      "message": "NetBox server accessible",
+      "error_details": "HTTP 200",
+      "timestamp": "2025-08-12T17:45:41.914239"
+    },
+    {
+      "test_name": "Sync Endpoint Availability Test",
+      "passed": true,
+      "message": "Found 2 sync endpoints",
+      "error_details": "['/plugins/hedgehog/fabrics/1/sync/', '/api/plugins/hedgehog/sync/']",
+      "timestamp": "2025-08-12T17:45:41.932351"
+    },
+    {
+      "test_name": "Plugin Installation Test",
+      "passed": false,
+      "message": "Missing plugin files: ['models.py', 'views.py']",
+      "error_details": "",
+      "timestamp": "2025-08-12T17:45:41.982065"
+    },
+    {
+      "test_name": "Database Connectivity Test",
+      "passed": false,
+      "message": "Database not accessible",
+      "error_details": "No database file found\n",
+      "timestamp": "2025-08-12T17:45:41.982443"
+    },
+    {
+      "test_name": "File System Structure Test",
+      "passed": true,
+      "message": "All 5 directories present",
+      "error_details": "['netbox_hedgehog/models/', 'netbox_hedgehog/views/', 'netbox_hedgehog/static/', 'netbox_hedgehog/templates/', 'netbox_hedgehog/utils/']",
+      "timestamp": "2025-08-12T17:45:42.027479"
+    },
+    {
+      "test_name": "JavaScript Files Test",
+      "passed": true,
+      "message": "Found 13 JS files (2 sync-related)",
+      "error_details": "['progressive-disclosure.js', 'sync-handler.js', 'raw-directory-monitor.js', 'error-handler.js', 'emergency-sync-fix.js', 'fabric-detail-enhanced.js', 'session-auth-handler.js', 'hedgehog.js', 'responsive-enhancements.js', 'gitops-onboarding.js', 'archive-browser.js', 'websocket-client.js', 'gitops-dashboard.js']",
+      "timestamp": "2025-08-12T17:45:42.027666"
+    },
+    {
+      "test_name": "Template Files Test",
+      "passed": true,
+      "message": "Found 30 fabric templates",
+      "error_details": "['netbox_hedgehog/fabric_list_working.html', 'netbox_hedgehog/fabric_edit.html', 'netbox_hedgehog/fabric_list_clean.html', 'netbox_hedgehog/fabric_crds.html', 'netbox_hedgehog/fabric_list_consolidated.html', 'netbox_hedgehog/fabric_detail_consolidated.html', 'netbox_hedgehog/fabric_detail_working.html', 'netbox_hedgehog/fabric_delete_safe.html', 'netbox_hedgehog/fabric_list_simple.html', 'netbox_hedgehog/fabric_detail_simple.html', 'netbox_hedgehog/fabric_edit_consolidated.html', 'netbox_hedgehog/fabric_detail_optimized_example.html', 'netbox_hedgehog/fabric_list.html', 'netbox_hedgehog/fabric_edit_simple.html', 'netbox_hedgehog/fabric_edit_minimal.html', 'netbox_hedgehog/fabric_list_fixed.html', 'netbox_hedgehog/fabric_creation_workflow.html', 'netbox_hedgehog/fabric_confirm_delete.html', 'netbox_hedgehog/fabric_edit_debug.html', 'netbox_hedgehog/pre_cluster_fabric_form.html', 'netbox_hedgehog/fabric_detail_minimal.html', 'netbox_hedgehog/fabric_detail_clean.html', 'netbox_hedgehog/fabric_detail_enhanced.html', 'netbox_hedgehog/fabric_master.html', 'netbox_hedgehog/fabric_detail_standalone.html', 'netbox_hedgehog/fabric_overview.html', 'netbox_hedgehog/fabric_detail.html', 'netbox_hedgehog/components/fabric_filter_simple.html', 'netbox_hedgehog/components/fabric_filter_enhanced.html', 'netbox_hedgehog/components/fabric_filter.html']",
+      "timestamp": "2025-08-12T17:45:42.027839"
+    },
+    {
+      "test_name": "URL Configuration Test",
+      "passed": true,
+      "message": "Found 2 sync URL patterns",
+      "error_details": "[\"path('fabrics/<int:pk>/sync/', FabricSyncView.as_view(), name='fabric_sync'),\", \"path('fabrics/<int:pk>/github-sync/', FabricGitHubSyncView.as_view(), name='fabric_github_sync'),\"]",
+      "timestamp": "2025-08-12T17:45:42.029892"
+    }
+  ],
+  "detected_issues": [
+    {
+      "category": "Plugin Installation",
+      "severity": "critical",
+      "description": "Hedgehog plugin not properly installed"
+    },
+    {
+      "category": "Database",
+      "severity": "high",
+      "description": "Database connectivity issues"
+    }
+  ],
+  "summary": {
+    "total_tests": 8,
+    "passed_tests": 6,
+    "failed_tests": 2
+  }
+}

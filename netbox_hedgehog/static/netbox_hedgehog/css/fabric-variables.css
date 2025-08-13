@@ -1,0 +1,345 @@
+/**
+ * Hedgehog NetBox Plugin - CSS Custom Properties (Variables)
+ * Centralized design tokens for consistency and maintainability
+ * Performance-optimized variable system
+ */
+
+:root {
+  /* =============================================================================
+     COLOR SYSTEM
+     ============================================================================= */
+  
+  /* Brand Colors */
+  --hedgehog-primary: #0d6efd;
+  --hedgehog-primary-dark: #0a58ca;
+  --hedgehog-primary-light: #6ea8fe;
+  --hedgehog-primary-rgb: 13, 110, 253;
+  
+  --hedgehog-secondary: #6c757d;
+  --hedgehog-secondary-dark: #545b62;
+  --hedgehog-secondary-light: #adb5bd;
+  --hedgehog-secondary-rgb: 108, 117, 125;
+  
+  /* Status Colors */
+  --hedgehog-success: #198754;
+  --hedgehog-success-dark: #146c43;
+  --hedgehog-success-light: #75b798;
+  --hedgehog-success-rgb: 25, 135, 84;
+  
+  --hedgehog-danger: #dc3545;
+  --hedgehog-danger-dark: #b02a37;
+  --hedgehog-danger-light: #ea868f;
+  --hedgehog-danger-rgb: 220, 53, 69;
+  
+  --hedgehog-warning: #ffc107;
+  --hedgehog-warning-dark: #e0a800;
+  --hedgehog-warning-light: #ffda6a;
+  --hedgehog-warning-rgb: 255, 193, 7;
+  
+  --hedgehog-info: #0dcaf0;
+  --hedgehog-info-dark: #087990;
+  --hedgehog-info-light: #6edff6;
+  --hedgehog-info-rgb: 13, 202, 240;
+  
+  /* Neutral Colors */
+  --hedgehog-white: #ffffff;
+  --hedgehog-black: #000000;
+  --hedgehog-light: #f8f9fa;
+  --hedgehog-dark: #212529;
+  
+  /* Gray Scale */
+  --hedgehog-gray-100: #f8f9fa;
+  --hedgehog-gray-200: #e9ecef;
+  --hedgehog-gray-300: #dee2e6;
+  --hedgehog-gray-400: #ced4da;
+  --hedgehog-gray-500: #adb5bd;
+  --hedgehog-gray-600: #6c757d;
+  --hedgehog-gray-700: #495057;
+  --hedgehog-gray-800: #343a40;
+  --hedgehog-gray-900: #212529;
+  
+  /* =============================================================================
+     TYPOGRAPHY SYSTEM
+     ============================================================================= */
+  
+  /* Font Families */
+  --hedgehog-font-family-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, "Noto Sans", sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol", "Noto Color Emoji";
+  --hedgehog-font-family-mono: SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+  
+  /* Font Sizes */
+  --hedgehog-font-size-xs: 0.75rem;
+  --hedgehog-font-size-sm: 0.875rem;
+  --hedgehog-font-size-base: 1rem;
+  --hedgehog-font-size-lg: 1.25rem;
+  --hedgehog-font-size-xl: 1.5rem;
+  --hedgehog-font-size-2xl: 1.75rem;
+  --hedgehog-font-size-3xl: 2rem;
+  
+  /* Font Weights */
+  --hedgehog-font-weight-light: 300;
+  --hedgehog-font-weight-normal: 400;
+  --hedgehog-font-weight-medium: 500;
+  --hedgehog-font-weight-semibold: 600;
+  --hedgehog-font-weight-bold: 700;
+  
+  /* Line Heights */
+  --hedgehog-line-height-xs: 1.2;
+  --hedgehog-line-height-sm: 1.4;
+  --hedgehog-line-height-base: 1.5;
+  --hedgehog-line-height-lg: 1.6;
+  --hedgehog-line-height-xl: 1.8;
+  
+  /* =============================================================================
+     SPACING SYSTEM
+     ============================================================================= */
+  
+  /* Base spacing unit (0.25rem = 4px) */
+  --hedgehog-spacer: 0.25rem;
+  
+  /* Spacing Scale */
+  --hedgehog-space-1: calc(var(--hedgehog-spacer) * 1); /* 4px */
+  --hedgehog-space-2: calc(var(--hedgehog-spacer) * 2); /* 8px */
+  --hedgehog-space-3: calc(var(--hedgehog-spacer) * 3); /* 12px */
+  --hedgehog-space-4: calc(var(--hedgehog-spacer) * 4); /* 16px */
+  --hedgehog-space-5: calc(var(--hedgehog-spacer) * 5); /* 20px */
+  --hedgehog-space-6: calc(var(--hedgehog-spacer) * 6); /* 24px */
+  --hedgehog-space-8: calc(var(--hedgehog-spacer) * 8); /* 32px */
+  --hedgehog-space-10: calc(var(--hedgehog-spacer) * 10); /* 40px */
+  --hedgehog-space-12: calc(var(--hedgehog-spacer) * 12); /* 48px */
+  --hedgehog-space-16: calc(var(--hedgehog-spacer) * 16); /* 64px */
+  
+  /* =============================================================================
+     BORDER RADIUS SYSTEM
+     ============================================================================= */
+  
+  --hedgehog-border-radius-sm: 0.25rem;
+  --hedgehog-border-radius: 0.375rem;
+  --hedgehog-border-radius-lg: 0.5rem;
+  --hedgehog-border-radius-xl: 0.75rem;
+  --hedgehog-border-radius-2xl: 1rem;
+  --hedgehog-border-radius-full: 9999px;
+  
+  /* =============================================================================
+     SHADOW SYSTEM
+     ============================================================================= */
+  
+  --hedgehog-shadow-xs: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
+  --hedgehog-shadow-sm: 0 1px 3px 0 rgba(0, 0, 0, 0.1), 0 1px 2px 0 rgba(0, 0, 0, 0.06);
+  --hedgehog-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+  --hedgehog-shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+  --hedgehog-shadow-xl: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
+  --hedgehog-shadow-2xl: 0 25px 50px -12px rgba(0, 0, 0, 0.25);
+  
+  /* =============================================================================
+     Z-INDEX SYSTEM
+     ============================================================================= */
+  
+  --hedgehog-z-dropdown: 1000;
+  --hedgehog-z-sticky: 1020;
+  --hedgehog-z-fixed: 1030;
+  --hedgehog-z-modal-backdrop: 1040;
+  --hedgehog-z-modal: 1050;
+  --hedgehog-z-popover: 1060;
+  --hedgehog-z-tooltip: 1070;
+  
+  /* =============================================================================
+     ANIMATION SYSTEM
+     ============================================================================= */
+  
+  /* Timing Functions */
+  --hedgehog-ease-linear: linear;
+  --hedgehog-ease-in: cubic-bezier(0.4, 0, 1, 1);
+  --hedgehog-ease-out: cubic-bezier(0, 0, 0.2, 1);
+  --hedgehog-ease-in-out: cubic-bezier(0.4, 0, 0.2, 1);
+  
+  /* Durations */
+  --hedgehog-duration-75: 75ms;
+  --hedgehog-duration-100: 100ms;
+  --hedgehog-duration-150: 150ms;
+  --hedgehog-duration-200: 200ms;
+  --hedgehog-duration-300: 300ms;
+  --hedgehog-duration-500: 500ms;
+  --hedgehog-duration-700: 700ms;
+  --hedgehog-duration-1000: 1000ms;
+  
+  /* =============================================================================
+     COMPONENT-SPECIFIC VARIABLES
+     ============================================================================= */
+  
+  /* Buttons */
+  --hedgehog-btn-padding-y: var(--hedgehog-space-3);
+  --hedgehog-btn-padding-x: var(--hedgehog-space-4);
+  --hedgehog-btn-font-size: var(--hedgehog-font-size-base);
+  --hedgehog-btn-line-height: var(--hedgehog-line-height-base);
+  --hedgehog-btn-border-radius: var(--hedgehog-border-radius);
+  --hedgehog-btn-transition: all var(--hedgehog-duration-150) var(--hedgehog-ease-in-out);
+  
+  /* Cards */
+  --hedgehog-card-border-radius: var(--hedgehog-border-radius-lg);
+  --hedgehog-card-padding: var(--hedgehog-space-6);
+  --hedgehog-card-shadow: var(--hedgehog-shadow-sm);
+  --hedgehog-card-border-color: var(--hedgehog-gray-200);
+  --hedgehog-card-bg: var(--hedgehog-white);
+  
+  /* Forms */
+  --hedgehog-input-padding-y: var(--hedgehog-space-3);
+  --hedgehog-input-padding-x: var(--hedgehog-space-4);
+  --hedgehog-input-font-size: var(--hedgehog-font-size-base);
+  --hedgehog-input-line-height: var(--hedgehog-line-height-base);
+  --hedgehog-input-border-radius: var(--hedgehog-border-radius);
+  --hedgehog-input-border-color: var(--hedgehog-gray-300);
+  --hedgehog-input-focus-border-color: var(--hedgehog-primary);
+  --hedgehog-input-bg: var(--hedgehog-white);
+  
+  /* Tables */
+  --hedgehog-table-cell-padding: var(--hedgehog-space-4);
+  --hedgehog-table-border-color: var(--hedgehog-gray-200);
+  --hedgehog-table-header-bg: var(--hedgehog-gray-100);
+  --hedgehog-table-stripe-bg: var(--hedgehog-gray-50, #fafafa);
+  
+  /* Badges */
+  --hedgehog-badge-padding-y: var(--hedgehog-space-2);
+  --hedgehog-badge-padding-x: var(--hedgehog-space-3);
+  --hedgehog-badge-font-size: var(--hedgehog-font-size-xs);
+  --hedgehog-badge-font-weight: var(--hedgehog-font-weight-medium);
+  --hedgehog-badge-border-radius: var(--hedgehog-border-radius-sm);
+  
+  /* =============================================================================
+     RESPONSIVE BREAKPOINTS
+     ============================================================================= */
+  
+  --hedgehog-breakpoint-xs: 0;
+  --hedgehog-breakpoint-sm: 576px;
+  --hedgehog-breakpoint-md: 768px;
+  --hedgehog-breakpoint-lg: 992px;
+  --hedgehog-breakpoint-xl: 1200px;
+  --hedgehog-breakpoint-xxl: 1400px;
+  
+  /* =============================================================================
+     ACCESSIBILITY VARIABLES
+     ============================================================================= */
+  
+  /* Minimum touch target size */
+  --hedgehog-touch-target-min: 44px;
+  --hedgehog-touch-target-preferred: 48px;
+  
+  /* Focus indicators */
+  --hedgehog-focus-ring-color: var(--hedgehog-primary);
+  --hedgehog-focus-ring-opacity: 0.25;
+  --hedgehog-focus-ring-width: 2px;
+  --hedgehog-focus-ring-offset: 2px;
+  
+  /* =============================================================================
+     PERFORMANCE OPTIMIZATIONS
+     ============================================================================= */
+  
+  /* Will-change hints for performance-critical animations */
+  --hedgehog-will-change-transform: transform;
+  --hedgehog-will-change-opacity: opacity;
+  --hedgehog-will-change-auto: auto;
+  
+  /* GPU acceleration */
+  --hedgehog-gpu-acceleration: translateZ(0);
+}
+
+/* =============================================================================
+   DARK MODE VARIABLES
+   ============================================================================= */
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    /* Dark mode color overrides */
+    --hedgehog-white: #1a1d23;
+    --hedgehog-black: #ffffff;
+    --hedgehog-light: #2d3748;
+    --hedgehog-dark: #e2e8f0;
+    
+    /* Dark mode gray scale */
+    --hedgehog-gray-100: #2d3748;
+    --hedgehog-gray-200: #4a5568;
+    --hedgehog-gray-300: #718096;
+    --hedgehog-gray-400: #a0aec0;
+    --hedgehog-gray-500: #cbd5e0;
+    --hedgehog-gray-600: #e2e8f0;
+    --hedgehog-gray-700: #edf2f7;
+    --hedgehog-gray-800: #f7fafc;
+    --hedgehog-gray-900: #ffffff;
+    
+    /* Component overrides for dark mode */
+    --hedgehog-card-bg: var(--hedgehog-gray-100);
+    --hedgehog-card-border-color: var(--hedgehog-gray-200);
+    --hedgehog-table-header-bg: var(--hedgehog-gray-200);
+    --hedgehog-table-stripe-bg: var(--hedgehog-gray-150, #374151);
+    --hedgehog-input-bg: var(--hedgehog-gray-100);
+    --hedgehog-input-border-color: var(--hedgehog-gray-200);
+  }
+}
+
+/* =============================================================================
+   HIGH CONTRAST MODE VARIABLES
+   ============================================================================= */
+
+@media (prefers-contrast: high) {
+  :root {
+    /* Enhanced contrast colors */
+    --hedgehog-primary: #0056b3;
+    --hedgehog-secondary: #495057;
+    --hedgehog-success: #146c43;
+    --hedgehog-danger: #b02a37;
+    --hedgehog-warning: #e0a800;
+    --hedgehog-info: #087990;
+    
+    /* Enhanced borders */
+    --hedgehog-card-border-color: var(--hedgehog-black);
+    --hedgehog-table-border-color: var(--hedgehog-black);
+    --hedgehog-input-border-color: var(--hedgehog-black);
+    
+    /* Enhanced focus indicators */
+    --hedgehog-focus-ring-width: 3px;
+    --hedgehog-focus-ring-opacity: 1;
+  }
+}
+
+/* =============================================================================
+   REDUCED MOTION PREFERENCES
+   ============================================================================= */
+
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    /* Disable animations for reduced motion preference */
+    --hedgehog-duration-75: 0ms;
+    --hedgehog-duration-100: 0ms;
+    --hedgehog-duration-150: 0ms;
+    --hedgehog-duration-200: 0ms;
+    --hedgehog-duration-300: 0ms;
+    --hedgehog-duration-500: 0ms;
+    --hedgehog-duration-700: 0ms;
+    --hedgehog-duration-1000: 0ms;
+  }
+}
+
+/* =============================================================================
+   PRINT MODE VARIABLES
+   ============================================================================= */
+
+@media print {
+  :root {
+    /* Print-optimized colors */
+    --hedgehog-white: #ffffff;
+    --hedgehog-black: #000000;
+    --hedgehog-light: #f8f9fa;
+    --hedgehog-dark: #212529;
+    
+    /* Remove shadows for print */
+    --hedgehog-shadow-xs: none;
+    --hedgehog-shadow-sm: none;
+    --hedgehog-shadow: none;
+    --hedgehog-shadow-lg: none;
+    --hedgehog-shadow-xl: none;
+    --hedgehog-shadow-2xl: none;
+    
+    /* Print-optimized borders */
+    --hedgehog-card-shadow: none;
+    --hedgehog-card-border-color: var(--hedgehog-black);
+  }
+}

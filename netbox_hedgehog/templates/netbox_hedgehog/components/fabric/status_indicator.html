@@ -1,0 +1,74 @@
+<div class="status-indicator-wrapper">
+    <div class="status-indicator 
+        {% if type == 'connection' %}
+            {% if status == 'connected' %}bg-success text-white
+            {% elif status == 'disconnected' or status == 'error' %}bg-danger text-white
+            {% else %}bg-secondary text-white{% endif %}
+        {% elif type == 'sync' %}
+            {% if status == 'in_sync' %}bg-success text-white
+            {% elif status == 'syncing' %}bg-info text-white
+            {% elif status == 'out_of_sync' %}bg-warning text-dark
+            {% elif status == 'error' %}bg-danger text-white
+            {% elif status == 'not_configured' %}bg-secondary text-white
+            {% elif status == 'disabled' %}bg-secondary text-white
+            {% elif status == 'never_synced' %}bg-warning text-dark
+            {% else %}bg-secondary text-white{% endif %}
+        {% elif type == 'git' %}
+            {% if status == 'connected' %}bg-success text-white
+            {% elif status == 'not_configured' %}bg-light text-dark
+            {% else %}bg-secondary text-white{% endif %}
+        {% elif type == 'drift' %}
+            {% if status == 'in_sync' %}bg-success text-white
+            {% elif status == 'drift_detected' and count > 0 %}bg-warning text-dark
+            {% else %}bg-light text-dark{% endif %}
+        {% endif %}
+        d-inline-flex align-items-center px-2 py-1 rounded-pill"
+        style="font-size: 0.8rem;">
+        
+        {% if type == 'connection' %}
+            {% if status == 'connected' %}
+                <i class="mdi mdi-check-circle me-1"></i> Connected
+            {% elif status == 'disconnected' %}
+                <i class="mdi mdi-close-circle me-1"></i> Disconnected  
+            {% elif status == 'error' %}
+                <i class="mdi mdi-alert-circle me-1"></i> Error
+            {% else %}
+                <i class="mdi mdi-help-circle me-1"></i> Unknown
+            {% endif %}
+        {% elif type == 'sync' %}
+            {% if status == 'in_sync' %}
+                <i class="mdi mdi-check-circle me-1"></i> In Sync
+            {% elif status == 'syncing' %}
+                <i class="mdi mdi-sync mdi-spin me-1"></i> Syncing
+            {% elif status == 'out_of_sync' %}
+                <i class="mdi mdi-sync-alert me-1"></i> Out of Sync
+            {% elif status == 'error' %}
+                <i class="mdi mdi-alert-circle me-1"></i> Sync Error
+            {% elif status == 'not_configured' %}
+                <i class="mdi mdi-cog-off me-1"></i> Not Configured
+            {% elif status == 'disabled' %}
+                <i class="mdi mdi-sync-off me-1"></i> Sync Disabled
+            {% elif status == 'never_synced' %}
+                <i class="mdi mdi-sync-off me-1"></i> Never Synced
+            {% else %}
+                <i class="mdi mdi-sync-off me-1"></i> Never Synced
+            {% endif %}
+        {% elif type == 'git' %}
+            {% if status == 'connected' %}
+                <i class="mdi mdi-git me-1"></i> Connected
+            {% elif status == 'not_configured' %}
+                <i class="mdi mdi-git me-1"></i> Not Connected
+            {% else %}
+                <i class="mdi mdi-git me-1"></i> {{ status|title }}
+            {% endif %}
+        {% elif type == 'drift' %}
+            {% if status == 'in_sync' %}
+                <i class="mdi mdi-check-circle me-1"></i> In Sync
+            {% elif status == 'drift_detected' and count > 0 %}
+                <i class="mdi mdi-alert-circle me-1"></i> {{ count }} Drift{{ count|pluralize }}
+            {% else %}
+                <i class="mdi mdi-minus me-1"></i> N/A
+            {% endif %}
+        {% endif %}
+    </div>
+</div>

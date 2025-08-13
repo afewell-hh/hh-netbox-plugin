@@ -1,0 +1,24 @@
+{% load static %}
+
+<table class="table table-borderless">
+    {% if object.sync_error %}
+    <tr>
+        <th class="text-info" width="200">Sync Error:</th>
+        <td>
+            <div class="alert alert-danger">
+                <small>{{ object.sync_error }}</small>
+            </div>
+        </td>
+    </tr>
+    {% endif %}
+    {% if object.connection_error %}
+    <tr>
+        <th class="text-info">Connection Error:</th>
+        <td>
+            <div class="alert alert-danger">
+                <small>{{ object.connection_error }}</small>
+            </div>
+        </td>
+    </tr>
+    {% endif %}
+</table>

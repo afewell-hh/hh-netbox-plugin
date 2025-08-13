@@ -1,0 +1,38 @@
+{% load static %}
+
+<table class="table table-borderless">
+    <tr>
+        <th class="text-info" width="200">Name:</th>
+        <td><strong>{{ object.name }}</strong></td>
+    </tr>
+    <tr>
+        <th class="text-info">Description:</th>
+        <td>{{ object.description|default:"—" }}</td>
+    </tr>
+    <tr>
+        <th class="text-info">Status:</th>
+        <td>
+            <span class="badge bg-{% if object.status == 'active' %}success{% elif object.status == 'maintenance' %}warning{% else %}secondary{% endif %}">
+                {{ object.get_status_display }}
+            </span>
+        </td>
+    </tr>
+    <tr>
+        <th class="text-info">Kubernetes Namespace:</th>
+        <td><code>{{ object.kubernetes_namespace }}</code></td>
+    </tr>
+    <tr>
+        <th class="text-info">Kubernetes Server:</th>
+        <td>
+            {% if object.kubernetes_server and object.kubernetes_server|length > 0 %}
+                <code>{{ object.kubernetes_server }}</code>
+            {% else %}
+                <span class="text-muted">Using default kubeconfig</span>
+            {% endif %}
+        </td>
+    </tr>
+    <tr>
+        <th class="text-info">Created:</th>
+        <td>{{ object.created|date:"M d, Y H:i" }}</td>
+    </tr>
+</table>

@@ -1,7 +1,9 @@
 import logging
+from typing import Dict, Any
 from django.db import models
 from django.urls import reverse
 from netbox.models import NetBoxModel
+from django.utils import timezone
 
 from ..choices import FabricStatusChoices, ConnectionStatusChoices, SyncStatusChoices
 
@@ -514,6 +516,36 @@ class HedgehogFabric(NetBoxModel):
             return 'in_sync'
         else:
             return 'out_of_sync'
+
+    def needs_sync(self):
+        """
+        Check if fabric needs synchronization based on configuration and timing.
+        Used by periodic sync system to determine if sync should be executed.
+        """
+        from django.utils import timezone
+        
+        # If no Kubernetes server configured, no sync needed
+        if not self.kubernetes_server or not self.kubernetes_server.strip():
+            return False
+        
+        # If sync is disabled, no sync needed
+        if not self.sync_enabled:
+            return False
+        
+        # If sync interval is 0 or negative, no periodic sync needed
+        if self.sync_interval <= 0:
+            return False
+        
+        # If never synced, sync is needed
+        if not self.last_sync:
+            return True
+        
+        # Calculate time since last sync
+        time_since_sync = timezone.now() - self.last_sync
+        sync_age_seconds = time_since_sync.total_seconds()
+        
+        # If last sync is older than sync interval, sync is needed
+        return sync_age_seconds >= self.sync_interval
 
     @property
     def calculated_sync_status_display(self):

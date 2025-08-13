@@ -1,0 +1,103 @@
+{
+  "timestamp": "2025-08-11T21:47:08.675222",
+  "fabric_id": 35,
+  "specific_fixes_tested": {
+    "backend_import_errors": {
+      "status": "FIXED",
+      "tests": {
+        "sync_endpoint_imports": {
+          "status": "PASS",
+          "details": {
+            "status_code": 200,
+            "note": "Endpoint accessible without import errors"
+          },
+          "timestamp": "2025-08-11T21:47:08.702776"
+        },
+        "fabric_list_imports": {
+          "status": "PASS",
+          "details": {
+            "status_code": 200,
+            "note": "No import errors"
+          },
+          "timestamp": "2025-08-11T21:47:08.725925"
+        }
+      }
+    },
+    "authentication_ux": {
+      "status": "NEEDS_WORK",
+      "tests": {
+        "json_error_format": {
+          "status": "FAIL",
+          "details": {
+            "issue": "Returns HTML or redirect instead of JSON error",
+            "status_code": 403,
+            "content_type": "text/html; charset=utf-8"
+          },
+          "timestamp": "2025-08-11T21:47:08.733221"
+        },
+        "user_friendly_errors": {
+          "status": "FAIL",
+          "details": {
+            "error": "No JSON error response to evaluate"
+          },
+          "timestamp": "2025-08-11T21:47:08.739816"
+        }
+      }
+    },
+    "url_routing": {
+      "status": "FIXED",
+      "tests": {
+        "fabric_list_accessible": {
+          "status": "PASS",
+          "details": {
+            "url": "/plugins/hedgehog/fabrics/",
+            "status_code": 200
+          },
+          "timestamp": "2025-08-11T21:47:08.755693"
+        },
+        "fabric_detail_accessible": {
+          "status": "PASS",
+          "details": {
+            "url": "/plugins/hedgehog/fabrics/35/",
+            "status_code": 200
+          },
+          "timestamp": "2025-08-11T21:47:08.774123"
+        },
+        "sync_endpoint_accessible": {
+          "status": "PASS",
+          "details": {
+            "url": "/plugins/hedgehog/fabrics/35/sync/",
+            "status_code": 200
+          },
+          "timestamp": "2025-08-11T21:47:08.786876"
+        }
+      }
+    },
+    "rq_scheduler": {
+      "status": "FIXED",
+      "tests": {
+        "no_timeout_hang": {
+          "status": "PASS",
+          "details": {
+            "response_time_seconds": 0.006235361099243164,
+            "status_code": 403
+          },
+          "timestamp": "2025-08-11T21:47:08.793160"
+        }
+      }
+    },
+    "sync_execution": {
+      "status": "NEEDS_WORK",
+      "tests": {
+        "structured_response": {
+          "status": "FAIL",
+          "details": {
+            "error": "Non-JSON response",
+            "content_type": "text/html; charset=utf-8"
+          },
+          "timestamp": "2025-08-11T21:47:08.799541"
+        }
+      }
+    }
+  }
+}

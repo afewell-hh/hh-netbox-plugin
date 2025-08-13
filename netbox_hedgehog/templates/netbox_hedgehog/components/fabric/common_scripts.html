@@ -1,0 +1,181 @@
+{% load static %}
+
+<script>
+// Common Fabric JavaScript Functions
+(function() {
+    'use strict';
+
+    // Helper function to get CSRF token
+    function getCsrfToken() {
+        return document.querySelector('[name=csrfmiddlewaretoken]')?.value || 
+               document.querySelector('meta[name=csrf-token]')?.getAttribute('content') || 
+               getCookie('csrftoken');
+    }
+
+    function getCookie(name) {
+        let cookieValue = null;
+        if (document.cookie && document.cookie !== '') {
+            const cookies = document.cookie.split(';');
+            for (let i = 0; i < cookies.length; i++) {
+                const cookie = cookies[i].trim();
+                if (cookie.substring(0, name.length + 1) === (name + '=')) {
+                    cookieValue = decodeURIComponent(cookie.substring(name.length + 1));
+                    break;
+                }
+            }
+        }
+        return cookieValue;
+    }
+
+    // Show alert function
+    function showAlert(type, message, duration = 5000) {
+        const alertDiv = document.createElement('div');
+        alertDiv.className = `alert alert-${type} alert-dismissible fade show`;
+        alertDiv.innerHTML = `
+            ${message}
+            <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+        `;
+        
+        const container = document.querySelector('.fabric-content') || document.querySelector('.container-fluid');
+        container.insertBefore(alertDiv, container.firstChild);
+        
+        if (duration > 0) {
+            setTimeout(() => {
+                if (alertDiv.parentNode) {
+                    alertDiv.remove();
+                }
+            }, duration);
+        }
+    }
+
+    // Generic sync function
+    function performSync(fabricId, syncType, button) {
+        if (!button) return;
+        
+        const originalHtml = button.innerHTML;
+        const originalDisabled = button.disabled;
+        
+        // Update button state
+        button.disabled = true;
+        if (syncType === 'git') {
+            button.innerHTML = '<i class="mdi mdi-sync mdi-spin"></i>';
+        } else if (syncType === 'kubernetes') {
+            button.innerHTML = '<i class="mdi mdi-kubernetes mdi-spin"></i>';
+        }
+        
+        const baseUrl = window.location.origin;
+        const syncUrl = syncType === 'git' 
+            ? `${baseUrl}/plugins/hedgehog/fabrics/${fabricId}/github-sync/`
+            : `${baseUrl}/plugins/hedgehog/fabrics/${fabricId}/sync/`;
+        
+        fetch(syncUrl, {
+            method: 'POST',
+            headers: {
+                'X-CSRFToken': getCsrfToken(),
+                'Content-Type': 'application/json',
+                'Cache-Control': 'no-cache'
+            },
+            body: JSON.stringify({ sync_type: syncType }),
+            credentials: 'same-origin'
+        })
+        .then(response => {
+            if (!response.ok) {
+                return response.json().then(data => {
+                    throw new Error(data.error || data.detail || `HTTP ${response.status}: ${response.statusText}`);
+                });
+            }
+            return response.json();
+        })
+        .then(data => {
+            if (data.success) {
+                showAlert('success', data.message || `${syncType === 'git' ? 'Git' : 'Kubernetes'} sync completed successfully`);
+                setTimeout(() => location.reload(), 1500);
+            } else {
+                showAlert('danger', data.error || data.message || `${syncType === 'git' ? 'Git' : 'Kubernetes'} sync failed`);
+            }
+        })
+        .catch(error => {
+            console.error(`${syncType} sync error:`, error);
+            showAlert('danger', `${syncType === 'git' ? 'Git' : 'Kubernetes'} sync failed: ` + error.message);
+        })
+        .finally(() => {
+            button.disabled = originalDisabled;
+            button.innerHTML = originalHtml;
+        });
+    }
+
+    // Test connection function
+    function testConnection(fabricId, button) {
+        if (!button) return;
+        
+        const originalHtml = button.innerHTML;
+        const originalDisabled = button.disabled;
+        
+        button.disabled = true;
+        button.innerHTML = '<i class="mdi mdi-test-tube mdi-spin"></i>';
+        
+        const baseUrl = window.location.origin;
+        const testUrl = `${baseUrl}/plugins/hedgehog/fabrics/${fabricId}/test-connection/`;
+        
+        fetch(testUrl, {
+            method: 'POST',
+            headers: {
+                'X-CSRFToken': getCsrfToken(),
+                'Content-Type': 'application/json'
+            }
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                const message = data.message || 'Connection test successful!';
+                const details = data.details?.cluster_version ? ` (${data.details.cluster_version})` : '';
+                showAlert('success', message + details);
+                setTimeout(() => location.reload(), 1500);
+            } else {
+                showAlert('danger', data.error || 'Connection test failed');
+            }
+        })
+        .catch(error => {
+            console.error('Connection test error:', error);
+            showAlert('danger', 'Connection test failed: ' + error.message);
+        })
+        .finally(() => {
+            button.disabled = originalDisabled;
+            button.innerHTML = originalHtml;
+        });
+    }
+
+    // Event delegation for fabric controls
+    document.addEventListener('DOMContentLoaded', function() {
+        // Sync buttons
+        document.addEventListener('click', function(e) {
+            if (e.target.closest('.fabric-sync-btn')) {
+                e.preventDefault();
+                const button = e.target.closest('.fabric-sync-btn');
+                const fabricId = button.dataset.fabricId;
+                const syncType = button.dataset.syncType || 'git';
+                performSync(fabricId, syncType, button);
+            }
+        });
+
+        // Test connection buttons
+        document.addEventListener('click', function(e) {
+            if (e.target.closest('.fabric-test-connection-btn')) {
+                e.preventDefault();
+                const button = e.target.closest('.fabric-test-connection-btn');
+                const fabricId = button.dataset.fabricId;
+                testConnection(fabricId, button);
+            }
+        });
+    });
+
+    // Expose functions globally for backward compatibility
+    window.FabricCommon = {
+        performSync: performSync,
+        testConnection: testConnection,
+        showAlert: showAlert,
+        getCsrfToken: getCsrfToken
+    };
+
+})();
+</script>

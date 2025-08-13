@@ -1,0 +1,44 @@
+{
+  "hypothesis": "sync_failure_due_to_session_timeout",
+  "tests": [
+    {
+      "test": "immediate_sync_after_login",
+      "login_status": 200,
+      "sync_status": 403,
+      "sync_content_length": 1004,
+      "is_html_response": true,
+      "timestamp": "2025-08-11T22:01:47.769471"
+    },
+    {
+      "test": "session_validity_check",
+      "fabric_status": 200,
+      "is_logged_in": false,
+      "timestamp": "2025-08-11T22:01:47.788460"
+    },
+    {
+      "test": "second_sync_attempt",
+      "sync_status": 403,
+      "sync_content_length": 1004,
+      "is_html_response": true,
+      "has_login_form": false,
+      "timestamp": "2025-08-11T22:01:47.824747"
+    },
+    {
+      "test": "session_cookie_analysis",
+      "cookies_count": 1,
+      "cookies": [
+        {
+          "name": "csrftoken",
+          "value": "LKHRb8HDNFOVOCaA0ety...",
+          "domain": "localhost.local",
+          "path": "/",
+          "expires": 1786399307
+        }
+      ],
+      "has_sessionid": false,
+      "has_csrftoken": true,
+      "timestamp": "2025-08-11T22:01:47.824821"
+    }
+  ],
+  "conclusion": "HYPOTHESIS_CONFIRMED: First sync failed due to auth redirect"
+}

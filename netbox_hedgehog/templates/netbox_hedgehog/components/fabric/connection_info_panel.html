@@ -1,0 +1,60 @@
+{% load static %}
+
+<div class="connection-info-panel card">
+    <div class="card-header">
+        <h5 class="card-title mb-0">
+            <i class="mdi mdi-connection"></i> Connection Information
+        </h5>
+    </div>
+    <div class="card-body">
+        <div class="info-grid">
+            <div class="info-item">
+                <div class="info-label">Kubernetes Server</div>
+                <div class="info-value">
+                    {% if object.kubernetes_server %}
+                        <code>{{ object.kubernetes_server }}</code>
+                    {% else %}
+                        <span class="text-muted">Using default kubeconfig</span>
+                    {% endif %}
+                </div>
+            </div>
+            
+            <div class="info-item">
+                <div class="info-label">Namespace</div>
+                <div class="info-value">
+                    <code>{{ object.kubernetes_namespace|default:"default" }}</code>
+                </div>
+            </div>
+            
+            <div class="info-item">
+                <div class="info-label">Connection Status</div>
+                <div class="info-value">
+                    {% include "components/fabric/status_indicator.html" with type="connection" status=object.connection_status %}
+                </div>
+            </div>
+            
+            {% if object.connection_error %}
+            <div class="info-item">
+                <div class="info-label">Connection Error</div>
+                <div class="info-value">
+                    <div class="alert alert-danger mb-0">
+                        <small>{{ object.connection_error }}</small>
+                    </div>
+                </div>
+            </div>
+            {% endif %}
+            
+            <div class="info-item">
+                <div class="info-label">Last Connection Test</div>
+                <div class="info-value">
+                    {% if object.last_connection_test %}
+                        {{ object.last_connection_test|date:"M d, Y H:i" }}
+                        <small class="text-muted">({{ object.last_connection_test|timesince }} ago)</small>
+                    {% else %}
+                        <span class="text-muted">Never tested</span>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
