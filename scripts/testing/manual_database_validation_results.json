@@ -1,0 +1,38 @@
+{
+  "timestamp": "2025-08-11T20:11:07.513742+00:00",
+  "tests": {
+    "fabric_count": {
+      "success": false,
+      "details": {
+        "success": false,
+        "stdout": "",
+        "stderr": "/bin/sh: 1: Syntax error: word unexpected (expecting \")\")",
+        "return_code": 2
+      }
+    },
+    "vpc_count": {
+      "success": false,
+      "details": {
+        "success": false,
+        "stdout": "",
+        "stderr": "/bin/sh: 1: Syntax error: word unexpected (expecting \")\")",
+        "return_code": 2
+      }
+    },
+    "sync_status": {
+      "success": false,
+      "details": {
+        "success": false,
+        "stdout": "",
+        "stderr": "/bin/sh: 1: Syntax error: \"(\" unexpected",
+        "return_code": 2
+      }
+    }
+  },
+  "summary": {
+    "total_tests": 3,
+    "passed_tests": 0,
+    "pass_rate": 0.0,
+    "overall_pass": false
+  }
+}

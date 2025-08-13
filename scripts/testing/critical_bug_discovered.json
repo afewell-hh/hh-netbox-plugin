@@ -1,0 +1,19 @@
+{
+  "timestamp": "2025-08-11T05:52:00Z",
+  "validation_phase": "real-world-testing",
+  "critical_bug": {
+    "issue": "last_sync field never updated during sync",
+    "evidence": "sync works (processes 50 resources), but fabric.last_sync remains null",
+    "impact": "Web interface always shows 'Never Synced' even when sync is working",
+    "location": "netbox_hedgehog/utils/git_directory_sync.py",
+    "description": "GitDirectorySync.sync_from_git() updates individual CR records but never updates fabric.last_sync",
+    "user_symptom": "Exactly matches user's observation: watched for several minutes, saw 'Never Synced'"
+  },
+  "test_results": {
+    "manual_sync_works": true,
+    "resources_processed": 50,
+    "sync_result": "success",
+    "last_sync_updated": false,
+    "web_interface_updated": false
+  }
+}

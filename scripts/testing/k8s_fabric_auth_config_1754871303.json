@@ -1,0 +1,14 @@
+{
+  "timestamp": "2025-08-11T00:15:03.284828",
+  "k8s_server": "https://vlab-art.l.hhdev.io:6443",
+  "k8s_namespace": "default",
+  "token_configured": true,
+  "ca_cert_configured": true,
+  "token_length": 896,
+  "ca_cert_length": 566,
+  "configuration_method": "service_account_token",
+  "connection_test_success": false,
+  "connection_error": "kubectl error: error: unknown flag: --timeout\nSee 'kubectl get --help' for usage.\n",
+  "connection_status": "FAILED",
+  "sync_status": "ERROR"
+}

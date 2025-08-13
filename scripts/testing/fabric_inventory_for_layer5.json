@@ -1,0 +1,15 @@
+{
+  "timestamp": "2025-08-11T02:55:38.366482",
+  "total_fabric_ids_found": 1,
+  "working_fabrics": [
+    {
+      "id": 35,
+      "status_code": 200,
+      "accessible": true,
+      "name": "Test Lab K3s Cluster - Fabric Details | NetBox",
+      "has_sync_capability": true,
+      "sync_status": "syncing"
+    }
+  ],
+  "recommended_test_fabric": 35
+}

@@ -1,0 +1,43 @@
+{
+  "timestamp": "2025-08-11T00:09:04.108560",
+  "test_target": "vlab-art.l.hhdev.io:6443",
+  "tests": [
+    {
+      "test": "basic_connectivity",
+      "success": true,
+      "status_code": 401,
+      "response_time_ms": 66.554,
+      "auth_required": true,
+      "message": "Authentication required (expected)"
+    },
+    {
+      "test": "service_account_token",
+      "required": true,
+      "service_account": "hnp-sync",
+      "secret_name": "hnp-sync-token",
+      "namespace": "default",
+      "message": "Token needed for fabric authentication"
+    },
+    {
+      "test": "authenticated_api_access",
+      "simulation": true,
+      "expected_endpoints": [
+        "/api/v1/namespaces",
+        "/api/v1/namespaces/default/configmaps",
+        "/apis/apps/v1/namespaces/default/deployments"
+      ],
+      "note": "Would require valid Bearer token for actual test"
+    },
+    {
+      "test": "fabric_configuration",
+      "required_fields": {
+        "kubernetes_server": "https://vlab-art.l.hhdev.io:6443",
+        "kubernetes_namespace": "default",
+        "kubernetes_token": "required_from_hnp_sync_secret",
+        "kubernetes_ca_cert": "optional_for_insecure_skip_tls"
+      },
+      "fabric_id": 35,
+      "ready_for_update": true
+    }
+  ]
+}

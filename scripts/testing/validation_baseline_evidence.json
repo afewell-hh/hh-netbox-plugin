@@ -1,0 +1,12 @@
+{
+  "timestamp": "2025-08-11T05:47:00Z",
+  "fabric_id": 35,
+  "name": "Test Lab K3s Cluster",
+  "sync_enabled": true,
+  "sync_interval": 60,
+  "last_sync_before": null,
+  "has_scheduler_enabled": false,
+  "status_before": "Never Synced",
+  "user_observation": "Watched for several minutes, no sync occurred",
+  "validation_phase": "pre-implementation-baseline"
+}

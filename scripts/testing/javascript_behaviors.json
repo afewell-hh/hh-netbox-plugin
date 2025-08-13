@@ -1,0 +1,868 @@
+{
+  "javascript_files": [
+    {
+      "file_path": "netbox_hedgehog/static/netbox_hedgehog/js/hedgehog.js",
+      "functions": [
+        {
+          "function_name": "Hedgehog.init",
+          "purpose": "Initialize the Hedgehog plugin with CSRF token and common handlers",
+          "triggers": ["DOMContentLoaded"],
+          "dom_elements": ["[name=csrfmiddlewaretoken]"],
+          "ajax_endpoints": [],
+          "modifies_dom": true
+        },
+        {
+          "function_name": "Hedgehog.utils.setButtonLoading",
+          "purpose": "Show/hide loading state on buttons with spinner and disable functionality",
+          "triggers": ["click"],
+          "dom_elements": ["button"],
+          "ajax_endpoints": [],
+          "modifies_dom": true
+        },
+        {
+          "function_name": "Hedgehog.utils.showNotification",
+          "purpose": "Display dismissible Bootstrap alerts for success/error messages",
+          "triggers": ["programmatic"],
+          "dom_elements": [".hedgehog-wrapper", "body"],
+          "ajax_endpoints": [],
+          "modifies_dom": true
+        },
+        {
+          "function_name": "Hedgehog.api.testConnection",
+          "purpose": "Test fabric connection via API endpoint",
+          "triggers": ["click"],
+          "dom_elements": ["#test-connection-button"],
+          "ajax_endpoints": ["/plugins/hedgehog/fabrics/{fabricId}/test-connection/"],
+          "modifies_dom": false
+        },
+        {
+          "function_name": "Hedgehog.api.syncFabric",
+          "purpose": "Sync fabric data via API endpoint",
+          "triggers": ["click"],
+          "dom_elements": ["#sync-button"],
+          "ajax_endpoints": ["/plugins/hedgehog/fabrics/{fabricId}/sync/"],
+          "modifies_dom": false
+        },
+        {
+          "function_name": "Hedgehog.fabric.testConnection",
+          "purpose": "Test fabric connection with visual feedback on button and status updates",
+          "triggers": ["click"],
+          "dom_elements": ["button", "[data-connection-status]"],
+          "ajax_endpoints": ["/plugins/hedgehog/fabrics/{fabricId}/test-connection/"],
+          "modifies_dom": true
+        },
+        {
+          "function_name": "Hedgehog.fabric.sync",
+          "purpose": "Sync fabric with visual feedback and status indicator updates",
+          "triggers": ["click"],
+          "dom_elements": ["button", "[data-sync-status]", "[data-crd-count]"],
+          "ajax_endpoints": ["/plugins/hedgehog/fabrics/{fabricId}/sync/"],
+          "modifies_dom": true
+        },
+        {
+          "function_name": "syncFabric",
+          "purpose": "Global helper function to trigger fabric sync from templates",
+          "triggers": ["click"],
+          "dom_elements": ["event.target"],
+          "ajax_endpoints": [],
+          "modifies_dom": true
+        },
+        {
+          "function_name": "testConnection",
+          "purpose": "Global helper function to test connection from templates",
+          "triggers": ["click"],
+          "dom_elements": ["event.target"],
+          "ajax_endpoints": [],
+          "modifies_dom": true
+        }
+      ],
+      "event_listeners": [
+        {
+          "event_type": "DOMContentLoaded",
+          "element_selector": "document",
+          "action_description": "Initialize Hedgehog plugin with CSRF token and handlers"
+        },
+        {
+          "event_type": "input",
+          "element_selector": "input[name=\"name\"][data-vpc-name]",
+          "action_description": "Validate VPC name format and length"
+        },
+        {
+          "event_type": "blur",
+          "element_selector": "input[data-validate-ip]",
+          "action_description": "Validate IP address format"
+        },
+        {
+          "event_type": "blur",
+          "element_selector": "input[data-validate-cidr]",
+          "action_description": "Validate CIDR notation format"
+        },
+        {
+          "event_type": "change",
+          "element_selector": "[data-select-all]",
+          "action_description": "Select/deselect all bulk action checkboxes"
+        },
+        {
+          "event_type": "submit",
+          "element_selector": "[data-bulk-form]",
+          "action_description": "Process bulk actions with confirmation for destructive operations"
+        }
+      ],
+      "ajax_calls": [
+        {
+          "method": "POST",
+          "endpoint": "/plugins/hedgehog/fabrics/{fabricId}/test-connection/",
+          "purpose": "test_fabric_connection",
+          "response_handling": "Updates connection status badge and shows success/error notifications"
+        },
+        {
+          "method": "POST",
+          "endpoint": "/plugins/hedgehog/fabrics/{fabricId}/sync/",
+          "purpose": "sync_fabric_data",
+          "response_handling": "Updates sync status and CRD count with visual feedback"
+        }
+      ]
+    },
+    {
+      "file_path": "netbox_hedgehog/static/netbox_hedgehog/js/sync-handler.js",
+      "functions": [
+        {
+          "function_name": "UnifiedSync.sync",
+          "purpose": "Handle fabric sync operations with fallback endpoints and retry logic",
+          "triggers": ["click"],
+          "dom_elements": ["button", "[data-sync-status]", "[data-crd-count]"],
+          "ajax_endpoints": [
+            "http://vlab-art-2.l.hhdev.io:8004/plugins/hedgehog/api/fabrics/{fabricId}/gitops/sync/",
+            "/plugins/hedgehog/api/fabrics/{fabricId}/gitops/sync/"
+          ],
+          "modifies_dom": true
+        },
+        {
+          "function_name": "performSync",
+          "purpose": "Core sync function with timeout, retry logic, and cache busting",
+          "triggers": ["programmatic"],
+          "dom_elements": [],
+          "ajax_endpoints": [
+            "http://vlab-art-2.l.hhdev.io:8004/plugins/hedgehog/api/fabrics/{fabricId}/gitops/sync/",
+            "/plugins/hedgehog/api/fabrics/{fabricId}/gitops/sync/"
+          ],
+          "modifies_dom": false
+        },
+        {
+          "function_name": "triggerGitSync",
+          "purpose": "Global helper function for backward compatibility with automatic fabric ID detection",
+          "triggers": ["click"],
+          "dom_elements": ["[data-fabric-id]"],
+          "ajax_endpoints": [],
+          "modifies_dom": false
+        }
+      ],
+      "event_listeners": [
+        {
+          "event_type": "DOMContentLoaded",
+          "element_selector": "document",
+          "action_description": "Initialize sync handlers and attach click events to sync buttons"
+        },
+        {
+          "event_type": "click",
+          "element_selector": ".btn-sync-fabric, [data-sync-button]",
+          "action_description": "Trigger fabric sync with unified sync handler"
+        }
+      ],
+      "ajax_calls": [
+        {
+          "method": "POST",
+          "endpoint": "http://vlab-art-2.l.hhdev.io:8004/plugins/hedgehog/api/fabrics/{fabricId}/gitops/sync/",
+          "purpose": "primary_fabric_sync",
+          "response_handling": "Updates button state, shows notifications, updates page elements, optional page reload"
+        },
+        {
+          "method": "POST",
+          "endpoint": "/plugins/hedgehog/api/fabrics/{fabricId}/gitops/sync/",
+          "purpose": "fallback_fabric_sync",
+          "response_handling": "Updates button state, shows notifications, updates page elements, optional page reload"
+        }
+      ]
+    },
+    {
+      "file_path": "netbox_hedgehog/static/netbox_hedgehog/js/emergency-sync-fix.js",
+      "functions": [
+        {
+          "function_name": "triggerGitSync",
+          "purpose": "Override sync function to use working endpoint directly with emergency fix",
+          "triggers": ["click"],
+          "dom_elements": ["[onclick*=\"triggerGitSync\"]"],
+          "ajax_endpoints": ["http://vlab-art-2.l.hhdev.io:8004/plugins/hedgehog/api/fabrics/{fabricId}/gitops/sync/"],
+          "modifies_dom": false
+        }
+      ],
+      "event_listeners": [
+        {
+          "event_type": "DOMContentLoaded",
+          "element_selector": "document",
+          "action_description": "Override all sync button handlers with emergency fix functionality"
+        },
+        {
+          "event_type": "click",
+          "element_selector": "[onclick*=\"triggerGitSync\"], [onclick*=\"syncFabric\"], .btn-sync-fabric, [data-sync-button]",
+          "action_description": "Emergency override for sync button clicks"
+        }
+      ],
+      "ajax_calls": [
+        {
+          "method": "POST",
+          "endpoint": "http://vlab-art-2.l.hhdev.io:8004/plugins/hedgehog/api/fabrics/{fabricId}/gitops/sync/",
+          "purpose": "emergency_sync_fix",
+          "response_handling": "Shows notifications, reloads page on success"
+        }
+      ]
+    },
+    {
+      "file_path": "netbox_hedgehog/static/netbox_hedgehog/js/websocket-client.js",
+      "functions": [
+        {
+          "function_name": "HedgehogWebSocketClient.connect",
+          "purpose": "Establish WebSocket connection for real-time fabric monitoring",
+          "triggers": ["programmatic"],
+          "dom_elements": [],
+          "ajax_endpoints": [],
+          "modifies_dom": false
+        },
+        {
+          "function_name": "HedgehogWebSocketClient.send",
+          "purpose": "Send messages to WebSocket server with queue management",
+          "triggers": ["programmatic"],
+          "dom_elements": [],
+          "ajax_endpoints": [],
+          "modifies_dom": false
+        },
+        {
+          "function_name": "HedgehogWebSocketClient.triggerSync",
+          "purpose": "Trigger fabric sync via WebSocket message",
+          "triggers": ["programmatic"],
+          "dom_elements": [],
+          "ajax_endpoints": [],
+          "modifies_dom": false
+        }
+      ],
+      "event_listeners": [
+        {
+          "event_type": "open",
+          "element_selector": "WebSocket",
+          "action_description": "Handle WebSocket connection established"
+        },
+        {
+          "event_type": "message",
+          "element_selector": "WebSocket",
+          "action_description": "Process incoming WebSocket messages and emit events"
+        },
+        {
+          "event_type": "close",
+          "element_selector": "WebSocket",
+          "action_description": "Handle WebSocket disconnect and schedule reconnection"
+        },
+        {
+          "event_type": "error",
+          "element_selector": "WebSocket",
+          "action_description": "Handle WebSocket errors and emit error events"
+        }
+      ],
+      "ajax_calls": []
+    },
+    {
+      "file_path": "netbox_hedgehog/static/netbox_hedgehog/js/raw-directory-monitor.js",
+      "functions": [
+        {
+          "function_name": "RawDirectoryMonitor.loadStatusCounts",
+          "purpose": "Load and update status count cards for pending, processing, completed, and error files",
+          "triggers": ["load", "refresh"],
+          "dom_elements": ["#pending-count", "#processing-count", "#completed-count", "#error-count"],
+          "ajax_endpoints": ["/plugins/hedgehog/api/gitops/raw-status/"],
+          "modifies_dom": true
+        },
+        {
+          "function_name": "RawDirectoryMonitor.loadFilesList",
+          "purpose": "Load and render raw files list with status indicators and actions",
+          "triggers": ["load", "refresh"],
+          "dom_elements": ["#files-tbody", "#files-empty"],
+          "ajax_endpoints": ["/plugins/hedgehog/api/gitops/raw-files/"],
+          "modifies_dom": true
+        },
+        {
+          "function_name": "RawDirectoryMonitor.processFile",
+          "purpose": "Process individual file and update status",
+          "triggers": ["click"],
+          "dom_elements": ["button"],
+          "ajax_endpoints": ["/plugins/hedgehog/api/gitops/process-file/{fileId}/"],
+          "modifies_dom": true
+        },
+        {
+          "function_name": "RawDirectoryMonitor.deleteFile",
+          "purpose": "Delete file with confirmation dialog",
+          "triggers": ["click"],
+          "dom_elements": ["button"],
+          "ajax_endpoints": ["/plugins/hedgehog/api/gitops/delete-file/{fileId}/"],
+          "modifies_dom": true
+        },
+        {
+          "function_name": "RawDirectoryMonitor.uploadFiles",
+          "purpose": "Upload multiple files with fabric selection and auto-processing option",
+          "triggers": ["click"],
+          "dom_elements": ["#file-input", "#fabric-select", "#auto-process"],
+          "ajax_endpoints": ["/plugins/hedgehog/api/gitops/upload-files/"],
+          "modifies_dom": true
+        }
+      ],
+      "event_listeners": [
+        {
+          "event_type": "click",
+          "element_selector": "#refresh-monitor",
+          "action_description": "Refresh monitor data and update displays"
+        },
+        {
+          "event_type": "click",
+          "element_selector": "#toggle-auto-refresh",
+          "action_description": "Toggle automatic refresh on/off"
+        },
+        {
+          "event_type": "click",
+          "element_selector": "#process-all-files",
+          "action_description": "Process all pending files in bulk"
+        },
+        {
+          "event_type": "change",
+          "element_selector": "input[name=\"file-filter\"]",
+          "action_description": "Filter files by status (pending, processing, errors)"
+        },
+        {
+          "event_type": "change",
+          "element_selector": "#select-all-files",
+          "action_description": "Select/deselect all files for bulk operations"
+        },
+        {
+          "event_type": "DOMContentLoaded",
+          "element_selector": "document",
+          "action_description": "Initialize RawDirectoryMonitor instance"
+        }
+      ],
+      "ajax_calls": [
+        {
+          "method": "GET",
+          "endpoint": "/plugins/hedgehog/api/gitops/raw-status/",
+          "purpose": "load_status_counts",
+          "response_handling": "Updates status count displays in cards"
+        },
+        {
+          "method": "GET",
+          "endpoint": "/plugins/hedgehog/api/gitops/raw-files/",
+          "purpose": "load_files_list",
+          "response_handling": "Renders file table with status badges and action buttons"
+        },
+        {
+          "method": "POST",
+          "endpoint": "/plugins/hedgehog/api/gitops/process-file/{fileId}/",
+          "purpose": "process_individual_file",
+          "response_handling": "Updates file status and shows notifications"
+        },
+        {
+          "method": "POST",
+          "endpoint": "/plugins/hedgehog/api/gitops/process-all/",
+          "purpose": "process_all_files",
+          "response_handling": "Shows success notification and refreshes monitor"
+        },
+        {
+          "method": "DELETE",
+          "endpoint": "/plugins/hedgehog/api/gitops/delete-file/{fileId}/",
+          "purpose": "delete_file",
+          "response_handling": "Shows success notification and refreshes monitor"
+        },
+        {
+          "method": "POST",
+          "endpoint": "/plugins/hedgehog/api/gitops/upload-files/",
+          "purpose": "upload_files",
+          "response_handling": "Shows upload success and closes modal"
+        }
+      ]
+    },
+    {
+      "file_path": "netbox_hedgehog/static/netbox_hedgehog/js/progressive-disclosure.js",
+      "functions": [
+        {
+          "function_name": "ProgressiveDisclosure.toggleSection",
+          "purpose": "Collapse/expand dashboard sections with animation and preference saving",
+          "triggers": ["click", "keydown"],
+          "dom_elements": [".section-toggle", ".section-content"],
+          "ajax_endpoints": [],
+          "modifies_dom": true
+        },
+        {
+          "function_name": "ProgressiveDisclosure.executeSyncOperation",
+          "purpose": "Execute GitOps sync operation with progress indicators",
+          "triggers": ["click"],
+          "dom_elements": ["[data-operation=\"sync-git\"]", "#sync-progress"],
+          "ajax_endpoints": ["/api/plugins/hedgehog/gitops-fabrics/{fabricId}/gitops_sync/"],
+          "modifies_dom": true
+        },
+        {
+          "function_name": "RealtimeStatusUpdater.update",
+          "purpose": "Update status indicators in real-time via API polling",
+          "triggers": ["interval"],
+          "dom_elements": ["[data-connection-status]", "[data-sync-status]", "[data-crd-count]"],
+          "ajax_endpoints": ["/api/plugins/hedgehog/fabrics/{fabricId}/gitops-status/"],
+          "modifies_dom": true
+        }
+      ],
+      "event_listeners": [
+        {
+          "event_type": "click",
+          "element_selector": ".section-toggle",
+          "action_description": "Toggle section collapse/expand with animation"
+        },
+        {
+          "event_type": "keydown",
+          "element_selector": ".section-toggle",
+          "action_description": "Keyboard navigation for section toggles (Enter/Space)"
+        },
+        {
+          "event_type": "keydown",
+          "element_selector": "document",
+          "action_description": "Global keyboard shortcuts for section management (Alt+1-9, Alt+A, Alt+C)"
+        },
+        {
+          "event_type": "click",
+          "element_selector": "[data-operation=\"sync-git\"]",
+          "action_description": "Execute sync operation with progress display"
+        },
+        {
+          "event_type": "DOMContentLoaded",
+          "element_selector": "document",
+          "action_description": "Initialize ProgressiveDisclosure instance"
+        }
+      ],
+      "ajax_calls": [
+        {
+          "method": "POST",
+          "endpoint": "/api/plugins/hedgehog/gitops-fabrics/{fabricId}/gitops_sync/",
+          "purpose": "execute_gitops_sync",
+          "response_handling": "Updates progress indicators and shows success/error states"
+        },
+        {
+          "method": "POST",
+          "endpoint": "/api/plugins/hedgehog/fabrics/{fabricId}/init-gitops/",
+          "purpose": "initialize_gitops",
+          "response_handling": "Shows initialization progress and success notification"
+        },
+        {
+          "method": "GET",
+          "endpoint": "/api/plugins/hedgehog/fabrics/{fabricId}/gitops-status/",
+          "purpose": "realtime_status_update",
+          "response_handling": "Updates status badges, CRD counts, and last sync times"
+        }
+      ]
+    },
+    {
+      "file_path": "netbox_hedgehog/static/netbox_hedgehog/js/gitops-dashboard.js",
+      "functions": [
+        {
+          "function_name": "GitOpsDashboard.loadOverviewStats",
+          "purpose": "Load and display overview statistics cards with pulse animations",
+          "triggers": ["load", "refresh"],
+          "dom_elements": ["#total-fabrics", "#pending-files", "#processed-today", "#error-count"],
+          "ajax_endpoints": ["/plugins/hedgehog/api/gitops/overview/"],
+          "modifies_dom": true
+        },
+        {
+          "function_name": "GitOpsDashboard.loadFabricsList",
+          "purpose": "Load and render fabrics table with status indicators and action buttons",
+          "triggers": ["load", "refresh"],
+          "dom_elements": ["#fabrics-tbody", "#fabrics-empty"],
+          "ajax_endpoints": ["/plugins/hedgehog/api/gitops/fabrics/"],
+          "modifies_dom": true
+        },
+        {
+          "function_name": "GitOpsDashboard.triggerGlobalSync",
+          "purpose": "Trigger sync for all fabrics with loading states",
+          "triggers": ["click"],
+          "dom_elements": ["#trigger-global-sync"],
+          "ajax_endpoints": ["/plugins/hedgehog/api/gitops/sync-all/"],
+          "modifies_dom": true
+        },
+        {
+          "function_name": "GitOpsDashboard.updateStorageChart",
+          "purpose": "Update doughnut chart showing storage usage distribution",
+          "triggers": ["load", "refresh"],
+          "dom_elements": ["#storage-usage-chart"],
+          "ajax_endpoints": [],
+          "modifies_dom": true
+        }
+      ],
+      "event_listeners": [
+        {
+          "event_type": "click",
+          "element_selector": "#refresh-dashboard",
+          "action_description": "Refresh all dashboard data and charts"
+        },
+        {
+          "event_type": "change",
+          "element_selector": "#auto-refresh",
+          "action_description": "Toggle automatic dashboard refresh"
+        },
+        {
+          "event_type": "change",
+          "element_selector": "input[name=\"fabric-filter\"]",
+          "action_description": "Filter fabrics by status (active, errors)"
+        },
+        {
+          "event_type": "click",
+          "element_selector": ".gitops-status-card",
+          "action_description": "Show detailed status information in modal"
+        },
+        {
+          "event_type": "DOMContentLoaded",
+          "element_selector": "document",
+          "action_description": "Initialize GitOpsDashboard instance"
+        }
+      ],
+      "ajax_calls": [
+        {
+          "method": "GET",
+          "endpoint": "/plugins/hedgehog/api/gitops/overview/",
+          "purpose": "load_dashboard_stats",
+          "response_handling": "Updates status cards and adds visual effects for high values"
+        },
+        {
+          "method": "GET",
+          "endpoint": "/plugins/hedgehog/api/gitops/fabrics/",
+          "purpose": "load_fabrics_list",
+          "response_handling": "Renders fabric table with status badges and action buttons"
+        },
+        {
+          "method": "POST",
+          "endpoint": "/plugins/hedgehog/api/gitops/sync-all/",
+          "purpose": "trigger_global_sync",
+          "response_handling": "Shows success notification and refreshes dashboard"
+        },
+        {
+          "method": "POST",
+          "endpoint": "/plugins/hedgehog/api/gitops/process-pending/",
+          "purpose": "process_pending_files",
+          "response_handling": "Shows processing notification and refreshes dashboard"
+        },
+        {
+          "method": "GET",
+          "endpoint": "/plugins/hedgehog/api/gitops/storage/",
+          "purpose": "load_storage_stats",
+          "response_handling": "Updates storage displays and chart data"
+        }
+      ]
+    },
+    {
+      "file_path": "netbox_hedgehog/static/netbox_hedgehog/js/gitops-onboarding.js",
+      "functions": [
+        {
+          "function_name": "GitOpsOnboardingWizard.nextStep",
+          "purpose": "Advance to next step in onboarding wizard with validation",
+          "triggers": ["click"],
+          "dom_elements": [".wizard-step"],
+          "ajax_endpoints": [],
+          "modifies_dom": true
+        },
+        {
+          "function_name": "GitOpsOnboardingWizard.startFileDetection",
+          "purpose": "Detect existing files in GitOps directory with progress animation",
+          "triggers": ["step_advance"],
+          "dom_elements": ["#scanning-progress", "#file-detection-results"],
+          "ajax_endpoints": ["/plugins/hedgehog/api/gitops/detect-files/"],
+          "modifies_dom": true
+        },
+        {
+          "function_name": "GitOpsOnboardingWizard.startProcessing",
+          "purpose": "Execute GitOps setup with real-time progress updates",
+          "triggers": ["step_advance"],
+          "dom_elements": ["#processing-progress-bar", "#processing-log"],
+          "ajax_endpoints": ["/plugins/hedgehog/api/gitops/setup/"],
+          "modifies_dom": true
+        },
+        {
+          "function_name": "GitOpsOnboardingWizard.selectStrategy",
+          "purpose": "Select migration strategy and show detailed information",
+          "triggers": ["click"],
+          "dom_elements": [".strategy-card", "#strategy-details"],
+          "ajax_endpoints": [],
+          "modifies_dom": true
+        }
+      ],
+      "event_listeners": [
+        {
+          "event_type": "click",
+          "element_selector": "#configure-next-btn, #detect-next-btn, #strategy-next-btn",
+          "action_description": "Navigate to next wizard step with validation"
+        },
+        {
+          "event_type": "click",
+          "element_selector": "#detect-back-btn, #strategy-back-btn",
+          "action_description": "Navigate to previous wizard step"
+        },
+        {
+          "event_type": "click",
+          "element_selector": ".strategy-card",
+          "action_description": "Select migration strategy and show details"
+        },
+        {
+          "event_type": "change",
+          "element_selector": "#confirm-strategy",
+          "action_description": "Enable/disable next button based on strategy confirmation"
+        },
+        {
+          "event_type": "input",
+          "element_selector": "#gitops-config-form",
+          "action_description": "Validate configuration form inputs"
+        },
+        {
+          "event_type": "DOMContentLoaded",
+          "element_selector": "document",
+          "action_description": "Initialize GitOpsOnboardingWizard instance"
+        }
+      ],
+      "ajax_calls": [
+        {
+          "method": "GET",
+          "endpoint": "/plugins/hedgehog/api/fabrics/",
+          "purpose": "load_available_fabrics",
+          "response_handling": "Populates fabric selector dropdown"
+        },
+        {
+          "method": "POST",
+          "endpoint": "/plugins/hedgehog/api/gitops/detect-files/",
+          "purpose": "detect_existing_files",
+          "response_handling": "Shows file detection results and populates file table"
+        },
+        {
+          "method": "POST",
+          "endpoint": "/plugins/hedgehog/api/gitops/setup/",
+          "purpose": "execute_gitops_setup",
+          "response_handling": "Shows processing progress and completion summary"
+        }
+      ]
+    },
+    {
+      "file_path": "netbox_hedgehog/static/netbox_hedgehog/js/archive-browser.js",
+      "functions": [
+        {
+          "function_name": "ArchiveBrowser.loadArchivesList",
+          "purpose": "Load and render archives in list, grid, or timeline view with filtering",
+          "triggers": ["load", "refresh", "filter"],
+          "dom_elements": ["#archives-tbody", "#archives-grid", "#archives-timeline"],
+          "ajax_endpoints": ["/plugins/hedgehog/api/gitops/archives/"],
+          "modifies_dom": true
+        },
+        {
+          "function_name": "ArchiveBrowser.previewArchive",
+          "purpose": "Show archive content preview in modal with metadata",
+          "triggers": ["click"],
+          "dom_elements": ["#archive-content", "#archive-metadata-content"],
+          "ajax_endpoints": ["/plugins/hedgehog/api/gitops/archive-content/{archiveId}/"],
+          "modifies_dom": true
+        },
+        {
+          "function_name": "ArchiveBrowser.restoreArchive",
+          "purpose": "Restore archived file with confirmation dialog and overwrite options",
+          "triggers": ["click"],
+          "dom_elements": ["#restore-details", "#confirm-restore-btn"],
+          "ajax_endpoints": [
+            "/plugins/hedgehog/api/gitops/archive-details/{archiveId}/",
+            "/plugins/hedgehog/api/gitops/restore-archive/{archiveId}/"
+          ],
+          "modifies_dom": true
+        },
+        {
+          "function_name": "ArchiveBrowser.exportArchives",
+          "purpose": "Export selected or all archives with download link generation",
+          "triggers": ["click"],
+          "dom_elements": [],
+          "ajax_endpoints": ["/plugins/hedgehog/api/gitops/export-archives/"],
+          "modifies_dom": false
+        },
+        {
+          "function_name": "ArchiveBrowser.toggleTimelineView",
+          "purpose": "Switch between list/grid and timeline views of archives",
+          "triggers": ["change"],
+          "dom_elements": ["#list-view", "#grid-view", "#timeline-view-content"],
+          "ajax_endpoints": [],
+          "modifies_dom": true
+        }
+      ],
+      "event_listeners": [
+        {
+          "event_type": "click",
+          "element_selector": "#refresh-archives",
+          "action_description": "Refresh archives data and update displays"
+        },
+        {
+          "event_type": "input",
+          "element_selector": "#search-input",
+          "action_description": "Debounced search filtering of archives"
+        },
+        {
+          "event_type": "change",
+          "element_selector": "#fabric-filter, #date-range, #archive-type",
+          "action_description": "Apply various filters to archive list"
+        },
+        {
+          "event_type": "change",
+          "element_selector": "#timeline-view",
+          "action_description": "Toggle between list/grid and timeline views"
+        },
+        {
+          "event_type": "change",
+          "element_selector": "#select-all-archives",
+          "action_description": "Select/deselect all archives for bulk operations"
+        },
+        {
+          "event_type": "DOMContentLoaded",
+          "element_selector": "document",
+          "action_description": "Initialize ArchiveBrowser instance"
+        }
+      ],
+      "ajax_calls": [
+        {
+          "method": "GET",
+          "endpoint": "/plugins/hedgehog/api/gitops/archives/",
+          "purpose": "load_archives_list",
+          "response_handling": "Renders archives in selected view format with filtering"
+        },
+        {
+          "method": "GET",
+          "endpoint": "/plugins/hedgehog/api/gitops/archive-content/{archiveId}/",
+          "purpose": "preview_archive",
+          "response_handling": "Shows archive content and metadata in modal"
+        },
+        {
+          "method": "POST",
+          "endpoint": "/plugins/hedgehog/api/gitops/restore-archive/{archiveId}/",
+          "purpose": "restore_archive",
+          "response_handling": "Shows restore success notification and refreshes list"
+        },
+        {
+          "method": "POST",
+          "endpoint": "/plugins/hedgehog/api/gitops/export-archives/",
+          "purpose": "export_archives",
+          "response_handling": "Initiates download and shows success notification"
+        },
+        {
+          "method": "POST",
+          "endpoint": "/plugins/hedgehog/api/gitops/optimize-storage/",
+          "purpose": "optimize_storage",
+          "response_handling": "Shows optimization results and updates storage info"
+        }
+      ]
+    }
+  ],
+  "inline_javascript": [
+    {
+      "template_file": "fabric_detail_simple.html",
+      "script_blocks": [
+        {
+          "purpose": "Fabric sync and connection testing buttons",
+          "event_handlers": ["onclick"],
+          "dom_targets": ["#sync-button", "#sync-fabric-button", "#test-connection-button"],
+          "ajax_calls": ["triggerSync", "syncFromFabric", "testConnection"]
+        }
+      ]
+    }
+  ],
+  "client_side_behaviors": [
+    {
+      "behavior_name": "Fabric Sync Operations",
+      "description": "Comprehensive fabric sync functionality with fallback endpoints and visual feedback",
+      "trigger_elements": ["#sync-button", ".btn-sync-fabric", "[data-sync-button]"],
+      "affected_elements": ["[data-sync-status]", "[data-crd-count]", ".badge"],
+      "test_scenarios": ["successful_sync", "failed_sync", "loading_state", "fallback_endpoint", "network_timeout"]
+    },
+    {
+      "behavior_name": "Connection Testing",
+      "description": "Test fabric connectivity with real-time status updates",
+      "trigger_elements": ["#test-connection-button"],
+      "affected_elements": ["[data-connection-status]", ".badge", "button"],
+      "test_scenarios": ["successful_connection", "failed_connection", "loading_state", "status_indicator_update"]
+    },
+    {
+      "behavior_name": "Real-time Status Updates",
+      "description": "Auto-refresh status indicators and counters via API polling",
+      "trigger_elements": ["[data-auto-refresh]"],
+      "affected_elements": ["[data-status-endpoint]", ".badge", "[data-crd-count]"],
+      "test_scenarios": ["periodic_refresh", "status_change", "counter_animation", "failed_refresh"]
+    },
+    {
+      "behavior_name": "Form Validation",
+      "description": "Client-side validation for VPC names, IP addresses, and CIDR notation",
+      "trigger_elements": ["input[name=\"name\"][data-vpc-name]", "input[data-validate-ip]", "input[data-validate-cidr]"],
+      "affected_elements": [".invalid-feedback", "input.is-invalid"],
+      "test_scenarios": ["valid_input", "invalid_vpc_name", "invalid_ip", "invalid_cidr", "validation_messages"]
+    },
+    {
+      "behavior_name": "Bulk Operations",
+      "description": "Select multiple items and perform bulk actions with confirmations",
+      "trigger_elements": ["[data-select-all]", "[data-bulk-item]", "[data-bulk-submit]"],
+      "affected_elements": ["[data-bulk-form]", "button[data-bulk-submit]"],
+      "test_scenarios": ["select_all", "selective_selection", "bulk_action_confirmation", "destructive_action_warning"]
+    },
+    {
+      "behavior_name": "Progressive Disclosure",
+      "description": "Collapsible sections with animations and user preference persistence",
+      "trigger_elements": [".section-toggle"],
+      "affected_elements": [".section-content"],
+      "test_scenarios": ["section_expand", "section_collapse", "animation_timing", "preference_saving", "keyboard_navigation"]
+    },
+    {
+      "behavior_name": "File Management Operations",
+      "description": "Upload, process, delete, and monitor raw files with real-time updates",
+      "trigger_elements": ["#upload-files-btn", ".btn-process", ".btn-delete"],
+      "affected_elements": ["#files-tbody", ".status-badge", "#processing-queue"],
+      "test_scenarios": ["file_upload", "file_processing", "file_deletion", "status_updates", "queue_management"]
+    },
+    {
+      "behavior_name": "Archive Management",
+      "description": "Browse, preview, restore, and export archived files with multiple view modes",
+      "trigger_elements": [".btn-preview", ".btn-restore", ".btn-export"],
+      "affected_elements": ["#archives-tbody", "#archives-grid", "#archives-timeline"],
+      "test_scenarios": ["archive_preview", "archive_restore", "view_switching", "filter_application", "bulk_export"]
+    },
+    {
+      "behavior_name": "WebSocket Real-time Communication",
+      "description": "Real-time fabric monitoring via WebSocket with automatic reconnection",
+      "trigger_elements": ["WebSocket"],
+      "affected_elements": ["status indicators", "counters", "notifications"],
+      "test_scenarios": ["connection_established", "message_handling", "connection_lost", "reconnection_attempt", "heartbeat"]
+    },
+    {
+      "behavior_name": "Dashboard Auto-refresh",
+      "description": "Periodic dashboard data refresh with user-controlled intervals",
+      "trigger_elements": ["#auto-refresh", "#refresh-dashboard"],
+      "affected_elements": [".status-card", "charts", "tables"],
+      "test_scenarios": ["auto_refresh_toggle", "manual_refresh", "data_update", "chart_update", "interval_management"]
+    },
+    {
+      "behavior_name": "Multi-step Wizard Navigation",
+      "description": "GitOps onboarding wizard with validation and progress tracking",
+      "trigger_elements": [".wizard-step-btn"],
+      "affected_elements": [".wizard-step", ".step-indicator"],
+      "test_scenarios": ["step_navigation", "validation_blocking", "progress_indication", "strategy_selection", "processing_feedback"]
+    },
+    {
+      "behavior_name": "Notification System",
+      "description": "Bootstrap alert notifications with auto-dismiss and custom styling",
+      "trigger_elements": ["programmatic"],
+      "affected_elements": ["body", ".hedgehog-wrapper"],
+      "test_scenarios": ["success_notification", "error_notification", "auto_dismiss", "manual_dismiss", "notification_stacking"]
+    }
+  ],
+  "summary": {
+    "total_js_files": 9,
+    "total_functions": 45,
+    "ajax_endpoints": 32,
+    "event_listeners": 47,
+    "dom_manipulations": 38,
+    "inline_scripts": 1
+  }
+}

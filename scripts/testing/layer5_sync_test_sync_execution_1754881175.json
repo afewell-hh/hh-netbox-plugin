@@ -1,0 +1,22 @@
+{
+  "timestamp": "2025-08-11T02:59:35.245955",
+  "test_phase": "sync_execution",
+  "data": {
+    "successful_method": "GET sync trigger",
+    "attempts": [
+      {
+        "method": "POST to fabric sync endpoint",
+        "timestamp": "2025-08-11T02:59:34.186233",
+        "status_code": 403,
+        "success": false
+      },
+      {
+        "method": "GET sync trigger",
+        "timestamp": "2025-08-11T02:59:35.224699",
+        "status_code": 200,
+        "success": true
+      }
+    ],
+    "any_method_succeeded": true
+  }
+}

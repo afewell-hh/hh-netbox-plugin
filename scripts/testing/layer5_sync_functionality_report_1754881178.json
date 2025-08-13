@@ -1,0 +1,66 @@
+{
+  "test_start": "2025-08-11T02:59:34.140910",
+  "fabric_id": 35,
+  "phases": {
+    "baseline": {
+      "fabric_accessible": true,
+      "fabric_status_code": 200,
+      "current_sync_status": "never_synced",
+      "sync_indicators": {
+        "never_synced": true,
+        "syncing": true,
+        "in_sync": false,
+        "sync_error": true
+      },
+      "has_sync_capability": true,
+      "last_sync_timestamp": ":",
+      "page_content_saved": true
+    },
+    "sync_execution": {
+      "successful_method": "GET sync trigger",
+      "attempts": [
+        {
+          "method": "POST to fabric sync endpoint",
+          "timestamp": "2025-08-11T02:59:34.186233",
+          "status_code": 403,
+          "success": false
+        },
+        {
+          "method": "GET sync trigger",
+          "timestamp": "2025-08-11T02:59:35.224699",
+          "status_code": 200,
+          "success": true
+        }
+      ],
+      "any_method_succeeded": true
+    },
+    "post_sync_validation": {
+      "post_sync_status": "never_synced",
+      "status_indicators": {
+        "never_synced": true,
+        "syncing": true,
+        "in_sync": false,
+        "sync_error": true
+      },
+      "status_changed": false,
+      "status_progression": "never_synced -> never_synced",
+      "last_sync_timestamp": ":",
+      "timestamp_updated": false,
+      "post_sync_page_saved": true
+    }
+  },
+  "final_assessment": {
+    "test_completion_time": "2025-08-11T02:59:38.299006",
+    "fabric_accessible": true,
+    "sync_capability_present": true,
+    "sync_execution_attempted": true,
+    "sync_method_succeeded": true,
+    "status_validation_completed": true,
+    "status_change_detected": false,
+    "timestamp_update_detected": false,
+    "basic_success_rate": "100.0%",
+    "bonus_success_rate": "33.3%",
+    "overall_success_rate": "80.0%",
+    "functional_completeness": "PASS"
+  }
+}

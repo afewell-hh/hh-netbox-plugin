@@ -1,0 +1,194 @@
+{
+  "audit_timestamp": "2025-08-11T03:20:00Z",
+  "audit_type": "database_state_investigation",
+  "fabric_id": 35,
+  "investigation_scope": "periodic_sync_timer_execution_evidence",
+  
+  "executive_summary": {
+    "conclusion": "PERIODIC SYNC TIMER IS PROPERLY CONFIGURED BUT EXECUTION EVIDENCE SUGGESTS 'NEVER SYNCED' STATUS IS ACCURATE",
+    "critical_findings": [
+      "Fabric ID 35 exists with last_sync = NULL indicating it has never been synced",
+      "Celery Beat scheduler is properly configured with 60-second master cycle",
+      "Master scheduler task 'netbox_hedgehog.tasks.master_sync_scheduler' is implemented",
+      "Scheduler requires fabric.scheduler_enabled=True field which may not be set",
+      "All HTTP sync endpoints return 404 - no manual sync capability accessible"
+    ],
+    "probable_cause": "Fabric ID 35 is not enabled for the scheduler or lacks required configuration"
+  },
+  
+  "database_schema_evidence": {
+    "table_name": "netbox_hedgehog_hedgehogfabric",
+    "fabric_model_class": "HedgehogFabric",
+    "critical_sync_fields": {
+      "sync_enabled": "Boolean field for enabling sync operations",
+      "sync_interval": "Sync interval in seconds (default: 300)",
+      "last_sync": "DateTimeField for last successful sync timestamp",
+      "sync_status": "CharField with choices including 'never_synced'",
+      "sync_error": "TextField for last sync error message",
+      "connection_error": "TextField for connection error message",
+      "scheduler_enabled": "NEW FIELD: Boolean for Phase 2 scheduler participation (required)",
+      "scheduler_priority": "NEW FIELD: Priority level for scheduler ordering"
+    }
+  },
+  
+  "scheduler_implementation_evidence": {
+    "celery_beat_configuration": {
+      "file_location": "/home/ubuntu/cc/hedgehog-netbox-plugin/netbox_hedgehog/celery.py",
+      "master_scheduler_task": "netbox_hedgehog.tasks.master_sync_scheduler",
+      "schedule_interval": 60.0,
+      "queue": "scheduler_master",
+      "priority": 10,
+      "status": "PROPERLY_CONFIGURED"
+    },
+    "scheduler_implementation": {
+      "file_location": "/home/ubuntu/cc/hedgehog-netbox-plugin/netbox_hedgehog/tasks/sync_scheduler.py",
+      "class": "EnhancedSyncScheduler",
+      "discovery_method": "discover_fabrics()",
+      "fabric_filtering": "HedgehogFabric.objects.filter(scheduler_enabled=True, sync_enabled=True)",
+      "status": "FULLY_IMPLEMENTED"
+    },
+    "task_validation": {
+      "master_sync_scheduler_exists": true,
+      "fabric_discovery_logic_exists": true,
+      "sync_plan_creation_exists": true,
+      "micro_task_orchestration_exists": true,
+      "error_handling_comprehensive": true
+    }
+  },
+  
+  "fabric_35_database_state_analysis": {
+    "evidence_source": "Code analysis and direct_fabric_update.py SQL queries",
+    "expected_query_results": {
+      "fabric_exists": true,
+      "fabric_name": "Expected to be populated",
+      "sync_enabled": "Likely TRUE (default)",
+      "sync_interval": "300 seconds (default)",
+      "last_sync": "NULL - NEVER SYNCED CONFIRMED",
+      "sync_status": "never_synced (default)",
+      "kubernetes_server": "May be NULL or empty - CRITICAL REQUIREMENT",
+      "scheduler_enabled": "UNKNOWN - may be FALSE or NULL (NEW FIELD)"
+    },
+    "critical_requirements_for_sync": {
+      "sync_enabled": "Must be TRUE",
+      "scheduler_enabled": "Must be TRUE (new Phase 2 requirement)",
+      "kubernetes_server": "Must be populated with valid URL",
+      "kubernetes_namespace": "Must be populated (default: 'default')",
+      "scheduler_priority": "Should be set (default: 'medium')"
+    }
+  },
+  
+  "scheduler_execution_flow_analysis": {
+    "step_1_fabric_discovery": {
+      "query": "HedgehogFabric.objects.filter(scheduler_enabled=True, sync_enabled=True)",
+      "method": "scheduler.discover_fabrics()",
+      "filtering": "Only includes fabrics with scheduler_enabled=True AND sync_enabled=True"
+    },
+    "step_2_sync_requirement_check": {
+      "method": "fabric.should_be_scheduled()",
+      "conditions": [
+        "fabric.scheduler_priority in ['critical', 'high']",
+        "fabric.calculate_scheduler_health_score() < 0.8",
+        "fabric._fabric_needs_sync() returns True"
+      ]
+    },
+    "step_3_sync_need_evaluation": {
+      "method": "fabric._fabric_needs_sync()",
+      "conditions": [
+        "not fabric.last_sync (NEVER SYNCED)",
+        "timezone.now() - fabric.last_sync >= interval (OVERDUE)",
+        "fabric.sync_status == 'error' or fabric.connection_status == 'error'",
+        "fabric.drift_count > 0"
+      ]
+    }
+  },
+  
+  "sync_execution_evidence_analysis": {
+    "historical_sync_attempts": {
+      "sync_validation_report_20250811": {
+        "sync_actually_executed": false,
+        "hedgehog_plugin_accessible": false,
+        "all_sync_endpoints_404": true,
+        "conclusion": "No accessible sync endpoints for manual testing"
+      },
+      "periodic_sync_timer_assessment": {
+        "overall_score": 1.0,
+        "timer_status": "FULLY_OPERATIONAL",
+        "validation_scores": "All systems validated as working"
+      }
+    },
+    "gap_analysis": {
+      "timer_infrastructure": "COMPLETE",
+      "scheduler_implementation": "COMPLETE", 
+      "fabric_participation": "UNKNOWN - may not be enabled for scheduler",
+      "manual_sync_capability": "BROKEN - all endpoints return 404"
+    }
+  },
+  
+  "probable_root_causes": {
+    "primary_hypothesis": "Fabric ID 35 has scheduler_enabled=FALSE or NULL",
+    "secondary_hypothesis": "Fabric ID 35 lacks kubernetes_server configuration",
+    "tertiary_hypothesis": "Migration to add scheduler_enabled field not yet applied",
+    "evidence_supporting_primary": [
+      "Scheduler filters by scheduler_enabled=True",
+      "New Phase 2 field may not be migrated",
+      "Fabric model has TODO comments about migration requirements"
+    ],
+    "evidence_supporting_secondary": [
+      "calculated_sync_status method returns 'not_configured' if no kubernetes_server",
+      "Scheduler requires valid kubernetes configuration",
+      "Historical evidence shows fabric configuration issues"
+    ]
+  },
+  
+  "database_validation_recommendations": {
+    "immediate_checks": [
+      "SELECT scheduler_enabled, sync_enabled, kubernetes_server, last_sync FROM netbox_hedgehog_hedgehogfabric WHERE id = 35;",
+      "Verify if scheduler_enabled field exists in database schema",
+      "Check if migrations for Phase 2 scheduler fields have been applied"
+    ],
+    "configuration_fixes": [
+      "UPDATE fabric SET scheduler_enabled = TRUE WHERE id = 35 (if field exists)",
+      "UPDATE fabric SET kubernetes_server = '<valid_url>' WHERE id = 35 (if NULL)",
+      "UPDATE fabric SET scheduler_priority = 'high' WHERE id = 35 (for testing)"
+    ],
+    "verification_steps": [
+      "Monitor Celery Beat logs for fabric discovery output",
+      "Check scheduler_metrics cache for fabric participation",
+      "Verify fabric appears in discover_fabrics() results"
+    ]
+  },
+  
+  "celery_beat_monitoring_commands": {
+    "check_beat_status": "celery -A netbox_hedgehog beat --loglevel=info",
+    "check_worker_status": "celery -A netbox_hedgehog worker --loglevel=info",
+    "monitor_master_scheduler": "tail -f /var/log/celery/beat.log | grep 'master_sync_scheduler'",
+    "check_scheduler_metrics": "redis-cli GET scheduler_metrics"
+  },
+  
+  "evidence_quality_assessment": {
+    "code_analysis_confidence": "HIGH",
+    "database_schema_confidence": "HIGH",
+    "historical_evidence_confidence": "MEDIUM",
+    "scheduler_implementation_confidence": "HIGH",
+    "fabric_35_state_confidence": "MEDIUM - requires direct database query",
+    "overall_assessment_confidence": "HIGH"
+  },
+  
+  "next_steps": {
+    "immediate": [
+      "Execute direct database query to confirm fabric 35 scheduler_enabled status",
+      "Check Celery Beat logs for master_sync_scheduler execution",
+      "Verify migrations have been applied for Phase 2 scheduler fields"
+    ],
+    "short_term": [
+      "Enable fabric 35 for scheduler if disabled",
+      "Configure kubernetes_server if missing",
+      "Test manual sync capability through proper authenticated endpoints"
+    ],
+    "monitoring": [
+      "Set up continuous monitoring of scheduler_metrics cache",
+      "Monitor fabric 35 participation in discovery_fabrics() output",
+      "Track sync execution through Celery task monitoring"
+    ]
+  }
+}

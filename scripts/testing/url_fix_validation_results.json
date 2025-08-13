@@ -1,0 +1,132 @@
+{
+  "timestamp": "2025-08-11 21:39:54.538476",
+  "validation_results": {
+    "setup.py_fix": {
+      "setup_py_status": "loaded",
+      "entry_points_found": true,
+      "entry_points_correct": true,
+      "issues": []
+    },
+    "url_patterns": {
+      "url_patterns_status": "loaded",
+      "sync_patterns": {
+        "fabric_sync": "found",
+        "fabric_test_connection": "found",
+        "fabric_github_sync": "found",
+        "fabric_detail": "found",
+        "fabric_list": "found"
+      },
+      "view_imports": {
+        "FabricSyncView": "imported",
+        "FabricTestConnectionView": "imported",
+        "FabricGitHubSyncView": "missing"
+      },
+      "issues": [
+        "View class FabricGitHubSyncView not imported"
+      ]
+    },
+    "view_classes": {
+      "view_files_status": {
+        "sync_views.py": "loaded",
+        "fabric_views.py": "loaded"
+      },
+      "view_classes": {
+        "FabricTestConnectionView": "found",
+        "FabricGitHubSyncView": "found",
+        "FabricSyncView": "found"
+      },
+      "issues": []
+    },
+    "test_matrix": {
+      "test_urls": [
+        {
+          "name": "Plugin Root",
+          "path": "/plugins/hedgehog/",
+          "expected_status": 200,
+          "method": "GET",
+          "description": "Main plugin overview page"
+        },
+        {
+          "name": "Fabric List",
+          "path": "/plugins/hedgehog/fabrics/",
+          "expected_status": 200,
+          "method": "GET",
+          "description": "List all fabrics"
+        },
+        {
+          "name": "Fabric Detail",
+          "path": "/plugins/hedgehog/fabrics/35/",
+          "expected_status": 200,
+          "method": "GET",
+          "description": "Details for fabric 35"
+        },
+        {
+          "name": "Test Connection",
+          "path": "/plugins/hedgehog/fabrics/35/test-connection/",
+          "expected_status": 200,
+          "method": "POST",
+          "description": "Test connection for fabric 35"
+        },
+        {
+          "name": "Manual Sync",
+          "path": "/plugins/hedgehog/fabrics/35/sync/",
+          "expected_status": 200,
+          "method": "POST",
+          "description": "Manual sync for fabric 35"
+        },
+        {
+          "name": "GitHub Sync",
+          "path": "/plugins/hedgehog/fabrics/35/github-sync/",
+          "expected_status": 200,
+          "method": "POST",
+          "description": "GitHub sync for fabric 35"
+        }
+      ],
+      "expected_responses": {},
+      "curl_commands": [
+        {
+          "name": "Plugin Root",
+          "command": "curl -I http://localhost:8000/plugins/hedgehog/",
+          "expected_status": 200
+        },
+        {
+          "name": "Fabric List",
+          "command": "curl -I http://localhost:8000/plugins/hedgehog/fabrics/",
+          "expected_status": 200
+        },
+        {
+          "name": "Fabric Detail",
+          "command": "curl -I http://localhost:8000/plugins/hedgehog/fabrics/35/",
+          "expected_status": 200
+        },
+        {
+          "name": "Test Connection",
+          "command": "curl -X POST -H 'Content-Type: application/json' http://localhost:8000/plugins/hedgehog/fabrics/35/test-connection/",
+          "expected_status": 200
+        },
+        {
+          "name": "Manual Sync",
+          "command": "curl -X POST -H 'Content-Type: application/json' http://localhost:8000/plugins/hedgehog/fabrics/35/sync/",
+          "expected_status": 200
+        },
+        {
+          "name": "GitHub Sync",
+          "command": "curl -X POST -H 'Content-Type: application/json' http://localhost:8000/plugins/hedgehog/fabrics/35/github-sync/",
+          "expected_status": 200
+        }
+      ]
+    }
+  },
+  "summary": {
+    "total_issues": 1,
+    "critical_issues": [
+      "View class FabricGitHubSyncView not imported"
+    ],
+    "fixes_applied": [
+      "Added NetBox plugin entry points to setup.py"
+    ],
+    "remaining_issues": [
+      "View class FabricGitHubSyncView not imported"
+    ]
+  }
+}

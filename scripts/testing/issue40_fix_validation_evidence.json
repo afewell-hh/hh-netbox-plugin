@@ -1,0 +1,18 @@
+🧬 loaded config '/etc/netbox/config/configuration.py'
+🧬 loaded config '/etc/netbox/config/extra.py'
+🧬 loaded config '/etc/netbox/config/logging.py'
+🧬 loaded config '/etc/netbox/config/plugins.py'
+161 objects imported automatically (use -v 2 for details).
+
+=== Issue #40 Fix Validation ===
+Fabric: Test Lab K3s Cluster
+Kubernetes Server: "" (empty = not configured)
+Raw sync_status (database): synced
+Calculated sync_status (template): not_configured
+
+Fix Result:
+- BEFORE FIX: Templates showed "synced" (contradiction\!)
+- AFTER FIX: Templates now show "not_configured" (correct\!)
+
+Issue #40 Status: RESOLVED ✅
+No more sync status contradictions\!

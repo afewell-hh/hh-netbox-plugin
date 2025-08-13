@@ -1,0 +1,8 @@
+{
+  "timestamp": "2025-08-11T02:56:42.618763",
+  "phase": "sync_execution",
+  "description": "Manual sync execution attempt",
+  "data": {
+    "error": "Cannot access fabric detail page: 404"
+  }
+}

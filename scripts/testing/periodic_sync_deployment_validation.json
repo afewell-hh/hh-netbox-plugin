@@ -1,0 +1,77 @@
+{
+  "timestamp": "2025-08-11T16:31:18.553979",
+  "deployment_valid": true,
+  "components": {
+    "fabric_sync_job": {
+      "valid": true,
+      "file_size": 18362,
+      "line_count": 490,
+      "classes_found": [
+        "FabricSyncJob",
+        "FabricSyncScheduler"
+      ],
+      "methods_found": [
+        "execute_fabric_sync",
+        "bootstrap_all_fabric_schedules",
+        "get_scheduled_jobs_status",
+        "manually_trigger_sync",
+        "start_periodic_sync_for_fabric"
+      ],
+      "functions_found": [
+        "execute_fabric_sync_rq",
+        "queue_fabric_sync"
+      ],
+      "imports_found": [
+        "django_rq",
+        "from rq import get_current_job",
+        "RQ_SCHEDULER_AVAILABLE"
+      ],
+      "missing_elements": [],
+      "error_handling_found": [
+        "try:",
+        "except Exception",
+        "logger.error",
+        "RQ_SCHEDULER_AVAILABLE"
+      ],
+      "last_sync_updates": [
+        "fabric.last_sync = timezone.now()",
+        "update_fields.*last_sync"
+      ],
+      "implementation_complete": true
+    },
+    "management_command": {
+      "valid": true,
+      "file_size": 8980,
+      "elements_found": [
+        "class Command(BaseCommand)",
+        "def add_arguments",
+        "def handle",
+        "--bootstrap",
+        "--manual-trigger",
+        "--status",
+        "--fabric-id",
+        "--json"
+      ],
+      "missing_elements": [],
+      "command_complete": true
+    },
+    "plugin_initialization": {
+      "valid": true,
+      "file_size": 3857,
+      "elements_found": [
+        "_bootstrap_sync_schedules",
+        "FabricSyncScheduler",
+        "RQ_SCHEDULER_AVAILABLE",
+        "hedgehog_sync"
+      ],
+      "missing_elements": [],
+      "queue_configured": true,
+      "initialization_complete": true
+    }
+  },
+  "summary": {
+    "total_components": 3,
+    "valid_components": 3,
+    "issues_found": []
+  }
+}

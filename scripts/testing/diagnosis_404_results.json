@@ -1,0 +1,85 @@
+{
+  "timestamp": "2025-08-11 21:38:15.698261",
+  "diagnosis_results": {
+    "plugin_configuration": {
+      "plugin_config": {
+        "base_url": "hedgehog",
+        "name": "netbox_hedgehog"
+      },
+      "routing_issues": [],
+      "expected_paths": {
+        "plugin_root": "/plugins/hedgehog/",
+        "fabric_list": "/plugins/hedgehog/fabrics/",
+        "fabric_detail": "/plugins/hedgehog/fabrics/35/",
+        "fabric_sync": "/plugins/hedgehog/fabrics/35/sync/",
+        "test_connection": "/plugins/hedgehog/fabrics/35/test-connection/",
+        "github_sync": "/plugins/hedgehog/fabrics/35/github-sync/"
+      },
+      "analysis": {}
+    },
+    "netbox_integration": {
+      "integration_issues": [
+        "Plugin entry points not properly configured"
+      ],
+      "files_checked": {
+        "netbox_hedgehog/__init__.py": true,
+        "netbox_hedgehog/urls.py": true,
+        "netbox_hedgehog/views/": true,
+        "netbox_hedgehog/models/": true,
+        "setup.py": true
+      },
+      "recommendations": []
+    },
+    "common_404_causes": {
+      "potential_causes": [
+        "Missing view imports: URL patterns without view classes"
+      ],
+      "url_patterns": [],
+      "view_issues": [],
+      "recommendations": [
+        "Ensure NetBox has the plugin installed and enabled",
+        "Check that all view classes are properly imported in urls.py",
+        "Verify URL patterns use 'pk' parameter instead of 'id'",
+        "Confirm plugin base_url matches expected paths",
+        "Test URL resolution using Django's reverse() function",
+        "Check NetBox logs for plugin loading errors",
+        "Verify database migrations have been applied",
+        "Ensure user has proper permissions for sync operations"
+      ]
+    },
+    "test_commands": {
+      "django_shell_tests": [
+        "from django.urls import reverse",
+        "from netbox_hedgehog.models import HedgehogFabric",
+        "fabric = HedgehogFabric.objects.get(pk=35)",
+        "reverse('plugins:netbox_hedgehog:fabric_detail', args=[35])",
+        "reverse('plugins:netbox_hedgehog:fabric_sync', args=[35])",
+        "reverse('plugins:netbox_hedgehog:fabric_test_connection', args=[35])"
+      ],
+      "curl_tests": [
+        "curl -I http://localhost:8000/plugins/hedgehog/fabrics/",
+        "curl -I http://localhost:8000/plugins/hedgehog/fabrics/35/",
+        "curl -I http://localhost:8000/plugins/hedgehog/fabrics/35/sync/",
+        "curl -I http://localhost:8000/plugins/hedgehog/fabrics/35/test-connection/"
+      ],
+      "browser_tests": []
+    }
+  },
+  "summary": {
+    "total_issues": 2,
+    "critical_issues": [
+      "Plugin entry points not properly configured",
+      "Missing view imports: URL patterns without view classes"
+    ],
+    "recommendations": [
+      "Test URL resolution using Django's reverse() function",
+      "Check that all view classes are properly imported in urls.py",
+      "Verify URL patterns use 'pk' parameter instead of 'id'",
+      "Ensure NetBox has the plugin installed and enabled",
+      "Verify database migrations have been applied",
+      "Ensure user has proper permissions for sync operations",
+      "Check NetBox logs for plugin loading errors",
+      "Confirm plugin base_url matches expected paths"
+    ]
+  }
+}

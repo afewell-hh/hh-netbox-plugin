@@ -1,0 +1,63 @@
+{
+  "test_session": "2025-08-11T16:36:50.886361",
+  "test_results": [
+    {
+      "test_name": "RQ Task Definitions",
+      "status": "FAIL",
+      "timestamp": "2025-08-11T16:36:50.753381",
+      "details": "Failed to import tasks: No module named 'netbox'",
+      "evidence": {}
+    },
+    {
+      "test_name": "Task Import Validation",
+      "status": "FAIL",
+      "timestamp": "2025-08-11T16:36:50.885761",
+      "details": "Task import failed: No module named 'netbox'",
+      "evidence": {}
+    },
+    {
+      "test_name": "Scheduler Enabled Migration",
+      "status": "PASS",
+      "timestamp": "2025-08-11T16:36:50.886030",
+      "details": "Created migration for scheduler_enabled field",
+      "evidence": {
+        "migration_file": "/home/ubuntu/cc/hedgehog-netbox-plugin/netbox_hedgehog/migrations/0023_add_scheduler_enabled_field.py"
+      }
+    },
+    {
+      "test_name": "Task Test Script Creation",
+      "status": "PASS",
+      "timestamp": "2025-08-11T16:36:50.886154",
+      "details": "Created container task test script",
+      "evidence": {
+        "test_script": "/home/ubuntu/cc/hedgehog-netbox-plugin/container_task_test.py"
+      }
+    },
+    {
+      "test_name": "Deployment Package Generation",
+      "status": "PASS",
+      "timestamp": "2025-08-11T16:36:50.886345",
+      "details": "Generated deployment package with 5 files",
+      "evidence": {
+        "deployment_timestamp": "2025-08-11T16:36:50.886193",
+        "files_to_deploy": [
+          "/home/ubuntu/cc/hedgehog-netbox-plugin/netbox_hedgehog/celery.py",
+          "/home/ubuntu/cc/hedgehog-netbox-plugin/netbox_hedgehog/tasks/",
+          "/home/ubuntu/cc/hedgehog-netbox-plugin/netbox_hedgehog/models/fabric.py",
+          "/home/ubuntu/cc/hedgehog-netbox-plugin/netbox_hedgehog/migrations/0023_add_scheduler_enabled_field.py",
+          "/home/ubuntu/cc/hedgehog-netbox-plugin/container_task_test.py"
+        ],
+        "deployment_commands": [
+          "sudo docker cp netbox_hedgehog/celery.py netbox-docker-netbox-1:/opt/netbox/netbox/netbox_hedgehog/",
+          "sudo docker cp netbox_hedgehog/tasks/ netbox-docker-netbox-1:/opt/netbox/netbox/netbox_hedgehog/",
+          "sudo docker cp netbox_hedgehog/models/fabric.py netbox-docker-netbox-1:/opt/netbox/netbox/netbox_hedgehog/models/",
+          "sudo docker cp netbox_hedgehog/migrations/0023_add_scheduler_enabled_field.py netbox-docker-netbox-1:/opt/netbox/netbox/netbox_hedgehog/migrations/",
+          "sudo docker cp container_task_test.py netbox-docker-netbox-1:/opt/netbox/",
+          "sudo docker restart netbox-docker-netbox-1",
+          "sudo docker restart netbox-docker-netbox-worker-1"
+        ]
+      }
+    }
+  ],
+  "deployment_ready": false
+}

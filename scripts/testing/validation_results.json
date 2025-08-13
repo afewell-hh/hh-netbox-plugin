@@ -1,0 +1,57 @@
+{
+  "timestamp": "2025-08-09T22:28:02.054075",
+  "passed": 11,
+  "failed": 0,
+  "results": {
+    "Docker Services Running": {
+      "status": "PASS",
+      "output": "5\n",
+      "return_code": 0
+    },
+    "NetBox Web Interface": {
+      "status": "PASS",
+      "output": "302",
+      "return_code": 0
+    },
+    "Plugin Loaded in NetBox": {
+      "status": "PASS",
+      "output": "1\n",
+      "return_code": 0
+    },
+    "Plugin API Endpoint": {
+      "status": "PASS",
+      "output": "200",
+      "return_code": 0
+    },
+    "Git Repository Page (No HTML Comments Bug)": {
+      "status": "PASS",
+      "output": "0\n0\n",
+      "return_code": 0
+    },
+    "Fabric Sync Capability": {
+      "status": "PASS",
+      "output": "True\n",
+      "return_code": 0
+    },
+    "CRDs Present in Database": {
+      "status": "PASS",
+      "output": "20\n",
+      "return_code": 0
+    },
+    "Periodic Sync Scheduler": {
+      "status": "PASS",
+      "output": "check_fabric_sync_schedules\n",
+      "return_code": 0
+    },
+    "GUI Test Framework Available": {
+      "status": "PASS",
+      "output": "/home/ubuntu/.nvm/versions/node/v22.17.0/bin/node\n/home/ubuntu/.nvm/versions/node/v22.17.0/bin/npx\n",
+      "return_code": 0
+    },
+    "GUI Automation Tests": {
+      "status": "PASS",
+      "output": "============================================================\nGUI VALIDATION - COMPREHENSIVE CHECKS\n============================================================\n\u2705 Node.js available: v22.17.0\n\u2705 NetBox accessible (HTTP 302)\n\u2705 Playwright framework properly configured\n\u2705 No HTML comment bugs detected\n\u2705 Basic GUI test passed\n\nSUMMARY: 5/5 checks passed\n\u2705 Comprehensive GUI validation passed\n",
+      "return_code": 0
+    }
+  }
+}

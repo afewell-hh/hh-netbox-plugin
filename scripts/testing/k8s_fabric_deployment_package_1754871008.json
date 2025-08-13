@@ -1,0 +1,52 @@
+{
+  "metadata": {
+    "created": "2025-08-11T00:10:08.766094",
+    "target_fabric_id": 35,
+    "target_cluster": "https://vlab-art.l.hhdev.io:6443",
+    "purpose": "Connect HNP fabric to K8s test cluster"
+  },
+  "steps": {
+    "1_prerequisites": {
+      "description": "Ensure K8s cluster access",
+      "commands": [
+        "kubectl cluster-info --server https://vlab-art.l.hhdev.io:6443 --insecure-skip-tls-verify",
+        "# Should show cluster info with authentication error (expected)"
+      ]
+    },
+    "2_get_token": {
+      "description": "Retrieve service account token",
+      "commands": [
+        "\n        # Get the service account token for authentication\n        kubectl get secret hnp-sync-token             --namespace default             --server https://vlab-art.l.hhdev.io:6443             --insecure-skip-tls-verify             -o jsonpath='{.data.token}' | base64 -d\n        "
+      ]
+    },
+    "3_update_fabric": {
+      "description": "Update fabric configuration",
+      "options": {
+        "sql_direct": "\n        -- Update Fabric ID 35 for K8s cluster connection\n        UPDATE netbox_hedgehog_hedgehogfabric \n        SET \n            kubernetes_server = 'https://vlab-art.l.hhdev.io:6443',\n            kubernetes_namespace = 'default',\n            kubernetes_token = '{SERVICE_ACCOUNT_TOKEN}',  -- Replace with actual token\n            kubernetes_ca_cert = '',  -- Optional for insecure-skip-tls setups\n            sync_enabled = TRUE,\n            sync_error = '',\n            connection_error = '',\n            last_change = NOW()\n        WHERE id = 35;\n        \n        -- Verify the update\n        SELECT \n            id, name, \n            kubernetes_server, \n            kubernetes_namespace, \n            CASE WHEN kubernetes_token != '' THEN 'TOKEN_SET' ELSE 'NO_TOKEN' END as token_status,\n            sync_enabled,\n            connection_status,\n            sync_status\n        FROM netbox_hedgehog_hedgehogfabric \n        WHERE id = 35;\n        ",
+        "django_shell": "\n        # Using Django shell to update fabric\n        python manage.py shell << 'EOF'\n        from netbox_hedgehog.models.fabric import HedgehogFabric\n        from django.utils import timezone\n        \n        # Get fabric ID 35\n        fabric = HedgehogFabric.objects.get(id=35)\n        print(f\"Current fabric: {fabric.name}\")\n        print(f\"Current K8s server: {fabric.kubernetes_server or 'NOT CONFIGURED'}\")\n        \n        # Update with K8s configuration\n        fabric.kubernetes_server = 'https://vlab-art.l.hhdev.io:6443'\n        fabric.kubernetes_namespace = 'default'\n        fabric.kubernetes_token = '{TOKEN_FROM_KUBECTL_COMMAND}'  # Replace with actual token\n        fabric.sync_enabled = True\n        fabric.sync_error = ''\n        fabric.connection_error = ''\n        fabric.save()\n        \n        print(\"\u2705 Fabric updated successfully\")\n        print(f\"Server: {fabric.kubernetes_server}\")\n        print(f\"Namespace: {fabric.kubernetes_namespace}\")\n        print(f\"Sync enabled: {fabric.sync_enabled}\")\n        \n        # Test the calculated sync status (this is what shows in GUI)\n        calculated_status = fabric.calculated_sync_status\n        print(f\"Calculated sync status: {calculated_status}\")\n        print(f\"Status display: {fabric.calculated_sync_status_display}\")\n        EOF\n        "
+      }
+    },
+    "4_test_connectivity": {
+      "description": "Test K8s connectivity",
+      "commands": [
+        "\n        # Test connectivity using HNP Kubernetes utilities\n        python manage.py shell << 'EOF'\n        from netbox_hedgehog.models.fabric import HedgehogFabric\n        from netbox_hedgehog.utils.kubernetes import KubernetesClient, KubernetesSync\n        import json\n        \n        # Get configured fabric\n        fabric = HedgehogFabric.objects.get(id=35)\n        \n        # Test basic connection\n        k8s_client = KubernetesClient(fabric)\n        connection_result = k8s_client.test_connection()\n        print(f\"Connection test: {connection_result['success']}\")\n        if connection_result['success']:\n            print(f\"Cluster version: {connection_result.get('cluster_version', 'unknown')}\")\n            print(f\"Platform: {connection_result.get('platform', 'unknown')}\")\n        else:\n            print(f\"Connection error: {connection_result.get('error', 'unknown')}\")\n        \n        # Test CRD fetching\n        k8s_sync = KubernetesSync(fabric)\n        fetch_result = k8s_sync.fetch_crds_from_kubernetes()\n        print(f\"CRD fetch test: {fetch_result['success']}\")\n        print(f\"Available CRD types: {list(fetch_result.get('resources', {}).keys())}\")\n        \n        # Update fabric status based on tests\n        if connection_result['success']:\n            fabric.connection_status = 'connected'\n            fabric.connection_error = ''\n        else:\n            fabric.connection_status = 'error'\n            fabric.connection_error = connection_result.get('error', 'Connection failed')\n        \n        fabric.save()\n        print(f\"Updated connection status: {fabric.connection_status}\")\n        EOF\n        "
+      ]
+    },
+    "5_gui_validation": {
+      "description": "Validate GUI display",
+      "steps": "\n        GUI Validation Steps:\n        \n        1. Navigate to NetBox HNP Fabric Detail Page:\n           - URL: /plugins/netbox-hedgehog/fabrics/35/\n           - Look for fabric detail view\n        \n        2. Verify K8s Configuration Display:\n           \u2705 Kubernetes server should show: https://vlab-art.l.hhdev.io:6443\n           \u2705 Kubernetes namespace should show: default\n           \u2705 Sync status should NOT show \"Not Configured\"\n           \u2705 Connection status should show actual state (connected/error)\n        \n        3. Check Sync Status Calculation:\n           - Status should be calculated based on fabric.calculated_sync_status property\n           - Should show proper badge color (green for connected, red for error)\n           - Should NOT show contradictory status like \"synced\" without K8s server\n        \n        4. Test Sync Operations (if connection successful):\n           - Try manual sync button if available\n           - Check for CRD count updates\n           - Verify error messages are clear if sync fails\n        \n        5. Validate Template Rendering:\n           - Check fabric_detail.html template shows K8s fields\n           - Verify calculated_sync_status_display is used\n           - Confirm fabric.kubernetes_server is displayed in UI\n        "
+    }
+  },
+  "expected_outcomes": {
+    "fabric_configured": "Fabric ID 35 has kubernetes_server set",
+    "connectivity_working": "K8s API accessible with service account token",
+    "gui_updated": "Fabric detail page shows K8s server URL and proper status",
+    "sync_functional": "Sync operations work or show clear error messages"
+  },
+  "troubleshooting": {
+    "token_issues": "Check service account exists and token is base64 decoded",
+    "connectivity_issues": "Verify firewall and DNS resolution for vlab-art.l.hhdev.io",
+    "gui_not_updated": "Check calculated_sync_status property implementation",
+    "sync_errors": "Review KubernetesClient and KubernetesSync error handling"
+  }
+}

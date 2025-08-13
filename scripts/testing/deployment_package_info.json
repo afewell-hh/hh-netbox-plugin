@@ -1,0 +1,19 @@
+{
+  "deployment_timestamp": "2025-08-11T16:36:50.886193",
+  "files_to_deploy": [
+    "/home/ubuntu/cc/hedgehog-netbox-plugin/netbox_hedgehog/celery.py",
+    "/home/ubuntu/cc/hedgehog-netbox-plugin/netbox_hedgehog/tasks/",
+    "/home/ubuntu/cc/hedgehog-netbox-plugin/netbox_hedgehog/models/fabric.py",
+    "/home/ubuntu/cc/hedgehog-netbox-plugin/netbox_hedgehog/migrations/0023_add_scheduler_enabled_field.py",
+    "/home/ubuntu/cc/hedgehog-netbox-plugin/container_task_test.py"
+  ],
+  "deployment_commands": [
+    "sudo docker cp netbox_hedgehog/celery.py netbox-docker-netbox-1:/opt/netbox/netbox/netbox_hedgehog/",
+    "sudo docker cp netbox_hedgehog/tasks/ netbox-docker-netbox-1:/opt/netbox/netbox/netbox_hedgehog/",
+    "sudo docker cp netbox_hedgehog/models/fabric.py netbox-docker-netbox-1:/opt/netbox/netbox/netbox_hedgehog/models/",
+    "sudo docker cp netbox_hedgehog/migrations/0023_add_scheduler_enabled_field.py netbox-docker-netbox-1:/opt/netbox/netbox/netbox_hedgehog/migrations/",
+    "sudo docker cp container_task_test.py netbox-docker-netbox-1:/opt/netbox/",
+    "sudo docker restart netbox-docker-netbox-1",
+    "sudo docker restart netbox-docker-netbox-worker-1"
+  ]
+}

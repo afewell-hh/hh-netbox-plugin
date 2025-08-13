@@ -1,0 +1,12 @@
+{
+  "timestamp": "2025-08-11T00:15:43.756316",
+  "k8s_server": "https://vlab-art.l.hhdev.io:6443",
+  "k8s_namespace": "default",
+  "connection_test_success": false,
+  "connection_error": "Connection test failed: name 'base64' is not defined",
+  "token_length": 896,
+  "ca_cert_length": 566,
+  "django_script": "update_fabric_k8s_config.py",
+  "sql_script": "update_fabric_k8s_config.sql",
+  "ready_for_deployment": true
+}

@@ -1,0 +1,53 @@
+{
+  "test_start": "2025-08-11T02:56:41.763321",
+  "phases": {
+    "baseline": {
+      "fabrics_page_status": 200,
+      "fabrics_page_accessible": true,
+      "fabric_detail_status": 404,
+      "fabric_detail_accessible": false,
+      "api_accessible": false
+    },
+    "sync_execution": {
+      "error": "Cannot access fabric detail page: 404"
+    },
+    "data_flow": {},
+    "gui_updates": {
+      "status_snapshots": [
+        {},
+        {},
+        {}
+      ],
+      "status_consistent": true
+    },
+    "workflow": {},
+    "error_recovery": {
+      "invalid_requests": [
+        {
+          "endpoint": "http://localhost:8000/plugins/hedgehog/fabrics/999/sync/",
+          "status_code": 200,
+          "handled_gracefully": false
+        },
+        {
+          "endpoint": "http://localhost:8000/plugins/hedgehog/fabrics/invalid/sync/",
+          "status_code": 404,
+          "handled_gracefully": true
+        }
+      ],
+      "error_handling_working": false
+    }
+  },
+  "test_end": "2025-08-11T02:56:49.005550",
+  "success_indicators": [
+    "\u274c System not accessible",
+    "\u274c Sync execution failed",
+    "\u26a0\ufe0f  Data flow inconclusive",
+    "\u26a0\ufe0f  Workflow not completed"
+  ],
+  "summary": {
+    "passed_tests": 0,
+    "total_tests": 4,
+    "success_rate": "0.0%",
+    "overall_assessment": "NEEDS_WORK"
+  }
+}
