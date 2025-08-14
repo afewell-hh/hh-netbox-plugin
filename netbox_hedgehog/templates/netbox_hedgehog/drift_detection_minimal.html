@@ -1,0 +1,25 @@
+{% extends "base/layout.html" %}
+
+{% block title %}Drift Detection Test{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+    <div class="card">
+        <div class="card-header">
+            <h3>🔍 Drift Detection Dashboard - Test</h3>
+        </div>
+        <div class="card-body">
+            <h4>This is a minimal drift detection test page</h4>
+            <p>If you can see this, the basic template is working.</p>
+            
+            <div class="alert alert-success">
+                ✅ Template loading successful!
+            </div>
+            
+            <div class="mt-4">
+                <a href="/plugins/hedgehog/" class="btn btn-primary">Back to Dashboard</a>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

@@ -1,0 +1,20 @@
+Error analysis for drift detection page:
+
+1. Initial error: TemplateDoesNotExist: netbox_hedgehog/drift_detection_simple.html
+   - Fixed by updating view template_name to use the correct template
+
+2. Current error: NoReverseMatch: 'netbox_hedgehog' is not a registered namespace
+   - This suggests there's URL reversal happening somewhere
+   - Not in the template (verified by using standalone HTML)  
+   - Not in the view context (verified by minimal context)
+   - Likely in some other part of the system
+
+3. Testing results:
+   - Other plugin URLs work fine (fabrics/, etc.)
+   - Simple TemplateView works with other templates
+   - Issue is specific to DriftDetectionDashboardView
+
+4. Next steps:
+   - Check for imports that might cause URL resolution
+   - Check if there's any middleware or signal processing
+   - Create a completely new view class to isolate the issue
