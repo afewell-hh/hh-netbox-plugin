@@ -191,6 +191,15 @@ class GitRepository(NetBoxModel):
         except Exception as e:
             raise ValidationError(f"Failed to decrypt credentials: {str(e)}")
     
+    def get_decrypted_credentials(self) -> Dict[str, Any]:
+        """
+        Alias for get_credentials() for form compatibility.
+        
+        Returns:
+            Dictionary containing decrypted authentication data
+        """
+        return self.get_credentials()
+    
     def test_connection(self) -> Dict[str, Any]:
         """
         Test connection to git repository with current credentials.

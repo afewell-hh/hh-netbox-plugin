@@ -1,5 +1,41 @@
 # Claude Code Configuration for ruv-swarm
 
+# 🔴 STOP - READ THIS FIRST
+
+## ⛔ DEPLOYMENT GATE - NOTHING WORKS WITHOUT THIS
+
+### The #1 Rule: Local Changes Are NOT Live
+**Every code change requires deployment to the container**
+
+### The ONLY Valid Workflow:
+1. Edit code locally
+2. `make deploy-dev` ← **WITHOUT THIS, NOTHING HAPPENED**
+3. Test at http://localhost:8000
+
+### Why This Matters:
+- NetBox runs in Docker container `netbox-docker-netbox-1`
+- Your local files are **NOT** what the app uses
+- The container has its own copy that **MUST** be updated
+
+### Verification That Actually Works:
+- ✅ **CORRECT**: `curl http://localhost:8000/plugins/hedgehog/endpoint`
+- ❌ **WRONG**: Testing local Python files
+- ❌ **WRONG**: Reading local templates
+- ❌ **WRONG**: Running scripts that check local filesystem
+
+### Task Completion Requirements:
+**No task is complete without:**
+1. **Deployment confirmation**: `make deploy-dev` succeeded
+2. **Live verification**: Tested against running container at http://localhost:8000
+3. **Proof**: curl output or browser verification from actual container
+
+### 🚨 COMMON AGENT FAILURE MODE
+- **Wrong thinking**: "I edited the file, so it's fixed"
+- **Reality**: "You edited a file the app can't see"
+- **Mental model**: You're editing files on YOUR computer, but the app runs on ANOTHER computer (container)
+
+---
+
 ## 🎯 IMPORTANT: Separation of Responsibilities
 
 ### Claude Code Handles:
@@ -548,24 +584,6 @@ Agent Activity:
 └── 🟢 coordinator: Monitoring progress...
 ```
 
-## GitHub Issue Management
-
-**CRITICAL**: When creating issue tickets, use GitHub CLI, NOT local files!
-
-### Issue Creation Commands
-```bash
-# Create new issue
-gh issue create --title "Issue Title" --body "Issue description"
-
-# View existing issue
-gh issue view <issue-number>
-
-# List issues
-gh issue list
-```
-
-**NEVER create local files for issue tickets!** Always use `gh` command.
-
 ## Support
 
 - Documentation: https://github.com/ruvnet/ruv-FANN/tree/main/ruv-swarm
@@ -575,3 +593,272 @@ gh issue list
 ---
 
 Remember: **ruv-swarm coordinates, Claude Code creates!** Start with `mcp__ruv-swarm__swarm_init` to enhance your development workflow.
+
+# 🚀 PROJECT-SPECIFIC ENHANCEMENTS FOR HEDGEHOG NETBOX PLUGIN
+
+## 🎯 NetBox Plugin Development Patterns
+
+### 🔧 Core Plugin Architecture Coordination
+The swarm provides specialized coordination patterns for NetBox plugin development:
+
+**Plugin Component Management:**
+- **Models Coordination**: Database models, choices, and migrations
+- **Views Coordination**: Django views, forms, and templates 
+- **API Coordination**: REST API endpoints and serializers
+- **Static Assets**: CSS, JavaScript, and template coordination
+- **GitOps Integration**: Kubernetes cluster synchronization patterns
+
+### 🐝 Enhanced Hive Orchestration Integration (Issue #50)
+
+**Issue #50 Specific Enhancements:**
+```python
+# Enhanced Hive Orchestration Patterns
+HIVE_ORCHESTRATION_PATTERNS = {
+    "fabric_sync": {
+        "coordination_type": "gitops_bidirectional_k8s_readonly",
+        "agents": ["k8s-discovery", "gitops-sync", "database-sync", "validation"],
+        "memory_key": "hive/fabric/sync-state",
+        "parallel_execution": True
+    },
+    "periodic_sync": {
+        "coordination_type": "scheduled",
+        "agents": ["scheduler", "monitor", "error-recovery"],
+        "memory_key": "hive/periodic/job-state",
+        "self_healing": True
+    }
+}
+```
+
+**Bidirectional Sync Coordination:**
+- **Git <-> NetBox**: Synchronize HNP/NetBox data with GitOps repositories
+- **Conflict Resolution**: Automated merge strategies with human fallback
+- **State Validation**: Cross-system consistency verification
+
+### 📊 GitOps Workflow Patterns
+
+**GitOps Repository Management (with environment variables):**
+```bash
+# MANDATORY: Load environment first
+source .env
+
+# Enhanced GitOps coordination hooks with environment configuration
+npx ruv-swarm hook pre-gitops --operation "fabric-sync" --validate-k8s true --cluster "$K8S_TEST_CLUSTER_NAME" --gitops-repo "$GITOPS_REPO_URL"
+npx ruv-swarm hook post-gitops --operation "sync-complete" --update-status true --real-infrastructure "$PREFER_REAL_INFRASTRUCTURE"
+```
+
+**Fabric Configuration Patterns:**
+- **Template Coordination**: Jinja2 template processing with validation
+- **YAML Generation**: Multi-cluster configuration generation
+- **Drift Detection**: Automated configuration drift detection
+- **Rollback Coordination**: Safe rollback procedures with state preservation
+
+### 🔄 Periodic Sync Architecture
+
+**RQ Job Coordination:**
+```python
+# Periodic sync job coordination
+PERIODIC_SYNC_COORDINATION = {
+    "job_scheduling": {
+        "frequency": "60_seconds",
+        "coordination_pattern": "leader_follower",
+        "fault_tolerance": "auto_retry_3x"
+    },
+    "sync_validation": {
+        "pre_sync_checks": ["k8s_connectivity", "database_health"],
+        "post_sync_validation": ["status_consistency", "error_detection"],
+        "rollback_triggers": ["sync_failure", "validation_failure"]
+    }
+}
+```
+
+### 🧪 Test-Driven Development Patterns
+
+**TDD Coordination for NetBox Plugins:**
+- **Model Testing**: Database model validation and constraint testing
+- **API Testing**: REST endpoint functionality and authentication
+- **Integration Testing**: Full workflow testing with real test K8s cluster (ONF fabric + FGD setup)
+- **GUI Testing**: Template rendering and JavaScript functionality
+
+**TDD Agent Coordination (with environment variables):**
+```bash
+# MANDATORY: Load environment first
+source .env
+
+# TDD workflow coordination using environment configuration
+npx ruv-swarm hook pre-test --test-type "integration" --use-real-test-cluster "$PREFER_REAL_INFRASTRUCTURE" --cluster "$K8S_TEST_CLUSTER_NAME" --netbox-url "$TEST_NETBOX_URL"
+npx ruv-swarm hook post-test --test-type "integration" --collect-coverage true --timeout "$TEST_TIMEOUT_SECONDS"
+```
+
+### 🎨 Frontend Development Coordination
+
+**CSS and JavaScript Optimization:**
+- **Asset Bundling**: Coordinated CSS compilation and minification
+- **Template Consolidation**: Django template inheritance optimization
+- **JavaScript Coordination**: ES6+ transpilation and bundling
+- **Responsive Design**: Multi-device compatibility testing
+
+**Frontend Asset Coordination:**
+```python
+FRONTEND_COORDINATION = {
+    "css_optimization": {
+        "consolidation": True,
+        "minification": True,
+        "critical_css_extraction": True
+    },
+    "javascript_enhancement": {
+        "error_handling": "comprehensive",
+        "session_management": "timeout_aware",
+        "api_integration": "async_await_pattern"
+    }
+}
+```
+
+### 🔐 Security and Authentication Patterns
+
+**Authentication Workflow Coordination:**
+- **Django Authentication**: Session management and CSRF protection
+- **Kubernetes RBAC**: Service account and role-based access control
+- **API Security**: Token-based authentication for REST endpoints
+- **Input Validation**: XSS and injection attack prevention
+
+### 📈 Performance Optimization Patterns
+
+**Database Query Optimization:**
+- **Query Analysis**: Django ORM query optimization
+- **Index Coordination**: Database index creation and maintenance
+- **Caching Strategies**: Redis/Memcached integration coordination
+- **Connection Pooling**: Database connection optimization
+
+**Kubernetes Integration Performance:**
+- **Connection Pooling**: K8s API client optimization
+- **Batch Operations**: Multi-resource updates in single API calls
+- **Watch Streams**: Efficient cluster state monitoring
+- **Resource Caching**: Local cache for frequently accessed cluster data
+
+### 🚀 Container and Deployment Coordination
+
+**Docker Development Workflow:**
+```bash
+# Container development coordination
+npx ruv-swarm hook pre-container --operation "build" --validate-deps true
+npx ruv-swarm hook post-container --operation "deploy" --health-check true
+```
+
+**Production Deployment Patterns:**
+- **Multi-stage Builds**: Optimized Docker images with layer caching
+- **Health Checks**: Comprehensive readiness and liveness probes
+- **Rolling Updates**: Zero-downtime deployment coordination
+- **Rollback Procedures**: Automated rollback with state preservation
+
+### 🔍 Debugging and Troubleshooting Patterns
+
+**Debug Coordination Tools:**
+- **Log Aggregation**: Centralized logging with correlation IDs
+- **Error Tracking**: Exception monitoring and alerting
+- **Performance Profiling**: Application performance monitoring
+- **State Inspection**: Real-time system state analysis
+
+**Production Support Coordination:**
+```python
+DEBUG_COORDINATION = {
+    "error_investigation": {
+        "log_correlation": True,
+        "state_snapshot": True,
+        "reproduction_steps": "automated"
+    },
+    "performance_analysis": {
+        "query_profiling": True,
+        "memory_analysis": True,
+        "network_latency": True
+    }
+}
+```
+
+### 🎯 Project-Specific Agent Types
+
+**NetBox Plugin Specialist Agents:**
+- **`netbox-model-expert`**: Django model design and migration coordination
+- **`kubernetes-sync-specialist`**: K8s cluster integration and sync logic
+- **`gitops-coordinator`**: GitOps workflow and repository management
+- **`fabric-template-expert`**: Jinja2 template processing and validation
+- **`periodic-sync-monitor`**: RQ job scheduling and monitoring
+- **`css-architecture-specialist`**: Frontend asset optimization and consolidation
+- **`tdd-integration-expert`**: Test suite coordination and validation
+- **`production-validator`**: Deployment validation and health monitoring
+
+### 🔄 Memory Patterns for Plugin Development
+
+**Project Memory Structure:**
+```json
+{
+  "hedgehog-plugin": {
+    "fabric-sync": {
+      "last-successful-sync": "timestamp",
+      "sync-conflicts": "resolution-log",
+      "k8s-cluster-state": "cached-state"
+    },
+    "periodic-jobs": {
+      "job-status": "running|stopped|error",
+      "last-execution": "timestamp",
+      "error-count": "number"
+    },
+    "frontend-assets": {
+      "css-bundle-hash": "hash",
+      "js-bundle-hash": "hash",
+      "template-cache": "compiled-templates"
+    }
+  }
+}
+```
+
+### 🎨 Visual Plugin Development Status
+
+```
+🔧 NetBox Plugin Development Status
+├── 📊 Core Features: 85% complete
+├── 🔄 Sync Engine: Active (last sync: 2 min ago)
+├── 🎨 Frontend: Optimized (CSS: 45KB → 12KB)
+├── 🧪 Test Coverage: 92% (Integration: 87%)
+├── 🐳 Container: Ready (Health: ✅)
+└── 🚀 Production: Validated
+
+Component Health:
+├── 🟢 Database Models: All migrations applied
+├── 🟢 GitOps Sync: Bidirectional (HNP↔Git), K8s discovery active
+├── 🟢 Periodic Jobs: 60s interval, 0 failures
+├── 🟢 API Endpoints: All authenticated and tested
+├── 🟡 Frontend Assets: Optimization in progress
+└── 🟢 K8s Integration: 3 clusters synchronized
+```
+
+### 🚀 Plugin Development Quick Start
+
+**Initialize Plugin Development Swarm:**
+```javascript
+[BatchTool - Plugin Development Setup]:
+  mcp__ruv-swarm__swarm_init { 
+    topology: "hierarchical", 
+    maxAgents: 10, 
+    strategy: "plugin-specialized" 
+  }
+  mcp__ruv-swarm__agent_spawn { type: "netbox-model-expert", name: "Model Architect" }
+  mcp__ruv-swarm__agent_spawn { type: "kubernetes-sync-specialist", name: "K8s Coordinator" }
+  mcp__ruv-swarm__agent_spawn { type: "gitops-coordinator", name: "GitOps Manager" }
+  mcp__ruv-swarm__agent_spawn { type: "fabric-template-expert", name: "Template Processor" }
+  mcp__ruv-swarm__agent_spawn { type: "periodic-sync-monitor", name: "Job Scheduler" }
+  mcp__ruv-swarm__agent_spawn { type: "css-architecture-specialist", name: "Frontend Optimizer" }
+  mcp__ruv-swarm__agent_spawn { type: "tdd-integration-expert", name: "Test Coordinator" }
+  mcp__ruv-swarm__agent_spawn { type: "production-validator", name: "Deployment Validator" }
+  
+  mcp__ruv-swarm__memory_usage { 
+    action: "store", 
+    key: "plugin/init", 
+    value: { 
+      project: "hedgehog-netbox-plugin",
+      version: "1.0.0",
+      coordination_mode: "enhanced-hive"
+    } 
+  }
+```
+
+This enhanced configuration preserves all ruv-swarm optimizations while adding specialized coordination patterns for NetBox plugin development, GitOps workflows, and Enhanced Hive Orchestration capabilities.
