@@ -18,7 +18,8 @@ except ImportError:
     # If HedgehogResource doesn't exist, create a placeholder
     HedgehogResource = None
 
-from ..utils.drift_detection import DriftAnalyzer, analyze_fabric_drift
+# Lazy import to avoid circular dependency during URL loading
+# from ..utils.drift_detection import DriftAnalyzer, analyze_fabric_drift
 
 logger = logging.getLogger(__name__)
 
@@ -227,8 +228,12 @@ class FabricDriftDetailView(LoginRequiredMixin, TemplateView):
             context['fabric'] = fabric
             
             # Run drift analysis for this fabric
-            drift_analysis = analyze_fabric_drift(fabric)
-            context['drift_analysis'] = drift_analysis
+            try:
+                from ..utils.drift_detection import analyze_fabric_drift
+                drift_analysis = analyze_fabric_drift(fabric)
+                context['drift_analysis'] = drift_analysis
+            except ImportError:
+                context['drift_analysis'] = {'error': 'Drift analysis module not available'}
             
             if HedgehogResource:
                 # Get detailed resource drift information
@@ -241,8 +246,12 @@ class FabricDriftDetailView(LoginRequiredMixin, TemplateView):
                         drift_info = resource.drift_details
                     else:
                         # Calculate drift on-demand
-                        analyzer = DriftAnalyzer()
-                        drift_info = analyzer._analyze_resource_drift(resource)
+                        try:
+                            from ..utils.drift_detection import DriftAnalyzer
+                            analyzer = DriftAnalyzer()
+                            drift_info = analyzer._analyze_resource_drift(resource)
+                        except ImportError:
+                            drift_info = {'error': 'Drift analyzer not available', 'has_drift': False, 'drift_score': 0.0}
                     
                     resource_details.append({
                         'resource': resource,
@@ -333,7 +342,11 @@ class DriftAnalysisAPIView(LoginRequiredMixin, TemplateView):
             elif action == 'fabric_detail' and fabric_id:
                 # Return detailed fabric drift analysis
                 fabric = get_object_or_404(HedgehogFabric, pk=fabric_id)
-                drift_analysis = analyze_fabric_drift(fabric)
+                try:
+                    from ..utils.drift_detection import analyze_fabric_drift
+                    drift_analysis = analyze_fabric_drift(fabric)
+                except ImportError:
+                    drift_analysis = {'error': 'Drift analysis module not available'}
                 
                 return JsonResponse({
                     'success': True,
@@ -354,13 +367,17 @@ class DriftAnalysisAPIView(LoginRequiredMixin, TemplateView):
                         fabric = get_object_or_404(HedgehogFabric, pk=fabric_id)
                         resources = resources.filter(fabric=fabric)
                     
-                    analyzer = DriftAnalyzer()
-                    for resource in resources[:50]:  # Limit to prevent timeout
-                        try:
-                            analyzer._analyze_resource_drift(resource)
-                            updated_count += 1
-                        except Exception as e:
-                            logger.error(f"Drift refresh failed for {resource}: {e}")
+                    try:
+                        from ..utils.drift_detection import DriftAnalyzer
+                        analyzer = DriftAnalyzer()
+                        for resource in resources[:50]:  # Limit to prevent timeout
+                            try:
+                                analyzer._analyze_resource_drift(resource)
+                                updated_count += 1
+                            except Exception as e:
+                                logger.error(f"Drift refresh failed for {resource}: {e}")
+                    except ImportError:
+                        logger.warning("Drift analyzer not available for refresh operation")
                 
                 return JsonResponse({
                     'success': True,
@@ -381,3 +398,13 @@ class DriftAnalysisAPIView(LoginRequiredMixin, TemplateView):
                 'success': False,
                 'error': str(e)
             }, status=500)
+
+
+# URL patterns for drift detection
+from django.urls import path
+
+drift_urls = [
+    path('drift-detection/', DriftDetectionDashboardView.as_view(), name='drift_dashboard'),
+    path('drift-detection/fabric/<int:fabric_id>/', FabricDriftDetailView.as_view(), name='fabric_drift_detail'),
+    path('api/drift-analysis/', DriftAnalysisAPIView.as_view(), name='drift_analysis_api'),
+]

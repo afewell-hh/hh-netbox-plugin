@@ -27,11 +27,7 @@ from .views.git_repository_views import (
 )
 
 # Import drift dashboard views
-from .views.drift_dashboard import (
-    DriftDetectionDashboardView,
-    FabricDriftDetailView,
-    DriftAnalysisAPIView
-)
+from .views.drift_dashboard import drift_urls
 
 # Import productivity dashboard views
 from .views.productivity_dashboard import productivity_urls
@@ -397,11 +393,6 @@ urlpatterns = [
     path('fabrics/<int:pk>/sync/', FabricSyncView.as_view(), name='fabric_sync'),
     path('fabrics/<int:pk>/github-sync/', FabricGitHubSyncView.as_view(), name='fabric_github_sync'),
     
-    # Drift Detection Dashboard
-    path('drift-detection/', DriftDetectionDashboardView.as_view(), name='drift_dashboard'),
-    path('drift-detection/fabric/<int:fabric_id>/', FabricDriftDetailView.as_view(), name='fabric_drift_detail'),
-    path('api/drift-analysis/', DriftAnalysisAPIView.as_view(), name='drift_analysis_api'),
-    
     # CR List pages
     path('vpcs/', VPCListView.as_view(), name='vpc_list'),
     path('vpcs/<int:pk>/', VPCDetailView.as_view(), name='vpc_detail'),
@@ -454,6 +445,9 @@ urlpatterns = [
 
 # Include productivity dashboard URLs
 urlpatterns += productivity_urls
+
+# Include drift detection URLs
+urlpatterns += drift_urls
 
 # Include GitOps Dashboard URLs (Phase 3 Integration)
 urlpatterns += get_dashboard_urls()

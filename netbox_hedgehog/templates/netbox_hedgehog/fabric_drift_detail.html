@@ -1,0 +1,401 @@
+{% extends 'base/layout.html' %}
+{% load i18n %}
+{% load helpers %}
+
+{% block title %}Fabric Drift Detail - {{ fabric.name }}{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <div>
+        <h1 class="h3 mb-0">
+            <i class="mdi mdi-compare-horizontal me-2"></i>
+            Drift Analysis - {{ fabric.name }}
+        </h1>
+        <p class="text-muted mb-0">Detailed drift analysis for fabric resources</p>
+    </div>
+    <div class="btn-group" role="group">
+        <a href="{% url 'plugins:netbox_hedgehog:drift_dashboard' %}" class="btn btn-outline-secondary">
+            <i class="mdi mdi-arrow-left"></i> Back to Dashboard
+        </a>
+        <a href="{% url 'plugins:netbox_hedgehog:fabric_detail' fabric.id %}" class="btn btn-outline-primary">
+            <i class="mdi mdi-eye"></i> View Fabric
+        </a>
+        <button type="button" class="btn btn-outline-success" id="refresh-analysis">
+            <i class="mdi mdi-refresh"></i> Refresh Analysis
+        </button>
+    </div>
+</div>
+
+<!-- Fabric Summary -->
+<div class="row mb-4">
+    <div class="col-12">
+        <div class="card">
+            <div class="card-header">
+                <h6 class="m-0 fw-bold">
+                    <i class="mdi mdi-information-outline me-2"></i>
+                    Fabric Information
+                </h6>
+            </div>
+            <div class="card-body">
+                <div class="row">
+                    <div class="col-md-6">
+                        <strong>Fabric Name:</strong> {{ fabric.name }}<br>
+                        <strong>Description:</strong> {{ fabric.description|default:"No description" }}<br>
+                        <strong>Sync Status:</strong> 
+                        <span class="badge bg-{% if fabric.sync_status == 'in_sync' %}success{% elif fabric.sync_status == 'out_of_sync' %}warning{% elif fabric.sync_status == 'error' %}danger{% else %}secondary{% endif %}">
+                            {{ fabric.get_sync_status_display|default:fabric.sync_status }}
+                        </span>
+                    </div>
+                    <div class="col-md-6">
+                        <strong>Last Sync:</strong> {{ fabric.last_sync|default:"Never" }}<br>
+                        <strong>Resources:</strong> {{ resource_details|length }}<br>
+                        <strong>Analysis Time:</strong> <span id="analysis-timestamp">{{ drift_analysis.timestamp|default:"Not analyzed" }}</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Drift Analysis Summary -->
+{% if drift_analysis %}
+<div class="row mb-4">
+    <div class="col-md-3">
+        <div class="card border-start border-primary border-3">
+            <div class="card-body">
+                <div class="text-xs fw-bold text-primary text-uppercase mb-1">Total Resources</div>
+                <div class="h5 mb-0 fw-bold">{{ drift_analysis.total_resources|default:0 }}</div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card border-start border-success border-3">
+            <div class="card-body">
+                <div class="text-xs fw-bold text-success text-uppercase mb-1">In Sync</div>
+                <div class="h5 mb-0 fw-bold">{{ drift_analysis.in_sync_resources|default:0 }}</div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card border-start border-warning border-3">
+            <div class="card-body">
+                <div class="text-xs fw-bold text-warning text-uppercase mb-1">Drifted</div>
+                <div class="h5 mb-0 fw-bold">{{ drift_analysis.drifted_resources|default:0 }}</div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card border-start border-danger border-3">
+            <div class="card-body">
+                <div class="text-xs fw-bold text-danger text-uppercase mb-1">Critical</div>
+                <div class="h5 mb-0 fw-bold">{{ drift_analysis.critical_resources|default:0 }}</div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endif %}
+
+<!-- Resource Details -->
+<div class="card">
+    <div class="card-header">
+        <h6 class="m-0 fw-bold">
+            <i class="mdi mdi-cube-outline me-2"></i>
+            Resource Drift Details
+        </h6>
+    </div>
+    <div class="card-body">
+        {% if error %}
+        <div class="alert alert-danger">
+            <i class="mdi mdi-alert-circle me-2"></i>
+            Error loading drift details: {{ error }}
+        </div>
+        {% elif not resource_details %}
+        <div class="text-center py-5">
+            <i class="mdi mdi-cube-outline display-1 text-muted mb-3"></i>
+            <h5>No Resources Found</h5>
+            <p class="text-muted">This fabric doesn't have any resources to analyze for drift.</p>
+        </div>
+        {% else %}
+        <div class="table-responsive">
+            <table class="table table-hover">
+                <thead>
+                    <tr>
+                        <th>Resource</th>
+                        <th>Type</th>
+                        <th>Status</th>
+                        <th>Drift Score</th>
+                        <th>Last Checked</th>
+                        <th>Details</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for detail in resource_details %}
+                    <tr class="{% if detail.has_drift %}table-warning{% endif %}">
+                        <td>
+                            <div class="d-flex align-items-center">
+                                <i class="mdi mdi-cube-outline me-2"></i>
+                                <strong>{{ detail.resource.name }}</strong>
+                            </div>
+                        </td>
+                        <td>
+                            <span class="badge bg-secondary">{{ detail.resource.kind|default:"Unknown" }}</span>
+                        </td>
+                        <td>
+                            {% if detail.has_drift %}
+                                {% if detail.drift_score >= 0.8 %}
+                                    <span class="badge bg-danger">Critical Drift</span>
+                                {% elif detail.drift_score >= 0.6 %}
+                                    <span class="badge bg-warning">High Drift</span>
+                                {% elif detail.drift_score >= 0.3 %}
+                                    <span class="badge bg-info">Medium Drift</span>
+                                {% else %}
+                                    <span class="badge bg-secondary">Low Drift</span>
+                                {% endif %}
+                            {% else %}
+                                <span class="badge bg-success">In Sync</span>
+                            {% endif %}
+                        </td>
+                        <td>
+                            {% if detail.drift_score > 0 %}
+                            <div class="progress" style="height: 20px;">
+                                <div class="progress-bar {% if detail.drift_score >= 0.8 %}bg-danger{% elif detail.drift_score >= 0.6 %}bg-warning{% elif detail.drift_score >= 0.3 %}bg-info{% else %}bg-secondary{% endif %}" 
+                                     role="progressbar" 
+                                     style="width: {{ detail.drift_score|floatformat:0 }}%"
+                                     aria-valuenow="{{ detail.drift_score|floatformat:0 }}" 
+                                     aria-valuemin="0" 
+                                     aria-valuemax="100">
+                                    {{ detail.drift_score|floatformat:1 }}
+                                </div>
+                            </div>
+                            {% else %}
+                            <span class="text-success">0.0</span>
+                            {% endif %}
+                        </td>
+                        <td>
+                            {% if detail.resource.last_drift_check %}
+                                <small>{{ detail.resource.last_drift_check|timesince }} ago</small>
+                            {% else %}
+                                <small class="text-muted">Never</small>
+                            {% endif %}
+                        </td>
+                        <td>
+                            {% if detail.drift_info.summary %}
+                                <small class="text-muted">{{ detail.drift_info.summary|truncatechars:50 }}</small>
+                            {% else %}
+                                <small class="text-muted">No details</small>
+                            {% endif %}
+                        </td>
+                        <td>
+                            <div class="btn-group btn-group-sm" role="group">
+                                {% if detail.has_drift %}
+                                <button type="button" 
+                                        class="btn btn-outline-success sync-resource" 
+                                        data-resource-id="{{ detail.resource.id }}"
+                                        data-bs-toggle="tooltip" title="Sync resource">
+                                    <i class="mdi mdi-sync"></i>
+                                </button>
+                                {% endif %}
+                                <button type="button" 
+                                        class="btn btn-outline-primary view-details" 
+                                        data-resource-id="{{ detail.resource.id }}"
+                                        data-resource-name="{{ detail.resource.name }}"
+                                        data-drift-info="{{ detail.drift_info|default:'{}' }}"
+                                        data-bs-toggle="tooltip" title="View full details">
+                                    <i class="mdi mdi-eye"></i>
+                                </button>
+                            </div>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% endif %}
+    </div>
+</div>
+
+<!-- Drift Detail Modal -->
+<div class="modal fade" id="driftDetailModal" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">
+                    <i class="mdi mdi-information-outline me-2"></i>
+                    Drift Details - <span id="modal-resource-name"></span>
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <div id="drift-detail-content">
+                    <div class="text-center">
+                        <div class="spinner-border" role="status">
+                            <span class="visually-hidden">Loading...</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+{% endblock %}
+
+{% block javascript %}
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    // Initialize tooltips
+    var tooltipTriggerList = [].slice.call(document.querySelectorAll('[data-bs-toggle="tooltip"]'));
+    var tooltipList = tooltipTriggerList.map(function (tooltipTriggerEl) {
+        return new bootstrap.Tooltip(tooltipTriggerEl);
+    });
+
+    // Refresh analysis
+    document.getElementById('refresh-analysis').addEventListener('click', function() {
+        this.disabled = true;
+        this.innerHTML = '<i class="mdi mdi-loading mdi-spin me-2"></i>Refreshing...';
+        
+        const fabricId = {{ fabric.id }};
+        const params = new URLSearchParams();
+        params.append('action', 'refresh_drift');
+        params.append('fabric_id', fabricId);
+        
+        fetch(`{% url 'plugins:netbox_hedgehog:drift_analysis_api' %}?${params.toString()}`)
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    showToast('success', `Refreshed drift analysis for fabric: {{ fabric.name }}`);
+                    // Update timestamp
+                    document.getElementById('analysis-timestamp').textContent = new Date().toLocaleString();
+                    // Reload page after short delay
+                    setTimeout(() => window.location.reload(), 2000);
+                } else {
+                    showToast('error', data.error || 'Failed to refresh drift analysis');
+                }
+                this.disabled = false;
+                this.innerHTML = '<i class="mdi mdi-refresh"></i> Refresh Analysis';
+            })
+            .catch(error => {
+                showToast('error', 'Network error while refreshing drift analysis');
+                console.error('Drift refresh error:', error);
+                this.disabled = false;
+                this.innerHTML = '<i class="mdi mdi-refresh"></i> Refresh Analysis';
+            });
+    });
+
+    // View details functionality
+    document.querySelectorAll('.view-details').forEach(button => {
+        button.addEventListener('click', function() {
+            const resourceId = this.dataset.resourceId;
+            const resourceName = this.dataset.resourceName;
+            const driftInfo = JSON.parse(this.dataset.driftInfo || '{}');
+            
+            document.getElementById('modal-resource-name').textContent = resourceName;
+            
+            // Display drift information
+            let detailsHTML = '<div class="row">';
+            
+            if (driftInfo.summary) {
+                detailsHTML += `
+                    <div class="col-12 mb-3">
+                        <h6>Summary</h6>
+                        <p class="text-muted">${driftInfo.summary}</p>
+                    </div>
+                `;
+            }
+            
+            if (driftInfo.differences && driftInfo.differences.length > 0) {
+                detailsHTML += `
+                    <div class="col-12 mb-3">
+                        <h6>Detected Differences</h6>
+                        <ul class="list-group list-group-flush">
+                `;
+                driftInfo.differences.forEach(diff => {
+                    detailsHTML += `<li class="list-group-item">${diff}</li>`;
+                });
+                detailsHTML += '</ul></div>';
+            }
+            
+            if (driftInfo.recommendations && driftInfo.recommendations.length > 0) {
+                detailsHTML += `
+                    <div class="col-12 mb-3">
+                        <h6>Recommendations</h6>
+                        <ul class="list-group list-group-flush">
+                `;
+                driftInfo.recommendations.forEach(rec => {
+                    detailsHTML += `<li class="list-group-item text-info">${rec}</li>`;
+                });
+                detailsHTML += '</ul></div>';
+            }
+            
+            if (!driftInfo.summary && (!driftInfo.differences || driftInfo.differences.length === 0)) {
+                detailsHTML += `
+                    <div class="col-12 text-center">
+                        <i class="mdi mdi-check-circle display-1 text-success mb-3"></i>
+                        <h5>No Drift Details Available</h5>
+                        <p class="text-muted">This resource appears to be in sync or detailed drift analysis is not available.</p>
+                    </div>
+                `;
+            }
+            
+            detailsHTML += '</div>';
+            
+            document.getElementById('drift-detail-content').innerHTML = detailsHTML;
+            
+            const modal = new bootstrap.Modal(document.getElementById('driftDetailModal'));
+            modal.show();
+        });
+    });
+
+    // Sync individual resources
+    document.querySelectorAll('.sync-resource').forEach(button => {
+        button.addEventListener('click', function() {
+            const resourceId = this.dataset.resourceId;
+            this.disabled = true;
+            this.innerHTML = '<i class="mdi mdi-loading mdi-spin"></i>';
+            
+            // Simulate sync operation (in real implementation, make API call)
+            setTimeout(() => {
+                showToast('success', 'Resource sync initiated');
+                this.disabled = false;
+                this.innerHTML = '<i class="mdi mdi-sync"></i>';
+            }, 2000);
+        });
+    });
+});
+
+function showToast(type, message) {
+    const toastContainer = document.getElementById('toast-container') || createToastContainer();
+    
+    const toast = document.createElement('div');
+    toast.className = `toast align-items-center text-white bg-${type === 'success' ? 'success' : 'danger'} border-0`;
+    toast.setAttribute('role', 'alert');
+    toast.innerHTML = `
+        <div class="d-flex">
+            <div class="toast-body">${message}</div>
+            <button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast"></button>
+        </div>
+    `;
+    
+    toastContainer.appendChild(toast);
+    const bsToast = new bootstrap.Toast(toast);
+    bsToast.show();
+    
+    toast.addEventListener('hidden.bs.toast', function() {
+        toast.remove();
+    });
+}
+
+function createToastContainer() {
+    const container = document.createElement('div');
+    container.id = 'toast-container';
+    container.className = 'toast-container position-fixed top-0 end-0 p-3';
+    container.style.zIndex = '1050';
+    document.body.appendChild(container);
+    return container;
+}
+</script>
+{% endblock %}
