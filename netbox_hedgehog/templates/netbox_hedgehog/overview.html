@@ -53,13 +53,15 @@
                             </div>
                         </div>
                         <div class="col-md-3">
-                            <div class="card bg-warning text-white">
-                                <div class="card-body text-center">
-                                    <h2>{{ gitops_stats.drift_detected_count|default:0 }}</h2>
-                                    <p class="mb-0">Drift Detected</p>
-                                    <small class="opacity-75">Needs attention</small>
+                            <a href="{% url 'plugins:netbox_hedgehog:drift_dashboard' %}" class="text-decoration-none">
+                                <div class="card bg-warning text-white">
+                                    <div class="card-body text-center">
+                                        <h2>{{ gitops_stats.drift_detected_count|default:0 }}</h2>
+                                        <p class="mb-0">Drift Detected</p>
+                                        <small class="opacity-75">Needs attention</small>
+                                    </div>
                                 </div>
-                            </div>
+                            </a>
                         </div>
                     </div>
                     
