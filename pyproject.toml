@@ -2,6 +2,29 @@
 requires = ["setuptools>=45", "wheel"]
 build-backend = "setuptools.build_meta"
 
+[project]
+name = "netbox-hedgehog"
+version = "0.2.0"
+description = "Manage Hedgehog fabric CRDs with GitOps integration"
+authors = [{name = "Hedgehog", email = "support@hedgehog.cloud"}]
+license = {text = "Apache-2.0"}
+requires-python = ">=3.8"
+dependencies = [
+    "kubernetes>=20.0.0",
+    "pyyaml>=5.4.0",
+    "jsonschema>=3.2.0",
+    "GitPython>=3.1.0",
+]
+
+[project.urls]
+Homepage = "https://hedgehog.cloud"
+Repository = "https://github.com/hedgehogoss/netbox-plugin-hedgehog"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["netbox_hedgehog*"]
+exclude = ["tests*", "docs*", "scripts*", "analysis*", "hemk*", "hoss*", "hive*", "memory*", "backups*", "archive*", "hossfab*", "gitignore*", "media_test*", "validation*", "static_test*", "sync_service*", "coordination*", "node_modules*", "claude_memory*", "test_file_backups*", "project_management*", "architecture_specifications*", "hnp_gitops_architecture_issues*"]
+
 [tool.black]
 line-length = 88
 target-version = ['py38']

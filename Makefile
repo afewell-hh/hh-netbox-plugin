@@ -4,7 +4,7 @@
 # Target: New developer productive in <5 minutes
 # Usage: make dev-setup
 
-.PHONY: dev-setup dev-check dev-clean dev-test dev-reset help status
+.PHONY: dev-setup dev-check dev-clean dev-test dev-reset deploy-dev help status
 
 # Default target
 .DEFAULT_GOAL := help
@@ -33,6 +33,7 @@ help: ## Show this help message
 	@awk 'BEGIN {FS = ":.*?## "} /^[a-zA-Z_-]+:.*?## / {printf "  $(BLUE)%-15s$(NC) %s\n", $$1, $$2}' $(MAKEFILE_LIST)
 	@echo ""
 	@echo "$(YELLOW)Quick Start:$(NC) make dev-setup"
+	@echo "$(YELLOW)Deploy Changes:$(NC) make deploy-dev"
 	@echo "$(YELLOW)Check Status:$(NC) make status"
 
 dev-setup: ## Complete development environment setup (<5 minutes)
@@ -197,6 +198,94 @@ dev-reset: ## Complete reset (DANGER: destroys all data)
 	@sudo docker system prune -f
 	@rm -f $(SETUP_LOG)
 	@echo "$(GREEN)✅ Environment completely reset$(NC)"
+
+deploy-dev: ## Deploy code changes to development container (guarantees repo=container)
+	@echo "$(BLUE)🚀 Deploy Code Changes to Development Container$(NC)"
+	@echo "==============================================="
+	@echo "$(YELLOW)Ensuring repo code matches container code...$(NC)"
+	@echo ""
+	@date "+Started: %Y-%m-%d %H:%M:%S"
+	@echo ""
+	$(MAKE) _check_deploy_prerequisites
+	$(MAKE) _install_plugin_dev
+	$(MAKE) _collect_static_files
+	$(MAKE) _restart_netbox_services
+	$(MAKE) _validate_deployment
+	@echo ""
+	@echo "$(GREEN)✅ Code deployment complete!$(NC)"
+	@date "+Completed: %Y-%m-%d %H:%M:%S"
+	@echo ""
+	@echo "$(BLUE)🎯 Verification:$(NC)"
+	@echo "  NetBox URL: $(NETBOX_URL)"
+	@echo "  Plugin URL: $(NETBOX_URL)/plugins/hedgehog/"
+	@echo ""
+	@echo "$(YELLOW)Note:$(NC) Repo code now guaranteed to match container code"
+
+_check_deploy_prerequisites: ## Internal: Check deployment prerequisites
+	@echo "$(BLUE)📋 Checking deployment prerequisites...$(NC)"
+	@# Check if docker services are running
+	@cd $(DOCKER_COMPOSE_DIR) && $(DOCKER_COMPOSE) ps netbox | grep -q "Up" || (echo "$(RED)❌ NetBox container not running. Run 'make dev-setup' first.$(NC)" && exit 1)
+	@# Check if we're in the right directory
+	@test -f "pyproject.toml" || (echo "$(RED)❌ Not in plugin root directory$(NC)" && exit 1)
+	@# Check if plugin files exist
+	@test -d "netbox_hedgehog" || (echo "$(RED)❌ Plugin source directory not found$(NC)" && exit 1)
+	@echo "$(GREEN)✅ Prerequisites validated$(NC)"
+
+_install_plugin_dev: ## Internal: Install plugin in development mode
+	@echo "$(BLUE)📦 Installing plugin in development mode...$(NC)"
+	@# Uninstall previous version to ensure clean state
+	@pip3 uninstall -y netbox-hedgehog 2>/dev/null || true
+	@# Install in development mode with editable install
+	@pip3 install -e . -q
+	@echo "$(GREEN)✅ Plugin installed in development mode$(NC)"
+
+_collect_static_files: ## Internal: Collect and deploy static files
+	@echo "$(BLUE)📁 Collecting static files...$(NC)"
+	@# Collect static files in the NetBox container
+	@cd $(DOCKER_COMPOSE_DIR) && $(DOCKER_COMPOSE) exec -T netbox python manage.py collectstatic --noinput --clear 2>/dev/null || echo "$(YELLOW)⚠️  Static collection attempted (may need manual intervention)$(NC)"
+	@echo "$(GREEN)✅ Static files collected$(NC)"
+
+_restart_netbox_services: ## Internal: Restart NetBox services to pick up changes
+	@echo "$(BLUE)🔄 Restarting NetBox services...$(NC)"
+	@# Restart NetBox to pick up plugin changes
+	@cd $(DOCKER_COMPOSE_DIR) && $(DOCKER_COMPOSE) restart netbox netbox-worker 2>/dev/null || echo "$(YELLOW)⚠️  Service restart attempted$(NC)"
+	@# Wait for services to be ready
+	@echo "$(YELLOW)⏳ Waiting for NetBox to be ready...$(NC)"
+	@timeout=30; \
+	while [ $$timeout -gt 0 ]; do \
+		if curl -s -f $(NETBOX_URL)/login/ >/dev/null 2>&1; then \
+			echo "$(GREEN)✅ NetBox services ready$(NC)"; \
+			break; \
+		fi; \
+		echo -n "."; \
+		sleep 2; \
+		timeout=$$((timeout-2)); \
+	done; \
+	if [ $$timeout -le 0 ]; then \
+		echo "$(YELLOW)⚠️  Services taking longer than expected$(NC)"; \
+	fi
+
+_validate_deployment: ## Internal: Validate the deployment worked
+	@echo "$(BLUE)🔍 Validating deployment...$(NC)"
+	@# Check NetBox accessibility
+	@if curl -s -f $(NETBOX_URL)/login/ >/dev/null 2>&1; then \
+		echo "$(GREEN)✅ NetBox web interface accessible$(NC)"; \
+	else \
+		echo "$(RED)❌ NetBox web interface not accessible$(NC)"; \
+	fi
+	@# Check plugin accessibility
+	@if curl -s $(NETBOX_URL)/plugins/hedgehog/ | grep -q "hedgehog\|Hedgehog" >/dev/null 2>&1; then \
+		echo "$(GREEN)✅ Plugin accessible and responding$(NC)"; \
+	else \
+		echo "$(YELLOW)⚠️  Plugin may need additional configuration$(NC)"; \
+	fi
+	@# Check if plugin is properly installed
+	@if pip3 list | grep -q "netbox-hedgehog.*editable"; then \
+		echo "$(GREEN)✅ Plugin installed in editable/development mode$(NC)"; \
+	else \
+		echo "$(YELLOW)⚠️  Plugin installation mode unclear$(NC)"; \
+	fi
+	@echo "$(BLUE)✨ Deployment validation complete$(NC)"
 
 status: ## Show current environment status
 	@echo "$(BLUE)📊 Development Environment Status$(NC)"

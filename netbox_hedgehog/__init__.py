@@ -1,3 +1,4 @@
+# Hedgehog NetBox Plugin - Enhanced Hive Orchestration Integration
 from netbox.plugins import PluginConfig
 
 class HedgehogPluginConfig(PluginConfig):
