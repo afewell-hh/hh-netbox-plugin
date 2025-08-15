@@ -6,91 +6,91 @@ menu = PluginMenu(
     groups=(
         ('Overview', (
             PluginMenuItem(
-                link='plugins:netbox_hedgehog:overview',
+                link='plugins:hedgehog:overview',
                 link_text='Dashboard',
                 buttons=()
             ),
             # Network Topology - Hidden for now as feature is not implemented
             # PluginMenuItem(
-            #     link='plugins:netbox_hedgehog:topology',
+            #     link='plugins:hedgehog:topology',
             #     link_text='Network Topology',
             #     buttons=()
             # ),
         )),
         ('Infrastructure', (
             PluginMenuItem(
-                link='plugins:netbox_hedgehog:fabric_list',
+                link='plugins:hedgehog:fabric_list',
                 link_text='Fabrics',
                 buttons=()
             ),
             PluginMenuItem(
-                link='plugins:netbox_hedgehog:gitrepository_list',
+                link='plugins:hedgehog:gitrepository_list',
                 link_text='Git Repositories',
                 buttons=()
             ),
         )),
         ('VPC API', (
             PluginMenuItem(
-                link='plugins:netbox_hedgehog:vpc_list',
+                link='plugins:hedgehog:vpc_list',
                 link_text='VPCs',
                 buttons=()
             ),
             PluginMenuItem(
-                link='plugins:netbox_hedgehog:external_list',
+                link='plugins:hedgehog:external_list',
                 link_text='External Systems',
                 buttons=()
             ),
             PluginMenuItem(
-                link='plugins:netbox_hedgehog:ipv4namespace_list',
+                link='plugins:hedgehog:ipv4namespace_list',
                 link_text='IPv4 Namespaces',
                 buttons=()
             ),
         )),
         ('Attachments & Peering', (
             PluginMenuItem(
-                link='plugins:netbox_hedgehog:externalattachment_list',
+                link='plugins:hedgehog:externalattachment_list',
                 link_text='External Attachments',
                 buttons=()
             ),
             PluginMenuItem(
-                link='plugins:netbox_hedgehog:externalpeering_list',
+                link='plugins:hedgehog:externalpeering_list',
                 link_text='External Peerings',
                 buttons=()
             ),
             PluginMenuItem(
-                link='plugins:netbox_hedgehog:vpcattachment_list',
+                link='plugins:hedgehog:vpcattachment_list',
                 link_text='VPC Attachments',
                 buttons=()
             ),
             PluginMenuItem(
-                link='plugins:netbox_hedgehog:vpcpeering_list',
+                link='plugins:hedgehog:vpcpeering_list',
                 link_text='VPC Peerings',
                 buttons=()
             ),
         )),
         ('Wiring API', (
             PluginMenuItem(
-                link='plugins:netbox_hedgehog:connection_list',
+                link='plugins:hedgehog:connection_list',
                 link_text='Connections',
                 buttons=()
             ),
             PluginMenuItem(
-                link='plugins:netbox_hedgehog:switch_list',
+                link='plugins:hedgehog:switch_list',
                 link_text='Switches',
                 buttons=()
             ),
             PluginMenuItem(
-                link='plugins:netbox_hedgehog:server_list',
+                link='plugins:hedgehog:server_list',
                 link_text='Servers',
                 buttons=()
             ),
             PluginMenuItem(
-                link='plugins:netbox_hedgehog:switchgroup_list',
+                link='plugins:hedgehog:switchgroup_list',
                 link_text='Switch Groups',
                 buttons=()
             ),
             PluginMenuItem(
-                link='plugins:netbox_hedgehog:vlannamespace_list',
+                link='plugins:hedgehog:vlannamespace_list',
                 link_text='VLAN Namespaces',
                 buttons=()
             ),

@@ -5,23 +5,20 @@ Provides comprehensive drift analysis interface with industry-aligned drift defi
 
 from django.views.generic import TemplateView
 from django.contrib.auth.mixins import LoginRequiredMixin
-from django.http import JsonResponse
+from django.http import JsonResponse, HttpResponse
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
 from django.db.models import Q, Avg
 import logging
 
-from ..models import HedgehogFabric
-try:
-    from ..models import HedgehogResource
-except ImportError:
-    # If HedgehogResource doesn't exist, create a placeholder
-    HedgehogResource = None
+from ..models import HedgehogFabric, HedgehogResource
 
 # Lazy import to avoid circular dependency during URL loading
 # from ..utils.drift_detection import DriftAnalyzer, analyze_fabric_drift
 
 logger = logging.getLogger(__name__)
+
+# Import debugging removed - HedgehogResource import is now direct and reliable
 
 
 class DriftDetectionDashboardView(LoginRequiredMixin, TemplateView):
@@ -42,10 +39,7 @@ class DriftDetectionDashboardView(LoginRequiredMixin, TemplateView):
             # Get all fabrics for filter dropdown
             context['all_fabrics'] = HedgehogFabric.objects.all().order_by('name')
             
-            # If HedgehogResource model doesn't exist, show placeholder data
-            if HedgehogResource is None:
-                context.update(self._get_placeholder_context())
-                return context
+            # HedgehogResource model always exists now - removed placeholder fallback
             
             # Build base queryset for drifted resources
             resources_query = HedgehogResource.objects.exclude(
@@ -157,7 +151,7 @@ class DriftDetectionDashboardView(LoginRequiredMixin, TemplateView):
         return context
 
     def _get_placeholder_context(self):
-        """Get placeholder context when HedgehogResource model doesn't exist"""
+        """DEPRECATED: Placeholder context method - no longer used since HedgehogResource always exists"""
         # Create demo data to show dashboard functionality
         demo_resources = [
             {
@@ -235,7 +229,7 @@ class FabricDriftDetailView(LoginRequiredMixin, TemplateView):
             except ImportError:
                 context['drift_analysis'] = {'error': 'Drift analysis module not available'}
             
-            if HedgehogResource:
+            # HedgehogResource always exists - removed condition
                 # Get detailed resource drift information
                 resources = HedgehogResource.objects.filter(fabric=fabric)
                 
@@ -286,7 +280,7 @@ class DriftAnalysisAPIView(LoginRequiredMixin, TemplateView):
             
             if action == 'summary':
                 # Return dashboard summary data
-                if HedgehogResource:
+                # HedgehogResource always exists - removed condition
                     total_resources = HedgehogResource.objects.count()
                     drifted_resources = HedgehogResource.objects.exclude(drift_status='in_sync')
                     
@@ -316,28 +310,7 @@ class DriftAnalysisAPIView(LoginRequiredMixin, TemplateView):
                         'fabric_data': fabric_drift_data,
                         'timestamp': timezone.now().isoformat()
                     })
-                else:
-                    # Demo data when HedgehogResource doesn't exist
-                    return JsonResponse({
-                        'success': True,
-                        'summary': {
-                            'total_resources': 25,
-                            'drifted_count': 2,
-                            'in_sync_count': 23,
-                            'critical_count': 1
-                        },
-                        'fabric_data': [
-                            {
-                                'fabric_id': 1,
-                                'fabric_name': 'Demo Fabric',
-                                'total_resources': 25,
-                                'drifted_count': 2,
-                                'critical_count': 1,
-                                'avg_drift_score': 0.65
-                            }
-                        ],
-                        'timestamp': timezone.now().isoformat()
-                    })
+                # HedgehogResource always exists - removed demo data fallback
             
             elif action == 'fabric_detail' and fabric_id:
                 # Return detailed fabric drift analysis
@@ -360,12 +333,12 @@ class DriftAnalysisAPIView(LoginRequiredMixin, TemplateView):
                 # Trigger drift recalculation
                 updated_count = 0
                 
-                if HedgehogResource:
-                    resources = HedgehogResource.objects.all()
-                    
-                    if fabric_id:
-                        fabric = get_object_or_404(HedgehogFabric, pk=fabric_id)
-                        resources = resources.filter(fabric=fabric)
+                # HedgehogResource always exists - removed condition
+                resources = HedgehogResource.objects.all()
+                
+                if fabric_id:
+                    fabric = get_object_or_404(HedgehogFabric, pk=fabric_id)
+                    resources = resources.filter(fabric=fabric)
                     
                     try:
                         from ..utils.drift_detection import DriftAnalyzer

@@ -14,7 +14,7 @@
         <p class="text-muted mb-0">Industry-aligned drift monitoring for Hedgehog resources</p>
     </div>
     <div class="btn-group" role="group">
-        <a href="{% url 'plugins:netbox_hedgehog:gitops_dashboard' %}" class="btn btn-outline-success" data-bs-toggle="tooltip" title="GitOps File Management">
+        <a href="{% url 'plugins:hedgehog:gitops-dashboard' %}" class="btn btn-outline-success" data-bs-toggle="tooltip" title="GitOps File Management">
             <i class="mdi mdi-git"></i> GitOps Dashboard
         </a>
         <button type="button" class="btn btn-outline-primary" id="refresh-drift" data-bs-toggle="tooltip" title="Refresh drift analysis">
@@ -140,7 +140,7 @@
                     <button type="submit" class="btn btn-primary me-2">
                         <i class="mdi mdi-magnify"></i> Apply Filters
                     </button>
-                    <a href="{% url 'plugins:netbox_hedgehog:drift_dashboard' %}" class="btn btn-outline-secondary">
+                    <a href="{% url 'plugins:hedgehog:drift_dashboard' %}" class="btn btn-outline-secondary">
                         <i class="mdi mdi-filter-remove"></i> Clear
                     </a>
                 </div>
@@ -199,7 +199,7 @@
                             </div>
                         </td>
                         <td>
-                            <a href="{% url 'plugins:netbox_hedgehog:fabric_detail' item.resource.fabric.id %}" class="text-decoration-none">
+                            <a href="{% url 'plugins:hedgehog:fabric_detail' item.resource.fabric.id %}" class="text-decoration-none">
                                 {{ item.resource.fabric.name }}
                             </a>
                         </td>
@@ -295,7 +295,7 @@ document.addEventListener('DOMContentLoaded', function() {
             params.append('fabric_id', fabricFilter);
         }
         
-        fetch(`{% url 'plugins:netbox_hedgehog:drift_analysis_api' %}?${params.toString()}`)
+        fetch(`{% url 'plugins:hedgehog:drift_analysis_api' %}?${params.toString()}`)
             .then(response => response.json())
             .then(data => {
                 modal.hide();

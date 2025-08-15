@@ -1,0 +1,17 @@
+HTTP/1.1 302 Found
+Content-Type: text/html; charset=utf-8
+Location: /plugins/hedgehog/drift-detection/
+X-Request-ID: 8a5b5145-8116-4739-908d-abe581cdf8e9
+Vary: HX-Request, Cookie, Accept-Language, origin
+X-Content-Type-Options: nosniff
+Referrer-Policy: same-origin
+Cross-Origin-Opener-Policy: same-origin
+X-Frame-Options: SAMEORIGIN
+Content-Length: 0
+Content-Language: en
+Set-Cookie:  messages=W1siX19qc29uX21lc3NhZ2UiLDAsMjUsIkxvZ2dlZCBpbiBhcyBhZG1pbi4iLCIiXV0:1umgnu:agVEomRciuqiO6YV2qzR1s7hGJU-EUENQYvP4vG0VL4; HttpOnly; Path=/; SameSite=Lax
+Set-Cookie:  csrftoken=YHHZSWHlAFiu8LlkzNNWlSJ9BEgVT9ND; expires=Thu, 13 Aug 2026 22:52:14 GMT; Max-Age=31449600; Path=/; SameSite=Lax
+Set-Cookie:  sessionid=jqf912eotmmgympyhf7kk6rx2fzf77qa; expires=Thu, 28 Aug 2025 22:52:14 GMT; HttpOnly; Max-Age=1209600; Path=/; SameSite=Lax
+Server: Unit/1.34.2
+Date: Thu, 14 Aug 2025 22:52:14 GMT
+
