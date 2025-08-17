@@ -1,0 +1,508 @@
+{{define "title"}}{{.Fabric.Name}} - Fabric Details - CNOC{{end}}
+
+{{define "content"}}
+<div class="container-fluid">
+    <!-- Breadcrumb Navigation -->
+    <nav aria-label="breadcrumb">
+        <ol class="breadcrumb">
+            <li class="breadcrumb-item"><a href="/">Dashboard</a></li>
+            <li class="breadcrumb-item"><a href="/fabrics">Fabrics</a></li>
+            <li class="breadcrumb-item active">{{.Fabric.Name}}</li>
+        </ol>
+    </nav>
+
+    <!-- Fabric Header Card -->
+    <div class="row">
+        <div class="col-12">
+            <div class="card">
+                <div class="card-header d-flex justify-content-between align-items-center">
+                    <div>
+                        <h3><i class="mdi mdi-server-network"></i> {{.Fabric.Name}}</h3>
+                        <small class="text-muted">{{.Fabric.Description}}</small>
+                    </div>
+                    <div>
+                        <button class="btn btn-success btn-sync-fabric" data-fabric-id="{{.Fabric.ID}}">
+                            <i class="mdi mdi-sync"></i> Sync from Git
+                        </button>
+                        <a href="/fabrics/{{.Fabric.ID}}/edit" class="btn btn-warning ms-2">
+                            <i class="mdi mdi-pencil"></i> Edit
+                        </a>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Drift Detection Spotlight -->
+    <div class="row mt-3">
+        <div class="col-12">
+            <div class="drift-spotlight {{.DriftSpotlight.StatusClass}}">
+                <div class="row align-items-center">
+                    <div class="col-md-8">
+                        <h4><i class="mdi mdi-delta"></i> Configuration Drift Detection</h4>
+                        <p class="mb-0">{{.DriftSpotlight.Message}}</p>
+                    </div>
+                    <div class="col-md-4">
+                        <div class="drift-summary-cards">
+                            <div class="drift-summary-card">
+                                <strong>{{.DriftSpotlight.DriftCount}}/{{.DriftSpotlight.TotalResources}}</strong>
+                                <br><small>Resources with Drift</small>
+                            </div>
+                            <div class="drift-summary-card">
+                                <strong>{{.DriftSpotlight.LastCheck}}</strong>
+                                <br><small>Last Check</small>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="row mt-3">
+                    <div class="col-12">
+                        <button class="btn btn-light btn-sm me-2" onclick="analyzeDrift('{{.Fabric.ID}}')">
+                            <i class="mdi mdi-magnify"></i> Analyze Drift
+                        </button>
+                        <button class="btn btn-light btn-sm me-2" onclick="checkForDrift('{{.Fabric.ID}}')">
+                            <i class="mdi mdi-refresh"></i> Check for Drift
+                        </button>
+                        <button class="btn btn-light btn-sm" data-bs-toggle="modal" data-bs-target="#driftConfigModal">
+                            <i class="mdi mdi-cog"></i> Configure Detection
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Statistics Cards -->
+    <div class="row mt-3">
+        <div class="col-md-3">
+            <div class="card bg-primary text-white">
+                <div class="card-body text-center">
+                    <h2>{{.Stats.TotalCRDs}}</h2>
+                    <p class="mb-0">Total CRDs</p>
+                    <small class="opacity-75">Managed resources</small>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card bg-success text-white">
+                <div class="card-body text-center">
+                    <h2>{{.Stats.VPCCount}}</h2>
+                    <p class="mb-0">VPCs</p>
+                    <small class="opacity-75">Virtual networks</small>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card bg-info text-white">
+                <div class="card-body text-center">
+                    <h2>{{.Stats.ConnectionCount}}</h2>
+                    <p class="mb-0">Connections</p>
+                    <small class="opacity-75">Network links</small>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card bg-warning text-white">
+                <div class="card-body text-center">
+                    <h2>{{.Stats.SwitchCount}}</h2>
+                    <p class="mb-0">Switches</p>
+                    <small class="opacity-75">Network switches</small>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- GitOps Configuration -->
+    <div class="row mt-3">
+        <div class="col-md-6">
+            <div class="card">
+                <div class="card-header">
+                    <h5><i class="mdi mdi-git"></i> GitOps Configuration</h5>
+                </div>
+                <div class="card-body">
+                    {{if .Fabric.GitRepository}}
+                    <table class="table table-sm">
+                        <tr>
+                            <td><strong>Repository:</strong></td>
+                            <td>
+                                <a href="/repositories/{{.Fabric.GitRepository.ID}}" class="text-decoration-none">
+                                    {{.Fabric.GitRepository.Name}}
+                                </a>
+                            </td>
+                        </tr>
+                        <tr>
+                            <td><strong>URL:</strong></td>
+                            <td><code>{{.Fabric.GitRepository.URL}}</code></td>
+                        </tr>
+                        <tr>
+                            <td><strong>Directory:</strong></td>
+                            <td><code>{{.Fabric.GitOpsDirectory}}</code></td>
+                        </tr>
+                        <tr>
+                            <td><strong>Branch:</strong></td>
+                            <td><code>{{.Fabric.GitOpsBranch}}</code></td>
+                        </tr>
+                        <tr>
+                            <td><strong>Status:</strong></td>
+                            <td>
+                                {{if eq .Fabric.GitRepository.ConnectionStatus "connected"}}
+                                    <span class="badge bg-success">
+                                        <i class="mdi mdi-check-circle"></i> Connected
+                                    </span>
+                                {{else}}
+                                    <span class="badge bg-danger">
+                                        <i class="mdi mdi-alert-circle"></i> {{.Fabric.GitRepository.ConnectionStatus}}
+                                    </span>
+                                {{end}}
+                            </td>
+                        </tr>
+                        <tr>
+                            <td><strong>Last Validated:</strong></td>
+                            <td>{{.Fabric.GitRepository.LastValidatedAgo}}</td>
+                        </tr>
+                    </table>
+                    <button class="btn btn-sm btn-info btn-test-connection" 
+                            data-repo-id="{{.Fabric.GitRepository.ID}}">
+                        <i class="mdi mdi-connection"></i> Test Connection
+                    </button>
+                    {{else}}
+                    <div class="alert alert-warning">
+                        <h6><i class="mdi mdi-alert"></i> No Git Repository Configured</h6>
+                        <p class="mb-2">This fabric is not connected to a Git repository.</p>
+                        <a href="/fabrics/{{.Fabric.ID}}/edit" class="btn btn-sm btn-warning">
+                            Configure GitOps
+                        </a>
+                    </div>
+                    {{end}}
+                </div>
+            </div>
+        </div>
+        
+        <div class="col-md-6">
+            <div class="card">
+                <div class="card-header">
+                    <h5><i class="mdi mdi-clock"></i> Sync Information</h5>
+                </div>
+                <div class="card-body">
+                    <table class="table table-sm">
+                        <tr>
+                            <td><strong>Sync Status:</strong></td>
+                            <td>
+                                {{if eq .Fabric.GitSyncStatus "in_sync"}}
+                                    <span class="badge bg-success">
+                                        <i class="mdi mdi-check-circle"></i> In Sync
+                                    </span>
+                                {{else if eq .Fabric.GitSyncStatus "out_of_sync"}}
+                                    <span class="badge bg-warning">
+                                        <i class="mdi mdi-alert"></i> Out of Sync
+                                    </span>
+                                {{else if eq .Fabric.GitSyncStatus "syncing"}}
+                                    <span class="badge bg-info">
+                                        <i class="mdi mdi-sync"></i> Syncing
+                                    </span>
+                                {{else if eq .Fabric.GitSyncStatus "error"}}
+                                    <span class="badge bg-danger">
+                                        <i class="mdi mdi-alert-circle"></i> Error
+                                    </span>
+                                {{else}}
+                                    <span class="badge bg-secondary">Never Synced</span>
+                                {{end}}
+                            </td>
+                        </tr>
+                        <tr>
+                            <td><strong>Last Sync:</strong></td>
+                            <td>{{.Fabric.LastGitSyncAgo}}</td>
+                        </tr>
+                        <tr>
+                            <td><strong>Commit Hash:</strong></td>
+                            <td>
+                                {{if .Fabric.LastGitCommitHash}}
+                                    <code>{{.Fabric.LastGitCommitHashShort}}</code>
+                                {{else}}
+                                    <span class="text-muted">-</span>
+                                {{end}}
+                            </td>
+                        </tr>
+                        <tr>
+                            <td><strong>Cached CRDs:</strong></td>
+                            <td><span class="badge bg-info">{{.Fabric.CachedCRDCount}}</span></td>
+                        </tr>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- CRD Resources -->
+    <div class="row mt-3">
+        <div class="col-12">
+            <div class="card">
+                <div class="card-header d-flex justify-content-between align-items-center">
+                    <h5><i class="mdi mdi-kubernetes"></i> CRD Resources</h5>
+                    <div>
+                        <div class="btn-group btn-group-sm" role="group">
+                            <button class="btn btn-outline-primary" onclick="filterCRDs('all')">All</button>
+                            <button class="btn btn-outline-primary" onclick="filterCRDs('vpc')">VPCs</button>
+                            <button class="btn btn-outline-primary" onclick="filterCRDs('connection')">Connections</button>
+                            <button class="btn btn-outline-primary" onclick="filterCRDs('switch')">Switches</button>
+                        </div>
+                    </div>
+                </div>
+                <div class="card-body">
+                    {{if .CRDResources}}
+                    <div class="table-responsive">
+                        <table class="table table-hover" id="crdResourcesTable">
+                            <thead>
+                                <tr>
+                                    <th>Name</th>
+                                    <th>Type</th>
+                                    <th>Git Path</th>
+                                    <th>Sync Source</th>
+                                    <th>Last Synced</th>
+                                    <th>Status</th>
+                                    <th>Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {{range .CRDResources}}
+                                <tr data-crd-type="{{.Type}}">
+                                    <td>
+                                        <strong>{{.Name}}</strong>
+                                        {{if .Namespace}}
+                                            <br><small class="text-muted">ns: {{.Namespace}}</small>
+                                        {{end}}
+                                    </td>
+                                    <td>
+                                        {{if eq .Type "vpc"}}
+                                            <span class="badge bg-success">
+                                                <i class="mdi mdi-cloud-outline"></i> VPC
+                                            </span>
+                                        {{else if eq .Type "connection"}}
+                                            <span class="badge bg-info">
+                                                <i class="mdi mdi-connection"></i> Connection
+                                            </span>
+                                        {{else if eq .Type "switch"}}
+                                            <span class="badge bg-warning">
+                                                <i class="mdi mdi-switch"></i> Switch
+                                            </span>
+                                        {{else}}
+                                            <span class="badge bg-secondary">{{.Type}}</span>
+                                        {{end}}
+                                    </td>
+                                    <td>
+                                        {{if .GitFilePath}}
+                                            <code class="small">{{.GitFilePath}}</code>
+                                        {{else}}
+                                            <span class="text-muted">-</span>
+                                        {{end}}
+                                    </td>
+                                    <td>
+                                        {{if eq .LastSyncedFrom "git"}}
+                                            <span class="badge bg-primary">
+                                                <i class="mdi mdi-git"></i> Git
+                                            </span>
+                                        {{else if eq .LastSyncedFrom "kubernetes"}}
+                                            <span class="badge bg-info">
+                                                <i class="mdi mdi-kubernetes"></i> Kubernetes
+                                            </span>
+                                        {{else if eq .LastSyncedFrom "api"}}
+                                            <span class="badge bg-success">
+                                                <i class="mdi mdi-api"></i> API
+                                            </span>
+                                        {{else}}
+                                            <span class="badge bg-secondary">{{.LastSyncedFrom}}</span>
+                                        {{end}}
+                                    </td>
+                                    <td>
+                                        {{if .GitSyncTimestamp}}
+                                            {{.GitSyncTimestampAgo}}
+                                        {{else}}
+                                            <span class="text-muted">Never</span>
+                                        {{end}}
+                                    </td>
+                                    <td>
+                                        {{if .HasDrift}}
+                                            <span class="badge bg-warning">
+                                                <i class="mdi mdi-delta"></i> Drift
+                                            </span>
+                                        {{else}}
+                                            <span class="badge bg-success">
+                                                <i class="mdi mdi-check"></i> Synced
+                                            </span>
+                                        {{end}}
+                                    </td>
+                                    <td>
+                                        <div class="btn-group btn-group-sm" role="group">
+                                            <button class="btn btn-outline-primary" 
+                                                    onclick="viewCRDDetails('{{.ID}}')" 
+                                                    title="View Details">
+                                                <i class="mdi mdi-eye"></i>
+                                            </button>
+                                            <button class="btn btn-outline-info" 
+                                                    onclick="viewCRDYAML('{{.ID}}')" 
+                                                    title="View YAML">
+                                                <i class="mdi mdi-file-code"></i>
+                                            </button>
+                                        </div>
+                                    </td>
+                                </tr>
+                                {{end}}
+                            </tbody>
+                        </table>
+                    </div>
+                    {{else}}
+                    <div class="alert alert-info">
+                        <h6><i class="mdi mdi-information"></i> No CRD Resources</h6>
+                        <p class="mb-0">No Custom Resource Definitions found. Sync from Git to populate resources.</p>
+                    </div>
+                    {{end}}
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Recent Activity -->
+    {{if .RecentActivity}}
+    <div class="row mt-3">
+        <div class="col-12">
+            <div class="card">
+                <div class="card-header">
+                    <h5><i class="mdi mdi-history"></i> Recent Activity</h5>
+                </div>
+                <div class="card-body">
+                    <div class="table-responsive">
+                        <table class="table table-sm">
+                            <thead>
+                                <tr>
+                                    <th>Time</th>
+                                    <th>Operation</th>
+                                    <th>Details</th>
+                                    <th>Status</th>
+                                    <th>Duration</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {{range .RecentActivity}}
+                                <tr>
+                                    <td>{{.TimestampAgo}}</td>
+                                    <td>{{.OperationType}}</td>
+                                    <td>{{.Details}}</td>
+                                    <td>
+                                        {{if eq .OperationStatus "completed"}}
+                                            <span class="badge bg-success">Success</span>
+                                        {{else if eq .OperationStatus "failed"}}
+                                            <span class="badge bg-danger">Failed</span>
+                                        {{else}}
+                                            <span class="badge bg-info">{{.OperationStatus}}</span>
+                                        {{end}}
+                                    </td>
+                                    <td>{{.DurationMs}}ms</td>
+                                </tr>
+                                {{end}}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    {{end}}
+</div>
+
+<!-- Drift Configuration Modal -->
+<div class="modal fade" id="driftConfigModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title"><i class="mdi mdi-cog"></i> Drift Detection Configuration</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <div class="mb-3">
+                    <label class="form-label">Detection Frequency</label>
+                    <select class="form-select">
+                        <option>Every 15 minutes</option>
+                        <option>Every 30 minutes</option>
+                        <option>Every hour</option>
+                        <option>Manual only</option>
+                    </select>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">Notification Threshold</label>
+                    <select class="form-select">
+                        <option>Any drift detected</option>
+                        <option>5+ resources with drift</option>
+                        <option>Critical drift only</option>
+                        <option>Disabled</option>
+                    </select>
+                </div>
+                <div class="form-check">
+                    <input class="form-check-input" type="checkbox" id="autoSync">
+                    <label class="form-check-label" for="autoSync">
+                        Automatically sync minor drift
+                    </label>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                <button type="button" class="btn btn-primary">Save Configuration</button>
+            </div>
+        </div>
+    </div>
+</div>
+{{end}}
+
+{{define "scripts"}}
+<script>
+function analyzeDrift(fabricId) {
+    showNotification('Starting drift analysis...', 'info');
+    makeAjaxRequest(`/api/fabrics/${fabricId}/analyze-drift`, 'POST', null, function(err, response) {
+        if (err) {
+            showNotification('Drift analysis failed: ' + err.message, 'danger');
+        } else {
+            showNotification('Drift analysis completed', 'success');
+            setTimeout(() => location.reload(), 1500);
+        }
+    });
+}
+
+function checkForDrift(fabricId) {
+    showNotification('Checking for drift...', 'info');
+    makeAjaxRequest(`/api/fabrics/${fabricId}/check-drift`, 'POST', null, function(err, response) {
+        if (err) {
+            showNotification('Drift check failed: ' + err.message, 'danger');
+        } else {
+            showNotification('Drift check completed', 'success');
+            setTimeout(() => location.reload(), 1500);
+        }
+    });
+}
+
+function filterCRDs(type) {
+    const table = document.getElementById('crdResourcesTable');
+    const rows = table.querySelectorAll('tbody tr');
+    
+    rows.forEach(row => {
+        if (type === 'all' || row.dataset.crdType === type) {
+            row.style.display = '';
+        } else {
+            row.style.display = 'none';
+        }
+    });
+    
+    // Update active button
+    document.querySelectorAll('.btn-group .btn').forEach(btn => {
+        btn.classList.remove('active');
+    });
+    event.target.classList.add('active');
+}
+
+function viewCRDDetails(crdId) {
+    window.open(`/crds/${crdId}`, '_blank');
+}
+
+function viewCRDYAML(crdId) {
+    window.open(`/crds/${crdId}/yaml`, '_blank');
+}
+</script>
+{{end}}

@@ -1,0 +1,255 @@
+{{define "title"}}Fabrics - CNOC{{end}}
+
+{{define "content"}}
+<div class="container-fluid">
+    <div class="row">
+        <div class="col-12">
+            <div class="card">
+                <div class="card-header d-flex justify-content-between align-items-center">
+                    <h3><i class="mdi mdi-server-network"></i> Fabric Management</h3>
+                    <div>
+                        <button class="btn btn-success" data-bs-toggle="modal" data-bs-target="#addFabricModal">
+                            <i class="mdi mdi-plus"></i> Add Fabric
+                        </button>
+                        <button class="btn btn-info ms-2" onclick="location.reload()">
+                            <i class="mdi mdi-refresh"></i> Refresh
+                        </button>
+                    </div>
+                </div>
+                <div class="card-body">
+                    {{if .Fabrics}}
+                    <div class="table-responsive">
+                        <table class="table table-hover">
+                            <thead>
+                                <tr>
+                                    <th>Name</th>
+                                    <th>Description</th>
+                                    <th>Git Repository</th>
+                                    <th>GitOps Directory</th>
+                                    <th>Sync Status</th>
+                                    <th>Drift Status</th>
+                                    <th>CRD Count</th>
+                                    <th>Last Sync</th>
+                                    <th>Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {{range .Fabrics}}
+                                <tr>
+                                    <td>
+                                        <a href="/fabrics/{{.ID}}" class="text-decoration-none fw-bold">
+                                            {{.Name}}
+                                        </a>
+                                    </td>
+                                    <td>{{.Description}}</td>
+                                    <td>
+                                        {{if .GitRepository}}
+                                            <span class="badge bg-primary">
+                                                <i class="mdi mdi-git"></i> {{.GitRepository.Name}}
+                                            </span>
+                                        {{else}}
+                                            <span class="badge bg-secondary">Not configured</span>
+                                        {{end}}
+                                    </td>
+                                    <td>
+                                        {{if .GitOpsDirectory}}
+                                            <code>{{.GitOpsDirectory}}</code>
+                                        {{else}}
+                                            <span class="text-muted">-</span>
+                                        {{end}}
+                                    </td>
+                                    <td>
+                                        {{if eq .GitSyncStatus "in_sync"}}
+                                            <span class="badge bg-success">
+                                                <i class="mdi mdi-check-circle"></i> In Sync
+                                            </span>
+                                        {{else if eq .GitSyncStatus "out_of_sync"}}
+                                            <span class="badge bg-warning">
+                                                <i class="mdi mdi-alert"></i> Out of Sync
+                                            </span>
+                                        {{else if eq .GitSyncStatus "syncing"}}
+                                            <span class="badge bg-info">
+                                                <i class="mdi mdi-sync"></i> Syncing
+                                            </span>
+                                        {{else if eq .GitSyncStatus "error"}}
+                                            <span class="badge bg-danger">
+                                                <i class="mdi mdi-alert-circle"></i> Error
+                                            </span>
+                                        {{else}}
+                                            <span class="badge bg-secondary">Never Synced</span>
+                                        {{end}}
+                                    </td>
+                                    <td>
+                                        {{if eq .DriftStatus "none"}}
+                                            <span class="badge bg-success">No Drift</span>
+                                        {{else if eq .DriftStatus "detected"}}
+                                            <span class="badge bg-warning">
+                                                <i class="mdi mdi-delta"></i> Drift: {{.DriftCount}}
+                                            </span>
+                                        {{else if eq .DriftStatus "critical"}}
+                                            <span class="badge bg-danger">
+                                                <i class="mdi mdi-alert"></i> Critical: {{.DriftCount}}
+                                            </span>
+                                        {{else}}
+                                            <span class="badge bg-secondary">Unknown</span>
+                                        {{end}}
+                                    </td>
+                                    <td>
+                                        <span class="badge bg-info">{{.CachedCRDCount}}</span>
+                                    </td>
+                                    <td>
+                                        {{if .LastGitSync}}
+                                            <span title="{{.LastGitSync}}">{{.LastGitSyncAgo}}</span>
+                                        {{else}}
+                                            <span class="text-muted">Never</span>
+                                        {{end}}
+                                    </td>
+                                    <td>
+                                        <div class="btn-group btn-group-sm" role="group">
+                                            <button class="btn btn-primary btn-sync-fabric" 
+                                                    data-fabric-id="{{.ID}}"
+                                                    title="Sync from Git">
+                                                <i class="mdi mdi-sync"></i>
+                                            </button>
+                                            <a href="/fabrics/{{.ID}}" class="btn btn-info" title="View Details">
+                                                <i class="mdi mdi-eye"></i>
+                                            </a>
+                                            <a href="/fabrics/{{.ID}}/edit" class="btn btn-warning" title="Edit">
+                                                <i class="mdi mdi-pencil"></i>
+                                            </a>
+                                            <button class="btn btn-danger" 
+                                                    data-confirm-delete="Are you sure you want to delete fabric '{{.Name}}'?"
+                                                    onclick="deleteFabric('{{.ID}}')"
+                                                    title="Delete">
+                                                <i class="mdi mdi-delete"></i>
+                                            </button>
+                                        </div>
+                                    </td>
+                                </tr>
+                                {{end}}
+                            </tbody>
+                        </table>
+                    </div>
+                    
+                    <!-- Summary Statistics -->
+                    <div class="row mt-4">
+                        <div class="col-md-3">
+                            <div class="card border-primary">
+                                <div class="card-body text-center">
+                                    <h5>{{.Stats.TotalFabrics}}</h5>
+                                    <small class="text-muted">Total Fabrics</small>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-md-3">
+                            <div class="card border-success">
+                                <div class="card-body text-center">
+                                    <h5>{{.Stats.InSyncCount}}</h5>
+                                    <small class="text-muted">In Sync</small>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-md-3">
+                            <div class="card border-warning">
+                                <div class="card-body text-center">
+                                    <h5>{{.Stats.DriftCount}}</h5>
+                                    <small class="text-muted">With Drift</small>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-md-3">
+                            <div class="card border-info">
+                                <div class="card-body text-center">
+                                    <h5>{{.Stats.TotalCRDs}}</h5>
+                                    <small class="text-muted">Total CRDs</small>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    {{else}}
+                    <div class="alert alert-info">
+                        <h5><i class="mdi mdi-information"></i> No Fabrics Configured</h5>
+                        <p>Get started by adding your first fabric installation.</p>
+                        <button class="btn btn-success" data-bs-toggle="modal" data-bs-target="#addFabricModal">
+                            <i class="mdi mdi-plus"></i> Add Your First Fabric
+                        </button>
+                    </div>
+                    {{end}}
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Add Fabric Modal -->
+<div class="modal fade" id="addFabricModal" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title"><i class="mdi mdi-server-network"></i> Add New Fabric</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <form action="/fabrics/add" method="POST">
+                <div class="modal-body">
+                    <div class="mb-3">
+                        <label for="fabricName" class="form-label">Fabric Name *</label>
+                        <input type="text" class="form-control" id="fabricName" name="name" required>
+                        <small class="text-muted">A unique name for this fabric installation</small>
+                    </div>
+                    <div class="mb-3">
+                        <label for="fabricDescription" class="form-label">Description</label>
+                        <textarea class="form-control" id="fabricDescription" name="description" rows="2"></textarea>
+                    </div>
+                    <div class="mb-3">
+                        <label for="gitRepository" class="form-label">Git Repository</label>
+                        <select class="form-select" id="gitRepository" name="git_repository_id">
+                            <option value="">-- Select Repository --</option>
+                            {{range .GitRepositories}}
+                            <option value="{{.ID}}">{{.Name}} ({{.URL}})</option>
+                            {{end}}
+                        </select>
+                        <small class="text-muted">
+                            Select a configured Git repository or 
+                            <a href="/repositories" target="_blank">add a new repository</a>
+                        </small>
+                    </div>
+                    <div class="mb-3">
+                        <label for="gitopsDirectory" class="form-label">GitOps Directory</label>
+                        <input type="text" class="form-control" id="gitopsDirectory" name="gitops_directory" 
+                               placeholder="gitops/hedgehog/fabric-1/">
+                        <small class="text-muted">Path to the GitOps directory within the repository</small>
+                    </div>
+                    <div class="mb-3">
+                        <label for="gitBranch" class="form-label">Git Branch</label>
+                        <input type="text" class="form-control" id="gitBranch" name="gitops_branch" 
+                               value="main" placeholder="main">
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <button type="submit" class="btn btn-success">
+                        <i class="mdi mdi-plus"></i> Add Fabric
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+{{end}}
+
+{{define "scripts"}}
+<script>
+function deleteFabric(fabricId) {
+    if (confirm('This action cannot be undone. Continue?')) {
+        makeAjaxRequest(`/api/fabrics/${fabricId}`, 'DELETE', null, function(err, response) {
+            if (err) {
+                showNotification('Failed to delete fabric: ' + err.message, 'danger');
+            } else {
+                showNotification('Fabric deleted successfully', 'success');
+                setTimeout(() => location.reload(), 1000);
+            }
+        });
+    }
+}
+</script>
+{{end}}
