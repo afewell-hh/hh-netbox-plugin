@@ -24,6 +24,7 @@ import (
 	"github.com/hedgehog/cnoc/internal/infrastructure/cache"
 	"github.com/hedgehog/cnoc/internal/infrastructure/eventbus"
 	"github.com/hedgehog/cnoc/internal/infrastructure/persistence/postgresql"
+	"github.com/hedgehog/cnoc/internal/web"
 )
 
 func main() {
@@ -146,9 +147,19 @@ func main() {
 		&controllers.ControllerMetricsCollector{},
 	)
 	
-	// Register routes
+	// Register API routes
 	configController.RegisterRoutes(router)
 	log.Println("✅ API routes registered")
+	
+	// Initialize Web UI handler
+	webHandler, err := web.NewWebHandler()
+	if err != nil {
+		log.Printf("⚠️  Web UI initialization failed (continuing API-only mode): %v", err)
+	} else {
+		// Register Web UI routes
+		webHandler.RegisterRoutes(router)
+		log.Println("✅ Web UI routes registered")
+	}
 	
 	// Health check endpoint
 	router.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {

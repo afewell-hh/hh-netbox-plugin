@@ -1,0 +1,110 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{block "title" .}}CNOC - Cloud NetOps Command{{end}}</title>
+    
+    <!-- Bootstrap 5 CSS -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    
+    <!-- Material Design Icons -->
+    <link href="https://cdn.jsdelivr.net/npm/@mdi/font@7.2.96/css/materialdesignicons.min.css" rel="stylesheet">
+    
+    <!-- Custom CNOC CSS -->
+    <link href="/static/css/cnoc.css" rel="stylesheet">
+    
+    {{block "head" .}}{{end}}
+</head>
+<body>
+    <!-- Navigation Bar -->
+    <nav class="navbar navbar-expand-lg navbar-dark bg-primary">
+        <div class="container-fluid">
+            <a class="navbar-brand" href="/">
+                <i class="mdi mdi-cloud-outline"></i> CNOC
+            </a>
+            <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
+                <span class="navbar-toggler-icon"></span>
+            </button>
+            <div class="collapse navbar-collapse" id="navbarNav">
+                <ul class="navbar-nav me-auto">
+                    <li class="nav-item">
+                        <a class="nav-link {{if eq .ActivePage "dashboard"}}active{{end}}" href="/">
+                            <i class="mdi mdi-view-dashboard"></i> Dashboard
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link {{if eq .ActivePage "fabrics"}}active{{end}}" href="/fabrics">
+                            <i class="mdi mdi-server-network"></i> Fabrics
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link {{if eq .ActivePage "repositories"}}active{{end}}" href="/repositories">
+                            <i class="mdi mdi-git"></i> Git Repositories
+                        </a>
+                    </li>
+                    <li class="nav-item dropdown">
+                        <a class="nav-link dropdown-toggle {{if eq .ActivePage "crds"}}active{{end}}" href="#" role="button" data-bs-toggle="dropdown">
+                            <i class="mdi mdi-kubernetes"></i> CRD Management
+                        </a>
+                        <ul class="dropdown-menu">
+                            <li><h6 class="dropdown-header">VPC API Resources</h6></li>
+                            <li><a class="dropdown-item" href="/crds/vpcs"><i class="mdi mdi-cloud-outline"></i> VPCs</a></li>
+                            <li><a class="dropdown-item" href="/crds/connections"><i class="mdi mdi-connection"></i> Connections</a></li>
+                            <li><a class="dropdown-item" href="/crds/externals"><i class="mdi mdi-earth"></i> External Systems</a></li>
+                            <li><hr class="dropdown-divider"></li>
+                            <li><h6 class="dropdown-header">Wiring API Resources</h6></li>
+                            <li><a class="dropdown-item" href="/crds/switches"><i class="mdi mdi-switch"></i> Switches</a></li>
+                            <li><a class="dropdown-item" href="/crds/servers"><i class="mdi mdi-server"></i> Servers</a></li>
+                        </ul>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link {{if eq .ActivePage "drift"}}active{{end}}" href="/drift">
+                            <i class="mdi mdi-alert-circle"></i> Drift Detection
+                        </a>
+                    </li>
+                </ul>
+                <ul class="navbar-nav">
+                    <li class="nav-item">
+                        <a class="nav-link" href="/api/health">
+                            <i class="mdi mdi-pulse"></i> Status
+                        </a>
+                    </li>
+                </ul>
+            </div>
+        </div>
+    </nav>
+
+    <!-- Main Content -->
+    <main class="container-fluid py-4">
+        {{block "content" .}}
+        <div class="alert alert-info">
+            <h4>Welcome to CNOC</h4>
+            <p>Cloud NetOps Command System with MDD-aligned architecture and Symphony-Level coordination.</p>
+        </div>
+        {{end}}
+    </main>
+
+    <!-- Footer -->
+    <footer class="footer mt-auto py-3 bg-light">
+        <div class="container-fluid">
+            <div class="row">
+                <div class="col-md-6">
+                    <span class="text-muted">CNOC - Cloud NetOps Command &copy; 2025</span>
+                </div>
+                <div class="col-md-6 text-end">
+                    <span class="text-muted">MDD-Aligned | Symphony-Level Coordination</span>
+                </div>
+            </div>
+        </div>
+    </footer>
+
+    <!-- Bootstrap 5 JS Bundle -->
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    
+    <!-- Custom CNOC JS -->
+    <script src="/static/js/cnoc.js"></script>
+    
+    {{block "scripts" .}}{{end}}
+</body>
+</html>

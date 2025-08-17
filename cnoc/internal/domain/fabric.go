@@ -37,6 +37,17 @@ const (
 	SyncStatusError        SyncStatus = "error"
 )
 
+// GitSyncStatus represents the GitOps synchronization status
+type GitSyncStatus string
+
+const (
+	GitSyncStatusNeverSynced  GitSyncStatus = "never_synced"
+	GitSyncStatusInSync       GitSyncStatus = "in_sync"
+	GitSyncStatusOutOfSync    GitSyncStatus = "out_of_sync"
+	GitSyncStatusSyncing      GitSyncStatus = "syncing"
+	GitSyncStatusError        GitSyncStatus = "error"
+)
+
 // Implement driver.Valuer for database serialization
 func (fs FabricStatus) Value() (driver.Value, error) {
 	return string(fs), nil
@@ -48,6 +59,10 @@ func (cs ConnectionStatus) Value() (driver.Value, error) {
 
 func (ss SyncStatus) Value() (driver.Value, error) {
 	return string(ss), nil
+}
+
+func (gss GitSyncStatus) Value() (driver.Value, error) {
+	return string(gss), nil
 }
 
 // Fabric represents a Hedgehog fabric (Kubernetes cluster) equivalent to HNP HedgehogFabric
@@ -67,10 +82,15 @@ type Fabric struct {
 	KubernetesServer string `json:"kubernetes_server" db:"kubernetes_server" validate:"omitempty,url"`
 	KubernetesToken  string `json:"-" db:"kubernetes_token"` // Not exposed in JSON for security
 
-	// GitOps configuration (equivalent to HNP git repository fields)
-	GitRepository   string `json:"git_repository" db:"git_repository"`
-	GitOpsDirectory string `json:"gitops_directory" db:"gitops_directory"`
-	GitCredentials  string `json:"-" db:"git_credentials"` // Encrypted, not exposed
+	// GitOps configuration (enhanced for Phase 4 integration)
+	GitRepositoryID     *string `json:"git_repository_id" db:"git_repository_id"` // Foreign key to GitRepository
+	GitOpsDirectory     string  `json:"gitops_directory" db:"gitops_directory"`
+	GitOpsBranch        string  `json:"gitops_branch" db:"gitops_branch"`
+	
+	// GitOps tracking (new fields for enhanced functionality)
+	LastGitSync         *time.Time `json:"last_git_sync" db:"last_git_sync"`
+	LastGitCommitHash   string     `json:"last_git_commit_hash" db:"last_git_commit_hash"`
+	GitSyncStatus       GitSyncStatus `json:"git_sync_status" db:"git_sync_status"`
 
 	// Caching and performance (equivalent to HNP cached counts)
 	CachedCRDCount    int       `json:"cached_crd_count" db:"cached_crd_count"`
@@ -185,7 +205,59 @@ func (f *Fabric) HasDrift() bool {
 
 // CanSync returns true if the fabric can perform sync operations
 func (f *Fabric) CanSync() bool {
-	return f.IsConnected() && f.GitRepository != "" && f.GitOpsDirectory != ""
+	return f.IsConnected() && f.GitRepositoryID != nil && f.GitOpsDirectory != ""
+}
+
+// CanPerformGitOps returns true if the fabric is properly configured for GitOps operations
+func (f *Fabric) CanPerformGitOps() bool {
+	return f.GitRepositoryID != nil && f.GitOpsDirectory != ""
+}
+
+// IsGitInSync returns true if the fabric is in sync with its git repository
+func (f *Fabric) IsGitInSync() bool {
+	return f.GitSyncStatus == GitSyncStatusInSync
+}
+
+// HasGitDrift returns true if git drift has been detected
+func (f *Fabric) HasGitDrift() bool {
+	return f.GitSyncStatus == GitSyncStatusOutOfSync || f.DriftCount > 0
+}
+
+// NeedsGitSync returns true if the fabric needs git synchronization
+func (f *Fabric) NeedsGitSync() bool {
+	if !f.CanPerformGitOps() {
+		return false
+	}
+	
+	return f.GitSyncStatus == GitSyncStatusNeverSynced || 
+		   f.GitSyncStatus == GitSyncStatusOutOfSync ||
+		   f.GitSyncStatus == GitSyncStatusError ||
+		   (f.LastGitSync != nil && time.Since(*f.LastGitSync) > 24*time.Hour)
+}
+
+// UpdateGitSyncStatus updates the git synchronization status
+func (f *Fabric) UpdateGitSyncStatus(status GitSyncStatus, commitHash string) {
+	f.GitSyncStatus = status
+	f.LastGitCommitHash = commitHash
+	now := time.Now()
+	f.LastGitSync = &now
+	f.LastModified = now
+}
+
+// GetGitSyncBadgeClass returns CSS class for git sync status display
+func (f *Fabric) GetGitSyncBadgeClass() string {
+	switch f.GitSyncStatus {
+	case GitSyncStatusInSync:
+		return "badge-success"
+	case GitSyncStatusOutOfSync:
+		return "badge-warning"
+	case GitSyncStatusError:
+		return "badge-danger"
+	case GitSyncStatusSyncing:
+		return "badge-info"
+	default:
+		return "badge-secondary"
+	}
 }
 
 // GetStatusBadgeClass returns CSS class for status display equivalent to HNP template logic
@@ -250,6 +322,12 @@ type FabricService interface {
 	StartSync(fabricID string) (*FabricSyncOperation, error)
 	GetSyncStatus(fabricID string, operationID string) (*FabricSyncOperation, error)
 	
+	// GitOps integration methods (Phase 4 enhancement)
+	SetGitRepository(fabricID string, gitRepositoryID string) error
+	GetFabricGitRepository(fabricID string) (interface{}, error) // Returns *gitops.GitRepository
+	UpdateGitSyncStatus(fabricID string, status GitSyncStatus, commitHash string) error
+	GetFabricsNeedingSync() ([]*Fabric, error)
+	
 	// Statistics and monitoring equivalent to HNP overview context
 	GetFabricSummary() (*FabricSummary, error)
 	GetRecentActivity(limit int) ([]FabricActivity, error)
@@ -257,4 +335,6 @@ type FabricService interface {
 	// Drift detection equivalent to HNP drift functionality
 	DetectDrift(fabricID string) error
 	GetDriftReport(fabricID string) (map[string]interface{}, error)
+	UpdateDriftStatus(fabricID string, driftCount int, severity string) error
+	GetFabricsWithDrift() ([]*Fabric, error)
 }

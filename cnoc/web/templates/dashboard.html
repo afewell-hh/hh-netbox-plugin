@@ -1,0 +1,139 @@
+{{define "title"}}Dashboard - CNOC{{end}}
+
+{{define "content"}}
+<div class="container-fluid">
+    <div class="row">
+        <div class="col-12">
+            <div class="card">
+                <div class="card-header">
+                    <h3><i class="mdi mdi-view-dashboard"></i> CNOC Dashboard</h3>
+                </div>
+                <div class="card-body">
+                    <h4>Cloud NetOps Command System</h4>
+                    <p>Monitor and manage your cloud network infrastructure with GitOps integration.</p>
+                    
+                    <!-- Statistics Row -->
+                    <div class="row mt-4">
+                        <div class="col-md-3">
+                            <div class="card bg-primary text-white">
+                                <div class="card-body text-center">
+                                    <h2>{{.Stats.FabricCount}}</h2>
+                                    <p class="mb-0">Total Fabrics</p>
+                                    <small class="opacity-75">Active deployments</small>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-md-3">
+                            <div class="card bg-success text-white">
+                                <div class="card-body text-center">
+                                    <h2>{{.Stats.CRDCount}}</h2>
+                                    <p class="mb-0">Total CRDs</p>
+                                    <small class="opacity-75">Resources managed</small>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-md-3">
+                            <div class="card bg-info text-white">
+                                <div class="card-body text-center">
+                                    <h2>{{.Stats.InSyncCount}}</h2>
+                                    <p class="mb-0">In Sync</p>
+                                    <small class="opacity-75">Git ↔ Cluster</small>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-md-3">
+                            <div class="card bg-warning text-white">
+                                <div class="card-body text-center">
+                                    <h2>{{.Stats.DriftCount}}</h2>
+                                    <p class="mb-0">Drift Detected</p>
+                                    <small class="opacity-75">Needs attention</small>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- Quick Access Row -->
+                    <div class="row mt-4">
+                        <div class="col-md-4">
+                            <div class="card border-primary">
+                                <div class="card-body">
+                                    <h5 class="card-title"><i class="mdi mdi-server-network"></i> Fabric Management</h5>
+                                    <p class="card-text">Manage {{.Stats.FabricCount}} fabric installation{{if ne .Stats.FabricCount 1}}s{{end}}.</p>
+                                    <a href="/fabrics" class="btn btn-primary btn-block">
+                                        <i class="mdi mdi-arrow-right"></i> Manage Fabrics
+                                    </a>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div class="col-md-4">
+                            <div class="card border-warning">
+                                <div class="card-body">
+                                    <h5 class="card-title"><i class="mdi mdi-git"></i> Git Repositories</h5>
+                                    <p class="card-text">Manage Git repository authentication and connections.</p>
+                                    <a href="/repositories" class="btn btn-warning">
+                                        <i class="mdi mdi-arrow-right"></i> Manage Repositories
+                                    </a>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div class="col-md-4">
+                            <div class="card border-success">
+                                <div class="card-body">
+                                    <h5 class="card-title"><i class="mdi mdi-kubernetes"></i> CRD Management</h5>
+                                    <p class="card-text">{{.Stats.CRDCount}} Custom Resource{{if ne .Stats.CRDCount 1}}s{{end}} configured.</p>
+                                    <a href="/crds" class="btn btn-success">
+                                        <i class="mdi mdi-arrow-right"></i> View CRDs
+                                    </a>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    {{if .RecentActivity}}
+                    <!-- Recent Activity -->
+                    <div class="row mt-4">
+                        <div class="col-12">
+                            <h5><i class="mdi mdi-history"></i> Recent Activity</h5>
+                            <div class="table-responsive">
+                                <table class="table table-striped">
+                                    <thead>
+                                        <tr>
+                                            <th>Time</th>
+                                            <th>Type</th>
+                                            <th>Resource</th>
+                                            <th>Action</th>
+                                            <th>Status</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        {{range .RecentActivity}}
+                                        <tr>
+                                            <td>{{.Timestamp}}</td>
+                                            <td>{{.Type}}</td>
+                                            <td>{{.Resource}}</td>
+                                            <td>{{.Action}}</td>
+                                            <td>
+                                                {{if eq .Status "success"}}
+                                                    <span class="badge bg-success">Success</span>
+                                                {{else if eq .Status "error"}}
+                                                    <span class="badge bg-danger">Error</span>
+                                                {{else}}
+                                                    <span class="badge bg-warning">{{.Status}}</span>
+                                                {{end}}
+                                            </td>
+                                        </tr>
+                                        {{end}}
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+                    {{end}}
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{{end}}
