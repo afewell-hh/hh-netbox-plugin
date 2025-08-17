@@ -72,6 +72,7 @@ func main() {
 }
 
 func handleHome(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	html := `<!DOCTYPE html>
 <html>
 <head>
@@ -346,7 +347,6 @@ func handleHome(w http.ResponseWriter, r *http.Request) {
 </body>
 </html>`
 	
-	w.Header().Set("Content-Type", "text/html")
 	w.Write([]byte(html))
 }
 
