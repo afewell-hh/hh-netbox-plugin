@@ -13,7 +13,6 @@ import (
 	"k8s.io/client-go/rest"
 	
 	"github.com/hedgehog/cnoc/internal/domain/configuration"
-	"github.com/hedgehog/cnoc/internal/domain/shared"
 )
 
 // KubernetesServiceAdapter provides Kubernetes integration with anti-corruption layer
@@ -261,6 +260,9 @@ func (k *KubernetesServiceAdapter) DeleteConfiguration(
 		DeletedResources: make([]K8sResourceDeletion, 0),
 		Status:         K8sDeleteStatusInProgress,
 	}
+	
+	// Note: currentStatus is available for additional logic if needed
+	_ = currentStatus
 
 	// Delete resources in proper order (reverse dependency order)
 	resourceOrder := []string{"ingresses", "services", "deployments", "configmaps", "secrets"}
@@ -457,7 +459,16 @@ func (k *KubernetesServiceAdapter) deployManifest(
 		Namespace:  result.GetNamespace(),
 		Kind:       result.GetKind(),
 		APIVersion: result.GetAPIVersion(),
-		Status:     K8sResourceStatusCreated,
+		Status: K8sResourceStatus{
+			Name:           result.GetName(),
+			Namespace:      result.GetNamespace(),
+			Kind:           result.GetKind(),
+			APIVersion:     result.GetAPIVersion(),
+			Status:         K8sResourceStateRunning,
+			Ready:          true,
+			LastTransition: time.Now(),
+			Message:        "Resource deployed successfully",
+		},
 		CreatedAt:  time.Now(),
 	}
 

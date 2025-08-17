@@ -5,8 +5,6 @@ import (
 	"time"
 
 	"k8s.io/apimachinery/pkg/runtime/schema"
-	
-	"github.com/hedgehog/cnoc/internal/domain/configuration"
 )
 
 // Kubernetes adapter types with anti-corruption layer patterns

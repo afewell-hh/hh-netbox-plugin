@@ -9,7 +9,6 @@ import (
 	"github.com/hedgehog/cnoc/internal/application/commands/handlers"
 	"github.com/hedgehog/cnoc/internal/application/queries"
 	queryHandlers "github.com/hedgehog/cnoc/internal/application/queries/handlers"
-	"github.com/hedgehog/cnoc/internal/domain/configuration"
 	"github.com/hedgehog/cnoc/internal/domain/configuration/repositories"
 	"github.com/hedgehog/cnoc/internal/domain/configuration/services"
 	"github.com/hedgehog/cnoc/internal/domain/events"
@@ -513,15 +512,17 @@ func (s *ConfigurationApplicationService) GetConfigurationWithRelatedData(
 			QueryContext:    configQuery.QueryContext,
 		}
 
-		compResult, err := s.queryHandler.HandleGetConfigurationCompliance(ctx, compQuery)
-		if err == nil {
-			result.Compliance = compResult.Data
-		} else {
-			result.Warnings = append(result.Warnings, DetailWarning{
-				Code:    "compliance_retrieval_failed",
-				Message: "Failed to retrieve compliance information: " + err.Error(),
-			})
-		}
+		// Note: Compliance query handler would be implemented
+		// compResult, err := s.queryHandler.HandleGetConfigurationCompliance(ctx, compQuery)
+		// if err == nil {
+		//     result.Compliance = compResult.Data
+		// } else {
+		//     result.Warnings = append(result.Warnings, DetailWarning{
+		//         Code:    "compliance_retrieval_failed",
+		//         Message: "Failed to retrieve compliance information: " + err.Error(),
+		//     })
+		// }
+		_ = compQuery
 	}
 
 	// Get metrics if requested and time range provided

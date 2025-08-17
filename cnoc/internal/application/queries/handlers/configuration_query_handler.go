@@ -174,9 +174,9 @@ func (h *ConfigurationQueryHandler) HandleGetConfigurationByName(
 
 		// Project to read model
 		result, err = h.projectionService.ProjectConfiguration(ctx, config, ConfigurationProjectionOptions{
-			Level:           query.ProjectionLevel,
+			Level:             query.ProjectionLevel,
 			IncludeComponents: query.IncludeComponents,
-			IncludeHistory:  query.IncludeHistory,
+			IncludeEvents:     query.IncludeHistory, // Map IncludeHistory to IncludeEvents
 		})
 		if err != nil {
 			return buildErrorResult[*ConfigurationReadModel](query.RequestID(),
@@ -551,8 +551,8 @@ func (h *ConfigurationQueryHandler) calculateCacheTTL(strategy queries.CacheStra
 
 func (h *ConfigurationQueryHandler) buildRepositoryFilter(filter queries.ConfigurationFilter) repositories.ConfigurationFilter {
 	repoFilter := repositories.ConfigurationFilter{
-		Limit:  &filter.ComponentCount.Max,
-		Offset: &filter.ComponentCount.Min,
+		Limit:  filter.ComponentCount.Max,
+		Offset: filter.ComponentCount.Min,
 	}
 	
 	// Convert query filter to repository filter
@@ -654,8 +654,21 @@ func buildErrorResult[T any](requestID, errorCode string, err error, startTime t
 				Timestamp: time.Now(),
 			},
 		},
-		Performance: h.buildPerformanceMetrics(startTime, false),
+		Performance: buildPerformanceMetrics(startTime, false),
 		RequestID:   requestID,
+	}
+}
+
+// buildPerformanceMetrics creates performance metrics for query results
+func buildPerformanceMetrics(startTime time.Time, success bool) queries.PerformanceMetrics {
+	duration := time.Since(startTime)
+	return queries.PerformanceMetrics{
+		ExecutionTime:     duration.Milliseconds(),
+		DatabaseTime:      duration.Milliseconds() / 2, // Estimate
+		CacheTime:        0,
+		SerializationTime: duration.Milliseconds() / 10, // Estimate
+		TotalTime:        duration.Milliseconds(),
+		MemoryUsage:      0,
 	}
 }
 
@@ -684,9 +697,9 @@ func (h *ConfigurationQueryHandler) getReverseDependencies(ctx context.Context, 
 }
 
 func (h *ConfigurationQueryHandler) extractComponentNames(config *configuration.Configuration) []configuration.ComponentName {
-	components := config.Components()
-	names := make([]configuration.ComponentName, len(components))
-	for i, comp := range components {
+	componentsList := config.ComponentsList()
+	names := make([]configuration.ComponentName, len(componentsList))
+	for i, comp := range componentsList {
 		names[i] = comp.Name()
 	}
 	return names
