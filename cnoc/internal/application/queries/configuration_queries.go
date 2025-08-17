@@ -584,3 +584,40 @@ func IsTooManyResultsError(err error) bool {
 	var validationErr *QueryValidationError
 	return errors.As(err, &validationErr) && validationErr.Type == "too_many_results"
 }
+
+// ConfigurationReadModel represents the read model for configuration queries
+type ConfigurationReadModel struct {
+	ID                  string                   `json:"id"`
+	Name                string                   `json:"name"`
+	Description         string                   `json:"description"`
+	Mode                string                   `json:"mode"`
+	Version             string                   `json:"version"`
+	Status              string                   `json:"status"`
+	Labels              map[string]string        `json:"labels"`
+	Annotations         map[string]string        `json:"annotations"`
+	Components          []ComponentSummary       `json:"components"`
+	EnterpriseConfig    *EnterpriseConfigSummary `json:"enterprise_config,omitempty"`
+	CreatedAt           time.Time                `json:"created_at"`
+	UpdatedAt           time.Time                `json:"updated_at"`
+	ComponentCount      int                      `json:"component_count"`
+	EnabledComponentCount int                    `json:"enabled_component_count"`
+}
+
+// ComponentSummary represents a component in read model format
+type ComponentSummary struct {
+	Name          string                 `json:"name"`
+	Version       string                 `json:"version"`
+	Enabled       bool                   `json:"enabled"`
+	Configuration map[string]interface{} `json:"configuration,omitempty"`
+}
+
+// EnterpriseConfigSummary represents enterprise configuration in read model format
+type EnterpriseConfigSummary struct {
+	ComplianceFramework string            `json:"compliance_framework"`
+	SecurityLevel       string            `json:"security_level"`
+	AuditEnabled        bool              `json:"audit_enabled"`
+	EncryptionRequired  bool              `json:"encryption_required"`
+	BackupRequired      bool              `json:"backup_required"`
+	PolicyTemplates     []string          `json:"policy_templates"`
+	Metadata           map[string]string `json:"metadata"`
+}

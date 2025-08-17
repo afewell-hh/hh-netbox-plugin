@@ -134,6 +134,11 @@ func (cc ComponentConfiguration) Resources() ResourceRequirements {
 	return cc.resources
 }
 
+// Data returns the configuration parameters as a map
+func (cc ComponentConfiguration) Data() map[string]interface{} {
+	return cc.parameters
+}
+
 // ResourceRequirements represents CPU and memory resource requirements
 type ResourceRequirements struct {
 	requests ResourceSpec
@@ -314,6 +319,21 @@ func (cr *ComponentReference) Version() shared.Version {
 // IsEnabled returns whether the component is enabled
 func (cr *ComponentReference) IsEnabled() bool {
 	return cr.enabled
+}
+
+// Enabled returns whether the component is enabled (alias for IsEnabled for API compatibility)
+func (cr *ComponentReference) Enabled() bool {
+	return cr.enabled
+}
+
+// Configuration returns the component configuration
+func (cr *ComponentReference) Configuration() ComponentConfiguration {
+	return cr.configuration
+}
+
+// Resources returns the resource requirements for the component
+func (cr *ComponentReference) Resources() ResourceRequirements {
+	return cr.configuration.resources
 }
 
 // Enable enables the component

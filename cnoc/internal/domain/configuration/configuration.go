@@ -125,10 +125,76 @@ func (status ConfigurationStatus) String() string {
 
 // ConfigurationMetadata holds additional configuration information
 type ConfigurationMetadata struct {
-	Labels      map[string]string
-	Annotations map[string]string
-	CreatedBy   string
-	Purpose     string
+	description      string
+	labels          map[string]string
+	annotations     map[string]string
+	enterpriseConfig *EnterpriseConfiguration
+	createdBy       string
+	purpose         string
+}
+
+// EnterpriseConfiguration represents enterprise-specific configuration settings
+type EnterpriseConfiguration struct {
+	complianceFramework string
+	securityLevel      string
+	auditEnabled       bool
+	encryptionRequired bool
+	backupRequired     bool
+	policyTemplates    []string
+	metadata          map[string]string
+}
+
+// ComplianceFramework returns the compliance framework
+func (e *EnterpriseConfiguration) ComplianceFramework() string {
+	return e.complianceFramework
+}
+
+// SecurityLevel returns the security level
+func (e *EnterpriseConfiguration) SecurityLevel() string {
+	return e.securityLevel
+}
+
+// AuditEnabled returns whether audit is enabled
+func (e *EnterpriseConfiguration) AuditEnabled() bool {
+	return e.auditEnabled
+}
+
+// EncryptionRequired returns whether encryption is required
+func (e *EnterpriseConfiguration) EncryptionRequired() bool {
+	return e.encryptionRequired
+}
+
+// BackupRequired returns whether backup is required
+func (e *EnterpriseConfiguration) BackupRequired() bool {
+	return e.backupRequired
+}
+
+// PolicyTemplates returns the policy templates
+func (e *EnterpriseConfiguration) PolicyTemplates() []string {
+	return e.policyTemplates
+}
+
+// Metadata returns the metadata
+func (e *EnterpriseConfiguration) Metadata() map[string]string {
+	return e.metadata
+}
+
+// NewEnterpriseConfiguration creates a new enterprise configuration
+func NewEnterpriseConfiguration(
+	framework, securityLevel string,
+	auditEnabled, encryptionRequired, backupRequired bool,
+	policyTemplates []string,
+	metadata map[string]string,
+) (*EnterpriseConfiguration, error) {
+	return &EnterpriseConfiguration{
+		complianceFramework: framework,
+		securityLevel:      securityLevel,
+		auditEnabled:       auditEnabled,
+		encryptionRequired: encryptionRequired,
+		backupRequired:     backupRequired,
+		policyTemplates:    policyTemplates,
+		metadata:          metadata,
+	}, nil
 }
 
 // ComponentCollection manages a collection of component references
@@ -472,6 +538,31 @@ func (c *Configuration) validateComponentCompatibility(ref *ComponentReference) 
 	}
 	
 	return nil
+}
+
+// Public accessor methods for anti-corruption layer compliance
+func (c *Configuration) Description() string {
+	return c.metadata.description
+}
+
+func (c *Configuration) Labels() map[string]string {
+	return c.metadata.labels
+}
+
+func (c *Configuration) Annotations() map[string]string {
+	return c.metadata.annotations
+}
+
+func (c *Configuration) CreatedAt() time.Time {
+	return c.createdAt
+}
+
+func (c *Configuration) UpdatedAt() time.Time {
+	return c.updatedAt
+}
+
+func (c *Configuration) EnterpriseConfiguration() *EnterpriseConfiguration {
+	return c.metadata.enterpriseConfig
 }
 
 func (c *Configuration) validateComponentRemoval(name ComponentName) error {
