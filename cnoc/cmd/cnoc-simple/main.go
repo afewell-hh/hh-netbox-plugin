@@ -11,6 +11,7 @@ import (
 	"os/signal"
 	"syscall"
 	"time"
+	"strconv"
 
 	"github.com/gorilla/mux"
 	_ "github.com/lib/pq"
@@ -44,6 +45,111 @@ type MetricsData struct {
 	ComponentsCount    int    `json:"components_count"`
 	K8sClusterStatus   string `json:"k8s_cluster_status"`
 }
+
+// Fabric domain types for HNP feature parity
+type Fabric struct {
+	ID               string    `json:"id"`
+	Name             string    `json:"name"`
+	Description      string    `json:"description"`
+	Status           string    `json:"status"`
+	ConnectionStatus string    `json:"connection_status"`
+	SyncStatus       string    `json:"sync_status"`
+	KubernetesServer string    `json:"kubernetes_server"`
+	GitRepository    string    `json:"git_repository"`
+	GitOpsDirectory  string    `json:"gitops_directory"`
+	CachedCRDCount   int       `json:"cached_crd_count"`
+	Created          time.Time `json:"created"`
+	LastModified     time.Time `json:"last_modified"`
+}
+
+type FabricSummary struct {
+	TotalFabrics      int            `json:"total_fabrics"`
+	FabricsByStatus   map[string]int `json:"fabrics_by_status"`
+	ConnectionSummary map[string]int `json:"connection_summary"`
+	SyncSummary       map[string]int `json:"sync_summary"`
+	TotalCRDs         int            `json:"total_crds"`
+}
+
+type CRDResource struct {
+	ID           string                 `json:"id"`
+	FabricID     string                 `json:"fabric_id"`
+	Name         string                 `json:"name"`
+	Kind         string                 `json:"kind"`
+	Type         string                 `json:"type"`
+	APIVersion   string                 `json:"api_version"`
+	Spec         map[string]interface{} `json:"spec"`
+	Status       map[string]interface{} `json:"status"`
+	Created      time.Time              `json:"created"`
+	LastModified time.Time              `json:"last_modified"`
+}
+
+type CRDSummary struct {
+	TotalCRDs    int            `json:"total_crds"`
+	CRDsByType   map[string]int `json:"crds_by_type"`
+	CRDsByStatus map[string]int `json:"crds_by_status"`
+	CRDsByFabric map[string]int `json:"crds_by_fabric"`
+}
+
+// Mock data stores (will be replaced with actual database in Phase 2)
+var (
+	mockFabrics = []Fabric{
+		{
+			ID:               "fabric-1",
+			Name:             "HCKC-Production",
+			Description:      "Production Hedgehog fabric",
+			Status:           "active",
+			ConnectionStatus: "connected",
+			SyncStatus:       "in_sync",
+			KubernetesServer: "https://127.0.0.1:6443",
+			GitRepository:    "github.com/afewell-hh/gitops-test-1",
+			GitOpsDirectory:  "gitops/hedgehog/fabric-1/",
+			CachedCRDCount:   36,
+			Created:          time.Now().AddDate(0, -1, 0),
+			LastModified:     time.Now().Add(-1 * time.Hour),
+		},
+		{
+			ID:               "fabric-2",
+			Name:             "HCKC-Staging",
+			Description:      "Staging environment fabric",
+			Status:           "planned",
+			ConnectionStatus: "pending",
+			SyncStatus:       "never_synced",
+			KubernetesServer: "",
+			GitRepository:    "",
+			GitOpsDirectory:  "",
+			CachedCRDCount:   0,
+			Created:          time.Now().AddDate(0, 0, -7),
+			LastModified:     time.Now().AddDate(0, 0, -7),
+		},
+	}
+
+	mockCRDs = []CRDResource{
+		{
+			ID:           "crd-1",
+			FabricID:     "fabric-1",
+			Name:         "test-vpc",
+			Kind:         "VPC",
+			Type:         "vpc",
+			APIVersion:   "vpc.githedgehog.com/v1beta1",
+			Spec:         map[string]interface{}{"subnet": "10.1.0.0/16"},
+			Status:       map[string]interface{}{"phase": "Ready"},
+			Created:      time.Now().Add(-2 * time.Hour),
+			LastModified: time.Now().Add(-1 * time.Hour),
+		},
+		{
+			ID:           "crd-2",
+			FabricID:     "fabric-1",
+			Name:         "edge-connection-1",
+			Kind:         "Connection",
+			Type:         "connection",
+			APIVersion:   "wiring.githedgehog.com/v1beta1",
+			Spec:         map[string]interface{}{"endpoints": []string{"switch1", "switch2"}},
+			Status:       map[string]interface{}{"phase": "Ready"},
+			Created:      time.Now().Add(-3 * time.Hour),
+			LastModified: time.Now().Add(-1 * time.Hour),
+		},
+	}
+)
 
 var (
 	startTime time.Time
@@ -93,6 +199,19 @@ func main() {
 	router.HandleFunc("/api/metrics", handleMetrics).Methods("GET")
 	router.HandleFunc("/api/configurations", handleConfigurations).Methods("GET")
 	router.HandleFunc("/api/components", handleComponents).Methods("GET")
+	
+	// Fabric Management API endpoints (HNP equivalent)
+	router.HandleFunc("/api/fabrics", handleFabrics).Methods("GET", "POST")
+	router.HandleFunc("/api/fabrics/summary", handleFabricSummary).Methods("GET")
+	router.HandleFunc("/api/fabrics/{id}", handleFabricDetail).Methods("GET", "PUT", "DELETE")
+	router.HandleFunc("/api/fabrics/{id}/test", handleFabricTest).Methods("POST")
+	router.HandleFunc("/api/fabrics/{id}/sync", handleFabricSync).Methods("POST")
+	
+	// CRD Management API endpoints (HNP equivalent)
+	router.HandleFunc("/api/crds", handleCRDs).Methods("GET")
+	router.HandleFunc("/api/crds/{type}", handleCRDsByType).Methods("GET", "POST")
+	router.HandleFunc("/api/crds/{type}/{id}", handleCRDDetail).Methods("GET", "PUT", "DELETE")
+	router.HandleFunc("/api/crds/summary", handleCRDSummary).Methods("GET")
 	
 	// Static files for dashboard
 	router.PathPrefix("/static/").Handler(http.StripPrefix("/static/", http.FileServer(http.Dir("/app/static/"))))
@@ -421,6 +540,377 @@ func handleComponents(w http.ResponseWriter, r *http.Request) {
 	
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(components)
+}
+
+// Fabric API handlers equivalent to HNP Django views
+
+func handleFabrics(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	
+	switch r.Method {
+	case "GET":
+		// List fabrics with pagination equivalent to HNP fabric_list view
+		offset := 0
+		limit := 25
+		
+		if offsetStr := r.URL.Query().Get("offset"); offsetStr != "" {
+			if parsed, err := strconv.Atoi(offsetStr); err == nil {
+				offset = parsed
+			}
+		}
+		if limitStr := r.URL.Query().Get("limit"); limitStr != "" {
+			if parsed, err := strconv.Atoi(limitStr); err == nil {
+				limit = parsed
+			}
+		}
+		
+		// Apply pagination to mock data
+		end := offset + limit
+		if end > len(mockFabrics) {
+			end = len(mockFabrics)
+		}
+		
+		var results []Fabric
+		if offset < len(mockFabrics) {
+			results = mockFabrics[offset:end]
+		} else {
+			results = []Fabric{}
+		}
+		
+		response := map[string]interface{}{
+			"count":    len(mockFabrics),
+			"next":     nil,
+			"previous": nil,
+			"results":  results,
+		}
+		
+		json.NewEncoder(w).Encode(response)
+		
+	case "POST":
+		// Create fabric equivalent to HNP fabric creation
+		var fabric Fabric
+		if err := json.NewDecoder(r.Body).Decode(&fabric); err != nil {
+			http.Error(w, "Invalid JSON", http.StatusBadRequest)
+			return
+		}
+		
+		// Basic validation
+		if fabric.Name == "" {
+			http.Error(w, "Name is required", http.StatusBadRequest)
+			return
+		}
+		
+		// Generate ID and timestamps
+		fabric.ID = fmt.Sprintf("fabric-%d", len(mockFabrics)+1)
+		fabric.Created = time.Now()
+		fabric.LastModified = time.Now()
+		if fabric.Status == "" {
+			fabric.Status = "planned"
+		}
+		if fabric.ConnectionStatus == "" {
+			fabric.ConnectionStatus = "unknown"
+		}
+		if fabric.SyncStatus == "" {
+			fabric.SyncStatus = "never_synced"
+		}
+		
+		// Add to mock store
+		mockFabrics = append(mockFabrics, fabric)
+		
+		w.WriteHeader(http.StatusCreated)
+		json.NewEncoder(w).Encode(fabric)
+	}
+}
+
+func handleFabricDetail(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	vars := mux.Vars(r)
+	fabricID := vars["id"]
+	
+	// Find fabric in mock data
+	var fabric *Fabric
+	var index int
+	for i, f := range mockFabrics {
+		if f.ID == fabricID {
+			fabric = &f
+			index = i
+			break
+		}
+	}
+	
+	if fabric == nil {
+		http.Error(w, "Fabric not found", http.StatusNotFound)
+		return
+	}
+	
+	switch r.Method {
+	case "GET":
+		// Get fabric detail equivalent to HNP fabric_detail view
+		json.NewEncoder(w).Encode(fabric)
+		
+	case "PUT":
+		// Update fabric equivalent to HNP fabric edit
+		var updatedFabric Fabric
+		if err := json.NewDecoder(r.Body).Decode(&updatedFabric); err != nil {
+			http.Error(w, "Invalid JSON", http.StatusBadRequest)
+			return
+		}
+		
+		// Preserve immutable fields
+		updatedFabric.ID = fabric.ID
+		updatedFabric.Created = fabric.Created
+		updatedFabric.LastModified = time.Now()
+		
+		// Update in mock store
+		mockFabrics[index] = updatedFabric
+		
+		json.NewEncoder(w).Encode(updatedFabric)
+		
+	case "DELETE":
+		// Delete fabric equivalent to HNP fabric deletion
+		// Remove from mock store
+		mockFabrics = append(mockFabrics[:index], mockFabrics[index+1:]...)
+		
+		w.WriteHeader(http.StatusNoContent)
+	}
+}
+
+func handleFabricTest(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	vars := mux.Vars(r)
+	fabricID := vars["id"]
+	
+	// Find fabric
+	var fabric *Fabric
+	for _, f := range mockFabrics {
+		if f.ID == fabricID {
+			fabric = &f
+			break
+		}
+	}
+	
+	if fabric == nil {
+		http.Error(w, "Fabric not found", http.StatusNotFound)
+		return
+	}
+	
+	// Mock connection test equivalent to HNP test connection
+	testResult := map[string]interface{}{
+		"fabric_id":           fabricID,
+		"success":             fabric.KubernetesServer != "",
+		"response_time_ms":    42,
+		"kubernetes_version":  "v1.33.3+k3s1",
+		"node_count":          1,
+		"namespace_count":     8,
+		"test_timestamp":      time.Now(),
+		"connection_details":  map[string]interface{}{
+			"server": fabric.KubernetesServer,
+			"status": fabric.ConnectionStatus,
+		},
+	}
+	
+	if fabric.KubernetesServer == "" {
+		testResult["success"] = false
+		testResult["error_message"] = "Kubernetes server not configured"
+	}
+	
+	json.NewEncoder(w).Encode(testResult)
+}
+
+func handleFabricSync(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	vars := mux.Vars(r)
+	fabricID := vars["id"]
+	
+	// Find fabric
+	var fabric *Fabric
+	for _, f := range mockFabrics {
+		if f.ID == fabricID {
+			fabric = &f
+			break
+		}
+	}
+	
+	if fabric == nil {
+		http.Error(w, "Fabric not found", http.StatusNotFound)
+		return
+	}
+	
+	// Mock sync operation equivalent to HNP sync functionality
+	syncResult := map[string]interface{}{
+		"fabric_id":         fabricID,
+		"operation_id":      fmt.Sprintf("sync-%d", time.Now().Unix()),
+		"status":            "completed",
+		"start_time":        time.Now().Add(-30 * time.Second),
+		"end_time":          time.Now(),
+		"progress":          100,
+		"crds_processed":    fabric.CachedCRDCount,
+		"crds_total":        fabric.CachedCRDCount,
+		"errors_count":      0,
+		"git_commit_hash":   "abc123",
+		"git_directory":     fabric.GitOpsDirectory,
+		"results":           map[string]interface{}{
+			"vpcs_synced":        2,
+			"connections_synced": 26,
+			"switches_synced":    8,
+		},
+	}
+	
+	json.NewEncoder(w).Encode(syncResult)
+}
+
+func handleFabricSummary(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	
+	// Generate summary equivalent to HNP overview context
+	summary := FabricSummary{
+		TotalFabrics: len(mockFabrics),
+		FabricsByStatus: map[string]int{
+			"active":  1,
+			"planned": 1,
+		},
+		ConnectionSummary: map[string]int{
+			"connected": 1,
+			"pending":   1,
+		},
+		SyncSummary: map[string]int{
+			"in_sync":      1,
+			"never_synced": 1,
+		},
+		TotalCRDs: 36,
+	}
+	
+	json.NewEncoder(w).Encode(summary)
+}
+
+// CRD API handlers equivalent to HNP CRD views
+
+func handleCRDs(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	
+	// List all CRDs equivalent to HNP combined CRD listing
+	response := map[string]interface{}{
+		"count":   len(mockCRDs),
+		"results": mockCRDs,
+	}
+	
+	json.NewEncoder(w).Encode(response)
+}
+
+func handleCRDsByType(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	vars := mux.Vars(r)
+	crdType := vars["type"]
+	
+	switch r.Method {
+	case "GET":
+		// Filter CRDs by type equivalent to HNP type-specific views
+		var filteredCRDs []CRDResource
+		for _, crd := range mockCRDs {
+			if crd.Type == crdType {
+				filteredCRDs = append(filteredCRDs, crd)
+			}
+		}
+		
+		response := map[string]interface{}{
+			"count":   len(filteredCRDs),
+			"type":    crdType,
+			"results": filteredCRDs,
+		}
+		
+		json.NewEncoder(w).Encode(response)
+		
+	case "POST":
+		// Create CRD of specific type
+		var crd CRDResource
+		if err := json.NewDecoder(r.Body).Decode(&crd); err != nil {
+			http.Error(w, "Invalid JSON", http.StatusBadRequest)
+			return
+		}
+		
+		// Set type and generate ID
+		crd.Type = crdType
+		crd.ID = fmt.Sprintf("crd-%d", len(mockCRDs)+1)
+		crd.Created = time.Now()
+		crd.LastModified = time.Now()
+		
+		// Add to mock store
+		mockCRDs = append(mockCRDs, crd)
+		
+		w.WriteHeader(http.StatusCreated)
+		json.NewEncoder(w).Encode(crd)
+	}
+}
+
+func handleCRDDetail(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	vars := mux.Vars(r)
+	crdID := vars["id"]
+	
+	// Find CRD in mock data
+	var crd *CRDResource
+	var index int
+	for i, c := range mockCRDs {
+		if c.ID == crdID {
+			crd = &c
+			index = i
+			break
+		}
+	}
+	
+	if crd == nil {
+		http.Error(w, "CRD not found", http.StatusNotFound)
+		return
+	}
+	
+	switch r.Method {
+	case "GET":
+		json.NewEncoder(w).Encode(crd)
+		
+	case "PUT":
+		var updatedCRD CRDResource
+		if err := json.NewDecoder(r.Body).Decode(&updatedCRD); err != nil {
+			http.Error(w, "Invalid JSON", http.StatusBadRequest)
+			return
+		}
+		
+		// Preserve immutable fields
+		updatedCRD.ID = crd.ID
+		updatedCRD.Created = crd.Created
+		updatedCRD.LastModified = time.Now()
+		
+		// Update in mock store
+		mockCRDs[index] = updatedCRD
+		
+		json.NewEncoder(w).Encode(updatedCRD)
+		
+	case "DELETE":
+		// Remove from mock store
+		mockCRDs = append(mockCRDs[:index], mockCRDs[index+1:]...)
+		w.WriteHeader(http.StatusNoContent)
+	}
+}
+
+func handleCRDSummary(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	
+	// Generate CRD summary
+	crdsByType := make(map[string]int)
+	crdsByFabric := make(map[string]int)
+	
+	for _, crd := range mockCRDs {
+		crdsByType[crd.Type]++
+		crdsByFabric[crd.FabricID]++
+	}
+	
+	summary := CRDSummary{
+		TotalCRDs:    len(mockCRDs),
+		CRDsByType:   crdsByType,
+		CRDsByStatus: map[string]int{"active": len(mockCRDs)},
+		CRDsByFabric: crdsByFabric,
+	}
+	
+	json.NewEncoder(w).Encode(summary)
 }
 
 func getEnv(key, fallback string) string {
