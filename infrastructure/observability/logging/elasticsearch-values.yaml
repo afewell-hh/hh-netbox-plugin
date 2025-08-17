@@ -1,0 +1,175 @@
+# Elasticsearch Configuration for HNP Modernization
+clusterName: "hnp-elasticsearch"
+nodeGroup: "master"
+
+roles:
+  - master
+  - data
+  - data_content
+  - data_hot
+  - data_warm
+  - data_cold
+  - ingest
+  - ml
+  - remote_cluster_client
+  - transform
+
+replicas: 3
+minimumMasterNodes: 2
+
+esMajorVersion: ""
+
+esConfig:
+  elasticsearch.yml: |
+    cluster.name: hnp-elasticsearch
+    network.host: 0.0.0.0
+    discovery.seed_hosts: "elasticsearch-master-headless"
+    cluster.initial_master_nodes: "elasticsearch-master-0,elasticsearch-master-1,elasticsearch-master-2"
+
+createCert: true
+
+esJavaOpts: "-Xmx512m -Xms512m"
+
+resources:
+  requests:
+    cpu: "500m"
+    memory: "1Gi"
+  limits:
+    cpu: "1000m"
+    memory: "2Gi"
+
+volumeClaimTemplate:
+  accessModes: [ "ReadWriteOnce" ]
+  storageClassName: gp3-retain
+  resources:
+    requests:
+      storage: 30Gi
+
+persistence:
+  enabled: true
+  labels:
+    enabled: false
+
+extraEnvs:
+  - name: ELASTIC_PASSWORD
+    valueFrom:
+      secretKeyRef:
+        name: elasticsearch-master-credentials
+        key: password
+  - name: ELASTIC_USERNAME
+    valueFrom:
+      secretKeyRef:
+        name: elasticsearch-master-credentials
+        key: username
+
+envFrom: []
+
+secretMounts: []
+
+hostAliases: []
+
+image: "docker.elastic.co/elasticsearch/elasticsearch"
+imageTag: "8.5.1"
+imagePullPolicy: "IfNotPresent"
+
+podAnnotations:
+  co.elastic.logs/enabled: "true"
+
+labels: {}
+
+esJvmOptions: {}
+
+nodeSelector: {}
+
+tolerations: []
+
+ingress:
+  enabled: true
+  annotations:
+    kubernetes.io/ingress.class: alb
+    alb.ingress.kubernetes.io/scheme: internet-facing
+    alb.ingress.kubernetes.io/target-type: ip
+  pathtype: ImplementationSpecific
+  hosts:
+    - host: elasticsearch.${DOMAIN_NAME}
+      paths:
+        - path: /
+
+networkHost: "0.0.0.0"
+
+networkPolicy:
+  http:
+    enabled: false
+  transport:
+    enabled: false
+
+httpHostPort: ""
+
+transportHostPort: ""
+
+updateStrategy: RollingUpdate
+
+maxUnavailable: 1
+
+podSecurityContext:
+  fsGroup: 1000
+  runAsUser: 1000
+
+securityContext:
+  capabilities:
+    drop:
+    - ALL
+  runAsNonRoot: true
+  runAsUser: 1000
+
+terminationGracePeriod: 120
+
+sysctlVmMaxMapCount: 262144
+
+readinessProbe:
+  failureThreshold: 3
+  initialDelaySeconds: 10
+  periodSeconds: 10
+  successThreshold: 3
+  timeoutSeconds: 5
+
+clusterHealthCheckParams: "wait_for_status=yellow&timeout=1s"
+
+schedulerName: ""
+
+imagePullSecrets: []
+nodeAffinity: {}
+
+podAffinity: {}
+
+podDisruptionBudget:
+  enabled: false
+  minAvailable: 1
+
+priorityClassName: ""
+
+antiAffinityTopologyKey: kubernetes.io/hostname
+
+antiAffinity: "soft"
+
+podManagementPolicy: "Parallel"
+
+protocol: https
+httpPort: 9200
+transportPort: 9300
+
+service:
+  enabled: true
+  labels: {}
+  labelsHeadless: {}
+  type: ClusterIP
+  nodePort: ""
+  annotations: {}
+  httpPortName: http
+  transportPortName: transport
+  loadBalancerIP: ""
+  loadBalancerSourceRanges: []
+  externalTrafficPolicy: ""
+
+tests:
+  enabled: true

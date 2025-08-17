@@ -1,0 +1,83 @@
+# Jaeger Configuration for HNP Modernization
+provisionDataStore:
+  cassandra: false
+  elasticsearch: true
+
+storage:
+  type: elasticsearch
+  elasticsearch:
+    host: elasticsearch-master
+    port: 9200
+    scheme: http
+    user: ""
+    password: ""
+
+agent:
+  enabled: true
+  annotations: {}
+  image: jaegertracing/jaeger-agent
+  pullPolicy: IfNotPresent
+  resources:
+    limits:
+      cpu: 500m
+      memory: 512Mi
+    requests:
+      cpu: 256m
+      memory: 128Mi
+
+collector:
+  enabled: true
+  annotations: {}
+  image: jaegertracing/jaeger-collector
+  pullPolicy: IfNotPresent
+  resources:
+    limits:
+      cpu: 1
+      memory: 1Gi
+    requests:
+      cpu: 500m
+      memory: 512Mi
+  service:
+    type: ClusterIP
+    grpc:
+      port: 14250
+    http:
+      port: 14268
+    zipkin:
+      port: 9411
+
+query:
+  enabled: true
+  annotations: {}
+  image: jaegertracing/jaeger-query
+  pullPolicy: IfNotPresent
+  resources:
+    limits:
+      cpu: 500m
+      memory: 512Mi
+    requests:
+      cpu: 256m
+      memory: 128Mi
+  service:
+    type: LoadBalancer
+    port: 80
+    targetPort: 16686
+  ingress:
+    enabled: true
+    annotations:
+      kubernetes.io/ingress.class: alb
+      alb.ingress.kubernetes.io/scheme: internet-facing
+      alb.ingress.kubernetes.io/target-type: ip
+    hosts:
+      - host: jaeger.${DOMAIN_NAME}
+        paths:
+          - path: /
+            pathType: Prefix
+
+hotrod:
+  enabled: false
+
+esIndexCleaner:
+  enabled: true
+  schedule: "55 23 * * *"
+  numberOfDays: 7

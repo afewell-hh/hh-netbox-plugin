@@ -1,0 +1,1799 @@
+openapi: 3.0.3
+info:
+  title: Hedgehog NetBox Plugin - Drift Detection API
+  description: |
+    Enhanced GitOps drift detection API for the Hedgehog NetBox Plugin.
+    Provides comprehensive drift analysis, dashboard data, and remediation workflows
+    for Kubernetes CRD configuration management.
+    
+    This API follows Model-Driven Development (MDD) methodology and implements
+    the domain model defined in the drift detection domain analysis.
+  version: 1.0.0
+  contact:
+    name: HNP Development Team
+    url: https://github.com/afewell-hh/hh-netbox-plugin
+  license:
+    name: Apache 2.0
+    url: https://www.apache.org/licenses/LICENSE-2.0.html
+
+servers:
+  - url: http://localhost:8000/api/plugins/hedgehog
+    description: Local development server
+  - url: https://netbox.example.com/api/plugins/hedgehog  
+    description: Production NetBox instance
+
+security:
+  - BearerAuth: []
+  - SessionAuth: []
+
+paths:
+  /drift-detection/dashboard/{fabric_id}:
+    get:
+      summary: Get drift detection dashboard data
+      description: |
+        Retrieve comprehensive drift detection dashboard data for a specific fabric.
+        Includes drift summary, resource status, trend analysis, and actionable alerts.
+      operationId: getDriftDashboard
+      tags:
+        - Drift Dashboard
+      parameters:
+        - $ref: '#/components/parameters/FabricId'
+        - name: refresh
+          in: query
+          description: Force refresh of drift analysis before returning data
+          required: false
+          schema:
+            type: boolean
+            default: false
+        - name: include_trends
+          in: query
+          description: Include drift trend analysis data
+          required: false
+          schema:
+            type: boolean
+            default: true
+        - name: time_range
+          in: query
+          description: Time range for trend analysis
+          required: false
+          schema:
+            type: string
+            enum: [1h, 6h, 24h, 7d, 30d]
+            default: 24h
+      responses:
+        '200':
+          description: Drift dashboard data retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DriftDashboardResponse'
+        '404':
+          $ref: '#/components/responses/FabricNotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /drift-detection/analysis/{fabric_id}:
+    post:
+      summary: Trigger drift analysis
+      description: |
+        Trigger comprehensive drift analysis for a specific fabric.
+        Analyzes all resources and updates drift status, scores, and alerts.
+      operationId: triggerDriftAnalysis
+      tags:
+        - Drift Analysis
+      parameters:
+        - $ref: '#/components/parameters/FabricId'
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DriftAnalysisRequest'
+      responses:
+        '202':
+          description: Drift analysis initiated successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DriftAnalysisResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/FabricNotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+    get:
+      summary: Get drift analysis status
+      description: |
+        Get the status and results of ongoing or completed drift analysis.
+      operationId: getDriftAnalysisStatus
+      tags:
+        - Drift Analysis
+      parameters:
+        - $ref: '#/components/parameters/FabricId'
+        - name: analysis_id
+          in: query
+          description: Specific analysis ID to check status
+          required: false
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Drift analysis status retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DriftAnalysisStatusResponse'
+        '404':
+          $ref: '#/components/responses/FabricNotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /drift-detection/resources/{fabric_id}:
+    get:
+      summary: Get drift status for all resources
+      description: |
+        Retrieve drift status and details for all resources in a fabric.
+        Supports filtering, sorting, and pagination for large resource sets.
+      operationId: getResourceDriftStatus
+      tags:
+        - Resource Drift
+      parameters:
+        - $ref: '#/components/parameters/FabricId'
+        - $ref: '#/components/parameters/PaginationLimit'
+        - $ref: '#/components/parameters/PaginationOffset'
+        - name: drift_status
+          in: query
+          description: Filter by drift status
+          required: false
+          schema:
+            type: string
+            enum: [in_sync, spec_drift, desired_only, actual_only, creation_pending, deletion_pending]
+        - name: drift_severity
+          in: query
+          description: Filter by drift severity
+          required: false
+          schema:
+            type: string
+            enum: [none, low, medium, high, critical]
+        - name: resource_kind
+          in: query
+          description: Filter by Kubernetes resource kind
+          required: false
+          schema:
+            type: string
+        - name: sort
+          in: query
+          description: Sort field and direction
+          required: false
+          schema:
+            type: string
+            enum: [name, kind, drift_score, last_drift_check, -name, -kind, -drift_score, -last_drift_check]
+            default: -drift_score
+      responses:
+        '200':
+          description: Resource drift status retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ResourceDriftListResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/FabricNotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /drift-detection/resources/{fabric_id}/{resource_id}:
+    get:
+      summary: Get detailed drift analysis for specific resource
+      description: |
+        Retrieve comprehensive drift analysis for a specific resource including
+        detailed comparison, remediation suggestions, and history.
+      operationId: getResourceDriftDetails
+      tags:
+        - Resource Drift
+      parameters:
+        - $ref: '#/components/parameters/FabricId'
+        - name: resource_id
+          in: path
+          description: Resource ID or unique identifier
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Resource drift details retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ResourceDriftDetailResponse'
+        '404':
+          $ref: '#/components/responses/ResourceNotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /drift-detection/remediation/{fabric_id}:
+    post:
+      summary: Trigger drift remediation workflow
+      description: |
+        Initiate automated or manual drift remediation workflow for specified resources.
+        Supports bulk remediation and approval workflows for destructive operations.
+      operationId: triggerDriftRemediation
+      tags:
+        - Drift Remediation
+      parameters:
+        - $ref: '#/components/parameters/FabricId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DriftRemediationRequest'
+      responses:
+        '202':
+          description: Drift remediation workflow initiated successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DriftRemediationResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '403':
+          $ref: '#/components/responses/InsufficientPermissions'
+        '404':
+          $ref: '#/components/responses/FabricNotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /drift-detection/remediation/{fabric_id}/{workflow_id}:
+    get:
+      summary: Get remediation workflow status
+      description: |
+        Get status and progress of ongoing or completed remediation workflows.
+      operationId: getRemediationStatus
+      tags:
+        - Drift Remediation
+      parameters:
+        - $ref: '#/components/parameters/FabricId'
+        - name: workflow_id
+          in: path
+          description: Remediation workflow ID
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Remediation workflow status retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RemediationStatusResponse'
+        '404':
+          $ref: '#/components/responses/WorkflowNotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /drift-detection/alerts/{fabric_id}:
+    get:
+      summary: Get drift alerts
+      description: |
+        Retrieve active and recent drift alerts for a fabric.
+        Includes severity classification and suggested actions.
+      operationId: getDriftAlerts
+      tags:
+        - Drift Alerts
+      parameters:
+        - $ref: '#/components/parameters/FabricId'
+        - $ref: '#/components/parameters/PaginationLimit'
+        - $ref: '#/components/parameters/PaginationOffset'
+        - name: status
+          in: query
+          description: Filter by alert status
+          required: false
+          schema:
+            type: string
+            enum: [active, acknowledged, resolved, suppressed]
+            default: active
+        - name: severity
+          in: query
+          description: Filter by alert severity
+          required: false
+          schema:
+            type: string
+            enum: [low, medium, high, critical]
+      responses:
+        '200':
+          description: Drift alerts retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DriftAlertsResponse'
+        '404':
+          $ref: '#/components/responses/FabricNotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+    post:
+      summary: Acknowledge or suppress drift alerts
+      description: |
+        Acknowledge, resolve, or suppress drift alerts.
+        Updates alert status and creates audit trail.
+      operationId: manageDriftAlerts
+      tags:
+        - Drift Alerts
+      parameters:
+        - $ref: '#/components/parameters/FabricId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AlertManagementRequest'
+      responses:
+        '200':
+          description: Alert management action completed successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AlertManagementResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/FabricNotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /drift-detection/configuration/{fabric_id}:
+    get:
+      summary: Get drift detection configuration
+      description: |
+        Retrieve current drift detection configuration including thresholds,
+        analysis settings, and automation rules.
+      operationId: getDriftConfiguration
+      tags:
+        - Configuration
+      parameters:
+        - $ref: '#/components/parameters/FabricId'
+      responses:
+        '200':
+          description: Drift detection configuration retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DriftConfigurationResponse'
+        '404':
+          $ref: '#/components/responses/FabricNotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+    put:
+      summary: Update drift detection configuration
+      description: |
+        Update drift detection configuration including alert thresholds,
+        analysis frequency, and remediation policies.
+      operationId: updateDriftConfiguration
+      tags:
+        - Configuration
+      parameters:
+        - $ref: '#/components/parameters/FabricId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DriftConfigurationUpdateRequest'
+      responses:
+        '200':
+          description: Drift detection configuration updated successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DriftConfigurationResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '403':
+          $ref: '#/components/responses/InsufficientPermissions'
+        '404':
+          $ref: '#/components/responses/FabricNotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /drift-detection/metrics/{fabric_id}:
+    get:
+      summary: Get drift detection metrics
+      description: |
+        Retrieve time-series metrics for drift detection performance,
+        resource drift trends, and system health indicators.
+      operationId: getDriftMetrics
+      tags:
+        - Metrics
+      parameters:
+        - $ref: '#/components/parameters/FabricId'
+        - name: metric_type
+          in: query
+          description: Type of metrics to retrieve
+          required: false
+          schema:
+            type: string
+            enum: [drift_trends, performance, alert_frequency, remediation_success]
+            default: drift_trends
+        - name: time_range
+          in: query
+          description: Time range for metrics
+          required: false
+          schema:
+            type: string
+            enum: [1h, 6h, 24h, 7d, 30d]
+            default: 24h
+        - name: granularity
+          in: query
+          description: Data point granularity
+          required: false
+          schema:
+            type: string
+            enum: [1m, 5m, 15m, 1h, 1d]
+            default: 15m
+      responses:
+        '200':
+          description: Drift detection metrics retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DriftMetricsResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/FabricNotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+components:
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+    SessionAuth:
+      type: apiKey
+      in: cookie
+      name: sessionid
+
+  parameters:
+    FabricId:
+      name: fabric_id
+      in: path
+      description: Unique identifier for the Hedgehog fabric
+      required: true
+      schema:
+        type: integer
+        format: int64
+        minimum: 1
+
+    PaginationLimit:
+      name: limit
+      in: query
+      description: Number of items to return per page
+      required: false
+      schema:
+        type: integer
+        minimum: 1
+        maximum: 1000
+        default: 50
+
+    PaginationOffset:
+      name: offset
+      in: query
+      description: Number of items to skip for pagination
+      required: false
+      schema:
+        type: integer
+        minimum: 0
+        default: 0
+
+  schemas:
+    # Core Domain Objects
+    DriftScore:
+      type: number
+      format: float
+      minimum: 0.0
+      maximum: 1.0
+      description: Numerical drift score (0.0 = no drift, 1.0 = complete drift)
+      example: 0.75
+
+    DriftSeverity:
+      type: string
+      enum: [none, low, medium, high, critical]
+      description: Categorical assessment of drift impact
+      example: high
+
+    DriftStatus:
+      type: string
+      enum: [in_sync, spec_drift, desired_only, actual_only, creation_pending, deletion_pending]
+      description: Current drift status between desired and actual state
+      example: spec_drift
+
+    ResourceIdentifier:
+      type: object
+      required: [namespace, kind, name]
+      properties:
+        namespace:
+          type: string
+          description: Kubernetes namespace
+          example: default
+        kind:
+          type: string
+          description: Kubernetes resource kind
+          example: VPC
+        name:
+          type: string
+          description: Resource name
+          example: vpc-prod-001
+      description: Unique identifier for a Kubernetes resource
+
+    # Dashboard Response Schemas
+    DriftDashboardResponse:
+      type: object
+      required: [fabric_id, summary, resources, alerts, trends, last_updated]
+      properties:
+        fabric_id:
+          type: integer
+          format: int64
+          description: Fabric identifier
+          example: 1
+        summary:
+          $ref: '#/components/schemas/DriftSummary'
+        resources:
+          $ref: '#/components/schemas/ResourceDriftSummary'
+        alerts:
+          $ref: '#/components/schemas/AlertSummary'
+        trends:
+          $ref: '#/components/schemas/DriftTrends'
+        performance_metrics:
+          $ref: '#/components/schemas/PerformanceMetrics'
+        last_updated:
+          type: string
+          format: date-time
+          description: When the dashboard data was last updated
+          example: 2025-08-17T01:30:00Z
+
+    DriftSummary:
+      type: object
+      required: [total_resources, resources_with_drift, drift_percentage, overall_status]
+      properties:
+        total_resources:
+          type: integer
+          description: Total number of resources monitored
+          example: 156
+        resources_with_drift:
+          type: integer
+          description: Number of resources with detected drift
+          example: 23
+        drift_percentage:
+          type: number
+          format: float
+          description: Percentage of resources with drift
+          example: 14.7
+        overall_status:
+          $ref: '#/components/schemas/DriftSeverity'
+        avg_drift_score:
+          type: number
+          format: float
+          description: Average drift score across all resources
+          example: 0.32
+        last_analysis:
+          type: string
+          format: date-time
+          description: When drift analysis was last performed
+          example: 2025-08-17T01:25:00Z
+
+    ResourceDriftSummary:
+      type: object
+      required: [by_status, by_severity, by_kind]
+      properties:
+        by_status:
+          type: object
+          additionalProperties:
+            type: integer
+          description: Resource count grouped by drift status
+          example:
+            in_sync: 133
+            spec_drift: 18
+            desired_only: 3
+            actual_only: 2
+        by_severity:
+          type: object
+          additionalProperties:
+            type: integer
+          description: Resource count grouped by drift severity
+          example:
+            none: 133
+            low: 12
+            medium: 8
+            high: 2
+            critical: 1
+        by_kind:
+          type: object
+          additionalProperties:
+            type: integer
+          description: Resource count grouped by Kubernetes kind
+          example:
+            VPC: 45
+            Connection: 78
+            Switch: 23
+            Server: 10
+
+    # Analysis Request/Response Schemas
+    DriftAnalysisRequest:
+      type: object
+      properties:
+        resource_filters:
+          type: object
+          properties:
+            kinds:
+              type: array
+              items:
+                type: string
+              description: Limit analysis to specific resource kinds
+              example: [VPC, Connection]
+            namespaces:
+              type: array
+              items:
+                type: string
+              description: Limit analysis to specific namespaces
+              example: [default, production]
+        analysis_options:
+          type: object
+          properties:
+            deep_comparison:
+              type: boolean
+              description: Enable detailed field-by-field comparison
+              default: true
+            include_metadata:
+              type: boolean
+              description: Include metadata in drift analysis
+              default: false
+            parallel_analysis:
+              type: boolean
+              description: Enable parallel resource analysis
+              default: true
+
+    DriftAnalysisResponse:
+      type: object
+      required: [analysis_id, status, fabric_id, initiated_at]
+      properties:
+        analysis_id:
+          type: string
+          format: uuid
+          description: Unique identifier for this analysis
+          example: 123e4567-e89b-12d3-a456-426614174000
+        status:
+          type: string
+          enum: [initiated, running, completed, failed]
+          description: Current analysis status
+          example: running
+        fabric_id:
+          type: integer
+          format: int64
+          description: Fabric being analyzed
+          example: 1
+        initiated_at:
+          type: string
+          format: date-time
+          description: When analysis was started
+          example: 2025-08-17T01:30:00Z
+        estimated_completion:
+          type: string
+          format: date-time
+          description: Estimated completion time
+          example: 2025-08-17T01:32:00Z
+        progress:
+          type: object
+          properties:
+            resources_analyzed:
+              type: integer
+              example: 45
+            total_resources:
+              type: integer
+              example: 156
+            percentage_complete:
+              type: number
+              format: float
+              example: 28.8
+
+    DriftAnalysisStatusResponse:
+      type: object
+      required: [analysis_id, status, fabric_id, initiated_at]
+      properties:
+        analysis_id:
+          type: string
+          format: uuid
+          description: Analysis identifier
+          example: 123e4567-e89b-12d3-a456-426614174000
+        status:
+          type: string
+          enum: [initiated, running, completed, failed]
+          description: Current analysis status
+          example: completed
+        fabric_id:
+          type: integer
+          format: int64
+          description: Fabric identifier
+          example: 1
+        initiated_at:
+          type: string
+          format: date-time
+          description: Analysis start time
+          example: 2025-08-17T01:30:00Z
+        completed_at:
+          type: string
+          format: date-time
+          description: Analysis completion time
+          example: 2025-08-17T01:31:45Z
+        results:
+          $ref: '#/components/schemas/AnalysisResults'
+        errors:
+          type: array
+          items:
+            type: string
+          description: Any errors encountered during analysis
+          example: []
+
+    AnalysisResults:
+      type: object
+      required: [total_resources, resources_analyzed, drift_detected]
+      properties:
+        total_resources:
+          type: integer
+          description: Total resources in fabric
+          example: 156
+        resources_analyzed:
+          type: integer
+          description: Resources successfully analyzed
+          example: 156
+        drift_detected:
+          type: integer
+          description: Resources with drift detected
+          example: 23
+        analysis_duration:
+          type: number
+          format: float
+          description: Analysis duration in seconds
+          example: 105.4
+        drift_summary:
+          $ref: '#/components/schemas/DriftSummary'
+
+    # Resource Response Schemas
+    ResourceDriftListResponse:
+      type: object
+      required: [resources, pagination]
+      properties:
+        resources:
+          type: array
+          items:
+            $ref: '#/components/schemas/ResourceDriftItem'
+        pagination:
+          $ref: '#/components/schemas/PaginationInfo'
+        filters:
+          type: object
+          description: Applied filters
+          properties:
+            drift_status:
+              type: string
+            drift_severity:
+              type: string
+            resource_kind:
+              type: string
+
+    ResourceDriftItem:
+      type: object
+      required: [id, resource_identifier, drift_status, drift_score, last_check]
+      properties:
+        id:
+          type: string
+          description: Internal resource ID
+          example: hedgehog-resource-1234
+        resource_identifier:
+          $ref: '#/components/schemas/ResourceIdentifier'
+        drift_status:
+          $ref: '#/components/schemas/DriftStatus'
+        drift_score:
+          $ref: '#/components/schemas/DriftScore'
+        drift_severity:
+          $ref: '#/components/schemas/DriftSeverity'
+        last_check:
+          type: string
+          format: date-time
+          description: When drift was last calculated
+          example: 2025-08-17T01:25:00Z
+        summary:
+          type: string
+          description: Human-readable drift summary
+          example: "Configuration differs (3 field differences)"
+        remediation_available:
+          type: boolean
+          description: Whether automated remediation is available
+          example: true
+
+    ResourceDriftDetailResponse:
+      type: object
+      required: [resource, drift_analysis, remediation_options]
+      properties:
+        resource:
+          $ref: '#/components/schemas/DetailedResourceInfo'
+        drift_analysis:
+          $ref: '#/components/schemas/DetailedDriftAnalysis'
+        remediation_options:
+          $ref: '#/components/schemas/RemediationOptions'
+        history:
+          type: array
+          items:
+            $ref: '#/components/schemas/DriftHistoryItem'
+          description: Recent drift detection history
+
+    DetailedResourceInfo:
+      type: object
+      required: [resource_identifier, desired_state, actual_state]
+      properties:
+        resource_identifier:
+          $ref: '#/components/schemas/ResourceIdentifier'
+        desired_state:
+          type: object
+          description: Desired resource specification from Git
+          example: {"spec": {"vpc": "prod-001", "subnets": ["10.0.1.0/24"]}}
+        actual_state:
+          type: object
+          description: Actual resource specification from Kubernetes
+          example: {"spec": {"vpc": "prod-001", "subnets": ["10.0.1.0/24", "10.0.2.0/24"]}}
+        metadata:
+          type: object
+          properties:
+            labels:
+              type: object
+              additionalProperties:
+                type: string
+            annotations:
+              type: object
+              additionalProperties:
+                type: string
+            git_commit:
+              type: string
+              example: a1b2c3d4
+            resource_version:
+              type: string
+              example: "12345"
+
+    DetailedDriftAnalysis:
+      type: object
+      required: [drift_status, drift_score, comparison_details]
+      properties:
+        drift_status:
+          $ref: '#/components/schemas/DriftStatus'
+        drift_score:
+          $ref: '#/components/schemas/DriftScore'
+        drift_severity:
+          $ref: '#/components/schemas/DriftSeverity'
+        comparison_details:
+          type: object
+          properties:
+            differences:
+              type: array
+              items:
+                $ref: '#/components/schemas/FieldDifference'
+            total_differences:
+              type: integer
+              example: 3
+            comparison_type:
+              type: string
+              example: field_by_field
+        calculated_at:
+          type: string
+          format: date-time
+          description: When drift analysis was performed
+          example: 2025-08-17T01:25:00Z
+
+    FieldDifference:
+      type: object
+      required: [field_path, difference_type]
+      properties:
+        field_path:
+          type: string
+          description: JSON path to the differing field
+          example: spec.subnets[1]
+        difference_type:
+          type: string
+          enum: [added, removed, modified, type_changed]
+          description: Type of difference detected
+          example: added
+        desired_value:
+          description: Value in desired state
+          example: null
+        actual_value:
+          description: Value in actual state
+          example: "10.0.2.0/24"
+        severity:
+          $ref: '#/components/schemas/DriftSeverity'
+
+    # Remediation Schemas
+    DriftRemediationRequest:
+      type: object
+      required: [remediation_strategy, target_resources]
+      properties:
+        remediation_strategy:
+          type: string
+          enum: [git_to_cluster, cluster_to_git, manual_review]
+          description: Remediation approach
+          example: git_to_cluster
+        target_resources:
+          type: array
+          items:
+            type: string
+          description: Resource IDs to remediate
+          example: [hedgehog-resource-1234, hedgehog-resource-5678]
+        options:
+          type: object
+          properties:
+            approve_destructive:
+              type: boolean
+              description: Auto-approve destructive operations
+              default: false
+            dry_run:
+              type: boolean
+              description: Preview changes without applying
+              default: false
+            parallel_execution:
+              type: boolean
+              description: Execute remediation in parallel
+              default: false
+        priority:
+          type: string
+          enum: [low, medium, high, critical]
+          description: Remediation priority
+          default: medium
+
+    DriftRemediationResponse:
+      type: object
+      required: [workflow_id, status, fabric_id, initiated_at]
+      properties:
+        workflow_id:
+          type: string
+          format: uuid
+          description: Unique workflow identifier
+          example: 987fcdeb-51a2-43b6-c789-426614174000
+        status:
+          type: string
+          enum: [initiated, planning, executing, completed, failed, cancelled]
+          description: Current workflow status
+          example: planning
+        fabric_id:
+          type: integer
+          format: int64
+          description: Target fabric
+          example: 1
+        remediation_strategy:
+          type: string
+          enum: [git_to_cluster, cluster_to_git, manual_review]
+          example: git_to_cluster
+        target_resources:
+          type: array
+          items:
+            type: string
+          description: Resources being remediated
+          example: [hedgehog-resource-1234, hedgehog-resource-5678]
+        initiated_at:
+          type: string
+          format: date-time
+          description: Workflow start time
+          example: 2025-08-17T01:35:00Z
+        estimated_completion:
+          type: string
+          format: date-time
+          description: Estimated completion time
+          example: 2025-08-17T01:40:00Z
+
+    RemediationStatusResponse:
+      type: object
+      required: [workflow_id, status, fabric_id, initiated_at]
+      properties:
+        workflow_id:
+          type: string
+          format: uuid
+          description: Workflow identifier
+          example: 987fcdeb-51a2-43b6-c789-426614174000
+        status:
+          type: string
+          enum: [initiated, planning, executing, completed, failed, cancelled]
+          description: Current workflow status
+          example: completed
+        fabric_id:
+          type: integer
+          format: int64
+          description: Target fabric
+          example: 1
+        initiated_at:
+          type: string
+          format: date-time
+          description: Workflow start time
+          example: 2025-08-17T01:35:00Z
+        completed_at:
+          type: string
+          format: date-time
+          description: Workflow completion time
+          example: 2025-08-17T01:39:15Z
+        progress:
+          $ref: '#/components/schemas/RemediationProgress'
+        results:
+          $ref: '#/components/schemas/RemediationResults'
+
+    RemediationProgress:
+      type: object
+      required: [total_steps, completed_steps, current_step]
+      properties:
+        total_steps:
+          type: integer
+          description: Total remediation steps
+          example: 4
+        completed_steps:
+          type: integer
+          description: Completed steps
+          example: 4
+        current_step:
+          type: string
+          description: Current step description
+          example: Validation completed
+        percentage_complete:
+          type: number
+          format: float
+          description: Completion percentage
+          example: 100.0
+        errors:
+          type: array
+          items:
+            type: string
+          description: Errors encountered
+          example: []
+
+    RemediationResults:
+      type: object
+      required: [resources_remediated, resources_failed]
+      properties:
+        resources_remediated:
+          type: integer
+          description: Successfully remediated resources
+          example: 2
+        resources_failed:
+          type: integer
+          description: Failed remediation attempts
+          example: 0
+        remediation_actions:
+          type: array
+          items:
+            $ref: '#/components/schemas/RemediationAction'
+        duration:
+          type: number
+          format: float
+          description: Total remediation duration in seconds
+          example: 255.3
+
+    RemediationAction:
+      type: object
+      required: [resource_id, action_type, status]
+      properties:
+        resource_id:
+          type: string
+          description: Target resource identifier
+          example: hedgehog-resource-1234
+        action_type:
+          type: string
+          enum: [update_spec, delete_resource, create_resource, skip]
+          description: Type of remediation action
+          example: update_spec
+        status:
+          type: string
+          enum: [pending, in_progress, completed, failed, skipped]
+          description: Action status
+          example: completed
+        details:
+          type: string
+          description: Action details or error message
+          example: Updated resource specification from Git
+        duration:
+          type: number
+          format: float
+          description: Action duration in seconds
+          example: 45.2
+
+    RemediationOptions:
+      type: object
+      properties:
+        available_strategies:
+          type: array
+          items:
+            $ref: '#/components/schemas/RemediationStrategy'
+        recommended_strategy:
+          type: string
+          enum: [git_to_cluster, cluster_to_git, manual_review]
+          example: git_to_cluster
+        requires_approval:
+          type: boolean
+          description: Whether remediation requires manual approval
+          example: false
+        destructive_operations:
+          type: boolean
+          description: Whether remediation includes destructive operations
+          example: false
+
+    RemediationStrategy:
+      type: object
+      required: [strategy, description, risk_level]
+      properties:
+        strategy:
+          type: string
+          enum: [git_to_cluster, cluster_to_git, manual_review]
+          description: Remediation strategy identifier
+          example: git_to_cluster
+        description:
+          type: string
+          description: Human-readable strategy description
+          example: Apply desired configuration from Git repository to cluster
+        risk_level:
+          type: string
+          enum: [low, medium, high]
+          description: Risk assessment for this strategy
+          example: low
+        estimated_duration:
+          type: integer
+          description: Estimated duration in seconds
+          example: 120
+        prerequisites:
+          type: array
+          items:
+            type: string
+          description: Prerequisites for this strategy
+          example: [Git repository accessible, Kubernetes cluster writable]
+
+    # Alert Schemas
+    DriftAlertsResponse:
+      type: object
+      required: [alerts, pagination]
+      properties:
+        alerts:
+          type: array
+          items:
+            $ref: '#/components/schemas/DriftAlert'
+        pagination:
+          $ref: '#/components/schemas/PaginationInfo'
+        summary:
+          $ref: '#/components/schemas/AlertSummary'
+
+    DriftAlert:
+      type: object
+      required: [id, alert_type, severity, status, created_at, resource_identifier]
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: Unique alert identifier
+          example: alert-456def78-9012-3456-7890-123456789abc
+        alert_type:
+          type: string
+          enum: [drift_detected, threshold_exceeded, remediation_failed, analysis_error]
+          description: Type of alert
+          example: drift_detected
+        severity:
+          $ref: '#/components/schemas/DriftSeverity'
+        status:
+          type: string
+          enum: [active, acknowledged, resolved, suppressed]
+          description: Current alert status
+          example: active
+        title:
+          type: string
+          description: Alert title
+          example: Critical drift detected in production VPC
+        message:
+          type: string
+          description: Detailed alert message
+          example: VPC vpc-prod-001 has critical configuration drift affecting security policies
+        resource_identifier:
+          $ref: '#/components/schemas/ResourceIdentifier'
+        created_at:
+          type: string
+          format: date-time
+          description: Alert creation time
+          example: 2025-08-17T01:25:00Z
+        acknowledged_at:
+          type: string
+          format: date-time
+          description: Alert acknowledgment time
+          example: null
+        acknowledged_by:
+          type: string
+          description: User who acknowledged the alert
+          example: null
+        suggested_actions:
+          type: array
+          items:
+            type: string
+          description: Recommended actions to resolve the alert
+          example: [Review Git configuration, Trigger remediation workflow]
+
+    AlertSummary:
+      type: object
+      required: [total_alerts, by_severity, by_status]
+      properties:
+        total_alerts:
+          type: integer
+          description: Total number of alerts
+          example: 8
+        by_severity:
+          type: object
+          additionalProperties:
+            type: integer
+          description: Alert count by severity
+          example:
+            low: 3
+            medium: 3
+            high: 1
+            critical: 1
+        by_status:
+          type: object
+          additionalProperties:
+            type: integer
+          description: Alert count by status
+          example:
+            active: 6
+            acknowledged: 2
+            resolved: 0
+            suppressed: 0
+
+    AlertManagementRequest:
+      type: object
+      required: [action, alert_ids]
+      properties:
+        action:
+          type: string
+          enum: [acknowledge, resolve, suppress, unsuppress]
+          description: Action to perform on alerts
+          example: acknowledge
+        alert_ids:
+          type: array
+          items:
+            type: string
+          description: Alert IDs to manage
+          example: [alert-456def78-9012-3456-7890-123456789abc]
+        comment:
+          type: string
+          description: Optional comment explaining the action
+          example: Acknowledged - investigating configuration changes
+        suppress_duration:
+          type: integer
+          description: Suppression duration in hours (for suppress action)
+          minimum: 1
+          maximum: 720
+          example: 24
+
+    AlertManagementResponse:
+      type: object
+      required: [processed_alerts, successful_count, failed_count]
+      properties:
+        processed_alerts:
+          type: array
+          items:
+            $ref: '#/components/schemas/AlertActionResult'
+        successful_count:
+          type: integer
+          description: Number of successfully processed alerts
+          example: 1
+        failed_count:
+          type: integer
+          description: Number of failed alert processing attempts
+          example: 0
+
+    AlertActionResult:
+      type: object
+      required: [alert_id, action, status]
+      properties:
+        alert_id:
+          type: string
+          description: Alert identifier
+          example: alert-456def78-9012-3456-7890-123456789abc
+        action:
+          type: string
+          enum: [acknowledge, resolve, suppress, unsuppress]
+          description: Action performed
+          example: acknowledge
+        status:
+          type: string
+          enum: [success, failed]
+          description: Action result
+          example: success
+        error_message:
+          type: string
+          description: Error message if action failed
+          example: null
+
+    # Configuration Schemas
+    DriftConfigurationResponse:
+      type: object
+      required: [fabric_id, thresholds, analysis_settings, alert_settings]
+      properties:
+        fabric_id:
+          type: integer
+          format: int64
+          description: Fabric identifier
+          example: 1
+        thresholds:
+          $ref: '#/components/schemas/DriftThresholds'
+        analysis_settings:
+          $ref: '#/components/schemas/AnalysisSettings'
+        alert_settings:
+          $ref: '#/components/schemas/AlertSettings'
+        remediation_policies:
+          $ref: '#/components/schemas/RemediationPolicies'
+        last_updated:
+          type: string
+          format: date-time
+          description: Configuration last update time
+          example: 2025-08-17T00:00:00Z
+
+    DriftConfigurationUpdateRequest:
+      type: object
+      properties:
+        thresholds:
+          $ref: '#/components/schemas/DriftThresholds'
+        analysis_settings:
+          $ref: '#/components/schemas/AnalysisSettings'
+        alert_settings:
+          $ref: '#/components/schemas/AlertSettings'
+        remediation_policies:
+          $ref: '#/components/schemas/RemediationPolicies'
+
+    DriftThresholds:
+      type: object
+      properties:
+        drift_score_warning:
+          type: number
+          format: float
+          minimum: 0.0
+          maximum: 1.0
+          description: Drift score threshold for warning alerts
+          default: 0.3
+          example: 0.3
+        drift_score_critical:
+          type: number
+          format: float
+          minimum: 0.0
+          maximum: 1.0
+          description: Drift score threshold for critical alerts
+          default: 0.7
+          example: 0.7
+        fabric_drift_percentage:
+          type: number
+          format: float
+          minimum: 0.0
+          maximum: 100.0
+          description: Fabric-wide drift percentage threshold
+          default: 25.0
+          example: 25.0
+        resource_count_threshold:
+          type: integer
+          minimum: 1
+          description: Number of drifted resources that triggers fabric-level alert
+          default: 10
+          example: 10
+
+    AnalysisSettings:
+      type: object
+      properties:
+        analysis_frequency:
+          type: integer
+          minimum: 60
+          maximum: 86400
+          description: Automatic analysis frequency in seconds
+          default: 300
+          example: 300
+        deep_analysis_enabled:
+          type: boolean
+          description: Enable detailed field-by-field comparison
+          default: true
+          example: true
+        parallel_analysis:
+          type: boolean
+          description: Enable parallel resource analysis
+          default: true
+          example: true
+        metadata_analysis:
+          type: boolean
+          description: Include metadata in drift analysis
+          default: false
+          example: false
+        analysis_timeout:
+          type: integer
+          minimum: 30
+          maximum: 3600
+          description: Analysis timeout in seconds
+          default: 600
+          example: 600
+
+    AlertSettings:
+      type: object
+      properties:
+        enable_drift_alerts:
+          type: boolean
+          description: Enable drift detection alerts
+          default: true
+          example: true
+        enable_threshold_alerts:
+          type: boolean
+          description: Enable threshold violation alerts
+          default: true
+          example: true
+        alert_aggregation_window:
+          type: integer
+          minimum: 60
+          maximum: 3600
+          description: Alert aggregation window in seconds
+          default: 300
+          example: 300
+        notification_channels:
+          type: array
+          items:
+            type: string
+          description: Configured notification channels
+          example: [email, slack, webhook]
+
+    RemediationPolicies:
+      type: object
+      properties:
+        auto_remediation_enabled:
+          type: boolean
+          description: Enable automatic drift remediation
+          default: false
+          example: false
+        auto_remediation_thresholds:
+          type: object
+          properties:
+            max_drift_score:
+              type: number
+              format: float
+              description: Maximum drift score for auto-remediation
+              example: 0.5
+            allowed_resource_kinds:
+              type: array
+              items:
+                type: string
+              description: Resource kinds eligible for auto-remediation
+              example: [VPC, Connection]
+        approval_required_for:
+          type: array
+          items:
+            type: string
+            enum: [destructive_operations, high_severity_drift, critical_resources]
+          description: Operations requiring manual approval
+          example: [destructive_operations, critical_resources]
+        remediation_timeout:
+          type: integer
+          minimum: 60
+          maximum: 3600
+          description: Remediation operation timeout in seconds
+          default: 600
+          example: 600
+
+    # Metrics and Trends Schemas
+    DriftMetricsResponse:
+      type: object
+      required: [fabric_id, metric_type, time_range, data_points]
+      properties:
+        fabric_id:
+          type: integer
+          format: int64
+          description: Fabric identifier
+          example: 1
+        metric_type:
+          type: string
+          enum: [drift_trends, performance, alert_frequency, remediation_success]
+          description: Type of metrics
+          example: drift_trends
+        time_range:
+          type: string
+          enum: [1h, 6h, 24h, 7d, 30d]
+          description: Time range for metrics
+          example: 24h
+        granularity:
+          type: string
+          enum: [1m, 5m, 15m, 1h, 1d]
+          description: Data point granularity
+          example: 15m
+        data_points:
+          type: array
+          items:
+            $ref: '#/components/schemas/MetricDataPoint'
+        summary:
+          $ref: '#/components/schemas/MetricSummary'
+
+    MetricDataPoint:
+      type: object
+      required: [timestamp, value]
+      properties:
+        timestamp:
+          type: string
+          format: date-time
+          description: Data point timestamp
+          example: 2025-08-17T01:15:00Z
+        value:
+          type: number
+          format: float
+          description: Metric value
+          example: 0.23
+        metadata:
+          type: object
+          description: Additional metric metadata
+          properties:
+            resource_count:
+              type: integer
+              example: 156
+            drift_count:
+              type: integer
+              example: 23
+
+    MetricSummary:
+      type: object
+      properties:
+        min_value:
+          type: number
+          format: float
+          description: Minimum value in time range
+          example: 0.12
+        max_value:
+          type: number
+          format: float
+          description: Maximum value in time range
+          example: 0.45
+        avg_value:
+          type: number
+          format: float
+          description: Average value in time range
+          example: 0.28
+        trend:
+          type: string
+          enum: [increasing, decreasing, stable]
+          description: Overall trend direction
+          example: stable
+
+    DriftTrends:
+      type: object
+      properties:
+        drift_score_trend:
+          type: array
+          items:
+            $ref: '#/components/schemas/TrendDataPoint'
+          description: Drift score over time
+        resource_count_trend:
+          type: array
+          items:
+            $ref: '#/components/schemas/TrendDataPoint'
+          description: Drifted resource count over time
+        analysis_performance:
+          type: array
+          items:
+            $ref: '#/components/schemas/TrendDataPoint'
+          description: Analysis performance metrics over time
+
+    TrendDataPoint:
+      type: object
+      required: [timestamp, value]
+      properties:
+        timestamp:
+          type: string
+          format: date-time
+          description: Data point timestamp
+          example: 2025-08-17T01:00:00Z
+        value:
+          type: number
+          format: float
+          description: Metric value at timestamp
+          example: 0.25
+
+    PerformanceMetrics:
+      type: object
+      properties:
+        last_analysis_duration:
+          type: number
+          format: float
+          description: Duration of last analysis in seconds
+          example: 45.2
+        avg_analysis_duration:
+          type: number
+          format: float
+          description: Average analysis duration in seconds
+          example: 52.8
+        analysis_success_rate:
+          type: number
+          format: float
+          description: Analysis success rate percentage
+          example: 98.5
+        system_health:
+          type: string
+          enum: [healthy, degraded, unhealthy]
+          description: Overall system health status
+          example: healthy
+
+    # Common Schemas
+    PaginationInfo:
+      type: object
+      required: [limit, offset, total, has_next, has_previous]
+      properties:
+        limit:
+          type: integer
+          description: Items per page
+          example: 50
+        offset:
+          type: integer
+          description: Current offset
+          example: 0
+        total:
+          type: integer
+          description: Total items available
+          example: 156
+        has_next:
+          type: boolean
+          description: Whether next page exists
+          example: true
+        has_previous:
+          type: boolean
+          description: Whether previous page exists
+          example: false
+        next_url:
+          type: string
+          format: uri
+          description: URL for next page
+          example: /api/plugins/hedgehog/drift-detection/resources/1?limit=50&offset=50
+        previous_url:
+          type: string
+          format: uri
+          description: URL for previous page
+          example: null
+
+    DriftHistoryItem:
+      type: object
+      required: [timestamp, drift_status, drift_score]
+      properties:
+        timestamp:
+          type: string
+          format: date-time
+          description: History entry timestamp
+          example: 2025-08-17T01:20:00Z
+        drift_status:
+          $ref: '#/components/schemas/DriftStatus'
+        drift_score:
+          $ref: '#/components/schemas/DriftScore'
+        drift_severity:
+          $ref: '#/components/schemas/DriftSeverity'
+        trigger:
+          type: string
+          description: What triggered this analysis
+          example: scheduled_analysis
+        changes_detected:
+          type: array
+          items:
+            type: string
+          description: Summary of changes detected
+          example: [Added subnet 10.0.2.0/24, Modified security group rules]
+
+    # Error Response Schemas
+    ErrorResponse:
+      type: object
+      required: [error, message]
+      properties:
+        error:
+          type: string
+          description: Error code or type
+          example: FABRIC_NOT_FOUND
+        message:
+          type: string
+          description: Human-readable error message
+          example: Fabric with ID 999 not found
+        details:
+          type: object
+          description: Additional error details
+          properties:
+            field_errors:
+              type: object
+              additionalProperties:
+                type: array
+                items:
+                  type: string
+            request_id:
+              type: string
+              example: req_123456789
+        timestamp:
+          type: string
+          format: date-time
+          description: Error occurrence time
+          example: 2025-08-17T01:30:00Z
+
+  responses:
+    BadRequest:
+      description: Bad request - invalid parameters or request format
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            error: BAD_REQUEST
+            message: Invalid drift_status filter value
+            details:
+              field_errors:
+                drift_status: [Value must be one of in_sync, spec_drift, desired_only, actual_only]
+
+    FabricNotFound:
+      description: Fabric not found
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            error: FABRIC_NOT_FOUND
+            message: Fabric with ID 999 not found
+
+    ResourceNotFound:
+      description: Resource not found
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            error: RESOURCE_NOT_FOUND
+            message: Resource hedgehog-resource-9999 not found
+
+    WorkflowNotFound:
+      description: Workflow not found
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            error: WORKFLOW_NOT_FOUND
+            message: Remediation workflow 123e4567-e89b-12d3-a456-426614174000 not found
+
+    InsufficientPermissions:
+      description: Insufficient permissions to perform operation
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            error: INSUFFICIENT_PERMISSIONS
+            message: User lacks permission to trigger drift remediation
+
+    InternalServerError:
+      description: Internal server error
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            error: INTERNAL_SERVER_ERROR
+            message: An unexpected error occurred while processing the request
+            details:
+              request_id: req_123456789
+
+tags:
+  - name: Drift Dashboard
+    description: Operations for drift detection dashboard data retrieval
+  - name: Drift Analysis
+    description: Operations for triggering and monitoring drift analysis
+  - name: Resource Drift
+    description: Operations for individual resource drift management
+  - name: Drift Remediation
+    description: Operations for drift remediation workflows
+  - name: Drift Alerts
+    description: Operations for drift alert management
+  - name: Configuration
+    description: Operations for drift detection configuration management
+  - name: Metrics
+    description: Operations for drift detection metrics and performance data

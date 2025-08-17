@@ -1,0 +1,72 @@
+# Repository Configuration for ArgoCD
+apiVersion: v1
+kind: Secret
+metadata:
+  name: hnp-modernization-repo
+  namespace: argocd
+  labels:
+    argocd.argoproj.io/secret-type: repository
+    app.kubernetes.io/managed-by: terraform
+type: Opaque
+stringData:
+  type: git
+  url: https://github.com/your-org/hnp-modernization
+  # For private repositories, add credentials:
+  # username: your-username
+  # password: your-token
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: prometheus-helm-repo
+  namespace: argocd
+  labels:
+    argocd.argoproj.io/secret-type: repository
+    app.kubernetes.io/managed-by: terraform
+type: Opaque
+stringData:
+  type: helm
+  name: prometheus-community
+  url: https://prometheus-community.github.io/helm-charts
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: grafana-helm-repo
+  namespace: argocd
+  labels:
+    argocd.argoproj.io/secret-type: repository
+    app.kubernetes.io/managed-by: terraform
+type: Opaque
+stringData:
+  type: helm
+  name: grafana
+  url: https://grafana.github.io/helm-charts
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: jaeger-helm-repo
+  namespace: argocd
+  labels:
+    argocd.argoproj.io/secret-type: repository
+    app.kubernetes.io/managed-by: terraform
+type: Opaque
+stringData:
+  type: helm
+  name: jaegertracing
+  url: https://jaegertracing.github.io/helm-charts
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: elastic-helm-repo
+  namespace: argocd
+  labels:
+    argocd.argoproj.io/secret-type: repository
+    app.kubernetes.io/managed-by: terraform
+type: Opaque
+stringData:
+  type: helm
+  name: elastic
+  url: https://helm.elastic.co

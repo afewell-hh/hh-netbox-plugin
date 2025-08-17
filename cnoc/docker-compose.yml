@@ -1,0 +1,86 @@
+# CNOC MDD-Aligned Deployment Validation Environment
+services:
+  # PostgreSQL database for persistent storage
+  postgres:
+    image: postgres:15-alpine
+    container_name: cnoc-postgres
+    environment:
+      POSTGRES_DB: cnoc
+      POSTGRES_USER: cnoc
+      POSTGRES_PASSWORD: cnoc
+      POSTGRES_HOST_AUTH_METHOD: trust
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./scripts/init-db.sql:/docker-entrypoint-initdb.d/init-db.sql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U cnoc -d cnoc"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  # Redis for caching and event coordination
+  redis:
+    image: redis:7-alpine
+    container_name: cnoc-redis
+    ports:
+      - "6379:6379"
+    command: redis-server --appendonly yes
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  # CNOC Application - MDD-aligned with Symphony-Level coordination
+  cnoc:
+    build: .
+    container_name: cnoc-app
+    ports:
+      - "8080:8080"
+    environment:
+      DATABASE_URL: "postgres://cnoc:cnoc@postgres:5432/cnoc?sslmode=disable"
+      REDIS_URL: "redis://redis:6379/0"
+      SERVER_ADDRESS: ":8080"
+      BASE_URL: "http://localhost:8080"
+      ENVIRONMENT: "development"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    restart: unless-stopped
+
+  # Integration test runner for MDD validation
+  integration-test:
+    build: .
+    container_name: cnoc-integration-test
+    command: ["./cnoc", "test"]
+    environment:
+      DATABASE_URL: "postgres://cnoc:cnoc@postgres:5432/cnoc?sslmode=disable"
+      REDIS_URL: "redis://redis:6379/0"
+      SERVER_ADDRESS: ":8080"
+      BASE_URL: "http://cnoc:8080"
+      ENVIRONMENT: "test"
+    depends_on:
+      cnoc:
+        condition: service_healthy
+    profiles:
+      - test
+
+volumes:
+  postgres_data:
+  redis_data:
+
+networks:
+  default:
+    name: cnoc-network

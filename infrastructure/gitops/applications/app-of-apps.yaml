@@ -1,0 +1,90 @@
+# App of Apps Pattern for HNP Modernization
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: hnp-modernization-apps
+  namespace: argocd
+  labels:
+    app.kubernetes.io/managed-by: terraform
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: hnp-modernization
+  source:
+    repoURL: https://github.com/your-org/hnp-modernization
+    targetRevision: HEAD
+    path: gitops/applications
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: argocd
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+    - CreateNamespace=true
+---
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: observability-stack
+  namespace: argocd
+  labels:
+    app.kubernetes.io/managed-by: terraform
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: observability
+  source:
+    repoURL: https://github.com/your-org/hnp-modernization
+    targetRevision: HEAD
+    path: observability
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: observability
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+    - CreateNamespace=true
+---
+apiVersion: argoproj.io/v1alpha1
+kind: ApplicationSet
+metadata:
+  name: environment-apps
+  namespace: argocd
+  labels:
+    app.kubernetes.io/managed-by: terraform
+spec:
+  generators:
+  - list:
+      elements:
+      - environment: dev
+        namespace: hnp-modernization-dev
+      - environment: test
+        namespace: hnp-modernization-test
+      - environment: staging
+        namespace: hnp-modernization-staging
+      - environment: prod
+        namespace: hnp-modernization-prod
+  template:
+    metadata:
+      name: 'hnp-{{environment}}'
+      labels:
+        environment: '{{environment}}'
+    spec:
+      project: hnp-modernization
+      source:
+        repoURL: https://github.com/your-org/hnp-modernization
+        targetRevision: HEAD
+        path: 'environments/{{environment}}'
+      destination:
+        server: https://kubernetes.default.svc
+        namespace: '{{namespace}}'
+      syncPolicy:
+        automated:
+          prune: true
+          selfHeal: true
+        syncOptions:
+        - CreateNamespace=true

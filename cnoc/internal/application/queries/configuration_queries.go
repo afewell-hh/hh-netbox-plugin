@@ -1,9 +1,8 @@
 package queries
 
 import (
+	"errors"
 	"time"
-
-	"github.com/hedgehog/cnoc/internal/domain/shared"
 )
 
 // ConfigurationQuery represents the base interface for all configuration queries

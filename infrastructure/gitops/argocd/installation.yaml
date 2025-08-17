@@ -1,0 +1,143 @@
+# ArgoCD Installation for HNP Modernization
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: argocd
+  labels:
+    app.kubernetes.io/managed-by: terraform
+---
+apiVersion: argoproj.io/v1alpha1
+kind: ArgoCD
+metadata:
+  name: argocd
+  namespace: argocd
+  labels:
+    app.kubernetes.io/managed-by: terraform
+spec:
+  server:
+    service:
+      type: LoadBalancer
+    ingress:
+      enabled: true
+      annotations:
+        kubernetes.io/ingress.class: alb
+        alb.ingress.kubernetes.io/scheme: internet-facing
+        alb.ingress.kubernetes.io/target-type: ip
+        alb.ingress.kubernetes.io/ssl-redirect: "443"
+        alb.ingress.kubernetes.io/certificate-arn: ${CERTIFICATE_ARN}
+      hosts:
+      - argocd.${DOMAIN_NAME}
+      tls:
+      - secretName: argocd-server-tls
+        hosts:
+        - argocd.${DOMAIN_NAME}
+    config:
+      application.instanceLabelKey: argocd.argoproj.io/instance
+      server.rbac.log.enforce.enable: "true"
+      accounts.admin: apiKey, login
+      accounts.developer: apiKey, login
+      accounts.readonly: login
+    rbacConfig: |
+      policy.default: role:readonly
+      policy.csv: |
+        p, role:admin, applications, *, */*, allow
+        p, role:admin, clusters, *, *, allow
+        p, role:admin, repositories, *, *, allow
+        p, role:developer, applications, *, hnp-modernization/*, allow
+        p, role:developer, repositories, get, *, allow
+        p, role:readonly, applications, get, */*, allow
+        p, role:readonly, repositories, get, *, allow
+        g, argocd-admins, role:admin
+        g, argocd-developers, role:developer
+      scopes: '[groups]'
+  repo:
+    resources:
+      limits:
+        cpu: 1000m
+        memory: 1Gi
+      requests:
+        cpu: 250m
+        memory: 256Mi
+  controller:
+    resources:
+      limits:
+        cpu: 2000m
+        memory: 2Gi
+      requests:
+        cpu: 250m
+        memory: 1Gi
+  dex:
+    openShiftOAuth: false
+  ha:
+    enabled: false
+  redis: 
+    resources:
+      limits:
+        cpu: 500m
+        memory: 256Mi
+      requests:
+        cpu: 250m
+        memory: 128Mi
+  applicationSet:
+    resources:
+      limits:
+        cpu: 100m
+        memory: 128Mi
+      requests:
+        cpu: 100m
+        memory: 128Mi
+---
+# ArgoCD Projects
+apiVersion: argoproj.io/v1alpha1
+kind: AppProject
+metadata:
+  name: hnp-modernization
+  namespace: argocd
+  labels:
+    app.kubernetes.io/managed-by: terraform
+spec:
+  description: HNP Modernization Project
+  sourceRepos:
+  - 'https://github.com/your-org/hnp-modernization*'
+  - 'https://helm.releases.hashicorp.com'
+  - 'https://prometheus-community.github.io/helm-charts'
+  - 'https://grafana.github.io/helm-charts'
+  - 'https://jaegertracing.github.io/helm-charts'
+  - 'https://elastic.github.io/helm-charts'
+  destinations:
+  - namespace: '*'
+    server: https://kubernetes.default.svc
+  clusterResourceWhitelist:
+  - group: '*'
+    kind: '*'
+  namespaceResourceWhitelist:
+  - group: '*'
+    kind: '*'
+---
+apiVersion: argoproj.io/v1alpha1
+kind: AppProject
+metadata:
+  name: observability
+  namespace: argocd
+  labels:
+    app.kubernetes.io/managed-by: terraform
+spec:
+  description: Observability Stack Project
+  sourceRepos:
+  - 'https://prometheus-community.github.io/helm-charts'
+  - 'https://grafana.github.io/helm-charts'
+  - 'https://jaegertracing.github.io/helm-charts'
+  - 'https://elastic.github.io/helm-charts'
+  destinations:
+  - namespace: 'observability'
+    server: https://kubernetes.default.svc
+  - namespace: 'monitoring'
+    server: https://kubernetes.default.svc
+  clusterResourceWhitelist:
+  - group: 'monitoring.coreos.com'
+    kind: '*'
+  - group: 'apiextensions.k8s.io'
+    kind: 'CustomResourceDefinition'
+  namespaceResourceWhitelist:
+  - group: '*'
+    kind: '*'

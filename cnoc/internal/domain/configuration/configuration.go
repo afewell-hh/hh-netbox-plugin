@@ -475,6 +475,19 @@ func (c *Configuration) validateComponentCompatibility(ref *ComponentReference) 
 }
 
 func (c *Configuration) validateComponentRemoval(name ComponentName) error {
+	// Find the component reference being removed
+	var componentToRemove *ComponentReference
+	for _, ref := range c.components.List() {
+		if ref.Name().Equals(name) {
+			componentToRemove = ref
+			break
+		}
+	}
+	
+	if componentToRemove == nil {
+		return fmt.Errorf("component '%s' not found", name.String())
+	}
+	
 	// Check if other components depend on this one
 	for _, ref := range c.components.List() {
 		if ref.Name().Equals(name) {
@@ -482,7 +495,7 @@ func (c *Configuration) validateComponentRemoval(name ComponentName) error {
 		}
 		
 		// Check dependencies (this would typically use a dependency resolver service)
-		if c.isComponentRequired(name, ref) {
+		if c.isComponentRequired(componentToRemove, ref) {
 			return fmt.Errorf("cannot remove component '%s' as it's required by '%s'", 
 				name.String(), ref.Name().String())
 		}

@@ -1,8 +1,13 @@
 # Architecture Specifications Context
 
-**Purpose**: Technical architecture and design documentation for HNP  
-**Architecture Style**: NetBox plugin with Kubernetes integration  
-**Status**: MVP Complete - Comprehensive architecture documentation consolidated
+**Purpose**: Technical architecture and design documentation for CNOC system  
+**Architecture Style**: Go-based CLI with Kubernetes infrastructure and domain-driven design  
+**Status**: Production Development - CNOC system architecture based on HOSS foundations
+
+## System Scope
+
+**CNOC Architecture**: This documents the new Cloud NetOps Command system architecture
+**HNP Reference**: Original prototype architecture preserved for reference and transition planning
 
 ## Core Architecture (✅ Documented)
 - **Plugin Pattern**: NetBox 4.3.3 compatible Django app

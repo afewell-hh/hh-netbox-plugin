@@ -1,0 +1,196 @@
+version: '3.8'
+
+# Parallel Deployment Configuration for New Platform
+# This runs alongside existing NetBox/HNP without conflicts
+
+services:
+  # Frontend Web Application
+  platform_web:
+    container_name: hedgehog-platform-web
+    image: node:18-alpine
+    working_dir: /app
+    volumes:
+      - ../../src/frontend:/app
+      - platform_node_modules:/app/node_modules
+    ports:
+      - "8100:8100"  # Non-conflicting with NetBox 8000
+    environment:
+      - NODE_ENV=development
+      - VITE_API_URL=http://localhost:8101
+      - VITE_GRAPHQL_URL=http://localhost:8102
+      - VITE_WS_URL=ws://localhost:8103
+      - VITE_LEGACY_NETBOX_URL=http://localhost:8000
+    command: sh -c "npm install && npm run dev -- --host 0.0.0.0 --port 8100"
+    networks:
+      - platform_network
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:8100"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # API Gateway Service
+  platform_api:
+    container_name: hedgehog-platform-api
+    image: node:18-alpine
+    working_dir: /app
+    volumes:
+      - ../../src/backend:/app
+      - api_node_modules:/app/node_modules
+    ports:
+      - "8101:8101"  # Non-conflicting API port
+      - "8102:8102"  # GraphQL endpoint
+      - "8103:8103"  # WebSocket server
+    environment:
+      - NODE_ENV=development
+      - API_PORT=8101
+      - GRAPHQL_PORT=8102
+      - WS_PORT=8103
+      - DATABASE_URL=postgresql://platform:secure_password@platform_db:5432/platform
+      - REDIS_URL=redis://platform_redis:6379
+      - LEGACY_NETBOX_API=http://host.docker.internal:8000/api
+    command: sh -c "npm install && npm run dev"
+    depends_on:
+      - platform_db
+      - platform_redis
+    networks:
+      - platform_network
+    extra_hosts:
+      - "host.docker.internal:host-gateway"  # Access host's NetBox
+
+  # ruv-swarm Coordinator
+  ruv_swarm:
+    container_name: ruv-swarm-coordinator
+    image: node:18-alpine
+    working_dir: /app
+    volumes:
+      - ../../agent_coordination:/app
+      - ruv_node_modules:/app/node_modules
+      - agent_memory:/app/memory
+    ports:
+      - "8200:8200"  # ruv-swarm coordinator
+      - "8201:8201"  # Agent memory store
+      - "8202:8202"  # Quality gate validator
+    environment:
+      - NODE_ENV=development
+      - SWARM_PORT=8200
+      - MEMORY_STORE_PORT=8201
+      - QUALITY_GATE_PORT=8202
+      - REDIS_URL=redis://platform_redis:6379
+      - MONGODB_URL=mongodb://platform_mongo:27017/agents
+    command: sh -c "npm install ruv-swarm && npx ruv-swarm mcp start --port 8200"
+    depends_on:
+      - platform_redis
+      - platform_mongo
+    networks:
+      - platform_network
+
+  # PostgreSQL Database (New Instance)
+  platform_db:
+    container_name: hedgehog-platform-db
+    image: postgres:15-alpine
+    ports:
+      - "5433:5432"  # Non-conflicting (+1 from NetBox)
+    environment:
+      - POSTGRES_DB=platform
+      - POSTGRES_USER=platform
+      - POSTGRES_PASSWORD=secure_password
+    volumes:
+      - platform_postgres_data:/var/lib/postgresql/data
+      - ../../deployment/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    networks:
+      - platform_network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U platform"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Redis Cache (New Instance)
+  platform_redis:
+    container_name: hedgehog-platform-redis
+    image: redis:7-alpine
+    ports:
+      - "6380:6379"  # Non-conflicting (+1 from NetBox)
+    volumes:
+      - platform_redis_data:/data
+    command: redis-server --appendonly yes
+    networks:
+      - platform_network
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # MongoDB for Agent Memory
+  platform_mongo:
+    container_name: hedgehog-platform-mongo
+    image: mongo:6-focal
+    ports:
+      - "27017:27017"  # Default MongoDB port (not used by NetBox)
+    environment:
+      - MONGO_INITDB_DATABASE=agents
+      - MONGO_INITDB_ROOT_USERNAME=admin
+      - MONGO_INITDB_ROOT_PASSWORD=secure_password
+    volumes:
+      - platform_mongo_data:/data/db
+    networks:
+      - platform_network
+    healthcheck:
+      test: echo 'db.runCommand("ping").ok' | mongosh localhost:27017/test --quiet
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Prometheus Metrics
+  platform_prometheus:
+    container_name: hedgehog-platform-prometheus
+    image: prom/prometheus:latest
+    ports:
+      - "9191:9090"  # Non-conflicting metrics port
+    volumes:
+      - ../../monitoring/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - platform_prometheus_data:/prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+    networks:
+      - platform_network
+
+  # Grafana Dashboard
+  platform_grafana:
+    container_name: hedgehog-platform-grafana
+    image: grafana/grafana:latest
+    ports:
+      - "3200:3000"  # Non-conflicting dashboard port
+    environment:
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+      - GF_SERVER_HTTP_PORT=3000
+    volumes:
+      - platform_grafana_data:/var/lib/grafana
+      - ../../monitoring/grafana/dashboards:/etc/grafana/provisioning/dashboards:ro
+      - ../../monitoring/grafana/datasources:/etc/grafana/provisioning/datasources:ro
+    depends_on:
+      - platform_prometheus
+    networks:
+      - platform_network
+
+networks:
+  platform_network:
+    name: platform_modernization
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.28.0.0/16  # Different subnet from NetBox
+
+volumes:
+  platform_node_modules:
+  api_node_modules:
+  ruv_node_modules:
+  agent_memory:
+  platform_postgres_data:
+  platform_redis_data:
+  platform_mongo_data:
+  platform_prometheus_data:
+  platform_grafana_data:

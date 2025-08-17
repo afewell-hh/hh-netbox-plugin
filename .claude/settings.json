@@ -1,41 +1,110 @@
 {
-  "permissions": {
-    "allow": [
-      "Bash(*)",
-      "Read(*)",
-      "Write(*)",
-      "Edit(*)",
-      "MultiEdit(*)",
-      "Glob(*)",
-      "Grep(*)",
-      "LS(*)",
-      "NotebookEdit(*)",
-      "NotebookRead(*)",
-      "WebFetch(*)",
-      "WebSearch(*)",
-      "TodoRead",
-      "TodoWrite",
-      "Agent(*)",
-      "Sudo(*)",
-      "Sudo docker(*)",
-      "kubectl(*)",
-      "curl(*)",
-      "cat(*)",
-      "sleep(*)"
+  "instruction_injection": {
+    "memory_based_triggers": {
+      "project_context": {
+        "pattern": "hedgehog-netbox-plugin",
+        "base_contexts": ["netbox_plugin_patterns.md", "enhanced_hive_orchestration.md"]
+      },
+      "file_pattern_triggers": [
+        {
+          "pattern": "*/models/*",
+          "contexts": ["domain_modeling.md"],
+          "memory_key": "mdd/domain_modeling/last_success"
+        },
+        {
+          "pattern": "*/api/*",
+          "contexts": ["api_design.md"],
+          "memory_key": "mdd/api_design/effectiveness_score"
+        },
+        {
+          "pattern": "*/k8s/*|*/kubernetes/*|*/manifests/*",
+          "contexts": ["kubernetes_integration.md"],
+          "memory_key": "mdd/k8s_integration/pattern_library"
+        },
+        {
+          "pattern": "*/tests/*|*/test_*",
+          "contexts": ["testing_patterns.md"],
+          "memory_key": "mdd/testing/success_patterns"
+        }
+      ],
+      "task_type_triggers": [
+        {
+          "type": "infrastructure",
+          "contexts": ["kubernetes_integration.md"],
+          "adaptive_loading": true
+        },
+        {
+          "type": "testing",
+          "contexts": ["testing_patterns.md"],
+          "success_tracking": true
+        }
+      ]
+    },
+    "adaptive_learning": {
+      "context_effectiveness_scoring": true,
+      "failure_pattern_detection": true,
+      "success_pattern_reinforcement": true,
+      "memory_retention_period": "30_days"
+    }
+  },
+  "consolidated_agents": {
+    "enabled": true,
+    "agent_mapping": {
+      "strategic": ["coordination-orchestrator", "research-analysis-specialist"],
+      "implementation": ["implementation-specialist", "testing-validation-engineer"],
+      "specialized": [
+        "netbox-integration-specialist",
+        "kubernetes-gitops-specialist",
+        "infrastructure-deployment-specialist",
+        "contract-first-api-designer",
+        "model-driven-architect",
+        "quality-performance-specialist"
+      ]
+    },
+    "capability_consolidation": {
+      "domain_expertise": "model-driven-architect",
+      "api_contracts": "contract-first-api-designer",
+      "implementation": "implementation-specialist",
+      "testing_validation": "testing-validation-engineer",
+      "infrastructure": "infrastructure-deployment-specialist",
+      "coordination": "coordination-orchestrator",
+      "research_analysis": "research-analysis-specialist",
+      "netbox_plugin": "netbox-integration-specialist",
+      "kubernetes_gitops": "kubernetes-gitops-specialist",
+      "quality_performance": "quality-performance-specialist"
+    }
+  },
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Write|Edit",
+        "hooks": [
+          {
+            "command": ".claude/hooks/enhanced/enhanced_mdd_validation.sh",
+            "description": "Enhanced MDD process adherence with memory",
+            "timeout": 30,
+            "memory_integration": true
+          }
+        ]
+      }
     ],
-    "deny": []
+    "PreTaskExecution": [
+      {
+        "matcher": "Task",
+        "hooks": [
+          {
+            "command": ".claude/hooks/enhanced/context_injection_optimizer.sh",
+            "description": "Memory-driven context loading optimization",
+            "adaptive_learning": true
+          }
+        ]
+      }
+    ]
+  },
+  "memory_optimization": {
+    "pattern_storage": ".claude/memory/patterns/",
+    "success_tracking": true,
+    "failure_analysis": true,
+    "effectiveness_scoring": true
   }
-  
-  
-  
-  
-  
-  
-  
-  
-  
-  
-  
-  
-  
 }

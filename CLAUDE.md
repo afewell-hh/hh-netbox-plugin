@@ -1,19 +1,33 @@
-# Hedgehog NetBox Plugin (HNP) Project Context
+# Cloud NetOps Command (CNOC) Project Context
 
-**Mission**: Self-service Kubernetes CRD management via NetBox interface
-**Status**: MVP Complete - 12 CRD types operational (49 CRDs synced)
-**Branch**: feature/mvp2-database-foundation
+**Mission**: Enterprise-grade cloud networking operations infrastructure with bootable ISO deployment
+**Status**: Production Development - Go-based CLI with Kubernetes architecture
+**Branch**: modernization/k8s-foundation
 
-## Technical Stack
-- Backend: Django 4.2, NetBox 4.3.3 plugin architecture
+## System Architecture Overview
+
+**CNOC (Cloud NetOps Command)**: The new production system based on Go CLI, Kubernetes infrastructure, and domain-driven design patterns. This system replaces the original HNP prototype.
+
+**HNP (Hedgehog NetBox Plugin)**: Original Python/Django prototype system preserved for reference on experimental/main branch.
+
+## CNOC Technical Stack
+- Core: Go-based cnocfab CLI utility
+- Infrastructure: Kubernetes, GitOps, Terraform
+- Architecture: Domain-driven design, microservices
+- Deployment: Bootable ISO with pre-configured components
+- Components: ArgoCD, Prometheus, Grafana, cert-manager
+
+## HNP Prototype Stack (Reference Only)
+- Backend: Django 4.2, NetBox 4.3.3 plugin architecture  
 - Frontend: Bootstrap 5 with progressive disclosure UI
 - Integration: Kubernetes Python client, ArgoCD GitOps
 - Database: PostgreSQL (shared with NetBox core)
 
-## Environment
-- NetBox Docker: localhost:8000 with plugin integrated
-- HCKC Cluster: K3s at 127.0.0.1:6443
-- GitOps: github.com/afewell-hh/gitops-test-1.git
+## Development Environment
+- CNOC Branch: modernization/k8s-foundation
+- HNP Reference: experimental/main  
+- CLI Tool: cnocfab (replacing hossfab)
+- Infrastructure: hossfab/, infrastructure/, hoss/ directories
 
 ## Quick Links
 - Project Mgmt: @project_management/CLAUDE.md

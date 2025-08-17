@@ -1,11 +1,13 @@
 package middleware
 
 import (
+	"compress/gzip"
 	"context"
 	"fmt"
 	"net/http"
 	"runtime/debug"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/google/uuid"
@@ -490,8 +492,3 @@ type PermissionChecker interface {
 	CheckPermission(userID, resource, action string) (bool, error)
 }
 
-// Additional imports needed
-import (
-	"compress/gzip"
-	"sync"
-)

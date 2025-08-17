@@ -1,0 +1,32 @@
+# Base namespaces for HNP modernization
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: hnp-modernization
+  labels:
+    name: hnp-modernization
+    app.kubernetes.io/managed-by: terraform
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: observability
+  labels:
+    name: observability
+    app.kubernetes.io/managed-by: terraform
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: gitops
+  labels:
+    name: gitops
+    app.kubernetes.io/managed-by: terraform
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: monitoring
+  labels:
+    name: monitoring
+    app.kubernetes.io/managed-by: terraform
