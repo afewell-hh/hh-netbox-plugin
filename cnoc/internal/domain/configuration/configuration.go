@@ -50,6 +50,14 @@ func (id ConfigurationID) Equals(other ConfigurationID) bool {
 	return id.value == other.value
 }
 
+// GenerateConfigurationID generates a new unique configuration ID
+func GenerateConfigurationID() ConfigurationID {
+	// Generate UUID-like identifier for MDD compliance
+	// In production, this would use a proper UUID library
+	timestamp := time.Now().UnixNano()
+	return ConfigurationID{value: fmt.Sprintf("config-%d", timestamp)}
+}
+
 // ConfigurationName represents a human-readable configuration name
 type ConfigurationName struct {
 	value string
@@ -123,6 +131,38 @@ func (status ConfigurationStatus) String() string {
 	}
 }
 
+// ParseConfigurationMode parses a string into ConfigurationMode
+func ParseConfigurationMode(mode string) (ConfigurationMode, error) {
+	switch mode {
+	case "enterprise":
+		return ModeEnterprise, nil
+	case "minimal":
+		return ModeMinimal, nil
+	case "development":
+		return ModeDevelopment, nil
+	default:
+		return ModeEnterprise, fmt.Errorf("invalid configuration mode: %s", mode)
+	}
+}
+
+// ParseConfigurationStatus parses a string into ConfigurationStatus
+func ParseConfigurationStatus(status string) (ConfigurationStatus, error) {
+	switch status {
+	case "draft":
+		return StatusDraft, nil
+	case "validated":
+		return StatusValidated, nil
+	case "deployed":
+		return StatusDeployed, nil
+	case "failed":
+		return StatusFailed, nil
+	case "archived":
+		return StatusArchived, nil
+	default:
+		return StatusDraft, fmt.Errorf("invalid configuration status: %s", status)
+	}
+}
+
 // ConfigurationMetadata holds additional configuration information
 type ConfigurationMetadata struct {
 	description      string
@@ -131,6 +171,22 @@ type ConfigurationMetadata struct {
 	enterpriseConfig *EnterpriseConfiguration
 	createdBy       string
 	purpose         string
+}
+
+// NewConfigurationMetadata creates a new configuration metadata instance
+func NewConfigurationMetadata(description string, labels, annotations map[string]string) ConfigurationMetadata {
+	if labels == nil {
+		labels = make(map[string]string)
+	}
+	if annotations == nil {
+		annotations = make(map[string]string)
+	}
+	
+	return ConfigurationMetadata{
+		description: description,
+		labels:      labels,
+		annotations: annotations,
+	}
 }
 
 // EnterpriseConfiguration represents enterprise-specific configuration settings
@@ -330,6 +386,11 @@ func (c *Configuration) Status() ConfigurationStatus {
 // Components returns the component collection
 func (c *Configuration) Components() *ComponentCollection {
 	return &c.components
+}
+
+// ComponentsList returns all component references as a slice
+func (c *Configuration) ComponentsList() []*ComponentReference {
+	return c.components.List()
 }
 
 // Metadata returns the configuration metadata

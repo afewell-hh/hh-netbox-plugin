@@ -454,10 +454,10 @@ type ComponentInstallation struct {
 type InstallationPriority int
 
 const (
-	PriorityLow InstallationPriority = iota
-	PriorityNormal
-	PriorityHigh
-	PriorityCritical
+	InstallPriorityLow InstallationPriority = iota
+	InstallPriorityNormal
+	InstallPriorityHigh
+	InstallPriorityCritical
 )
 
 // ProvisioningResult represents the result of infrastructure provisioning

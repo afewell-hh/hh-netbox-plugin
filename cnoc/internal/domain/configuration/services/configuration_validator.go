@@ -6,7 +6,6 @@ import (
 
 	"github.com/hedgehog/cnoc/internal/domain/configuration"
 	"github.com/hedgehog/cnoc/internal/domain/events"
-	"github.com/hedgehog/cnoc/internal/domain/shared"
 )
 
 // ConfigurationValidator is a domain service that provides comprehensive
@@ -544,7 +543,6 @@ func (cv *ConfigurationValidator) validateResourceRequirements(
 	result *ExtendedValidationResult,
 ) {
 	totalCPU := 0.0
-	totalMemory := 0.0
 	
 	for _, comp := range config.Components().List() {
 		// Parse CPU and memory requirements (simplified)

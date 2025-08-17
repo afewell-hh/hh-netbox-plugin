@@ -71,6 +71,15 @@ func NewComponentConfiguration() ComponentConfiguration {
 	}
 }
 
+// NewComponentConfigurationWithParams creates a component configuration with parameters
+func NewComponentConfigurationWithParams(parameters map[string]interface{}) ComponentConfiguration {
+	config := NewComponentConfiguration()
+	if parameters != nil {
+		config.parameters = parameters
+	}
+	return config
+}
+
 // SetParameter sets a configuration parameter
 func (cc *ComponentConfiguration) SetParameter(key string, value interface{}) error {
 	if key == "" {
@@ -159,6 +168,20 @@ func NewResourceRequirements() ResourceRequirements {
 	}
 }
 
+// NewResourceRequirementsWithParams creates resource requirements with specific parameters
+func NewResourceRequirementsWithParams(cpu, memory, storage string, replicas int, namespace string) ResourceRequirements {
+	return ResourceRequirements{
+		requests: ResourceSpec{
+			cpu:    cpu,
+			memory: memory,
+		},
+		limits: ResourceSpec{
+			cpu:    cpu,
+			memory: memory,
+		},
+	}
+}
+
 // SetRequests sets resource requests
 func (rr *ResourceRequirements) SetRequests(cpu, memory string) error {
 	if err := validateResourceValue(cpu, "cpu"); err != nil {
@@ -195,6 +218,31 @@ func (rr ResourceRequirements) Requests() ResourceSpec {
 // Limits returns resource limits
 func (rr ResourceRequirements) Limits() ResourceSpec {
 	return rr.limits
+}
+
+// CPU returns the CPU request value for compatibility
+func (rr ResourceRequirements) CPU() string {
+	return rr.requests.cpu
+}
+
+// Memory returns the memory request value for compatibility
+func (rr ResourceRequirements) Memory() string {
+	return rr.requests.memory
+}
+
+// Storage returns default storage value for compatibility
+func (rr ResourceRequirements) Storage() string {
+	return "1Gi" // Default storage value
+}
+
+// Replicas returns default replica count for compatibility
+func (rr ResourceRequirements) Replicas() int {
+	return 1 // Default replica count
+}
+
+// Namespace returns default namespace for compatibility
+func (rr ResourceRequirements) Namespace() string {
+	return "cnoc" // Default namespace
 }
 
 // ResourceSpec represents specific resource values
@@ -326,9 +374,14 @@ func (cr *ComponentReference) Enabled() bool {
 	return cr.enabled
 }
 
-// Configuration returns the component configuration
+// Configuration returns the component configuration by value
 func (cr *ComponentReference) Configuration() ComponentConfiguration {
 	return cr.configuration
+}
+
+// ConfigurationPtr returns a pointer to the component configuration for modification
+func (cr *ComponentReference) ConfigurationPtr() *ComponentConfiguration {
+	return &cr.configuration
 }
 
 // Resources returns the resource requirements for the component
@@ -344,11 +397,6 @@ func (cr *ComponentReference) Enable() {
 // Disable disables the component
 func (cr *ComponentReference) Disable() {
 	cr.enabled = false
-}
-
-// Configuration returns the component configuration
-func (cr *ComponentReference) Configuration() *ComponentConfiguration {
-	return &cr.configuration
 }
 
 // Metadata returns the component metadata

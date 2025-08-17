@@ -303,7 +303,7 @@ func (dr *DependencyResolver) findMissingDependencies(
 					RequiredBy:      node.ComponentName.String(),
 					ComponentName:   depName,
 					RequiredVersion: dep.VersionConstraint.String(),
-					Severity:        ValidationSeverityHigh,
+					Severity:        SeverityHigh,
 				})
 			}
 		}
