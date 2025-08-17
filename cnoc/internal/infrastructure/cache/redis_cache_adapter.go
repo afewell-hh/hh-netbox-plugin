@@ -10,7 +10,6 @@ import (
 	
 	"github.com/hedgehog/cnoc/internal/application/queries"
 	"github.com/hedgehog/cnoc/internal/domain/configuration"
-	"github.com/hedgehog/cnoc/internal/domain/shared"
 )
 
 // RedisCacheAdapter implements caching with anti-corruption layer patterns
@@ -89,7 +88,7 @@ func (c *RedisCacheAdapter) CacheConfiguration(
 		Mode:          string(config.Mode()),
 		Version:       config.Version().String(),
 		Status:        string(config.Status()),
-		ComponentCount: len(config.Components()),
+		ComponentCount: config.Components().Size(),
 		CachedAt:      time.Now().Unix(),
 		TTL:           int64(ttl.Seconds()),
 	}
@@ -129,7 +128,11 @@ func (c *RedisCacheAdapter) GetConfiguration(
 	}
 
 	// Convert cache model back to domain model through anti-corruption layer
-	domainModel, err := c.serializer.CacheModelToConfiguration(cacheModel)
+	configCacheModel, ok := cacheModel.(*ConfigurationCacheModel)
+	if !ok {
+		return nil, c.wrapError("cache_type_assertion_failed", fmt.Errorf("expected *ConfigurationCacheModel, got %T", cacheModel))
+	}
+	domainModel, err := c.serializer.CacheModelToConfiguration(configCacheModel)
 	if err != nil {
 		return nil, c.wrapError("domain_deserialization_failed", err)
 	}
@@ -206,7 +209,11 @@ func (c *RedisCacheAdapter) CacheQueryResult(
 	}
 
 	// Cache query metadata for cache management
-	c.cacheQueryMetadata(ctx, queryKey, len(result.Data), ttl)
+	resultCount := 0
+	if result.Data != nil {
+		resultCount = 1 // Single result
+	}
+	c.cacheQueryMetadata(ctx, queryKey, resultCount, ttl)
 
 	return nil
 }
@@ -239,7 +246,11 @@ func (c *RedisCacheAdapter) GetQueryResult(
 	}
 
 	// Convert back to query result
-	queryResult, err := c.serializer.CacheModelToQueryResult(cacheResult)
+	queryCacheModel, ok := cacheResult.(*QueryResultCacheModel)
+	if !ok {
+		return nil, c.wrapError("query_cache_type_assertion_failed", fmt.Errorf("expected *QueryResultCacheModel, got %T", cacheResult))
+	}
+	queryResult, err := c.serializer.CacheModelToQueryResult(queryCacheModel)
 	if err != nil {
 		return nil, c.wrapError("query_domain_deserialization_failed", err)
 	}
@@ -292,7 +303,7 @@ func (c *RedisCacheAdapter) CacheMultipleConfigurations(
 			Mode:          string(config.Mode()),
 			Version:       config.Version().String(),
 			Status:        string(config.Status()),
-			ComponentCount: len(config.Components()),
+			ComponentCount: config.Components().Size(),
 			CachedAt:      time.Now().Unix(),
 			TTL:           int64(ttl.Seconds()),
 		}
@@ -413,10 +424,10 @@ func (c *RedisCacheAdapter) cacheQueryMetadata(
 	ttl time.Duration,
 ) {
 	metadata := QueryCacheMetadata{
-		QueryKey:    queryKey,
-		ResultCount: resultCount,
-		CachedAt:    time.Now().Unix(),
-		TTL:         int64(ttl.Seconds()),
+		CachedAt:      time.Now().Unix(),
+		TTL:           int64(ttl.Seconds()),
+		CacheStrategy: "redis",
+		SchemaVersion: "1.0",
 	}
 
 	metadataJSON, _ := json.Marshal(metadata)
@@ -440,60 +451,7 @@ func (c *RedisCacheAdapter) wrapError(operation string, err error) error {
 	return fmt.Errorf("Redis cache %s failed: %w", operation, err)
 }
 
-// Cache model types with anti-corruption patterns
-
-// ConfigurationCacheModel represents configuration in cache format
-type ConfigurationCacheModel struct {
-	ID                   string                     `json:"id"`
-	Name                 string                     `json:"name"`
-	Description          string                     `json:"description"`
-	Mode                 string                     `json:"mode"`
-	Version              string                     `json:"version"`
-	Status               string                     `json:"status"`
-	Labels               map[string]string          `json:"labels"`
-	Annotations          map[string]string          `json:"annotations"`
-	Components           []ComponentCacheModel      `json:"components"`
-	EnterpriseConfig     *EnterpriseConfigCacheModel `json:"enterprise_config,omitempty"`
-	CacheMetadata        CacheMetadata              `json:"cache_metadata"`
-}
-
-// ComponentCacheModel represents component in cache format
-type ComponentCacheModel struct {
-	Name                string                          `json:"name"`
-	Version             string                          `json:"version"`
-	Enabled             bool                           `json:"enabled"`
-	Configuration       map[string]interface{}         `json:"configuration"`
-	Resources           ResourceRequirementsCacheModel `json:"resources"`
-}
-
-// ResourceRequirementsCacheModel represents resource requirements in cache
-type ResourceRequirementsCacheModel struct {
-	CPU       string `json:"cpu"`
-	Memory    string `json:"memory"`
-	Storage   string `json:"storage"`
-	Replicas  int    `json:"replicas"`
-	Namespace string `json:"namespace"`
-}
-
-// EnterpriseConfigCacheModel represents enterprise config in cache
-type EnterpriseConfigCacheModel struct {
-	ComplianceFramework string            `json:"compliance_framework"`
-	SecurityLevel       string            `json:"security_level"`
-	AuditEnabled        bool              `json:"audit_enabled"`
-	EncryptionRequired  bool              `json:"encryption_required"`
-	BackupRequired      bool              `json:"backup_required"`
-	PolicyTemplates     []string          `json:"policy_templates"`
-	Metadata           map[string]string `json:"metadata"`
-}
-
-// CacheMetadata holds cache-specific metadata
-type CacheMetadata struct {
-	SerializationFormat string    `json:"serialization_format"`
-	CompressionLevel    int       `json:"compression_level"`
-	CachedAt           time.Time `json:"cached_at"`
-	TTL                time.Duration `json:"ttl"`
-	SchemaVersion      string    `json:"schema_version"`
-}
+// Cache model types are defined in cache_serializer.go to avoid duplication
 
 // Metadata types for cache management
 
@@ -509,13 +467,7 @@ type ConfigurationCacheMetadata struct {
 	TTL            int64  `json:"ttl"`
 }
 
-// QueryCacheMetadata holds query cache metadata
-type QueryCacheMetadata struct {
-	QueryKey    string `json:"query_key"`
-	ResultCount int    `json:"result_count"`
-	CachedAt    int64  `json:"cached_at"`
-	TTL         int64  `json:"ttl"`
-}
+// QueryCacheMetadata is defined in cache_serializer.go
 
 // CacheStats provides comprehensive cache statistics
 type CacheStats struct {

@@ -1,6 +1,7 @@
 package external
 
 import (
+	"fmt"
 	"time"
 
 	"k8s.io/apimachinery/pkg/runtime/schema"
@@ -465,14 +466,14 @@ const (
 	K8sResourceStateUnknown   K8sResourceState = "unknown"
 )
 
-// K8sResourceStatus represents resource deployment status
-type K8sResourceStatus string
+// K8sOperationStatus represents resource deployment operation status
+type K8sOperationStatus string
 
 const (
-	K8sResourceStatusCreated  K8sResourceStatus = "created"
-	K8sResourceStatusUpdated  K8sResourceStatus = "updated"
-	K8sResourceStatusDeleted  K8sResourceStatus = "deleted"
-	K8sResourceStatusError    K8sResourceStatus = "error"
+	K8sOperationStatusCreated  K8sOperationStatus = "created"
+	K8sOperationStatusUpdated  K8sOperationStatus = "updated"
+	K8sOperationStatusDeleted  K8sOperationStatus = "deleted"
+	K8sOperationStatusError    K8sOperationStatus = "error"
 )
 
 // K8sComponentStatus represents component status

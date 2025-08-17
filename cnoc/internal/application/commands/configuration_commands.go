@@ -1,12 +1,7 @@
 package commands
 
 import (
-	"context"
 	"errors"
-	"time"
-
-	"github.com/hedgehog/cnoc/internal/domain/configuration"
-	"github.com/hedgehog/cnoc/internal/domain/shared"
 )
 
 // ConfigurationCommand represents the base interface for all configuration commands

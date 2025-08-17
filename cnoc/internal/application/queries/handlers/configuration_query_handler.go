@@ -51,7 +51,7 @@ func (h *ConfigurationQueryHandler) HandleGetConfigurationByID(
 	
 	// Validate query
 	if err := query.Validate(); err != nil {
-		return h.buildErrorResult[*ConfigurationReadModel](query.RequestID(), 
+		return buildErrorResult[*ConfigurationReadModel](query.RequestID(), 
 			"query_validation_failed", err, startTime), nil
 	}
 
@@ -73,17 +73,17 @@ func (h *ConfigurationQueryHandler) HandleGetConfigurationByID(
 		// Fetch from repository
 		configID, err := configuration.NewConfigurationID(query.ID)
 		if err != nil {
-			return h.buildErrorResult[*ConfigurationReadModel](query.RequestID(),
+			return buildErrorResult[*ConfigurationReadModel](query.RequestID(),
 				"invalid_configuration_id", err, startTime), nil
 		}
 
 		config, err := h.configRepo.FindByID(ctx, configID)
 		if err != nil {
 			if repositories.IsNotFound(err) {
-				return h.buildErrorResult[*ConfigurationReadModel](query.RequestID(),
+				return buildErrorResult[*ConfigurationReadModel](query.RequestID(),
 					"configuration_not_found", err, startTime), nil
 			}
-			return h.buildErrorResult[*ConfigurationReadModel](query.RequestID(),
+			return buildErrorResult[*ConfigurationReadModel](query.RequestID(),
 				"repository_error", err, startTime), nil
 		}
 
@@ -95,7 +95,7 @@ func (h *ConfigurationQueryHandler) HandleGetConfigurationByID(
 			IncludeMetrics:    query.IncludeMetrics,
 		})
 		if err != nil {
-			return h.buildErrorResult[*ConfigurationReadModel](query.RequestID(),
+			return buildErrorResult[*ConfigurationReadModel](query.RequestID(),
 				"projection_failed", err, startTime), nil
 		}
 
@@ -137,7 +137,7 @@ func (h *ConfigurationQueryHandler) HandleGetConfigurationByName(
 	
 	// Validate query
 	if err := query.Validate(); err != nil {
-		return h.buildErrorResult[*ConfigurationReadModel](query.RequestID(),
+		return buildErrorResult[*ConfigurationReadModel](query.RequestID(),
 			"query_validation_failed", err, startTime), nil
 	}
 
@@ -158,17 +158,17 @@ func (h *ConfigurationQueryHandler) HandleGetConfigurationByName(
 		// Fetch from repository
 		configName, err := configuration.NewConfigurationName(query.Name)
 		if err != nil {
-			return h.buildErrorResult[*ConfigurationReadModel](query.RequestID(),
+			return buildErrorResult[*ConfigurationReadModel](query.RequestID(),
 				"invalid_configuration_name", err, startTime), nil
 		}
 
 		config, err := h.configRepo.FindByName(ctx, configName)
 		if err != nil {
 			if repositories.IsNotFound(err) {
-				return h.buildErrorResult[*ConfigurationReadModel](query.RequestID(),
+				return buildErrorResult[*ConfigurationReadModel](query.RequestID(),
 					"configuration_not_found", err, startTime), nil
 			}
-			return h.buildErrorResult[*ConfigurationReadModel](query.RequestID(),
+			return buildErrorResult[*ConfigurationReadModel](query.RequestID(),
 				"repository_error", err, startTime), nil
 		}
 
@@ -179,7 +179,7 @@ func (h *ConfigurationQueryHandler) HandleGetConfigurationByName(
 			IncludeHistory:  query.IncludeHistory,
 		})
 		if err != nil {
-			return h.buildErrorResult[*ConfigurationReadModel](query.RequestID(),
+			return buildErrorResult[*ConfigurationReadModel](query.RequestID(),
 				"projection_failed", err, startTime), nil
 		}
 
@@ -220,7 +220,7 @@ func (h *ConfigurationQueryHandler) HandleListConfigurations(
 	
 	// Validate query
 	if err := query.Validate(); err != nil {
-		return h.buildErrorResult[[]*ConfigurationListItem](query.RequestID(),
+		return buildErrorResult[[]*ConfigurationListItem](query.RequestID(),
 			"query_validation_failed", err, startTime), nil
 	}
 
@@ -246,14 +246,14 @@ func (h *ConfigurationQueryHandler) HandleListConfigurations(
 		// Fetch from repository
 		configs, err := h.configRepo.FindAll(ctx, repoFilter)
 		if err != nil {
-			return h.buildErrorResult[[]*ConfigurationListItem](query.RequestID(),
+			return buildErrorResult[[]*ConfigurationListItem](query.RequestID(),
 				"repository_error", err, startTime), nil
 		}
 
 		// Get total count
 		totalCount, err = h.configRepo.Count(ctx, repoFilter)
 		if err != nil {
-			return h.buildErrorResult[[]*ConfigurationListItem](query.RequestID(),
+			return buildErrorResult[[]*ConfigurationListItem](query.RequestID(),
 				"count_error", err, startTime), nil
 		}
 
@@ -264,7 +264,7 @@ func (h *ConfigurationQueryHandler) HandleListConfigurations(
 				Level: query.ProjectionLevel,
 			})
 			if err != nil {
-				return h.buildErrorResult[[]*ConfigurationListItem](query.RequestID(),
+				return buildErrorResult[[]*ConfigurationListItem](query.RequestID(),
 					"projection_failed", err, startTime), nil
 			}
 			result[i] = item
@@ -324,7 +324,7 @@ func (h *ConfigurationQueryHandler) HandleGetConfigurationEvents(
 	
 	// Validate query
 	if err := query.Validate(); err != nil {
-		return h.buildErrorResult[[]*ConfigurationEventReadModel](query.RequestID(),
+		return buildErrorResult[[]*ConfigurationEventReadModel](query.RequestID(),
 			"query_validation_failed", err, startTime), nil
 	}
 
@@ -334,7 +334,7 @@ func (h *ConfigurationQueryHandler) HandleGetConfigurationEvents(
 	// Fetch events from repository
 	domainEvents, err := h.eventRepository.GetEventsByType(ctx, query.ConfigurationID, eventFilter)
 	if err != nil {
-		return h.buildErrorResult[[]*ConfigurationEventReadModel](query.RequestID(),
+		return buildErrorResult[[]*ConfigurationEventReadModel](query.RequestID(),
 			"event_repository_error", err, startTime), nil
 	}
 
@@ -345,7 +345,7 @@ func (h *ConfigurationQueryHandler) HandleGetConfigurationEvents(
 			Level: query.ProjectionLevel,
 		})
 		if err != nil {
-			return h.buildErrorResult[[]*ConfigurationEventReadModel](query.RequestID(),
+			return buildErrorResult[[]*ConfigurationEventReadModel](query.RequestID(),
 				"event_projection_failed", err, startTime), nil
 		}
 		result[i] = eventModel
@@ -386,7 +386,7 @@ func (h *ConfigurationQueryHandler) HandleGetConfigurationMetrics(
 	
 	// Validate query
 	if err := query.Validate(); err != nil {
-		return h.buildErrorResult[*ConfigurationMetricsReadModel](query.RequestID(),
+		return buildErrorResult[*ConfigurationMetricsReadModel](query.RequestID(),
 			"query_validation_failed", err, startTime), nil
 	}
 
@@ -398,7 +398,7 @@ func (h *ConfigurationQueryHandler) HandleGetConfigurationMetrics(
 		Aggregation:     query.Aggregation,
 	})
 	if err != nil {
-		return h.buildErrorResult[*ConfigurationMetricsReadModel](query.RequestID(),
+		return buildErrorResult[*ConfigurationMetricsReadModel](query.RequestID(),
 			"metrics_service_error", err, startTime), nil
 	}
 
@@ -407,7 +407,7 @@ func (h *ConfigurationQueryHandler) HandleGetConfigurationMetrics(
 		Level: query.ProjectionLevel,
 	})
 	if err != nil {
-		return h.buildErrorResult[*ConfigurationMetricsReadModel](query.RequestID(),
+		return buildErrorResult[*ConfigurationMetricsReadModel](query.RequestID(),
 			"metrics_projection_failed", err, startTime), nil
 	}
 
@@ -435,24 +435,24 @@ func (h *ConfigurationQueryHandler) HandleGetConfigurationDependencies(
 	
 	// Validate query
 	if err := query.Validate(); err != nil {
-		return h.buildErrorResult[*ConfigurationDependenciesReadModel](query.RequestID(),
+		return buildErrorResult[*ConfigurationDependenciesReadModel](query.RequestID(),
 			"query_validation_failed", err, startTime), nil
 	}
 
 	// Fetch configuration
 	configID, err := configuration.NewConfigurationID(query.ConfigurationID)
 	if err != nil {
-		return h.buildErrorResult[*ConfigurationDependenciesReadModel](query.RequestID(),
+		return buildErrorResult[*ConfigurationDependenciesReadModel](query.RequestID(),
 			"invalid_configuration_id", err, startTime), nil
 	}
 
 	config, err := h.configRepo.FindByID(ctx, configID)
 	if err != nil {
 		if repositories.IsNotFound(err) {
-			return h.buildErrorResult[*ConfigurationDependenciesReadModel](query.RequestID(),
+			return buildErrorResult[*ConfigurationDependenciesReadModel](query.RequestID(),
 				"configuration_not_found", err, startTime), nil
 		}
-		return h.buildErrorResult[*ConfigurationDependenciesReadModel](query.RequestID(),
+		return buildErrorResult[*ConfigurationDependenciesReadModel](query.RequestID(),
 			"repository_error", err, startTime), nil
 	}
 
@@ -469,12 +469,12 @@ func (h *ConfigurationQueryHandler) HandleGetConfigurationDependencies(
 	case "reverse":
 		dependencyInfo, err = h.getReverseDependencies(ctx, config)
 	default:
-		return h.buildErrorResult[*ConfigurationDependenciesReadModel](query.RequestID(),
+		return buildErrorResult[*ConfigurationDependenciesReadModel](query.RequestID(),
 			"invalid_dependency_type", fmt.Errorf("invalid dependency type: %s", query.DependencyType), startTime), nil
 	}
 
 	if err != nil {
-		return h.buildErrorResult[*ConfigurationDependenciesReadModel](query.RequestID(),
+		return buildErrorResult[*ConfigurationDependenciesReadModel](query.RequestID(),
 			"dependency_resolution_failed", err, startTime), nil
 	}
 
@@ -492,7 +492,7 @@ func (h *ConfigurationQueryHandler) HandleGetConfigurationDependencies(
 		IncludeConflicts:  query.IncludeConflicts,
 	})
 	if err != nil {
-		return h.buildErrorResult[*ConfigurationDependenciesReadModel](query.RequestID(),
+		return buildErrorResult[*ConfigurationDependenciesReadModel](query.RequestID(),
 			"dependency_projection_failed", err, startTime), nil
 	}
 
@@ -643,7 +643,7 @@ func (h *ConfigurationQueryHandler) buildListQueryWarnings(query queries.ListCon
 	return warnings
 }
 
-func (h *ConfigurationQueryHandler) buildErrorResult[T any](requestID, errorCode string, err error, startTime time.Time) *queries.QueryResult[T] {
+func buildErrorResult[T any](requestID, errorCode string, err error, startTime time.Time) *queries.QueryResult[T] {
 	return &queries.QueryResult[T]{
 		Success: false,
 		Errors: []queries.QueryError{

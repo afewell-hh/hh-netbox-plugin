@@ -51,7 +51,7 @@ func (m *K8sResourceMapper) ConfigurationToK8sManifests(
 	manifests = append(manifests, configMapManifest)
 
 	// Create manifests for each component
-	for _, component := range config.Components() {
+	for _, component := range config.ComponentsList() {
 		if !component.Enabled() {
 			continue // Skip disabled components
 		}
@@ -194,7 +194,7 @@ func (m *K8sResourceMapper) createConfigurationConfigMap(
 	}
 
 	// Add component configurations
-	for _, component := range config.Components() {
+	for _, component := range config.ComponentsList() {
 		if component.Enabled() {
 			componentKey := fmt.Sprintf("component-%s.json", component.Name().String())
 			configData[componentKey] = m.serializeComponent(component)
@@ -549,7 +549,7 @@ func (m *K8sResourceMapper) createConfigurationAnnotations(config *configuration
 	annotations := map[string]string{
 		fmt.Sprintf("%s/configuration.description", m.annotationPrefix): config.Description(),
 		fmt.Sprintf("%s/configuration.status", m.annotationPrefix):     string(config.Status()),
-		fmt.Sprintf("%s/component.count", m.annotationPrefix):          fmt.Sprintf("%d", len(config.Components())),
+		fmt.Sprintf("%s/component.count", m.annotationPrefix):          fmt.Sprintf("%d", config.Components().Size()),
 		fmt.Sprintf("%s/created-at", m.annotationPrefix):               time.Now().Format(time.RFC3339),
 	}
 	
@@ -617,7 +617,7 @@ func (m *K8sResourceMapper) serializeConfigurationMetadata(config *configuration
 	metadata := map[string]interface{}{
 		"labels":      config.Labels(),
 		"annotations": config.Annotations(),
-		"components":  len(config.Components()),
+		"components":  config.Components().Size(),
 	}
 	
 	jsonData, _ := json.Marshal(metadata)

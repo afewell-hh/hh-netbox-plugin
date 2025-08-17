@@ -3,9 +3,7 @@ package postgresql
 import (
 	"context"
 	"database/sql"
-	"encoding/json"
 	"fmt"
-	"strings"
 	"time"
 
 	"github.com/lib/pq"
@@ -13,7 +11,6 @@ import (
 	"github.com/hedgehog/cnoc/internal/domain/configuration"
 	"github.com/hedgehog/cnoc/internal/domain/configuration/repositories"
 	"github.com/hedgehog/cnoc/internal/domain/events"
-	"github.com/hedgehog/cnoc/internal/domain/shared"
 )
 
 // PostgreSQLConfigurationRepository implements the configuration repository
