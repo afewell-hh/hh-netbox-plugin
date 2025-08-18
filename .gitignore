@@ -67,8 +67,8 @@ kubeconfig*
 gitignore/netbox-docker/
 gitignore/
 node_modules 
-.claude/
-.roomodes
+
+
 
 # Temporary development and debug files
 check_errors.py

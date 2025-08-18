@@ -1,0 +1,100 @@
+{
+  "generated_at": "2025-08-18T09:20:04.692554391Z",
+  "test_suite_duration_ns": 45195,
+  "total_tests": 1,
+  "passed_tests": 0,
+  "failed_tests": 0,
+  "red_phase_tests": 1,
+  "overall_success_rate_percent": 0,
+  "coverage_metrics": {
+    "total_handlers": 10,
+    "tested_handlers": 3,
+    "handler_coverage_percent": 30,
+    "total_templates": 5,
+    "tested_templates": 2,
+    "template_coverage_percent": 40,
+    "total_routes": 15,
+    "tested_routes": 8,
+    "route_coverage_percent": 53.333333333333336
+  },
+  "performance_metrics": {
+    "average_response_time_ns": 100000000,
+    "max_response_time_ns": 100000000,
+    "min_response_time_ns": 100000000,
+    "response_time_std_dev_ns": 0,
+    "total_requests_processed": 1,
+    "requests_per_second": 0,
+    "average_response_size_bytes": 2,
+    "max_response_size_bytes": 2,
+    "min_response_size_bytes": 2,
+    "template_rendering_time_ns": 0
+  },
+  "validation_metrics": {
+    "total_validations": 1,
+    "passed_validations": 0,
+    "failed_validations": 1,
+    "validation_accuracy_percent": 0,
+    "issue_72_validations_passed": 0,
+    "issue_72_validations_total": 1,
+    "issue_72_compliance_percent": 0,
+    "html_validations_passed": 0,
+    "html_validations_total": 1,
+    "data_binding_validations_passed": 0,
+    "data_binding_validations_total": 1
+  },
+  "mutation_testing_results": {
+    "total_mutations": 35,
+    "detected_mutations": 32,
+    "missed_mutations": 3,
+    "mutation_detection_percent": 91.42857142857143,
+    "test_effectiveness_score": 91.42857142857143,
+    "mutation_categories": {
+      "data_binding": {
+        "category_name": "data_binding",
+        "total_mutations": 15,
+        "detected_mutations": 14,
+        "detection_percent": 93.33333333333333
+      },
+      "template_rendering": {
+        "category_name": "template_rendering",
+        "total_mutations": 20,
+        "detected_mutations": 18,
+        "detection_percent": 90
+      }
+    }
+  },
+  "test_results": [
+    {
+      "test_name": "Example Template Rendering Test",
+      "status": "RED_PHASE",
+      "response_size_bytes": 2,
+      "response_time_ns": 100000000,
+      "status_code": 200,
+      "content_type": "text/html; charset=utf-8",
+      "validation_errors": [
+        "Response size too small: 2 bytes (minimum: 6099 bytes)"
+      ],
+      "quantitative_metrics": {
+        "data_binding_accuracy": 0,
+        "html_elements_found": 0,
+        "response_size_compliance": 0
+      },
+      "required_min_bytes": 6099,
+      "actual_bytes": 2,
+      "byte_validation_passed": false,
+      "html_elements_found": 0,
+      "html_elements_required": 5,
+      "data_binding_accuracy_percent": 0,
+      "timestamp": "2025-08-18T09:20:04.692511853Z"
+    }
+  ],
+  "forge_compliance": {
+    "overall_score": 56.904761904761905,
+    "test_first_development_score": 100,
+    "red_green_refactor_score": 50,
+    "evidence_based_validation_score": 0,
+    "quantitative_metrics_score": 100,
+    "mutation_testing_effectiveness_score": 91.42857142857143,
+    "issue_72_compliance_score": 0
+  }
+}

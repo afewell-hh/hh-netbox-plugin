@@ -1,0 +1,30 @@
+{
+  "pattern_type": "domain_modeling",
+  "success_indicators": [
+    "bounded_context_defined",
+    "aggregate_boundaries_clear",
+    "domain_events_documented",
+    "netbox_model_inheritance"
+  ],
+  "proven_approaches": [
+    {
+      "approach": "django_model_with_netbox_inheritance",
+      "success_rate": 0.95,
+      "context": "NetBox plugin development",
+      "code_pattern": "class FabricModel(NetBoxModel):"
+    },
+    {
+      "approach": "bounded_context_explicit_definition",
+      "success_rate": 0.92,
+      "context": "Domain analysis phase",
+      "validation": "stakeholder_sign_off_required"
+    }
+  ],
+  "anti_patterns": [
+    "missing_bounded_context_definition",
+    "unclear_aggregate_boundaries",
+    "implicit_domain_rules"
+  ],
+  "effectiveness_score": 0.94,
+  "last_updated": "2024-08-16T22:30:00Z"
+}

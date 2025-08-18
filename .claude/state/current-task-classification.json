@@ -1,0 +1,24 @@
+{
+  "task_description": "Implement complete authentication system with JWT and RBAC",
+  "classification": {
+    "level": "MEDIUM",
+    "confidence": 0.5,
+    "reasoning": [
+      "Task description unclear, defaulting to MEDIUM complexity for safety"
+    ],
+    "recommended_workflow": "medium_workflow",
+    "validation_requirements": [
+      "full_test_suite",
+      "integration_tests"
+    ],
+    "git_strategy": "feature_branch_pr_workflow",
+    "required_checkpoints": [
+      "environment_load",
+      "feature_branch",
+      "comprehensive_test"
+    ],
+    "estimated_duration": "1-4 hours",
+    "risk_factors": []
+  },
+  "timestamp": "2025-08-14T03:05:59.926075"
+}

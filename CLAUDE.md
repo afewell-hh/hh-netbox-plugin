@@ -1,6 +1,7 @@
 # Cloud NetOps Command (CNOC) Project Context
 
 **Mission**: Enterprise-grade cloud networking operations infrastructure with bootable ISO deployment
+**Methodology**: FORGE (Formal Operations with Rigorous Guaranteed Engineering)
 **Status**: Production Development - Go-based CLI with Kubernetes architecture
 **Branch**: modernization/k8s-foundation
 
@@ -10,13 +11,13 @@
 
 **HNP (Hedgehog NetBox Plugin)**: Original Python/Django prototype system preserved for reference on experimental/main branch.
 
-## CNOC Technical Stack (Test-First Development Architecture)
-- Core: Go-based cnocfab CLI utility with comprehensive test coverage
-- Infrastructure: Kubernetes, GitOps, Terraform with test-driven infrastructure patterns
-- Architecture: Domain-driven design, microservices with evidence-based validation
-- Testing Strategy: Red-green-refactor enforcement, mutation testing, template validation
-- Deployment: Bootable ISO with pre-configured components and validation frameworks
-- Components: ArgoCD, Prometheus, Grafana, cert-manager with monitoring test suites
+## CNOC Technical Stack (FORGE Symphony Architecture)
+- Core: Go-based cnocfab CLI utility with FORGE validation coverage
+- Infrastructure: Kubernetes, GitOps, Terraform with FORGE infrastructure patterns
+- Architecture: Domain-driven design, microservices with FORGE evidence validation
+- Testing Strategy: FORGE Symphony movements - red-green-refactor, mutation testing, comprehensive validation
+- Deployment: Bootable ISO with pre-configured components and FORGE validation frameworks
+- Components: ArgoCD, Prometheus, Grafana, cert-manager with FORGE monitoring suites
 
 ## HNP Prototype Stack (Reference Only)
 - Backend: Django 4.2, NetBox 4.3.3 plugin architecture  
@@ -24,22 +25,22 @@
 - Integration: Kubernetes Python client, ArgoCD GitOps
 - Database: PostgreSQL (shared with NetBox core)
 
-## Development Environment (Hive Queen Orchestration)
+## Development Environment (FORGE Symphony Orchestration)
 
-### Branch Strategy with Process Routing
-- **CNOC Branch**: modernization/k8s-foundation (test-first development enforced)
+### Branch Strategy with FORGE Process Routing
+- **CNOC Branch**: modernization/k8s-foundation (FORGE methodology enforced)
 - **HNP Reference**: experimental/main (prototype patterns preserved)
-- **CLI Tool**: cnocfab (replacing hossfab) with comprehensive test suite
-- **Infrastructure**: hossfab/, infrastructure/, hoss/ directories with TDD patterns
+- **CLI Tool**: cnocfab (replacing hossfab) with FORGE validation suite
+- **Infrastructure**: hossfab/, infrastructure/, hoss/ directories with FORGE patterns
 
-### Hive Queen Task Orchestration Rules
+### FORGE Symphony Task Orchestration Rules
 ```yaml
-Task_Type_Detection_and_Routing:
-  # Implementation tasks (ANY code writing) - MANDATORY test-first
+FORGE_Task_Routing:
+  # Implementation tasks (ANY code writing) - MANDATORY FORGE test-first
   Go_Development: 
     Pattern: "*.go|*/go.mod|*/go.sum"
-    Process: testing-validation-engineer → implementation-specialist
-    Hook: test_first_enforcement.sh (PreToolUse)
+    FORGE_Movement: testing-validation-engineer → implementation-specialist
+    Hook: forge_test_enforcement.sh (PreToolUse)
     
   Infrastructure_Code:
     Pattern: "*terraform/*|*/kubernetes/*|*/manifests/*"

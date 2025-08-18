@@ -1,0 +1,30 @@
+{
+  "pattern_type": "api_design",
+  "success_indicators": [
+    "openapi_specification_complete",
+    "drf_serializer_patterns",
+    "contract_first_development",
+    "multi_client_validation"
+  ],
+  "proven_approaches": [
+    {
+      "approach": "netbox_drf_serializer_integration",
+      "success_rate": 0.96,
+      "context": "NetBox REST API development",
+      "code_pattern": "class FabricSerializer(NetBoxModelSerializer):"
+    },
+    {
+      "approach": "openapi_contract_validation",
+      "success_rate": 0.93,
+      "context": "API contract development",
+      "validation": "spectral_lint_success"
+    }
+  ],
+  "anti_patterns": [
+    "implementation_before_contract",
+    "missing_error_handling",
+    "inconsistent_response_formats"
+  ],
+  "effectiveness_score": 0.95,
+  "last_updated": "2024-08-16T22:30:00Z"
+}

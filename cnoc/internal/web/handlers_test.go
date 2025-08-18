@@ -80,9 +80,9 @@ func TestTemplateRenderingComprehensive(t *testing.T) {
 				"bootstrap",
 			},
 			requiredDataElements: []string{
-				"fabric",
-				"git",
-				"status",
+				"{{.Fabrics}}",
+				"{{.GitRepositories}}",
+				"{{.Stats.TotalFabrics}}",
 			},
 		},
 		{

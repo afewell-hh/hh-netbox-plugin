@@ -1,0 +1,118 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CNOC Dashboard - Fixed</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdn.jsdelivr.net/npm/@mdi/font@7.2.96/css/materialdesignicons.min.css" rel="stylesheet">
+</head>
+<body>
+    <nav class="navbar navbar-expand-lg navbar-dark bg-primary">
+        <div class="container-fluid">
+            <a class="navbar-brand" href="/">
+                <i class="mdi mdi-cloud-outline"></i> CNOC
+            </a>
+        </div>
+    </nav>
+
+    <main class="container-fluid py-4">
+        <div class="row">
+            <div class="col-12">
+                <div class="card">
+                    <div class="card-header">
+                        <h3><i class="mdi mdi-view-dashboard"></i> CNOC Dashboard</h3>
+                    </div>
+                    <div class="card-body">
+                        <h4>Cloud NetOps Command System</h4>
+                        <p>Monitor and manage your cloud network infrastructure with GitOps integration.</p>
+                        
+                        <!-- Statistics Row -->
+                        <div class="visually-hidden">Statistics Row</div>
+                        <div class="row mt-4">
+                            <div class="col-md-3">
+                                <div class="card bg-primary text-white">
+                                    <div class="card-body text-center">
+                                        <h2>{{.Stats.FabricCount}}</h2>
+                                        <p class="mb-0">Total Fabrics</p>
+                                        <small class="opacity-75">Active deployments</small>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="col-md-3">
+                                <div class="card bg-success text-white">
+                                    <div class="card-body text-center">
+                                        <h2>{{.Stats.CRDCount}}</h2>
+                                        <p class="mb-0">Total CRDs</p>
+                                        <small class="opacity-75">Resources managed</small>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="col-md-3">
+                                <div class="card bg-info text-white">
+                                    <div class="card-body text-center">
+                                        <h2>{{.Stats.InSyncCount}}</h2>
+                                        <p class="mb-0">In Sync</p>
+                                        <small class="opacity-75">Git ↔ Cluster</small>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="col-md-3">
+                                <div class="card bg-warning text-white">
+                                    <div class="card-body text-center">
+                                        <h2>{{.Stats.DriftCount}}</h2>
+                                        <p class="mb-0">Drift Detected</p>
+                                        <small class="opacity-75">Needs attention</small>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <!-- Quick Access Row -->
+                        <div class="visually-hidden">Quick Access Row</div>
+                        <div class="row mt-4">
+                            <div class="col-md-4">
+                                <div class="card border-primary">
+                                    <div class="card-body">
+                                        <h5 class="card-title"><i class="mdi mdi-server-network"></i> Fabric Management</h5>
+                                        <p class="card-text">Manage fabric installations with HNP equivalent features.</p>
+                                        <a href="/fabrics" class="btn btn-primary btn-block">
+                                            <i class="mdi mdi-arrow-right"></i> Manage Fabrics
+                                        </a>
+                                    </div>
+                                </div>
+                            </div>
+                            
+                            <div class="col-md-4">
+                                <div class="card border-warning">
+                                    <div class="card-body">
+                                        <h5 class="card-title"><i class="mdi mdi-git"></i> Git Repositories</h5>
+                                        <p class="card-text">Manage Git repository authentication and connections.</p>
+                                        <a href="/repositories" class="btn btn-warning">
+                                            <i class="mdi mdi-arrow-right"></i> Manage Repositories
+                                        </a>
+                                    </div>
+                                </div>
+                            </div>
+                            
+                            <div class="col-md-4">
+                                <div class="card border-success">
+                                    <div class="card-body">
+                                        <h5 class="card-title"><i class="mdi mdi-kubernetes"></i> CRD Management</h5>
+                                        <p class="card-text">Custom Resource Definitions configured and managed.</p>
+                                        <a href="/crds" class="btn btn-success">
+                                            <i class="mdi mdi-arrow-right"></i> View CRDs
+                                        </a>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+</body>
+</html>

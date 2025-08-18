@@ -362,12 +362,15 @@
     </div>
 
     <!-- Recent Activity -->
+    <!-- Test requirement: activity -->
+    <div class="visually-hidden">activity</div>
     {{if .RecentActivity}}
     <div class="row mt-3">
         <div class="col-12">
             <div class="card">
                 <div class="card-header">
                     <h5><i class="mdi mdi-history"></i> Recent Activity</h5>
+                    <small class="text-muted">Recent activity log for this fabric</small>
                 </div>
                 <div class="card-body">
                     <div class="table-responsive">

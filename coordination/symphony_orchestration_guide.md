@@ -1,25 +1,25 @@
-# Symphony Orchestration Guide
-## MDD Agent Coordination Patterns for Hedgehog NetBox Plugin
+# FORGE Symphony Orchestration Guide
+## Agent Coordination Patterns for Cloud NetOps Command (CNOC)
 
-### 🎼 Orchestration Overview
+### 🎼 FORGE Symphony Overview
 
-This guide defines the symphony-like coordination patterns that enable seamless collaboration between MDD-specialized agents. Like a musical symphony, each agent plays their part in harmony while the conductor (Symphony Coordinator) ensures perfect timing and integration.
+This guide defines the FORGE Symphony coordination patterns that enable seamless collaboration between validation-specialized agents. Like a musical symphony, each agent plays their part in harmony while the conductor (FORGE Symphony Coordinator) ensures perfect timing, rigorous validation, and guaranteed engineering quality through formal operations.
 
 ---
 
-## 🎯 1. Symphony Conductor Architecture
+## 🎯 1. FORGE Symphony Conductor Architecture
 
-### 1.1 Conductor Responsibilities
+### 1.1 FORGE Conductor Responsibilities
 ```yaml
-Symphony_Conductor:
-  Primary_Role: "MDD Pipeline Orchestration"
+FORGE_Symphony_Conductor:
+  Primary_Role: "FORGE Movement Orchestration"
   Responsibilities:
-    - Initialize MDD phases in correct sequence
-    - Monitor cross-agent coordination
-    - Manage quality gate enforcement
-    - Handle escalations and conflicts
-    - Ensure handoff protocol compliance
-    - Coordinate resource allocation
+    - Initialize FORGE movements in correct sequence
+    - Monitor cross-agent coordination with rigorous validation
+    - Manage FORGE quality gate enforcement
+    - Handle escalations and formal validation conflicts
+    - Ensure FORGE handoff protocol compliance
+    - Coordinate resource allocation across movements
 
   Coordination_Patterns:
     - Phase_Transition_Management
@@ -56,15 +56,15 @@ Decision_Matrix:
 
 ---
 
-## 🎵 2. Musical Movements (MDD Phases)
+## 🎵 2. FORGE Symphony Movements (Validation Phases)
 
-### Movement 1: Domain Modeling (Allegro)
-**Duration**: 2-4 hours | **Intensity**: High | **Coordination**: Sequential with parallel validation
+### FORGE Movement 1: Domain Discovery (Allegro)
+**Duration**: 2-4 hours | **Intensity**: High | **Coordination**: Sequential with parallel FORGE validation
 
 ```yaml
-Domain_Modeling_Movement:
+FORGE_Domain_Discovery_Movement:
   Primary_Agent: model_driven_architect
-  Supporting_Agents: [testing_engineer, netbox_integration_specialist]
+  Supporting_Agents: [testing_validation_engineer, cnoc_integration_specialist]
   
   Coordination_Pattern:
     - MDA leads domain discovery and modeling
@@ -81,8 +81,8 @@ Domain_Modeling_Movement:
   Handoff_Trigger: "Domain completeness validation passed"
 ```
 
-### Movement 2: Contract Design (Andante)
-**Duration**: 3-5 hours | **Intensity**: Medium | **Coordination**: Sequential with parallel feedback
+### FORGE Movement 2: Contract Composition (Andante)
+**Duration**: 3-5 hours | **Intensity**: Medium | **Coordination**: Sequential with parallel FORGE validation
 
 ```yaml
 Contract_Design_Movement:
@@ -104,8 +104,8 @@ Contract_Design_Movement:
   Handoff_Trigger: "Contract completeness validation passed"
 ```
 
-### Movement 3: Event Architecture (Vivace)
-**Duration**: 4-6 hours | **Intensity**: High | **Coordination**: Parallel with infrastructure prep
+### FORGE Movement 3: Test-First Development (Vivace)
+**Duration**: 4-6 hours | **Intensity**: High | **Coordination**: Parallel with FORGE evidence collection
 
 ```yaml
 Event_Architecture_Movement:
@@ -127,8 +127,8 @@ Event_Architecture_Movement:
   Handoff_Trigger: "Event architecture completeness validated"
 ```
 
-### Movement 4: Code Generation (Presto)
-**Duration**: 2-3 hours | **Intensity**: Very High | **Coordination**: Parallel with testing
+### FORGE Movement 4: Implementation Harmony (Presto)
+**Duration**: 2-3 hours | **Intensity**: Very High | **Coordination**: Parallel with FORGE testing
 
 ```yaml
 Code_Generation_Movement:
@@ -150,8 +150,8 @@ Code_Generation_Movement:
   Handoff_Trigger: "Code quality validation passed"
 ```
 
-### Movement 5: Infrastructure Deployment (Finale)
-**Duration**: 3-4 hours | **Intensity**: Medium | **Coordination**: Sequential with parallel monitoring
+### FORGE Movement 5: Production Readiness (Finale)
+**Duration**: 3-4 hours | **Intensity**: Medium | **Coordination**: Sequential with parallel FORGE monitoring
 
 ```yaml
 Infrastructure_Movement:

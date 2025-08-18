@@ -105,10 +105,11 @@ type WebHandler struct {
 
 // NewWebHandler creates a new web handler
 func NewWebHandler() (*WebHandler, error) {
-	// Parse templates with better error handling
-	templates, err := template.ParseGlob("web/templates/*.html")
+	// Parse templates with better error handling and correct path resolution
+	templatePattern := "../../web/templates/*.html"
+	templates, err := template.ParseGlob(templatePattern)
 	if err != nil {
-		return nil, fmt.Errorf("failed to parse templates: %v", err)
+		return nil, fmt.Errorf("failed to parse templates from %s: %v", templatePattern, err)
 	}
 
 	// List loaded templates for debugging
@@ -183,7 +184,7 @@ func (h *WebHandler) HandleDashboard(w http.ResponseWriter, r *http.Request) {
 		},
 	}
 
-	h.renderTemplate(w, "dashboard", data)
+	h.renderTemplate(w, "simple_dashboard", data)
 }
 
 // HandleFabricList renders the fabric list page
@@ -506,27 +507,65 @@ func (h *WebHandler) renderTemplate(w http.ResponseWriter, name string, data Tem
 	// Set content type for HTML
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	
-	// First try to render the specific template
-	err := h.templates.ExecuteTemplate(w, name+".html", data)
-	if err != nil {
-		log.Printf("❌ Template execution failed for %s: %v", name+".html", err)
-		
-		// If template doesn't exist, render the base template with dashboard
-		log.Printf("🔄 Falling back to dashboard.html")
-		err = h.templates.ExecuteTemplate(w, "dashboard.html", data)
+	// For templates that use the template system (base.html + defines), execute base.html
+	// For standalone templates like simple_dashboard.html, execute directly
+	templateName := name + ".html"
+	
+	// Check if this is a standalone template (like simple_dashboard.html)
+	if name == "simple_dashboard" {
+		err := h.templates.ExecuteTemplate(w, templateName, data)
 		if err != nil {
-			log.Printf("❌ Dashboard template also failed: %v", err)
-			
-			// Fall back to base template
-			log.Printf("🔄 Falling back to base.html")
-			err = h.templates.ExecuteTemplate(w, "base.html", data)
-			if err != nil {
-				log.Printf("❌ All templates failed: %v", err)
-				http.Error(w, "Error rendering template: "+err.Error(), http.StatusInternalServerError)
-				return
-			}
+			log.Printf("❌ Standalone template execution failed for %s: %v", templateName, err)
+			h.renderErrorFallback(w, name, err)
+		} else {
+			log.Printf("✅ Standalone template %s rendered successfully", templateName)
 		}
+		return
 	}
 	
-	log.Printf("✅ Template %s rendered successfully", name)
+	// For templates that extend base.html, execute base.html
+	err := h.templates.ExecuteTemplate(w, "base.html", data)
+	if err != nil {
+		log.Printf("❌ Base template execution failed: %v", err)
+		
+		// Try to execute the template directly as fallback
+		log.Printf("🔄 Trying direct template execution for %s", templateName)
+		err = h.templates.ExecuteTemplate(w, templateName, data)
+		if err != nil {
+			log.Printf("❌ Direct template execution also failed: %v", err)
+			h.renderErrorFallback(w, name, err)
+		} else {
+			log.Printf("✅ Direct template %s rendered successfully", templateName)
+		}
+	} else {
+		log.Printf("✅ Base template rendered successfully for %s", name)
+	}
+}
+
+// renderErrorFallback renders a simple error page when template rendering fails
+func (h *WebHandler) renderErrorFallback(w http.ResponseWriter, name string, err error) {
+	log.Printf("❌ Rendering error fallback for %s", name)
+	
+	fallbackHTML := fmt.Sprintf(`<!DOCTYPE html>
+<html lang="en">
+<head>
+	<meta charset="UTF-8">
+	<meta name="viewport" content="width=device-width, initial-scale=1.0">
+	<title>CNOC Template Error</title>
+	<link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+</head>
+<body>
+	<div class="container mt-5">
+		<div class="alert alert-danger">
+			<h1><i class="bi bi-exclamation-triangle"></i> Template Error</h1>
+			<p><strong>Failed to render template:</strong> %s</p>
+			<p><strong>Error:</strong> %s</p>
+			<hr>
+			<p>This error occurred during template rendering. Please check the template files and try again.</p>
+		</div>
+	</div>
+</body>
+</html>`, name, err.Error())
+	
+	w.Write([]byte(fallbackHTML))
 }

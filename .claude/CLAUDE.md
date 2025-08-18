@@ -1,50 +1,51 @@
-# Claude Code Configuration - Optimized (50 Lines)
+# Claude Code Configuration - CNOC Production System
 
-## 🎯 Project: Hedgehog NetBox Plugin (HNP)
-**Enhanced Hive Orchestration for GitOps + K8s + NetBox Integration**
+## 🎯 Project: CNOC (Cloud NetOps Command)
+**FORGE Methodology: Formal Operations with Rigorous Guaranteed Engineering**
+**Architecture: Cloud-Native GitOps + Kubernetes CRD Management**
 
-## 🚀 CRITICAL: Deployment Gate
+## 🚀 CRITICAL: Go Development Workflow
 **EVERY code change MUST:**
-1. Edit locally → `make deploy-dev` → Test at http://localhost:8000
-2. NetBox runs in container - local edits invisible until deployed
-3. NO task complete without: deployment + live verification
+1. Edit Go code → `go run ./cmd/cnoc` → Test at http://localhost:8080
+2. CNOC runs as standalone Go binary - changes visible immediately
+3. NO task complete without: compilation + live API verification
 
 ## ⚡ Parallel Execution (MANDATORY)
 - **ONE message = ALL operations** (never sequential)
 - Batch: TodoWrite, Read/Write, Bash commands, MCP tools
 - ruv-swarm coordinates, Claude Code executes
 
-## 🧠 Enhanced Agent Orchestration (Test-First Development + MDD)
+## 🧠 FORGE Symphony Agent Orchestration
 
 ### Hive Queen Coordination Protocol
-**Primary Orchestrator**: coordination-orchestrator (consolidated from hierarchical-coordinator, task-orchestrator, planner)
+**Primary Orchestrator**: coordination-orchestrator
 **Process Routing Decision Matrix**:
 
 #### Test-First Development Tasks (MANDATORY)
 ```yaml
 Task_Types_Requiring_TDD_Process:
-  - implementation: testing-validation-engineer → implementation-specialist
-  - feature_development: testing-validation-engineer → implementation-specialist  
-  - bug_fixes: testing-validation-engineer → implementation-specialist
-  - api_endpoints: testing-validation-engineer → implementation-specialist
-  - ui_components: testing-validation-engineer → implementation-specialist
+  - go_implementation: testing-validation-engineer → implementation-specialist
+  - api_endpoints: testing-validation-engineer → implementation-specialist  
+  - domain_models: testing-validation-engineer → implementation-specialist
+  - kubernetes_integration: testing-validation-engineer → implementation-specialist
+  - web_components: testing-validation-engineer → implementation-specialist
 ```
 
-#### MDD Process Tasks (Enhanced with Test-First)
+#### FORGE Symphony Movements
 ```yaml
-Phase_1_Domain_Analysis: model-driven-architect + testing-validation-engineer
-Phase_2_API_Contracts: contract-first-api-designer + testing-validation-engineer
-Phase_3_Implementation: testing-validation-engineer → implementation-specialist
-Phase_4_Testing: testing-validation-engineer (validation) + quality-performance-specialist
-Phase_5_Deployment: infrastructure-deployment-specialist + kubernetes-gitops-specialist
+Movement_1_Domain_Analysis: model-driven-architect + testing-validation-engineer
+Movement_2_API_Contracts: contract-first-api-designer + testing-validation-engineer
+Movement_3_Test_First: testing-validation-engineer → comprehensive test creation
+Movement_4_Implementation: implementation-specialist → make tests pass
+Movement_5_K8s_Deployment: infrastructure-deployment-specialist + kubernetes-gitops-specialist
 ```
 
-### Agent Pool (10 Core + Test-First Enhancement)
+### FORGE Agent Pool (10 Core Specialists)
 ```
-Strategic: coordination-orchestrator, research-analysis-specialist
-Test-First: testing-validation-engineer (SDET), implementation-specialist (TDD)
-MDD Core: model-driven-architect, contract-first-api-designer
-Specialized: netbox-integration-specialist, kubernetes-gitops-specialist,
+Strategic: coordination-orchestrator (FORGE conductor), research-analysis-specialist
+Validation: testing-validation-engineer (SDET), implementation-specialist (TDD)
+Modeling: model-driven-architect, contract-first-api-designer
+Specialized: go-development-specialist, kubernetes-gitops-specialist,
              infrastructure-deployment-specialist, quality-performance-specialist
 ```
 
@@ -53,13 +54,13 @@ Specialized: netbox-integration-specialist, kubernetes-gitops-specialist,
 ### Context Triggers (Enhanced with Test-First Detection)
 ```yaml
 File_Pattern_Triggers:
-  "*/tests/*|*/test_*": [testing_patterns.md] + test_first_enforcement
-  "*/models/*": [domain_modeling.md] + mdd_validation
-  "*/api/*|*/views/*": [api_design.md] + test_first_enforcement
+  "*/tests/*|*_test.go": [testing_patterns.md] + test_first_enforcement
+  "*/domain/*": [domain_modeling.md] + mdd_validation
+  "*/api/*|*/controllers/*": [api_design.md] + test_first_enforcement
   "*/k8s/*|*/kubernetes/*": [kubernetes_integration.md]
   
 Task_Type_Triggers:
-  implementation: [testing_patterns.md] + MANDATORY_test_first_process
+  go_implementation: [testing_patterns.md] + MANDATORY_test_first_process
   testing: [testing_patterns.md] + evidence_based_validation
   domain_modeling: [domain_modeling.md] + mdd_validation
   api_design: [api_design.md] + contract_first_validation
@@ -71,35 +72,36 @@ Task_Type_Triggers:
 - **Quality gates**: Enhanced MDD validation + Test-First enforcement with 98% automation
 - **Process routing**: Automated agent selection based on task analysis and memory patterns
 
-## 📋 Enhanced MDD Process (Test-First + Automated Quality Gates)
+## 📋 FORGE Symphony Process Flow
 
-### Process Flow with Test-First Integration
+### FORGE Movement Progression
 1. **Domain Analysis** → model-driven-architect → bounded contexts + stakeholder validation
-2. **API Contracts** → contract-first-api-designer → OpenAPI/GraphQL + validation + client generation  
-3. **Test Creation** → testing-validation-engineer → comprehensive tests with red-green-refactor validation
-4. **Implementation** → implementation-specialist → make tests pass (test integrity protected)
+2. **API Contracts** → contract-first-api-designer → OpenAPI/REST + validation + client generation  
+3. **Test Creation** → testing-validation-engineer → comprehensive Go tests with red-green-refactor validation
+4. **Go Implementation** → implementation-specialist → make tests pass (test integrity protected)
 5. **Quality Validation** → quality-performance-specialist → multi-layer + evidence-based validation
-6. **Deployment** → infrastructure-deployment-specialist + kubernetes-gitops-specialist → GitOps + K8s + monitoring
+6. **Cloud Deployment** → infrastructure-deployment-specialist + kubernetes-gitops-specialist → K8s + monitoring
 
 ### Critical Process Routing Rules
-- **ANY implementation task** → MUST route through testing-validation-engineer FIRST
+- **ANY Go implementation task** → MUST route through testing-validation-engineer FIRST
 - **Test modification requests** → BLOCKED (test integrity protection)
 - **Evidence-based completion** → quantitative metrics required for ALL phases
 - **Memory-driven optimization** → success patterns stored and reused across sessions
 
-## 🐝 ruv-swarm Integration
+## 🐝 ruv-swarm FORGE Integration
 ```bash
-# Initialize optimized swarm
-npx ruv-swarm swarm-init --topology hierarchical --strategy mdd-symphony
+# Initialize FORGE Symphony swarm for CNOC
+npx ruv-swarm swarm-init --topology hierarchical --strategy forge-symphony
 npx ruv-swarm agent-spawn --type model-driven-architect --memory-context adaptive
 npx ruv-swarm task-orchestrate --strategy parallel --validation strict
 ```
 
-## 🎯 HNP-Specific Context
-- **12 CRD types**: ONF/FGD resource management
-- **Bidirectional sync**: NetBox ↔ GitOps ↔ K8s coordination  
-- **Periodic jobs**: 60s RQ-based synchronization
-- **Enhanced coordination**: GitOps workflow + drift detection
+## 🎯 CNOC-Specific Context
+- **Cloud-Native**: Independent Go application with PostgreSQL + Redis
+- **Enterprise GitOps**: Multi-repository integration with drift detection
+- **Kubernetes Integration**: K8s Go client v0.33.4 with CRD management
+- **Domain Architecture**: FORGE-aligned with anti-corruption layers
+- **HNP Reference**: @docs/HNP_PROTOTYPE_REFERENCE.md (prototype patterns only)
 
 ## 📊 Performance Targets (Validated)
 - 85% cognitive load reduction (memory-based contexts)
@@ -108,9 +110,10 @@ npx ruv-swarm task-orchestrate --strategy parallel --validation strict
 - 95% methodology adherence (MDD process enforcement)
 
 ## 🔗 Essential Commands
-- `make deploy-dev` - Deploy to container (MANDATORY)
+- `go run ./cmd/cnoc` - Start CNOC API server (MANDATORY)
+- `go test ./...` - Run comprehensive test suite
 - `npx ruv-swarm memory-usage` - Memory operations
 - Context loading: Automatic via file patterns + task analysis
 - Quality gates: Automatic via enhanced hooks
 
-**Foundation**: Build upon ruv-swarm's proven 84.8% SWE-Bench solve rate + 32.3% token efficiency with validated MDD optimizations.
+**Foundation**: Build upon ruv-swarm's proven 84.8% SWE-Bench solve rate + 32.3% token efficiency with FORGE Symphony methodology for rigorous cloud-native development.

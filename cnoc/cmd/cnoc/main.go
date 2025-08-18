@@ -16,11 +16,10 @@ import (
 	"github.com/go-redis/redis/v8"
 	
 	"github.com/hedgehog/cnoc/internal/api/rest/controllers"
-	"github.com/hedgehog/cnoc/internal/application/commands/handlers"
-	"github.com/hedgehog/cnoc/internal/application/queries/handlers"
+	commandHandlers "github.com/hedgehog/cnoc/internal/application/commands/handlers"
+	queryHandlers "github.com/hedgehog/cnoc/internal/application/queries/handlers"
 	"github.com/hedgehog/cnoc/internal/application/services"
-	"github.com/hedgehog/cnoc/internal/domain/configuration/repositories"
-	"github.com/hedgehog/cnoc/internal/domain/configuration/services"
+	domainServices "github.com/hedgehog/cnoc/internal/domain/configuration/services"
 	"github.com/hedgehog/cnoc/internal/infrastructure/cache"
 	"github.com/hedgehog/cnoc/internal/infrastructure/eventbus"
 	"github.com/hedgehog/cnoc/internal/infrastructure/persistence/postgresql"
@@ -86,12 +85,13 @@ func main() {
 	}
 	
 	// Domain services
-	dependencyResolver := &services.DependencyResolver{}
-	policyEnforcer := &services.PolicyEnforcer{}
-	validator := services.NewConfigurationValidator(
+	componentRegistry := domainServices.NewMockComponentRegistry()
+	dependencyResolver := domainServices.NewDependencyResolver(componentRegistry, eventBus)
+	policyEnforcer := domainServices.NewPolicyEnforcer()
+	validator := domainServices.NewConfigurationValidator(
 		*dependencyResolver,
-		*policyEnforcer,
-		&services.MockComponentRegistry{},
+		policyEnforcer,
+		componentRegistry,
 		eventBus,
 	)
 	log.Println("✅ Domain services initialized")
@@ -99,24 +99,28 @@ func main() {
 	// Application layer services
 	log.Println("📦 Initializing application services...")
 	
-	// Command handlers
-	commandHandler := handlers.NewConfigurationCommandHandler(
+	// Command handlers  
+	commandHandler := commandHandlers.NewConfigurationCommandHandler(
 		configRepo,
 		nil, // Event repository
+		nil, // Unit of work
 		validator,
 		dependencyResolver,
+		policyEnforcer,
+		nil, // Template engine
+		nil, // Infrastructure provisioner
 		eventBus,
-		&handlers.CommandMetricsCollector{},
 	)
 	log.Println("✅ Command handlers initialized")
 	
 	// Query handlers
-	queryHandler := handlers.NewConfigurationQueryHandler(
+	queryHandler := queryHandlers.NewConfigurationQueryHandler(
 		configRepo,
 		nil, // Event repository
 		dependencyResolver,
+		nil, // Projection service
 		cacheAdapter,
-		&handlers.QueryMetricsCollector{},
+		nil, // Metrics service
 	)
 	log.Println("✅ Query handlers initialized")
 	
@@ -124,12 +128,16 @@ func main() {
 	appService := services.NewConfigurationApplicationService(
 		commandHandler,
 		queryHandler,
-		configRepo,
 		validator,
+		dependencyResolver,
+		policyEnforcer,
+		nil, // Template engine
+		nil, // Infrastructure provisioner
+		nil, // Unit of work
 		eventBus,
-		&services.WorkflowEngine{},
-		&services.SagaCoordinator{},
-		&services.ApplicationMetricsCollector{},
+		&services.WorkflowOrchestrator{},
+		&services.SagaManager{},
+		&services.ProcessManager{},
 	)
 	log.Println("✅ Application service initialized with Symphony-Level orchestration")
 	
