@@ -36,7 +36,14 @@
         {
           "type": "testing",
           "contexts": ["testing_patterns.md"],
-          "success_tracking": true
+          "success_tracking": true,
+          "test_first_enforcement": true
+        },
+        {
+          "type": "implementation",
+          "contexts": ["testing_patterns.md"],
+          "test_first_compliance": true,
+          "evidence_requirements": true
         }
       ]
     },
@@ -66,6 +73,8 @@
       "api_contracts": "contract-first-api-designer",
       "implementation": "implementation-specialist",
       "testing_validation": "testing-validation-engineer",
+      "test_first_enforcement": "testing-validation-engineer",
+      "evidence_based_validation": "testing-validation-engineer",
       "infrastructure": "infrastructure-deployment-specialist",
       "coordination": "coordination-orchestrator",
       "research_analysis": "research-analysis-specialist",
@@ -75,6 +84,19 @@
     }
   },
   "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Write|Edit|MultiEdit",
+        "hooks": [
+          {
+            "command": ".claude/hooks/enhanced/test_first_enforcement.sh",
+            "description": "Test-first development enforcement with memory integration",
+            "timeout": 30,
+            "test_first_compliance": true
+          }
+        ]
+      }
+    ],
     "PostToolUse": [
       {
         "matcher": "Write|Edit",
