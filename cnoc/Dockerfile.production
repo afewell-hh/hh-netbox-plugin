@@ -1,0 +1,79 @@
+# CNOC Production Dockerfile - Multi-stage build for FORGE Movement 7
+# Builder stage for optimized binary compilation
+FROM golang:1.24-alpine AS builder
+
+# Install build dependencies
+RUN apk add --no-cache \
+    git \
+    ca-certificates \
+    tzdata
+
+# Set up build environment
+WORKDIR /build
+
+# Copy go mod and sum files for dependency caching
+COPY go.mod go.sum ./
+RUN go mod download && go mod verify
+
+# Copy source code
+COPY . .
+
+# Build the application with optimizations
+RUN CGO_ENABLED=0 \
+    GOOS=linux \
+    GOARCH=amd64 \
+    go build \
+    -a \
+    -installsuffix cgo \
+    -ldflags='-w -s -extldflags "-static"' \
+    -tags netgo \
+    -o cnoc \
+    ./cmd/cnoc
+
+# Minimal runtime stage for production deployment
+FROM scratch AS runtime
+
+# Copy timezone data and CA certificates from builder
+COPY --from=builder /usr/share/zoneinfo /usr/share/zoneinfo
+COPY --from=builder /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/
+
+# Create minimal filesystem structure
+COPY --from=builder /etc/passwd /etc/passwd
+COPY --from=builder /etc/group /etc/group
+
+# Copy the compiled binary
+COPY --from=builder /build/cnoc /app/cnoc
+
+# Copy web assets and templates
+COPY --from=builder /build/web/static /app/web/static
+COPY --from=builder /build/web/templates /app/web/templates
+
+# Set working directory
+WORKDIR /app
+
+# Create non-root user for security
+USER 1001:1001
+
+# Expose application port
+EXPOSE 8080
+
+# Health check for Kubernetes readiness and liveness probes
+HEALTHCHECK --interval=30s \
+           --timeout=3s \
+           --start-period=5s \
+           --retries=3 \
+  CMD ["/app/cnoc", "--health-check"] || exit 1
+
+# Application entry point
+ENTRYPOINT ["/app/cnoc"]
+CMD ["--server"]
+
+# Labels for documentation and orchestration
+LABEL maintainer="FORGE Team <forge@example.com>"
+LABEL description="CNOC - Cloud NetOps Command System"
+LABEL version="1.0.0"
+LABEL org.opencontainers.image.source="https://github.com/hedgehog/cnoc"
+LABEL org.opencontainers.image.title="CNOC Production"
+LABEL org.opencontainers.image.description="Production-ready CNOC container"
+LABEL forge.movement="7"
+LABEL forge.category="infrastructure"

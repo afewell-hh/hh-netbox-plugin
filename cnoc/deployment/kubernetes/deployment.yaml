@@ -1,0 +1,226 @@
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: cnoc-deployment
+  namespace: cnoc
+  labels:
+    app: cnoc
+    version: "1.0.0"
+    component: api-server
+    forge.movement: "7"
+    forge.category: infrastructure
+spec:
+  replicas: 2
+  revisionHistoryLimit: 5
+  selector:
+    matchLabels:
+      app: cnoc
+  template:
+    metadata:
+      labels:
+        app: cnoc
+        version: "1.0.0"
+        component: api-server
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "9090"
+        prometheus.io/path: "/metrics"
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1001
+        runAsGroup: 1001
+        fsGroup: 1001
+      containers:
+      - name: cnoc
+        image: cnoc:latest
+        imagePullPolicy: Always
+        ports:
+        - containerPort: 8080
+          name: http
+          protocol: TCP
+        - containerPort: 9090
+          name: metrics
+          protocol: TCP
+        resources:
+          requests:
+            cpu: "200m"
+            memory: "256Mi"
+          limits:
+            cpu: "500m"
+            memory: "512Mi"
+        env:
+        - name: CNOC_ENV
+          value: "kubernetes"
+        - name: CNOC_LOG_LEVEL
+          value: "info"
+        - name: CNOC_METRICS_ENABLED
+          value: "true"
+        - name: DATABASE_URL
+          valueFrom:
+            secretKeyRef:
+              name: cnoc-secrets
+              key: database-url
+        - name: REDIS_URL
+          valueFrom:
+            secretKeyRef:
+              name: cnoc-secrets
+              key: redis-url
+        - name: SERVER_ADDRESS
+          value: ":8080"
+        - name: BASE_URL
+          value: "http://cnoc-service:80"
+        volumeMounts:
+        - name: config-volume
+          mountPath: /app/config
+          readOnly: true
+        - name: secret-volume
+          mountPath: /app/secrets
+          readOnly: true
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: http
+          initialDelaySeconds: 15
+          periodSeconds: 10
+          timeoutSeconds: 3
+          failureThreshold: 3
+        readinessProbe:
+          httpGet:
+            path: /ready
+            port: http
+          initialDelaySeconds: 5
+          periodSeconds: 5
+          timeoutSeconds: 2
+          failureThreshold: 2
+        startupProbe:
+          httpGet:
+            path: /ready
+            port: http
+          initialDelaySeconds: 10
+          periodSeconds: 2
+          timeoutSeconds: 1
+          failureThreshold: 30
+      volumes:
+      - name: config-volume
+        configMap:
+          name: cnoc-config
+      - name: secret-volume
+        secret:
+          secretName: cnoc-secrets
+      restartPolicy: Always
+      terminationGracePeriodSeconds: 30
+      nodeSelector:
+        kubernetes.io/os: linux
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: cnoc-service
+  namespace: cnoc
+  labels:
+    app: cnoc
+    forge.movement: "7"
+    forge.category: infrastructure
+spec:
+  type: ClusterIP
+  ports:
+  - name: http
+    port: 80
+    targetPort: http
+    protocol: TCP
+  - name: metrics
+    port: 9090
+    targetPort: metrics
+    protocol: TCP
+  selector:
+    app: cnoc
+---
+apiVersion: v1
+kind: Service  
+metadata:
+  name: cnoc-loadbalancer
+  namespace: cnoc
+  labels:
+    app: cnoc
+    forge.movement: "7"
+    forge.category: infrastructure
+spec:
+  type: LoadBalancer
+  ports:
+  - name: http
+    port: 80
+    targetPort: http
+    protocol: TCP
+  selector:
+    app: cnoc
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: cnoc-config
+  namespace: cnoc
+  labels:
+    app: cnoc
+    forge.movement: "7"
+data:
+  app.properties: |
+    cnoc.env=kubernetes
+    cnoc.log.level=info
+    cnoc.metrics.enabled=true
+    cnoc.database.host=postgresql
+    cnoc.database.port=5432
+    cnoc.redis.host=redis
+    cnoc.redis.port=6379
+    cnoc.server.read_timeout=15s
+    cnoc.server.write_timeout=15s
+    cnoc.server.idle_timeout=60s
+  feature-flags.yaml: |
+    features:
+      gitops_sync: true
+      drift_detection: true
+      metrics_collection: true
+      api_versioning: v1
+      real_time_updates: true
+      batch_operations: true
+      advanced_forms: true
+      monitoring_integration: true
+  deployment.yaml: |
+    deployment:
+      environment: kubernetes
+      cluster_name: ""
+      namespace: cnoc
+      replicas: 2
+      resources:
+        requests:
+          cpu: 200m
+          memory: 256Mi
+        limits:
+          cpu: 500m
+          memory: 512Mi
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: cnoc-secrets
+  namespace: cnoc
+  labels:
+    app: cnoc
+    forge.movement: "7"
+type: Opaque
+data:
+  database-url: cG9zdGdyZXM6Ly9jbm9jOmNub2NAbG9jYWxob3N0L2Nub2M/c3NsbW9kZT1kaXNhYmxl  # postgres://cnoc:cnoc@localhost/cnoc?sslmode=disable
+  redis-url: cmVkaXM6Ly9sb2NhbGhvc3Q6NjM3OS8w  # redis://localhost:6379/0
+  api-key: Y25vYy1mb3JnZS1hcGkta2V5LTEyMzQ1  # cnoc-forge-api-key-12345
+  jwt-secret: Y25vYy1qd3Qtc2VjcmV0LWtleS1mb3JnZS1tb3ZlbWVudC03  # cnoc-jwt-secret-key-forge-movement-7
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: cnoc
+  labels:
+    name: cnoc
+    forge.movement: "7"
+    forge.category: infrastructure
+    kubernetes.io/managed-by: "cnoc"

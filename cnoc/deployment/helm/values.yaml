@@ -1,0 +1,249 @@
+# Default values for CNOC Helm chart
+# This is a YAML-formatted file.
+
+# Application configuration
+app:
+  name: cnoc
+  version: "1.0.0"
+  environment: kubernetes
+
+# Image configuration  
+image:
+  repository: cnoc
+  tag: latest
+  pullPolicy: Always
+  pullSecrets: []
+
+# Deployment configuration
+replicaCount: 2
+
+# Resource configuration
+resources:
+  requests:
+    cpu: 200m
+    memory: 256Mi
+  limits:
+    cpu: 500m
+    memory: 512Mi
+
+# Autoscaling configuration
+autoscaling:
+  enabled: true
+  minReplicas: 2
+  maxReplicas: 10
+  metrics:
+    cpu:
+      enabled: true
+      targetAverageUtilization: 70
+    memory:
+      enabled: true
+      targetAverageUtilization: 80
+
+# Service configuration
+service:
+  type: ClusterIP
+  port: 80
+  targetPort: 8080
+  metricsPort: 9090
+
+# LoadBalancer service (optional)
+loadBalancer:
+  enabled: false
+  type: LoadBalancer
+  port: 80
+  annotations: {}
+
+# Ingress configuration
+ingress:
+  enabled: false
+  className: ""
+  annotations: {}
+  hosts:
+    - host: cnoc.local
+      paths:
+        - path: /
+          pathType: Prefix
+  tls: []
+
+# Configuration
+config:
+  logLevel: info
+  metricsEnabled: true
+  features:
+    gitopsSync: true
+    driftDetection: true
+    metricsCollection: true
+    apiVersioning: v1
+    realTimeUpdates: true
+    batchOperations: true
+    advancedForms: true
+    monitoringIntegration: true
+
+# Security configuration
+security:
+  runAsNonRoot: true
+  runAsUser: 1001
+  runAsGroup: 1001
+  fsGroup: 1001
+  capabilities:
+    drop:
+      - ALL
+  readOnlyRootFilesystem: false
+
+# Health checks
+healthChecks:
+  liveness:
+    enabled: true
+    initialDelaySeconds: 15
+    periodSeconds: 10
+    timeoutSeconds: 3
+    failureThreshold: 3
+  readiness:
+    enabled: true
+    initialDelaySeconds: 5
+    periodSeconds: 5
+    timeoutSeconds: 2
+    failureThreshold: 2
+  startup:
+    enabled: true
+    initialDelaySeconds: 10
+    periodSeconds: 2
+    timeoutSeconds: 1
+    failureThreshold: 30
+
+# Persistence
+persistence:
+  enabled: false
+  storageClass: ""
+  size: 8Gi
+  accessModes:
+    - ReadWriteOnce
+
+# PostgreSQL dependency
+postgresql:
+  enabled: true
+  auth:
+    username: cnoc
+    password: cnoc
+    database: cnoc
+  primary:
+    resources:
+      requests:
+        cpu: 250m
+        memory: 256Mi
+      limits:
+        cpu: 500m
+        memory: 512Mi
+
+# Redis dependency  
+redis:
+  enabled: true
+  auth:
+    enabled: false
+  master:
+    resources:
+      requests:
+        cpu: 100m
+        memory: 128Mi
+      limits:
+        cpu: 250m
+        memory: 256Mi
+
+# Monitoring configuration
+monitoring:
+  prometheus:
+    enabled: true
+    serviceMonitor:
+      enabled: true
+      interval: 30s
+      scrapeTimeout: 10s
+  grafana:
+    enabled: false
+    dashboards: []
+
+# Network policy
+networkPolicy:
+  enabled: true
+  ingress:
+    enabled: true
+    from: []
+  egress:
+    enabled: true
+    to: []
+
+# Pod disruption budget
+podDisruptionBudget:
+  enabled: true
+  minAvailable: 1
+
+# Node selector
+nodeSelector: {}
+
+# Tolerations
+tolerations: []
+
+# Affinity rules
+affinity: {}
+
+# Pod annotations
+podAnnotations:
+  prometheus.io/scrape: "true"
+  prometheus.io/port: "9090"
+  prometheus.io/path: "/metrics"
+
+# Service annotations
+serviceAnnotations: {}
+
+# Labels
+labels:
+  forge.movement: "7"
+  forge.category: infrastructure
+  app.kubernetes.io/name: cnoc
+  app.kubernetes.io/version: "1.0.0"
+  app.kubernetes.io/component: api-server
+  app.kubernetes.io/part-of: cnoc-platform
+
+# Environment variables
+env:
+  - name: CNOC_ENV
+    value: kubernetes
+  - name: CNOC_LOG_LEVEL
+    value: info
+  - name: CNOC_METRICS_ENABLED
+    value: "true"
+  - name: SERVER_ADDRESS
+    value: ":8080"
+  - name: BASE_URL
+    value: "http://cnoc-service:80"
+
+# Secret configuration
+secrets:
+  databaseUrl: "postgres://cnoc:cnoc@cnoc-postgresql:5432/cnoc?sslmode=disable"
+  redisUrl: "redis://cnoc-redis-master:6379/0"
+  apiKey: "cnoc-forge-api-key-12345"
+  jwtSecret: "cnoc-jwt-secret-key-forge-movement-7"
+
+# ConfigMap data
+configMap:
+  data:
+    app.properties: |
+      cnoc.env=kubernetes
+      cnoc.log.level=info
+      cnoc.metrics.enabled=true
+      cnoc.database.host=cnoc-postgresql
+      cnoc.database.port=5432
+      cnoc.redis.host=cnoc-redis-master
+      cnoc.redis.port=6379
+      cnoc.server.read_timeout=15s
+      cnoc.server.write_timeout=15s
+      cnoc.server.idle_timeout=60s
+    feature-flags.yaml: |
+      features:
+        gitops_sync: true
+        drift_detection: true
+        metrics_collection: true
+        api_versioning: v1
+        real_time_updates: true
+        batch_operations: true
+        advanced_forms: true
+        monitoring_integration: true
