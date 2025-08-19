@@ -521,8 +521,9 @@ func (cc *CRDController) ListCRDs(w http.ResponseWriter, r *http.Request) {
 	labels := r.URL.Query().Get("labels")
 	pageStr := r.URL.Query().Get("page")
 	pageSizeStr := r.URL.Query().Get("page_size")
-	sortBy := r.URL.Query().Get("sort_by")
-	sortOrder := r.URL.Query().Get("sort_order")
+	// TODO: Implement sorting functionality when needed
+	// sortBy := r.URL.Query().Get("sort_by")
+	// sortOrder := r.URL.Query().Get("sort_order")
 	
 	page := 1
 	pageSize := 10
