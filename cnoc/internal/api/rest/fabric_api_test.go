@@ -20,57 +20,7 @@ import (
 // FORGE Movement 5: Event Orchestration Testing
 // REST API Foundation Test Suite with comprehensive validation
 
-// Fabric represents a fabric configuration
-type Fabric struct {
-	ID                string            `json:"id"`
-	Name              string            `json:"name"`
-	Description       string            `json:"description"`
-	KubernetesServer  string            `json:"kubernetes_server"`
-	GitRepository     string            `json:"git_repository"`
-	GitOpsDirectory   string            `json:"gitops_directory"`
-	Status            string            `json:"status"`
-	CreatedAt         time.Time         `json:"created_at"`
-	UpdatedAt         time.Time         `json:"updated_at"`
-	CRDCount          int               `json:"crd_count"`
-	DriftStatus       string            `json:"drift_status"`
-	LastSyncTime      time.Time         `json:"last_sync_time"`
-	Metadata          map[string]interface{} `json:"metadata,omitempty"`
-}
-
-// FabricSyncRequest represents a sync operation request
-type FabricSyncRequest struct {
-	FabricID         string `json:"fabric_id"`
-	Force            bool   `json:"force"`
-	DryRun           bool   `json:"dry_run"`
-	GitBranch        string `json:"git_branch,omitempty"`
-	IncludePatterns  []string `json:"include_patterns,omitempty"`
-	ExcludePatterns  []string `json:"exclude_patterns,omitempty"`
-}
-
-// FabricConnectionTestRequest represents connection test request
-type FabricConnectionTestRequest struct {
-	FabricID          string `json:"fabric_id"`
-	TestKubernetes    bool   `json:"test_kubernetes"`
-	TestGitRepository bool   `json:"test_git_repository"`
-	Timeout           int    `json:"timeout_seconds"`
-}
-
-// APIResponse represents standard API response
-type APIResponse struct {
-	Success   bool        `json:"success"`
-	Data      interface{} `json:"data,omitempty"`
-	Error     string      `json:"error,omitempty"`
-	Timestamp time.Time   `json:"timestamp"`
-	RequestID string      `json:"request_id"`
-	Duration  string      `json:"duration"`
-}
-
-// ValidationError represents field validation errors
-type ValidationError struct {
-	Field   string `json:"field"`
-	Message string `json:"message"`
-	Code    string `json:"code"`
-}
+// Types are now defined in types.go to avoid duplication
 
 // FabricAPITestSuite - FORGE Movement 5 Test Suite
 type FabricAPITestSuite struct {
