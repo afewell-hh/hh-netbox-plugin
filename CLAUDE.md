@@ -11,13 +11,24 @@
 
 **HNP (Hedgehog NetBox Plugin)**: Original Python/Django prototype system preserved for reference on experimental/main branch.
 
-## CNOC Technical Stack (FORGE Symphony Architecture)
-- Core: Go-based cnocfab CLI utility with FORGE validation coverage
-- Infrastructure: Kubernetes, GitOps, Terraform with FORGE infrastructure patterns
-- Architecture: Domain-driven design, microservices with FORGE evidence validation
+## CNOC Technical Stack (Production Architecture)
+- Core: Go 1.24 backend with Gorilla Mux router and FORGE validation coverage
+- Frontend: Bootstrap 5.3 with vanilla JavaScript and server-rendered Go HTML templates
+- Infrastructure: Kubernetes (K3s), GitOps, PostgreSQL 15, Redis 7
+- Architecture: Domain-driven design with monolithic deployment pattern and FORGE evidence validation
 - Testing Strategy: FORGE Symphony movements - red-green-refactor, mutation testing, comprehensive validation
-- Deployment: Bootable ISO with pre-configured components and FORGE validation frameworks
+- Deployment: HOSS bootable ISO with pre-configured components or direct K3s deployment
 - Components: ArgoCD, Prometheus, Grafana, cert-manager with FORGE monitoring suites
+
+## Technology Architecture Decisions
+
+### Current Production Stack (CNOC)
+**Rationale**: Proven Go+Bootstrap stack provides excellent performance (<200ms API responses), maintainability, and operational simplicity. This pragmatic approach enables rapid delivery of HNP feature parity while maintaining enterprise-grade reliability.
+
+### Future Technology Considerations (Deferred)
+**Advanced Technologies**: WasmCloud agent orchestration and React/NextJS frontend modernization are preserved as future options for consideration only if specific requirements emerge that cannot be efficiently addressed by the current stack.
+
+**Decision Context**: GitHub Issue #60 (WasmCloud/React modernization) is marked as "DEFERRED - Future Consideration Only" based on current production success with Go+Bootstrap architecture.
 
 ## HNP Prototype Stack (Reference Only)
 - Backend: Django 4.2, NetBox 4.3.3 plugin architecture  
@@ -30,7 +41,7 @@
 ### Branch Strategy with FORGE Process Routing
 - **CNOC Branch**: modernization/k8s-foundation (FORGE methodology enforced)
 - **HNP Reference**: experimental/main (prototype patterns preserved)
-- **CLI Tool**: cnocfab (replacing hossfab) with FORGE validation suite
+- **CLI Tool**: cnocfab (replacing hossfab) with FORGE validation suite (production Go application)
 - **Infrastructure**: hossfab/, infrastructure/, hoss/ directories with FORGE patterns
 
 ### FORGE Symphony Task Orchestration Rules

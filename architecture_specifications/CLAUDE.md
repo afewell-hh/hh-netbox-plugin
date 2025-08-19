@@ -1,8 +1,8 @@
 # Architecture Specifications Context
 
 **Purpose**: Technical architecture and design documentation for CNOC system  
-**Architecture Style**: Go-based CLI with Kubernetes infrastructure and domain-driven design  
-**Status**: Production Development - CNOC system architecture based on HOSS foundations
+**Architecture Style**: Go 1.24 backend with Bootstrap 5 frontend, PostgreSQL persistence, and K3s deployment  
+**Status**: Production Development - Pragmatic Go+Bootstrap stack for rapid HNP feature parity
 
 ## System Scope
 

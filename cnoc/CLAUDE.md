@@ -1,8 +1,41 @@
-# CNOC (Cloud NetOps Command) - Agent Role Separation & TDD Framework
+# CNOC (Cloud NetOps Command) - Production Go Backend with FORGE TDD Framework
 
-**Critical Mission**: Implement comprehensive test creation validation strategy to eliminate false completion reports and ensure valid TDD process execution.
+**Mission**: Enterprise-grade cloud networking operations system using Go 1.24 + Bootstrap 5 architecture with comprehensive test-driven development validation to ensure production reliability.
+
+**Architecture**: Domain-driven Go backend with Bootstrap 5 frontend, PostgreSQL persistence, and K3s deployment. Uses proven technology stack for rapid HNP feature parity achievement.
 
 **Role Architecture**: Strict separation between test creation and implementation agents to prevent invalid test creation that leads to false confidence.
+
+## CNOC Production Technology Stack
+
+### Current Implementation (Production-Ready)
+```yaml
+Backend:
+  Language: Go 1.24
+  Web_Framework: Gorilla Mux router
+  Templates: Go HTML templates with Bootstrap 5.3
+  Architecture: Domain-driven design with monolithic deployment
+
+Frontend:
+  Framework: Bootstrap 5.3 (server-rendered)
+  JavaScript: Vanilla ES6+ (no framework dependencies)
+  Icons: Material Design Icons
+  Responsive: Mobile-first responsive design
+
+Infrastructure:
+  Container: K3s Kubernetes cluster
+  Database: PostgreSQL 15
+  Cache: Redis 7
+  Deployment: HOSS bootable ISO or direct K3s
+
+Performance_Targets:
+  API_Response: <200ms
+  Domain_Operations: <100µs
+  Dashboard_Load: <1s
+```
+
+### Future Considerations (Deferred)
+Advanced technologies like WasmCloud and React are preserved as future options but deferred based on current production success with Go+Bootstrap stack.
 
 ## AGENT ROLE DEFINITIONS
 
