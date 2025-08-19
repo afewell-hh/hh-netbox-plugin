@@ -189,6 +189,11 @@ func NewConfigurationMetadata(description string, labels, annotations map[string
 	}
 }
 
+// SetEnterpriseConfig sets the enterprise configuration
+func (cm *ConfigurationMetadata) SetEnterpriseConfig(config *EnterpriseConfiguration) {
+	cm.enterpriseConfig = config
+}
+
 // EnterpriseConfiguration represents enterprise-specific configuration settings
 type EnterpriseConfiguration struct {
 	complianceFramework string
@@ -736,4 +741,218 @@ func (c *Configuration) validateVersionCompatibility() []ValidationWarning {
 	}
 	
 	return warnings
+}
+
+// Enterprise-specific validation methods
+
+// ValidateEnterpriseCompliance validates enterprise compliance requirements
+func (c *Configuration) ValidateEnterpriseCompliance() ValidationResult {
+	result := ValidationResult{
+		Valid:    true,
+		Errors:   make([]ValidationError, 0),
+		Warnings: make([]ValidationWarning, 0),
+	}
+
+	enterpriseConfig := c.metadata.enterpriseConfig
+	if enterpriseConfig == nil {
+		result.Errors = append(result.Errors, ValidationError{
+			Field:   "enterpriseConfig",
+			Message: "enterprise configuration is required for enterprise mode",
+			Code:    "MISSING_ENTERPRISE_CONFIG",
+		})
+		result.Valid = false
+		return result
+	}
+
+	// Validate compliance framework
+	if enterpriseConfig.complianceFramework == "" {
+		result.Errors = append(result.Errors, ValidationError{
+			Field:   "complianceFramework",
+			Message: "compliance framework must be specified",
+			Code:    "MISSING_COMPLIANCE_FRAMEWORK",
+		})
+		result.Valid = false
+	}
+
+	// Validate required enterprise components based on compliance framework
+	switch enterpriseConfig.complianceFramework {
+	case "SOC2", "FedRAMP", "HIPAA":
+		requiredComponents := []string{"cert-manager", "argocd", "prometheus"}
+		for _, required := range requiredComponents {
+			name, _ := NewComponentName(required)
+			if _, exists := c.components.Get(name); !exists {
+				result.Errors = append(result.Errors, ValidationError{
+					Field:   "components",
+					Message: fmt.Sprintf("compliance framework '%s' requires component '%s'", 
+						enterpriseConfig.complianceFramework, required),
+					Code:    "MISSING_COMPLIANCE_COMPONENT",
+				})
+				result.Valid = false
+			}
+		}
+	}
+
+	return result
+}
+
+// ValidateSecurityConstraints validates security constraint requirements
+func (c *Configuration) ValidateSecurityConstraints() ValidationResult {
+	result := ValidationResult{
+		Valid:    true,
+		Errors:   make([]ValidationError, 0),
+		Warnings: make([]ValidationWarning, 0),
+	}
+
+	enterpriseConfig := c.metadata.enterpriseConfig
+	if enterpriseConfig == nil {
+		return result // No enterprise config, no constraints
+	}
+
+	// Validate security level constraints
+	switch enterpriseConfig.securityLevel {
+	case "high":
+		if !enterpriseConfig.encryptionRequired {
+			result.Errors = append(result.Errors, ValidationError{
+				Field:   "encryption",
+				Message: "encryption is required for high security level",
+				Code:    "ENCRYPTION_REQUIRED",
+			})
+			result.Valid = false
+		}
+		if !enterpriseConfig.auditEnabled {
+			result.Errors = append(result.Errors, ValidationError{
+				Field:   "audit",
+				Message: "audit logging is required for high security level",
+				Code:    "AUDIT_REQUIRED",
+			})
+			result.Valid = false
+		}
+	case "medium":
+		if !enterpriseConfig.auditEnabled {
+			result.Warnings = append(result.Warnings, ValidationWarning{
+				Field:   "audit",
+				Message: "audit logging is recommended for medium security level",
+			})
+		}
+	}
+
+	return result
+}
+
+// ValidateComplianceFramework validates a specific compliance framework
+func (c *Configuration) ValidateComplianceFramework(framework string) ComplianceValidationResult {
+	result := ComplianceValidationResult{
+		Valid:    true,
+		Errors:   make([]ComplianceValidationError, 0),
+		Warnings: make([]ComplianceValidationWarning, 0),
+	}
+	
+	validFrameworks := []string{"SOC2", "FedRAMP", "HIPAA", "ISO27001", "PCI-DSS"}
+	
+	for _, valid := range validFrameworks {
+		if framework == valid {
+			return result
+		}
+	}
+	
+	result.Valid = false
+	result.Errors = append(result.Errors, ComplianceValidationError{
+		Field:   "framework",
+		Message: fmt.Sprintf("unsupported compliance framework: %s", framework),
+		Code:    "UNSUPPORTED_FRAMEWORK",
+	})
+	
+	return result
+}
+
+// ComplianceValidationResult represents validation results for compliance
+type ComplianceValidationResult struct {
+	Valid    bool
+	Errors   []ComplianceValidationError
+	Warnings []ComplianceValidationWarning
+}
+
+// ComplianceValidationError represents a compliance validation error
+type ComplianceValidationError struct {
+	Field   string
+	Message string
+	Code    string
+}
+
+// ComplianceValidationWarning represents a compliance validation warning
+type ComplianceValidationWarning struct {
+	Field   string
+	Message string
+}
+
+// IsCompliantWithRequirement checks if configuration meets a specific compliance requirement
+func (c *Configuration) IsCompliantWithRequirement(requirement string) bool {
+	enterpriseConfig := c.metadata.enterpriseConfig
+	if enterpriseConfig == nil {
+		return false
+	}
+
+	switch requirement {
+	case "encryption":
+		return enterpriseConfig.encryptionRequired
+	case "audit":
+		return enterpriseConfig.auditEnabled
+	case "backup":
+		return enterpriseConfig.backupRequired
+	default:
+		return false
+	}
+}
+
+// ValidateDependencySecurityConstraints validates security constraints for component dependencies
+func (c *Configuration) ValidateDependencySecurityConstraints() SecurityValidationResult {
+	result := SecurityValidationResult{
+		Valid:    true,
+		Errors:   make([]SecurityValidationError, 0),
+		Warnings: make([]SecurityValidationWarning, 0),
+	}
+
+	// Check each component's security requirements
+	for _, component := range c.components.List() {
+		componentSecurity := component.ValidateSecurityRequirements()
+		if !componentSecurity.Valid {
+			for _, err := range componentSecurity.Errors {
+				result.Errors = append(result.Errors, SecurityValidationError{
+					Field:   fmt.Sprintf("component.%s.%s", component.Name().String(), err.Field),
+					Message: err.Message,
+					Code:    err.Code,
+				})
+			}
+			result.Valid = false
+		}
+		
+		for _, warn := range componentSecurity.Warnings {
+			result.Warnings = append(result.Warnings, SecurityValidationWarning{
+				Field:   fmt.Sprintf("component.%s.%s", component.Name().String(), warn.Field),
+				Message: warn.Message,
+			})
+		}
+	}
+
+	return result
+}
+
+// SecurityValidationResult represents validation results for security constraints
+type SecurityValidationResult struct {
+	Valid    bool
+	Errors   []SecurityValidationError
+	Warnings []SecurityValidationWarning
+}
+
+// SecurityValidationError represents a security validation error
+type SecurityValidationError struct {
+	Field   string
+	Message string
+	Code    string
+}
+
+// SecurityValidationWarning represents a security validation warning
+type SecurityValidationWarning struct {
+	Field   string
+	Message string
 }

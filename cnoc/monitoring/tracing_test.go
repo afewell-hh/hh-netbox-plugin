@@ -2,12 +2,9 @@ package monitoring
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
-	"sort"
-	"strings"
 	"testing"
 	"time"
 
@@ -106,7 +103,7 @@ func TestOpenTelemetryTracing(t *testing.T) {
 	// FORGE Movement 7: OpenTelemetry Tracing Testing
 	t.Log("🔄 FORGE M7: Testing OpenTelemetry span creation...")
 
-	suite := NewTracingTestSuite("http://localhost:8080")
+	suite := NewTracingTestSuite("http://localhost:9091")
 
 	// Check if tracing endpoint is available
 	ctx := context.Background()
@@ -231,7 +228,7 @@ func TestTraceCorrelation(t *testing.T) {
 	// FORGE Movement 7: Trace Correlation Testing
 	t.Log("🔄 FORGE M7: Testing trace correlation across components...")
 
-	suite := NewTracingTestSuite("http://localhost:8080")
+	suite := NewTracingTestSuite("http://localhost:9091")
 
 	// Test trace correlation through multi-service operations
 	correlationTests := []struct {
@@ -356,7 +353,7 @@ func TestTraceCompleteness(t *testing.T) {
 	// FORGE Movement 7: Critical Path Tracing
 	t.Log("🔄 FORGE M7: Testing critical path trace completeness...")
 
-	suite := NewTracingTestSuite("http://localhost:8080")
+	suite := NewTracingTestSuite("http://localhost:9091")
 
 	// Define critical paths that must be fully traced
 	criticalPaths := []CriticalPath{
@@ -523,7 +520,7 @@ func TestTraceSampling(t *testing.T) {
 	// FORGE Movement 7: Trace Sampling Configuration
 	t.Log("🔄 FORGE M7: Testing trace sampling configuration...")
 
-	suite := NewTracingTestSuite("http://localhost:8080")
+	suite := NewTracingTestSuite("http://localhost:9091")
 
 	// Test different sampling scenarios
 	samplingTests := []struct {
@@ -591,7 +588,7 @@ func TestTraceSampling(t *testing.T) {
 			}
 			
 			actualRate := (float64(sampledTraces) / float64(totalTraces)) * 100
-			rateDifference := abs(actualRate - test.expectedRate)
+			rateDifference := absFloat64(actualRate - test.expectedRate)
 			
 			// FORGE Validation 1: Sampling rate must be within tolerance
 			assert.LessOrEqual(t, rateDifference, test.tolerance,
@@ -642,7 +639,7 @@ func TestTracePerformance(t *testing.T) {
 	// FORGE Movement 7: Tracing Performance Impact
 	t.Log("🔄 FORGE M7: Testing tracing performance overhead...")
 
-	suite := NewTracingTestSuite("http://localhost:8080")
+	suite := NewTracingTestSuite("http://localhost:9091")
 
 	// Test operations with and without tracing
 	performanceTests := []struct {
@@ -830,7 +827,7 @@ func determineSampling(operationType string, expectedRate float64) bool {
 	return (hash % 1000) < threshold
 }
 
-func abs(x float64) float64 {
+func absFloat64(x float64) float64 {
 	if x < 0 {
 		return -x
 	}

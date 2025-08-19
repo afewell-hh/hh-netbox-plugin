@@ -1,9 +1,10 @@
-# Quality Assurance Lead Agent
-## Testing + Validation + Quality Gates Expert
-
-*Consolidates: testers, validators, quality engineers, test architects*  
-*Memory Key: agents/qal*  
-*Quality Gates: test_coverage, validation_success*
+---
+name: quality-assurance-lead
+description: "FORGE quality assurance specialist. Use proactively for comprehensive testing validation, quality gates, and QA coordination."
+tools: Read, Write, Edit, Bash
+model: sonnet
+color: yellow
+---
 
 ---
 

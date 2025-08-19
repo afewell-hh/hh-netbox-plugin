@@ -1,9 +1,10 @@
-# Cloud Native Specialist Agent
-## Kubernetes + WASM + Container Orchestration Expert
-
-*Consolidates: kubernetes experts, wasm specialists, container architects*  
-*Memory Key: agents/cns*  
-*Quality Gates: k8s_validation, wasm_compatibility*
+---
+name: cloud-native-specialist
+description: "FORGE cloud-native architecture specialist. Use proactively for Kubernetes deployment, container orchestration, and WASM integration."
+tools: Read, Write, Edit, Bash
+model: sonnet
+color: cyan
+---
 
 ---
 

@@ -9,6 +9,7 @@ import (
 	"time"
 	
 	"github.com/gorilla/mux"
+	"github.com/hedgehog/cnoc/internal/monitoring"
 )
 
 // FORGE Evidence-Based Test Suite for Web GUI Template Rendering
@@ -20,7 +21,8 @@ import (
 // TestTemplateRenderingComprehensive tests all template rendering with quantitative validation
 func TestTemplateRenderingComprehensive(t *testing.T) {
 	// FORGE Requirement: Test-first development - these tests MUST fail without implementation
-	handler, err := NewWebHandler()
+	metricsCollector := monitoring.NewMetricsCollector()
+	handler, err := NewWebHandler(metricsCollector)
 	if err != nil {
 		t.Fatalf("Failed to initialize web handler: %v", err)
 	}
@@ -195,7 +197,8 @@ func TestTemplateCompilationValidation(t *testing.T) {
 	// FORGE Requirement: Validate template compilation before handler creation
 	
 	// Test template parsing
-	handler, err := NewWebHandler()
+	metricsCollector := monitoring.NewMetricsCollector()
+	handler, err := NewWebHandler(metricsCollector)
 	if err != nil {
 		t.Fatalf("❌ FORGE EVIDENCE FAIL: Template compilation failed: %v", err)
 	}
@@ -240,7 +243,8 @@ func TestTemplateCompilationValidation(t *testing.T) {
 func TestErrorHandlingAndFallbacks(t *testing.T) {
 	// FORGE Requirement: Comprehensive error path testing
 	
-	handler, err := NewWebHandler()
+	metricsCollector := monitoring.NewMetricsCollector()
+	handler, err := NewWebHandler(metricsCollector)
 	if err != nil {
 		t.Fatalf("Failed to initialize web handler: %v", err)
 	}
@@ -293,7 +297,8 @@ func TestErrorHandlingAndFallbacks(t *testing.T) {
 func TestDataBindingAccuracy(t *testing.T) {
 	// FORGE Requirement: Validate data binding accuracy with quantitative metrics
 	
-	handler, err := NewWebHandler()
+	metricsCollector := monitoring.NewMetricsCollector()
+	handler, err := NewWebHandler(metricsCollector)
 	if err != nil {
 		t.Fatalf("Failed to initialize web handler: %v", err)
 	}
@@ -350,7 +355,8 @@ func TestDataBindingAccuracy(t *testing.T) {
 func TestStaticFileHandling(t *testing.T) {
 	// FORGE Requirement: Validate static file serving functionality
 	
-	handler, err := NewWebHandler()
+	metricsCollector := monitoring.NewMetricsCollector()
+	handler, err := NewWebHandler(metricsCollector)
 	if err != nil {
 		t.Fatalf("Failed to initialize web handler: %v", err)
 	}
@@ -385,7 +391,8 @@ func TestStaticFileHandling(t *testing.T) {
 func BenchmarkTemplateRendering(b *testing.B) {
 	// FORGE Requirement: Performance benchmarking for template rendering
 	
-	handler, err := NewWebHandler()
+	metricsCollector := monitoring.NewMetricsCollector()
+	handler, err := NewWebHandler(metricsCollector)
 	if err != nil {
 		b.Fatalf("Failed to initialize web handler: %v", err)
 	}

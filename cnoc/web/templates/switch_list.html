@@ -1,0 +1,575 @@
+{{define "title"}}Switch Resources - CNOC{{end}}
+
+{{define "switch_content"}}
+<div class="container-fluid">
+    <div class="row">
+        <div class="col-12">
+            <div class="card">
+                <div class="card-header d-flex justify-content-between align-items-center">
+                    <h3><i class="mdi mdi-switch"></i> Switch Resources</h3>
+                    <div>
+                        <button class="btn btn-success" data-bs-toggle="modal" data-bs-target="#addSwitchModal">
+                            <i class="mdi mdi-plus"></i> Add Switch
+                        </button>
+                        <button class="btn btn-primary ms-2" onclick="syncAllSwitches()">
+                            <i class="mdi mdi-sync"></i> Sync Switches
+                        </button>
+                        <button class="btn btn-info ms-2" onclick="location.reload()">
+                            <i class="mdi mdi-refresh"></i> Refresh
+                        </button>
+                    </div>
+                </div>
+                <div class="card-body">
+                    <div class="alert alert-info mb-3">
+                        <h5><i class="mdi mdi-information"></i> Network Switches</h5>
+                        <p>Manage network switch resources across your Hedgehog fabric. Monitor switch configuration, port status, and VLAN assignments.</p>
+                    </div>
+
+                    <!-- Switch Statistics -->
+                    <div class="row mb-4">
+                        <div class="col-md-3">
+                            <div class="card border-primary">
+                                <div class="card-body text-center">
+                                    <h4><i class="mdi mdi-switch text-primary"></i></h4>
+                                    <h3>{{.Stats.SwitchCount}}</h3>
+                                    <small class="text-muted">Total Switches</small>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-md-3">
+                            <div class="card border-success">
+                                <div class="card-body text-center">
+                                    <h4><i class="mdi mdi-check-circle text-success"></i></h4>
+                                    <h3>{{.Stats.InSyncCount}}</h3>
+                                    <small class="text-muted">Online</small>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-md-3">
+                            <div class="card border-info">
+                                <div class="card-body text-center">
+                                    <h4><i class="mdi mdi-ethernet text-info"></i></h4>
+                                    <h3>{{.Stats.CRDCount}}</h3>
+                                    <small class="text-muted">Total Ports</small>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-md-3">
+                            <div class="card border-warning">
+                                <div class="card-body text-center">
+                                    <h4><i class="mdi mdi-lan text-warning"></i></h4>
+                                    <h3>{{.Stats.DriftCount}}</h3>
+                                    <small class="text-muted">Active VLANs</small>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    {{if .CRDResources}}
+                    <!-- Switch Configuration Table -->
+                    <div class="table-responsive">
+                        <table class="table table-hover">
+                            <thead>
+                                <tr>
+                                    <th>Switch Name</th>
+                                    <th>Switch Type</th>
+                                    <th>Switch Configuration</th>
+                                    <th>Port Status</th>
+                                    <th>Fabric</th>
+                                    <th>Status</th>
+                                    <th>Last Sync</th>
+                                    <th>Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {{range .CRDResources}}
+                                <tr>
+                                    <td>
+                                        <strong class="text-primary">
+                                            <i class="mdi mdi-switch"></i> {{.Name}}
+                                        </strong>
+                                        {{if .Description}}
+                                        <br><small class="text-muted">{{.Description}}</small>
+                                        {{end}}
+                                        {{if .Labels}}
+                                        <br>
+                                        {{range $key, $value := .Labels}}
+                                        <span class="badge bg-light text-dark">{{$key}}={{$value}}</span>
+                                        {{end}}
+                                        {{end}}
+                                    </td>
+                                    <td>
+                                        {{if eq .Type "leaf"}}
+                                            <span class="badge bg-success">
+                                                <i class="mdi mdi-leaf"></i> Leaf Switch
+                                            </span>
+                                        {{else if eq .Type "spine"}}
+                                            <span class="badge bg-primary">
+                                                <i class="mdi mdi-tree"></i> Spine Switch
+                                            </span>
+                                        {{else if eq .Type "border"}}
+                                            <span class="badge bg-warning">
+                                                <i class="mdi mdi-border-outside"></i> Border Switch
+                                            </span>
+                                        {{else if eq .Type "management"}}
+                                            <span class="badge bg-info">
+                                                <i class="mdi mdi-cog"></i> Management
+                                            </span>
+                                        {{else}}
+                                            <span class="badge bg-secondary">{{.Type}}</span>
+                                        {{end}}
+                                        {{if .Labels.model}}
+                                        <br><small class="text-muted">Model: {{.Labels.model}}</small>
+                                        {{end}}
+                                    </td>
+                                    <td>
+                                        {{if .Labels.management_ip}}
+                                        <div><strong>Mgmt IP:</strong> <code>{{.Labels.management_ip}}</code></div>
+                                        {{end}}
+                                        {{if .Labels.asn}}
+                                        <div><strong>ASN:</strong> {{.Labels.asn}}</div>
+                                        {{end}}
+                                        {{if .Labels.role}}
+                                        <div><strong>Role:</strong> <span class="badge bg-secondary">{{.Labels.role}}</span></div>
+                                        {{end}}
+                                        {{if .Labels.platform}}
+                                        <div><strong>Platform:</strong> {{.Labels.platform}}</div>
+                                        {{end}}
+                                    </td>
+                                    <td>
+                                        <div class="port-status-summary">
+                                            {{if .PortStats}}
+                                            <div class="mb-1">
+                                                <span class="badge bg-success me-1">{{.PortStats.Up}}</span>
+                                                <small class="text-success">Up</small>
+                                            </div>
+                                            <div class="mb-1">
+                                                <span class="badge bg-danger me-1">{{.PortStats.Down}}</span>
+                                                <small class="text-danger">Down</small>
+                                            </div>
+                                            <div>
+                                                <span class="badge bg-info me-1">{{.PortStats.Total}}</span>
+                                                <small class="text-muted">Total</small>
+                                            </div>
+                                            {{else}}
+                                            <span class="text-muted">No port data</span>
+                                            {{end}}
+                                        </div>
+                                    </td>
+                                    <td>
+                                        <span class="text-decoration-none">
+                                            <i class="mdi mdi-server-network"></i> {{if .Labels.fabric}}{{.Labels.fabric}}{{else}}Default Fabric{{end}}
+                                        </span>
+                                        <br><small class="text-muted">Namespace: {{.Namespace}}</small>
+                                    </td>
+                                    <td>
+                                        {{if .Labels.status}}
+                                            {{if eq .Labels.status "online"}}
+                                                <span class="badge bg-success">
+                                                    <i class="mdi mdi-check-circle"></i> Online
+                                                </span>
+                                            {{else if eq .Labels.status "offline"}}
+                                                <span class="badge bg-danger">
+                                                    <i class="mdi mdi-close-circle"></i> Offline
+                                                </span>
+                                            {{else}}
+                                                <span class="badge bg-secondary">{{.Labels.status}}</span>
+                                            {{end}}
+                                        {{else}}
+                                            <span class="badge bg-success">
+                                                <i class="mdi mdi-check-circle"></i> Online
+                                            </span>
+                                        {{end}}
+                                        {{if .Labels.uptime}}
+                                        <br><small class="text-muted">Uptime: {{.Labels.uptime}}</small>
+                                        {{end}}
+                                    </td>
+                                    <td>
+                                        {{if .GitSyncTimestamp}}
+                                            <span title="{{.GitSyncTimestamp}}">{{.GitSyncTimestampAgo}}</span>
+                                        {{else}}
+                                            <span class="text-muted">Never</span>
+                                        {{end}}
+                                    </td>
+                                    <td>
+                                        <div class="btn-group btn-group-sm" role="group">
+                                            <button class="btn btn-primary btn-sync-switch" 
+                                                    data-switch-id="{{.ID}}" title="Sync Switch">
+                                                <i class="mdi mdi-sync"></i>
+                                            </button>
+                                            <a href="/crds/switches/{{.ID}}" class="btn btn-info" title="View Details">
+                                                <i class="mdi mdi-eye"></i>
+                                            </a>
+                                            <button class="btn btn-success" onclick="showPortStatus('{{.ID}}')" title="Port Status">
+                                                <i class="mdi mdi-ethernet"></i>
+                                            </button>
+                                            <button class="btn btn-secondary" onclick="showVLANConfig('{{.ID}}')" title="VLAN Configuration">
+                                                <i class="mdi mdi-lan"></i>
+                                            </button>
+                                            <button class="btn btn-warning" onclick="editSwitch('{{.ID}}')" title="Edit Switch">
+                                                <i class="mdi mdi-pencil"></i>
+                                            </button>
+                                            <button class="btn btn-danger" onclick="deleteSwitch('{{.ID}}')" title="Delete Switch">
+                                                <i class="mdi mdi-delete"></i>
+                                            </button>
+                                        </div>
+                                    </td>
+                                </tr>
+                                {{end}}
+                            </tbody>
+                        </table>
+                    </div>
+                    {{else}}
+                    <div class="alert alert-info">
+                        <h5><i class="mdi mdi-information"></i> No Switch Resources Found</h5>
+                        <p>No network switches are currently configured. Add your first switch to begin managing network infrastructure.</p>
+                        <button class="btn btn-success" data-bs-toggle="modal" data-bs-target="#addSwitchModal">
+                            <i class="mdi mdi-plus"></i> Add Your First Switch
+                        </button>
+                    </div>
+                    {{end}}
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Add Switch Modal -->
+<div class="modal fade" id="addSwitchModal" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title"><i class="mdi mdi-switch"></i> Add Switch</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <form action="/crds/switches/create" method="POST">
+                <div class="modal-body">
+                    <div class="row">
+                        <div class="col-md-6">
+                            <div class="mb-3">
+                                <label for="switchName" class="form-label">Switch Name *</label>
+                                <input type="text" class="form-control" id="switchName" name="name" required>
+                                <small class="text-muted">Unique name for this switch</small>
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="mb-3">
+                                <label for="switchFabric" class="form-label">Target Fabric *</label>
+                                <select class="form-select" id="switchFabric" name="fabric_id" required>
+                                    <option value="">-- Select Fabric --</option>
+                                    {{range .Fabrics}}
+                                    <option value="{{.ID}}">{{.Name}}</option>
+                                    {{end}}
+                                </select>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="mb-3">
+                        <label for="switchDescription" class="form-label">Description</label>
+                        <textarea class="form-control" id="switchDescription" name="description" rows="2"></textarea>
+                    </div>
+                    <div class="row">
+                        <div class="col-md-6">
+                            <div class="mb-3">
+                                <label for="switchType" class="form-label">Switch Type *</label>
+                                <select class="form-select" id="switchType" name="type" required>
+                                    <option value="">-- Select Type --</option>
+                                    <option value="leaf">Leaf Switch</option>
+                                    <option value="spine">Spine Switch</option>
+                                    <option value="border">Border Switch</option>
+                                    <option value="management">Management Switch</option>
+                                </select>
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="mb-3">
+                                <label for="switchRole" class="form-label">Role</label>
+                                <select class="form-select" id="switchRole" name="role">
+                                    <option value="">-- Select Role --</option>
+                                    <option value="access">Access</option>
+                                    <option value="distribution">Distribution</option>
+                                    <option value="core">Core</option>
+                                    <option value="border-leaf">Border Leaf</option>
+                                </select>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="row">
+                        <div class="col-md-6">
+                            <div class="mb-3">
+                                <label for="switchModel" class="form-label">Model</label>
+                                <input type="text" class="form-control" id="switchModel" name="model" 
+                                       placeholder="e.g., S4248FBL-ON">
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="mb-3">
+                                <label for="switchPlatform" class="form-label">Platform</label>
+                                <select class="form-select" id="switchPlatform" name="platform">
+                                    <option value="">-- Select Platform --</option>
+                                    <option value="ONIE">ONIE</option>
+                                    <option value="SONiC">SONiC</option>
+                                    <option value="Cumulus">Cumulus Linux</option>
+                                    <option value="EOS">Arista EOS</option>
+                                </select>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="row">
+                        <div class="col-md-6">
+                            <div class="mb-3">
+                                <label for="managementIP" class="form-label">Management IP</label>
+                                <input type="text" class="form-control" id="managementIP" name="management_ip" 
+                                       placeholder="192.168.1.10">
+                                <small class="text-muted">IPv4 address for switch management</small>
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="mb-3">
+                                <label for="switchASN" class="form-label">ASN</label>
+                                <input type="number" class="form-control" id="switchASN" name="asn" 
+                                       min="1" max="4294967295" placeholder="65001">
+                                <small class="text-muted">Autonomous System Number</small>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="mb-3">
+                        <label for="switchNamespace" class="form-label">Namespace</label>
+                        <input type="text" class="form-control" id="switchNamespace" name="namespace" value="default">
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <button type="submit" class="btn btn-success">
+                        <i class="mdi mdi-plus"></i> Add Switch
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<!-- Port Status Modal -->
+<div class="modal fade" id="portStatusModal" tabindex="-1">
+    <div class="modal-dialog modal-xl">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title"><i class="mdi mdi-ethernet"></i> Port Status</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <div id="portStatusContainer">
+                    <!-- Port status will be loaded here -->
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- VLAN Configuration Modal -->
+<div class="modal fade" id="vlanConfigModal" tabindex="-1">
+    <div class="modal-dialog modal-xl">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title"><i class="mdi mdi-lan"></i> VLAN Configuration</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <div id="vlanConfigContainer">
+                    <!-- VLAN configuration will be loaded here -->
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{{end}}
+
+{{define "scripts"}}
+<script>
+function syncAllSwitches() {
+    const button = event.target;
+    button.disabled = true;
+    button.innerHTML = '<i class="mdi mdi-loading mdi-spin"></i> Syncing...';
+    
+    makeAjaxRequest('/api/v1/crds/switches/sync-all', 'POST', null, function(err, response) {
+        button.disabled = false;
+        button.innerHTML = '<i class="mdi mdi-sync"></i> Sync Switches';
+        
+        if (err) {
+            showNotification('Failed to sync switches: ' + err.message, 'danger');
+        } else {
+            showNotification('Switch synchronization started', 'success');
+            setTimeout(() => location.reload(), 2000);
+        }
+    });
+}
+
+function editSwitch(switchId) {
+    window.location.href = `/crds/switches/${switchId}/edit`;
+}
+
+function deleteSwitch(switchId) {
+    if (confirm('This will permanently delete the switch configuration. This action cannot be undone. Continue?')) {
+        makeAjaxRequest(`/api/v1/crds/switches/${switchId}`, 'DELETE', null, function(err, response) {
+            if (err) {
+                showNotification('Failed to delete switch: ' + err.message, 'danger');
+            } else {
+                showNotification('Switch deleted successfully', 'success');
+                setTimeout(() => location.reload(), 1000);
+            }
+        });
+    }
+}
+
+function showPortStatus(switchId) {
+    makeAjaxRequest(`/api/v1/crds/switches/${switchId}/ports`, 'GET', null, function(err, response) {
+        if (err) {
+            showNotification('Failed to load port status: ' + err.message, 'danger');
+            return;
+        }
+        
+        const modal = new bootstrap.Modal(document.getElementById('portStatusModal'));
+        const container = document.getElementById('portStatusContainer');
+        
+        let portsHTML = `
+            <h6>Switch: ${response.switch_name}</h6>
+            <div class="table-responsive">
+                <table class="table table-sm">
+                    <thead>
+                        <tr>
+                            <th>Port</th>
+                            <th>Status</th>
+                            <th>Speed</th>
+                            <th>Type</th>
+                            <th>VLAN</th>
+                            <th>Description</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+        `;
+        
+        if (response.ports && response.ports.length > 0) {
+            response.ports.forEach(port => {
+                portsHTML += `
+                    <tr>
+                        <td><strong>${port.name}</strong></td>
+                        <td>
+                            <span class="badge ${port.status === 'up' ? 'bg-success' : 'bg-danger'}">
+                                <i class="mdi mdi-${port.status === 'up' ? 'check-circle' : 'close-circle'}"></i>
+                                ${port.status.toUpperCase()}
+                            </span>
+                        </td>
+                        <td>${port.speed || 'N/A'}</td>
+                        <td>${port.type || 'N/A'}</td>
+                        <td>${port.vlan ? `<span class="badge bg-primary">${port.vlan}</span>` : 'None'}</td>
+                        <td>${port.description || ''}</td>
+                    </tr>
+                `;
+            });
+        } else {
+            portsHTML += '<tr><td colspan="6" class="text-center text-muted">No port information available</td></tr>';
+        }
+        
+        portsHTML += `
+                    </tbody>
+                </table>
+            </div>
+        `;
+        
+        container.innerHTML = portsHTML;
+        modal.show();
+    });
+}
+
+function showVLANConfig(switchId) {
+    makeAjaxRequest(`/api/v1/crds/switches/${switchId}/vlans`, 'GET', null, function(err, response) {
+        if (err) {
+            showNotification('Failed to load VLAN configuration: ' + err.message, 'danger');
+            return;
+        }
+        
+        const modal = new bootstrap.Modal(document.getElementById('vlanConfigModal'));
+        const container = document.getElementById('vlanConfigContainer');
+        
+        let vlansHTML = `
+            <h6>Switch: ${response.switch_name}</h6>
+            <div class="table-responsive">
+                <table class="table table-sm">
+                    <thead>
+                        <tr>
+                            <th>VLAN ID</th>
+                            <th>Name</th>
+                            <th>Status</th>
+                            <th>Ports</th>
+                            <th>Description</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+        `;
+        
+        if (response.vlans && response.vlans.length > 0) {
+            response.vlans.forEach(vlan => {
+                vlansHTML += `
+                    <tr>
+                        <td><span class="badge bg-primary">${vlan.id}</span></td>
+                        <td><strong>${vlan.name}</strong></td>
+                        <td>
+                            <span class="badge ${vlan.status === 'active' ? 'bg-success' : 'bg-secondary'}">
+                                ${vlan.status.toUpperCase()}
+                            </span>
+                        </td>
+                        <td>${vlan.ports ? vlan.ports.join(', ') : 'None'}</td>
+                        <td>${vlan.description || ''}</td>
+                    </tr>
+                `;
+            });
+        } else {
+            vlansHTML += '<tr><td colspan="5" class="text-center text-muted">No VLAN information available</td></tr>';
+        }
+        
+        vlansHTML += `
+                    </tbody>
+                </table>
+            </div>
+        `;
+        
+        container.innerHTML = vlansHTML;
+        modal.show();
+    });
+}
+
+// Sync individual switch
+document.addEventListener('DOMContentLoaded', function() {
+    document.querySelectorAll('.btn-sync-switch').forEach(button => {
+        button.addEventListener('click', function() {
+            const switchId = this.dataset.switchId;
+            this.disabled = true;
+            this.innerHTML = '<i class="mdi mdi-loading mdi-spin"></i>';
+            
+            makeAjaxRequest(`/api/v1/crds/switches/${switchId}/sync`, 'POST', null, function(err, response) {
+                button.disabled = false;
+                button.innerHTML = '<i class="mdi mdi-sync"></i>';
+                
+                if (err) {
+                    showNotification('Failed to sync switch: ' + err.message, 'danger');
+                } else {
+                    showNotification('Switch synchronized successfully', 'success');
+                    setTimeout(() => location.reload(), 1000);
+                }
+            });
+        });
+    });
+});
+</script>
+
+<style>
+.port-status-summary {
+    font-size: 0.9em;
+}
+
+.port-status-summary .badge {
+    min-width: 25px;
+    text-align: center;
+}
+</style>
+{{end}}

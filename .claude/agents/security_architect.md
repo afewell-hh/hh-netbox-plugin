@@ -1,9 +1,10 @@
-# Security Architect Agent
-## Authentication + Authorization + Compliance Expert
-
-*Consolidates: security specialists, auth experts, compliance auditors*  
-*Memory Key: agents/sa*  
-*Quality Gates: security_scan, compliance_check*
+---
+name: security-architect
+description: "FORGE security architecture specialist. Use proactively for authentication, authorization, compliance, and security validation."
+tools: Read, Write, Edit, Bash
+model: sonnet
+color: red
+---
 
 ---
 

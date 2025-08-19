@@ -20,24 +20,7 @@ import (
 // FORGE Movement 5: Event Orchestration Testing
 // CRD API Test Suite for all 12 CRD types with generic handling
 
-// CRDResource represents a Custom Resource Definition instance
-type CRDResource struct {
-	ID          string                 `json:"id"`
-	APIVersion  string                 `json:"apiVersion"`
-	Kind        string                 `json:"kind"`
-	Name        string                 `json:"name"`
-	Namespace   string                 `json:"namespace,omitempty"`
-	FabricID    string                 `json:"fabric_id"`
-	Spec        map[string]interface{} `json:"spec"`
-	Status      map[string]interface{} `json:"status,omitempty"`
-	Labels      map[string]string      `json:"labels,omitempty"`
-	Annotations map[string]string      `json:"annotations,omitempty"`
-	CreatedAt   time.Time              `json:"created_at"`
-	UpdatedAt   time.Time              `json:"updated_at"`
-	SyncStatus  string                 `json:"sync_status"`
-	LastSynced  time.Time              `json:"last_synced,omitempty"`
-	Metadata    map[string]interface{} `json:"metadata,omitempty"`
-}
+// CRDResource is defined in crd_controller.go
 
 // CRDListRequest represents pagination and filtering parameters
 type CRDListRequest struct {
@@ -99,7 +82,7 @@ func (suite *CRDAPITestSuite) SetupSuite() {
 	suite.client = &http.Client{Timeout: 30 * time.Second}
 	
 	// RED PHASE: Router will be nil until implemented
-	suite.router = nil // This will cause tests to fail - expected in FORGE methodology
+	suite.router = NewCRDRouter()
 	
 	if suite.router != nil {
 		suite.server = httptest.NewServer(suite.router)
@@ -310,8 +293,8 @@ func (suite *CRDAPITestSuite) TestCRDManagement() {
 	t := suite.T()
 	
 	if suite.server == nil {
-		t.Log("Server not available - test failing as expected in FORGE RED PHASE")
-		assert.Fail(t, "CRD API server implementation required")
+		t.Log("Server not available - cannot test CRD endpoint")
+		assert.Fail(t, "CRD API server should be available")
 		return
 	}
 	
@@ -406,8 +389,8 @@ func (suite *CRDAPITestSuite) TestCRDFiltering() {
 	t := suite.T()
 	
 	if suite.server == nil {
-		t.Log("Server not available - test failing as expected in FORGE RED PHASE")
-		assert.Fail(t, "CRD API server implementation required")
+		t.Log("Server not available - cannot test CRD endpoint")
+		assert.Fail(t, "CRD API server should be available")
 		return
 	}
 	
@@ -503,8 +486,8 @@ func (suite *CRDAPITestSuite) TestCRDValidation() {
 	t := suite.T()
 	
 	if suite.server == nil {
-		t.Log("Server not available - test failing as expected in FORGE RED PHASE")
-		assert.Fail(t, "CRD API server implementation required")
+		t.Log("Server not available - cannot test CRD endpoint")
+		assert.Fail(t, "CRD API server should be available")
 		return
 	}
 	
@@ -606,8 +589,8 @@ func (suite *CRDAPITestSuite) TestBulkOperations() {
 	t := suite.T()
 	
 	if suite.server == nil {
-		t.Log("Server not available - test failing as expected in FORGE RED PHASE")
-		assert.Fail(t, "CRD API server implementation required")
+		t.Log("Server not available - cannot test CRD endpoint")
+		assert.Fail(t, "CRD API server should be available")
 		return
 	}
 	
@@ -739,8 +722,8 @@ func (suite *CRDAPITestSuite) TestCRDSearchAndDiscovery() {
 	t := suite.T()
 	
 	if suite.server == nil {
-		t.Log("Server not available - test failing as expected in FORGE RED PHASE")
-		assert.Fail(t, "CRD API server implementation required")
+		t.Log("Server not available - cannot test CRD endpoint")
+		assert.Fail(t, "CRD API server should be available")
 		return
 	}
 	
@@ -801,10 +784,7 @@ func (suite *CRDAPITestSuite) TestCRDSearchAndDiscovery() {
 
 // Helper functions for RED PHASE testing (will fail until implemented)
 
-func NewCRDRouter() *mux.Router {
-	// RED PHASE: This function should return nil until implemented
-	return nil
-}
+// NewCRDRouter is implemented in crd_controller.go
 
 // Run the test suite
 func TestCRDAPITestSuite(t *testing.T) {
@@ -817,8 +797,8 @@ func TestCRDAPIEvidenceCollection(t *testing.T) {
 		"test_execution_time": time.Now(),
 		"framework_version":   "FORGE Movement 5",
 		"test_coverage":       "CRD API Management",
-		"expected_failures":   true,
-		"red_phase_active":    true,
+		"expected_failures":   false,
+		"red_phase_active":    false,
 		"crd_types_supported": []string{
 			"VPC", "Connection", "Switch", "Server", "VLAN",
 			"Subnet", "Route", "FirewallRule", "LoadBalancer",
@@ -846,7 +826,7 @@ func TestCRDAPIEvidenceCollection(t *testing.T) {
 	assert.NotEmpty(t, evidence)
 	assert.Contains(t, evidence, "crd_types_supported")
 	assert.Equal(t, 12, len(evidence["crd_types_supported"].([]string)))
-	assert.Equal(t, true, evidence["red_phase_active"])
+	assert.Equal(t, false, evidence["red_phase_active"])
 	
 	t.Logf("FORGE CRD API Evidence Collection: %+v", evidence)
 }

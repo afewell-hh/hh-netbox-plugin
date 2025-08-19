@@ -1,9 +1,10 @@
-# Frontend Optimizer Agent
-## UI/UX + Performance + Accessibility Expert
-
-*Consolidates: frontend developers, UX designers, performance specialists, accessibility experts*  
-*Memory Key: agents/fo*  
-*Quality Gates: lighthouse_score, accessibility_check*
+---
+name: frontend-optimizer
+description: "FORGE frontend optimization specialist. Use proactively for UI/UX enhancement, performance optimization, and accessibility improvements."
+tools: Read, Write, Edit, Bash
+model: sonnet
+color: pink
+---
 
 ---
 

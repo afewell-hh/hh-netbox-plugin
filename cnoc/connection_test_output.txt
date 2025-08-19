@@ -1,0 +1,42 @@
+=== RUN   TestGUITemplateUniqueness
+✅ Loaded template: fabric_list.html
+✅ Loaded template: base.html
+✅ Loaded template: head
+✅ Loaded template: scripts
+✅ Loaded template: configuration_list.html
+✅ Loaded template: dashboard.html
+✅ Loaded template: switch_list.html
+✅ Loaded template: simple_dashboard.html
+✅ Loaded template: vpc_list.html
+✅ Loaded template: drift_detection.html
+✅ Loaded template: title
+✅ Loaded template: connection_list.html
+✅ Loaded template: crd_list.html
+✅ Loaded template: content
+✅ Loaded template: fabric_detail.html
+✅ Loaded template: repository_list.html
+2025/08/19 14:40:01 Warning: Failed to seed staging config: component compatibility validation failed: component 'prometheus' not allowed in minimal mode
+2025/08/19 14:40:01 ✅ Sample configuration data seeded successfully
+2025/08/19 14:40:01 ✅ Fabric service initialized (seeding skipped)
+=== RUN   TestGUITemplateUniqueness/Connection_Resources_Page_Uniqueness
+2025/08/19 14:40:01 🎯 Attempting to render template: connection_list.html
+2025/08/19 14:40:01 ✅ Base template rendered successfully for connection_list
+    gui_state_validation_test.go:348: ❌ FORGE RED PHASE EVIDENCE (CRITICAL): /crds/connections missing unique content markers: [Connection Resources Network Connections Connection Status Source/Destination Connection Type]
+    gui_state_validation_test.go:350: This indicates the page is showing WRONG TEMPLATE CONTENT!
+    gui_state_validation_test.go:361: ❌ FORGE RED PHASE EVIDENCE (CRITICAL): /crds/connections contains prohibited content: [VPC Resources]
+    gui_state_validation_test.go:363: This indicates the page is showing FALLBACK/WRONG TEMPLATE!
+    gui_state_validation_test.go:374: ❌ FORGE RED PHASE EVIDENCE: /crds/connections missing HTML elements: [status]
+    gui_state_validation_test.go:403: 📊 FORGE RED PHASE METRICS for Connection Resources Page Uniqueness:
+    gui_state_validation_test.go:404:    Response Size: 21301 bytes
+    gui_state_validation_test.go:405:    Response Time: 1.264747ms
+    gui_state_validation_test.go:406:    Status Code: 200
+    gui_state_validation_test.go:407:    Content Type: text/html; charset=utf-8
+    gui_state_validation_test.go:408:    Success Rate: 50.0% (6/12 checks passed)
+    gui_state_validation_test.go:409:    Missing Unique Content: 5 items
+    gui_state_validation_test.go:410:    Prohibited Content Found: 1 items
+    gui_state_validation_test.go:413: 🔴 FORGE RED PHASE CONFIRMED: /crds/connections is significantly broken (50.0% success)
+--- FAIL: TestGUITemplateUniqueness (0.01s)
+    --- FAIL: TestGUITemplateUniqueness/Connection_Resources_Page_Uniqueness (0.00s)
+FAIL
+FAIL	github.com/hedgehog/cnoc/internal/web	0.021s
+FAIL

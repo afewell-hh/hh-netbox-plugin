@@ -1,9 +1,10 @@
-# Deployment Manager Agent
-## CI/CD + Release Management + Environment Coordination Expert
-
-*Consolidates: DevOps engineers, release managers, environment specialists*  
-*Memory Key: agents/dm*  
-*Quality Gates: deployment_validation, rollback_test*
+---
+name: deployment-manager
+description: "FORGE deployment and release management specialist. Use proactively for CI/CD pipelines, environment coordination, and release management."
+tools: Read, Write, Edit, Bash
+model: sonnet
+color: orange
+---
 
 ---
 

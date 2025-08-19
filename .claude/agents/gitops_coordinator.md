@@ -1,9 +1,10 @@
-# GitOps Coordinator Agent
-## Repository Management + Sync + Version Control Expert
-
-*Consolidates: git specialists, sync managers, version control experts*  
-*Memory Key: agents/gc*  
-*Quality Gates: git_validation, sync_verification*
+---
+name: gitops-coordinator
+description: "FORGE GitOps workflow specialist. Use proactively for repository management, sync operations, and version control automation."
+tools: Read, Write, Edit, Bash
+model: sonnet
+color: green
+---
 
 ---
 

@@ -1,7 +1,6 @@
 package monitoring
 
 import (
-	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
@@ -76,7 +75,7 @@ func TestPrometheusMetrics(t *testing.T) {
 	// FORGE Movement 7: Monitoring and Observability Testing
 	t.Log("🔄 FORGE M7: Testing Prometheus metrics exposure...")
 
-	suite := NewMetricsTestSuite("http://localhost:8080")
+	suite := NewMetricsTestSuite("http://localhost:9090")
 
 	// Test metrics endpoint availability
 	metricsStart := time.Now()
@@ -172,7 +171,7 @@ func TestMetricLabels(t *testing.T) {
 	// FORGE Movement 7: Metric Label Validation
 	t.Log("🔄 FORGE M7: Testing metric labeling for aggregation...")
 
-	suite := NewMetricsTestSuite("http://localhost:8080")
+	suite := NewMetricsTestSuite("http://localhost:9090")
 
 	// Collect metrics
 	resp, err := suite.Client.Get(suite.BaseURL + "/metrics")
@@ -281,7 +280,7 @@ func TestCustomMetrics(t *testing.T) {
 	// FORGE Movement 7: Business Metrics Validation
 	t.Log("🔄 FORGE M7: Testing custom business metrics...")
 
-	suite := NewMetricsTestSuite("http://localhost:8080")
+	suite := NewMetricsTestSuite("http://localhost:9090")
 
 	// Define expected business metrics
 	businessMetrics := []BusinessMetric{
@@ -392,7 +391,7 @@ func TestMetricAccuracy(t *testing.T) {
 	// FORGE Movement 7: Metric Accuracy Testing
 	t.Log("🔄 FORGE M7: Testing metric accuracy against operations...")
 
-	suite := NewMetricsTestSuite("http://localhost:8080")
+	suite := NewMetricsTestSuite("http://localhost:9090")
 
 	// Get baseline metrics
 	baselineMetrics := collectMetrics(t, suite)
@@ -472,7 +471,7 @@ func TestMetricPerformance(t *testing.T) {
 	// FORGE Movement 7: Metrics Collection Performance
 	t.Log("🔄 FORGE M7: Testing metrics collection performance overhead...")
 
-	suite := NewMetricsTestSuite("http://localhost:8080")
+	suite := NewMetricsTestSuite("http://localhost:9090")
 
 	// Test metrics collection performance over multiple iterations
 	iterations := 10

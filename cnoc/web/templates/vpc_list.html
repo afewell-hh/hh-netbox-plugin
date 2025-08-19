@@ -1,0 +1,416 @@
+{{define "title"}}VPC Resources - CNOC{{end}}
+
+{{define "vpc_content"}}
+<div class="container-fluid">
+    <div class="row">
+        <div class="col-12">
+            <div class="card">
+                <div class="card-header d-flex justify-content-between align-items-center">
+                    <h3><i class="mdi mdi-cloud-outline"></i> VPC Resources</h3>
+                    <div>
+                        <button class="btn btn-success" data-bs-toggle="modal" data-bs-target="#addVPCModal">
+                            <i class="mdi mdi-plus"></i> Create VPC
+                        </button>
+                        <button class="btn btn-primary ms-2" onclick="syncAllVPCs()">
+                            <i class="mdi mdi-sync"></i> Sync VPCs
+                        </button>
+                        <button class="btn btn-info ms-2" onclick="location.reload()">
+                            <i class="mdi mdi-refresh"></i> Refresh
+                        </button>
+                    </div>
+                </div>
+                <div class="card-body">
+                    <div class="alert alert-info mb-3">
+                        <h5><i class="mdi mdi-information"></i> Virtual Private Clouds</h5>
+                        <p>Manage VPC Configuration across your Hedgehog fabric infrastructure. Create, modify, and monitor VPC network topologies and subnet configurations.</p>
+                    </div>
+
+                    <!-- VPC Statistics -->
+                    <div class="row mb-4">
+                        <div class="col-md-3">
+                            <div class="card border-primary">
+                                <div class="card-body text-center">
+                                    <h4><i class="mdi mdi-cloud-outline text-primary"></i></h4>
+                                    <h3>{{.Stats.VPCCount}}</h3>
+                                    <small class="text-muted">Total VPCs</small>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-md-3">
+                            <div class="card border-success">
+                                <div class="card-body text-center">
+                                    <h4><i class="mdi mdi-check-circle text-success"></i></h4>
+                                    <h3>{{.Stats.InSyncCount}}</h3>
+                                    <small class="text-muted">Active VPCs</small>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-md-3">
+                            <div class="card border-info">
+                                <div class="card-body text-center">
+                                    <h4><i class="mdi mdi-network text-info"></i></h4>
+                                    <h3>{{.Stats.CRDCount}}</h3>
+                                    <small class="text-muted">Total Subnets</small>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-md-3">
+                            <div class="card border-warning">
+                                <div class="card-body text-center">
+                                    <h4><i class="mdi mdi-connection text-warning"></i></h4>
+                                    <h3>{{.Stats.TotalFabrics}}</h3>
+                                    <small class="text-muted">Connected Fabrics</small>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    {{if .CRDResources}}
+                    <!-- VPC Configuration Table -->
+                    <div class="table-responsive">
+                        <table class="table table-hover">
+                            <thead>
+                                <tr>
+                                    <th>VPC Name</th>
+                                    <th>Network Topology</th>
+                                    <th>Subnet Configuration</th>
+                                    <th>Fabric</th>
+                                    <th>Status</th>
+                                    <th>Last Sync</th>
+                                    <th>Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {{range .CRDResources}}
+                                <tr>
+                                    <td>
+                                        <strong class="text-primary">
+                                            <i class="mdi mdi-cloud-outline"></i> {{.Name}}
+                                        </strong>
+                                        {{if .Description}}
+                                        <br><small class="text-muted">{{.Description}}</small>
+                                        {{end}}
+                                        {{if .Labels}}
+                                        <br>
+                                        {{range $key, $value := .Labels}}
+                                        <span class="badge bg-light text-dark">{{$key}}={{$value}}</span>
+                                        {{end}}
+                                        {{end}}
+                                    </td>
+                                    <td>
+                                        {{if .Labels.vni}}
+                                        <div><strong>VNI:</strong> {{.Labels.vni}}</div>
+                                        {{end}}
+                                        {{if .Labels.ipv4_namespace}}
+                                        <div><strong>IPv4:</strong> <code>{{.Labels.ipv4_namespace}}</code></div>
+                                        {{end}}
+                                        {{if .Labels.ipv6_namespace}}
+                                        <div><strong>IPv6:</strong> <code>{{.Labels.ipv6_namespace}}</code></div>
+                                        {{end}}
+                                        {{if .Labels.dhcp}}
+                                        <div><span class="badge bg-success">DHCP Enabled</span></div>
+                                        {{end}}
+                                    </td>
+                                    <td>
+                                        {{if .Labels.subnet_count}}
+                                        <div class="subnet-list">
+                                            <div class="mb-1">
+                                                <span class="badge bg-primary me-1">{{.Labels.subnet_count}} Subnets</span>
+                                                {{if .Labels.cidr}}
+                                                <br><code class="text-muted">{{.Labels.cidr}}</code>
+                                                {{end}}
+                                                {{if .Labels.gateway}}
+                                                <br><small class="text-muted">Gateway: {{.Labels.gateway}}</small>
+                                                {{end}}
+                                            </div>
+                                        </div>
+                                        {{else}}
+                                        <span class="text-muted">No subnets configured</span>
+                                        {{end}}
+                                    </td>
+                                    <td>
+                                        <span class="text-decoration-none">
+                                            <i class="mdi mdi-server-network"></i> {{if .Labels.fabric}}{{.Labels.fabric}}{{else}}Default Fabric{{end}}
+                                        </span>
+                                        <br><small class="text-muted">Namespace: {{.Namespace}}</small>
+                                    </td>
+                                    <td>
+                                        {{if .Labels.status}}
+                                            {{if eq .Labels.status "active"}}
+                                                <span class="badge bg-success">
+                                                    <i class="mdi mdi-check-circle"></i> Active
+                                                </span>
+                                            {{else if eq .Labels.status "pending"}}
+                                                <span class="badge bg-warning">
+                                                    <i class="mdi mdi-clock"></i> Pending
+                                                </span>
+                                            {{else}}
+                                                <span class="badge bg-secondary">{{.Labels.status}}</span>
+                                            {{end}}
+                                        {{else}}
+                                            <span class="badge bg-success">
+                                                <i class="mdi mdi-check-circle"></i> Active
+                                            </span>
+                                        {{end}}
+                                    </td>
+                                    <td>
+                                        {{if .GitSyncTimestamp}}
+                                            <span title="{{.GitSyncTimestamp}}">{{.GitSyncTimestampAgo}}</span>
+                                        {{else}}
+                                            <span class="text-muted">Never</span>
+                                        {{end}}
+                                    </td>
+                                    <td>
+                                        <div class="btn-group btn-group-sm" role="group">
+                                            <button class="btn btn-primary btn-sync-vpc" 
+                                                    data-vpc-id="{{.ID}}" title="Sync VPC">
+                                                <i class="mdi mdi-sync"></i>
+                                            </button>
+                                            <a href="/crds/vpcs/{{.ID}}" class="btn btn-info" title="View Details">
+                                                <i class="mdi mdi-eye"></i>
+                                            </a>
+                                            <button class="btn btn-success" onclick="showNetworkTopology('{{.ID}}')" title="Network Topology">
+                                                <i class="mdi mdi-sitemap"></i>
+                                            </button>
+                                            <button class="btn btn-warning" onclick="editVPC('{{.ID}}')" title="Edit VPC">
+                                                <i class="mdi mdi-pencil"></i>
+                                            </button>
+                                            <button class="btn btn-danger" onclick="deleteVPC('{{.ID}}')" title="Delete VPC">
+                                                <i class="mdi mdi-delete"></i>
+                                            </button>
+                                        </div>
+                                    </td>
+                                </tr>
+                                {{end}}
+                            </tbody>
+                        </table>
+                    </div>
+                    {{else}}
+                    <div class="alert alert-info">
+                        <h5><i class="mdi mdi-information"></i> No VPC Resources Found</h5>
+                        <p>No Virtual Private Cloud configurations are currently available. Create your first VPC to get started with network topology management.</p>
+                        <button class="btn btn-success" data-bs-toggle="modal" data-bs-target="#addVPCModal">
+                            <i class="mdi mdi-plus"></i> Create Your First VPC
+                        </button>
+                    </div>
+                    {{end}}
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Create VPC Modal -->
+<div class="modal fade" id="addVPCModal" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title"><i class="mdi mdi-cloud-outline"></i> Create VPC</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <form action="/crds/vpcs/create" method="POST">
+                <div class="modal-body">
+                    <div class="row">
+                        <div class="col-md-6">
+                            <div class="mb-3">
+                                <label for="vpcName" class="form-label">VPC Name *</label>
+                                <input type="text" class="form-control" id="vpcName" name="name" required>
+                                <small class="text-muted">Unique name for this VPC</small>
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="mb-3">
+                                <label for="vpcFabric" class="form-label">Target Fabric *</label>
+                                <select class="form-select" id="vpcFabric" name="fabric_id" required>
+                                    <option value="">-- Select Fabric --</option>
+                                    {{range .Fabrics}}
+                                    <option value="{{.ID}}">{{.Name}}</option>
+                                    {{end}}
+                                </select>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="mb-3">
+                        <label for="vpcDescription" class="form-label">Description</label>
+                        <textarea class="form-control" id="vpcDescription" name="description" rows="2"></textarea>
+                    </div>
+                    <div class="row">
+                        <div class="col-md-6">
+                            <div class="mb-3">
+                                <label for="vpcVNI" class="form-label">VNI</label>
+                                <input type="number" class="form-control" id="vpcVNI" name="vni" min="1" max="16777215">
+                                <small class="text-muted">VXLAN Network Identifier</small>
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="mb-3">
+                                <label for="vpcNamespace" class="form-label">Namespace</label>
+                                <input type="text" class="form-control" id="vpcNamespace" name="namespace" value="default">
+                            </div>
+                        </div>
+                    </div>
+                    <div class="mb-3">
+                        <label for="ipv4Namespace" class="form-label">IPv4 Namespace</label>
+                        <input type="text" class="form-control" id="ipv4Namespace" name="ipv4_namespace" 
+                               placeholder="10.0.0.0/16">
+                        <small class="text-muted">IPv4 CIDR block for this VPC</small>
+                    </div>
+                    <div class="mb-3">
+                        <div class="form-check">
+                            <input class="form-check-input" type="checkbox" id="enableDHCP" name="enable_dhcp" checked>
+                            <label class="form-check-label" for="enableDHCP">
+                                Enable DHCP
+                            </label>
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <button type="submit" class="btn btn-success">
+                        <i class="mdi mdi-plus"></i> Create VPC
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<!-- Network Topology Modal -->
+<div class="modal fade" id="networkTopologyModal" tabindex="-1">
+    <div class="modal-dialog modal-xl">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title"><i class="mdi mdi-sitemap"></i> VPC Network Topology</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <div id="networkTopologyContainer" style="height: 500px;">
+                    <!-- Network topology visualization will be loaded here -->
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{{end}}
+
+{{define "scripts"}}
+<script>
+function syncAllVPCs() {
+    const button = event.target;
+    button.disabled = true;
+    button.innerHTML = '<i class="mdi mdi-loading mdi-spin"></i> Syncing...';
+    
+    makeAjaxRequest('/api/v1/crds/vpcs/sync-all', 'POST', null, function(err, response) {
+        button.disabled = false;
+        button.innerHTML = '<i class="mdi mdi-sync"></i> Sync VPCs';
+        
+        if (err) {
+            showNotification('Failed to sync VPCs: ' + err.message, 'danger');
+        } else {
+            showNotification('VPC synchronization started', 'success');
+            setTimeout(() => location.reload(), 2000);
+        }
+    });
+}
+
+function editVPC(vpcId) {
+    window.location.href = `/crds/vpcs/${vpcId}/edit`;
+}
+
+function deleteVPC(vpcId) {
+    if (confirm('This will permanently delete the VPC. This action cannot be undone. Continue?')) {
+        makeAjaxRequest(`/api/v1/crds/vpcs/${vpcId}`, 'DELETE', null, function(err, response) {
+            if (err) {
+                showNotification('Failed to delete VPC: ' + err.message, 'danger');
+            } else {
+                showNotification('VPC deleted successfully', 'success');
+                setTimeout(() => location.reload(), 1000);
+            }
+        });
+    }
+}
+
+function showNetworkTopology(vpcId) {
+    // Load network topology visualization
+    makeAjaxRequest(`/api/v1/crds/vpcs/${vpcId}/topology`, 'GET', null, function(err, response) {
+        if (err) {
+            showNotification('Failed to load network topology: ' + err.message, 'danger');
+            return;
+        }
+        
+        // Show modal and render topology
+        const modal = new bootstrap.Modal(document.getElementById('networkTopologyModal'));
+        const container = document.getElementById('networkTopologyContainer');
+        
+        // Simple text-based topology for now - can be enhanced with D3.js or similar
+        container.innerHTML = `
+            <div class="text-center">
+                <h6>VPC: ${response.name}</h6>
+                <div class="network-diagram mt-4">
+                    <div class="vpc-container p-3 border rounded">
+                        <h6><i class="mdi mdi-cloud-outline"></i> ${response.name}</h6>
+                        <p class="text-muted">IPv4: ${response.ipv4_namespace || 'Not configured'}</p>
+                        <div class="row">
+                            ${response.subnets ? response.subnets.map(subnet => `
+                                <div class="col-md-4 mb-2">
+                                    <div class="subnet-box p-2 bg-light border rounded">
+                                        <strong>${subnet.name}</strong><br>
+                                        <code>${subnet.cidr}</code>
+                                    </div>
+                                </div>
+                            `).join('') : '<p class="text-muted">No subnets configured</p>'}
+                        </div>
+                    </div>
+                </div>
+            </div>
+        `;
+        
+        modal.show();
+    });
+}
+
+// Sync individual VPC
+document.addEventListener('DOMContentLoaded', function() {
+    document.querySelectorAll('.btn-sync-vpc').forEach(button => {
+        button.addEventListener('click', function() {
+            const vpcId = this.dataset.vpcId;
+            this.disabled = true;
+            this.innerHTML = '<i class="mdi mdi-loading mdi-spin"></i>';
+            
+            makeAjaxRequest(`/api/v1/crds/vpcs/${vpcId}/sync`, 'POST', null, function(err, response) {
+                button.disabled = false;
+                button.innerHTML = '<i class="mdi mdi-sync"></i>';
+                
+                if (err) {
+                    showNotification('Failed to sync VPC: ' + err.message, 'danger');
+                } else {
+                    showNotification('VPC synchronized successfully', 'success');
+                    setTimeout(() => location.reload(), 1000);
+                }
+            });
+        });
+    });
+});
+</script>
+
+<style>
+.subnet-list {
+    max-height: 120px;
+    overflow-y: auto;
+}
+
+.network-diagram .vpc-container {
+    background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
+}
+
+.network-diagram .subnet-box {
+    background: linear-gradient(135deg, #ffffff 0%, #f8f9fa 100%);
+    border: 2px dashed #dee2e6;
+}
+
+.network-diagram .subnet-box:hover {
+    border-color: #0d6efd;
+    background: linear-gradient(135deg, #e7f3ff 0%, #f8f9fa 100%);
+}
+</style>
+{{end}}

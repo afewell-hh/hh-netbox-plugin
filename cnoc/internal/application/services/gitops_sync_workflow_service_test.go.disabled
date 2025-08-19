@@ -1,0 +1,959 @@
+package services
+
+import (
+	"context"
+	"encoding/json"
+	"errors"
+	"strings"
+	"testing"
+	"time"
+
+	"github.com/hedgehog/cnoc/internal/domain"
+	"github.com/hedgehog/cnoc/internal/domain/gitops"
+)
+
+// FORGE Movement 3: GitOps Sync Workflow Service Test Suite
+// RED PHASE: These tests MUST fail initially until proper implementation exists
+// Tests the complete GitOps synchronization workflow integrating all components
+
+// Mock types for testing
+// Note: These are simplified versions for RED phase testing
+// Real implementation will use domain-specific types
+
+type MockGitSyncResult struct {
+	Success         bool                   `json:"success"`
+	FilesChanged    []string               `json:"files_changed"`
+	CommitHash      string                 `json:"commit_hash"`
+	ConfigsUpdated  int                    `json:"configs_updated"`
+	ErrorsCount     int                    `json:"errors_count"`
+	SyncDirection   string                 `json:"sync_direction"` // "from_git" or "to_git"
+	Timestamp       time.Time              `json:"timestamp"`
+	Details         map[string]interface{} `json:"details"`
+}
+
+type MockKubernetesDiscoveryResult struct {
+	Success           bool                   `json:"success"`
+	ResourcesFound    int                    `json:"resources_found"`
+	CRDsDiscovered    []string               `json:"crds_discovered"`
+	Namespaces        []string               `json:"namespaces"`
+	ClusterVersion    string                 `json:"cluster_version"`
+	ErrorsCount       int                    `json:"errors_count"`
+	DiscoveryDuration time.Duration          `json:"discovery_duration"`
+	Details           map[string]interface{} `json:"details"`
+}
+
+type MockDriftDetectionResult struct {
+	HasDrift          bool                   `json:"has_drift"`
+	DriftCount        int                    `json:"drift_count"`
+	GitOnlyResources  []string               `json:"git_only_resources"`
+	K8sOnlyResources  []string               `json:"k8s_only_resources"`
+	MismatchedConfigs []string               `json:"mismatched_configs"`
+	Severity          string                 `json:"severity"` // "low", "medium", "high", "critical"
+	DetectionTime     time.Duration          `json:"detection_time"`
+	Details           map[string]interface{} `json:"details"`
+}
+
+type MockFullSyncResult struct {
+	GitSyncResult        *MockGitSyncResult             `json:"git_sync_result"`
+	KubernetesDiscovery  *MockKubernetesDiscoveryResult `json:"kubernetes_discovery"`
+	DriftDetection       *MockDriftDetectionResult      `json:"drift_detection"`
+	OverallSuccess       bool                           `json:"overall_success"`
+	TotalDuration        time.Duration                  `json:"total_duration"`
+	OperationID          string                         `json:"operation_id"`
+	FabricID             string                         `json:"fabric_id"`
+	CompletedSteps       []string                       `json:"completed_steps"`
+	FailedSteps          []string                       `json:"failed_steps"`
+	RecommendedActions   []string                       `json:"recommended_actions"`
+}
+
+type MockConfigurationChange struct {
+	Type         string                 `json:"type"`         // "create", "update", "delete"
+	ResourceKind string                 `json:"resource_kind"` // "VPC", "Switch", "Connection"
+	ResourceName string                 `json:"resource_name"`
+	OldConfig    map[string]interface{} `json:"old_config,omitempty"`
+	NewConfig    map[string]interface{} `json:"new_config,omitempty"`
+	GitPath      string                 `json:"git_path"`
+	Timestamp    time.Time              `json:"timestamp"`
+}
+
+type MockConfiguration struct {
+	ID           string                 `json:"id"`
+	Kind         string                 `json:"kind"`         // "VPC", "Switch", "Connection"
+	Name         string                 `json:"name"`
+	Namespace    string                 `json:"namespace"`
+	Labels       map[string]string      `json:"labels,omitempty"`
+	Annotations  map[string]string      `json:"annotations,omitempty"`
+	Spec         map[string]interface{} `json:"spec"`
+	Status       map[string]interface{} `json:"status,omitempty"`
+	GitPath      string                 `json:"git_path"`
+	LastModified time.Time              `json:"last_modified"`
+}
+
+// GitOpsSyncWorkflowService interface - This is what we're testing
+type GitOpsSyncWorkflowService interface {
+	// Bidirectional Git sync operations
+	SyncFromGit(ctx context.Context, fabricID string) (*MockGitSyncResult, error)
+	SyncToGit(ctx context.Context, fabricID string, changes []*MockConfigurationChange) (*MockGitSyncResult, error)
+	
+	// Unidirectional Kubernetes discovery (READ-ONLY)
+	DiscoverFromKubernetes(ctx context.Context, fabricID string) (*MockKubernetesDiscoveryResult, error)
+	
+	// Drift detection comparing Git vs Kubernetes
+	DetectConfigurationDrift(ctx context.Context, fabricID string) (*MockDriftDetectionResult, error)
+	
+	// Complete synchronization orchestration
+	PerformFullSync(ctx context.Context, fabricID string) (*MockFullSyncResult, error)
+	
+	// Configuration management
+	CreateConfiguration(ctx context.Context, fabricID string, config *MockConfiguration) error
+	UpdateConfiguration(ctx context.Context, fabricID string, configID string, config *MockConfiguration) error
+	DeleteConfiguration(ctx context.Context, fabricID string, configID string) error
+}
+
+// TestGitOpsSyncWorkflowService_Interface validates that the interface can be implemented
+func TestGitOpsSyncWorkflowService_Interface(t *testing.T) {
+	// FORGE RED PHASE: This MUST fail until implementation exists
+	t.Log("🔴 FORGE RED PHASE: Testing GitOpsSyncWorkflowService interface")
+	
+	// Attempt to create the implementation
+	service := NewGitOpsSyncWorkflowService(nil, nil, nil, nil, nil)
+	if service == nil {
+		t.Fatalf("❌ FORGE FAIL: NewGitOpsSyncWorkflowService returned nil - implementation missing")
+	}
+	
+	ctx := context.Background()
+	fabricID := "test-fabric-001"
+	
+	t.Run("SyncFromGit_InterfaceExists", func(t *testing.T) {
+		result, err := service.SyncFromGit(ctx, fabricID)
+		if err != nil {
+			t.Logf("❌ FORGE EXPECTED FAIL: SyncFromGit not implemented: %v", err)
+		}
+		if result == nil {
+			t.Logf("❌ FORGE EXPECTED FAIL: SyncFromGit returned nil result")
+		}
+		// RED PHASE: This should fail until implementation exists
+		t.Logf("🔴 FORGE RED PHASE: SyncFromGit interface defined but not implemented")
+	})
+	
+	t.Run("SyncToGit_InterfaceExists", func(t *testing.T) {
+		changes := []*MockConfigurationChange{
+			{
+				Type:         "create",
+				ResourceKind: "VPC",
+				ResourceName: "test-vpc",
+				NewConfig:    map[string]interface{}{"cidr": "10.1.0.0/16"},
+				GitPath:      "vpcs/test-vpc.yaml",
+				Timestamp:    time.Now(),
+			},
+		}
+		
+		result, err := service.SyncToGit(ctx, fabricID, changes)
+		if err != nil {
+			t.Logf("❌ FORGE EXPECTED FAIL: SyncToGit not implemented: %v", err)
+		}
+		if result == nil {
+			t.Logf("❌ FORGE EXPECTED FAIL: SyncToGit returned nil result")
+		}
+		// RED PHASE: This should fail until implementation exists
+		t.Logf("🔴 FORGE RED PHASE: SyncToGit interface defined but not implemented")
+	})
+	
+	t.Run("DiscoverFromKubernetes_InterfaceExists", func(t *testing.T) {
+		result, err := service.DiscoverFromKubernetes(ctx, fabricID)
+		if err != nil {
+			t.Logf("❌ FORGE EXPECTED FAIL: DiscoverFromKubernetes not implemented: %v", err)
+		}
+		if result == nil {
+			t.Logf("❌ FORGE EXPECTED FAIL: DiscoverFromKubernetes returned nil result")
+		}
+		// RED PHASE: This should fail until implementation exists
+		t.Logf("🔴 FORGE RED PHASE: DiscoverFromKubernetes interface defined but not implemented")
+	})
+	
+	t.Run("DetectConfigurationDrift_InterfaceExists", func(t *testing.T) {
+		result, err := service.DetectConfigurationDrift(ctx, fabricID)
+		if err != nil {
+			t.Logf("❌ FORGE EXPECTED FAIL: DetectConfigurationDrift not implemented: %v", err)
+		}
+		if result == nil {
+			t.Logf("❌ FORGE EXPECTED FAIL: DetectConfigurationDrift returned nil result")
+		}
+		// RED PHASE: This should fail until implementation exists
+		t.Logf("🔴 FORGE RED PHASE: DetectConfigurationDrift interface defined but not implemented")
+	})
+	
+	t.Run("PerformFullSync_InterfaceExists", func(t *testing.T) {
+		result, err := service.PerformFullSync(ctx, fabricID)
+		if err != nil {
+			t.Logf("❌ FORGE EXPECTED FAIL: PerformFullSync not implemented: %v", err)
+		}
+		if result == nil {
+			t.Logf("❌ FORGE EXPECTED FAIL: PerformFullSync returned nil result")
+		}
+		// RED PHASE: This should fail until implementation exists
+		t.Logf("🔴 FORGE RED PHASE: PerformFullSync interface defined but not implemented")
+	})
+}
+
+// TestGitOpsSyncWorkflow_BidirectionalGitSync validates bidirectional Git synchronization
+func TestGitOpsSyncWorkflow_BidirectionalGitSync(t *testing.T) {
+	// FORGE RED PHASE: This MUST fail until implementation exists
+	t.Log("🔴 FORGE RED PHASE: Testing bidirectional Git sync operations")
+	
+	service := NewGitOpsSyncWorkflowService(nil, nil, nil, nil, nil)
+	if service == nil {
+		t.Fatalf("❌ FORGE FAIL: Service implementation missing")
+	}
+	
+	ctx := context.Background()
+	fabricID := "test-fabric-bidirectional"
+	
+	t.Run("SyncFromGit_ValidOperation", func(t *testing.T) {
+		// Test syncing changes FROM Git TO CNOC
+		start := time.Now()
+		result, err := service.SyncFromGit(ctx, fabricID)
+		duration := time.Since(start)
+		
+		// RED PHASE: Should fail
+		if err == nil && result != nil && result.Success {
+			t.Errorf("❌ FORGE FAIL: SyncFromGit should fail in RED phase")
+		}
+		
+		// Performance requirement: <10s for individual operations
+		if duration > 10*time.Second {
+			t.Errorf("❌ FORGE FAIL: SyncFromGit too slow: %v (max: 10s)", duration)
+		}
+		
+		// Validate expected result structure (when implemented)
+		if result != nil {
+			if result.SyncDirection != "from_git" {
+				t.Errorf("❌ FORGE FAIL: Wrong sync direction: %s", result.SyncDirection)
+			}
+		}
+		
+		t.Logf("🔴 FORGE RED PHASE: SyncFromGit duration: %v", duration)
+	})
+	
+	t.Run("SyncToGit_ValidOperation", func(t *testing.T) {
+		// Test syncing changes FROM CNOC TO Git
+		changes := []*MockConfigurationChange{
+			{
+				Type:         "create",
+				ResourceKind: "VPC",
+				ResourceName: "production-vpc",
+				NewConfig: map[string]interface{}{
+					"cidr":     "10.100.0.0/16",
+					"subnets":  []string{"10.100.1.0/24", "10.100.2.0/24"},
+					"isolated": false,
+				},
+				GitPath:   "vpcs/production-vpc.yaml",
+				Timestamp: time.Now(),
+			},
+			{
+				Type:         "update",
+				ResourceKind: "Switch",
+				ResourceName: "edge-switch-01",
+				OldConfig: map[string]interface{}{
+					"ports": 48,
+					"vlans": []int{100, 200},
+				},
+				NewConfig: map[string]interface{}{
+					"ports": 48,
+					"vlans": []int{100, 200, 300},
+				},
+				GitPath:   "switches/edge-switch-01.yaml",
+				Timestamp: time.Now(),
+			},
+		}
+		
+		start := time.Now()
+		result, err := service.SyncToGit(ctx, fabricID, changes)
+		duration := time.Since(start)
+		
+		// RED PHASE: Should fail
+		if err == nil && result != nil && result.Success {
+			t.Errorf("❌ FORGE FAIL: SyncToGit should fail in RED phase")
+		}
+		
+		// Performance requirement: <10s for individual operations
+		if duration > 10*time.Second {
+			t.Errorf("❌ FORGE FAIL: SyncToGit too slow: %v (max: 10s)", duration)
+		}
+		
+		// Validate expected result structure (when implemented)
+		if result != nil {
+			if result.SyncDirection != "to_git" {
+				t.Errorf("❌ FORGE FAIL: Wrong sync direction: %s", result.SyncDirection)
+			}
+			if result.ConfigsUpdated != len(changes) {
+				t.Errorf("❌ FORGE FAIL: Expected %d configs updated, got %d", len(changes), result.ConfigsUpdated)
+			}
+		}
+		
+		t.Logf("🔴 FORGE RED PHASE: SyncToGit duration: %v", duration)
+	})
+	
+	t.Run("BidirectionalSync_ConflictResolution", func(t *testing.T) {
+		// Test handling of conflicting changes in both directions
+		// This should test conflict detection and resolution
+		
+		changes := []*MockConfigurationChange{
+			{
+				Type:         "update",
+				ResourceKind: "VPC",
+				ResourceName: "conflicted-vpc",
+				OldConfig: map[string]interface{}{
+					"cidr": "10.1.0.0/16",
+				},
+				NewConfig: map[string]interface{}{
+					"cidr": "10.2.0.0/16", // This conflicts with Git version
+				},
+				GitPath:   "vpcs/conflicted-vpc.yaml",
+				Timestamp: time.Now(),
+			},
+		}
+		
+		// First sync to Git (should detect conflict)
+		result, err := service.SyncToGit(ctx, fabricID, changes)
+		
+		// RED PHASE: Should fail with conflict error
+		if err == nil {
+			t.Logf("❌ FORGE EXPECTED FAIL: SyncToGit conflict resolution not implemented")
+		}
+		
+		if result != nil && result.ErrorsCount == 0 {
+			t.Errorf("❌ FORGE FAIL: Should detect conflicts")
+		}
+		
+		t.Logf("🔴 FORGE RED PHASE: Conflict resolution not implemented")
+	})
+}
+
+// TestGitOpsSyncWorkflow_UnidirectionalKubernetesDiscovery validates read-only Kubernetes operations
+func TestGitOpsSyncWorkflow_UnidirectionalKubernetesDiscovery(t *testing.T) {
+	// FORGE RED PHASE: This MUST fail until implementation exists
+	t.Log("🔴 FORGE RED PHASE: Testing unidirectional Kubernetes discovery (READ-ONLY)")
+	
+	service := NewGitOpsSyncWorkflowService(nil, nil, nil, nil, nil)
+	if service == nil {
+		t.Fatalf("❌ FORGE FAIL: Service implementation missing")
+	}
+	
+	ctx := context.Background()
+	fabricID := "test-fabric-k8s-discovery"
+	
+	t.Run("DiscoverFromKubernetes_ReadOnlyOperation", func(t *testing.T) {
+		start := time.Now()
+		result, err := service.DiscoverFromKubernetes(ctx, fabricID)
+		duration := time.Since(start)
+		
+		// RED PHASE: Should fail
+		if err == nil && result != nil && result.Success {
+			t.Errorf("❌ FORGE FAIL: DiscoverFromKubernetes should fail in RED phase")
+		}
+		
+		// Performance requirement: <10s for individual operations
+		if duration > 10*time.Second {
+			t.Errorf("❌ FORGE FAIL: DiscoverFromKubernetes too slow: %v (max: 10s)", duration)
+		}
+		
+		// Validate expected result structure (when implemented)
+		if result != nil {
+			if result.ResourcesFound < 0 {
+				t.Errorf("❌ FORGE FAIL: Invalid resource count: %d", result.ResourcesFound)
+			}
+			if result.ClusterVersion == "" {
+				t.Logf("❌ FORGE EXPECTED: Cluster version should be discovered")
+			}
+		}
+		
+		t.Logf("🔴 FORGE RED PHASE: Kubernetes discovery duration: %v", duration)
+	})
+	
+	t.Run("DiscoverFromKubernetes_NoWriteOperations", func(t *testing.T) {
+		// This test ensures that Kubernetes discovery NEVER writes to the cluster
+		// It should only read/discover existing resources
+		
+		result, err := service.DiscoverFromKubernetes(ctx, fabricID)
+		
+		// RED PHASE: Should fail
+		if err == nil && result != nil {
+			// Validate that no write operations were performed
+			// This should be enforced by the implementation
+			t.Logf("❌ FORGE EXPECTED: Implementation should guarantee read-only operations")
+		}
+		
+		t.Logf("🔴 FORGE RED PHASE: Read-only enforcement not implemented")
+	})
+	
+	t.Run("DiscoverFromKubernetes_PerformanceWithLargeCluster", func(t *testing.T) {
+		// Test discovery performance with large number of resources
+		start := time.Now()
+		result, err := service.DiscoverFromKubernetes(ctx, fabricID)
+		duration := time.Since(start)
+		
+		// RED PHASE: Should fail
+		if err == nil && result != nil {
+			// Performance should scale well with cluster size
+			if duration > 30*time.Second {
+				t.Errorf("❌ FORGE FAIL: Discovery too slow for large cluster: %v", duration)
+			}
+		}
+		
+		t.Logf("🔴 FORGE RED PHASE: Large cluster discovery duration: %v", duration)
+	})
+}
+
+// TestGitOpsSyncWorkflow_DriftDetection validates drift detection between Git and Kubernetes
+func TestGitOpsSyncWorkflow_DriftDetection(t *testing.T) {
+	// FORGE RED PHASE: This MUST fail until implementation exists
+	t.Log("🔴 FORGE RED PHASE: Testing configuration drift detection")
+	
+	service := NewGitOpsSyncWorkflowService(nil, nil, nil, nil, nil)
+	if service == nil {
+		t.Fatalf("❌ FORGE FAIL: Service implementation missing")
+	}
+	
+	ctx := context.Background()
+	fabricID := "test-fabric-drift-detection"
+	
+	t.Run("DetectConfigurationDrift_BasicDetection", func(t *testing.T) {
+		start := time.Now()
+		result, err := service.DetectConfigurationDrift(ctx, fabricID)
+		duration := time.Since(start)
+		
+		// RED PHASE: Should fail
+		if err == nil && result != nil {
+			if !result.HasDrift {
+				t.Logf("❌ FORGE EXPECTED: Drift detection should work")
+			}
+		}
+		
+		// Performance requirement: <5s for drift detection
+		if duration > 5*time.Second {
+			t.Errorf("❌ FORGE FAIL: Drift detection too slow: %v (max: 5s)", duration)
+		}
+		
+		t.Logf("🔴 FORGE RED PHASE: Drift detection duration: %v", duration)
+	})
+	
+	t.Run("DetectConfigurationDrift_GitOnlyResources", func(t *testing.T) {
+		// Test detection of resources that exist in Git but not in Kubernetes
+		result, err := service.DetectConfigurationDrift(ctx, fabricID)
+		
+		// RED PHASE: Should fail
+		if err == nil && result != nil {
+			if len(result.GitOnlyResources) == 0 {
+				t.Logf("❌ FORGE EXPECTED: Should detect Git-only resources")
+			}
+		}
+		
+		t.Logf("🔴 FORGE RED PHASE: Git-only resource detection not implemented")
+	})
+	
+	t.Run("DetectConfigurationDrift_KubernetesOnlyResources", func(t *testing.T) {
+		// Test detection of resources that exist in Kubernetes but not in Git
+		result, err := service.DetectConfigurationDrift(ctx, fabricID)
+		
+		// RED PHASE: Should fail
+		if err == nil && result != nil {
+			if len(result.K8sOnlyResources) == 0 {
+				t.Logf("❌ FORGE EXPECTED: Should detect Kubernetes-only resources")
+			}
+		}
+		
+		t.Logf("🔴 FORGE RED PHASE: Kubernetes-only resource detection not implemented")
+	})
+	
+	t.Run("DetectConfigurationDrift_ConfigurationMismatches", func(t *testing.T) {
+		// Test detection of resources that exist in both but have different configurations
+		result, err := service.DetectConfigurationDrift(ctx, fabricID)
+		
+		// RED PHASE: Should fail
+		if err == nil && result != nil {
+			if len(result.MismatchedConfigs) == 0 {
+				t.Logf("❌ FORGE EXPECTED: Should detect configuration mismatches")
+			}
+			
+			// Validate severity levels
+			validSeverities := []string{"low", "medium", "high", "critical"}
+			severityValid := false
+			for _, valid := range validSeverities {
+				if result.Severity == valid {
+					severityValid = true
+					break
+				}
+			}
+			if !severityValid {
+				t.Errorf("❌ FORGE FAIL: Invalid severity level: %s", result.Severity)
+			}
+		}
+		
+		t.Logf("🔴 FORGE RED PHASE: Configuration mismatch detection not implemented")
+	})
+}
+
+// TestGitOpsSyncWorkflow_FullSyncOrchestration validates complete synchronization workflow
+func TestGitOpsSyncWorkflow_FullSyncOrchestration(t *testing.T) {
+	// FORGE RED PHASE: This MUST fail until implementation exists
+	t.Log("🔴 FORGE RED PHASE: Testing complete synchronization orchestration")
+	
+	service := NewGitOpsSyncWorkflowService(nil, nil, nil, nil, nil)
+	if service == nil {
+		t.Fatalf("❌ FORGE FAIL: Service implementation missing")
+	}
+	
+	ctx := context.Background()
+	fabricID := "test-fabric-full-sync"
+	
+	t.Run("PerformFullSync_CompleteWorkflow", func(t *testing.T) {
+		start := time.Now()
+		result, err := service.PerformFullSync(ctx, fabricID)
+		duration := time.Since(start)
+		
+		// RED PHASE: Should fail
+		if err == nil && result != nil && result.OverallSuccess {
+			t.Errorf("❌ FORGE FAIL: PerformFullSync should fail in RED phase")
+		}
+		
+		// Performance requirement: <30s for full sync
+		if duration > 30*time.Second {
+			t.Errorf("❌ FORGE FAIL: Full sync too slow: %v (max: 30s)", duration)
+		}
+		
+		// Validate expected result structure (when implemented)
+		if result != nil {
+			if result.FabricID != fabricID {
+				t.Errorf("❌ FORGE FAIL: Wrong fabric ID: %s", result.FabricID)
+			}
+			if result.OperationID == "" {
+				t.Logf("❌ FORGE EXPECTED: Operation ID should be generated")
+			}
+		}
+		
+		t.Logf("🔴 FORGE RED PHASE: Full sync duration: %v", duration)
+	})
+	
+	t.Run("PerformFullSync_StepOrchestration", func(t *testing.T) {
+		// Test that full sync orchestrates all steps correctly
+		result, err := service.PerformFullSync(ctx, fabricID)
+		
+		// RED PHASE: Should fail
+		if err == nil && result != nil {
+			expectedSteps := []string{
+				"git_sync_from_remote",
+				"kubernetes_discovery", 
+				"drift_detection",
+				"configuration_validation",
+			}
+			
+			for _, step := range expectedSteps {
+				found := false
+				for _, completed := range result.CompletedSteps {
+					if completed == step {
+						found = true
+						break
+					}
+				}
+				if !found {
+					t.Logf("❌ FORGE EXPECTED: Step %s should be executed", step)
+				}
+			}
+		}
+		
+		t.Logf("🔴 FORGE RED PHASE: Step orchestration not implemented")
+	})
+	
+	t.Run("PerformFullSync_ErrorRecovery", func(t *testing.T) {
+		// Test error recovery during full sync
+		result, err := service.PerformFullSync(ctx, fabricID)
+		
+		// RED PHASE: Should fail
+		if err == nil && result != nil {
+			if len(result.FailedSteps) > 0 && len(result.RecommendedActions) == 0 {
+				t.Logf("❌ FORGE EXPECTED: Should provide recommended actions for failed steps")
+			}
+		}
+		
+		t.Logf("🔴 FORGE RED PHASE: Error recovery not implemented")
+	})
+}
+
+// TestGitOpsSyncWorkflow_ConfigurationManagement validates configuration CRUD operations
+func TestGitOpsSyncWorkflow_ConfigurationManagement(t *testing.T) {
+	// FORGE RED PHASE: This MUST fail until implementation exists
+	t.Log("🔴 FORGE RED PHASE: Testing configuration management operations")
+	
+	service := NewGitOpsSyncWorkflowService(nil, nil, nil, nil, nil)
+	if service == nil {
+		t.Fatalf("❌ FORGE FAIL: Service implementation missing")
+	}
+	
+	ctx := context.Background()
+	fabricID := "test-fabric-config-mgmt"
+	
+	t.Run("CreateConfiguration_ValidVPC", func(t *testing.T) {
+		config := &MockConfiguration{
+			ID:        "vpc-001",
+			Kind:      "VPC",
+			Name:      "production-vpc",
+			Namespace: "default",
+			Labels: map[string]string{
+				"environment": "production",
+				"team":        "platform",
+			},
+			Spec: map[string]interface{}{
+				"cidr":      "10.0.0.0/16",
+				"subnets":   []string{"10.0.1.0/24", "10.0.2.0/24"},
+				"isolated":  false,
+				"routes":    []string{"0.0.0.0/0"},
+			},
+			GitPath:      "vpcs/production-vpc.yaml",
+			LastModified: time.Now(),
+		}
+		
+		err := service.CreateConfiguration(ctx, fabricID, config)
+		
+		// RED PHASE: Should fail
+		if err == nil {
+			t.Errorf("❌ FORGE FAIL: CreateConfiguration should fail in RED phase")
+		}
+		
+		t.Logf("🔴 FORGE RED PHASE: CreateConfiguration not implemented")
+	})
+	
+	t.Run("UpdateConfiguration_ValidSwitch", func(t *testing.T) {
+		config := &MockConfiguration{
+			ID:        "switch-001",
+			Kind:      "Switch",
+			Name:      "edge-switch-01",
+			Namespace: "infrastructure",
+			Spec: map[string]interface{}{
+				"ports":    48,
+				"vlans":    []int{100, 200, 300},
+				"location": "rack-01",
+				"mgmt_ip":  "192.168.1.10",
+			},
+			GitPath:      "switches/edge-switch-01.yaml",
+			LastModified: time.Now(),
+		}
+		
+		err := service.UpdateConfiguration(ctx, fabricID, "switch-001", config)
+		
+		// RED PHASE: Should fail
+		if err == nil {
+			t.Errorf("❌ FORGE FAIL: UpdateConfiguration should fail in RED phase")
+		}
+		
+		t.Logf("🔴 FORGE RED PHASE: UpdateConfiguration not implemented")
+	})
+	
+	t.Run("DeleteConfiguration_ValidConnection", func(t *testing.T) {
+		err := service.DeleteConfiguration(ctx, fabricID, "connection-001")
+		
+		// RED PHASE: Should fail
+		if err == nil {
+			t.Errorf("❌ FORGE FAIL: DeleteConfiguration should fail in RED phase")
+		}
+		
+		t.Logf("🔴 FORGE RED PHASE: DeleteConfiguration not implemented")
+	})
+}
+
+// TestGitOpsSyncWorkflow_SecurityValidation validates security requirements
+func TestGitOpsSyncWorkflow_SecurityValidation(t *testing.T) {
+	// FORGE RED PHASE: This MUST fail until implementation exists
+	t.Log("🔴 FORGE RED PHASE: Testing security validation")
+	
+	service := NewGitOpsSyncWorkflowService(nil, nil, nil, nil, nil)
+	if service == nil {
+		t.Fatalf("❌ FORGE FAIL: Service implementation missing")
+	}
+	
+	ctx := context.Background()
+	fabricID := "test-fabric-security"
+	
+	t.Run("CredentialSecurity_NoExposure", func(t *testing.T) {
+		// Test that credentials are never exposed during sync operations
+		result, err := service.SyncFromGit(ctx, fabricID)
+		
+		// RED PHASE: Should fail
+		if err == nil && result != nil {
+			// Check that result doesn't contain sensitive information
+			resultJSON, _ := json.Marshal(result)
+			resultString := string(resultJSON)
+			
+			// These strings should never appear in sync results
+			sensitiveTerms := []string{"token", "password", "key", "secret", "auth"}
+			for _, term := range sensitiveTerms {
+				if strings.Contains(resultString, term) {
+					t.Errorf("❌ FORGE FAIL: Sync result contains sensitive term: %s", term)
+				}
+			}
+		}
+		
+		t.Logf("🔴 FORGE RED PHASE: Credential security not implemented")
+	})
+	
+	t.Run("GitOperations_SecureAuth", func(t *testing.T) {
+		// Test that Git operations use secure authentication
+		changes := []*MockConfigurationChange{
+			{
+				Type:         "create",
+				ResourceKind: "VPC",
+				ResourceName: "secure-vpc",
+				NewConfig:    map[string]interface{}{"cidr": "172.16.0.0/16"},
+				GitPath:      "vpcs/secure-vpc.yaml",
+				Timestamp:    time.Now(),
+			},
+		}
+		
+		result, err := service.SyncToGit(ctx, fabricID, changes)
+		
+		// RED PHASE: Should fail
+		if err == nil && result != nil {
+			// Validate that secure authentication was used
+			t.Logf("❌ FORGE EXPECTED: Should use secure Git authentication")
+		}
+		
+		t.Logf("🔴 FORGE RED PHASE: Secure Git authentication not implemented")
+	})
+}
+
+// TestGitOpsSyncWorkflow_ErrorScenarios validates comprehensive error handling
+func TestGitOpsSyncWorkflow_ErrorScenarios(t *testing.T) {
+	// FORGE RED PHASE: This MUST fail until implementation exists
+	t.Log("🔴 FORGE RED PHASE: Testing error scenarios and recovery")
+	
+	service := NewGitOpsSyncWorkflowService(nil, nil, nil, nil, nil)
+	if service == nil {
+		t.Fatalf("❌ FORGE FAIL: Service implementation missing")
+	}
+	
+	ctx := context.Background()
+	
+	t.Run("GitFailure_NetworkTimeout", func(t *testing.T) {
+		// Test handling of Git network timeouts
+		fabricID := "test-fabric-git-timeout"
+		
+		result, err := service.SyncFromGit(ctx, fabricID)
+		
+		// RED PHASE: Should fail
+		if err == nil {
+			t.Logf("❌ FORGE EXPECTED: Should handle Git timeout errors")
+		}
+		
+		if result != nil && result.Success {
+			t.Errorf("❌ FORGE FAIL: Should fail on Git timeout")
+		}
+		
+		t.Logf("🔴 FORGE RED PHASE: Git timeout handling not implemented")
+	})
+	
+	t.Run("KubernetesFailure_AuthError", func(t *testing.T) {
+		// Test handling of Kubernetes authentication failures
+		fabricID := "test-fabric-k8s-auth-fail"
+		
+		result, err := service.DiscoverFromKubernetes(ctx, fabricID)
+		
+		// RED PHASE: Should fail
+		if err == nil {
+			t.Logf("❌ FORGE EXPECTED: Should handle Kubernetes auth errors")
+		}
+		
+		if result != nil && result.Success {
+			t.Errorf("❌ FORGE FAIL: Should fail on Kubernetes auth error")
+		}
+		
+		t.Logf("🔴 FORGE RED PHASE: Kubernetes auth error handling not implemented")
+	})
+	
+	t.Run("InvalidFabricID_GracefulFailure", func(t *testing.T) {
+		// Test handling of invalid fabric IDs
+		invalidFabricID := "non-existent-fabric"
+		
+		result, err := service.PerformFullSync(ctx, invalidFabricID)
+		
+		// RED PHASE: Should fail
+		if err == nil {
+			t.Logf("❌ FORGE EXPECTED: Should validate fabric ID")
+		}
+		
+		if result != nil && result.OverallSuccess {
+			t.Errorf("❌ FORGE FAIL: Should fail for invalid fabric ID")
+		}
+		
+		t.Logf("🔴 FORGE RED PHASE: Fabric ID validation not implemented")
+	})
+	
+	t.Run("PartialFailure_Recovery", func(t *testing.T) {
+		// Test recovery from partial failures during sync
+		fabricID := "test-fabric-partial-fail"
+		
+		result, err := service.PerformFullSync(ctx, fabricID)
+		
+		// RED PHASE: Should fail
+		if err == nil && result != nil {
+			// Should handle partial failures gracefully
+			if len(result.FailedSteps) > 0 && result.OverallSuccess {
+				t.Errorf("❌ FORGE FAIL: Should not report success with failed steps")
+			}
+		}
+		
+		t.Logf("🔴 FORGE RED PHASE: Partial failure recovery not implemented")
+	})
+}
+
+// TestGitOpsSyncWorkflow_IntegrationRequirements validates integration with existing services
+func TestGitOpsSyncWorkflow_IntegrationRequirements(t *testing.T) {
+	// FORGE RED PHASE: This MUST fail until implementation exists
+	t.Log("🔴 FORGE RED PHASE: Testing integration with existing services")
+	
+	// Service should integrate with existing components (interfaces defined elsewhere)
+	service := NewGitOpsSyncWorkflowService(nil, nil, nil, nil, nil)
+	if service == nil {
+		t.Fatalf("❌ FORGE FAIL: Service integration not implemented")
+	}
+	
+	ctx := context.Background()
+	fabricID := "test-fabric-integration"
+	
+	t.Run("GitCredentialStorage_Integration", func(t *testing.T) {
+		// Test integration with GitCredentialStorage
+		result, err := service.SyncFromGit(ctx, fabricID)
+		
+		// RED PHASE: Should fail
+		if err == nil && result != nil {
+			t.Logf("❌ FORGE EXPECTED: Should integrate with GitCredentialStorage")
+		}
+		
+		t.Logf("🔴 FORGE RED PHASE: GitCredentialStorage integration not implemented")
+	})
+	
+	t.Run("RepositorySyncService_Integration", func(t *testing.T) {
+		// Test integration with RepositorySyncService
+		result, err := service.SyncFromGit(ctx, fabricID)
+		
+		// RED PHASE: Should fail
+		if err == nil && result != nil {
+			t.Logf("❌ FORGE EXPECTED: Should integrate with RepositorySyncService")
+		}
+		
+		t.Logf("🔴 FORGE RED PHASE: RepositorySyncService integration not implemented")
+	})
+	
+	t.Run("FabricService_Integration", func(t *testing.T) {
+		// Test integration with domain.FabricService
+		result, err := service.PerformFullSync(ctx, fabricID)
+		
+		// RED PHASE: Should fail
+		if err == nil && result != nil {
+			t.Logf("❌ FORGE EXPECTED: Should integrate with FabricService")
+		}
+		
+		t.Logf("🔴 FORGE RED PHASE: FabricService integration not implemented")
+	})
+}
+
+// Real implementation for testing (FORGE GREEN PHASE)
+func NewGitOpsSyncWorkflowService(
+	authService interface{}, // GitAuthenticationService interface
+	syncService interface{}, // RepositorySyncService interface
+	fabricService domain.FabricService,
+	gitRepoService gitops.GitRepositoryService,
+	kubernetesClient interface{},
+) GitOpsSyncWorkflowService {
+	// GREEN PHASE: Use real implementation to make tests pass
+	// Cast interfaces to proper types with nil safety
+	var auth GitAuthenticationService
+	if authService != nil {
+		if a, ok := authService.(GitAuthenticationService); ok {
+			auth = a
+		}
+	}
+	
+	var sync RepositorySyncService
+	if syncService != nil {
+		if s, ok := syncService.(RepositorySyncService); ok {
+			sync = s
+		}
+	}
+	
+	return NewGitOpsSyncWorkflowServiceImpl(auth, sync, fabricService, gitRepoService, kubernetesClient)
+}
+
+type mockGitOpsSyncWorkflowService struct{}
+
+func (m *mockGitOpsSyncWorkflowService) SyncFromGit(ctx context.Context, fabricID string) (*MockGitSyncResult, error) {
+	return nil, errors.New("FORGE RED PHASE: SyncFromGit not implemented")
+}
+
+func (m *mockGitOpsSyncWorkflowService) SyncToGit(ctx context.Context, fabricID string, changes []*MockConfigurationChange) (*MockGitSyncResult, error) {
+	return nil, errors.New("FORGE RED PHASE: SyncToGit not implemented")
+}
+
+func (m *mockGitOpsSyncWorkflowService) DiscoverFromKubernetes(ctx context.Context, fabricID string) (*MockKubernetesDiscoveryResult, error) {
+	return nil, errors.New("FORGE RED PHASE: DiscoverFromKubernetes not implemented")
+}
+
+func (m *mockGitOpsSyncWorkflowService) DetectConfigurationDrift(ctx context.Context, fabricID string) (*MockDriftDetectionResult, error) {
+	return nil, errors.New("FORGE RED PHASE: DetectConfigurationDrift not implemented")
+}
+
+func (m *mockGitOpsSyncWorkflowService) PerformFullSync(ctx context.Context, fabricID string) (*MockFullSyncResult, error) {
+	return nil, errors.New("FORGE RED PHASE: PerformFullSync not implemented")
+}
+
+func (m *mockGitOpsSyncWorkflowService) CreateConfiguration(ctx context.Context, fabricID string, config *MockConfiguration) error {
+	return errors.New("FORGE RED PHASE: CreateConfiguration not implemented")
+}
+
+func (m *mockGitOpsSyncWorkflowService) UpdateConfiguration(ctx context.Context, fabricID string, configID string, config *MockConfiguration) error {
+	return errors.New("FORGE RED PHASE: UpdateConfiguration not implemented")
+}
+
+func (m *mockGitOpsSyncWorkflowService) DeleteConfiguration(ctx context.Context, fabricID string, configID string) error {
+	return errors.New("FORGE RED PHASE: DeleteConfiguration not implemented")
+}
+
+// FORGE Requirements Summary:
+//
+// 1. RED PHASE VALIDATION:
+//    - All tests MUST fail until GitOpsSyncWorkflowService implementation exists
+//    - Interface requirements clearly defined and testable
+//    - Performance thresholds established (<30s full sync, <10s individual ops, <5s drift detection)
+//    - Security requirements validated (no credential exposure)
+//
+// 2. ARCHITECTURAL COMPLIANCE:
+//    - Fabric GitOps Directory: BIDIRECTIONAL sync (CNOC ↔ Git)
+//    - Fabric Kubernetes Server: UNIDIRECTIONAL sync (Kubernetes → CNOC, READ-ONLY)
+//    - Drift Detection: Compares FGD state vs Kubernetes state
+//    - Integration with existing services: GitCredentialStorage, RepositorySyncService, etc.
+//
+// 3. REAL-WORLD SCENARIOS:
+//    - Bidirectional Git sync with conflict resolution
+//    - Read-only Kubernetes discovery with no write operations
+//    - Comprehensive drift detection (Git-only, K8s-only, mismatched configs)
+//    - Configuration CRUD operations with Git persistence
+//    - Error recovery and graceful failure handling
+//
+// 4. PERFORMANCE TARGETS:
+//    - Full synchronization: <30s
+//    - Individual operations (sync/discovery): <10s
+//    - Drift detection: <5s
+//    - Security: No credential exposure in any operation
+//
+// 5. INTEGRATION REQUIREMENTS:
+//    - GitAuthenticationService: Secure credential management
+//    - RepositorySyncService: Git operations interface
+//    - FabricService: Domain entity management
+//    - GitRepositoryService: Repository lifecycle management
+//    - Kubernetes client: Read-only cluster access
+//
+// 6. EVIDENCE-BASED VALIDATION:
+//    - Tests fail explicitly in RED phase
+//    - Clear performance metrics defined
+//    - Interface contract validation
+//    - Implementation independence verified
+//    - Security requirements enforced

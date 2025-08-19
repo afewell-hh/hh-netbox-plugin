@@ -1,0 +1,326 @@
+{{define "title"}}Custom Resource Definitions - CNOC{{end}}
+
+{{define "crd_content"}}
+<div class="container-fluid">
+    <div class="row">
+        <div class="col-12">
+            <div class="card">
+                <div class="card-header d-flex justify-content-between align-items-center">
+                    <h3><i class="mdi mdi-kubernetes"></i> Custom Resource Definitions</h3>
+                    <div>
+                        <button class="btn btn-primary" onclick="syncAllCRDs()">
+                            <i class="mdi mdi-sync"></i> Sync All CRDs
+                        </button>
+                        <button class="btn btn-info ms-2" onclick="location.reload()">
+                            <i class="mdi mdi-refresh"></i> Refresh
+                        </button>
+                    </div>
+                </div>
+                <div class="card-body">
+                    <div class="alert alert-info mb-3">
+                        <h5><i class="mdi mdi-information"></i> CRD Resources</h5>
+                        <p>Manage Kubernetes Custom Resource Definitions across all fabrics. Monitor sync status and resource health.</p>
+                    </div>
+
+                    <!-- Resource Categories -->
+                    <div class="mb-2">
+                        <h6>Resource Categories</h6>
+                    </div>
+                    <div class="row mb-4">
+                        <div class="col-md-2">
+                            <div class="card border-primary">
+                                <div class="card-body text-center">
+                                    <h4><i class="mdi mdi-cloud-outline text-primary"></i></h4>
+                                    <h5>{{.Stats.VPCCount}}</h5>
+                                    <small class="text-muted">VPCs</small>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-md-2">
+                            <div class="card border-info">
+                                <div class="card-body text-center">
+                                    <h4><i class="mdi mdi-connection text-info"></i></h4>
+                                    <h5>{{.Stats.ConnectionCount}}</h5>
+                                    <small class="text-muted">Connections</small>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-md-2">
+                            <div class="card border-success">
+                                <div class="card-body text-center">
+                                    <h4><i class="mdi mdi-switch text-success"></i></h4>
+                                    <h5>{{.Stats.SwitchCount}}</h5>
+                                    <small class="text-muted">Switches</small>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-md-2">
+                            <div class="card border-warning">
+                                <div class="card-body text-center">
+                                    <h4><i class="mdi mdi-server text-warning"></i></h4>
+                                    <h5>{{.Stats.FabricCount}}</h5>
+                                    <small class="text-muted">Servers</small>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-md-2">
+                            <div class="card border-secondary">
+                                <div class="card-body text-center">
+                                    <h4><i class="mdi mdi-earth text-secondary"></i></h4>
+                                    <h5>{{.Stats.DriftCount}}</h5>
+                                    <small class="text-muted">Externals</small>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-md-2">
+                            <div class="card border-dark">
+                                <div class="card-body text-center">
+                                    <h4><i class="mdi mdi-kubernetes text-dark"></i></h4>
+                                    <h5>{{.Stats.CRDCount}}</h5>
+                                    <small class="text-muted">Total CRDs</small>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Resource Categories -->
+                    <div class="row">
+                        <div class="col-md-6">
+                            <div class="card">
+                                <div class="card-header">
+                                    <h5><i class="mdi mdi-cloud-outline"></i> VPC API Resources</h5>
+                                </div>
+                                <div class="card-body">
+                                    <div class="list-group list-group-flush">
+                                        <a href="/crds/vpcs" class="list-group-item list-group-item-action d-flex justify-content-between align-items-center">
+                                            <div>
+                                                <i class="mdi mdi-cloud-outline me-2"></i>
+                                                <strong>VPC Resources</strong>
+                                                <br><small class="text-muted">Virtual Private Cloud configurations</small>
+                                            </div>
+                                            <span class="badge bg-primary rounded-pill">{{.Stats.VPCCount}}</span>
+                                        </a>
+                                        <a href="/crds/connections" class="list-group-item list-group-item-action d-flex justify-content-between align-items-center">
+                                            <div>
+                                                <i class="mdi mdi-connection me-2"></i>
+                                                <strong>Connection Resources</strong>
+                                                <br><small class="text-muted">Network connection definitions</small>
+                                            </div>
+                                            <span class="badge bg-info rounded-pill">{{.Stats.ConnectionCount}}</span>
+                                        </a>
+                                        <a href="/crds/externals" class="list-group-item list-group-item-action d-flex justify-content-between align-items-center">
+                                            <div>
+                                                <i class="mdi mdi-earth me-2"></i>
+                                                <strong>External Resources</strong>
+                                                <br><small class="text-muted">External system integrations</small>
+                                            </div>
+                                            <span class="badge bg-secondary rounded-pill">{{.Stats.DriftCount}}</span>
+                                        </a>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="card">
+                                <div class="card-header">
+                                    <h5><i class="mdi mdi-switch"></i> Wiring API Resources</h5>
+                                </div>
+                                <div class="card-body">
+                                    <div class="list-group list-group-flush">
+                                        <a href="/crds/switches" class="list-group-item list-group-item-action d-flex justify-content-between align-items-center">
+                                            <div>
+                                                <i class="mdi mdi-switch me-2"></i>
+                                                <strong>Switch Resources</strong>
+                                                <br><small class="text-muted">Network switch configurations</small>
+                                            </div>
+                                            <span class="badge bg-success rounded-pill">{{.Stats.SwitchCount}}</span>
+                                        </a>
+                                        <a href="/crds/servers" class="list-group-item list-group-item-action d-flex justify-content-between align-items-center">
+                                            <div>
+                                                <i class="mdi mdi-server me-2"></i>
+                                                <strong>Server Resources</strong>
+                                                <br><small class="text-muted">Server hardware definitions</small>
+                                            </div>
+                                            <span class="badge bg-warning rounded-pill">{{.Stats.FabricCount}}</span>
+                                        </a>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    {{if .CRDResources}}
+                    <!-- Detailed CRD Table -->
+                    <div class="mt-4">
+                        <h5>CRD Resources Details</h5>
+                        <div class="table-responsive">
+                            <table class="table table-hover">
+                                <thead>
+                                    <tr>
+                                        <th>Resource Name</th>
+                                        <th>Resource Type</th>
+                                        <th>API Version</th>
+                                        <th>Namespace</th>
+                                        <th>Fabric</th>
+                                        <th>Sync Status</th>
+                                        <th>Last Sync</th>
+                                        <th>Actions</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {{range .CRDResources}}
+                                    <tr>
+                                        <td>
+                                            <strong class="text-primary">{{.Name}}</strong>
+                                            {{if .Labels}}
+                                            <br><small class="text-muted">
+                                                {{range $key, $value := .Labels}}
+                                                <span class="badge bg-light text-dark">{{$key}}={{$value}}</span>
+                                                {{end}}
+                                            </small>
+                                            {{end}}
+                                        </td>
+                                        <td>
+                                            {{if eq .Type "VPC"}}
+                                                <span class="badge bg-primary">
+                                                    <i class="mdi mdi-cloud-outline"></i> {{.Type}}
+                                                </span>
+                                            {{else if eq .Type "Connection"}}
+                                                <span class="badge bg-info">
+                                                    <i class="mdi mdi-connection"></i> {{.Type}}
+                                                </span>
+                                            {{else if eq .Type "Switch"}}
+                                                <span class="badge bg-success">
+                                                    <i class="mdi mdi-switch"></i> {{.Type}}
+                                                </span>
+                                            {{else if eq .Type "Server"}}
+                                                <span class="badge bg-warning">
+                                                    <i class="mdi mdi-server"></i> {{.Type}}
+                                                </span>
+                                            {{else}}
+                                                <span class="badge bg-secondary">
+                                                    <i class="mdi mdi-kubernetes"></i> {{.Type}}
+                                                </span>
+                                            {{end}}
+                                        </td>
+                                        <td><code>{{if .Labels.api_version}}{{.Labels.api_version}}{{else}}v1{{end}}</code></td>
+                                        <td>
+                                            <span class="badge bg-light text-dark">{{.Namespace}}</span>
+                                        </td>
+                                        <td>
+                                            <span class="text-decoration-none">
+                                                <i class="mdi mdi-server-network"></i> {{if .Labels.fabric}}{{.Labels.fabric}}{{else}}Default Fabric{{end}}
+                                            </span>
+                                        </td>
+                                        <td>
+                                            {{if .Labels.status}}
+                                                {{if eq .Labels.status "synced"}}
+                                                    <span class="badge bg-success">
+                                                        <i class="mdi mdi-check"></i> Synced
+                                                    </span>
+                                                {{else if eq .Labels.status "pending"}}
+                                                    <span class="badge bg-warning">
+                                                        <i class="mdi mdi-clock"></i> Pending
+                                                    </span>
+                                                {{else}}
+                                                    <span class="badge bg-secondary">{{.Labels.status}}</span>
+                                                {{end}}
+                                            {{else}}
+                                                <span class="badge bg-success">
+                                                    <i class="mdi mdi-check"></i> Synced
+                                                </span>
+                                            {{end}}
+                                        </td>
+                                        <td>
+                                            {{if .GitSyncTimestamp}}
+                                                <span title="{{.GitSyncTimestamp}}">{{.GitSyncTimestampAgo}}</span>
+                                            {{else}}
+                                                <span class="text-muted">Never</span>
+                                            {{end}}
+                                        </td>
+                                        <td>
+                                            <div class="btn-group btn-group-sm" role="group">
+                                                <button class="btn btn-primary btn-sync-crd" 
+                                                        data-crd-id="{{.ID}}" title="Sync Resource">
+                                                    <i class="mdi mdi-sync"></i>
+                                                </button>
+                                                <a href="/crds/{{.Type}}/{{.ID}}" class="btn btn-info" title="View Details">
+                                                    <i class="mdi mdi-eye"></i>
+                                                </a>
+                                                <button class="btn btn-warning" 
+                                                        onclick="editCRD('{{.ID}}')" title="Edit">
+                                                    <i class="mdi mdi-pencil"></i>
+                                                </button>
+                                            </div>
+                                        </td>
+                                    </tr>
+                                    {{end}}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                    {{else}}
+                    <div class="alert alert-info mt-4">
+                        <h5><i class="mdi mdi-information"></i> No CRD Resources Found</h5>
+                        <p>No Custom Resource Definitions are currently synchronized. Sync your fabrics to populate CRD resources.</p>
+                        <button class="btn btn-primary" onclick="syncAllCRDs()">
+                            <i class="mdi mdi-sync"></i> Sync All Fabrics
+                        </button>
+                    </div>
+                    {{end}}
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{{end}}
+
+{{define "scripts"}}
+<script>
+function syncAllCRDs() {
+    const button = event.target;
+    button.disabled = true;
+    button.innerHTML = '<i class="mdi mdi-loading mdi-spin"></i> Syncing...';
+    
+    makeAjaxRequest('/api/v1/crds/sync-all', 'POST', null, function(err, response) {
+        button.disabled = false;
+        button.innerHTML = '<i class="mdi mdi-sync"></i> Sync All CRDs';
+        
+        if (err) {
+            showNotification('Failed to sync CRDs: ' + err.message, 'danger');
+        } else {
+            showNotification('CRD synchronization started successfully', 'success');
+            setTimeout(() => location.reload(), 2000);
+        }
+    });
+}
+
+function editCRD(crdId) {
+    // Open edit modal or redirect to edit page
+    window.location.href = `/crds/edit/${crdId}`;
+}
+
+// Sync individual CRD
+document.addEventListener('DOMContentLoaded', function() {
+    document.querySelectorAll('.btn-sync-crd').forEach(button => {
+        button.addEventListener('click', function() {
+            const crdId = this.dataset.crdId;
+            this.disabled = true;
+            this.innerHTML = '<i class="mdi mdi-loading mdi-spin"></i>';
+            
+            makeAjaxRequest(`/api/v1/crds/${crdId}/sync`, 'POST', null, function(err, response) {
+                button.disabled = false;
+                button.innerHTML = '<i class="mdi mdi-sync"></i>';
+                
+                if (err) {
+                    showNotification('Failed to sync CRD: ' + err.message, 'danger');
+                } else {
+                    showNotification('CRD synchronized successfully', 'success');
+                    setTimeout(() => location.reload(), 1000);
+                }
+            });
+        });
+    });
+});
+</script>
+{{end}}

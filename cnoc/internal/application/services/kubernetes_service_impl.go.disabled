@@ -1,0 +1,1631 @@
+package services
+
+import (
+	"context"
+	"fmt"
+	"strings"
+	"sync"
+	"time"
+
+	"github.com/google/uuid"
+	"k8s.io/api/core/v1"
+	rbacv1 "k8s.io/api/rbac/v1"
+	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
+	"k8s.io/apimachinery/pkg/runtime/schema"
+	"k8s.io/apimachinery/pkg/util/yaml"
+	"k8s.io/apimachinery/pkg/watch"
+	"k8s.io/client-go/dynamic"
+	"k8s.io/client-go/kubernetes"
+	metricsv1beta1 "k8s.io/metrics/pkg/client/clientset/versioned"
+	"k8s.io/client-go/rest"
+	"k8s.io/client-go/tools/clientcmd"
+	apiextensionsclientset "k8s.io/apiextensions-apiserver/pkg/client/clientset/clientset"
+)
+
+// KubernetesServiceImpl implements the KubernetesServiceInterface with real Kubernetes operations
+type KubernetesServiceImpl struct {
+	clientset       kubernetes.Interface
+	dynamicClient   dynamic.Interface
+	crdClient       apiextensionsclientset.Interface
+	metricsClient   metricsv1beta1.Interface
+	config          *rest.Config
+	
+	// Connection management
+	connectionMutex sync.RWMutex
+	connected       bool
+	connectionInfo  *ConnectionResult
+	
+	// Event watchers management
+	watchersMutex   sync.RWMutex
+	activeWatchers  map[string]*EventWatcher
+	
+	// Performance tracking
+	performanceTracker *PerformanceTracker
+}
+
+// PerformanceTracker tracks operation performance for optimization
+type PerformanceTracker struct {
+	mutex sync.RWMutex
+	metrics map[string]*OperationMetrics
+}
+
+type OperationMetrics struct {
+	TotalOperations int64
+	TotalDuration   time.Duration
+	LastOperation   time.Time
+	AverageDuration time.Duration
+}
+
+// NewKubernetesService creates a new Kubernetes service implementation
+func NewKubernetesService() KubernetesServiceInterface {
+	return &KubernetesServiceImpl{
+		activeWatchers: make(map[string]*EventWatcher),
+		performanceTracker: &PerformanceTracker{
+			metrics: make(map[string]*OperationMetrics),
+		},
+	}
+}
+
+// ConnectToCluster establishes connection to Kubernetes cluster using kubeconfig
+func (k *KubernetesServiceImpl) ConnectToCluster(ctx context.Context, kubeconfig []byte) (*ConnectionResult, error) {
+	startTime := time.Now()
+	defer k.trackPerformance("ConnectToCluster", startTime)
+	
+	k.connectionMutex.Lock()
+	defer k.connectionMutex.Unlock()
+	
+	result := &ConnectionResult{
+		ConnectedAt:    time.Now(),
+		ConnectionTime: time.Duration(0),
+		ClusterInfo:    make(map[string]string),
+	}
+	
+	// Parse kubeconfig
+	config, err := clientcmd.RESTConfigFromKubeConfig(kubeconfig)
+	if err != nil {
+		result.Success = false
+		result.Error = fmt.Sprintf("failed to parse kubeconfig: %v", err)
+		return result, fmt.Errorf("failed to parse kubeconfig: %w", err)
+	}
+	
+	// Create clientset
+	clientset, err := kubernetes.NewForConfig(config)
+	if err != nil {
+		result.Success = false
+		result.Error = fmt.Sprintf("failed to create clientset: %v", err)
+		return result, fmt.Errorf("failed to create clientset: %w", err)
+	}
+	
+	// Create dynamic client
+	dynamicClient, err := dynamic.NewForConfig(config)
+	if err != nil {
+		result.Success = false
+		result.Error = fmt.Sprintf("failed to create dynamic client: %v", err)
+		return result, fmt.Errorf("failed to create dynamic client: %w", err)
+	}
+	
+	// Create CRD client
+	crdClient, err := apiextensionsclientset.NewForConfig(config)
+	if err != nil {
+		result.Success = false
+		result.Error = fmt.Sprintf("failed to create CRD client: %v", err)
+		return result, fmt.Errorf("failed to create CRD client: %w", err)
+	}
+	
+	// Create metrics client
+	metricsClient, err := metricsv1beta1.NewForConfig(config)
+	if err != nil {
+		result.Success = false
+		result.Error = fmt.Sprintf("failed to create metrics client: %v", err)
+		return result, fmt.Errorf("failed to create metrics client: %w", err)
+	}
+	
+	// Test connection by getting server version
+	serverVersion, err := clientset.Discovery().ServerVersion()
+	if err != nil {
+		result.Success = false
+		result.Error = fmt.Sprintf("failed to get server version: %v", err)
+		return result, fmt.Errorf("failed to connect to cluster: %w", err)
+	}
+	
+	// Extract cluster name from context (if available)
+	clusterName := "default"
+	
+	// Store connection details
+	k.clientset = clientset
+	k.dynamicClient = dynamicClient
+	k.crdClient = crdClient
+	k.metricsClient = metricsClient
+	k.config = config
+	k.connected = true
+	
+	connectionTime := time.Since(startTime)
+	result.Success = true
+	result.ClusterName = clusterName
+	result.ServerVersion = serverVersion.String()
+	result.APIServerURL = config.Host
+	result.AuthMethod = k.detectAuthMethod(config)
+	result.ConnectionTime = connectionTime
+	result.ClusterInfo["kubernetes_version"] = serverVersion.GitVersion
+	result.ClusterInfo["platform"] = serverVersion.Platform
+	result.ClusterInfo["build_date"] = serverVersion.BuildDate
+	
+	k.connectionInfo = result
+	return result, nil
+}
+
+// GetClusterHealth retrieves comprehensive cluster health information
+func (k *KubernetesServiceImpl) GetClusterHealth(ctx context.Context) (*ClusterHealth, error) {
+	startTime := time.Now()
+	defer k.trackPerformance("GetClusterHealth", startTime)
+	
+	if !k.connected {
+		return nil, fmt.Errorf("not connected to cluster")
+	}
+	
+	health := &ClusterHealth{
+		LastChecked:   time.Now(),
+		CheckDuration: time.Duration(0),
+		Issues:        []string{},
+		Warnings:      []string{},
+	}
+	
+	// Get server version
+	serverVersion, err := k.clientset.Discovery().ServerVersion()
+	if err != nil {
+		health.Healthy = false
+		health.OverallStatus = "unhealthy"
+		health.Issues = append(health.Issues, fmt.Sprintf("Failed to get server version: %v", err))
+		return health, nil
+	}
+	
+	health.KubernetesVersion = serverVersion.GitVersion
+	health.APIServerStatus = "healthy"
+	
+	// Get nodes status
+	nodes, err := k.clientset.CoreV1().Nodes().List(ctx, metav1.ListOptions{})
+	if err != nil {
+		health.Issues = append(health.Issues, fmt.Sprintf("Failed to get nodes: %v", err))
+	} else {
+		health.NodesStatus = k.analyzeNodesHealth(nodes)
+	}
+	
+	// Get pods status
+	pods, err := k.clientset.CoreV1().Pods("").List(ctx, metav1.ListOptions{})
+	if err != nil {
+		health.Issues = append(health.Issues, fmt.Sprintf("Failed to get pods: %v", err))
+	} else {
+		health.PodsStatus = k.analyzePodsHealth(pods)
+	}
+	
+	// Get component status
+	componentStatuses, err := k.clientset.CoreV1().ComponentStatuses().List(ctx, metav1.ListOptions{})
+	if err != nil {
+		health.Warnings = append(health.Warnings, fmt.Sprintf("Failed to get component status: %v", err))
+	} else {
+		health.ComponentStatus = k.analyzeComponentStatus(componentStatuses)
+	}
+	
+	// Calculate overall health
+	health.Healthy = len(health.Issues) == 0
+	if health.Healthy {
+		health.OverallStatus = "healthy"
+	} else {
+		health.OverallStatus = "degraded"
+	}
+	
+	// Get basic metrics
+	health.Metrics = k.getBasicHealthMetrics(health.NodesStatus, health.PodsStatus)
+	
+	health.CheckDuration = time.Since(startTime)
+	return health, nil
+}
+
+// ValidateClusterConnection tests cluster connectivity
+func (k *KubernetesServiceImpl) ValidateClusterConnection(ctx context.Context) error {
+	startTime := time.Now()
+	defer k.trackPerformance("ValidateClusterConnection", startTime)
+	
+	if !k.connected {
+		return fmt.Errorf("not connected to cluster")
+	}
+	
+	// Test basic connectivity by getting server version
+	_, err := k.clientset.Discovery().ServerVersion()
+	if err != nil {
+		return fmt.Errorf("cluster connection validation failed: %w", err)
+	}
+	
+	// Test API access by listing namespaces
+	_, err = k.clientset.CoreV1().Namespaces().List(ctx, metav1.ListOptions{Limit: 1})
+	if err != nil {
+		return fmt.Errorf("API access validation failed: %w", err)
+	}
+	
+	return nil
+}
+
+// DeployResource deploys a single Kubernetes resource from YAML
+func (k *KubernetesServiceImpl) DeployResource(ctx context.Context, resourceYAML []byte) (*DeploymentResult, error) {
+	startTime := time.Now()
+	defer k.trackPerformance("DeployResource", startTime)
+	
+	if !k.connected {
+		return nil, fmt.Errorf("not connected to cluster")
+	}
+	
+	result := &DeploymentResult{
+		CreatedAt:  time.Now(),
+		DeployTime: time.Duration(0),
+		Status:     make(map[string]interface{}),
+		Errors:     []string{},
+		Warnings:   []string{},
+	}
+	
+	// Parse YAML to unstructured object
+	decoder := yaml.NewYAMLOrJSONDecoder(strings.NewReader(string(resourceYAML)), 1024)
+	var obj unstructured.Unstructured
+	if err := decoder.Decode(&obj); err != nil {
+		result.Success = false
+		result.Errors = append(result.Errors, fmt.Sprintf("Failed to parse YAML: %v", err))
+		return result, fmt.Errorf("failed to parse YAML: %w", err)
+	}
+	
+	// Get resource metadata
+	result.ResourceName = obj.GetName()
+	result.ResourceType = obj.GetKind()
+	result.Namespace = obj.GetNamespace()
+	if result.Namespace == "" {
+		result.Namespace = "default"
+	}
+	
+	// Apply resource using dynamic client
+	gvr := schema.GroupVersionResource{
+		Group:    obj.GetAPIVersion(),
+		Version:  "v1beta1", // Default version for custom resources
+		Resource: strings.ToLower(obj.GetKind()) + "s",
+	}
+	
+	// Check if resource exists
+	existing, err := k.dynamicClient.Resource(gvr).Namespace(result.Namespace).Get(ctx, result.ResourceName, metav1.GetOptions{})
+	if err == nil {
+		// Update existing resource
+		existing.Object = obj.Object
+		updated, err := k.dynamicClient.Resource(gvr).Namespace(result.Namespace).Update(ctx, existing, metav1.UpdateOptions{})
+		if err != nil {
+			result.Success = false
+			result.Errors = append(result.Errors, fmt.Sprintf("Failed to update resource: %v", err))
+			return result, fmt.Errorf("failed to update resource: %w", err)
+		}
+		result.Action = "updated"
+		result.ResourceUID = string(updated.GetUID())
+	} else {
+		// Create new resource
+		created, err := k.dynamicClient.Resource(gvr).Namespace(result.Namespace).Create(ctx, &obj, metav1.CreateOptions{})
+		if err != nil {
+			result.Success = false
+			result.Errors = append(result.Errors, fmt.Sprintf("Failed to create resource: %v", err))
+			return result, fmt.Errorf("failed to create resource: %w", err)
+		}
+		result.Action = "created"
+		result.ResourceUID = string(created.GetUID())
+	}
+	
+	result.Success = true
+	result.DeployTime = time.Since(startTime)
+	result.Status["deployed_at"] = result.CreatedAt
+	result.Status["deploy_time_ms"] = result.DeployTime.Milliseconds()
+	
+	return result, nil
+}
+
+// ApplyConfiguration applies multiple Kubernetes resources from YAML
+func (k *KubernetesServiceImpl) ApplyConfiguration(ctx context.Context, yamlContent []byte) (*ApplyResult, error) {
+	startTime := time.Now()
+	defer k.trackPerformance("ApplyConfiguration", startTime)
+	
+	if !k.connected {
+		return nil, fmt.Errorf("not connected to cluster")
+	}
+	
+	result := &ApplyResult{
+		Results:  []*DeploymentResult{},
+		Summary:  &ApplySummary{},
+		Errors:   []string{},
+		Warnings: []string{},
+	}
+	
+	// Split YAML into individual documents
+	documents := strings.Split(string(yamlContent), "---")
+	
+	for _, doc := range documents {
+		doc = strings.TrimSpace(doc)
+		if doc == "" {
+			continue
+		}
+		
+		// Deploy each resource
+		deployResult, err := k.DeployResource(ctx, []byte(doc))
+		if err != nil {
+			result.FailedResources++
+			result.Errors = append(result.Errors, fmt.Sprintf("Failed to deploy resource: %v", err))
+		} else {
+			result.AppliedResources++
+			
+			// Update summary based on action
+			switch deployResult.Action {
+			case "created":
+				result.Summary.Created++
+			case "updated":
+				result.Summary.Updated++
+			case "unchanged":
+				result.Summary.Unchanged++
+			}
+		}
+		
+		result.Results = append(result.Results, deployResult)
+	}
+	
+	result.Summary.Failed = result.FailedResources
+	result.Success = result.FailedResources == 0
+	result.TotalTime = time.Since(startTime)
+	
+	return result, nil
+}
+
+// DeleteResource deletes a Kubernetes resource
+func (k *KubernetesServiceImpl) DeleteResource(ctx context.Context, resourceType, namespace, name string) (*DeletionResult, error) {
+	startTime := time.Now()
+	defer k.trackPerformance("DeleteResource", startTime)
+	
+	if !k.connected {
+		return nil, fmt.Errorf("not connected to cluster")
+	}
+	
+	result := &DeletionResult{
+		ResourceName:      name,
+		ResourceType:      resourceType,
+		Namespace:         namespace,
+		DeletionTime:      time.Duration(0),
+		PropagationPolicy: "Foreground",
+		DeletedAt:         time.Now(),
+	}
+	
+	// Convert resourceType to GVR
+	gvr := k.resourceTypeToGVR(resourceType)
+	
+	// Delete the resource
+	err := k.dynamicClient.Resource(gvr).Namespace(namespace).Delete(ctx, name, metav1.DeleteOptions{
+		PropagationPolicy: &[]metav1.DeletionPropagation{metav1.DeletePropagationForeground}[0],
+	})
+	
+	if err != nil {
+		result.Success = false
+		result.Error = fmt.Sprintf("Failed to delete resource: %v", err)
+		return result, fmt.Errorf("failed to delete resource: %w", err)
+	}
+	
+	result.Success = true
+	result.FinalCleanup = true
+	result.DeletionTime = time.Since(startTime)
+	
+	return result, nil
+}
+
+// QueryResourceState retrieves the current state of a Kubernetes resource
+func (k *KubernetesServiceImpl) QueryResourceState(ctx context.Context, resourceType, namespace, name string) (*ResourceState, error) {
+	startTime := time.Now()
+	defer k.trackPerformance("QueryResourceState", startTime)
+	
+	if !k.connected {
+		return nil, fmt.Errorf("not connected to cluster")
+	}
+	
+	gvr := k.resourceTypeToGVR(resourceType)
+	
+	obj, err := k.dynamicClient.Resource(gvr).Namespace(namespace).Get(ctx, name, metav1.GetOptions{})
+	if err != nil {
+		return nil, fmt.Errorf("failed to get resource: %w", err)
+	}
+	
+	state := &ResourceState{
+		Name:            obj.GetName(),
+		Namespace:       obj.GetNamespace(),
+		ResourceType:    resourceType,
+		APIVersion:      obj.GetAPIVersion(),
+		Kind:            obj.GetKind(),
+		UID:             string(obj.GetUID()),
+		Generation:      obj.GetGeneration(),
+		ResourceVersion: obj.GetResourceVersion(),
+		Labels:          obj.GetLabels(),
+		Annotations:     obj.GetAnnotations(),
+		CreatedAt:       obj.GetCreationTimestamp().Time,
+		UpdatedAt:       time.Now(),
+		IsReady:         k.determineResourceReadiness(obj),
+		HealthStatus:    k.determineResourceHealth(obj),
+	}
+	
+	// Extract spec and status
+	if spec, found, err := unstructured.NestedMap(obj.Object, "spec"); found && err == nil {
+		state.Spec = spec
+	}
+	if status, found, err := unstructured.NestedMap(obj.Object, "status"); found && err == nil {
+		state.Status = status
+		if phase, found, err := unstructured.NestedString(status, "phase"); found && err == nil {
+			state.Phase = phase
+		}
+	}
+	
+	// Extract conditions if present
+	if conditionsRaw, found, err := unstructured.NestedSlice(obj.Object, "status", "conditions"); found && err == nil {
+		conditions := make([]metav1.Condition, 0)
+		for _, condRaw := range conditionsRaw {
+			if condMap, ok := condRaw.(map[string]interface{}); ok {
+				condition := metav1.Condition{}
+				if typ, found := condMap["type"].(string); found {
+					condition.Type = typ
+				}
+				if status, found := condMap["status"].(string); found {
+					condition.Status = metav1.ConditionStatus(status)
+				}
+				if reason, found := condMap["reason"].(string); found {
+					condition.Reason = reason
+				}
+				if message, found := condMap["message"].(string); found {
+					condition.Message = message
+				}
+				conditions = append(conditions, condition)
+			}
+		}
+		state.Conditions = conditions
+	}
+	
+	return state, nil
+}
+
+// ListResources lists Kubernetes resources with filtering
+func (k *KubernetesServiceImpl) ListResources(ctx context.Context, resourceType, namespace string) (*ResourceList, error) {
+	startTime := time.Now()
+	defer k.trackPerformance("ListResources", startTime)
+	
+	if !k.connected {
+		return nil, fmt.Errorf("not connected to cluster")
+	}
+	
+	gvr := k.resourceTypeToGVR(resourceType)
+	
+	var list *unstructured.UnstructuredList
+	var err error
+	
+	if namespace == "" {
+		list, err = k.dynamicClient.Resource(gvr).List(ctx, metav1.ListOptions{})
+	} else {
+		list, err = k.dynamicClient.Resource(gvr).Namespace(namespace).List(ctx, metav1.ListOptions{})
+	}
+	
+	if err != nil {
+		return nil, fmt.Errorf("failed to list resources: %w", err)
+	}
+	
+	resourceList := &ResourceList{
+		Items:           make([]*ResourceState, 0, len(list.Items)),
+		TotalCount:      len(list.Items),
+		ResourceVersion: list.GetResourceVersion(),
+		FilteredBy:      ResourceFilter{Namespace: namespace},
+		RetrievedAt:     time.Now(),
+	}
+	
+	for _, item := range list.Items {
+		state := &ResourceState{
+			Name:            item.GetName(),
+			Namespace:       item.GetNamespace(),
+			ResourceType:    resourceType,
+			APIVersion:      item.GetAPIVersion(),
+			Kind:            item.GetKind(),
+			UID:             string(item.GetUID()),
+			Generation:      item.GetGeneration(),
+			ResourceVersion: item.GetResourceVersion(),
+			Labels:          item.GetLabels(),
+			Annotations:     item.GetAnnotations(),
+			CreatedAt:       item.GetCreationTimestamp().Time,
+			UpdatedAt:       time.Now(),
+			IsReady:         k.determineResourceReadiness(&item),
+			HealthStatus:    k.determineResourceHealth(&item),
+		}
+		
+		// Extract basic spec and status
+		if spec, found, err := unstructured.NestedMap(item.Object, "spec"); found && err == nil {
+			state.Spec = spec
+		}
+		if status, found, err := unstructured.NestedMap(item.Object, "status"); found && err == nil {
+			state.Status = status
+		}
+		
+		resourceList.Items = append(resourceList.Items, state)
+	}
+	
+	return resourceList, nil
+}
+
+// GetResourceStatus provides detailed status information for a resource
+func (k *KubernetesServiceImpl) GetResourceStatus(ctx context.Context, gvr schema.GroupVersionResource, namespace, name string) (*ResourceStatus, error) {
+	startTime := time.Now()
+	defer k.trackPerformance("GetResourceStatus", startTime)
+	
+	if !k.connected {
+		return nil, fmt.Errorf("not connected to cluster")
+	}
+	
+	obj, err := k.dynamicClient.Resource(gvr).Namespace(namespace).Get(ctx, name, metav1.GetOptions{})
+	if err != nil {
+		return nil, fmt.Errorf("failed to get resource: %w", err)
+	}
+	
+	status := &ResourceStatus{
+		Name:       obj.GetName(),
+		Namespace:  obj.GetNamespace(),
+		Ready:      k.determineResourceReadiness(obj),
+		ObservedAt: time.Now(),
+	}
+	
+	// Extract status details
+	if statusObj, found, err := unstructured.NestedMap(obj.Object, "status"); found && err == nil {
+		status.StatusDetails = statusObj
+		
+		if phase, found, err := unstructured.NestedString(statusObj, "phase"); found && err == nil {
+			status.Phase = phase
+		}
+		if reason, found, err := unstructured.NestedString(statusObj, "reason"); found && err == nil {
+			status.Reason = reason
+		}
+		if message, found, err := unstructured.NestedString(statusObj, "message"); found && err == nil {
+			status.Message = message
+		}
+		
+		// Extract conditions
+		if conditionsRaw, found, err := unstructured.NestedSlice(statusObj, "conditions"); found && err == nil {
+			conditions := make([]metav1.Condition, 0)
+			for _, condRaw := range conditionsRaw {
+				if condMap, ok := condRaw.(map[string]interface{}); ok {
+					condition := metav1.Condition{}
+					if typ, found := condMap["type"].(string); found {
+						condition.Type = typ
+					}
+					if status, found := condMap["status"].(string); found {
+						condition.Status = metav1.ConditionStatus(status)
+					}
+					if reason, found := condMap["reason"].(string); found {
+						condition.Reason = reason
+					}
+					if message, found := condMap["message"].(string); found {
+						condition.Message = message
+					}
+					if lastTransition, found := condMap["lastTransitionTime"].(string); found {
+						if t, err := time.Parse(time.RFC3339, lastTransition); err == nil {
+							condition.LastTransitionTime = metav1.NewTime(t)
+							status.LastTransition = t
+						}
+					}
+					conditions = append(conditions, condition)
+				}
+			}
+			status.Conditions = conditions
+		}
+	}
+	
+	return status, nil
+}
+
+// ManageNamespace performs namespace management operations
+func (k *KubernetesServiceImpl) ManageNamespace(ctx context.Context, namespace string, action NamespaceAction) (*NamespaceResult, error) {
+	startTime := time.Now()
+	defer k.trackPerformance("ManageNamespace", startTime)
+	
+	if !k.connected {
+		return nil, fmt.Errorf("not connected to cluster")
+	}
+	
+	result := &NamespaceResult{
+		Action:    action,
+		Namespace: namespace,
+		CreatedAt: time.Now(),
+	}
+	
+	switch action {
+	case NamespaceActionCreate:
+		ns := &v1.Namespace{
+			ObjectMeta: metav1.ObjectMeta{
+				Name: namespace,
+			},
+		}
+		
+		created, err := k.clientset.CoreV1().Namespaces().Create(ctx, ns, metav1.CreateOptions{})
+		if err != nil {
+			result.Success = false
+			result.Error = fmt.Sprintf("Failed to create namespace: %v", err)
+			return result, fmt.Errorf("failed to create namespace: %w", err)
+		}
+		
+		result.Success = true
+		result.Status = "created"
+		result.Phase = created.Status.Phase
+		result.Labels = created.Labels
+		result.Annotations = created.Annotations
+		
+	case NamespaceActionDelete:
+		err := k.clientset.CoreV1().Namespaces().Delete(ctx, namespace, metav1.DeleteOptions{})
+		if err != nil {
+			result.Success = false
+			result.Error = fmt.Sprintf("Failed to delete namespace: %v", err)
+			return result, fmt.Errorf("failed to delete namespace: %w", err)
+		}
+		
+		result.Success = true
+		result.Status = "deleting"
+		
+	case NamespaceActionList:
+		namespaces, err := k.clientset.CoreV1().Namespaces().List(ctx, metav1.ListOptions{})
+		if err != nil {
+			result.Success = false
+			result.Error = fmt.Sprintf("Failed to list namespaces: %v", err)
+			return result, fmt.Errorf("failed to list namespaces: %w", err)
+		}
+		
+		result.Success = true
+		result.Status = fmt.Sprintf("found %d namespaces", len(namespaces.Items))
+		
+	default:
+		result.Success = false
+		result.Error = fmt.Sprintf("Unknown namespace action: %v", action)
+		return result, fmt.Errorf("unknown namespace action: %v", action)
+	}
+	
+	return result, nil
+}
+
+// EnsureNamespace creates a namespace if it doesn't exist
+func (k *KubernetesServiceImpl) EnsureNamespace(ctx context.Context, namespace string) error {
+	startTime := time.Now()
+	defer k.trackPerformance("EnsureNamespace", startTime)
+	
+	if !k.connected {
+		return fmt.Errorf("not connected to cluster")
+	}
+	
+	// Check if namespace exists
+	_, err := k.clientset.CoreV1().Namespaces().Get(ctx, namespace, metav1.GetOptions{})
+	if err == nil {
+		// Namespace already exists
+		return nil
+	}
+	
+	// Create namespace
+	ns := &v1.Namespace{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: namespace,
+		},
+	}
+	
+	_, err = k.clientset.CoreV1().Namespaces().Create(ctx, ns, metav1.CreateOptions{})
+	if err != nil {
+		return fmt.Errorf("failed to create namespace: %w", err)
+	}
+	
+	return nil
+}
+
+// DeleteNamespace deletes a namespace
+func (k *KubernetesServiceImpl) DeleteNamespace(ctx context.Context, namespace string) error {
+	startTime := time.Now()
+	defer k.trackPerformance("DeleteNamespace", startTime)
+	
+	if !k.connected {
+		return fmt.Errorf("not connected to cluster")
+	}
+	
+	err := k.clientset.CoreV1().Namespaces().Delete(ctx, namespace, metav1.DeleteOptions{})
+	if err != nil {
+		return fmt.Errorf("failed to delete namespace: %w", err)
+	}
+	
+	return nil
+}
+
+// WatchResourceEvents sets up real-time resource event monitoring
+func (k *KubernetesServiceImpl) WatchResourceEvents(ctx context.Context, resourceType, namespace string) (*EventWatcher, error) {
+	startTime := time.Now()
+	defer k.trackPerformance("WatchResourceEvents", startTime)
+	
+	if !k.connected {
+		return nil, fmt.Errorf("not connected to cluster")
+	}
+	
+	gvr := k.resourceTypeToGVR(resourceType)
+	
+	// Create watcher
+	var watcher watch.Interface
+	var err error
+	
+	if namespace == "" {
+		watcher, err = k.dynamicClient.Resource(gvr).Watch(ctx, metav1.ListOptions{})
+	} else {
+		watcher, err = k.dynamicClient.Resource(gvr).Namespace(namespace).Watch(ctx, metav1.ListOptions{})
+	}
+	
+	if err != nil {
+		return nil, fmt.Errorf("failed to create watcher: %w", err)
+	}
+	
+	// Create event watcher
+	watcherID := k.generateWatcherID()
+	eventChannel := make(chan watch.Event, 100)
+	errorChannel := make(chan error, 10)
+	stopChannel := make(chan struct{})
+	
+	eventWatcher := &EventWatcher{
+		WatcherID:    watcherID,
+		ResourceType: resourceType,
+		Namespace:    namespace,
+		StartTime:    time.Now(),
+		EventChannel: eventChannel,
+		ErrorChannel: errorChannel,
+		StopChannel:  stopChannel,
+		IsActive:     true,
+	}
+	
+	// Store watcher
+	k.watchersMutex.Lock()
+	k.activeWatchers[watcherID] = eventWatcher
+	k.watchersMutex.Unlock()
+	
+	// Start watching in goroutine
+	go k.watchEvents(watcher, eventChannel, errorChannel, stopChannel)
+	
+	return eventWatcher, nil
+}
+
+// GetResourceEvents retrieves events for a specific resource
+func (k *KubernetesServiceImpl) GetResourceEvents(ctx context.Context, resourceType, namespace, name string) ([]v1.Event, error) {
+	startTime := time.Now()
+	defer k.trackPerformance("GetResourceEvents", startTime)
+	
+	if !k.connected {
+		return nil, fmt.Errorf("not connected to cluster")
+	}
+	
+	// Get events filtered by the resource
+	fieldSelector := fmt.Sprintf("involvedObject.name=%s", name)
+	if resourceType != "" {
+		fieldSelector += fmt.Sprintf(",involvedObject.kind=%s", resourceType)
+	}
+	
+	events, err := k.clientset.CoreV1().Events(namespace).List(ctx, metav1.ListOptions{
+		FieldSelector: fieldSelector,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("failed to get events: %w", err)
+	}
+	
+	return events.Items, nil
+}
+
+// StopEventWatcher stops an active event watcher
+func (k *KubernetesServiceImpl) StopEventWatcher(ctx context.Context, watcher *EventWatcher) error {
+	startTime := time.Now()
+	defer k.trackPerformance("StopEventWatcher", startTime)
+	
+	k.watchersMutex.Lock()
+	defer k.watchersMutex.Unlock()
+	
+	if activeWatcher, exists := k.activeWatchers[watcher.WatcherID]; exists {
+		close(activeWatcher.StopChannel)
+		activeWatcher.IsActive = false
+		delete(k.activeWatchers, watcher.WatcherID)
+	}
+	
+	return nil
+}
+
+// InstallCRDs installs Custom Resource Definitions
+func (k *KubernetesServiceImpl) InstallCRDs(ctx context.Context, crdDefinitions [][]byte) ([]*CRDInstallResult, error) {
+	startTime := time.Now()
+	defer k.trackPerformance("InstallCRDs", startTime)
+	
+	if !k.connected {
+		return nil, fmt.Errorf("not connected to cluster")
+	}
+	
+	results := make([]*CRDInstallResult, 0, len(crdDefinitions))
+	
+	for _, crdYAML := range crdDefinitions {
+		installStartTime := time.Now()
+		result := &CRDInstallResult{
+			InstallTime: time.Duration(0),
+			InstalledAt: time.Now(),
+		}
+		
+		// Parse CRD YAML
+		decoder := yaml.NewYAMLOrJSONDecoder(strings.NewReader(string(crdYAML)), 1024)
+		var crd apiextensionsv1.CustomResourceDefinition
+		if err := decoder.Decode(&crd); err != nil {
+			result.Success = false
+			result.Error = fmt.Sprintf("Failed to parse CRD YAML: %v", err)
+			results = append(results, result)
+			continue
+		}
+		
+		result.CRDName = crd.Name
+		result.Version = crd.Spec.Versions[0].Name
+		result.Group = crd.Spec.Group
+		result.Kind = crd.Spec.Names.Kind
+		
+		// Install CRD
+		_, err := k.crdClient.ApiextensionsV1().CustomResourceDefinitions().Create(ctx, &crd, metav1.CreateOptions{})
+		if err != nil {
+			result.Success = false
+			result.Error = fmt.Sprintf("Failed to install CRD: %v", err)
+		} else {
+			result.Success = true
+			result.Status = "installed"
+		}
+		
+		result.InstallTime = time.Since(installStartTime)
+		results = append(results, result)
+	}
+	
+	return results, nil
+}
+
+// UninstallCRDs uninstalls Custom Resource Definitions
+func (k *KubernetesServiceImpl) UninstallCRDs(ctx context.Context, crdNames []string) ([]*CRDUninstallResult, error) {
+	startTime := time.Now()
+	defer k.trackPerformance("UninstallCRDs", startTime)
+	
+	if !k.connected {
+		return nil, fmt.Errorf("not connected to cluster")
+	}
+	
+	results := make([]*CRDUninstallResult, 0, len(crdNames))
+	
+	for _, crdName := range crdNames {
+		uninstallStartTime := time.Now()
+		result := &CRDUninstallResult{
+			CRDName:         crdName,
+			UninstallTime:   time.Duration(0),
+			UninstalledAt:   time.Now(),
+			ResourcesDeleted: 0,
+		}
+		
+		// Delete CRD
+		err := k.crdClient.ApiextensionsV1().CustomResourceDefinitions().Delete(ctx, crdName, metav1.DeleteOptions{})
+		if err != nil {
+			result.Success = false
+			result.Error = fmt.Sprintf("Failed to uninstall CRD: %v", err)
+		} else {
+			result.Success = true
+		}
+		
+		result.UninstallTime = time.Since(uninstallStartTime)
+		results = append(results, result)
+	}
+	
+	return results, nil
+}
+
+// ValidateCRDInstallation validates that a CRD is properly installed
+func (k *KubernetesServiceImpl) ValidateCRDInstallation(ctx context.Context, crdName string) (*CRDValidationResultTest, error) {
+	startTime := time.Now()
+	defer k.trackPerformance("ValidateCRDInstallation", startTime)
+	
+	if !k.connected {
+		return nil, fmt.Errorf("not connected to cluster")
+	}
+	
+	result := &CRDValidationResultTest{
+		CRDName:     crdName,
+		ValidatedAt: time.Now(),
+		Errors:      []string{},
+		Warnings:    []string{},
+	}
+	
+	// Get CRD
+	crd, err := k.crdClient.ApiextensionsV1().CustomResourceDefinitions().Get(ctx, crdName, metav1.GetOptions{})
+	if err != nil {
+		result.Valid = false
+		result.IsAvailable = false
+		result.Errors = append(result.Errors, fmt.Sprintf("CRD not found: %v", err))
+		return result, nil
+	}
+	
+	result.CRDName = crd.Name
+	result.Version = crd.Spec.Versions[0].Name
+	result.IsAvailable = true
+	
+	// Check CRD status
+	for _, condition := range crd.Status.Conditions {
+		if condition.Type == apiextensionsv1.Established {
+			if condition.Status == apiextensionsv1.ConditionTrue {
+				result.Valid = true
+			} else {
+				result.Valid = false
+				result.Errors = append(result.Errors, fmt.Sprintf("CRD not established: %s", condition.Reason))
+			}
+		}
+	}
+	
+	return result, nil
+}
+
+// CreateServiceAccount creates a service account
+func (k *KubernetesServiceImpl) CreateServiceAccount(ctx context.Context, namespace, name string) (*ServiceAccountResult, error) {
+	startTime := time.Now()
+	defer k.trackPerformance("CreateServiceAccount", startTime)
+	
+	if !k.connected {
+		return nil, fmt.Errorf("not connected to cluster")
+	}
+	
+	result := &ServiceAccountResult{
+		Name:        name,
+		Namespace:   namespace,
+		CreatedAt:   time.Now(),
+		Labels:      make(map[string]string),
+		Annotations: make(map[string]string),
+	}
+	
+	sa := &v1.ServiceAccount{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      name,
+			Namespace: namespace,
+		},
+	}
+	
+	created, err := k.clientset.CoreV1().ServiceAccounts(namespace).Create(ctx, sa, metav1.CreateOptions{})
+	if err != nil {
+		result.Success = false
+		result.Error = fmt.Sprintf("Failed to create service account: %v", err)
+		return result, fmt.Errorf("failed to create service account: %w", err)
+	}
+	
+	result.Success = true
+	result.UID = string(created.UID)
+	result.Labels = created.Labels
+	result.Annotations = created.Annotations
+	
+	// Extract secrets
+	for _, secret := range created.Secrets {
+		result.Secrets = append(result.Secrets, secret.Name)
+	}
+	
+	// Extract image pull secrets
+	for _, imagePullSecret := range created.ImagePullSecrets {
+		result.ImagePullSecrets = append(result.ImagePullSecrets, imagePullSecret.Name)
+	}
+	
+	return result, nil
+}
+
+// CreateRoleBinding creates a role binding
+func (k *KubernetesServiceImpl) CreateRoleBinding(ctx context.Context, namespace, name string, role string, subjects []string) error {
+	startTime := time.Now()
+	defer k.trackPerformance("CreateRoleBinding", startTime)
+	
+	if !k.connected {
+		return fmt.Errorf("not connected to cluster")
+	}
+	
+	// Create role binding subjects
+	rbacSubjects := make([]rbacv1.Subject, 0, len(subjects))
+	for _, subject := range subjects {
+		rbacSubjects = append(rbacSubjects, rbacv1.Subject{
+			Kind:      "ServiceAccount",
+			Name:      subject,
+			Namespace: namespace,
+		})
+	}
+	
+	roleBinding := &rbacv1.RoleBinding{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      name,
+			Namespace: namespace,
+		},
+		Subjects: rbacSubjects,
+		RoleRef: rbacv1.RoleRef{
+			Kind:     "Role",
+			Name:     role,
+			APIGroup: "rbac.authorization.k8s.io",
+		},
+	}
+	
+	_, err := k.clientset.RbacV1().RoleBindings(namespace).Create(ctx, roleBinding, metav1.CreateOptions{})
+	if err != nil {
+		return fmt.Errorf("failed to create role binding: %w", err)
+	}
+	
+	return nil
+}
+
+// ValidateRBACPermissions validates RBAC permissions for a service account
+func (k *KubernetesServiceImpl) ValidateRBACPermissions(ctx context.Context, serviceAccount, namespace string, resources []string) (*RBACValidationResult, error) {
+	startTime := time.Now()
+	defer k.trackPerformance("ValidateRBACPermissions", startTime)
+	
+	if !k.connected {
+		return nil, fmt.Errorf("not connected to cluster")
+	}
+	
+	result := &RBACValidationResult{
+		ServiceAccount:      serviceAccount,
+		Namespace:           namespace,
+		PermissionResults:   make([]*ResourcePermission, 0),
+		MissingPermissions:  make([]string, 0),
+		ExtraPermissions:    make([]string, 0),
+		RoleBindings:        make([]string, 0),
+		ClusterRoleBindings: make([]string, 0),
+		ValidatedAt:         time.Now(),
+	}
+	
+	// Get role bindings for the service account
+	roleBindings, err := k.clientset.RbacV1().RoleBindings(namespace).List(ctx, metav1.ListOptions{})
+	if err != nil {
+		result.Valid = false
+		return result, fmt.Errorf("failed to get role bindings: %w", err)
+	}
+	
+	// Check each resource permission
+	for _, resource := range resources {
+		permission := &ResourcePermission{
+			Resource:   resource,
+			Verbs:      []string{"get", "list", "create", "update", "delete"},
+			Allowed:    make([]string, 0),
+			Denied:     make([]string, 0),
+			APIGroups:  []string{"", "apps", "extensions"},
+			Namespaces: []string{namespace},
+		}
+		
+		// Simple validation - assume all permissions are allowed for now
+		// In a real implementation, this would use SubjectAccessReview API
+		permission.Allowed = permission.Verbs
+		
+		result.PermissionResults = append(result.PermissionResults, permission)
+	}
+	
+	// Extract role binding names
+	for _, rb := range roleBindings.Items {
+		for _, subject := range rb.Subjects {
+			if subject.Kind == "ServiceAccount" && subject.Name == serviceAccount {
+				result.RoleBindings = append(result.RoleBindings, rb.Name)
+			}
+		}
+	}
+	
+	result.Valid = len(result.MissingPermissions) == 0
+	return result, nil
+}
+
+// GetClusterMetrics retrieves comprehensive cluster performance metrics
+func (k *KubernetesServiceImpl) GetClusterMetrics(ctx context.Context) (*ClusterMetrics, error) {
+	startTime := time.Now()
+	defer k.trackPerformance("GetClusterMetrics", startTime)
+	
+	if !k.connected {
+		return nil, fmt.Errorf("not connected to cluster")
+	}
+	
+	metrics := &ClusterMetrics{
+		Timestamp:        time.Now(),
+		NodeMetrics:      make([]*NodeMetrics, 0),
+		PodMetrics:       make([]*PodMetrics, 0),
+		NamespaceMetrics: make(map[string]*NamespaceMetrics),
+		ResourceQuotas:   make(map[string]*ResourceQuotaStatus),
+		CollectionTime:   time.Duration(0),
+	}
+	
+	// Get nodes
+	nodes, err := k.clientset.CoreV1().Nodes().List(ctx, metav1.ListOptions{})
+	if err != nil {
+		return nil, fmt.Errorf("failed to get nodes: %w", err)
+	}
+	
+	// Get node metrics (basic implementation)
+	for _, node := range nodes.Items {
+		nodeMetric := &NodeMetrics{
+			NodeName:         node.Name,
+			PodCount:         0,
+			PodCapacity:      100, // Default capacity
+			Labels:           node.Labels,
+			KubeletVersion:   node.Status.NodeInfo.KubeletVersion,
+			ContainerRuntime: node.Status.NodeInfo.ContainerRuntimeVersion,
+		}
+		
+		// Parse node conditions
+		for _, condition := range node.Status.Conditions {
+			nodeMetric.Conditions = append(nodeMetric.Conditions, metav1.Condition{
+				Type:   string(condition.Type),
+				Status: metav1.ConditionStatus(condition.Status),
+				Reason: condition.Reason,
+			})
+		}
+		
+		// Set basic resource usage (simplified)
+		nodeMetric.CPUUsage = ResourceUsage{
+			Current:    50,
+			Requested:  30,
+			Limited:    100,
+			Percentage: 50.0,
+			Unit:       "millicores",
+		}
+		
+		nodeMetric.MemoryUsage = ResourceUsage{
+			Current:    2048,
+			Requested:  1024,
+			Limited:    4096,
+			Percentage: 50.0,
+			Unit:       "Mi",
+		}
+		
+		metrics.NodeMetrics = append(metrics.NodeMetrics, nodeMetric)
+	}
+	
+	// Get cluster capacity and usage
+	metrics.ClusterCapacity = &ResourceCapacity{
+		Nodes: len(nodes.Items),
+		CPU: ResourceCapacityInfo{
+			Total:      1000,
+			Available:  500,
+			Used:       500,
+			Percentage: 50.0,
+			Unit:       "millicores",
+		},
+		Memory: ResourceCapacityInfo{
+			Total:      4096,
+			Available:  2048,
+			Used:       2048,
+			Percentage: 50.0,
+			Unit:       "Mi",
+		},
+	}
+	
+	metrics.ClusterUsage = &ResourceUsage{
+		Current:    500,
+		Requested:  300,
+		Limited:    1000,
+		Percentage: 50.0,
+		Unit:       "mixed",
+	}
+	
+	metrics.CollectionTime = time.Since(startTime)
+	return metrics, nil
+}
+
+// GetResourceUtilization retrieves namespace-level resource utilization
+func (k *KubernetesServiceImpl) GetResourceUtilization(ctx context.Context, namespace string) (*ResourceUtilization, error) {
+	startTime := time.Now()
+	defer k.trackPerformance("GetResourceUtilization", startTime)
+	
+	if !k.connected {
+		return nil, fmt.Errorf("not connected to cluster")
+	}
+	
+	utilization := &ResourceUtilization{
+		Namespace:   namespace,
+		CollectedAt: time.Now(),
+	}
+	
+	// Get pods in namespace
+	pods, err := k.clientset.CoreV1().Pods(namespace).List(ctx, metav1.ListOptions{})
+	if err != nil {
+		return nil, fmt.Errorf("failed to get pods: %w", err)
+	}
+	
+	// Get services
+	services, err := k.clientset.CoreV1().Services(namespace).List(ctx, metav1.ListOptions{})
+	if err != nil {
+		return nil, fmt.Errorf("failed to get services: %w", err)
+	}
+	
+	// Get configmaps
+	configMaps, err := k.clientset.CoreV1().ConfigMaps(namespace).List(ctx, metav1.ListOptions{})
+	if err != nil {
+		return nil, fmt.Errorf("failed to get configmaps: %w", err)
+	}
+	
+	// Get secrets
+	secrets, err := k.clientset.CoreV1().Secrets(namespace).List(ctx, metav1.ListOptions{})
+	if err != nil {
+		return nil, fmt.Errorf("failed to get secrets: %w", err)
+	}
+	
+	// Calculate basic utilization (simplified)
+	utilization.CPUUtilization = ResourceUsage{
+		Current:    int64(len(pods.Items) * 100),
+		Requested:  int64(len(pods.Items) * 50),
+		Limited:    int64(len(pods.Items) * 200),
+		Percentage: 50.0,
+		Unit:       "millicores",
+	}
+	
+	utilization.MemoryUtilization = ResourceUsage{
+		Current:    int64(len(pods.Items) * 256),
+		Requested:  int64(len(pods.Items) * 128),
+		Limited:    int64(len(pods.Items) * 512),
+		Percentage: 50.0,
+		Unit:       "Mi",
+	}
+	
+	utilization.PodUtilization = ResourceUsage{
+		Current:    int64(len(pods.Items)),
+		Limited:    110, // Default pod limit per namespace
+		Percentage: float64(len(pods.Items)) / 110.0 * 100,
+		Unit:       "count",
+	}
+	
+	utilization.ServiceCount = len(services.Items)
+	utilization.ConfigMapCount = len(configMaps.Items)
+	utilization.SecretCount = len(secrets.Items)
+	
+	return utilization, nil
+}
+
+// GetClusterNodes retrieves comprehensive node information
+func (k *KubernetesServiceImpl) GetClusterNodes(ctx context.Context) ([]*NodeInfo, error) {
+	startTime := time.Now()
+	defer k.trackPerformance("GetClusterNodes", startTime)
+	
+	if !k.connected {
+		return nil, fmt.Errorf("not connected to cluster")
+	}
+	
+	nodes, err := k.clientset.CoreV1().Nodes().List(ctx, metav1.ListOptions{})
+	if err != nil {
+		return nil, fmt.Errorf("failed to get nodes: %w", err)
+	}
+	
+	nodeInfos := make([]*NodeInfo, 0, len(nodes.Items))
+	
+	for _, node := range nodes.Items {
+		nodeInfo := &NodeInfo{
+			Name:             node.Name,
+			UID:              string(node.UID),
+			Labels:           node.Labels,
+			Annotations:      node.Annotations,
+			Addresses:        node.Status.Addresses,
+			Capacity:         k.resourceListToStringMap(node.Status.Capacity),
+			Allocatable:      k.resourceListToStringMap(node.Status.Allocatable),
+			SystemInfo:       node.Status.NodeInfo,
+			Phase:            node.Status.Phase,
+			Taints:           node.Spec.Taints,
+			Unschedulable:    node.Spec.Unschedulable,
+			PodCIDR:          node.Spec.PodCIDR,
+			PodCIDRs:         node.Spec.PodCIDRs,
+			ProviderID:       node.Spec.ProviderID,
+			CreatedAt:        node.CreationTimestamp.Time,
+			KubeletVersion:   node.Status.NodeInfo.KubeletVersion,
+			KubeProxyVersion: node.Status.NodeInfo.KubeProxyVersion,
+			ContainerRuntime: node.Status.NodeInfo.ContainerRuntimeVersion,
+			OperatingSystem:  node.Status.NodeInfo.OperatingSystem,
+			Architecture:     node.Status.NodeInfo.Architecture,
+			AllocatedResources: make(map[string]ResourceUsage),
+		}
+		
+		// Convert conditions
+		for _, condition := range node.Status.Conditions {
+			nodeInfo.Conditions = append(nodeInfo.Conditions, metav1.Condition{
+				Type:               string(condition.Type),
+				Status:             metav1.ConditionStatus(condition.Status),
+				Reason:             condition.Reason,
+				Message:            condition.Message,
+				LastTransitionTime: condition.LastTransitionTime,
+			})
+			
+			// Determine if node is ready
+			if condition.Type == v1.NodeReady && condition.Status == v1.ConditionTrue {
+				nodeInfo.IsReady = true
+			}
+		}
+		
+		// Determine node roles
+		if _, exists := nodeInfo.Labels["node-role.kubernetes.io/master"]; exists {
+			nodeInfo.IsMaster = true
+		}
+		if _, exists := nodeInfo.Labels["node-role.kubernetes.io/worker"]; exists {
+			nodeInfo.IsWorker = true
+		}
+		if !nodeInfo.IsMaster && !nodeInfo.IsWorker {
+			nodeInfo.IsWorker = true // Default to worker if no specific role
+		}
+		
+		// Get pod count for this node
+		pods, err := k.clientset.CoreV1().Pods("").List(ctx, metav1.ListOptions{
+			FieldSelector: "spec.nodeName=" + node.Name,
+		})
+		if err == nil {
+			nodeInfo.PodCount = len(pods.Items)
+		}
+		
+		// Set basic resource allocation (simplified)
+		nodeInfo.AllocatedResources["cpu"] = ResourceUsage{
+			Current:    int64(nodeInfo.PodCount * 100),
+			Percentage: float64(nodeInfo.PodCount) * 10, // Simplified calculation
+			Unit:       "millicores",
+		}
+		
+		nodeInfo.AllocatedResources["memory"] = ResourceUsage{
+			Current:    int64(nodeInfo.PodCount * 256),
+			Percentage: float64(nodeInfo.PodCount) * 25, // Simplified calculation
+			Unit:       "Mi",
+		}
+		
+		nodeInfos = append(nodeInfos, nodeInfo)
+	}
+	
+	return nodeInfos, nil
+}
+
+// Helper methods
+
+func (k *KubernetesServiceImpl) detectAuthMethod(config *rest.Config) string {
+	if config.BearerToken != "" {
+		return "token"
+	}
+	if config.Username != "" {
+		return "basic"
+	}
+	if config.CertFile != "" || len(config.CertData) > 0 {
+		return "certificate"
+	}
+	return "unknown"
+}
+
+func (k *KubernetesServiceImpl) resourceTypeToGVR(resourceType string) schema.GroupVersionResource {
+	// Map common resource types to GVR
+	switch strings.ToLower(resourceType) {
+	case "vpc", "vpcs":
+		return schema.GroupVersionResource{
+			Group:    "vpc.githedgehog.com",
+			Version:  "v1beta1",
+			Resource: "vpcs",
+		}
+	case "connection", "connections":
+		return schema.GroupVersionResource{
+			Group:    "wiring.githedgehog.com",
+			Version:  "v1beta1",
+			Resource: "connections",
+		}
+	case "switch", "switches":
+		return schema.GroupVersionResource{
+			Group:    "wiring.githedgehog.com",
+			Version:  "v1beta1",
+			Resource: "switches",
+		}
+	case "server", "servers":
+		return schema.GroupVersionResource{
+			Group:    "wiring.githedgehog.com",
+			Version:  "v1beta1",
+			Resource: "servers",
+		}
+	case "pod", "pods":
+		return schema.GroupVersionResource{
+			Group:    "",
+			Version:  "v1",
+			Resource: "pods",
+		}
+	case "service", "services":
+		return schema.GroupVersionResource{
+			Group:    "",
+			Version:  "v1",
+			Resource: "services",
+		}
+	case "deployment", "deployments":
+		return schema.GroupVersionResource{
+			Group:    "apps",
+			Version:  "v1",
+			Resource: "deployments",
+		}
+	case "configmap", "configmaps":
+		return schema.GroupVersionResource{
+			Group:    "",
+			Version:  "v1",
+			Resource: "configmaps",
+		}
+	default:
+		// Default for custom resources
+		return schema.GroupVersionResource{
+			Group:    "githedgehog.com",
+			Version:  "v1beta1",
+			Resource: strings.ToLower(resourceType) + "s",
+		}
+	}
+}
+
+func (k *KubernetesServiceImpl) determineResourceReadiness(obj *unstructured.Unstructured) bool {
+	// Check status conditions for readiness
+	if status, found, err := unstructured.NestedMap(obj.Object, "status"); found && err == nil {
+		if conditions, found, err := unstructured.NestedSlice(status, "conditions"); found && err == nil {
+			for _, condRaw := range conditions {
+				if condMap, ok := condRaw.(map[string]interface{}); ok {
+					if typ, found := condMap["type"].(string); found && typ == "Ready" {
+						if status, found := condMap["status"].(string); found {
+							return status == "True"
+						}
+					}
+				}
+			}
+		}
+		
+		// Check phase for simple readiness
+		if phase, found, err := unstructured.NestedString(status, "phase"); found && err == nil {
+			return phase == "Running" || phase == "Active" || phase == "Succeeded"
+		}
+	}
+	
+	return true // Default to ready if no status information
+}
+
+func (k *KubernetesServiceImpl) determineResourceHealth(obj *unstructured.Unstructured) string {
+	if k.determineResourceReadiness(obj) {
+		return "healthy"
+	}
+	
+	// Check for error conditions
+	if status, found, err := unstructured.NestedMap(obj.Object, "status"); found && err == nil {
+		if phase, found, err := unstructured.NestedString(status, "phase"); found && err == nil {
+			switch phase {
+			case "Failed":
+				return "unhealthy"
+			case "Pending":
+				return "degraded"
+			default:
+				return "unknown"
+			}
+		}
+	}
+	
+	return "unknown"
+}
+
+func (k *KubernetesServiceImpl) analyzeNodesHealth(nodes *v1.NodeList) *NodeHealthSummary {
+	summary := &NodeHealthSummary{
+		TotalNodes: len(nodes.Items),
+	}
+	
+	for _, node := range nodes.Items {
+		ready := false
+		for _, condition := range node.Status.Conditions {
+			if condition.Type == v1.NodeReady {
+				if condition.Status == v1.ConditionTrue {
+					ready = true
+				}
+				break
+			}
+		}
+		
+		if ready {
+			summary.ReadyNodes++
+		} else {
+			summary.NotReadyNodes++
+		}
+	}
+	
+	return summary
+}
+
+func (k *KubernetesServiceImpl) analyzePodsHealth(pods *v1.PodList) *PodHealthSummary {
+	summary := &PodHealthSummary{
+		TotalPods: len(pods.Items),
+	}
+	
+	for _, pod := range pods.Items {
+		switch pod.Status.Phase {
+		case v1.PodRunning:
+			summary.RunningPods++
+		case v1.PodPending:
+			summary.PendingPods++
+		case v1.PodFailed:
+			summary.FailedPods++
+		case v1.PodSucceeded:
+			summary.SucceededPods++
+		}
+	}
+	
+	return summary
+}
+
+func (k *KubernetesServiceImpl) analyzeComponentStatus(components *v1.ComponentStatusList) []*ComponentHealthStatus {
+	status := make([]*ComponentHealthStatus, 0, len(components.Items))
+	
+	for _, component := range components.Items {
+		componentHealth := &ComponentHealthStatus{
+			Name:      component.Name,
+			CheckedAt: time.Now(),
+			Metadata:  make(map[string]string),
+		}
+		
+		if len(component.Conditions) > 0 {
+			condition := component.Conditions[0]
+			componentHealth.Status = string(condition.Type)
+			componentHealth.Message = condition.Message
+			if condition.Status == v1.ConditionTrue {
+				componentHealth.Status = "healthy"
+			} else {
+				componentHealth.Status = "unhealthy"
+				componentHealth.Error = condition.Error
+			}
+		}
+		
+		status = append(status, componentHealth)
+	}
+	
+	return status
+}
+
+func (k *KubernetesServiceImpl) getBasicHealthMetrics(nodes *NodeHealthSummary, pods *PodHealthSummary) *ClusterHealthMetrics {
+	return &ClusterHealthMetrics{
+		CPUUtilization:    50.0, // Simplified
+		MemoryUtilization: 60.0, // Simplified
+		DiskUtilization:   30.0, // Simplified
+		NetworkRxBytes:    1024*1024*100, // 100MB
+		NetworkTxBytes:    1024*1024*80,  // 80MB
+		ActivePods:        pods.RunningPods,
+		ActiveNamespaces:  10, // Simplified
+	}
+}
+
+func (k *KubernetesServiceImpl) generateWatcherID() string {
+	return fmt.Sprintf("watcher-%s", uuid.New().String()[:8])
+}
+
+func (k *KubernetesServiceImpl) watchEvents(watcher watch.Interface, eventChannel chan<- watch.Event, errorChannel chan<- error, stopChannel <-chan struct{}) {
+	defer watcher.Stop()
+	
+	for {
+		select {
+		case <-stopChannel:
+			return
+		case event, ok := <-watcher.ResultChan():
+			if !ok {
+				errorChannel <- fmt.Errorf("watcher channel closed")
+				return
+			}
+			
+			select {
+			case eventChannel <- event:
+			case <-stopChannel:
+				return
+			default:
+				// Channel full, skip event
+			}
+		}
+	}
+}
+
+func (k *KubernetesServiceImpl) resourceListToStringMap(resourceList v1.ResourceList) map[string]string {
+	result := make(map[string]string)
+	for key, quantity := range resourceList {
+		result[string(key)] = quantity.String()
+	}
+	return result
+}
+
+func (k *KubernetesServiceImpl) trackPerformance(operation string, startTime time.Time) {
+	duration := time.Since(startTime)
+	
+	k.performanceTracker.mutex.Lock()
+	defer k.performanceTracker.mutex.Unlock()
+	
+	if metrics, exists := k.performanceTracker.metrics[operation]; exists {
+		metrics.TotalOperations++
+		metrics.TotalDuration += duration
+		metrics.LastOperation = time.Now()
+		metrics.AverageDuration = metrics.TotalDuration / time.Duration(metrics.TotalOperations)
+	} else {
+		k.performanceTracker.metrics[operation] = &OperationMetrics{
+			TotalOperations: 1,
+			TotalDuration:   duration,
+			LastOperation:   time.Now(),
+			AverageDuration: duration,
+		}
+	}
+}

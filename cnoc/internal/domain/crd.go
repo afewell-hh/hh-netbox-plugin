@@ -294,6 +294,10 @@ func (c *CRDResource) Validate() error {
 		return fmt.Errorf("unsupported CRD type: %s", c.Type)
 	}
 
+	// Set validation status to valid if we get here
+	c.ValidationStatus = "valid"
+	c.ErrorMessage = ""
+
 	return nil
 }
 

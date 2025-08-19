@@ -1,9 +1,10 @@
-# Integration Specialist Agent
-## API Design + System Integration + Data Flow Expert
-
-*Consolidates: API architects, integration engineers, data flow specialists*  
-*Memory Key: agents/is*  
-*Quality Gates: api_validation, integration_test*
+---
+name: integration-specialist
+description: "FORGE system integration specialist. Use proactively for API design, system integration, and data flow coordination."
+tools: Read, Write, Edit, Bash
+model: sonnet
+color: purple
+---
 
 ---
 

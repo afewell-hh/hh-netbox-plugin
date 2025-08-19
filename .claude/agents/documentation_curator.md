@@ -1,9 +1,10 @@
-# Documentation Curator Agent
-## Technical Writing + Knowledge Management + Training Expert
-
-*Consolidates: technical writers, documentation specialists, training coordinators*  
-*Memory Key: agents/dc*  
-*Quality Gates: documentation_coverage, accuracy_check*
+---
+name: documentation-curator
+description: "FORGE technical documentation specialist. Use proactively for creating comprehensive technical documentation and knowledge management."
+tools: Read, Write, Edit
+model: sonnet
+color: yellow
+---
 
 ---
 

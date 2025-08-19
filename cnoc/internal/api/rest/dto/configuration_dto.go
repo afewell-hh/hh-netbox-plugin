@@ -155,10 +155,20 @@ type ListLinksDTO struct {
 
 // ValidationResultDTO represents validation results
 type ValidationResultDTO struct {
-	Valid      bool                `json:"valid" example:"false"`
-	Errors     []ValidationErrorDTO `json:"errors,omitempty"`
-	Warnings   []ValidationWarningDTO `json:"warnings,omitempty"`
-	ValidatedAt time.Time          `json:"validated_at"`
+	Valid             bool                      `json:"valid" example:"false"`
+	ConfigurationID   string                    `json:"configuration_id,omitempty"`
+	Errors            []ValidationErrorDTO      `json:"errors,omitempty"`
+	Warnings          []ValidationWarningDTO    `json:"warnings,omitempty"`
+	ComponentResults  []ComponentValidationResult `json:"component_results,omitempty"`
+	ValidatedAt       time.Time                 `json:"validated_at"`
+}
+
+// ComponentValidationResult represents validation results for individual components
+type ComponentValidationResult struct {
+	ComponentName string               `json:"component_name"`
+	Valid         bool                 `json:"valid"`
+	Errors        []ValidationErrorDTO `json:"errors,omitempty"`
+	Warnings      []ValidationWarningDTO `json:"warnings,omitempty"`
 }
 
 // ValidationErrorDTO represents a validation error

@@ -1,0 +1,396 @@
+package services
+
+import (
+	"context"
+	"fmt"
+	"time"
+
+	"github.com/hedgehog/cnoc/internal/api/rest/dto"
+	"github.com/hedgehog/cnoc/internal/domain/gitops"
+)
+
+// GitOpsRepositoryApplicationServiceImpl provides the implementation for GitOps repository management
+type GitOpsRepositoryApplicationServiceImpl struct {
+	repository        gitops.GitRepositoryRepository
+	authService       GitAuthenticationService
+	syncService       RepositorySyncService
+	encryptionKey     []byte
+}
+
+// NewGitOpsRepositoryApplicationService creates a new GitOps repository application service
+func NewGitOpsRepositoryApplicationService(
+	repository gitops.GitRepositoryRepository,
+	authService GitAuthenticationService,
+	syncService RepositorySyncService,
+	encryptionKey []byte,
+) GitOpsRepositoryApplicationService {
+	return &GitOpsRepositoryApplicationServiceImpl{
+		repository:    repository,
+		authService:   authService,
+		syncService:   syncService,
+		encryptionKey: encryptionKey,
+	}
+}
+
+// CreateRepository creates a new GitOps repository with encrypted credentials
+func (s *GitOpsRepositoryApplicationServiceImpl) CreateRepository(ctx context.Context, request dto.CreateGitOpsRepositoryDTO) (*dto.GitOpsRepositoryDTO, error) {
+	// Convert DTO to domain credentials
+	domainCreds := &gitops.GitCredentials{
+		Type:             request.Credentials.Type,
+		Token:            request.Credentials.Token,
+		Username:         "", // Will be populated based on auth type
+		Password:         "", // Will be populated based on auth type
+		SSHKey:           "", // Will be populated based on auth type
+		SSHKeyPassphrase: "", // Will be populated based on auth type
+	}
+
+	// Create domain repository entity
+	repo := gitops.NewGitRepository(request.Name, request.URL, request.AuthenticationType)
+	repo.Description = request.Description
+	
+	if request.DefaultBranch != "" {
+		repo.DefaultBranch = request.DefaultBranch
+	}
+
+	// Encrypt credentials
+	err := repo.EncryptCredentials(domainCreds, s.encryptionKey)
+	if err != nil {
+		return nil, fmt.Errorf("credential encryption failed: %w", err)
+	}
+
+	// Validate repository
+	if err := repo.Validate(); err != nil {
+		return nil, fmt.Errorf("repository validation failed: %w", err)
+	}
+
+	// Persist repository
+	if err := s.repository.Create(repo); err != nil {
+		return nil, fmt.Errorf("repository creation failed: %w", err)
+	}
+
+	// Convert to DTO
+	return s.convertToDTO(repo), nil
+}
+
+// GetRepository retrieves a GitOps repository by ID
+func (s *GitOpsRepositoryApplicationServiceImpl) GetRepository(ctx context.Context, id string) (*GitOpsRepositoryDTO, error) {
+	repo, err := s.repository.GetByID(id)
+	if err != nil {
+		return nil, fmt.Errorf("repository retrieval failed: %w", err)
+	}
+
+	return s.convertToDTO(repo), nil
+}
+
+// ListRepositories retrieves a paginated list of GitOps repositories
+func (s *GitOpsRepositoryApplicationServiceImpl) ListRepositories(ctx context.Context, page, pageSize int) (*GitOpsRepositoryListDTO, error) {
+	if page < 1 {
+		page = 1
+	}
+	if pageSize < 1 || pageSize > 100 {
+		pageSize = 20
+	}
+
+	offset := (page - 1) * pageSize
+	
+	repositories, totalCount, err := s.repository.List(offset, pageSize)
+	if err != nil {
+		return nil, fmt.Errorf("repository listing failed: %w", err)
+	}
+
+	// Convert to DTOs
+	items := make([]GitOpsRepositoryDTO, len(repositories))
+	for i, repo := range repositories {
+		items[i] = *s.convertToDTO(repo)
+	}
+
+	hasMore := offset+len(items) < totalCount
+
+	return &GitOpsRepositoryListDTO{
+		Items:      items,
+		TotalCount: totalCount,
+		Page:       page,
+		PageSize:   pageSize,
+		HasMore:    hasMore,
+	}, nil
+}
+
+// UpdateRepository updates an existing GitOps repository
+func (s *GitOpsRepositoryApplicationServiceImpl) UpdateRepository(ctx context.Context, id string, dto UpdateGitOpsRepositoryDTO) (*GitOpsRepositoryDTO, error) {
+	// Get existing repository
+	repo, err := s.repository.GetByID(id)
+	if err != nil {
+		return nil, fmt.Errorf("repository retrieval failed: %w", err)
+	}
+
+	// Apply updates
+	if dto.Name != nil {
+		repo.Name = *dto.Name
+	}
+	if dto.Description != nil {
+		repo.Description = *dto.Description
+	}
+	if dto.AuthenticationType != nil {
+		repo.AuthenticationType = *dto.AuthenticationType
+	}
+	if request.DefaultBranch != nil {
+		repo.DefaultBranch = *request.DefaultBranch
+	}
+
+	// Update credentials if provided
+	if dto.Credentials != nil {
+		domainCreds := &gitops.GitCredentials{
+			Type:             dto.Credentials.Type,
+			Token:            dto.Credentials.Token,
+			Username:         dto.Credentials.Username,
+			Password:         dto.Credentials.Password,
+			SSHKey:           dto.Credentials.SSHKey,
+			SSHKeyPassphrase: dto.Credentials.SSHKeyPassphrase,
+		}
+
+		err := repo.EncryptCredentials(domainCreds, s.encryptionKey)
+		if err != nil {
+			return nil, fmt.Errorf("credential encryption failed: %w", err)
+		}
+	}
+
+	// Validate updated repository
+	if err := repo.Validate(); err != nil {
+		return nil, fmt.Errorf("repository validation failed: %w", err)
+	}
+
+	// Update modification timestamp
+	repo.LastModified = time.Now()
+
+	// Persist changes
+	if err := s.repository.Update(repo); err != nil {
+		return nil, fmt.Errorf("repository update failed: %w", err)
+	}
+
+	return s.convertToDTO(repo), nil
+}
+
+// DeleteRepository deletes a GitOps repository
+func (s *GitOpsRepositoryApplicationServiceImpl) DeleteRepository(ctx context.Context, id string) error {
+	// Check if repository exists
+	_, err := s.repository.GetByID(id)
+	if err != nil {
+		return fmt.Errorf("repository not found: %w", err)
+	}
+
+	// Delete repository
+	if err := s.repository.Delete(id); err != nil {
+		return fmt.Errorf("repository deletion failed: %w", err)
+	}
+
+	return nil
+}
+
+// TestConnection tests the connection to a GitOps repository
+func (s *GitOpsRepositoryApplicationServiceImpl) TestConnection(ctx context.Context, id string) (*ConnectionTestResult, error) {
+	repo, err := s.repository.GetByID(id)
+	if err != nil {
+		return nil, fmt.Errorf("repository retrieval failed: %w", err)
+	}
+
+	// Decrypt credentials to get them in the format expected by the auth service
+	decryptedCreds, err := repo.DecryptCredentials(s.encryptionKey)
+	if err != nil {
+		return nil, fmt.Errorf("credential decryption failed: %w", err)
+	}
+
+	// Convert domain credentials to map format expected by auth service
+	credsMap := map[string]interface{}{
+		"type": string(decryptedCreds.Type),
+	}
+	
+	if decryptedCreds.Token != "" {
+		credsMap["token"] = decryptedCreds.Token
+	}
+	if decryptedCreds.Username != "" {
+		credsMap["username"] = decryptedCreds.Username
+	}
+	if decryptedCreds.Password != "" {
+		credsMap["password"] = decryptedCreds.Password
+	}
+	if decryptedCreds.SSHKey != "" {
+		credsMap["ssh_key"] = decryptedCreds.SSHKey
+	}
+	if decryptedCreds.SSHKeyPassphrase != "" {
+		credsMap["ssh_key_passphrase"] = decryptedCreds.SSHKeyPassphrase
+	}
+
+	// Test connection using authentication service
+	start := time.Now()
+	err = s.authService.ValidateCredentials(ctx, repo.URL, credsMap)
+	responseTime := time.Since(start).Milliseconds()
+	
+	success := err == nil
+	errorMsg := ""
+	if err != nil {
+		errorMsg = err.Error()
+	}
+
+	// Update repository connection status based on result
+	if success {
+		repo.UpdateConnectionStatus(gitops.ConnectionStatusConnected, "")
+	} else {
+		repo.UpdateConnectionStatus(gitops.ConnectionStatusFailed, errorMsg)
+	}
+
+	// Persist status update
+	if updateErr := s.repository.Update(repo); updateErr != nil {
+		// Log error but don't fail the test
+		fmt.Printf("Warning: failed to update repository status: %v\n", updateErr)
+	}
+
+	return &ConnectionTestResult{
+		Success:       success,
+		ResponseTime:  responseTime,
+		Error:         errorMsg,
+		DefaultBranch: repo.DefaultBranch, // Use existing branch info
+		RefsCount:     0,                   // Could be populated by a more sophisticated implementation
+		TestedAt:      time.Now(),
+		Details:       map[string]interface{}{}, // Could be populated with additional connection details
+	}, nil
+}
+
+// CloneRepository clones a GitOps repository to a local path
+func (s *GitOpsRepositoryApplicationServiceImpl) CloneRepository(ctx context.Context, id string, localPath string) error {
+	repo, err := s.repository.GetByID(id)
+	if err != nil {
+		return fmt.Errorf("repository retrieval failed: %w", err)
+	}
+
+	// Use sync service for cloning
+	_, err = s.syncService.SyncRepository(ctx, repo, localPath, s.encryptionKey)
+	if err != nil {
+		return fmt.Errorf("repository clone failed: %w", err)
+	}
+
+	return nil
+}
+
+// SyncRepository synchronizes a GitOps repository and returns sync results
+func (s *GitOpsRepositoryApplicationServiceImpl) SyncRepository(ctx context.Context, id string) (*SyncResult, error) {
+	repo, err := s.repository.GetByID(id)
+	if err != nil {
+		return nil, fmt.Errorf("repository retrieval failed: %w", err)
+	}
+
+	// Use sync service for synchronization
+	result, err := s.syncService.SyncRepository(ctx, repo, "", s.encryptionKey)
+	if err != nil {
+		return nil, fmt.Errorf("repository sync failed: %w", err)
+	}
+
+	// Update repository metadata if sync was successful
+	if result.Success {
+		repo.UpdateRepositoryMetadata(repo.DefaultBranch, result.CommitHash)
+		if err := s.repository.Update(repo); err != nil {
+			// Log error but don't fail the sync
+			fmt.Printf("Warning: failed to update repository metadata: %v\n", err)
+		}
+	}
+
+	return &SyncResult{
+		Success:       result.Success,
+		CommitHash:    result.CommitHash,
+		FilesChanged:  result.FilesChanged,
+		CRDsFound:     result.CRDsFound,
+		SyncDuration:  result.SyncDuration,
+		Errors:        result.Errors,
+		Warnings:      result.Warnings,
+		SyncedAt:      result.SyncedAt,
+		Details:       result.Details,
+	}, nil
+}
+
+// convertToDTO converts a domain GitRepository to a DTO
+func (s *GitOpsRepositoryApplicationServiceImpl) convertToDTO(repo *gitops.GitRepository) *GitOpsRepositoryDTO {
+	return &GitOpsRepositoryDTO{
+		ID:                     repo.ID,
+		Name:                   repo.Name,
+		URL:                    repo.URL,
+		Description:            repo.Description,
+		AuthenticationType:     repo.AuthenticationType,
+		ConnectionStatus:       repo.ConnectionStatus,
+		LastValidated:          repo.LastValidated,
+		DefaultBranch:          repo.DefaultBranch,
+		LastCommitHash:         repo.LastCommitHash,
+		LastFetched:            repo.LastFetched,
+		Created:                repo.Created,
+		LastModified:           repo.LastModified,
+		Metadata:               make(map[string]string), // Could be populated from a metadata field if added
+		SafeCredentialsSummary: repo.GetSafeCredentialsSummary(),
+	}
+}
+
+// Service interfaces that need to be implemented elsewhere
+
+// Note: GitAuthenticationService interface is defined in git_authentication_service_test.go
+
+// RepositorySyncService defines repository synchronization operations
+type RepositorySyncService interface {
+	// SyncRepository synchronizes a git repository and parses contents
+	SyncRepository(ctx context.Context, repo *gitops.GitRepository, localPath string, encryptionKey []byte) (*RepositorySyncResult, error)
+	
+	// ParseYAMLFiles parses YAML files from a local repository path
+	ParseYAMLFiles(ctx context.Context, localPath string) (*YAMLParseResult, error)
+	
+	// ValidateYAMLStructure validates YAML file structure and content
+	ValidateYAMLStructure(ctx context.Context, yamlContent []byte) (*YAMLValidationResult, error)
+	
+	// DetectDrift compares local repository state with Kubernetes cluster
+	DetectDrift(ctx context.Context, repo *gitops.GitRepository, clusterEndpoint string) (*DriftDetectionResult, error)
+}
+
+// RepositorySyncResult represents the result of a repository synchronization
+type RepositorySyncResult struct {
+	Success       bool                       `json:"success"`
+	CommitHash    string                     `json:"commit_hash"`
+	FilesChanged  int                        `json:"files_changed"`
+	CRDsFound     int                        `json:"crds_found"`
+	SyncDuration  time.Duration              `json:"sync_duration"`
+	Errors        []string                   `json:"errors,omitempty"`
+	Warnings      []string                   `json:"warnings,omitempty"`
+	SyncedAt      time.Time                  `json:"synced_at"`
+	Details       map[string]interface{}     `json:"details,omitempty"`
+}
+
+// YAMLParseResult represents the result of parsing YAML files
+type YAMLParseResult struct {
+	FilesProcessed int                        `json:"files_processed"`
+	CRDsFound      int                        `json:"crds_found"`
+	ParseErrors    []string                   `json:"parse_errors,omitempty"`
+	ParsedObjects  []map[string]interface{}   `json:"parsed_objects"`
+	ProcessingTime time.Duration              `json:"processing_time"`
+}
+
+// YAMLValidationResult represents the result of YAML validation
+type YAMLValidationResult struct {
+	Valid        bool                       `json:"valid"`
+	Errors       []ValidationError          `json:"errors,omitempty"`
+	Warnings     []ValidationWarning        `json:"warnings,omitempty"`
+	Summary      map[string]interface{}     `json:"summary"`
+}
+
+// DriftDetectionResult represents the result of drift detection
+type DriftDetectionResult struct {
+	HasDrift      bool                       `json:"has_drift"`
+	DriftItems    []DriftItem                `json:"drift_items,omitempty"`
+	ComparedAt    time.Time                  `json:"compared_at"`
+	Summary       map[string]interface{}     `json:"summary"`
+}
+
+// DriftItem represents a single configuration drift
+type DriftItem struct {
+	ResourceName string                     `json:"resource_name"`
+	ResourceType string                     `json:"resource_type"`
+	DriftType    string                     `json:"drift_type"` // "added", "removed", "modified"
+	ExpectedValue interface{}               `json:"expected_value,omitempty"`
+	ActualValue   interface{}               `json:"actual_value,omitempty"`
+	FieldPath     string                     `json:"field_path,omitempty"`
+}
+
+// Note: ValidationError and ValidationWarning types are defined in configuration_application_service.go

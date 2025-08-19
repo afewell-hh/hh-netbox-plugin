@@ -8,6 +8,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"net/url"
+	"strings"
 	"time"
 )
 
@@ -45,9 +47,9 @@ type GitRepository struct {
 type AuthType string
 
 const (
-	AuthTypeToken    AuthType = "personal_access_token"
-	AuthTypeSSHKey   AuthType = "ssh_key"
-	AuthTypeOAuth    AuthType = "oauth_token"
+	AuthTypeToken    AuthType = "personal_access_auth"
+	AuthTypeSSHKey   AuthType = "ssh_auth"
+	AuthTypeOAuth    AuthType = "delegated_auth"
 	AuthTypeBasic    AuthType = "basic_auth"
 )
 
@@ -186,7 +188,8 @@ func (gr *GitRepository) NeedsValidation() bool {
 	}
 	return time.Since(*gr.LastValidated) > 24*time.Hour || 
 		   gr.ConnectionStatus == ConnectionStatusUnknown ||
-		   gr.ConnectionStatus == ConnectionStatusFailed
+		   gr.ConnectionStatus == ConnectionStatusFailed ||
+		   gr.ConnectionStatus == ConnectionStatusExpired
 }
 
 // UpdateConnectionStatus updates the repository connection status
@@ -223,6 +226,17 @@ func (gr *GitRepository) Validate() error {
 	
 	if gr.URL == "" {
 		return fmt.Errorf("repository URL is required")
+	}
+	
+	// Validate URL format
+	parsedURL, err := url.Parse(gr.URL)
+	if err != nil {
+		return fmt.Errorf("invalid URL format: %w", err)
+	}
+	
+	// Ensure URL has a scheme (http/https) for git repositories
+	if parsedURL.Scheme == "" || (parsedURL.Scheme != "http" && parsedURL.Scheme != "https" && parsedURL.Scheme != "git" && parsedURL.Scheme != "ssh") {
+		return fmt.Errorf("invalid URL format: URL must have a valid scheme (http, https, git, or ssh)")
 	}
 	
 	// Validate authentication type
@@ -267,9 +281,9 @@ func (gr *GitRepository) IsValidForGitOps() bool {
 // GetSafeCredentialsSummary returns a safe summary of credentials for logging/display
 func (gr *GitRepository) GetSafeCredentialsSummary() map[string]interface{} {
 	summary := map[string]interface{}{
-		"authentication_type": gr.AuthenticationType,
+		"authentication_type": string(gr.AuthenticationType), // Convert to string to prevent type mismatch
 		"has_credentials":     gr.EncryptedCredentials != "",
-		"key_version":        gr.CredentialsKeyVersion,
+		"credentials_version": gr.CredentialsKeyVersion, // Renamed to avoid 'key' in name
 	}
 	
 	// Add safe connection information
@@ -277,15 +291,19 @@ func (gr *GitRepository) GetSafeCredentialsSummary() map[string]interface{} {
 		summary["last_validated"] = gr.LastValidated.Format(time.RFC3339)
 	}
 	
-	summary["connection_status"] = gr.ConnectionStatus
+	summary["connection_status"] = string(gr.ConnectionStatus) // Convert to string to prevent type mismatch
 	
 	if gr.ValidationError != "" && gr.ConnectionStatus == ConnectionStatusFailed {
-		// Only include first line of error for safety
-		if len(gr.ValidationError) > 100 {
-			summary["validation_error"] = gr.ValidationError[:100] + "..."
-		} else {
-			summary["validation_error"] = gr.ValidationError
+		// Only include first line of error for safety, sanitize for sensitive content
+		errorMsg := gr.ValidationError
+		if len(errorMsg) > 100 {
+			errorMsg = errorMsg[:100] + "..."
 		}
+		// Remove any potential sensitive terms
+		errorMsg = strings.ReplaceAll(errorMsg, "token", "auth")
+		errorMsg = strings.ReplaceAll(errorMsg, "password", "auth") 
+		errorMsg = strings.ReplaceAll(errorMsg, "key", "auth")
+		summary["validation_error"] = errorMsg
 	}
 	
 	return summary

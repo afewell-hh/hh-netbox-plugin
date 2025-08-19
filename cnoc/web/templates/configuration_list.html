@@ -1,0 +1,281 @@
+{{define "title"}}Configuration Management - CNOC{{end}}
+
+{{define "content"}}
+<div class="container-fluid">
+    <div class="row">
+        <div class="col-12">
+            <div class="card">
+                <div class="card-header d-flex justify-content-between align-items-center">
+                    <h3><i class="mdi mdi-cog-outline"></i> Configuration Management</h3>
+                    <div>
+                        <button class="btn btn-success" data-bs-toggle="modal" data-bs-target="#addConfigurationModal">
+                            <i class="mdi mdi-plus"></i> Add Configuration
+                        </button>
+                        <button class="btn btn-info ms-2" onclick="location.reload()">
+                            <i class="mdi mdi-refresh"></i> Refresh
+                        </button>
+                    </div>
+                </div>
+                <div class="card-body">
+                    {{if .Data.Configurations}}
+                    <div class="table-responsive">
+                        <table class="table table-hover">
+                            <thead>
+                                <tr>
+                                    <th>ID</th>
+                                    <th>Name</th>
+                                    <th>Mode</th>
+                                    <th>Version</th>
+                                    <th>Status</th>
+                                    <th>Components</th>
+                                    <th>Created</th>
+                                    <th>Updated</th>
+                                    <th>Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {{range .Data.Configurations}}
+                                <tr>
+                                    <td>
+                                        <code>{{.ID}}</code>
+                                    </td>
+                                    <td>
+                                        <a href="/configurations/{{.ID}}" class="text-decoration-none fw-bold">
+                                            {{.Name}}
+                                        </a>
+                                    </td>
+                                    <td>
+                                        {{if eq .Mode "production"}}
+                                            <span class="badge bg-success">
+                                                <i class="mdi mdi-check-circle"></i> Production
+                                            </span>
+                                        {{else if eq .Mode "staging"}}
+                                            <span class="badge bg-warning">
+                                                <i class="mdi mdi-test-tube"></i> Staging
+                                            </span>
+                                        {{else if eq .Mode "development"}}
+                                            <span class="badge bg-info">
+                                                <i class="mdi mdi-code-braces"></i> Development
+                                            </span>
+                                        {{else}}
+                                            <span class="badge bg-secondary">{{.Mode}}</span>
+                                        {{end}}
+                                    </td>
+                                    <td>
+                                        {{if .Version}}
+                                            <span class="badge bg-primary">v{{.Version}}</span>
+                                        {{else}}
+                                            <span class="text-muted">-</span>
+                                        {{end}}
+                                    </td>
+                                    <td>
+                                        {{if eq .Status "active"}}
+                                            <span class="badge bg-success">
+                                                <i class="mdi mdi-check-circle"></i> Active
+                                            </span>
+                                        {{else if eq .Status "pending"}}
+                                            <span class="badge bg-warning">
+                                                <i class="mdi mdi-clock"></i> Pending
+                                            </span>
+                                        {{else if eq .Status "error"}}
+                                            <span class="badge bg-danger">
+                                                <i class="mdi mdi-alert-circle"></i> Error
+                                            </span>
+                                        {{else if eq .Status "inactive"}}
+                                            <span class="badge bg-secondary">
+                                                <i class="mdi mdi-pause"></i> Inactive
+                                            </span>
+                                        {{else}}
+                                            <span class="badge bg-secondary">{{.Status}}</span>
+                                        {{end}}
+                                    </td>
+                                    <td>
+                                        <span class="badge bg-info">{{.Components}}</span>
+                                    </td>
+                                    <td>
+                                        {{if .CreatedAt}}
+                                            <span title="{{.CreatedAt}}">{{.CreatedAt}}</span>
+                                        {{else}}
+                                            <span class="text-muted">-</span>
+                                        {{end}}
+                                    </td>
+                                    <td>
+                                        {{if .UpdatedAt}}
+                                            <span title="{{.UpdatedAt}}">{{.UpdatedAt}}</span>
+                                        {{else}}
+                                            <span class="text-muted">-</span>
+                                        {{end}}
+                                    </td>
+                                    <td>
+                                        <div class="btn-group btn-group-sm" role="group">
+                                            <a href="/configurations/{{.ID}}" class="btn btn-info" title="View Details">
+                                                <i class="mdi mdi-eye"></i>
+                                            </a>
+                                            <a href="/configurations/{{.ID}}/edit" class="btn btn-warning" title="Edit">
+                                                <i class="mdi mdi-pencil"></i>
+                                            </a>
+                                            <button class="btn btn-danger" 
+                                                    data-confirm-delete="Are you sure you want to delete configuration '{{.Name}}'?"
+                                                    onclick="deleteConfiguration('{{.ID}}')"
+                                                    title="Delete">
+                                                <i class="mdi mdi-delete"></i>
+                                            </button>
+                                        </div>
+                                    </td>
+                                </tr>
+                                {{end}}
+                            </tbody>
+                        </table>
+                    </div>
+                    
+                    <!-- Summary Statistics -->
+                    <div class="row mt-4">
+                        <div class="col-md-3">
+                            <div class="card border-primary">
+                                <div class="card-body text-center">
+                                    <h5>{{.Data.TotalCount}}</h5>
+                                    <small class="text-muted">Total Configurations</small>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-md-3">
+                            <div class="card border-success">
+                                <div class="card-body text-center">
+                                    <h5>{{.Stats.TotalCRDs}}</h5>
+                                    <small class="text-muted">Active Components</small>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-md-3">
+                            <div class="card border-info">
+                                <div class="card-body text-center">
+                                    <h5>{{.Data.Page}}</h5>
+                                    <small class="text-muted">Current Page</small>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-md-3">
+                            <div class="card border-warning">
+                                <div class="card-body text-center">
+                                    <h5>{{.Data.PageSize}}</h5>
+                                    <small class="text-muted">Page Size</small>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    {{else}}
+                    <div class="alert alert-info">
+                        <h5><i class="mdi mdi-information"></i> No Configurations Available</h5>
+                        <p>Get started by creating your first configuration to manage your infrastructure components.</p>
+                        <button class="btn btn-success" data-bs-toggle="modal" data-bs-target="#addConfigurationModal">
+                            <i class="mdi mdi-plus"></i> Add Your First Configuration
+                        </button>
+                    </div>
+                    {{end}}
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Add Configuration Modal -->
+<div class="modal fade" id="addConfigurationModal" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title"><i class="mdi mdi-cog-outline"></i> Add New Configuration</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <form action="/configurations/add" method="POST">
+                <div class="modal-body">
+                    <div class="mb-3">
+                        <label for="configurationName" class="form-label">Configuration Name *</label>
+                        <input type="text" class="form-control" id="configurationName" name="name" required>
+                        <small class="text-muted">A unique name for this configuration</small>
+                    </div>
+                    <div class="mb-3">
+                        <label for="configurationDescription" class="form-label">Description</label>
+                        <textarea class="form-control" id="configurationDescription" name="description" rows="2"></textarea>
+                    </div>
+                    <div class="mb-3">
+                        <label for="configurationMode" class="form-label">Mode *</label>
+                        <select class="form-select" id="configurationMode" name="mode" required>
+                            <option value="">-- Select Mode --</option>
+                            <option value="production">Production</option>
+                            <option value="staging">Staging</option>
+                            <option value="development">Development</option>
+                        </select>
+                        <small class="text-muted">The deployment environment for this configuration</small>
+                    </div>
+                    <div class="mb-3">
+                        <label for="configurationVersion" class="form-label">Version</label>
+                        <input type="text" class="form-control" id="configurationVersion" name="version" 
+                               placeholder="1.0.0">
+                        <small class="text-muted">Semantic version for this configuration</small>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Components</label>
+                        <div class="row">
+                            <div class="col-md-6">
+                                <div class="form-check">
+                                    <input class="form-check-input" type="checkbox" id="component-argocd" name="components[]" value="argocd">
+                                    <label class="form-check-label" for="component-argocd">
+                                        ArgoCD - GitOps Continuous Delivery
+                                    </label>
+                                </div>
+                            </div>
+                            <div class="col-md-6">
+                                <div class="form-check">
+                                    <input class="form-check-input" type="checkbox" id="component-prometheus" name="components[]" value="prometheus">
+                                    <label class="form-check-label" for="component-prometheus">
+                                        Prometheus - Monitoring and Alerting
+                                    </label>
+                                </div>
+                            </div>
+                            <div class="col-md-6">
+                                <div class="form-check">
+                                    <input class="form-check-input" type="checkbox" id="component-grafana" name="components[]" value="grafana">
+                                    <label class="form-check-label" for="component-grafana">
+                                        Grafana - Observability Platform
+                                    </label>
+                                </div>
+                            </div>
+                            <div class="col-md-6">
+                                <div class="form-check">
+                                    <input class="form-check-input" type="checkbox" id="component-certmanager" name="components[]" value="cert-manager">
+                                    <label class="form-check-label" for="component-certmanager">
+                                        Cert-Manager - Certificate Management
+                                    </label>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <button type="submit" class="btn btn-success">
+                        <i class="mdi mdi-plus"></i> Add Configuration
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+{{end}}
+
+{{define "scripts"}}
+<script>
+function deleteConfiguration(configId) {
+    if (confirm('This action cannot be undone. Continue?')) {
+        makeAjaxRequest(`/api/configurations/${configId}`, 'DELETE', null, function(err, response) {
+            if (err) {
+                showNotification('Failed to delete configuration: ' + err.message, 'danger');
+            } else {
+                showNotification('Configuration deleted successfully', 'success');
+                setTimeout(() => location.reload(), 1000);
+            }
+        });
+    }
+}
+</script>
+{{end}}

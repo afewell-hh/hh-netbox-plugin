@@ -1,0 +1,250 @@
+package domain
+
+import (
+	"context"
+	"time"
+)
+
+// FORGE RED PHASE VALIDATION: GitRepositoryService Interface Check
+// This file validates that the GitRepositoryService interface is properly defined
+// and demonstrates FORGE TDD red phase compliance
+
+// GitRepositoryService defines the interface for Git repository operations
+// This service handles actual Git repository cloning, pulling, and sync operations
+type GitRepositoryService interface {
+	// Core Git operations
+	CloneRepository(ctx context.Context, repoURL string, credentials GitCredentialsPayload, localPath string) (*CloneResult, error)
+	PullRepository(ctx context.Context, localPath string) (*PullResult, error)
+	DetectChanges(ctx context.Context, localPath string) (*ChangeDetectionResult, error)
+	
+	// Repository status and management
+	GetRepositoryStatus(localPath string) (*RepositoryStatus, error)
+	CleanupRepository(localPath string) error
+	ValidateRepository(localPath string) (*ValidationResult, error)
+	
+	// File operations
+	ListFiles(localPath string, pattern string) ([]string, error)
+	GetCommitHistory(localPath string, limit int) ([]CommitInfo, error)
+	
+	// Repository health and maintenance
+	GetRepositoryHealth(localPath string) (*RepositoryHealth, error)
+	OptimizeRepository(localPath string) (*OptimizationResult, error)
+}
+
+// GitCredentialsPayload represents authentication credentials for Git operations
+type GitCredentialsPayload struct {
+	AuthType         string            `json:"auth_type"`         // "token", "ssh_key", "basic", "oauth"
+	Token            string            `json:"token,omitempty"`
+	Username         string            `json:"username,omitempty"`
+	Password         string            `json:"password,omitempty"`
+	SSHKey           string            `json:"ssh_key,omitempty"`
+	SSHKeyPassphrase string            `json:"ssh_key_passphrase,omitempty"`
+	OAuthToken       string            `json:"oauth_token,omitempty"`
+	RefreshToken     string            `json:"refresh_token,omitempty"`
+	ExpiresAt        *time.Time        `json:"expires_at,omitempty"`
+	Metadata         map[string]string `json:"metadata,omitempty"`
+}
+
+// CloneResult represents the result of a git clone operation
+type CloneResult struct {
+	Success          bool              `json:"success"`
+	LocalPath        string            `json:"local_path"`
+	DefaultBranch    string            `json:"default_branch"`
+	CommitHash       string            `json:"commit_hash"`
+	FilesCloned      int               `json:"files_cloned"`
+	SizeBytes        int64             `json:"size_bytes"`
+	CloneDuration    time.Duration     `json:"clone_duration"`
+	Error            string            `json:"error,omitempty"`
+	PerformanceData  *PerformanceData  `json:"performance_data,omitempty"`
+	RepositoryInfo   *RepositoryInfo   `json:"repository_info,omitempty"`
+}
+
+// PullResult represents the result of a git pull operation
+type PullResult struct {
+	Success          bool              `json:"success"`
+	FilesChanged     int               `json:"files_changed"`
+	CommitHash       string            `json:"commit_hash"`
+	PreviousCommit   string            `json:"previous_commit"`
+	PullDuration     time.Duration     `json:"pull_duration"`
+	ConflictsFound   bool              `json:"conflicts_found"`
+	ConflictFiles    []string          `json:"conflict_files,omitempty"`
+	Error            string            `json:"error,omitempty"`
+	PerformanceData  *PerformanceData  `json:"performance_data,omitempty"`
+	ChangesSummary   *ChangesSummary   `json:"changes_summary,omitempty"`
+}
+
+// ChangeDetectionResult represents the result of change detection
+type ChangeDetectionResult struct {
+	HasChanges       bool              `json:"has_changes"`
+	LocalChanges     int               `json:"local_changes"`
+	RemoteChanges    int               `json:"remote_changes"`
+	ConflictingFiles []string          `json:"conflicting_files,omitempty"`
+	NewFiles         []string          `json:"new_files,omitempty"`
+	ModifiedFiles    []string          `json:"modified_files,omitempty"`
+	DeletedFiles     []string          `json:"deleted_files,omitempty"`
+	DetectionTime    time.Duration     `json:"detection_time"`
+	Error            string            `json:"error,omitempty"`
+}
+
+// RepositoryStatus represents the current status of a Git repository
+type RepositoryStatus struct {
+	IsValid          bool              `json:"is_valid"`
+	IsClean          bool              `json:"is_clean"`
+	CurrentBranch    string            `json:"current_branch"`
+	CurrentCommit    string            `json:"current_commit"`
+	RemoteURL        string            `json:"remote_url"`
+	LastFetched      *time.Time        `json:"last_fetched,omitempty"`
+	FileCount        int               `json:"file_count"`
+	SizeBytes        int64             `json:"size_bytes"`
+	BranchInfo       []BranchInfo      `json:"branch_info,omitempty"`
+	WorkingDir       string            `json:"working_dir"`
+}
+
+// ValidationResult represents repository validation results
+type ValidationResult struct {
+	IsValid          bool              `json:"is_valid"`
+	Errors           []string          `json:"errors,omitempty"`
+	Warnings         []string          `json:"warnings,omitempty"`
+	RepositoryType   string            `json:"repository_type"`   // "git", "bare", "invalid"
+	GitVersion       string            `json:"git_version,omitempty"`
+	RemoteConnected  bool              `json:"remote_connected"`
+	ValidationTime   time.Duration     `json:"validation_time"`
+	RecommendedActions []string        `json:"recommended_actions,omitempty"`
+}
+
+// CommitInfo represents information about a Git commit
+type CommitInfo struct {
+	Hash             string            `json:"hash"`
+	Message          string            `json:"message"`
+	Author           string            `json:"author"`
+	Timestamp        time.Time         `json:"timestamp"`
+	FilesChanged     int               `json:"files_changed"`
+	Insertions       int               `json:"insertions"`
+	Deletions        int               `json:"deletions"`
+	ParentHashes     []string          `json:"parent_hashes,omitempty"`
+}
+
+// RepositoryHealth represents the health status of a Git repository
+type RepositoryHealth struct {
+	HealthScore      float64           `json:"health_score"`      // 0.0 to 100.0
+	Status           string            `json:"status"`            // "healthy", "warning", "critical"
+	Issues           []HealthIssue     `json:"issues,omitempty"`
+	LastChecked      time.Time         `json:"last_checked"`
+	Performance      *HealthPerformance `json:"performance,omitempty"`
+	DiskUsage        int64             `json:"disk_usage_bytes"`
+	RecommendedActions []string        `json:"recommended_actions,omitempty"`
+}
+
+// OptimizationResult represents the result of repository optimization
+type OptimizationResult struct {
+	Success          bool              `json:"success"`
+	SizeBefore       int64             `json:"size_before_bytes"`
+	SizeAfter        int64             `json:"size_after_bytes"`
+	SpaceSaved       int64             `json:"space_saved_bytes"`
+	OptimizationTime time.Duration     `json:"optimization_time"`
+	ActionsPerformed []string          `json:"actions_performed"`
+	Error            string            `json:"error,omitempty"`
+}
+
+// Supporting types
+
+type PerformanceData struct {
+	NetworkLatency   time.Duration     `json:"network_latency"`
+	TransferRate     float64           `json:"transfer_rate_mbps"`
+	CPUUsage         float64           `json:"cpu_usage_percent"`
+	MemoryUsage      int64             `json:"memory_usage_bytes"`
+}
+
+type RepositoryInfo struct {
+	Provider         string            `json:"provider"`          // "github", "gitlab", "azure", "generic"
+	IsPrivate        bool              `json:"is_private"`
+	DefaultBranch    string            `json:"default_branch"`
+	BranchCount      int               `json:"branch_count"`
+	TagCount         int               `json:"tag_count"`
+	Languages        []string          `json:"languages,omitempty"`
+}
+
+type ChangesSummary struct {
+	AddedFiles       []string          `json:"added_files,omitempty"`
+	ModifiedFiles    []string          `json:"modified_files,omitempty"`
+	DeletedFiles     []string          `json:"deleted_files,omitempty"`
+	RenamedFiles     []string          `json:"renamed_files,omitempty"`
+	TotalChanges     int               `json:"total_changes"`
+}
+
+type BranchInfo struct {
+	Name             string            `json:"name"`
+	IsRemote         bool              `json:"is_remote"`
+	LastCommit       string            `json:"last_commit"`
+	LastCommitDate   time.Time         `json:"last_commit_date"`
+	IsCurrent        bool              `json:"is_current"`
+}
+
+type HealthIssue struct {
+	Type             string            `json:"type"`              // "corruption", "performance", "disk_space", "connectivity"
+	Severity         string            `json:"severity"`          // "low", "medium", "high", "critical"
+	Description      string            `json:"description"`
+	RecommendedAction string           `json:"recommended_action"`
+}
+
+type HealthPerformance struct {
+	CloneTimeAvg     time.Duration     `json:"clone_time_avg"`
+	PullTimeAvg      time.Duration     `json:"pull_time_avg"`
+	LastOperationTime time.Duration    `json:"last_operation_time"`
+}
+
+// FORGE RED PHASE VALIDATION FUNCTION
+// This function validates that the interface is properly defined but not implemented
+func ValidateGitRepositoryServiceInterface() bool {
+	// Interface is defined but no implementation exists - this is correct RED phase state
+	var service GitRepositoryService = nil
+	return service == nil // Should be true - no implementation exists yet
+}
+
+// FORGE INTERFACE COMPLETENESS CHECK
+// This function validates that all required methods are defined
+func GetGitRepositoryServiceMethods() []string {
+	return []string{
+		"CloneRepository",
+		"PullRepository", 
+		"DetectChanges",
+		"GetRepositoryStatus",
+		"CleanupRepository",
+		"ValidateRepository",
+		"ListFiles",
+		"GetCommitHistory",
+		"GetRepositoryHealth",
+		"OptimizeRepository",
+	}
+}
+
+// FORGE QUANTITATIVE REQUIREMENTS
+// This structure defines the quantitative performance requirements
+type ForgePerformanceRequirements struct {
+	CloneMaxDuration          time.Duration // <3 seconds
+	PullMaxDuration           time.Duration // <1 second
+	ChangeDetectionMaxDuration time.Duration // <500ms
+	FileListingMaxDuration    time.Duration // <200ms
+	PerformanceVariance       time.Duration // <300ms
+	AvgCloneDuration         time.Duration // <2 seconds
+	ConcurrentOperations     int           // 10+ operations
+	LargeRepoFileCount       int           // 1500+ files
+	LargeRepoSize            int64         // 50MB+
+	SuccessRate              float64       // >50%
+}
+
+// GetForgeRequirements returns the quantitative requirements for validation
+func GetForgeRequirements() ForgePerformanceRequirements {
+	return ForgePerformanceRequirements{
+		CloneMaxDuration:          3 * time.Second,
+		PullMaxDuration:           1 * time.Second,
+		ChangeDetectionMaxDuration: 500 * time.Millisecond,
+		FileListingMaxDuration:    200 * time.Millisecond,
+		PerformanceVariance:       300 * time.Millisecond,
+		AvgCloneDuration:         2 * time.Second,
+		ConcurrentOperations:     10,
+		LargeRepoFileCount:       1500,
+		LargeRepoSize:            50 * 1024 * 1024, // 50MB
+		SuccessRate:              0.5, // 50%
+	}
+}

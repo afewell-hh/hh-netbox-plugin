@@ -113,10 +113,24 @@ func (suite *K8sClientTestSuite) SetupSuite() {
 	// FORGE Requirement: Real cluster connectivity testing
 	suite.setupKubernetesConfig()
 	
-	// RED PHASE: Clients will be nil until implemented
-	suite.clientset = nil       // Will cause tests to fail - expected in FORGE methodology
-	suite.dynamicClient = nil   // Will cause tests to fail - expected in FORGE methodology
-	suite.discoveryClient = nil // Will cause tests to fail - expected in FORGE methodology
+	// Try to create clients - may fail if no cluster available
+	var err error
+	if suite.restConfig != nil {
+		suite.clientset, err = NewKubernetesClient(suite.config)
+		if err != nil {
+			suite.T().Logf("Failed to create Kubernetes client: %v", err)
+		}
+		
+		suite.dynamicClient, err = NewDynamicClient(suite.config) 
+		if err != nil {
+			suite.T().Logf("Failed to create dynamic client: %v", err)
+		}
+		
+		suite.discoveryClient, err = NewDiscoveryClient(suite.config)
+		if err != nil {
+			suite.T().Logf("Failed to create discovery client: %v", err)
+		}
+	}
 	
 	suite.evidence["setup_completed"] = time.Now()
 	suite.evidence["test_namespace"] = suite.testNamespace
@@ -648,7 +662,7 @@ func (suite *K8sClientTestSuite) TestResourceQuotaValidation() {
 		}
 	}
 	
-	assert.Greater(t, totalCPU.Value(), int64(0), "Cluster should have CPU capacity")
+	assert.Greater(t, totalCPU.MilliValue(), int64(0), "Cluster should have CPU capacity")
 	assert.Greater(t, totalMemory.Value(), int64(0), "Cluster should have memory capacity")
 	
 	// Test 2: Validate resource requirements for CNOC workloads
@@ -660,7 +674,7 @@ func (suite *K8sClientTestSuite) TestResourceQuotaValidation() {
 	}
 	
 	// Verify cluster can accommodate CNOC requirements
-	assert.Greater(t, totalCPU.Value(), cnocRequirements["cpu"].Value(), "Cluster should have sufficient CPU for CNOC")
+	assert.Greater(t, totalCPU.MilliValue(), cnocRequirements["cpu"].MilliValue(), "Cluster should have sufficient CPU for CNOC")
 	assert.Greater(t, totalMemory.Value(), cnocRequirements["memory"].Value(), "Cluster should have sufficient memory for CNOC")
 	
 	// Test 3: Storage class availability
@@ -669,7 +683,7 @@ func (suite *K8sClientTestSuite) TestResourceQuotaValidation() {
 	assert.Greater(t, len(storageClasses.Items), 0, "Cluster should have at least one storage class")
 	
 	// Test 4: Persistent volume capabilities
-	pvs, err := suite.clientset.CoreV1().PersistentVolumes().List(ctx, metav1.ListOptions{})
+	_, err = suite.clientset.CoreV1().PersistentVolumes().List(ctx, metav1.ListOptions{})
 	assert.NoError(t, err, "Should list persistent volumes")
 	// Note: PVs might be empty in test cluster - this is okay
 	
@@ -681,7 +695,7 @@ func (suite *K8sClientTestSuite) TestResourceQuotaValidation() {
 	suite.evidence["cluster_storage_capacity"] = totalStorage.String()
 	suite.evidence["storage_classes_available"] = len(storageClasses.Items)
 	suite.evidence["cnoc_requirements_met"] = map[string]bool{
-		"cpu":     totalCPU.Value() >= cnocRequirements["cpu"].Value(),
+		"cpu":     totalCPU.MilliValue() >= cnocRequirements["cpu"].MilliValue(),
 		"memory":  totalMemory.Value() >= cnocRequirements["memory"].Value(),
 		"storage": len(storageClasses.Items) > 0,
 	}
@@ -690,22 +704,7 @@ func (suite *K8sClientTestSuite) TestResourceQuotaValidation() {
 	assert.Less(t, duration, 10*time.Second, "Resource validation should be fast")
 }
 
-// Helper functions for RED PHASE testing (will fail until implemented)
-
-func NewKubernetesClient(config *K8sClientConfig) (kubernetes.Interface, error) {
-	// RED PHASE: This function should return nil until implemented
-	return nil, fmt.Errorf("NewKubernetesClient not implemented - FORGE RED PHASE expected failure")
-}
-
-func NewDynamicClient(config *K8sClientConfig) (dynamic.Interface, error) {
-	// RED PHASE: This function should return nil until implemented
-	return nil, fmt.Errorf("NewDynamicClient not implemented - FORGE RED PHASE expected failure")
-}
-
-func NewDiscoveryClient(config *K8sClientConfig) (discovery.DiscoveryInterface, error) {
-	// RED PHASE: This function should return nil until implemented
-	return nil, fmt.Errorf("NewDiscoveryClient not implemented - FORGE RED PHASE expected failure")
-}
+// Helper functions are now implemented in k8s_client.go
 
 // Run the test suite
 func TestK8sClientTestSuite(t *testing.T) {
@@ -761,8 +760,6 @@ func BenchmarkClusterConnectivity(b *testing.B) {
 		b.Skip("Kubernetes client not implemented - RED PHASE expected")
 		return
 	}
-	
-	ctx := context.Background()
 	
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {

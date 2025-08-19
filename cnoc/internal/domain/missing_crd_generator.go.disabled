@@ -1,0 +1,505 @@
+package domain
+
+import (
+	"encoding/json"
+	"fmt"
+	"time"
+)
+
+// MissingCRDGenerator creates valid test data samples for CRD types not present in real lab data
+// Missing Types: External, ExternalAttachment, ExternalPeering, IPv4Namespace, VPCAttachment, VPCPeering, VLANNamespace
+type MissingCRDGenerator struct {
+	fabricID      string
+	sampleCounter map[CRDType]int
+}
+
+// NewMissingCRDGenerator creates generator for missing CRD types
+func NewMissingCRDGenerator(fabricID string) *MissingCRDGenerator {
+	return &MissingCRDGenerator{
+		fabricID:      fabricID,
+		sampleCounter: make(map[CRDType]int),
+	}
+}
+
+// GenerateAllMissingSamples creates samples for all 7 missing CRD types
+func (g *MissingCRDGenerator) GenerateAllMissingSamples() (map[CRDType][]*CRDResource, error) {
+	samples := make(map[CRDType][]*CRDResource)
+	
+	missingTypes := []CRDType{
+		CRDTypeExternal,
+		CRDTypeExternalAttachment,
+		CRDTypeExternalPeering,
+		CRDTypeIPv4Namespace,
+		CRDTypeVPCAttachment,
+		CRDTypeVPCPeering,
+		CRDTypeVLANNamespace,
+	}
+	
+	for _, crdType := range missingTypes {
+		typeSamples, err := g.GenerateSamplesForType(crdType, 3) // Generate 3 samples per type
+		if err != nil {
+			return nil, fmt.Errorf("failed to generate samples for %s: %w", crdType, err)
+		}
+		samples[crdType] = typeSamples
+	}
+	
+	return samples, nil
+}
+
+// GenerateSamplesForType generates multiple samples for a specific CRD type
+func (g *MissingCRDGenerator) GenerateSamplesForType(crdType CRDType, count int) ([]*CRDResource, error) {
+	var samples []*CRDResource
+	
+	for i := 0; i < count; i++ {
+		sample, err := g.GenerateSample(crdType)
+		if err != nil {
+			return nil, fmt.Errorf("failed to generate sample %d for %s: %w", i+1, crdType, err)
+		}
+		samples = append(samples, sample)
+	}
+	
+	return samples, nil
+}
+
+// GenerateSample creates a valid sample for the specified CRD type
+func (g *MissingCRDGenerator) GenerateSample(crdType CRDType) (*CRDResource, error) {
+	g.sampleCounter[crdType]++
+	counter := g.sampleCounter[crdType]
+	
+	switch crdType {
+	case CRDTypeExternal:
+		return g.generateExternalSample(counter)
+	case CRDTypeExternalAttachment:
+		return g.generateExternalAttachmentSample(counter)
+	case CRDTypeExternalPeering:
+		return g.generateExternalPeeringSample(counter)
+	case CRDTypeIPv4Namespace:
+		return g.generateIPv4NamespaceSample(counter)
+	case CRDTypeVPCAttachment:
+		return g.generateVPCAttachmentSample(counter)
+	case CRDTypeVPCPeering:
+		return g.generateVPCPeeringSample(counter)
+	case CRDTypeVLANNamespace:
+		return g.generateVLANNamespaceSample(counter)
+	default:
+		return nil, fmt.Errorf("unsupported CRD type for generation: %s", crdType)
+	}
+}
+
+// generateExternalSample creates External CRD sample
+func (g *MissingCRDGenerator) generateExternalSample(counter int) (*CRDResource, error) {
+	name := fmt.Sprintf("external-system-%d", counter)
+	
+	spec := map[string]interface{}{
+		"description": fmt.Sprintf("External system %d connected to fabric", counter),
+		"prefix":      fmt.Sprintf("192.168.%d.0/24", counter),
+		"connection": map[string]interface{}{
+			"switch": fmt.Sprintf("leaf-%02d", (counter%5)+1),
+			"port":   fmt.Sprintf("E1/%d", counter+20),
+		},
+		"protocols": []string{"bgp"},
+		"asn":       65000 + counter,
+	}
+	
+	return g.createCRDResource(CRDTypeExternal, name, spec)
+}
+
+// generateExternalAttachmentSample creates ExternalAttachment CRD sample
+func (g *MissingCRDGenerator) generateExternalAttachmentSample(counter int) (*CRDResource, error) {
+	name := fmt.Sprintf("external-attachment-%d", counter)
+	
+	spec := map[string]interface{}{
+		"external": fmt.Sprintf("external-system-%d", counter),
+		"connection": map[string]interface{}{
+			"type": "static",
+			"routes": []map[string]interface{}{
+				{
+					"prefix":  fmt.Sprintf("10.%d.0.0/16", counter),
+					"nexthop": fmt.Sprintf("192.168.%d.1", counter),
+				},
+			},
+		},
+		"vlan": 1000 + counter,
+	}
+	
+	return g.createCRDResource(CRDTypeExternalAttachment, name, spec)
+}
+
+// generateExternalPeeringSample creates ExternalPeering CRD sample
+func (g *MissingCRDGenerator) generateExternalPeeringSample(counter int) (*CRDResource, error) {
+	name := fmt.Sprintf("external-peering-%d", counter)
+	
+	spec := map[string]interface{}{
+		"external": fmt.Sprintf("external-system-%d", counter),
+		"protocol": "bgp",
+		"localAsn": 65100,
+		"peerAsn":  65000 + counter,
+		"peerIp":   fmt.Sprintf("192.168.%d.1", counter),
+		"authentication": map[string]interface{}{
+			"md5": map[string]interface{}{
+				"password": fmt.Sprintf("peer-secret-%d", counter),
+			},
+		},
+		"prefixFilters": []map[string]interface{}{
+			{
+				"action": "permit",
+				"prefix": fmt.Sprintf("10.%d.0.0/16", counter),
+			},
+		},
+	}
+	
+	return g.createCRDResource(CRDTypeExternalPeering, name, spec)
+}
+
+// generateIPv4NamespaceSample creates IPv4Namespace CRD sample
+func (g *MissingCRDGenerator) generateIPv4NamespaceSample(counter int) (*CRDResource, error) {
+	name := fmt.Sprintf("ipv4-namespace-%d", counter)
+	
+	spec := map[string]interface{}{
+		"description": fmt.Sprintf("IPv4 namespace for tenant %d", counter),
+		"subnets": []map[string]interface{}{
+			{
+				"name":   fmt.Sprintf("tenant-%d-subnet", counter),
+				"subnet": fmt.Sprintf("172.16.%d.0/24", counter),
+				"gateway": fmt.Sprintf("172.16.%d.1", counter),
+			},
+		},
+		"dhcp": map[string]interface{}{
+			"enabled": true,
+			"range": map[string]interface{}{
+				"start": fmt.Sprintf("172.16.%d.10", counter),
+				"end":   fmt.Sprintf("172.16.%d.250", counter),
+			},
+		},
+		"policies": []map[string]interface{}{
+			{
+				"name": "default-allow",
+				"action": "permit",
+			},
+		},
+	}
+	
+	return g.createCRDResource(CRDTypeIPv4Namespace, name, spec)
+}
+
+// generateVPCAttachmentSample creates VPCAttachment CRD sample
+func (g *MissingCRDGenerator) generateVPCAttachmentSample(counter int) (*CRDResource, error) {
+	name := fmt.Sprintf("vpc-attachment-%d", counter)
+	
+	spec := map[string]interface{}{
+		"vpc": fmt.Sprintf("test-vpc-%d", counter),
+		"subnet": fmt.Sprintf("test-subnet-%d", counter),
+		"connection": map[string]interface{}{
+			"server": fmt.Sprintf("server-%02d", (counter%10)+1),
+			"switch": fmt.Sprintf("leaf-%02d", (counter%5)+1),
+		},
+		"vlan": 2000 + counter,
+		"ipAllocations": []map[string]interface{}{
+			{
+				"ip":     fmt.Sprintf("10.0.%d.10", counter),
+				"server": fmt.Sprintf("server-%02d", (counter%10)+1),
+			},
+		},
+	}
+	
+	return g.createCRDResource(CRDTypeVPCAttachment, name, spec)
+}
+
+// generateVPCPeeringSample creates VPCPeering CRD sample
+func (g *MissingCRDGenerator) generateVPCPeeringSample(counter int) (*CRDResource, error) {
+	name := fmt.Sprintf("vpc-peering-%d", counter)
+	
+	spec := map[string]interface{}{
+		"permit": []map[string]interface{}{
+			{
+				"from": map[string]interface{}{
+					"vpc":    fmt.Sprintf("test-vpc-%d", counter),
+					"subnet": fmt.Sprintf("test-subnet-%d", counter),
+				},
+				"to": map[string]interface{}{
+					"vpc":    fmt.Sprintf("test-vpc-%d", counter+1),
+					"subnet": fmt.Sprintf("test-subnet-%d", counter+1),
+				},
+			},
+		},
+		"routing": map[string]interface{}{
+			"type": "static",
+		},
+		"policies": []map[string]interface{}{
+			{
+				"name":   "allow-icmp",
+				"action": "permit",
+				"protocol": "icmp",
+			},
+			{
+				"name":   "allow-tcp-80",
+				"action": "permit",
+				"protocol": "tcp",
+				"port":   80,
+			},
+		},
+	}
+	
+	return g.createCRDResource(CRDTypeVPCPeering, name, spec)
+}
+
+// generateVLANNamespaceSample creates VLANNamespace CRD sample
+func (g *MissingCRDGenerator) generateVLANNamespaceSample(counter int) (*CRDResource, error) {
+	name := fmt.Sprintf("vlan-namespace-%d", counter)
+	
+	spec := map[string]interface{}{
+		"description": fmt.Sprintf("VLAN namespace for group %d", counter),
+		"ranges": []map[string]interface{}{
+			{
+				"from": 1000 + (counter * 100),
+				"to":   1099 + (counter * 100),
+			},
+		},
+		"reserved": []int{
+			1001 + (counter * 100),
+			1002 + (counter * 100),
+		},
+		"assignments": map[string]interface{}{
+			fmt.Sprintf("tenant-%d", counter): []int{
+				1010 + (counter * 100),
+				1011 + (counter * 100),
+				1012 + (counter * 100),
+			},
+		},
+		"policies": map[string]interface{}{
+			"autoAssign": true,
+			"isolation":  true,
+		},
+	}
+	
+	return g.createCRDResource(CRDTypeVLANNamespace, name, spec)
+}
+
+// createCRDResource creates a CRDResource from type, name, and spec
+func (g *MissingCRDGenerator) createCRDResource(crdType CRDType, name string, spec map[string]interface{}) (*CRDResource, error) {
+	// Get metadata for this CRD type
+	metadata := GetCRDTypeMetadata()
+	meta, exists := metadata[crdType]
+	if !exists {
+		return nil, fmt.Errorf("no metadata found for CRD type: %s", crdType)
+	}
+	
+	// Convert spec to JSON
+	specJSON, err := json.Marshal(spec)
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal spec to JSON: %w", err)
+	}
+	
+	// Create CRDResource
+	crd := &CRDResource{
+		ID:               fmt.Sprintf("generated-%s-%s", crdType, name),
+		FabricID:         g.fabricID,
+		Name:             name,
+		Kind:             meta.Kind,
+		Type:             crdType,
+		APIVersion:       meta.APIVersion,
+		Namespace:        "default",
+		Labels: map[string]string{
+			"app.kubernetes.io/name":       "hedgehog",
+			"app.kubernetes.io/component":  string(crdType),
+			"app.kubernetes.io/managed-by": "cnoc",
+			"cnoc.githedgehog.com/generated": "true",
+		},
+		Spec:             specJSON,
+		Status:           json.RawMessage(`{}`),
+		CRDStatus:        CRDStatusActive,
+		ValidationStatus: "valid",
+		ErrorMessage:     "",
+		GitFilePath:      fmt.Sprintf("generated/%s/%s.yaml", crdType, name),
+		LastSyncedFrom:   "generated",
+		LastSyncTime:     time.Now(),
+		Created:          time.Now(),
+		LastModified:     time.Now(),
+		CreatedBy:        "missing-crd-generator",
+		ModifiedBy:       "missing-crd-generator",
+	}
+	
+	// Validate the created CRD
+	err = crd.Validate()
+	if err != nil {
+		return nil, fmt.Errorf("generated CRD failed validation: %w", err)
+	}
+	
+	return crd, nil
+}
+
+// GenerateRealisticScenarios creates realistic multi-CRD scenarios for testing
+func (g *MissingCRDGenerator) GenerateRealisticScenarios() (map[string][]*CRDResource, error) {
+	scenarios := make(map[string][]*CRDResource)
+	
+	// Enterprise VPC Scenario
+	enterpriseScenario, err := g.generateEnterpriseVPCScenario()
+	if err != nil {
+		return nil, fmt.Errorf("failed to generate enterprise VPC scenario: %w", err)
+	}
+	scenarios["enterprise_vpc"] = enterpriseScenario
+	
+	// Multi-tenant Scenario
+	multiTenantScenario, err := g.generateMultiTenantScenario()
+	if err != nil {
+		return nil, fmt.Errorf("failed to generate multi-tenant scenario: %w", err)
+	}
+	scenarios["multi_tenant"] = multiTenantScenario
+	
+	// External Integration Scenario
+	externalScenario, err := g.generateExternalIntegrationScenario()
+	if err != nil {
+		return nil, fmt.Errorf("failed to generate external integration scenario: %w", err)
+	}
+	scenarios["external_integration"] = externalScenario
+	
+	return scenarios, nil
+}
+
+// generateEnterpriseVPCScenario creates a realistic enterprise VPC scenario
+func (g *MissingCRDGenerator) generateEnterpriseVPCScenario() ([]*CRDResource, error) {
+	var scenario []*CRDResource
+	
+	// Create IPv4 namespace for enterprise
+	ipv4Namespace, err := g.generateIPv4NamespaceSample(1)
+	if err != nil {
+		return nil, err
+	}
+	ipv4Namespace.Name = "enterprise-ipv4-namespace"
+	scenario = append(scenario, ipv4Namespace)
+	
+	// Create VPC attachments for different departments
+	departments := []string{"finance", "engineering", "hr"}
+	for i, dept := range departments {
+		attachment, err := g.generateVPCAttachmentSample(i + 1)
+		if err != nil {
+			return nil, err
+		}
+		attachment.Name = fmt.Sprintf("%s-vpc-attachment", dept)
+		scenario = append(scenario, attachment)
+	}
+	
+	// Create VPC peering between departments
+	peering, err := g.generateVPCPeeringSample(1)
+	if err != nil {
+		return nil, err
+	}
+	peering.Name = "inter-department-peering"
+	scenario = append(scenario, peering)
+	
+	// Create VLAN namespace for the enterprise
+	vlanNamespace, err := g.generateVLANNamespaceSample(1)
+	if err != nil {
+		return nil, err
+	}
+	vlanNamespace.Name = "enterprise-vlan-namespace"
+	scenario = append(scenario, vlanNamespace)
+	
+	return scenario, nil
+}
+
+// generateMultiTenantScenario creates a realistic multi-tenant scenario
+func (g *MissingCRDGenerator) generateMultiTenantScenario() ([]*CRDResource, error) {
+	var scenario []*CRDResource
+	
+	// Create tenant-specific resources
+	tenants := []string{"tenant-a", "tenant-b", "tenant-c"}
+	
+	for i, tenant := range tenants {
+		// IPv4 namespace per tenant
+		ipv4Namespace, err := g.generateIPv4NamespaceSample(i + 10)
+		if err != nil {
+			return nil, err
+		}
+		ipv4Namespace.Name = fmt.Sprintf("%s-ipv4-namespace", tenant)
+		scenario = append(scenario, ipv4Namespace)
+		
+		// VLAN namespace per tenant
+		vlanNamespace, err := g.generateVLANNamespaceSample(i + 10)
+		if err != nil {
+			return nil, err
+		}
+		vlanNamespace.Name = fmt.Sprintf("%s-vlan-namespace", tenant)
+		scenario = append(scenario, vlanNamespace)
+		
+		// VPC attachment per tenant
+		attachment, err := g.generateVPCAttachmentSample(i + 10)
+		if err != nil {
+			return nil, err
+		}
+		attachment.Name = fmt.Sprintf("%s-vpc-attachment", tenant)
+		scenario = append(scenario, attachment)
+	}
+	
+	return scenario, nil
+}
+
+// generateExternalIntegrationScenario creates external system integration scenario
+func (g *MissingCRDGenerator) generateExternalIntegrationScenario() ([]*CRDResource, error) {
+	var scenario []*CRDResource
+	
+	// External system
+	external, err := g.generateExternalSample(1)
+	if err != nil {
+		return nil, err
+	}
+	external.Name = "external-datacenter"
+	scenario = append(scenario, external)
+	
+	// External attachment
+	attachment, err := g.generateExternalAttachmentSample(1)
+	if err != nil {
+		return nil, err
+	}
+	attachment.Name = "datacenter-attachment"
+	scenario = append(scenario, attachment)
+	
+	// External peering
+	peering, err := g.generateExternalPeeringSample(1)
+	if err != nil {
+		return nil, err
+	}
+	peering.Name = "datacenter-bgp-peering"
+	scenario = append(scenario, peering)
+	
+	return scenario, nil
+}
+
+// ValidateGeneratedSamples validates all generated samples
+func (g *MissingCRDGenerator) ValidateGeneratedSamples(samples map[CRDType][]*CRDResource) (*TestDataValidationResults, error) {
+	results := &TestDataValidationResults{
+		CRDsByType:       make(map[CRDType]int),
+		ValidationErrors: []ValidationError{},
+		DependencyResults: make(map[CRDType]DependencyValidation),
+	}
+	
+	totalCRDs := 0
+	validCRDs := 0
+	
+	for crdType, crds := range samples {
+		results.CRDsByType[crdType] = len(crds)
+		totalCRDs += len(crds)
+		
+		for _, crd := range crds {
+			err := crd.Validate()
+			if err != nil {
+				results.ValidationErrors = append(results.ValidationErrors, ValidationError{
+					CRDName:   crd.Name,
+					CRDType:   crd.Type,
+					ErrorType: "VALIDATION_ERROR",
+					Message:   err.Error(),
+					Severity:  "error",
+					Timestamp: time.Now(),
+				})
+			} else {
+				validCRDs++
+			}
+		}
+	}
+	
+	results.TotalCRDs = totalCRDs
+	results.ValidCRDs = validCRDs
+	results.InvalidCRDs = totalCRDs - validCRDs
+	
+	return results, nil
+}

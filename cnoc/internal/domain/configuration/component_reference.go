@@ -508,3 +508,191 @@ func validateLabelValue(value string) error {
 	
 	return nil
 }
+
+// Security validation methods
+
+// ValidateSecurityRequirements validates security requirements for the component
+func (cr *ComponentReference) ValidateSecurityRequirements() ComponentValidationResult {
+	result := ComponentValidationResult{
+		Valid:    true,
+		Errors:   make([]ComponentValidationError, 0),
+		Warnings: make([]ComponentValidationWarning, 0),
+	}
+
+	// Component-specific security requirements
+	switch cr.name.String() {
+	case "cert-manager":
+		// cert-manager always requires encryption
+		if !cr.IsEncryptionRequired() {
+			result.Warnings = append(result.Warnings, ComponentValidationWarning{
+				Field:   "encryption",
+				Message: "cert-manager should have encryption enabled",
+			})
+		}
+	case "prometheus":
+		// Prometheus should have resource limits for security
+		if !cr.RequiresResourceLimits() {
+			result.Warnings = append(result.Warnings, ComponentValidationWarning{
+				Field:   "resources",
+				Message: "prometheus should have resource limits configured",
+			})
+		}
+	case "argocd":
+		// ArgoCD requires network policies and security context
+		if !cr.RequiresNetworkPolicies() {
+			result.Errors = append(result.Errors, ComponentValidationError{
+				Field:   "networkPolicies",
+				Message: "argocd requires network policies for security",
+				Code:    "NETWORK_POLICIES_REQUIRED",
+			})
+			result.Valid = false
+		}
+		if !cr.RequiresSecurityContext() {
+			result.Errors = append(result.Errors, ComponentValidationError{
+				Field:   "securityContext",
+				Message: "argocd requires security context configuration",
+				Code:    "SECURITY_CONTEXT_REQUIRED",
+			})
+			result.Valid = false
+		}
+	}
+
+	return result
+}
+
+// IsEncryptionRequired returns true if the component requires encryption
+func (cr *ComponentReference) IsEncryptionRequired() bool {
+	encryptionRequired := map[string]bool{
+		"cert-manager": true,
+		"argocd":       true,
+		"prometheus":   false,
+		"grafana":      false,
+	}
+	
+	if required, exists := encryptionRequired[cr.name.String()]; exists {
+		return required
+	}
+	
+	return false // Default to not required
+}
+
+// RequiresNetworkPolicies returns true if the component requires network policies
+func (cr *ComponentReference) RequiresNetworkPolicies() bool {
+	networkPolicyRequired := map[string]bool{
+		"argocd":     true,
+		"prometheus": true,
+		"grafana":    false,
+	}
+	
+	if required, exists := networkPolicyRequired[cr.name.String()]; exists {
+		return required
+	}
+	
+	return false // Default to not required
+}
+
+// RequiresResourceLimits returns true if the component requires resource limits
+func (cr *ComponentReference) RequiresResourceLimits() bool {
+	resourceLimitsRequired := map[string]bool{
+		"prometheus": true,
+		"grafana":    true,
+		"argocd":     true,
+		"cert-manager": true,
+	}
+	
+	if required, exists := resourceLimitsRequired[cr.name.String()]; exists {
+		return required
+	}
+	
+	return false // Default to not required
+}
+
+// RequiresSecurityContext returns true if the component requires security context
+func (cr *ComponentReference) RequiresSecurityContext() bool {
+	securityContextRequired := map[string]bool{
+		"argocd":       true,
+		"prometheus":   true,
+		"cert-manager": true,
+	}
+	
+	if required, exists := securityContextRequired[cr.name.String()]; exists {
+		return required
+	}
+	
+	return false // Default to not required
+}
+
+// ComponentValidationResult represents validation results for component security
+type ComponentValidationResult struct {
+	Valid    bool
+	Errors   []ComponentValidationError
+	Warnings []ComponentValidationWarning
+}
+
+// ComponentValidationError represents a component validation error
+type ComponentValidationError struct {
+	Field   string
+	Message string
+	Code    string
+}
+
+// ComponentValidationWarning represents a component validation warning
+type ComponentValidationWarning struct {
+	Field   string
+	Message string
+}
+
+// Dependency management methods
+
+// AddDependency adds a dependency to the component
+func (cr *ComponentReference) AddDependency(dependency string) error {
+	if dependency == "" {
+		return fmt.Errorf("dependency cannot be empty")
+	}
+	
+	// Initialize dependencies if not already done
+	if cr.configuration.parameters["dependencies"] == nil {
+		cr.configuration.parameters["dependencies"] = make([]string, 0)
+	}
+	
+	dependencies := cr.configuration.parameters["dependencies"].([]string)
+	
+	// Check if dependency already exists
+	for _, dep := range dependencies {
+		if dep == dependency {
+			return fmt.Errorf("dependency '%s' already exists", dependency)
+		}
+	}
+	
+	// Add the dependency
+	dependencies = append(dependencies, dependency)
+	cr.configuration.parameters["dependencies"] = dependencies
+	
+	return nil
+}
+
+// GetDependencies returns the list of dependencies for the component
+func (cr *ComponentReference) GetDependencies() []string {
+	dependencies, exists := cr.configuration.parameters["dependencies"]
+	if !exists {
+		return make([]string, 0)
+	}
+	
+	depSlice, ok := dependencies.([]string)
+	if !ok {
+		return make([]string, 0)
+	}
+	
+	return depSlice
+}
+
+// HasDependency checks if the component has a specific dependency
+func (cr *ComponentReference) HasDependency(dependency string) bool {
+	dependencies := cr.GetDependencies()
+	for _, dep := range dependencies {
+		if dep == dependency {
+			return true
+		}
+	}
+	return false
+}

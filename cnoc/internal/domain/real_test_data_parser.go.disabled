@@ -1,0 +1,555 @@
+package domain
+
+import (
+	"encoding/json"
+	"fmt"
+	"io/ioutil"
+	"path/filepath"
+	"strings"
+	"time"
+
+	"gopkg.in/yaml.v3"
+)
+
+// RealTestDataParser extracts and validates real test data from lab environment
+// Source: GitOps repository github.com/afewell-hh/gitops-test-1.git
+// Purpose: Parse 618 lines of production-like test data into CNOC domain models
+type RealTestDataParser struct {
+	sourcePath      string
+	parsedCRDs      map[CRDType][]*CRDResource
+	validationStats *TestDataValidationResults
+	fabricMetadata  *FabricMetadata
+}
+
+// FabricMetadata captures metadata about the test fabric
+type FabricMetadata struct {
+	FabricName       string            `json:"fabric_name"`
+	SourceRepository string            `json:"source_repository"`
+	SourcePath       string            `json:"source_path"`
+	TotalFiles       int               `json:"total_files"`
+	TotalLines       int               `json:"total_lines"`
+	TotalBytes       int64             `json:"total_bytes"`
+	ParseTimestamp   time.Time         `json:"parse_timestamp"`
+	CRDDistribution  map[CRDType]int   `json:"crd_distribution"`
+	FileContents     map[string]string `json:"file_contents"`
+}
+
+// YAMLDocument represents a parsed YAML document from test data
+type YAMLDocument struct {
+	APIVersion string                 `yaml:"apiVersion"`
+	Kind       string                 `yaml:"kind"`
+	Metadata   map[string]interface{} `yaml:"metadata"`
+	Spec       map[string]interface{} `yaml:"spec"`
+	Status     map[string]interface{} `yaml:"status,omitempty"`
+}
+
+// NewRealTestDataParser creates parser for real test data
+func NewRealTestDataParser(sourcePath string) *RealTestDataParser {
+	return &RealTestDataParser{
+		sourcePath: sourcePath,
+		parsedCRDs: make(map[CRDType][]*CRDResource),
+		validationStats: &TestDataValidationResults{
+			CRDsByType:       make(map[CRDType]int),
+			MissingTypes:     []CRDType{},
+			ValidationErrors: []ValidationError{},
+			DependencyResults: make(map[CRDType]DependencyValidation),
+		},
+		fabricMetadata: &FabricMetadata{
+			FabricName:       "HCKC-Lab-Fabric",
+			SourceRepository: "https://github.com/afewell-hh/gitops-test-1.git",
+			SourcePath:       "gitops/hedgehog/fabric-1/raw/",
+			CRDDistribution:  make(map[CRDType]int),
+			FileContents:     make(map[string]string),
+		},
+	}
+}
+
+// ParseAllTestData parses all real test data files and returns comprehensive results
+func (p *RealTestDataParser) ParseAllTestData() (*TestDataValidationResults, error) {
+	startTime := time.Now()
+	
+	// Find all YAML files in source path
+	yamlFiles, err := p.findYAMLFiles()
+	if err != nil {
+		return nil, fmt.Errorf("failed to find YAML files: %w", err)
+	}
+	
+	p.fabricMetadata.TotalFiles = len(yamlFiles)
+	p.fabricMetadata.ParseTimestamp = startTime
+	
+	// Parse each file
+	for _, filePath := range yamlFiles {
+		err := p.parseYAMLFile(filePath)
+		if err != nil {
+			p.addValidationError("FILE_PARSE_ERROR", fmt.Sprintf("Failed to parse %s: %v", filePath, err), filePath, 0)
+			continue
+		}
+	}
+	
+	// Generate comprehensive validation results
+	p.generateValidationResults()
+	
+	// Calculate performance metrics
+	p.validationStats.PerformanceData = PerformanceMetrics{
+		ParseTime:        time.Since(startTime),
+		TotalProcessTime: time.Since(startTime),
+		FilesProcessed:   len(yamlFiles),
+		CRDsProcessed:    p.validationStats.TotalCRDs,
+		BytesProcessed:   p.fabricMetadata.TotalBytes,
+	}
+	
+	return p.validationStats, nil
+}
+
+// findYAMLFiles discovers all YAML files in the source path
+func (p *RealTestDataParser) findYAMLFiles() ([]string, error) {
+	var yamlFiles []string
+	
+	// Expected files based on real test data analysis
+	expectedFiles := []string{
+		"prepop.yaml",
+		"test-vpc.yaml", 
+		"test-vpc-2.yaml",
+	}
+	
+	for _, filename := range expectedFiles {
+		fullPath := filepath.Join(p.sourcePath, filename)
+		yamlFiles = append(yamlFiles, fullPath)
+	}
+	
+	return yamlFiles, nil
+}
+
+// parseYAMLFile parses a single YAML file containing multiple CRD documents
+func (p *RealTestDataParser) parseYAMLFile(filePath string) error {
+	// Read file content
+	content, err := ioutil.ReadFile(filePath)
+	if err != nil {
+		return fmt.Errorf("failed to read file %s: %w", filePath, err)
+	}
+	
+	// Store file content and update metadata
+	filename := filepath.Base(filePath)
+	p.fabricMetadata.FileContents[filename] = string(content)
+	p.fabricMetadata.TotalBytes += int64(len(content))
+	p.fabricMetadata.TotalLines += len(strings.Split(string(content), "\n"))
+	
+	// Split content into individual YAML documents
+	documents := strings.Split(string(content), "---")
+	
+	for i, docContent := range documents {
+		docContent = strings.TrimSpace(docContent)
+		if docContent == "" || strings.HasPrefix(docContent, "#") {
+			continue
+		}
+		
+		err := p.parseYAMLDocument(docContent, filePath, i+1)
+		if err != nil {
+			p.addValidationError("DOCUMENT_PARSE_ERROR", 
+				fmt.Sprintf("Failed to parse document %d: %v", i+1, err), filePath, i+1)
+			continue
+		}
+	}
+	
+	return nil
+}
+
+// parseYAMLDocument parses a single YAML document into a CRDResource
+func (p *RealTestDataParser) parseYAMLDocument(content, filePath string, docIndex int) error {
+	var doc YAMLDocument
+	err := yaml.Unmarshal([]byte(content), &doc)
+	if err != nil {
+		return fmt.Errorf("YAML unmarshal error: %w", err)
+	}
+	
+	// Skip empty documents
+	if doc.APIVersion == "" || doc.Kind == "" {
+		return nil
+	}
+	
+	// Convert to CRDResource
+	crd, err := p.convertYAMLDocumentToCRD(&doc, filePath, docIndex)
+	if err != nil {
+		return fmt.Errorf("conversion error: %w", err)
+	}
+	
+	// Validate CRD
+	err = crd.Validate()
+	if err != nil {
+		p.addValidationError("VALIDATION_ERROR", err.Error(), filePath, docIndex)
+		return err
+	}
+	
+	// Add to parsed CRDs
+	p.parsedCRDs[crd.Type] = append(p.parsedCRDs[crd.Type], crd)
+	p.fabricMetadata.CRDDistribution[crd.Type]++
+	
+	return nil
+}
+
+// convertYAMLDocumentToCRD converts YAML document to CRDResource domain model
+func (p *RealTestDataParser) convertYAMLDocumentToCRD(doc *YAMLDocument, filePath string, docIndex int) (*CRDResource, error) {
+	// Determine CRD type from Kind and APIVersion
+	crdType, err := p.determineCRDType(doc.Kind, doc.APIVersion)
+	if err != nil {
+		return nil, err
+	}
+	
+	// Extract metadata
+	name := ""
+	namespace := ""
+	labels := make(map[string]string)
+	
+	if doc.Metadata != nil {
+		if n, ok := doc.Metadata["name"].(string); ok {
+			name = n
+		}
+		if ns, ok := doc.Metadata["namespace"].(string); ok {
+			namespace = ns
+		}
+		if lbls, ok := doc.Metadata["labels"].(map[string]interface{}); ok {
+			for k, v := range lbls {
+				if strVal, ok := v.(string); ok {
+					labels[k] = strVal
+				}
+			}
+		}
+	}
+	
+	// Convert spec to JSON
+	specJSON, err := json.Marshal(doc.Spec)
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal spec to JSON: %w", err)
+	}
+	
+	// Convert status to JSON (if present)
+	var statusJSON json.RawMessage
+	if doc.Status != nil {
+		statusJSON, err = json.Marshal(doc.Status)
+		if err != nil {
+			return nil, fmt.Errorf("failed to marshal status to JSON: %w", err)
+		}
+	}
+	
+	// Create CRDResource
+	crd := &CRDResource{
+		ID:               fmt.Sprintf("%s-%s-%d", filepath.Base(filePath), name, docIndex),
+		FabricID:         "hckc-lab-fabric",
+		Name:             name,
+		Kind:             doc.Kind,
+		Type:             crdType,
+		APIVersion:       doc.APIVersion,
+		Namespace:        namespace,
+		Labels:           labels,
+		Spec:             specJSON,
+		Status:           statusJSON,
+		CRDStatus:        CRDStatusActive,
+		ValidationStatus: "pending",
+		GitFilePath:      filePath,
+		LastSyncedFrom:   "git",
+		LastSyncTime:     time.Now(),
+		Created:          time.Now(),
+		LastModified:     time.Now(),
+		CreatedBy:        "real-test-data-parser",
+		ModifiedBy:       "real-test-data-parser",
+	}
+	
+	return crd, nil
+}
+
+// determineCRDType maps Kind and APIVersion to CNOC CRDType
+func (p *RealTestDataParser) determineCRDType(kind, apiVersion string) (CRDType, error) {
+	// Map based on real test data analysis
+	kindToCRDType := map[string]CRDType{
+		// Wiring API CRDs (from prepop.yaml)
+		"SwitchGroup": CRDTypeSwitchGroup,
+		"Switch":      CRDTypeSwitch,
+		"Server":      CRDTypeServer,
+		"Connection":  CRDTypeConnection,
+		
+		// VPC API CRDs (from test-vpc.yaml, test-vpc-2.yaml)
+		"VPC": CRDTypeVPC,
+	}
+	
+	if crdType, exists := kindToCRDType[kind]; exists {
+		return crdType, nil
+	}
+	
+	return "", fmt.Errorf("unsupported CRD kind: %s with apiVersion: %s", kind, apiVersion)
+}
+
+// generateValidationResults compiles comprehensive validation statistics
+func (p *RealTestDataParser) generateValidationResults() {
+	totalCRDs := 0
+	validCRDs := 0
+	
+	// Count CRDs by type
+	for crdType, crds := range p.parsedCRDs {
+		count := len(crds)
+		p.validationStats.CRDsByType[crdType] = count
+		totalCRDs += count
+		
+		// Count valid CRDs
+		for _, crd := range crds {
+			if crd.IsValid() {
+				validCRDs++
+			}
+		}
+	}
+	
+	p.validationStats.TotalCRDs = totalCRDs
+	p.validationStats.ValidCRDs = validCRDs
+	p.validationStats.InvalidCRDs = totalCRDs - validCRDs
+	
+	// Identify missing CRD types
+	allCRDTypes := []CRDType{
+		CRDTypeVPC, CRDTypeExternal, CRDTypeExternalAttachment, CRDTypeExternalPeering,
+		CRDTypeIPv4Namespace, CRDTypeVPCAttachment, CRDTypeVPCPeering,
+		CRDTypeConnection, CRDTypeSwitch, CRDTypeServer, CRDTypeSwitchGroup, CRDTypeVLANNamespace,
+	}
+	
+	for _, crdType := range allCRDTypes {
+		if p.validationStats.CRDsByType[crdType] == 0 {
+			p.validationStats.MissingTypes = append(p.validationStats.MissingTypes, crdType)
+		}
+	}
+	
+	// Calculate coverage metrics
+	presentTypes := len(p.validationStats.CRDsByType)
+	totalTypes := len(allCRDTypes)
+	
+	p.validationStats.Coverage = CoverageMetrics{
+		TypeCoverage:        float64(presentTypes) / float64(totalTypes),
+		RequiredTypeCoverage: float64(presentTypes) / float64(totalTypes),
+		CRDCounts:           p.validationStats.CRDsByType,
+		ExpectedCounts:      make(map[CRDType]int),
+		ScenarioCoverage:    make(map[string]float64),
+		EdgeCaseCoverage:    make(map[string]bool),
+	}
+	
+	// Set expected counts based on real data analysis
+	p.validationStats.Coverage.ExpectedCounts[CRDTypeSwitchGroup] = 3
+	p.validationStats.Coverage.ExpectedCounts[CRDTypeSwitch] = 7
+	p.validationStats.Coverage.ExpectedCounts[CRDTypeServer] = 10
+	p.validationStats.Coverage.ExpectedCounts[CRDTypeConnection] = 26
+	p.validationStats.Coverage.ExpectedCounts[CRDTypeVPC] = 2
+	
+	// Generate dependency validation results
+	p.generateDependencyValidation()
+}
+
+// generateDependencyValidation validates CRD dependencies based on real data
+func (p *RealTestDataParser) generateDependencyValidation() {
+	dependencyGraph := buildCRDDependencyGraph()
+	
+	for crdType, requiredTypes := range dependencyGraph {
+		validation := DependencyValidation{
+			Type:             crdType,
+			RequiredTypes:    requiredTypes,
+			SatisfiedDeps:    []CRDType{},
+			MissingDeps:      []CRDType{},
+			ValidationStatus: "valid",
+		}
+		
+		// Check if required dependencies are satisfied
+		for _, requiredType := range requiredTypes {
+			if p.validationStats.CRDsByType[requiredType] > 0 {
+				validation.SatisfiedDeps = append(validation.SatisfiedDeps, requiredType)
+			} else {
+				validation.MissingDeps = append(validation.MissingDeps, requiredType)
+				validation.ValidationStatus = "missing_dependencies"
+			}
+		}
+		
+		p.validationStats.DependencyResults[crdType] = validation
+	}
+}
+
+// addValidationError adds a validation error to the results
+func (p *RealTestDataParser) addValidationError(errorType, message, filePath string, lineNumber int) {
+	error := ValidationError{
+		ErrorType:  errorType,
+		Message:    message,
+		FilePath:   filePath,
+		LineNumber: lineNumber,
+		Severity:   "error",
+		Timestamp:  time.Now(),
+	}
+	
+	p.validationStats.ValidationErrors = append(p.validationStats.ValidationErrors, error)
+}
+
+// GetParsedCRDs returns all parsed CRD resources by type
+func (p *RealTestDataParser) GetParsedCRDs() map[CRDType][]*CRDResource {
+	return p.parsedCRDs
+}
+
+// GetFabricMetadata returns fabric metadata
+func (p *RealTestDataParser) GetFabricMetadata() *FabricMetadata {
+	return p.fabricMetadata
+}
+
+// GetCRDsByType returns CRDs of a specific type
+func (p *RealTestDataParser) GetCRDsByType(crdType CRDType) []*CRDResource {
+	return p.parsedCRDs[crdType]
+}
+
+// ExportParsedData exports parsed data to organized test data structure
+func (p *RealTestDataParser) ExportParsedData(outputPath string) error {
+	// Create organized directory structure
+	err := p.createTestDataDirectories(outputPath)
+	if err != nil {
+		return fmt.Errorf("failed to create directories: %w", err)
+	}
+	
+	// Export by CRD type
+	for crdType, crds := range p.parsedCRDs {
+		err := p.exportCRDType(outputPath, crdType, crds)
+		if err != nil {
+			return fmt.Errorf("failed to export %s CRDs: %w", crdType, err)
+		}
+	}
+	
+	// Export metadata and validation results
+	err = p.exportMetadata(outputPath)
+	if err != nil {
+		return fmt.Errorf("failed to export metadata: %w", err)
+	}
+	
+	return nil
+}
+
+// createTestDataDirectories creates organized test data directory structure
+func (p *RealTestDataParser) createTestDataDirectories(basePath string) error {
+	directories := []string{
+		"real_fabric/basic_fabric",
+		"cr_samples/vpc_api",
+		"cr_samples/wiring_api", 
+		"scenarios/gitops_workflows",
+		"scenarios/drift_detection",
+		"scenarios/performance",
+	}
+	
+	for _, dir := range directories {
+		fullPath := filepath.Join(basePath, dir)
+		err := ioutil.WriteFile(filepath.Join(fullPath, ".gitkeep"), []byte(""), 0644)
+		if err != nil {
+			return fmt.Errorf("failed to create directory %s: %w", fullPath, err)
+		}
+	}
+	
+	return nil
+}
+
+// exportCRDType exports CRDs of a specific type to organized files
+func (p *RealTestDataParser) exportCRDType(basePath string, crdType CRDType, crds []*CRDResource) error {
+	// Determine export path based on CRD category
+	var exportPath string
+	
+	metadata := GetCRDTypeMetadata()
+	if meta, exists := metadata[crdType]; exists {
+		if meta.Category == "vpc-api" {
+			exportPath = filepath.Join(basePath, "cr_samples/vpc_api")
+		} else if meta.Category == "wiring-api" {
+			exportPath = filepath.Join(basePath, "cr_samples/wiring_api")
+		}
+	}
+	
+	if exportPath == "" {
+		exportPath = filepath.Join(basePath, "cr_samples")
+	}
+	
+	// Export each CRD as a separate YAML file
+	for i, crd := range crds {
+		filename := fmt.Sprintf("%s_%s_%d.yaml", strings.ToLower(string(crdType)), crd.Name, i+1)
+		filePath := filepath.Join(exportPath, filename)
+		
+		err := p.exportCRDAsYAML(crd, filePath)
+		if err != nil {
+			return fmt.Errorf("failed to export CRD %s: %w", crd.Name, err)
+		}
+	}
+	
+	return nil
+}
+
+// exportCRDAsYAML exports a single CRD as YAML file
+func (p *RealTestDataParser) exportCRDAsYAML(crd *CRDResource, filePath string) error {
+	// Convert CRDResource back to YAML format
+	var spec, status interface{}
+	
+	if len(crd.Spec) > 0 {
+		err := json.Unmarshal(crd.Spec, &spec)
+		if err != nil {
+			return fmt.Errorf("failed to unmarshal spec: %w", err)
+		}
+	}
+	
+	if len(crd.Status) > 0 {
+		err := json.Unmarshal(crd.Status, &status)
+		if err != nil {
+			return fmt.Errorf("failed to unmarshal status: %w", err)
+		}
+	}
+	
+	yamlDoc := YAMLDocument{
+		APIVersion: crd.APIVersion,
+		Kind:       crd.Kind,
+		Metadata: map[string]interface{}{
+			"name": crd.Name,
+		},
+		Spec:   spec.(map[string]interface{}),
+		Status: status.(map[string]interface{}),
+	}
+	
+	if crd.Namespace != "" {
+		yamlDoc.Metadata["namespace"] = crd.Namespace
+	}
+	
+	if len(crd.Labels) > 0 {
+		yamlDoc.Metadata["labels"] = crd.Labels
+	}
+	
+	// Marshal to YAML
+	yamlContent, err := yaml.Marshal(&yamlDoc)
+	if err != nil {
+		return fmt.Errorf("failed to marshal to YAML: %w", err)
+	}
+	
+	// Write to file
+	err = ioutil.WriteFile(filePath, yamlContent, 0644)
+	if err != nil {
+		return fmt.Errorf("failed to write file: %w", err)
+	}
+	
+	return nil
+}
+
+// exportMetadata exports parsing metadata and validation results
+func (p *RealTestDataParser) exportMetadata(basePath string) error {
+	// Export fabric metadata
+	metadataJSON, err := json.MarshalIndent(p.fabricMetadata, "", "  ")
+	if err != nil {
+		return fmt.Errorf("failed to marshal fabric metadata: %w", err)
+	}
+	
+	metadataPath := filepath.Join(basePath, "fabric_metadata.json")
+	err = ioutil.WriteFile(metadataPath, metadataJSON, 0644)
+	if err != nil {
+		return fmt.Errorf("failed to write fabric metadata: %w", err)
+	}
+	
+	// Export validation results
+	validationJSON, err := json.MarshalIndent(p.validationStats, "", "  ")
+	if err != nil {
+		return fmt.Errorf("failed to marshal validation results: %w", err)
+	}
+	
+	validationPath := filepath.Join(basePath, "validation_results.json")
+	err = ioutil.WriteFile(validationPath, validationJSON, 0644)
+	if err != nil {
+		return fmt.Errorf("failed to write validation results: %w", err)
+	}
+	
+	return nil
+}

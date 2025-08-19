@@ -1,0 +1,454 @@
+{{define "title"}}Connection Resources - CNOC{{end}}
+
+{{define "connection_content"}}
+<div class="container-fluid">
+    <div class="row">
+        <div class="col-12">
+            <div class="card">
+                <div class="card-header d-flex justify-content-between align-items-center">
+                    <h3><i class="mdi mdi-connection"></i> Connection Resources</h3>
+                    <div>
+                        <button class="btn btn-success" data-bs-toggle="modal" data-bs-target="#addConnectionModal">
+                            <i class="mdi mdi-plus"></i> Create Connection
+                        </button>
+                        <button class="btn btn-primary ms-2" onclick="syncAllConnections()">
+                            <i class="mdi mdi-sync"></i> Sync Connections
+                        </button>
+                        <button class="btn btn-info ms-2" onclick="location.reload()">
+                            <i class="mdi mdi-refresh"></i> Refresh
+                        </button>
+                    </div>
+                </div>
+                <div class="card-body">
+                    <div class="alert alert-info mb-3">
+                        <h5><i class="mdi mdi-information"></i> Network Connections</h5>
+                        <p>Manage network connections between devices, servers, and external systems. Monitor connection status and configure connection types across your infrastructure.</p>
+                    </div>
+
+                    <!-- Connection Statistics -->
+                    <div class="row mb-4">
+                        <div class="col-md-3">
+                            <div class="card border-primary">
+                                <div class="card-body text-center">
+                                    <h4><i class="mdi mdi-connection text-primary"></i></h4>
+                                    <h3>{{.Stats.ConnectionCount}}</h3>
+                                    <small class="text-muted">Total Connections</small>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-md-3">
+                            <div class="card border-success">
+                                <div class="card-body text-center">
+                                    <h4><i class="mdi mdi-check-circle text-success"></i></h4>
+                                    <h3>{{.Stats.InSyncCount}}</h3>
+                                    <small class="text-muted">Active</small>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-md-3">
+                            <div class="card border-warning">
+                                <div class="card-body text-center">
+                                    <h4><i class="mdi mdi-alert text-warning"></i></h4>
+                                    <h3>{{.Stats.DriftCount}}</h3>
+                                    <small class="text-muted">Pending</small>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-md-3">
+                            <div class="card border-danger">
+                                <div class="card-body text-center">
+                                    <h4><i class="mdi mdi-alert-circle text-danger"></i></h4>
+                                    <h3>{{.Stats.CRDCount}}</h3>
+                                    <small class="text-muted">Failed</small>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    {{if .CRDResources}}
+                    <!-- Connection Status Table -->
+                    <div class="table-responsive">
+                        <table class="table table-hover">
+                            <thead>
+                                <tr>
+                                    <th>Connection Name</th>
+                                    <th>Connection Type</th>
+                                    <th>Source/Destination</th>
+                                    <th>Protocol/Interface</th>
+                                    <th>Fabric</th>
+                                    <th>Connection Status</th>
+                                    <th>Last Sync</th>
+                                    <th>Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {{range .CRDResources}}
+                                <tr>
+                                    <td>
+                                        <strong class="text-primary">
+                                            <i class="mdi mdi-connection"></i> {{.Name}}
+                                        </strong>
+                                        {{if .Description}}
+                                        <br><small class="text-muted">{{.Description}}</small>
+                                        {{end}}
+                                        {{if .Labels}}
+                                        <br>
+                                        {{range $key, $value := .Labels}}
+                                        <span class="badge bg-light text-dark">{{$key}}={{$value}}</span>
+                                        {{end}}
+                                        {{end}}
+                                    </td>
+                                    <td>
+                                        {{if eq .Type "fabric"}}
+                                            <span class="badge bg-primary">
+                                                <i class="mdi mdi-server-network"></i> Fabric
+                                            </span>
+                                        {{else if eq .Type "server"}}
+                                            <span class="badge bg-info">
+                                                <i class="mdi mdi-server"></i> Server
+                                            </span>
+                                        {{else if eq .Type "external"}}
+                                            <span class="badge bg-warning">
+                                                <i class="mdi mdi-earth"></i> External
+                                            </span>
+                                        {{else if eq .Type "vpc-peering"}}
+                                            <span class="badge bg-success">
+                                                <i class="mdi mdi-cloud-outline"></i> VPC Peering
+                                            </span>
+                                        {{else}}
+                                            <span class="badge bg-secondary">{{.Type}}</span>
+                                        {{end}}
+                                    </td>
+                                    <td>
+                                        <div class="connection-endpoints">
+                                            {{if .Labels.source}}
+                                            <div class="mb-1">
+                                                <strong>Source:</strong>
+                                                <span class="badge bg-info">{{.Labels.source}}</span>
+                                                {{if .Labels.source_port}}
+                                                <small class="text-muted">Port: {{.Labels.source_port}}</small>
+                                                {{end}}
+                                            </div>
+                                            {{end}}
+                                            {{if .Labels.destination}}
+                                            <div>
+                                                <strong>Destination:</strong>
+                                                <span class="badge bg-success">{{.Labels.destination}}</span>
+                                                {{if .Labels.destination_port}}
+                                                <small class="text-muted">Port: {{.Labels.destination_port}}</small>
+                                                {{end}}
+                                            </div>
+                                            {{end}}
+                                        </div>
+                                    </td>
+                                    <td>
+                                        {{if .Labels.protocol}}
+                                        <div><strong>Protocol:</strong> <code>{{.Labels.protocol}}</code></div>
+                                        {{end}}
+                                        {{if .Labels.interface}}
+                                        <div><strong>Interface:</strong> <code>{{.Labels.interface}}</code></div>
+                                        {{end}}
+                                        {{if .Labels.vlan}}
+                                        <div><strong>VLAN:</strong> <span class="badge bg-primary">{{.Labels.vlan}}</span></div>
+                                        {{end}}
+                                        {{if .Labels.mtu}}
+                                        <div><strong>MTU:</strong> {{.Labels.mtu}}</div>
+                                        {{end}}
+                                    </td>
+                                    <td>
+                                        <span class="text-decoration-none">
+                                            <i class="mdi mdi-server-network"></i> {{if .Labels.fabric}}{{.Labels.fabric}}{{else}}Default Fabric{{end}}
+                                        </span>
+                                        <br><small class="text-muted">Namespace: {{.Namespace}}</small>
+                                    </td>
+                                    <td>
+                                        {{if .Labels.status}}
+                                            {{if eq .Labels.status "active"}}
+                                                <span class="badge bg-success">
+                                                    <i class="mdi mdi-check-circle"></i> Active
+                                                </span>
+                                            {{else if eq .Labels.status "pending"}}
+                                                <span class="badge bg-warning">
+                                                    <i class="mdi mdi-clock"></i> Pending
+                                                </span>
+                                            {{else}}
+                                                <span class="badge bg-secondary">{{.Labels.status}}</span>
+                                            {{end}}
+                                        {{else}}
+                                            <span class="badge bg-success">
+                                                <i class="mdi mdi-check-circle"></i> Active
+                                            </span>
+                                        {{end}}
+                                        {{if .Labels.bandwidth}}
+                                        <br><small class="text-muted">BW: {{.Labels.bandwidth}}</small>
+                                        {{end}}
+                                    </td>
+                                    <td>
+                                        {{if .GitSyncTimestamp}}
+                                            <span title="{{.GitSyncTimestamp}}">{{.GitSyncTimestampAgo}}</span>
+                                        {{else}}
+                                            <span class="text-muted">Never</span>
+                                        {{end}}
+                                    </td>
+                                    <td>
+                                        <div class="btn-group btn-group-sm" role="group">
+                                            <button class="btn btn-primary btn-sync-connection" 
+                                                    data-connection-id="{{.ID}}" title="Sync Connection">
+                                                <i class="mdi mdi-sync"></i>
+                                            </button>
+                                            <a href="/crds/connections/{{.ID}}" class="btn btn-info" title="View Details">
+                                                <i class="mdi mdi-eye"></i>
+                                            </a>
+                                            <button class="btn btn-success" onclick="testConnection('{{.ID}}')" title="Test Connection">
+                                                <i class="mdi mdi-test-tube"></i>
+                                            </button>
+                                            <button class="btn btn-warning" onclick="editConnection('{{.ID}}')" title="Edit Connection">
+                                                <i class="mdi mdi-pencil"></i>
+                                            </button>
+                                            <button class="btn btn-danger" onclick="deleteConnection('{{.ID}}')" title="Delete Connection">
+                                                <i class="mdi mdi-delete"></i>
+                                            </button>
+                                        </div>
+                                    </td>
+                                </tr>
+                                {{end}}
+                            </tbody>
+                        </table>
+                    </div>
+                    {{else}}
+                    <div class="alert alert-info">
+                        <h5><i class="mdi mdi-information"></i> No Network Connections Found</h5>
+                        <p>No connection resources are currently configured. Create your first connection to establish network connectivity between devices.</p>
+                        <button class="btn btn-success" data-bs-toggle="modal" data-bs-target="#addConnectionModal">
+                            <i class="mdi mdi-plus"></i> Create Your First Connection
+                        </button>
+                    </div>
+                    {{end}}
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Create Connection Modal -->
+<div class="modal fade" id="addConnectionModal" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title"><i class="mdi mdi-connection"></i> Create Connection</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <form action="/crds/connections/create" method="POST">
+                <div class="modal-body">
+                    <div class="row">
+                        <div class="col-md-6">
+                            <div class="mb-3">
+                                <label for="connectionName" class="form-label">Connection Name *</label>
+                                <input type="text" class="form-control" id="connectionName" name="name" required>
+                                <small class="text-muted">Unique name for this connection</small>
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="mb-3">
+                                <label for="connectionFabric" class="form-label">Target Fabric *</label>
+                                <select class="form-select" id="connectionFabric" name="fabric_id" required>
+                                    <option value="">-- Select Fabric --</option>
+                                    {{range .Fabrics}}
+                                    <option value="{{.ID}}">{{.Name}}</option>
+                                    {{end}}
+                                </select>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="mb-3">
+                        <label for="connectionDescription" class="form-label">Description</label>
+                        <textarea class="form-control" id="connectionDescription" name="description" rows="2"></textarea>
+                    </div>
+                    <div class="row">
+                        <div class="col-md-6">
+                            <div class="mb-3">
+                                <label for="connectionType" class="form-label">Connection Type *</label>
+                                <select class="form-select" id="connectionType" name="type" required>
+                                    <option value="">-- Select Type --</option>
+                                    <option value="fabric">Fabric Connection</option>
+                                    <option value="server">Server Connection</option>
+                                    <option value="external">External Connection</option>
+                                    <option value="vpc-peering">VPC Peering</option>
+                                </select>
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="mb-3">
+                                <label for="connectionProtocol" class="form-label">Protocol</label>
+                                <select class="form-select" id="connectionProtocol" name="protocol">
+                                    <option value="">-- Select Protocol --</option>
+                                    <option value="BGP">BGP</option>
+                                    <option value="OSPF">OSPF</option>
+                                    <option value="Static">Static Route</option>
+                                    <option value="VXLAN">VXLAN</option>
+                                </select>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="row">
+                        <div class="col-md-6">
+                            <div class="mb-3">
+                                <label for="sourceName" class="form-label">Source Device</label>
+                                <input type="text" class="form-control" id="sourceName" name="source_name">
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="mb-3">
+                                <label for="sourcePort" class="form-label">Source Port</label>
+                                <input type="text" class="form-control" id="sourcePort" name="source_port">
+                            </div>
+                        </div>
+                    </div>
+                    <div class="row">
+                        <div class="col-md-6">
+                            <div class="mb-3">
+                                <label for="destinationName" class="form-label">Destination Device</label>
+                                <input type="text" class="form-control" id="destinationName" name="destination_name">
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="mb-3">
+                                <label for="destinationPort" class="form-label">Destination Port</label>
+                                <input type="text" class="form-control" id="destinationPort" name="destination_port">
+                            </div>
+                        </div>
+                    </div>
+                    <div class="row">
+                        <div class="col-md-4">
+                            <div class="mb-3">
+                                <label for="connectionVLAN" class="form-label">VLAN</label>
+                                <input type="number" class="form-control" id="connectionVLAN" name="vlan" min="1" max="4094">
+                            </div>
+                        </div>
+                        <div class="col-md-4">
+                            <div class="mb-3">
+                                <label for="connectionMTU" class="form-label">MTU</label>
+                                <input type="number" class="form-control" id="connectionMTU" name="mtu" value="1500">
+                            </div>
+                        </div>
+                        <div class="col-md-4">
+                            <div class="mb-3">
+                                <label for="connectionBandwidth" class="form-label">Bandwidth</label>
+                                <select class="form-select" id="connectionBandwidth" name="bandwidth">
+                                    <option value="">-- Select Bandwidth --</option>
+                                    <option value="1G">1 Gbps</option>
+                                    <option value="10G">10 Gbps</option>
+                                    <option value="25G">25 Gbps</option>
+                                    <option value="40G">40 Gbps</option>
+                                    <option value="100G">100 Gbps</option>
+                                </select>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <button type="submit" class="btn btn-success">
+                        <i class="mdi mdi-plus"></i> Create Connection
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+{{end}}
+
+{{define "scripts"}}
+<script>
+function syncAllConnections() {
+    const button = event.target;
+    button.disabled = true;
+    button.innerHTML = '<i class="mdi mdi-loading mdi-spin"></i> Syncing...';
+    
+    makeAjaxRequest('/api/v1/crds/connections/sync-all', 'POST', null, function(err, response) {
+        button.disabled = false;
+        button.innerHTML = '<i class="mdi mdi-sync"></i> Sync Connections';
+        
+        if (err) {
+            showNotification('Failed to sync connections: ' + err.message, 'danger');
+        } else {
+            showNotification('Connection synchronization started', 'success');
+            setTimeout(() => location.reload(), 2000);
+        }
+    });
+}
+
+function editConnection(connectionId) {
+    window.location.href = `/crds/connections/${connectionId}/edit`;
+}
+
+function deleteConnection(connectionId) {
+    if (confirm('This will permanently delete the connection. This action cannot be undone. Continue?')) {
+        makeAjaxRequest(`/api/v1/crds/connections/${connectionId}`, 'DELETE', null, function(err, response) {
+            if (err) {
+                showNotification('Failed to delete connection: ' + err.message, 'danger');
+            } else {
+                showNotification('Connection deleted successfully', 'success');
+                setTimeout(() => location.reload(), 1000);
+            }
+        });
+    }
+}
+
+function testConnection(connectionId) {
+    const button = event.target;
+    button.disabled = true;
+    button.innerHTML = '<i class="mdi mdi-loading mdi-spin"></i>';
+    
+    makeAjaxRequest(`/api/v1/crds/connections/${connectionId}/test`, 'POST', null, function(err, response) {
+        button.disabled = false;
+        button.innerHTML = '<i class="mdi mdi-test-tube"></i>';
+        
+        if (err) {
+            showNotification('Connection test failed: ' + err.message, 'danger');
+        } else {
+            showNotification('Connection test completed: ' + (response.success ? 'PASSED' : 'FAILED'), 
+                           response.success ? 'success' : 'warning');
+        }
+    });
+}
+
+// Sync individual connection
+document.addEventListener('DOMContentLoaded', function() {
+    document.querySelectorAll('.btn-sync-connection').forEach(button => {
+        button.addEventListener('click', function() {
+            const connectionId = this.dataset.connectionId;
+            this.disabled = true;
+            this.innerHTML = '<i class="mdi mdi-loading mdi-spin"></i>';
+            
+            makeAjaxRequest(`/api/v1/crds/connections/${connectionId}/sync`, 'POST', null, function(err, response) {
+                button.disabled = false;
+                button.innerHTML = '<i class="mdi mdi-sync"></i>';
+                
+                if (err) {
+                    showNotification('Failed to sync connection: ' + err.message, 'danger');
+                } else {
+                    showNotification('Connection synchronized successfully', 'success');
+                    setTimeout(() => location.reload(), 1000);
+                }
+            });
+        });
+    });
+});
+</script>
+
+<style>
+.connection-endpoints {
+    font-size: 0.9em;
+}
+
+.connection-endpoints .badge {
+    font-size: 0.75em;
+}
+
+.connection-endpoints strong {
+    display: inline-block;
+    min-width: 80px;
+}
+</style>
+{{end}}

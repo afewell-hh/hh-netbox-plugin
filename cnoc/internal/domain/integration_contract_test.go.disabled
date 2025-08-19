@@ -1,0 +1,875 @@
+package domain
+
+import (
+	"context"
+	"encoding/json"
+	"fmt"
+	"testing"
+	"time"
+)
+
+// FORGE Movement 1: Integration Contract Test Suite
+//
+// CRITICAL: This is RED PHASE testing - ALL tests MUST FAIL initially
+// Tests validate integration between domain models and application services
+// Verifies anti-corruption layer boundaries and service contracts
+
+// TestApplicationServiceIntegration validates application service coordination with domain models
+func TestApplicationServiceIntegration(t *testing.T) {
+	t.Run("Configuration Application Service Contract", func(t *testing.T) {
+		// FORGE RED PHASE: This MUST fail until application services are integrated with activated domain models
+		
+		ctx := context.Background()
+		
+		// Test configuration creation command through application service
+		createCommand := ConfigurationCreateCommand{
+			Name:        "Integration Test Config",
+			Description: "Configuration for integration testing",
+			Mode:        "enterprise",
+			Version:     "1.0.0",
+			Labels: map[string]string{
+				"environment": "integration-test",
+				"team":        "platform",
+			},
+			Components: []ComponentCreateRequest{
+				{
+					Name:    "argocd",
+					Version: "2.8.0",
+					Enabled: true,
+					Configuration: map[string]interface{}{
+						"replicas": 3,
+						"ha":       true,
+					},
+				},
+				{
+					Name:    "prometheus", 
+					Version: "2.45.0",
+					Enabled: true,
+					Configuration: map[string]interface{}{
+						"retention": "30d",
+						"storage":   "100Gi",
+					},
+				},
+			},
+		}
+		
+		// INTEGRATION CONTRACT TEST: Application service must coordinate with domain models
+		configService := NewConfigurationApplicationService(
+			NewInMemoryConfigurationRepository(),
+			NewInMemoryEventBus(),
+			NewConfigurationDomainService(),
+		)
+		
+		result, err := configService.CreateConfiguration(ctx, createCommand)
+		if err != nil {
+			t.Fatalf("❌ FORGE FAIL: Configuration creation through application service failed: %v", err)
+		}
+		
+		if result.ID == "" {
+			t.Errorf("❌ FORGE FAIL: Configuration ID not generated")
+		}
+		
+		if result.Status != "draft" {
+			t.Errorf("❌ FORGE FAIL: Configuration status should be 'draft', got '%s'", result.Status)
+		}
+		
+		if len(result.Components) != 2 {
+			t.Errorf("❌ FORGE FAIL: Expected 2 components, got %d", len(result.Components))
+		}
+		
+		// Validate domain events were published through event bus
+		eventBus := configService.eventBus.(*InMemoryEventBus)
+		if len(eventBus.publishedEvents) == 0 {
+			t.Errorf("❌ FORGE FAIL: No domain events published")
+		}
+		
+		t.Logf("✅ FORGE EVIDENCE: Configuration application service contract working")
+	})
+	
+	t.Run("Configuration Validation Service Integration", func(t *testing.T) {
+		// FORGE RED PHASE: Domain validation service integration must fail until implementation
+		
+		ctx := context.Background()
+		
+		// Create configuration with validation issues
+		validateCommand := ConfigurationValidateCommand{
+			ConfigurationID: "validation-test-config",
+			ValidationRules: []string{"component-dependencies", "mode-constraints", "version-compatibility"},
+		}
+		
+		configService := NewConfigurationApplicationService(
+			NewInMemoryConfigurationRepository(),
+			NewInMemoryEventBus(),
+			NewConfigurationDomainService(),
+		)
+		
+		// INTEGRATION CONTRACT TEST: Validation service must use domain validation logic
+		validationResult, err := configService.ValidateConfiguration(ctx, validateCommand)
+		if err != nil {
+			t.Fatalf("❌ FORGE FAIL: Configuration validation service failed: %v", err)
+		}
+		
+		// Validation should report issues found by domain validation
+		if validationResult.Valid && len(validationResult.Errors) == 0 && len(validationResult.Warnings) == 0 {
+			t.Errorf("❌ FORGE FAIL: Expected validation issues to be reported")
+		}
+		
+		// Validate that domain-specific validation rules were applied
+		foundDependencyValidation := false
+		foundModeValidation := false
+		
+		for _, error := range validationResult.Errors {
+			if error.Code == "DEPENDENCY_VIOLATION" {
+				foundDependencyValidation = true
+			}
+			if error.Code == "MODE_CONSTRAINT_VIOLATION" {
+				foundModeValidation = true
+			}
+		}
+		
+		if !foundDependencyValidation {
+			t.Errorf("❌ FORGE FAIL: Domain dependency validation not applied")
+		}
+		
+		if !foundModeValidation {
+			t.Errorf("❌ FORGE FAIL: Domain mode constraint validation not applied")
+		}
+		
+		t.Logf("✅ FORGE EVIDENCE: Configuration validation service integration working")
+	})
+	
+	t.Run("Fabric Sync Operation Service Contract", func(t *testing.T) {
+		// FORGE RED PHASE: Fabric sync service integration must fail until implementation
+		
+		ctx := context.Background()
+		
+		syncCommand := FabricSyncCommand{
+			FabricID:        "integration-test-fabric",
+			SyncType:        "git-to-kubernetes",
+			GitCommitHash:   "abc123def456",
+			GitDirectory:    "gitops/hedgehog/integration-test/",
+			DryRun:         false,
+			ForceSync:      false,
+		}
+		
+		fabricService := NewFabricApplicationService(
+			NewInMemoryFabricRepository(),
+			NewInMemoryCRDRepository(), 
+			NewInMemoryEventBus(),
+			NewFabricDomainService(),
+			NewGitOpsService(),
+		)
+		
+		// INTEGRATION CONTRACT TEST: Fabric sync must coordinate with domain entities
+		syncResult, err := fabricService.SynchronizeFabric(ctx, syncCommand)
+		if err != nil {
+			t.Fatalf("❌ FORGE FAIL: Fabric synchronization service failed: %v", err)
+		}
+		
+		if syncResult.OperationID == "" {
+			t.Errorf("❌ FORGE FAIL: Sync operation ID not generated")
+		}
+		
+		if syncResult.Status != "completed" && syncResult.Status != "in_progress" {
+			t.Errorf("❌ FORGE FAIL: Invalid sync status: %s", syncResult.Status)
+		}
+		
+		if syncResult.CRDsProcessed == 0 {
+			t.Errorf("❌ FORGE FAIL: No CRDs processed during sync")
+		}
+		
+		// Validate domain events were generated
+		eventBus := fabricService.eventBus.(*InMemoryEventBus)
+		syncStartedEventFound := false
+		syncCompletedEventFound := false
+		
+		for _, event := range eventBus.publishedEvents {
+			if event.Type == "fabric_sync_started" {
+				syncStartedEventFound = true
+			}
+			if event.Type == "fabric_sync_completed" {
+				syncCompletedEventFound = true
+			}
+		}
+		
+		if !syncStartedEventFound {
+			t.Errorf("❌ FORGE FAIL: Fabric sync started event not published")
+		}
+		
+		t.Logf("✅ FORGE EVIDENCE: Fabric sync service integration working")
+	})
+	
+	t.Run("CRD Management Service Contract", func(t *testing.T) {
+		// FORGE RED PHASE: CRD management service integration must fail until implementation
+		
+		ctx := context.Background()
+		
+		crdCreateCommand := CRDCreateCommand{
+			FabricID:   "integration-test-fabric",
+			Name:       "integration-test-vpc",
+			Kind:       "VPC", 
+			Type:       "vpc",
+			APIVersion: "vpc.githedgehog.com/v1beta1",
+			Namespace:  "cnoc",
+			Spec: map[string]interface{}{
+				"subnets": []map[string]interface{}{
+					{
+						"name": "default",
+						"cidr": "10.1.0.0/24",
+					},
+					{
+						"name": "management", 
+						"cidr": "10.1.1.0/24",
+					},
+				},
+			},
+		}
+		
+		crdService := NewCRDApplicationService(
+			NewInMemoryCRDRepository(),
+			NewInMemoryFabricRepository(),
+			NewInMemoryEventBus(),
+			NewCRDDomainService(),
+			NewKubernetesService(),
+		)
+		
+		// INTEGRATION CONTRACT TEST: CRD service must coordinate with domain entities and validation
+		crdResult, err := crdService.CreateCRD(ctx, crdCreateCommand)
+		if err != nil {
+			t.Fatalf("❌ FORGE FAIL: CRD creation through application service failed: %v", err)
+		}
+		
+		if crdResult.ID == "" {
+			t.Errorf("❌ FORGE FAIL: CRD ID not generated")
+		}
+		
+		if crdResult.Status != "pending" && crdResult.Status != "active" {
+			t.Errorf("❌ FORGE FAIL: Invalid CRD status: %s", crdResult.Status)
+		}
+		
+		// Validate CRD was created with proper domain validation
+		if crdResult.ValidationStatus != "valid" {
+			t.Errorf("❌ FORGE FAIL: CRD validation status should be 'valid', got '%s'", crdResult.ValidationStatus)
+		}
+		
+		// Validate domain metadata was applied
+		if crdResult.Category == "" {
+			t.Errorf("❌ FORGE FAIL: CRD category not set from domain metadata")
+		}
+		
+		t.Logf("✅ FORGE EVIDENCE: CRD management service integration working")
+	})
+}
+
+// TestRepositoryPatternContracts validates repository pattern implementation contracts
+func TestRepositoryPatternContracts(t *testing.T) {
+	t.Run("Configuration Repository Contract", func(t *testing.T) {
+		// FORGE RED PHASE: Repository pattern contracts must fail until implementation
+		
+		repo := NewInMemoryConfigurationRepository()
+		ctx := context.Background()
+		
+		// Test entity persistence through repository
+		configEntity := &ConfigurationEntity{
+			ID:          "repo-test-config",
+			Name:        "Repository Test Config",
+			Description: "Testing repository pattern",
+			Mode:        "enterprise",
+			Version:     "1.0.0",
+			Status:      "draft",
+			Created:     time.Now(),
+			LastModified: time.Now(),
+		}
+		
+		// REPOSITORY CONTRACT TEST: Repository must persist domain entities correctly
+		err := repo.Save(ctx, configEntity)
+		if err != nil {
+			t.Fatalf("❌ FORGE FAIL: Configuration repository save failed: %v", err)
+		}
+		
+		// Test entity retrieval
+		retrievedConfig, err := repo.GetByID(ctx, "repo-test-config")
+		if err != nil {
+			t.Fatalf("❌ FORGE FAIL: Configuration repository retrieval failed: %v", err)
+		}
+		
+		if retrievedConfig.ID != configEntity.ID {
+			t.Errorf("❌ FORGE FAIL: Retrieved configuration ID mismatch")
+		}
+		
+		if retrievedConfig.Name != configEntity.Name {
+			t.Errorf("❌ FORGE FAIL: Retrieved configuration name mismatch")
+		}
+		
+		// Test entity update
+		retrievedConfig.Description = "Updated description"
+		retrievedConfig.LastModified = time.Now()
+		
+		err = repo.Save(ctx, retrievedConfig)
+		if err != nil {
+			t.Fatalf("❌ FORGE FAIL: Configuration repository update failed: %v", err)
+		}
+		
+		updatedConfig, err := repo.GetByID(ctx, "repo-test-config")
+		if err != nil {
+			t.Fatalf("❌ FORGE FAIL: Configuration repository retrieval after update failed: %v", err)
+		}
+		
+		if updatedConfig.Description != "Updated description" {
+			t.Errorf("❌ FORGE FAIL: Configuration update not persisted")
+		}
+		
+		t.Logf("✅ FORGE EVIDENCE: Configuration repository contract working")
+	})
+	
+	t.Run("Fabric Repository Contract", func(t *testing.T) {
+		// FORGE RED PHASE: Fabric repository pattern must fail until implementation
+		
+		repo := NewInMemoryFabricRepository()
+		ctx := context.Background()
+		
+		fabricEntity := &FabricEntity{
+			ID:               "repo-test-fabric",
+			Name:             "Repository Test Fabric", 
+			Description:      "Testing fabric repository pattern",
+			Status:           "active",
+			ConnectionStatus: "connected",
+			SyncStatus:       "in_sync",
+			GitRepositoryID:  "test-git-repo",
+			GitOpsDirectory:  "gitops/hedgehog/test/",
+			Created:          time.Now(),
+			LastModified:     time.Now(),
+		}
+		
+		// REPOSITORY CONTRACT TEST: Fabric repository must handle complex entity relationships
+		err := repo.Save(ctx, fabricEntity)
+		if err != nil {
+			t.Fatalf("❌ FORGE FAIL: Fabric repository save failed: %v", err)
+		}
+		
+		// Test fabric retrieval with related entities
+		retrievedFabric, err := repo.GetByID(ctx, "repo-test-fabric")
+		if err != nil {
+			t.Fatalf("❌ FORGE FAIL: Fabric repository retrieval failed: %v", err)
+		}
+		
+		if retrievedFabric.GitRepositoryID != fabricEntity.GitRepositoryID {
+			t.Errorf("❌ FORGE FAIL: Fabric git repository relationship not preserved")
+		}
+		
+		// Test fabric query by status
+		activeFabrics, err := repo.GetByStatus(ctx, "active")
+		if err != nil {
+			t.Fatalf("❌ FORGE FAIL: Fabric repository status query failed: %v", err)
+		}
+		
+		if len(activeFabrics) == 0 {
+			t.Errorf("❌ FORGE FAIL: Active fabric not found in status query")
+		}
+		
+		t.Logf("✅ FORGE EVIDENCE: Fabric repository contract working")
+	})
+	
+	t.Run("CRD Repository Contract", func(t *testing.T) {
+		// FORGE RED PHASE: CRD repository pattern must fail until implementation
+		
+		repo := NewInMemoryCRDRepository()
+		ctx := context.Background()
+		
+		crdEntity := &CRDEntity{
+			ID:         "repo-test-crd",
+			FabricID:   "repo-test-fabric",
+			Name:       "repository-test-vpc",
+			Kind:       "VPC",
+			Type:       "vpc",
+			APIVersion: "vpc.githedgehog.com/v1beta1", 
+			Namespace:  "cnoc",
+			Spec:       json.RawMessage(`{"subnets": [{"name": "default", "cidr": "10.1.0.0/24"}]}`),
+			Status:     json.RawMessage(`{"phase": "Ready"}`),
+			CRDStatus:  "active",
+			Created:    time.Now(),
+			LastModified: time.Now(),
+		}
+		
+		// REPOSITORY CONTRACT TEST: CRD repository must handle JSON serialization correctly
+		err := repo.Save(ctx, crdEntity)
+		if err != nil {
+			t.Fatalf("❌ FORGE FAIL: CRD repository save failed: %v", err)
+		}
+		
+		// Test CRD retrieval with JSON deserialization
+		retrievedCRD, err := repo.GetByID(ctx, "repo-test-crd")
+		if err != nil {
+			t.Fatalf("❌ FORGE FAIL: CRD repository retrieval failed: %v", err)
+		}
+		
+		if string(retrievedCRD.Spec) != string(crdEntity.Spec) {
+			t.Errorf("❌ FORGE FAIL: CRD spec JSON not properly serialized/deserialized")
+		}
+		
+		// Test CRD query by fabric
+		fabricCRDs, err := repo.GetByFabricID(ctx, "repo-test-fabric")
+		if err != nil {
+			t.Fatalf("❌ FORGE FAIL: CRD repository fabric query failed: %v", err)
+		}
+		
+		if len(fabricCRDs) == 0 {
+			t.Errorf("❌ FORGE FAIL: CRD not found in fabric query")
+		}
+		
+		// Test CRD query by type
+		vpcCRDs, err := repo.GetByType(ctx, "vpc")
+		if err != nil {
+			t.Fatalf("❌ FORGE FAIL: CRD repository type query failed: %v", err)
+		}
+		
+		if len(vpcCRDs) == 0 {
+			t.Errorf("❌ FORGE FAIL: VPC CRD not found in type query")
+		}
+		
+		t.Logf("✅ FORGE EVIDENCE: CRD repository contract working")
+	})
+}
+
+// TestAntiCorruptionLayerBoundaries validates anti-corruption layer implementation
+func TestAntiCorruptionLayerBoundaries(t *testing.T) {
+	t.Run("External Kubernetes Service Boundary", func(t *testing.T) {
+		// FORGE RED PHASE: Anti-corruption layer must fail until implementation
+		
+		kubernetesService := NewKubernetesService()
+		ctx := context.Background()
+		
+		// Test that external Kubernetes API calls are properly isolated
+		fabricConfig := ExternalFabricConfig{
+			ServerURL: "https://k8s-test.local:6443",
+			Token:     "test-token",
+			Namespace: "cnoc",
+		}
+		
+		// ANTI-CORRUPTION TEST: External service calls must be translated to domain concepts
+		connectionResult, err := kubernetesService.TestConnection(ctx, fabricConfig)
+		if err != nil {
+			t.Fatalf("❌ FORGE FAIL: Kubernetes service connection test failed: %v", err)
+		}
+		
+		// Validate that external response is translated to domain model
+		if connectionResult.Status == "" {
+			t.Errorf("❌ FORGE FAIL: Connection result status not mapped from external API")
+		}
+		
+		if connectionResult.Version == "" {
+			t.Errorf("❌ FORGE FAIL: Kubernetes version not extracted from external API")
+		}
+		
+		// Test CRD deployment through anti-corruption layer
+		crdDeployment := CRDDeploymentRequest{
+			FabricID: "acl-test-fabric",
+			CRDData: map[string]interface{}{
+				"apiVersion": "vpc.githedgehog.com/v1beta1",
+				"kind":       "VPC",
+				"metadata": map[string]interface{}{
+					"name":      "acl-test-vpc",
+					"namespace": "cnoc",
+				},
+				"spec": map[string]interface{}{
+					"subnets": []map[string]interface{}{
+						{"name": "default", "cidr": "10.1.0.0/24"},
+					},
+				},
+			},
+		}
+		
+		deploymentResult, err := kubernetesService.DeployCRD(ctx, crdDeployment)
+		if err != nil {
+			t.Fatalf("❌ FORGE FAIL: CRD deployment through anti-corruption layer failed: %v", err)
+		}
+		
+		// Validate that Kubernetes response is translated to domain terms
+		if deploymentResult.Status != "deployed" && deploymentResult.Status != "pending" {
+			t.Errorf("❌ FORGE FAIL: Invalid deployment status from anti-corruption layer: %s", deploymentResult.Status)
+		}
+		
+		t.Logf("✅ FORGE EVIDENCE: Kubernetes anti-corruption layer working")
+	})
+	
+	t.Run("External Git Service Boundary", func(t *testing.T) {
+		// FORGE RED PHASE: Git service anti-corruption layer must fail until implementation
+		
+		gitService := NewGitOpsService()
+		ctx := context.Background()
+		
+		// Test that external Git API calls are properly isolated
+		repoConfig := ExternalGitRepoConfig{
+			URL:         "https://github.com/test/cnoc-config",
+			Branch:      "main",
+			Directory:   "gitops/hedgehog/test/",
+			Credentials: ExternalGitCredentials{
+				Type:  "token",
+				Token: "test-token",
+			},
+		}
+		
+		// ANTI-CORRUPTION TEST: Git service calls must be translated to domain concepts
+		fetchResult, err := gitService.FetchConfiguration(ctx, repoConfig)
+		if err != nil {
+			t.Fatalf("❌ FORGE FAIL: Git service configuration fetch failed: %v", err)
+		}
+		
+		// Validate that Git response is translated to domain model
+		if fetchResult.CommitHash == "" {
+			t.Errorf("❌ FORGE FAIL: Git commit hash not extracted from external API")
+		}
+		
+		if len(fetchResult.ConfigurationFiles) == 0 {
+			t.Errorf("❌ FORGE FAIL: Configuration files not extracted from Git API")
+		}
+		
+		// Test CRD parsing through anti-corruption layer
+		for _, file := range fetchResult.ConfigurationFiles {
+			parsedCRDs, err := gitService.ParseCRDFile(ctx, file)
+			if err != nil {
+				t.Errorf("❌ FORGE FAIL: CRD parsing through anti-corruption layer failed: %v", err)
+				continue
+			}
+			
+			// Validate that Git file content is translated to domain CRDs
+			for _, crd := range parsedCRDs {
+				if crd.Kind == "" {
+					t.Errorf("❌ FORGE FAIL: CRD kind not extracted from Git file")
+				}
+				if crd.APIVersion == "" {
+					t.Errorf("❌ FORGE FAIL: CRD API version not extracted from Git file")
+				}
+			}
+		}
+		
+		t.Logf("✅ FORGE EVIDENCE: Git service anti-corruption layer working")
+	})
+	
+	t.Run("External Monitoring Service Boundary", func(t *testing.T) {
+		// FORGE RED PHASE: Monitoring service anti-corruption layer must fail until implementation
+		
+		monitoringService := NewMonitoringService()
+		ctx := context.Background()
+		
+		// Test that external monitoring API calls are properly isolated
+		metricsQuery := ExternalMetricsQuery{
+			FabricID:    "acl-test-fabric",
+			MetricType:  "fabric_sync_duration",
+			TimeRange:   "1h",
+			Aggregation: "avg",
+		}
+		
+		// ANTI-CORRUPTION TEST: Monitoring calls must be translated to domain metrics
+		metricsResult, err := monitoringService.QueryMetrics(ctx, metricsQuery)
+		if err != nil {
+			t.Fatalf("❌ FORGE FAIL: Monitoring service metrics query failed: %v", err)
+		}
+		
+		// Validate that external metrics are translated to domain concepts
+		if metricsResult.FabricID != "acl-test-fabric" {
+			t.Errorf("❌ FORGE FAIL: Fabric ID not preserved in metrics translation")
+		}
+		
+		if len(metricsResult.DataPoints) == 0 {
+			t.Errorf("❌ FORGE FAIL: Metrics data points not extracted from external API")
+		}
+		
+		// Test alert creation through anti-corruption layer
+		alertConfig := ExternalAlertConfig{
+			FabricID:    "acl-test-fabric",
+			AlertType:   "sync_failure",
+			Threshold:   "5m",
+			Severity:    "critical",
+		}
+		
+		alertResult, err := monitoringService.CreateAlert(ctx, alertConfig)
+		if err != nil {
+			t.Fatalf("❌ FORGE FAIL: Alert creation through anti-corruption layer failed: %v", err)
+		}
+		
+		if alertResult.AlertID == "" {
+			t.Errorf("❌ FORGE FAIL: Alert ID not generated by anti-corruption layer")
+		}
+		
+		t.Logf("✅ FORGE EVIDENCE: Monitoring service anti-corruption layer working")
+	})
+}
+
+// Mock types and services for testing - these will fail until real implementation exists
+
+// Configuration Application Service types
+type ConfigurationCreateCommand struct {
+	Name        string                    `json:"name"`
+	Description string                    `json:"description"`
+	Mode        string                    `json:"mode"`
+	Version     string                    `json:"version"`
+	Labels      map[string]string         `json:"labels"`
+	Components  []ComponentCreateRequest  `json:"components"`
+}
+
+type ComponentCreateRequest struct {
+	Name          string                 `json:"name"`
+	Version       string                 `json:"version"`
+	Enabled       bool                   `json:"enabled"`
+	Configuration map[string]interface{} `json:"configuration"`
+}
+
+type ConfigurationCreateResult struct {
+	ID         string                     `json:"id"`
+	Status     string                     `json:"status"`
+	Components []ComponentCreateResponse  `json:"components"`
+}
+
+type ComponentCreateResponse struct {
+	Name    string `json:"name"`
+	Version string `json:"version"`
+	Status  string `json:"status"`
+}
+
+type ConfigurationValidateCommand struct {
+	ConfigurationID string   `json:"configuration_id"`
+	ValidationRules []string `json:"validation_rules"`
+}
+
+type ConfigurationValidationResult struct {
+	Valid    bool                        `json:"valid"`
+	Errors   []ConfigurationValidationError   `json:"errors"`
+	Warnings []ConfigurationValidationWarning `json:"warnings"`
+}
+
+type ConfigurationValidationError struct {
+	Field   string `json:"field"`
+	Code    string `json:"code"`
+	Message string `json:"message"`
+}
+
+type ConfigurationValidationWarning struct {
+	Field   string `json:"field"`
+	Message string `json:"message"`
+}
+
+// Mock services - these will fail until real implementation
+type ConfigurationApplicationService struct {
+	repository   MockConfigurationRepository
+	eventBus     EventBus
+	domainService ConfigurationDomainService
+}
+
+func NewConfigurationApplicationService(
+	repo MockConfigurationRepository,
+	eventBus EventBus,
+	domainService ConfigurationDomainService,
+) *ConfigurationApplicationService {
+	return &ConfigurationApplicationService{
+		repository:   repo,
+		eventBus:     eventBus,
+		domainService: domainService,
+	}
+}
+
+func (s *ConfigurationApplicationService) CreateConfiguration(ctx context.Context, cmd ConfigurationCreateCommand) (*ConfigurationCreateResult, error) {
+	// FORGE RED PHASE: Return error until implementation exists
+	return nil, fmt.Errorf("CreateConfiguration not implemented")
+}
+
+func (s *ConfigurationApplicationService) ValidateConfiguration(ctx context.Context, cmd ConfigurationValidateCommand) (*ConfigurationValidationResult, error) {
+	// FORGE RED PHASE: Return error until implementation exists
+	return nil, fmt.Errorf("ValidateConfiguration not implemented")
+}
+
+// Additional mock types for other services...
+type FabricSyncCommand struct {
+	FabricID      string `json:"fabric_id"`
+	SyncType      string `json:"sync_type"`
+	GitCommitHash string `json:"git_commit_hash"`
+	GitDirectory  string `json:"git_directory"`
+	DryRun        bool   `json:"dry_run"`
+	ForceSync     bool   `json:"force_sync"`
+}
+
+type FabricSyncResult struct {
+	OperationID     string `json:"operation_id"`
+	Status          string `json:"status"`
+	CRDsProcessed   int    `json:"crds_processed"`
+	CRDsTotal       int    `json:"crds_total"`
+}
+
+type CRDCreateCommand struct {
+	FabricID   string                 `json:"fabric_id"`
+	Name       string                 `json:"name"`
+	Kind       string                 `json:"kind"`
+	Type       string                 `json:"type"`
+	APIVersion string                 `json:"api_version"`
+	Namespace  string                 `json:"namespace"`
+	Spec       map[string]interface{} `json:"spec"`
+}
+
+type CRDCreateResult struct {
+	ID               string `json:"id"`
+	Status           string `json:"status"`
+	ValidationStatus string `json:"validation_status"`
+	Category         string `json:"category"`
+}
+
+// Mock repository interfaces for integration testing
+type MockConfigurationRepository interface {
+	Save(ctx context.Context, config *ConfigurationEntity) error
+	GetByID(ctx context.Context, id string) (*ConfigurationEntity, error)
+}
+
+type FabricRepository interface {
+	Save(ctx context.Context, fabric *FabricEntity) error
+	GetByID(ctx context.Context, id string) (*FabricEntity, error)
+	GetByStatus(ctx context.Context, status string) ([]*FabricEntity, error)
+}
+
+type CRDRepository interface {
+	Save(ctx context.Context, crd *CRDEntity) error
+	GetByID(ctx context.Context, id string) (*CRDEntity, error)
+	GetByFabricID(ctx context.Context, fabricID string) ([]*CRDEntity, error)
+	GetByType(ctx context.Context, crdType string) ([]*CRDEntity, error)
+}
+
+// Mock entity types
+type ConfigurationEntity struct {
+	ID           string    `json:"id"`
+	Name         string    `json:"name"`
+	Description  string    `json:"description"`
+	Mode         string    `json:"mode"`
+	Version      string    `json:"version"`
+	Status       string    `json:"status"`
+	Created      time.Time `json:"created"`
+	LastModified time.Time `json:"last_modified"`
+}
+
+type FabricEntity struct {
+	ID               string    `json:"id"`
+	Name             string    `json:"name"`
+	Description      string    `json:"description"`
+	Status           string    `json:"status"`
+	ConnectionStatus string    `json:"connection_status"`
+	SyncStatus       string    `json:"sync_status"`
+	GitRepositoryID  string    `json:"git_repository_id"`
+	GitOpsDirectory  string    `json:"gitops_directory"`
+	Created          time.Time `json:"created"`
+	LastModified     time.Time `json:"last_modified"`
+}
+
+type CRDEntity struct {
+	ID           string          `json:"id"`
+	FabricID     string          `json:"fabric_id"`
+	Name         string          `json:"name"`
+	Kind         string          `json:"kind"`
+	Type         string          `json:"type"`
+	APIVersion   string          `json:"api_version"`
+	Namespace    string          `json:"namespace"`
+	Spec         json.RawMessage `json:"spec"`
+	Status       json.RawMessage `json:"status"`
+	CRDStatus    string          `json:"crd_status"`
+	Created      time.Time       `json:"created"`
+	LastModified time.Time       `json:"last_modified"`
+}
+
+// Mock in-memory implementations - these will fail until real implementation
+type InMemoryConfigurationRepository struct {
+	configurations map[string]*ConfigurationEntity
+}
+
+func NewInMemoryConfigurationRepository() *InMemoryConfigurationRepository {
+	return &InMemoryConfigurationRepository{
+		configurations: make(map[string]*ConfigurationEntity),
+	}
+}
+
+func (r *InMemoryConfigurationRepository) Save(ctx context.Context, config *ConfigurationEntity) error {
+	r.configurations[config.ID] = config
+	return nil
+}
+
+func (r *InMemoryConfigurationRepository) GetByID(ctx context.Context, id string) (*ConfigurationEntity, error) {
+	config, exists := r.configurations[id]
+	if !exists {
+		return nil, fmt.Errorf("configuration not found: %s", id)
+	}
+	return config, nil
+}
+
+// Mock implementations for other repositories and services would continue here...
+// All mock implementations will fail until real implementation exists
+
+// Factory functions for test services
+
+func NewInMemoryEventBus() EventBus {
+	return events.NewSimpleEventBus()
+}
+
+func NewConfigurationDomainService() ConfigurationDomainService {
+	return &MockConfigurationDomainService{}
+}
+
+type MockConfigurationDomainService struct{}
+
+func (s *MockConfigurationDomainService) ValidateConfiguration(config *configuration.Configuration) error {
+	return nil // Mock implementation - always valid
+}
+
+func (s *MockConfigurationDomainService) ResolveDependencies(config *configuration.Configuration) error {
+	return nil // Mock implementation - no dependencies
+}
+
+func (s *MockConfigurationDomainService) ApplyPolicies(config *configuration.Configuration) error {
+	return nil // Mock implementation - no policies to apply
+}
+
+// Additional factory functions for fabric/crd services
+func NewInMemoryFabricRepository() interface{} {
+	return &MockFabricRepository{}
+}
+
+func NewInMemoryCRDRepository() interface{} {
+	return &MockCRDRepository{}
+}
+
+func NewFabricApplicationService(fabricRepo interface{}, crdRepo interface{}, eventBus EventBus, domainService interface{}) interface{} {
+	return &MockFabricApplicationService{}
+}
+
+func NewFabricDomainService() interface{} {
+	return &MockFabricDomainService{}
+}
+
+// Mock implementations
+type MockFabricRepository struct{}
+type MockCRDRepository struct{}
+type MockFabricApplicationService struct{}
+type MockFabricDomainService struct{}
+
+// InMemoryEventBus type alias for compatibility
+type InMemoryEventBus = *events.SimpleEventBus
+
+// FORGE Integration Contract Test Summary:
+//
+// 1. APPLICATION SERVICE INTEGRATION:
+//    - Configuration application service coordination with domain models
+//    - Validation service integration with domain validation logic
+//    - Fabric sync operation service contract validation
+//    - CRD management service integration testing
+//
+// 2. REPOSITORY PATTERN CONTRACTS:
+//    - Configuration repository persistence contract
+//    - Fabric repository with relationship handling
+//    - CRD repository with JSON serialization contract
+//    - Query pattern validation across all repositories
+//
+// 3. ANTI-CORRUPTION LAYER BOUNDARIES:
+//    - External Kubernetes service boundary validation
+//    - External Git service boundary validation  
+//    - External monitoring service boundary validation
+//    - Domain concept translation verification
+//
+// RED PHASE COMPLIANCE:
+// - All integration tests MUST fail until application services are properly integrated
+// - Repository implementations must fail until persistence layer is activated
+// - Anti-corruption layer must fail until external service integrations are implemented
+// - Contract validation ensures proper domain model integration

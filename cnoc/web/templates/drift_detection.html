@@ -1,0 +1,376 @@
+{{define "title"}}Drift Detection - CNOC{{end}}
+
+{{define "drift_content"}}
+<div class="container-fluid">
+    <div class="row">
+        <div class="col-12">
+            <div class="card">
+                <div class="card-header d-flex justify-content-between align-items-center">
+                    <h3><i class="mdi mdi-alert-circle"></i> Drift Detection Dashboard</h3>
+                    <div>
+                        <button class="btn btn-warning" onclick="analyzeAllDrift()">
+                            <i class="mdi mdi-magnify"></i> Analyze Drift
+                        </button>
+                        <button class="btn btn-info ms-2" onclick="location.reload()">
+                            <i class="mdi mdi-refresh"></i> Refresh
+                        </button>
+                    </div>
+                </div>
+                <div class="card-body">
+                    <div class="alert alert-info mb-4">
+                        <h5><i class="mdi mdi-information"></i> Configuration Drift Analysis</h5>
+                        <p>Monitor and detect configuration drift between your Git repository definitions and live Kubernetes resources across all fabrics.</p>
+                    </div>
+
+                    <!-- Drift Summary Dashboard -->
+                    <div class="row mb-4">
+                        <div class="col-md-3">
+                            <div class="card {{if eq .DriftSummary.Status "critical"}}border-danger bg-danger bg-opacity-10{{else if eq .DriftSummary.Status "warning"}}border-warning bg-warning bg-opacity-10{{else}}border-success bg-success bg-opacity-10{{end}}">
+                                <div class="card-body text-center">
+                                    <h4 class="{{if eq .DriftSummary.Status "critical"}}text-danger{{else if eq .DriftSummary.Status "warning"}}text-warning{{else}}text-success{{end}}">
+                                        <i class="mdi mdi-delta"></i>
+                                    </h4>
+                                    <h3>{{.DriftSummary.DriftCount}}</h3>
+                                    <small class="text-muted">Resources with Drift</small>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-md-3">
+                            <div class="card border-info">
+                                <div class="card-body text-center">
+                                    <h4 class="text-info"><i class="mdi mdi-clock"></i></h4>
+                                    <h6>{{if .DriftSummary.LastCheck}}{{.DriftSummary.LastCheck}}{{else}}Never{{end}}</h6>
+                                    <small class="text-muted">Last Check</small>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-md-3">
+                            <div class="card border-primary">
+                                <div class="card-body text-center">
+                                    <h4 class="text-primary"><i class="mdi mdi-kubernetes"></i></h4>
+                                    <h3>{{.DriftSummary.TotalResources}}</h3>
+                                    <small class="text-muted">Total Resources</small>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-md-3">
+                            <div class="card {{if eq .DriftSummary.Status "critical"}}border-danger{{else if eq .DriftSummary.Status "warning"}}border-warning{{else}}border-success{{end}}">
+                                <div class="card-body text-center">
+                                    <h4 class="{{if eq .DriftSummary.Status "critical"}}text-danger{{else if eq .DriftSummary.Status "warning"}}text-warning{{else}}text-success{{end}}">
+                                        {{if eq .DriftSummary.Status "critical"}}<i class="mdi mdi-alert-circle"></i>
+                                        {{else if eq .DriftSummary.Status "warning"}}<i class="mdi mdi-alert"></i>
+                                        {{else}}<i class="mdi mdi-check-circle"></i>{{end}}
+                                    </h4>
+                                    <h6 class="text-uppercase">{{.DriftSummary.Status}}</h6>
+                                    <small class="text-muted">Drift Status</small>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Drift Actions -->
+                    <div class="row mb-4">
+                        <div class="col-md-3">
+                            <button class="btn btn-warning w-100" onclick="analyzeAllDrift()">
+                                <i class="mdi mdi-magnify"></i><br>Analyze Drift
+                                <br><small>Detect configuration drift</small>
+                            </button>
+                        </div>
+                        <div class="col-md-3">
+                            <button class="btn btn-primary w-100" onclick="syncFromGit()">
+                                <i class="mdi mdi-source-repository"></i><br>Sync from Git
+                                <br><small>Apply Git configurations</small>
+                            </button>
+                        </div>
+                        <div class="col-md-3">
+                            <button class="btn btn-success w-100" onclick="checkDriftStatus()">
+                                <i class="mdi mdi-refresh"></i><br>Check for Drift
+                                <br><small>Manual drift detection</small>
+                            </button>
+                        </div>
+                        <div class="col-md-3">
+                            <button class="btn btn-info w-100" data-bs-toggle="modal" data-bs-target="#configureDriftModal">
+                                <i class="mdi mdi-cog"></i><br>Configure Detection
+                                <br><small>Drift detection settings</small>
+                            </button>
+                        </div>
+                    </div>
+
+                    {{if .DriftResources}}
+                    <!-- Drift Details by Fabric -->
+                    <div class="mt-4">
+                        <h5><i class="mdi mdi-server-network"></i> Drift Details by Fabric</h5>
+                        {{range .FabricDrift}}
+                        <div class="card mb-3">
+                            <div class="card-header d-flex justify-content-between align-items-center">
+                                <h6>
+                                    <i class="mdi mdi-server-network"></i> {{.FabricName}}
+                                    <span class="badge {{if eq .DriftStatus "critical"}}bg-danger{{else if eq .DriftStatus "warning"}}bg-warning{{else}}bg-success{{end}} ms-2">
+                                        {{.DriftCount}} resources with drift
+                                    </span>
+                                </h6>
+                                <div>
+                                    <button class="btn btn-sm btn-primary" onclick="syncFabric('{{.FabricID}}')">
+                                        <i class="mdi mdi-sync"></i> Sync Fabric
+                                    </button>
+                                    <button class="btn btn-sm btn-warning" onclick="analyzeFabricDrift('{{.FabricID}}')">
+                                        <i class="mdi mdi-magnify"></i> Analyze
+                                    </button>
+                                </div>
+                            </div>
+                            <div class="card-body">
+                                {{if .DriftDetails}}
+                                <div class="table-responsive">
+                                    <table class="table table-sm">
+                                        <thead>
+                                            <tr>
+                                                <th>Resource</th>
+                                                <th>Type</th>
+                                                <th>Drift Severity</th>
+                                                <th>Last Check</th>
+                                                <th>Drift Description</th>
+                                                <th>Actions</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            {{range .DriftDetails}}
+                                            <tr class="drift-status" data-drift="{{.Severity}}">
+                                                <td>
+                                                    <strong>{{.ResourceName}}</strong>
+                                                    <br><small class="text-muted">{{.Namespace}}</small>
+                                                </td>
+                                                <td>
+                                                    <span class="badge bg-secondary">{{.ResourceType}}</span>
+                                                </td>
+                                                <td>
+                                                    {{if eq .Severity "critical"}}
+                                                        <span class="badge bg-danger">
+                                                            <i class="mdi mdi-alert-circle"></i> Critical
+                                                        </span>
+                                                    {{else if eq .Severity "warning"}}
+                                                        <span class="badge bg-warning">
+                                                            <i class="mdi mdi-alert"></i> Warning
+                                                        </span>
+                                                    {{else}}
+                                                        <span class="badge bg-info">
+                                                            <i class="mdi mdi-information"></i> Info
+                                                        </span>
+                                                    {{end}}
+                                                </td>
+                                                <td>
+                                                    <small>{{.LastCheck}}</small>
+                                                </td>
+                                                <td>
+                                                    <small>{{.Description}}</small>
+                                                </td>
+                                                <td>
+                                                    <div class="btn-group btn-group-sm">
+                                                        <button class="btn btn-primary" onclick="syncResource('{{.ResourceID}}')" title="Sync Resource">
+                                                            <i class="mdi mdi-sync"></i>
+                                                        </button>
+                                                        <button class="btn btn-info" onclick="compareResource('{{.ResourceID}}')" title="Compare">
+                                                            <i class="mdi mdi-compare"></i>
+                                                        </button>
+                                                    </div>
+                                                </td>
+                                            </tr>
+                                            {{end}}
+                                        </tbody>
+                                    </table>
+                                </div>
+                                {{else}}
+                                <div class="alert alert-success">
+                                    <i class="mdi mdi-check-circle"></i> No drift detected for this fabric
+                                </div>
+                                {{end}}
+                            </div>
+                        </div>
+                        {{end}}
+                    </div>
+                    {{else}}
+                    <div class="alert alert-success">
+                        <h5><i class="mdi mdi-check-circle"></i> No Configuration Drift Detected</h5>
+                        <p>All resources are synchronized between Git repository definitions and live Kubernetes resources.</p>
+                        <button class="btn btn-success" onclick="analyzeAllDrift()">
+                            <i class="mdi mdi-magnify"></i> Run Drift Analysis
+                        </button>
+                    </div>
+                    {{end}}
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Configure Drift Detection Modal -->
+<div class="modal fade" id="configureDriftModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title"><i class="mdi mdi-cog"></i> Configure Drift Detection</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <form action="/drift/configure" method="POST">
+                <div class="modal-body">
+                    <div class="mb-3">
+                        <label for="detectionInterval" class="form-label">Detection Interval</label>
+                        <select class="form-select" id="detectionInterval" name="interval">
+                            <option value="5m">Every 5 minutes</option>
+                            <option value="15m">Every 15 minutes</option>
+                            <option value="30m">Every 30 minutes</option>
+                            <option value="1h" selected>Every hour</option>
+                            <option value="6h">Every 6 hours</option>
+                            <option value="24h">Daily</option>
+                        </select>
+                    </div>
+                    <div class="mb-3">
+                        <div class="form-check">
+                            <input class="form-check-input" type="checkbox" id="autoSync" name="auto_sync">
+                            <label class="form-check-label" for="autoSync">
+                                Auto-sync on drift detection
+                            </label>
+                        </div>
+                    </div>
+                    <div class="mb-3">
+                        <div class="form-check">
+                            <input class="form-check-input" type="checkbox" id="notifications" name="notifications" checked>
+                            <label class="form-check-label" for="notifications">
+                                Enable drift notifications
+                            </label>
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <button type="submit" class="btn btn-success">
+                        <i class="mdi mdi-check"></i> Save Configuration
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+{{end}}
+
+{{define "scripts"}}
+<script>
+function analyzeAllDrift() {
+    const button = event.target;
+    button.disabled = true;
+    button.innerHTML = '<i class="mdi mdi-loading mdi-spin"></i> Analyzing...';
+    
+    makeAjaxRequest('/api/v1/drift/analyze-all', 'POST', null, function(err, response) {
+        button.disabled = false;
+        button.innerHTML = '<i class="mdi mdi-magnify"></i> Analyze Drift';
+        
+        if (err) {
+            showNotification('Failed to analyze drift: ' + err.message, 'danger');
+        } else {
+            showNotification('Drift analysis completed', 'success');
+            setTimeout(() => location.reload(), 2000);
+        }
+    });
+}
+
+function syncFromGit() {
+    const button = event.target;
+    button.disabled = true;
+    button.innerHTML = '<i class="mdi mdi-loading mdi-spin"></i> Syncing...';
+    
+    makeAjaxRequest('/api/v1/fabrics/sync-all', 'POST', null, function(err, response) {
+        button.disabled = false;
+        button.innerHTML = '<i class="mdi mdi-source-repository"></i><br>Sync from Git<br><small>Apply Git configurations</small>';
+        
+        if (err) {
+            showNotification('Failed to sync from Git: ' + err.message, 'danger');
+        } else {
+            showNotification('Git synchronization started', 'success');
+            setTimeout(() => location.reload(), 3000);
+        }
+    });
+}
+
+function checkDriftStatus() {
+    const button = event.target;
+    button.disabled = true;
+    button.innerHTML = '<i class="mdi mdi-loading mdi-spin"></i> Checking...';
+    
+    makeAjaxRequest('/api/v1/drift/check', 'POST', null, function(err, response) {
+        button.disabled = false;
+        button.innerHTML = '<i class="mdi mdi-refresh"></i><br>Check for Drift<br><small>Manual drift detection</small>';
+        
+        if (err) {
+            showNotification('Failed to check drift: ' + err.message, 'danger');
+        } else {
+            showNotification('Drift check completed', 'success');
+            setTimeout(() => location.reload(), 1000);
+        }
+    });
+}
+
+function syncFabric(fabricId) {
+    makeAjaxRequest(`/api/v1/fabrics/${fabricId}/sync`, 'POST', null, function(err, response) {
+        if (err) {
+            showNotification('Failed to sync fabric: ' + err.message, 'danger');
+        } else {
+            showNotification('Fabric synchronization started', 'success');
+            setTimeout(() => location.reload(), 2000);
+        }
+    });
+}
+
+function analyzeFabricDrift(fabricId) {
+    makeAjaxRequest(`/api/v1/drift/fabric/${fabricId}`, 'POST', null, function(err, response) {
+        if (err) {
+            showNotification('Failed to analyze fabric drift: ' + err.message, 'danger');
+        } else {
+            showNotification('Fabric drift analysis started', 'success');
+            setTimeout(() => location.reload(), 1500);
+        }
+    });
+}
+
+function syncResource(resourceId) {
+    makeAjaxRequest(`/api/v1/crds/${resourceId}/sync`, 'POST', null, function(err, response) {
+        if (err) {
+            showNotification('Failed to sync resource: ' + err.message, 'danger');
+        } else {
+            showNotification('Resource synchronized successfully', 'success');
+            setTimeout(() => location.reload(), 1000);
+        }
+    });
+}
+
+function compareResource(resourceId) {
+    window.open(`/crds/compare/${resourceId}`, '_blank');
+}
+
+// Auto-refresh every 30 seconds for real-time drift monitoring
+setInterval(function() {
+    if (document.visibilityState === 'visible') {
+        location.reload();
+    }
+}, 30000);
+</script>
+
+<style>
+.drift-status[data-drift="critical"] {
+    background-color: rgba(220, 53, 69, 0.1);
+}
+.drift-status[data-drift="warning"] {
+    background-color: rgba(255, 193, 7, 0.1);
+}
+.drift-status[data-drift="info"] {
+    background-color: rgba(13, 202, 240, 0.1);
+}
+
+.card .btn.w-100 {
+    height: 80px;
+    text-align: center;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+}
+</style>
+{{end}}

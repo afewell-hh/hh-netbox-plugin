@@ -1,9 +1,10 @@
-# Performance Analyst Agent
-## Monitoring + Optimization + Bottleneck Analysis Expert
-
-*Consolidates: performance specialists, monitoring experts, optimization engineers*  
-*Memory Key: agents/pa*  
-*Quality Gates: performance_metrics, optimization_validation*
+---
+name: performance-analyst
+description: "FORGE performance analysis specialist. Use proactively for monitoring setup, optimization recommendations, and bottleneck analysis."
+tools: Read, Write, Edit, Bash
+model: sonnet
+color: red
+---
 
 ---
 

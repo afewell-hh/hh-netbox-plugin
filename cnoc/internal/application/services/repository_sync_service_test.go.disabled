@@ -1,0 +1,1170 @@
+package services
+
+import (
+	"context"
+	"errors"
+	"fmt"
+	"strings"
+	"testing"
+	"time"
+
+	"github.com/hedgehog/cnoc/internal/domain/gitops"
+)
+
+// FORGE Movement 3: Repository Sync Service Test Suite
+// RED PHASE: These tests MUST fail initially until proper implementation exists
+// Following FORGE methodology with performance-focused validation and evidence-based development
+
+// Repository Sync DTOs and Interfaces
+
+// ParsedCRD represents a parsed Custom Resource Definition from YAML
+type ParsedCRD struct {
+	Name       string                 `json:"name"`
+	Namespace  string                 `json:"namespace"`
+	Kind       string                 `json:"kind"`
+	APIVersion string                 `json:"api_version"`
+	Spec       map[string]interface{} `json:"spec"`
+	Metadata   map[string]interface{} `json:"metadata"`
+	Source     CRDSource              `json:"source"`
+	ParsedAt   time.Time              `json:"parsed_at"`
+}
+
+// CRDSource represents the source file information for a parsed CRD
+type CRDSource struct {
+	FilePath     string `json:"file_path"`
+	LineNumber   int    `json:"line_number"`
+	YAMLDocument int    `json:"yaml_document"`
+}
+
+// Note: YAMLValidationResult, ValidationError, ValidationWarning types are defined in gitops_repository_application_service.go
+
+// ValidationPerformance represents validation performance metrics
+type ValidationPerformance struct {
+	ParseDuration     time.Duration `json:"parse_duration_ms"`
+	ValidationDuration time.Duration `json:"validation_duration_ms"`
+	FilesProcessed    int           `json:"files_processed"`
+	LinesProcessed    int           `json:"lines_processed"`
+	BytesProcessed    int64         `json:"bytes_processed"`
+}
+
+// DriftResult represents the result of drift detection
+type DriftResult struct {
+	HasDrift         bool                   `json:"has_drift"`
+	DriftedResources []DriftedResource      `json:"drifted_resources,omitempty"`
+	TotalResources   int                    `json:"total_resources"`
+	DriftPercentage  float64                `json:"drift_percentage"`
+	LastCheck        time.Time              `json:"last_check"`
+	Performance      DriftDetectionPerformance `json:"performance"`
+	Summary          DriftSummary           `json:"summary"`
+}
+
+// DriftedResource represents a single drifted resource
+type DriftedResource struct {
+	Name            string                 `json:"name"`
+	Namespace       string                 `json:"namespace"`
+	Kind            string                 `json:"kind"`
+	DriftType       string                 `json:"drift_type"`
+	ExpectedSpec    map[string]interface{} `json:"expected_spec"`
+	ActualSpec      map[string]interface{} `json:"actual_spec"`
+	Differences     []FieldDifference      `json:"differences"`
+	Severity        string                 `json:"severity"`
+	Recommendations []string               `json:"recommendations,omitempty"`
+}
+
+// FieldDifference represents a difference between expected and actual field values
+type FieldDifference struct {
+	FieldPath    string      `json:"field_path"`
+	ExpectedValue interface{} `json:"expected_value"`
+	ActualValue   interface{} `json:"actual_value"`
+	DifferenceType string     `json:"difference_type"`
+}
+
+// DriftDetectionPerformance represents drift detection performance metrics
+type DriftDetectionPerformance struct {
+	ComparisonDuration time.Duration `json:"comparison_duration_ms"`
+	ResourcesCompared  int           `json:"resources_compared"`
+	NetworkCalls       int           `json:"network_calls"`
+	CacheHits          int           `json:"cache_hits"`
+}
+
+// DriftSummary represents a summary of drift detection results
+type DriftSummary struct {
+	ConfigurationDrift int `json:"configuration_drift"`
+	VersionDrift       int `json:"version_drift"`
+	MissingResources   int `json:"missing_resources"`
+	ExtraResources     int `json:"extra_resources"`
+	PolicyViolations   int `json:"policy_violations"`
+}
+
+// Note: RepositorySyncService interface is defined in gitops_repository_application_service.go
+// This test file provides a mock implementation for testing purposes
+
+// Mock implementation for testing
+
+// MockRepositorySyncService provides a mock implementation for testing
+type MockRepositorySyncService struct {
+	shouldFailSync         bool
+	shouldFailParse        bool
+	shouldFailValidate     bool
+	shouldFailDrift        bool
+	syncCallCount          int
+	parseCallCount         int
+	validateCallCount      int
+	driftCallCount         int
+	syncResults            map[string]*RepositorySyncResult
+	parsedCRDs             map[string][]*ParsedCRD
+	validationResults      map[string]*YAMLValidationResult
+	driftResults           map[string]*DriftDetectionResult
+}
+
+func NewMockRepositorySyncService() *MockRepositorySyncService {
+	return &MockRepositorySyncService{
+		syncResults:       make(map[string]*RepositorySyncResult),
+		parsedCRDs:        make(map[string][]*ParsedCRD),
+		validationResults: make(map[string]*YAMLValidationResult),
+		driftResults:      make(map[string]*DriftDetectionResult),
+	}
+}
+
+func (m *MockRepositorySyncService) SyncRepository(ctx context.Context, repo *gitops.GitRepository, localPath string, encryptionKey []byte) (*RepositorySyncResult, error) {
+	m.syncCallCount++
+	if m.shouldFailSync {
+		return nil, errors.New("mock sync repository failure")
+	}
+	
+	result := &RepositorySyncResult{
+		Success:      true,
+		CommitHash:   "abc123def456789012345678901234567890abcd",
+		FilesChanged: 8,
+		CRDsFound:    15,
+		SyncDuration: 2800 * time.Millisecond,
+		SyncedAt:     time.Now(),
+		Details: map[string]interface{}{
+			"repository_id": repo.ID,
+			"target_path":   localPath,
+			"branch":        "main",
+		},
+	}
+	
+	m.syncResults[repo.ID] = result
+	return result, nil
+}
+
+func (m *MockRepositorySyncService) ParseYAMLFiles(ctx context.Context, localPath string) (*YAMLParseResult, error) {
+	m.parseCallCount++
+	if m.shouldFailParse {
+		return nil, errors.New("mock parse YAML files failure")
+	}
+	
+	// Generate mock parsed CRDs
+	var crds []*ParsedCRD
+	
+	// Simulate different types of CRDs
+	crdTypes := []struct {
+		kind       string
+		apiVersion string
+		count      int
+	}{
+		{"VPC", "cnoc.hedgehog.com/v1", 3},
+		{"Connection", "cnoc.hedgehog.com/v1", 8},
+		{"Switch", "cnoc.hedgehog.com/v1", 4},
+	}
+	
+	for _, crdType := range crdTypes {
+		for i := 0; i < crdType.count; i++ {
+			crd := &ParsedCRD{
+				Name:       fmt.Sprintf("%s-%d", strings.ToLower(crdType.kind), i+1),
+				Namespace:  "hedgehog-fabric",
+				Kind:       crdType.kind,
+				APIVersion: crdType.apiVersion,
+				Spec: map[string]interface{}{
+					"config": map[string]interface{}{
+						"name": fmt.Sprintf("%s-%d", strings.ToLower(crdType.kind), i+1),
+						"id":   i + 1,
+					},
+				},
+				Metadata: map[string]interface{}{
+					"labels": map[string]interface{}{
+						"hedgehog.com/fabric": "production",
+						"hedgehog.com/type":   strings.ToLower(crdType.kind),
+					},
+				},
+				Source: CRDSource{
+					FilePath:     fmt.Sprintf("%s/%s-%d.yaml", localPath, strings.ToLower(crdType.kind), i+1),
+					LineNumber:   1,
+					YAMLDocument: 0,
+				},
+				ParsedAt: time.Now(),
+			}
+			crds = append(crds, crd)
+		}
+	}
+	
+	m.parsedCRDs[localPath] = crds
+	return &YAMLParseResult{
+		FilesProcessed: 3,
+		CRDsFound:     len(crds),
+		ParseErrors:   []string{},
+		ParsedObjects: make([]map[string]interface{}, len(crds)),
+		ProcessingTime: 50 * time.Millisecond,
+	}, nil
+}
+
+func (m *MockRepositorySyncService) ValidateYAMLStructure(ctx context.Context, yamlContent []byte) (*YAMLValidationResult, error) {
+	m.validateCallCount++
+	if m.shouldFailValidate {
+		return nil, errors.New("mock validate YAML structure failure")
+	}
+	
+	startTime := time.Now()
+	yamlString := string(yamlContent)
+	
+	// Simulate validation logic using existing types
+	var validationErrors []ValidationError
+	var warnings []ValidationWarning
+	
+	// Simulate validation errors for specific patterns
+	if strings.Contains(yamlString, "invalid_syntax") {
+		validationErrors = append(validationErrors, ValidationError{
+			Code:        "YAML_SYNTAX_ERROR",
+			Message:     "Invalid YAML syntax detected",
+			Field:       "metadata",
+			Recoverable: true,
+		})
+	}
+	
+	if strings.Contains(yamlString, "missing_required_field") {
+		validationErrors = append(validationErrors, ValidationError{
+			Code:        "MISSING_REQUIRED_FIELD",
+			Message:     "Required field 'metadata.name' is missing",
+			Field:       "metadata.name",
+			Recoverable: true,
+		})
+	}
+	
+	// Simulate warnings using existing ValidationWarning type
+	if strings.Contains(yamlString, "deprecated_field") {
+		warnings = append(warnings, ValidationWarning{
+			Code:       "DEPRECATED_FIELD",
+			Message:    "Field 'spec.oldConfig' is deprecated",
+			Field:      "spec.oldConfig",
+			Severity:   "warning",
+			Suggestion: "Use 'spec.config' instead",
+		})
+	}
+	
+	result := &YAMLValidationResult{
+		Valid:    len(validationErrors) == 0,
+		Errors:   validationErrors,
+		Warnings: warnings,
+		Summary: map[string]interface{}{
+			"crd_count":          strings.Count(yamlString, "kind:"),
+			"bytes_processed":    int64(len(yamlContent)),
+			"processing_time_ms": time.Since(startTime).Milliseconds(),
+		},
+	}
+	
+	m.validationResults[yamlString] = result
+	return result, nil
+}
+
+func (m *MockRepositorySyncService) DetectDrift(ctx context.Context, repo *gitops.GitRepository, clusterEndpoint string) (*DriftDetectionResult, error) {
+	m.driftCallCount++
+	if m.shouldFailDrift {
+		return nil, errors.New("mock detect drift failure")
+	}
+	
+	startTime := time.Now()
+	
+	// Simulate drift detection results
+	var driftedResources []DriftedResource
+	
+	// Simulate some drifted resources for testing
+	if repo.ID == "drift-test-repo" {
+		driftedResources = append(driftedResources, DriftedResource{
+			Name:      "vpc-production",
+			Namespace: "hedgehog-fabric",
+			Kind:      "VPC",
+			DriftType: "configuration_drift",
+			ExpectedSpec: map[string]interface{}{
+				"subnets": []string{"10.0.1.0/24", "10.0.2.0/24"},
+				"bgp":     map[string]interface{}{"asn": 65001},
+			},
+			ActualSpec: map[string]interface{}{
+				"subnets": []string{"10.0.1.0/24", "10.0.2.0/24", "10.0.3.0/24"},
+				"bgp":     map[string]interface{}{"asn": 65002},
+			},
+			Differences: []FieldDifference{
+				{
+					FieldPath:      "spec.subnets",
+					ExpectedValue:  []string{"10.0.1.0/24", "10.0.2.0/24"},
+					ActualValue:    []string{"10.0.1.0/24", "10.0.2.0/24", "10.0.3.0/24"},
+					DifferenceType: "array_length_mismatch",
+				},
+				{
+					FieldPath:      "spec.bgp.asn",
+					ExpectedValue:  65001,
+					ActualValue:    65002,
+					DifferenceType: "value_mismatch",
+				},
+			},
+			Severity:        "medium",
+			Recommendations: []string{"Review subnet configuration", "Verify BGP ASN settings"},
+		})
+	}
+	
+	// Variables no longer needed with simplified DriftDetectionResult
+	
+	result := &DriftDetectionResult{
+		HasDrift:      len(driftedResources) > 0,
+		DriftItems:    []DriftItem{}, // Convert from DriftedResource to DriftItem if needed
+		ComparedAt:    time.Now(),
+		Summary:       map[string]interface{}{
+			"configuration_drift": len(driftedResources),
+			"version_drift":       0,
+			"missing_resources":   0,
+			"extra_resources":     0,
+			"policy_violations":   0,
+		},
+	}
+	
+	m.driftResults[repo.ID+":"+clusterEndpoint] = result
+	return result, nil
+}
+
+// Test Cases
+
+// TestRepositorySyncService_SyncRepository tests repository synchronization
+func TestRepositorySyncService_SyncRepository(t *testing.T) {
+	// FORGE RED PHASE: These tests MUST fail initially until proper implementation exists
+	
+	testCases := []struct {
+		name                 string
+		repositoryID         string
+		targetPath           string
+		mockFailure          bool
+		expectedError        bool
+		expectedSuccess      bool
+		expectedMinCRDs      int
+		expectedMinFiles     int
+		maxSyncDuration      time.Duration
+		performanceThreshold time.Duration
+	}{
+		{
+			name:                 "Successful Repository Sync",
+			repositoryID:         "prod-repo-1",
+			targetPath:           "/tmp/gitops/production",
+			mockFailure:          false,
+			expectedError:        false,
+			expectedSuccess:      true,
+			expectedMinCRDs:      10,
+			expectedMinFiles:     5,
+			maxSyncDuration:      30 * time.Second,
+			performanceThreshold: 400 * time.Millisecond,
+		},
+		{
+			name:                 "Staging Repository Sync",
+			repositoryID:         "staging-repo-1",
+			targetPath:           "/tmp/gitops/staging",
+			mockFailure:          false,
+			expectedError:        false,
+			expectedSuccess:      true,
+			expectedMinCRDs:      5,
+			expectedMinFiles:     3,
+			maxSyncDuration:      30 * time.Second,
+			performanceThreshold: 400 * time.Millisecond,
+		},
+		{
+			name:                 "Service Failure",
+			repositoryID:         "failing-repo",
+			targetPath:           "/tmp/gitops/failing",
+			mockFailure:          true,
+			expectedError:        true,
+			expectedSuccess:      false,
+			performanceThreshold: 200 * time.Millisecond,
+		},
+		{
+			name:                 "Large Repository Sync",
+			repositoryID:         "large-repo-1",
+			targetPath:           "/tmp/gitops/large",
+			mockFailure:          false,
+			expectedError:        false,
+			expectedSuccess:      true,
+			expectedMinCRDs:      100,
+			expectedMinFiles:     50,
+			maxSyncDuration:      60 * time.Second,
+			performanceThreshold: 500 * time.Millisecond,
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			// Setup mock service
+			mockService := NewMockRepositorySyncService()
+			mockService.shouldFailSync = tc.mockFailure
+			
+			// Adjust mock data for large repository test
+			if tc.repositoryID == "large-repo-1" {
+				// This would be handled differently in real implementation
+				// For now, just test the interface
+			}
+			
+			// FORGE Quantitative Validation: Start timer
+			startTime := time.Now()
+			
+			// Execute synchronization
+			ctx := context.Background()
+			result, err := mockService.SyncRepository(ctx, tc.repositoryID, tc.targetPath)
+			
+			responseTime := time.Since(startTime)
+			
+			// FORGE Validation 1: Error handling
+			if tc.expectedError && err == nil {
+				t.Errorf("❌ FORGE FAIL: Expected error but got none")
+			}
+			if !tc.expectedError && err != nil {
+				t.Errorf("❌ FORGE FAIL: Unexpected error: %v", err)
+			}
+			
+			// FORGE Validation 2: Result validation (when no error expected)
+			if !tc.expectedError && result != nil {
+				if result.Success != tc.expectedSuccess {
+					t.Errorf("❌ FORGE FAIL: Expected success %t, got %t", tc.expectedSuccess, result.Success)
+				}
+				
+				if tc.expectedSuccess {
+					if result.CommitHash == "" {
+						t.Errorf("❌ FORGE FAIL: Commit hash should be set")
+					}
+					
+					if len(result.CommitHash) < 7 {
+						t.Errorf("❌ FORGE FAIL: Commit hash too short: %s", result.CommitHash)
+					}
+					
+					if result.FilesChanged < tc.expectedMinFiles {
+						t.Errorf("❌ FORGE FAIL: Expected at least %d files changed, got %d", tc.expectedMinFiles, result.FilesChanged)
+					}
+					
+					if result.CRDsFound < tc.expectedMinCRDs {
+						t.Errorf("❌ FORGE FAIL: Expected at least %d CRDs found, got %d", tc.expectedMinCRDs, result.CRDsFound)
+					}
+					
+					if result.SyncDuration <= 0 {
+						t.Errorf("❌ FORGE FAIL: Sync duration should be positive, got %v", result.SyncDuration)
+					}
+					
+					if result.SyncDuration > tc.maxSyncDuration {
+						t.Errorf("❌ FORGE FAIL: Sync duration too long: %v (max: %v)", result.SyncDuration, tc.maxSyncDuration)
+					}
+					
+					if result.SyncedAt.IsZero() {
+						t.Errorf("❌ FORGE FAIL: SyncedAt timestamp should be set")
+					}
+					
+					if result.Details == nil {
+						t.Errorf("❌ FORGE FAIL: Details should be provided")
+					} else {
+						if repoID, ok := result.Details["repository_id"]; !ok || repoID != tc.repositoryID {
+							t.Errorf("❌ FORGE FAIL: Repository ID mismatch in details")
+						}
+						if targetPath, ok := result.Details["target_path"]; !ok || targetPath != tc.targetPath {
+							t.Errorf("❌ FORGE FAIL: Target path mismatch in details")
+						}
+					}
+				}
+			}
+			
+			// FORGE Validation 3: Mock interaction validation
+			if mockService.syncCallCount != 1 {
+				t.Errorf("❌ FORGE FAIL: Expected 1 sync call, got %d", mockService.syncCallCount)
+			}
+			
+			// FORGE Performance Validation
+			if responseTime > tc.performanceThreshold {
+				t.Errorf("❌ FORGE FAIL: Sync operation too slow: %v (max: %v)", responseTime, tc.performanceThreshold)
+			}
+			
+			// FORGE Evidence Logging
+			t.Logf("✅ FORGE EVIDENCE: %s", tc.name)
+			t.Logf("⏱️  Response time: %v", responseTime)
+			t.Logf("📁 Target path: %s", tc.targetPath)
+			if result != nil {
+				t.Logf("🔄 Sync success: %t", result.Success)
+				if result.Success {
+					t.Logf("📝 Commit hash: %s", result.CommitHash)
+					t.Logf("📁 Files changed: %d", result.FilesChanged)
+					t.Logf("📋 CRDs found: %d", result.CRDsFound)
+					t.Logf("⏱️  Sync duration: %v", result.SyncDuration)
+				}
+			}
+		})
+	}
+}
+
+// TestRepositorySyncService_ParseYAMLFiles tests YAML file parsing
+func TestRepositorySyncService_ParseYAMLFiles(t *testing.T) {
+	// FORGE RED PHASE: Test YAML parsing with comprehensive validation
+	
+	testCases := []struct {
+		name                 string
+		directoryPath        string
+		mockFailure          bool
+		expectedError        bool
+		expectedMinCRDs      int
+		expectedKinds        []string
+		expectedNamespaces   []string
+		performanceThreshold time.Duration
+	}{
+		{
+			name:                 "Production Directory Parsing",
+			directoryPath:        "/tmp/gitops/production",
+			mockFailure:          false,
+			expectedError:        false,
+			expectedMinCRDs:      10,
+			expectedKinds:        []string{"VPC", "Connection", "Switch"},
+			expectedNamespaces:   []string{"hedgehog-fabric"},
+			performanceThreshold: 500 * time.Millisecond,
+		},
+		{
+			name:                 "Staging Directory Parsing",
+			directoryPath:        "/tmp/gitops/staging",
+			mockFailure:          false,
+			expectedError:        false,
+			expectedMinCRDs:      5,
+			expectedKinds:        []string{"VPC", "Connection", "Switch"},
+			expectedNamespaces:   []string{"hedgehog-fabric"},
+			performanceThreshold: 300 * time.Millisecond,
+		},
+		{
+			name:                 "Empty Directory Parsing",
+			directoryPath:        "/tmp/gitops/empty",
+			mockFailure:          false,
+			expectedError:        false,
+			expectedMinCRDs:      0,
+			expectedKinds:        []string{},
+			expectedNamespaces:   []string{},
+			performanceThreshold: 100 * time.Millisecond,
+		},
+		{
+			name:                 "Service Failure",
+			directoryPath:        "/tmp/gitops/failing",
+			mockFailure:          true,
+			expectedError:        true,
+			performanceThreshold: 200 * time.Millisecond,
+		},
+		{
+			name:                 "Large Directory Parsing",
+			directoryPath:        "/tmp/gitops/large",
+			mockFailure:          false,
+			expectedError:        false,
+			expectedMinCRDs:      100,
+			expectedKinds:        []string{"VPC", "Connection", "Switch"},
+			expectedNamespaces:   []string{"hedgehog-fabric"},
+			performanceThreshold: 1 * time.Second,
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			// Setup mock service
+			mockService := NewMockRepositorySyncService()
+			mockService.shouldFailParse = tc.mockFailure
+			
+			// Adjust mock data for edge cases
+			if tc.directoryPath == "/tmp/gitops/empty" {
+				// Mock would return empty slice
+			}
+			
+			// FORGE Quantitative Validation: Start timer
+			startTime := time.Now()
+			
+			// Execute parsing
+			ctx := context.Background()
+			crds, err := mockService.ParseYAMLFiles(ctx, tc.directoryPath)
+			
+			responseTime := time.Since(startTime)
+			
+			// FORGE Validation 1: Error handling
+			if tc.expectedError && err == nil {
+				t.Errorf("❌ FORGE FAIL: Expected error but got none")
+			}
+			if !tc.expectedError && err != nil {
+				t.Errorf("❌ FORGE FAIL: Unexpected error: %v", err)
+			}
+			
+			// FORGE Validation 2: Result validation (when no error expected)
+			if !tc.expectedError {
+				if crds == nil {
+					crds = []*ParsedCRD{} // Handle nil case
+				}
+				
+				if len(crds) < tc.expectedMinCRDs {
+					t.Errorf("❌ FORGE FAIL: Expected at least %d CRDs, got %d", tc.expectedMinCRDs, len(crds))
+				}
+				
+				// Validate CRD structure
+				kindsFound := make(map[string]bool)
+				namespacesFound := make(map[string]bool)
+				
+				for i, crd := range crds {
+					if crd.Name == "" {
+						t.Errorf("❌ FORGE FAIL: CRD %d has empty name", i)
+					}
+					if crd.Kind == "" {
+						t.Errorf("❌ FORGE FAIL: CRD %d has empty kind", i)
+					}
+					if crd.APIVersion == "" {
+						t.Errorf("❌ FORGE FAIL: CRD %d has empty API version", i)
+					}
+					if crd.Spec == nil {
+						t.Errorf("❌ FORGE FAIL: CRD %d has nil spec", i)
+					}
+					if crd.Metadata == nil {
+						t.Errorf("❌ FORGE FAIL: CRD %d has nil metadata", i)
+					}
+					if crd.Source.FilePath == "" {
+						t.Errorf("❌ FORGE FAIL: CRD %d has empty source file path", i)
+					}
+					if crd.ParsedAt.IsZero() {
+						t.Errorf("❌ FORGE FAIL: CRD %d has zero parsed timestamp", i)
+					}
+					
+					kindsFound[crd.Kind] = true
+					namespacesFound[crd.Namespace] = true
+					
+					// Validate source path consistency
+					if !strings.Contains(crd.Source.FilePath, tc.directoryPath) {
+						t.Errorf("❌ FORGE FAIL: CRD %d source path doesn't match directory: %s", i, crd.Source.FilePath)
+					}
+				}
+				
+				// Validate expected kinds are present
+				for _, expectedKind := range tc.expectedKinds {
+					if !kindsFound[expectedKind] {
+						t.Errorf("❌ FORGE FAIL: Expected kind %s not found in parsed CRDs", expectedKind)
+					}
+				}
+				
+				// Validate expected namespaces are present
+				for _, expectedNamespace := range tc.expectedNamespaces {
+					if !namespacesFound[expectedNamespace] {
+						t.Errorf("❌ FORGE FAIL: Expected namespace %s not found in parsed CRDs", expectedNamespace)
+					}
+				}
+			}
+			
+			// FORGE Validation 3: Mock interaction validation
+			if mockService.parseCallCount != 1 {
+				t.Errorf("❌ FORGE FAIL: Expected 1 parse call, got %d", mockService.parseCallCount)
+			}
+			
+			// FORGE Performance Validation
+			if responseTime > tc.performanceThreshold {
+				t.Errorf("❌ FORGE FAIL: Parse operation too slow: %v (max: %v)", responseTime, tc.performanceThreshold)
+			}
+			
+			// FORGE Evidence Logging
+			t.Logf("✅ FORGE EVIDENCE: %s", tc.name)
+			t.Logf("⏱️  Response time: %v", responseTime)
+			t.Logf("📁 Directory: %s", tc.directoryPath)
+			if !tc.expectedError {
+				t.Logf("📋 CRDs parsed: %d", len(crds))
+				if len(crds) > 0 {
+					kindCounts := make(map[string]int)
+					for _, crd := range crds {
+						kindCounts[crd.Kind]++
+					}
+					t.Logf("📊 Kind distribution: %v", kindCounts)
+				}
+			}
+		})
+	}
+}
+
+// TestRepositorySyncService_ValidateYAMLStructure tests YAML validation
+func TestRepositorySyncService_ValidateYAMLStructure(t *testing.T) {
+	// FORGE RED PHASE: Test YAML validation with comprehensive scenarios
+	
+	testCases := []struct {
+		name                 string
+		yamlContent          string
+		mockFailure          bool
+		expectedError        bool
+		expectedValid        bool
+		expectedErrorCount   int
+		expectedWarningCount int
+		expectedCRDCount     int
+		performanceThreshold time.Duration
+	}{
+		{
+			name: "Valid YAML Structure",
+			yamlContent: `apiVersion: cnoc.hedgehog.com/v1
+kind: VPC
+metadata:
+  name: production-vpc
+  namespace: hedgehog-fabric
+spec:
+  subnets:
+    - 10.0.1.0/24
+    - 10.0.2.0/24`,
+			mockFailure:          false,
+			expectedError:        false,
+			expectedValid:        true,
+			expectedErrorCount:   0,
+			expectedWarningCount: 0,
+			expectedCRDCount:     1,
+			performanceThreshold: 200 * time.Millisecond,
+		},
+		{
+			name: "Multiple Valid CRDs",
+			yamlContent: `apiVersion: cnoc.hedgehog.com/v1
+kind: VPC
+metadata:
+  name: vpc-1
+---
+apiVersion: cnoc.hedgehog.com/v1
+kind: Connection
+metadata:
+  name: connection-1`,
+			mockFailure:          false,
+			expectedError:        false,
+			expectedValid:        true,
+			expectedErrorCount:   0,
+			expectedWarningCount: 0,
+			expectedCRDCount:     2,
+			performanceThreshold: 300 * time.Millisecond,
+		},
+		{
+			name: "YAML with Syntax Error",
+			yamlContent: `apiVersion: cnoc.hedgehog.com/v1
+kind: VPC
+metadata:
+  name: invalid_syntax
+    invalid_indentation: value`,
+			mockFailure:          false,
+			expectedError:        false,
+			expectedValid:        false,
+			expectedErrorCount:   1,
+			expectedWarningCount: 0,
+			expectedCRDCount:     1,
+			performanceThreshold: 200 * time.Millisecond,
+		},
+		{
+			name: "YAML with Missing Required Fields",
+			yamlContent: `apiVersion: cnoc.hedgehog.com/v1
+kind: VPC
+spec:
+  missing_required_field: true`,
+			mockFailure:          false,
+			expectedError:        false,
+			expectedValid:        false,
+			expectedErrorCount:   1,
+			expectedWarningCount: 0,
+			expectedCRDCount:     1,
+			performanceThreshold: 200 * time.Millisecond,
+		},
+		{
+			name: "YAML with Deprecated Fields",
+			yamlContent: `apiVersion: cnoc.hedgehog.com/v1
+kind: VPC
+metadata:
+  name: vpc-with-deprecated
+spec:
+  deprecated_field: value`,
+			mockFailure:          false,
+			expectedError:        false,
+			expectedValid:        true,
+			expectedErrorCount:   0,
+			expectedWarningCount: 1,
+			expectedCRDCount:     1,
+			performanceThreshold: 200 * time.Millisecond,
+		},
+		{
+			name:                 "Empty YAML Content",
+			yamlContent:          "",
+			mockFailure:          false,
+			expectedError:        false,
+			expectedValid:        true,
+			expectedErrorCount:   0,
+			expectedWarningCount: 0,
+			expectedCRDCount:     0,
+			performanceThreshold: 100 * time.Millisecond,
+		},
+		{
+			name:                 "Service Failure",
+			yamlContent:          "valid: yaml",
+			mockFailure:          true,
+			expectedError:        true,
+			performanceThreshold: 100 * time.Millisecond,
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			// Setup mock service
+			mockService := NewMockRepositorySyncService()
+			mockService.shouldFailValidate = tc.mockFailure
+			
+			// FORGE Quantitative Validation: Start timer
+			startTime := time.Now()
+			
+			// Execute validation
+			ctx := context.Background()
+			result, err := mockService.ValidateYAMLStructure(ctx, tc.yamlContent)
+			
+			responseTime := time.Since(startTime)
+			
+			// FORGE Validation 1: Error handling
+			if tc.expectedError && err == nil {
+				t.Errorf("❌ FORGE FAIL: Expected error but got none")
+			}
+			if !tc.expectedError && err != nil {
+				t.Errorf("❌ FORGE FAIL: Unexpected error: %v", err)
+			}
+			
+			// FORGE Validation 2: Result validation (when no error expected)
+			if !tc.expectedError && result != nil {
+				if result.Valid != tc.expectedValid {
+					t.Errorf("❌ FORGE FAIL: Expected valid %t, got %t", tc.expectedValid, result.Valid)
+				}
+				
+				if len(result.Errors) != tc.expectedErrorCount {
+					t.Errorf("❌ FORGE FAIL: Expected %d errors, got %d", tc.expectedErrorCount, len(result.Errors))
+				}
+				
+				if len(result.Warnings) != tc.expectedWarningCount {
+					t.Errorf("❌ FORGE FAIL: Expected %d warnings, got %d", tc.expectedWarningCount, len(result.Warnings))
+				}
+				
+				if result.CRDCount != tc.expectedCRDCount {
+					t.Errorf("❌ FORGE FAIL: Expected %d CRDs, got %d", tc.expectedCRDCount, result.CRDCount)
+				}
+				
+				if result.ValidatedAt.IsZero() {
+					t.Errorf("❌ FORGE FAIL: ValidatedAt timestamp should be set")
+				}
+				
+				// Validate performance metrics
+				if result.Performance.FilesProcessed <= 0 {
+					t.Errorf("❌ FORGE FAIL: Files processed should be positive")
+				}
+				
+				if result.Performance.LinesProcessed < 0 {
+					t.Errorf("❌ FORGE FAIL: Lines processed should be non-negative")
+				}
+				
+				if result.Performance.BytesProcessed != int64(len(tc.yamlContent)) {
+					t.Errorf("❌ FORGE FAIL: Bytes processed mismatch: expected %d, got %d", len(tc.yamlContent), result.Performance.BytesProcessed)
+				}
+				
+				if result.Performance.ParseDuration <= 0 {
+					t.Errorf("❌ FORGE FAIL: Parse duration should be positive")
+				}
+				
+				if result.Performance.ValidationDuration <= 0 {
+					t.Errorf("❌ FORGE FAIL: Validation duration should be positive")
+				}
+				
+				// Validate error and warning structure
+				for i, validationError := range result.Errors {
+					if validationError.Code == "" {
+						t.Errorf("❌ FORGE FAIL: Error %d has empty code", i)
+					}
+					if validationError.Message == "" {
+						t.Errorf("❌ FORGE FAIL: Error %d has empty message", i)
+					}
+					if validationError.Severity == "" {
+						t.Errorf("❌ FORGE FAIL: Error %d has empty severity", i)
+					}
+				}
+				
+				for i, warning := range result.Warnings {
+					if warning.Code == "" {
+						t.Errorf("❌ FORGE FAIL: Warning %d has empty code", i)
+					}
+					if warning.Message == "" {
+						t.Errorf("❌ FORGE FAIL: Warning %d has empty message", i)
+					}
+				}
+			}
+			
+			// FORGE Validation 3: Mock interaction validation
+			if mockService.validateCallCount != 1 {
+				t.Errorf("❌ FORGE FAIL: Expected 1 validate call, got %d", mockService.validateCallCount)
+			}
+			
+			// FORGE Performance Validation
+			if responseTime > tc.performanceThreshold {
+				t.Errorf("❌ FORGE FAIL: Validate operation too slow: %v (max: %v)", responseTime, tc.performanceThreshold)
+			}
+			
+			// FORGE Evidence Logging
+			t.Logf("✅ FORGE EVIDENCE: %s", tc.name)
+			t.Logf("⏱️  Response time: %v", responseTime)
+			t.Logf("📄 Content length: %d bytes", len(tc.yamlContent))
+			if result != nil {
+				t.Logf("✅ Valid: %t", result.Valid)
+				t.Logf("❌ Errors: %d", len(result.Errors))
+				t.Logf("⚠️  Warnings: %d", len(result.Warnings))
+				t.Logf("📋 CRDs: %d", result.CRDCount)
+				t.Logf("⏱️  Parse time: %v", result.Performance.ParseDuration)
+				t.Logf("⏱️  Validation time: %v", result.Performance.ValidationDuration)
+			}
+		})
+	}
+}
+
+// TestRepositorySyncService_DetectDrift tests drift detection
+func TestRepositorySyncService_DetectDrift(t *testing.T) {
+	// FORGE RED PHASE: Test drift detection with comprehensive scenarios
+	
+	testCases := []struct {
+		name                 string
+		repositoryID         string
+		fabricID             string
+		mockFailure          bool
+		expectedError        bool
+		expectedHasDrift     bool
+		expectedMinResources int
+		maxDriftPercentage   float64
+		performanceThreshold time.Duration
+	}{
+		{
+			name:                 "No Drift Detected",
+			repositoryID:         "no-drift-repo",
+			fabricID:             "production-fabric",
+			mockFailure:          false,
+			expectedError:        false,
+			expectedHasDrift:     false,
+			expectedMinResources: 10,
+			maxDriftPercentage:   0.0,
+			performanceThreshold: 500 * time.Millisecond,
+		},
+		{
+			name:                 "Configuration Drift Detected",
+			repositoryID:         "drift-test-repo",
+			fabricID:             "production-fabric",
+			mockFailure:          false,
+			expectedError:        false,
+			expectedHasDrift:     true,
+			expectedMinResources: 10,
+			maxDriftPercentage:   20.0,
+			performanceThreshold: 500 * time.Millisecond,
+		},
+		{
+			name:                 "Staging Environment Check",
+			repositoryID:         "staging-repo",
+			fabricID:             "staging-fabric",
+			mockFailure:          false,
+			expectedError:        false,
+			expectedHasDrift:     false,
+			expectedMinResources: 5,
+			maxDriftPercentage:   0.0,
+			performanceThreshold: 400 * time.Millisecond,
+		},
+		{
+			name:                 "Service Failure",
+			repositoryID:         "failing-repo",
+			fabricID:             "test-fabric",
+			mockFailure:          true,
+			expectedError:        true,
+			performanceThreshold: 200 * time.Millisecond,
+		},
+		{
+			name:                 "Large Scale Drift Detection",
+			repositoryID:         "large-repo",
+			fabricID:             "large-fabric",
+			mockFailure:          false,
+			expectedError:        false,
+			expectedHasDrift:     false,
+			expectedMinResources: 100,
+			maxDriftPercentage:   5.0,
+			performanceThreshold: 1 * time.Second,
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			// Setup mock service
+			mockService := NewMockRepositorySyncService()
+			mockService.shouldFailDrift = tc.mockFailure
+			
+			// FORGE Quantitative Validation: Start timer
+			startTime := time.Now()
+			
+			// Execute drift detection
+			ctx := context.Background()
+			result, err := mockService.DetectDrift(ctx, tc.repositoryID, tc.fabricID)
+			
+			responseTime := time.Since(startTime)
+			
+			// FORGE Validation 1: Error handling
+			if tc.expectedError && err == nil {
+				t.Errorf("❌ FORGE FAIL: Expected error but got none")
+			}
+			if !tc.expectedError && err != nil {
+				t.Errorf("❌ FORGE FAIL: Unexpected error: %v", err)
+			}
+			
+			// FORGE Validation 2: Result validation (when no error expected)
+			if !tc.expectedError && result != nil {
+				if result.HasDrift != tc.expectedHasDrift {
+					t.Errorf("❌ FORGE FAIL: Expected has drift %t, got %t", tc.expectedHasDrift, result.HasDrift)
+				}
+				
+				if result.TotalResources < tc.expectedMinResources {
+					t.Errorf("❌ FORGE FAIL: Expected at least %d total resources, got %d", tc.expectedMinResources, result.TotalResources)
+				}
+				
+				if result.DriftPercentage > tc.maxDriftPercentage {
+					t.Errorf("❌ FORGE FAIL: Drift percentage too high: %f%% (max: %f%%)", result.DriftPercentage, tc.maxDriftPercentage)
+				}
+				
+				if result.DriftPercentage < 0 || result.DriftPercentage > 100 {
+					t.Errorf("❌ FORGE FAIL: Drift percentage out of range: %f%%", result.DriftPercentage)
+				}
+				
+				if result.LastCheck.IsZero() {
+					t.Errorf("❌ FORGE FAIL: LastCheck timestamp should be set")
+				}
+				
+				// Validate performance metrics
+				if result.Performance.ComparisonDuration <= 0 {
+					t.Errorf("❌ FORGE FAIL: Comparison duration should be positive")
+				}
+				
+				if result.Performance.ResourcesCompared != result.TotalResources {
+					t.Errorf("❌ FORGE FAIL: Resources compared mismatch: expected %d, got %d", result.TotalResources, result.Performance.ResourcesCompared)
+				}
+				
+				if result.Performance.NetworkCalls < 0 {
+					t.Errorf("❌ FORGE FAIL: Network calls should be non-negative")
+				}
+				
+				if result.Performance.CacheHits < 0 {
+					t.Errorf("❌ FORGE FAIL: Cache hits should be non-negative")
+				}
+				
+				// Validate drifted resources (if drift detected)
+				if tc.expectedHasDrift {
+					if len(result.DriftedResources) == 0 {
+						t.Errorf("❌ FORGE FAIL: Expected drifted resources but got none")
+					}
+					
+					for i, driftedResource := range result.DriftedResources {
+						if driftedResource.Name == "" {
+							t.Errorf("❌ FORGE FAIL: Drifted resource %d has empty name", i)
+						}
+						if driftedResource.Kind == "" {
+							t.Errorf("❌ FORGE FAIL: Drifted resource %d has empty kind", i)
+						}
+						if driftedResource.DriftType == "" {
+							t.Errorf("❌ FORGE FAIL: Drifted resource %d has empty drift type", i)
+						}
+						if driftedResource.ExpectedSpec == nil {
+							t.Errorf("❌ FORGE FAIL: Drifted resource %d has nil expected spec", i)
+						}
+						if driftedResource.ActualSpec == nil {
+							t.Errorf("❌ FORGE FAIL: Drifted resource %d has nil actual spec", i)
+						}
+						if len(driftedResource.Differences) == 0 {
+							t.Errorf("❌ FORGE FAIL: Drifted resource %d has no differences", i)
+						}
+						if driftedResource.Severity == "" {
+							t.Errorf("❌ FORGE FAIL: Drifted resource %d has empty severity", i)
+						}
+						
+						// Validate differences
+						for j, diff := range driftedResource.Differences {
+							if diff.FieldPath == "" {
+								t.Errorf("❌ FORGE FAIL: Difference %d of resource %d has empty field path", j, i)
+							}
+							if diff.DifferenceType == "" {
+								t.Errorf("❌ FORGE FAIL: Difference %d of resource %d has empty difference type", j, i)
+							}
+						}
+					}
+				} else {
+					if len(result.DriftedResources) > 0 {
+						t.Errorf("❌ FORGE FAIL: Expected no drifted resources but got %d", len(result.DriftedResources))
+					}
+				}
+				
+				// Validate summary
+				totalSummaryDrift := result.Summary.ConfigurationDrift + result.Summary.VersionDrift +
+					result.Summary.MissingResources + result.Summary.ExtraResources +
+					result.Summary.PolicyViolations
+				
+				if tc.expectedHasDrift && totalSummaryDrift == 0 {
+					t.Errorf("❌ FORGE FAIL: Expected drift summary but all values are zero")
+				}
+				
+				if !tc.expectedHasDrift && totalSummaryDrift > 0 {
+					t.Errorf("❌ FORGE FAIL: Expected no drift summary but got %d total issues", totalSummaryDrift)
+				}
+			}
+			
+			// FORGE Validation 3: Mock interaction validation
+			if mockService.driftCallCount != 1 {
+				t.Errorf("❌ FORGE FAIL: Expected 1 drift call, got %d", mockService.driftCallCount)
+			}
+			
+			// FORGE Performance Validation
+			if responseTime > tc.performanceThreshold {
+				t.Errorf("❌ FORGE FAIL: Drift detection too slow: %v (max: %v)", responseTime, tc.performanceThreshold)
+			}
+			
+			// FORGE Evidence Logging
+			t.Logf("✅ FORGE EVIDENCE: %s", tc.name)
+			t.Logf("⏱️  Response time: %v", responseTime)
+			t.Logf("📦 Repository: %s", tc.repositoryID)
+			t.Logf("🏗️  Fabric: %s", tc.fabricID)
+			if result != nil {
+				t.Logf("🔍 Has drift: %t", result.HasDrift)
+				t.Logf("📊 Drift percentage: %.2f%%", result.DriftPercentage)
+				t.Logf("📋 Total resources: %d", result.TotalResources)
+				t.Logf("❌ Drifted resources: %d", len(result.DriftedResources))
+				t.Logf("⏱️  Comparison time: %v", result.Performance.ComparisonDuration)
+				t.Logf("🌐 Network calls: %d", result.Performance.NetworkCalls)
+				t.Logf("💾 Cache hits: %d", result.Performance.CacheHits)
+			}
+		})
+	}
+}
+
+// FORGE Repository Sync Service Test Requirements Summary:
+//
+// 1. RED PHASE ENFORCEMENT:
+//    - All sync service methods must exist but return "not implemented" errors
+//    - Tests MUST fail until proper implementation with actual Git and YAML processing
+//    - Validates complete repository synchronization lifecycle
+//
+// 2. PERFORMANCE REQUIREMENTS:
+//    - Repository sync: <400ms (plus actual sync time <30s)
+//    - YAML parsing: <500ms for standard repos, <1s for large repos
+//    - YAML validation: <200ms for individual files
+//    - Drift detection: <500ms for standard repos, <1s for large repos
+//
+// 3. FUNCTIONAL VALIDATION:
+//    - Repository synchronization with file and CRD counting
+//    - YAML parsing with proper CRD structure validation
+//    - YAML validation with error and warning reporting
+//    - Drift detection with detailed difference analysis
+//
+// 4. DATA INTEGRITY REQUIREMENTS:
+//    - Complete CRD structure validation (name, kind, spec, metadata)
+//    - Source file tracking for each parsed CRD
+//    - Performance metrics collection and validation
+//    - Drift detection with field-level difference tracking
+//
+// 5. BUSINESS LOGIC VALIDATION:
+//    - Multi-CRD type support (VPC, Connection, Switch)
+//    - Namespace and labeling consistency
+//    - Error and warning categorization
+//    - Drift severity assessment and recommendations
+//
+// 6. QUANTITATIVE EVIDENCE:
+//    - Response time measurements for all operations
+//    - Resource counting and validation
+//    - Performance metrics tracking
+//    - Mock interaction verification with detailed logging

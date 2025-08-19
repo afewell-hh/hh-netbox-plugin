@@ -1,12 +1,14 @@
 package services
 
 import (
-	"testing"
 	"context"
 	"errors"
+	"fmt"
+	"testing"
 	"time"
 	
 	"github.com/hedgehog/cnoc/internal/domain/configuration"
+	"github.com/hedgehog/cnoc/internal/domain/shared"
 	"github.com/hedgehog/cnoc/internal/api/rest/dto"
 )
 
@@ -34,11 +36,11 @@ func (m *MockConfigurationRepository) Save(ctx context.Context, config *configur
 	if m.shouldFailSave {
 		return errors.New("mock save failure")
 	}
-	m.configurations[config.ID()] = config
+	m.configurations[config.ID().String()] = config
 	return nil
 }
 
-func (m *MockConfigurationRepository) FindByID(ctx context.Context, id string) (*configuration.Configuration, error) {
+func (m *MockConfigurationRepository) GetByID(ctx context.Context, id string) (*configuration.Configuration, error) {
 	m.findCallCount++
 	if m.shouldFailFind {
 		return nil, errors.New("mock find failure")
@@ -50,17 +52,50 @@ func (m *MockConfigurationRepository) FindByID(ctx context.Context, id string) (
 	return config, nil
 }
 
-func (m *MockConfigurationRepository) FindAll(ctx context.Context, page, pageSize int) ([]*configuration.Configuration, int, error) {
-	var configs []*configuration.Configuration
+func (m *MockConfigurationRepository) List(ctx context.Context, offset, limit int) ([]*configuration.Configuration, int, error) {
+	var allConfigs []*configuration.Configuration
 	for _, config := range m.configurations {
-		configs = append(configs, config)
+		allConfigs = append(allConfigs, config)
 	}
-	return configs, len(configs), nil
+	
+	totalCount := len(allConfigs)
+	
+	// Apply pagination
+	if offset >= totalCount {
+		return make([]*configuration.Configuration, 0), totalCount, nil
+	}
+	
+	end := offset + limit
+	if end > totalCount {
+		end = totalCount
+	}
+	
+	result := allConfigs[offset:end]
+	
+	return result, totalCount, nil
 }
 
 func (m *MockConfigurationRepository) Delete(ctx context.Context, id string) error {
 	delete(m.configurations, id)
 	return nil
+}
+
+func (m *MockConfigurationRepository) GetByName(ctx context.Context, name string) (*configuration.Configuration, error) {
+	for _, config := range m.configurations {
+		if config.Name().String() == name {
+			return config, nil
+		}
+	}
+	return nil, errors.New("configuration not found")
+}
+
+func (m *MockConfigurationRepository) ExistsByName(ctx context.Context, name string) (bool, error) {
+	for _, config := range m.configurations {
+		if config.Name().String() == name {
+			return true, nil
+		}
+	}
+	return false, nil
 }
 
 // MockDomainValidator for testing
@@ -86,6 +121,14 @@ func (m *MockDomainValidator) ValidateBusinessRules(config *configuration.Config
 	if m.shouldFailValidation {
 		return errors.New("mock business rule validation failure")
 	}
+	return nil
+}
+
+func (m *MockDomainValidator) ResolveDependencies(config *configuration.Configuration) error {
+	return nil
+}
+
+func (m *MockDomainValidator) ApplyPolicies(config *configuration.Configuration) error {
 	return nil
 }
 
@@ -166,7 +209,7 @@ func TestConfigurationApplicationServiceCreate(t *testing.T) {
 			mockValidator.shouldFailValidation = tc.validationFailure
 			
 			// Initialize service (this will fail without proper implementation)
-			service := NewConfigurationApplicationService(mockRepo, mockValidator)
+			service := NewConfigurationApplicationServiceSimple(mockRepo, mockValidator)
 			
 			// FORGE Quantitative Validation: Start timer
 			startTime := time.Now()
@@ -236,18 +279,20 @@ func TestConfigurationApplicationServiceGet(t *testing.T) {
 	mockRepo := NewMockConfigurationRepository()
 	mockValidator := NewMockDomainValidator()
 	
-	// Pre-populate repository with test data
-	testConfig, _ := configuration.NewConfiguration(
-		"test-config-id",
-		"test-config",
+	// Pre-populate repository with test data  
+	configID, _ := configuration.NewConfigurationID("test-config-id")
+	configName, _ := configuration.NewConfigurationName("test-config")
+	configMode, _ := configuration.ParseConfigurationMode("development")
+	version, _ := shared.NewVersion("1.0.0") 
+	metadata := configuration.NewConfigurationMetadata(
 		"Test configuration",
-		"development",
-		"1.0.0",
 		map[string]string{"test": "true"},
+		map[string]string{},
 	)
-	mockRepo.configurations["test-config-id"] = testConfig
+	testConfig := configuration.NewConfiguration(configID, configName, version, configMode, metadata)
+	mockRepo.configurations[configID.String()] = testConfig
 	
-	service := NewConfigurationApplicationService(mockRepo, mockValidator)
+	service := NewConfigurationApplicationServiceSimple(mockRepo, mockValidator)
 	
 	testCases := []struct {
 		name           string
@@ -285,7 +330,13 @@ func TestConfigurationApplicationServiceGet(t *testing.T) {
 			
 			startTime := time.Now()
 			ctx := context.Background()
-			configDTO, err := service.GetConfiguration(ctx, tc.configID)
+			var configDTO *dto.ConfigurationDTO
+			var err error
+			if tc.configID == "test-config-id" {
+				configDTO, err = service.GetConfiguration(ctx, configID.String())
+			} else {
+				configDTO, err = service.GetConfiguration(ctx, tc.configID)
+			}
 			responseTime := time.Since(startTime)
 			
 			// FORGE Quantitative Validation
@@ -333,18 +384,20 @@ func TestConfigurationApplicationServiceList(t *testing.T) {
 	
 	// Pre-populate with multiple configurations
 	for i := 0; i < 5; i++ {
-		config, _ := configuration.NewConfiguration(
-			fmt.Sprintf("config-%d", i),
-			fmt.Sprintf("Config %d", i),
+		configID := configuration.GenerateConfigurationID()
+		configName, _ := configuration.NewConfigurationName(fmt.Sprintf("config-%d", i))
+		configMode, _ := configuration.ParseConfigurationMode("development")
+		version, _ := shared.NewVersion("1.0.0")
+		metadata := configuration.NewConfigurationMetadata(
 			fmt.Sprintf("Test configuration %d", i),
-			"development",
-			"1.0.0",
 			map[string]string{"index": fmt.Sprintf("%d", i)},
+			map[string]string{},
 		)
-		mockRepo.configurations[config.ID()] = config
+		config := configuration.NewConfiguration(configID, configName, version, configMode, metadata)
+		mockRepo.configurations[config.ID().String()] = config
 	}
 	
-	service := NewConfigurationApplicationService(mockRepo, mockValidator)
+	service := NewConfigurationApplicationServiceSimple(mockRepo, mockValidator)
 	
 	testCases := []struct {
 		name              string
@@ -399,9 +452,9 @@ func TestConfigurationApplicationServiceList(t *testing.T) {
 					tc.expectedCount, len(listDTO.Items))
 			}
 			
-			if listDTO.TotalCount != tc.expectedTotalCount {
+			if int(listDTO.TotalCount) != tc.expectedTotalCount {
 				t.Errorf("❌ FORGE FAIL: Expected total count %d, got %d",
-					tc.expectedTotalCount, listDTO.TotalCount)
+					tc.expectedTotalCount, int(listDTO.TotalCount))
 			}
 			
 			if listDTO.Page != tc.page {
@@ -432,17 +485,19 @@ func TestConfigurationApplicationServiceUpdate(t *testing.T) {
 	mockValidator := NewMockDomainValidator()
 	
 	// Pre-populate with existing configuration
-	existingConfig, _ := configuration.NewConfiguration(
-		"existing-config-id",
-		"existing-config",
+	configID, _ := configuration.NewConfigurationID("existing-config-id")
+	configName, _ := configuration.NewConfigurationName("existing-config")
+	configMode, _ := configuration.ParseConfigurationMode("development")
+	version, _ := shared.NewVersion("1.0.0")
+	metadata := configuration.NewConfigurationMetadata(
 		"Existing configuration",
-		"development", 
-		"1.0.0",
 		map[string]string{"original": "true"},
+		map[string]string{},
 	)
+	existingConfig := configuration.NewConfiguration(configID, configName, version, configMode, metadata)
 	mockRepo.configurations["existing-config-id"] = existingConfig
 	
-	service := NewConfigurationApplicationService(mockRepo, mockValidator)
+	service := NewConfigurationApplicationServiceSimple(mockRepo, mockValidator)
 	
 	testCases := []struct {
 		name           string
@@ -523,17 +578,26 @@ func TestConfigurationApplicationServiceValidate(t *testing.T) {
 	mockValidator := NewMockDomainValidator()
 	
 	// Pre-populate with test configuration
-	testConfig, _ := configuration.NewConfiguration(
-		"test-config-id",
-		"test-config",
+	configID, _ := configuration.NewConfigurationID("test-config-id")
+	configName, _ := configuration.NewConfigurationName("test-config")
+	configMode, _ := configuration.ParseConfigurationMode("development")
+	version, _ := shared.NewVersion("1.0.0")
+	metadata := configuration.NewConfigurationMetadata(
 		"Test configuration",
-		"development",
-		"1.0.0",
 		map[string]string{"test": "true"},
+		map[string]string{},
 	)
+	testConfig := configuration.NewConfiguration(configID, configName, version, configMode, metadata)
+	
+	// Add a component to make validation pass
+	componentName, _ := configuration.NewComponentName("test-component")
+	componentVersion, _ := shared.NewVersion("1.0.0")
+	component := configuration.NewComponentReference(componentName, componentVersion, true)
+	testConfig.AddComponent(component)
+	
 	mockRepo.configurations["test-config-id"] = testConfig
 	
-	service := NewConfigurationApplicationService(mockRepo, mockValidator)
+	service := NewConfigurationApplicationServiceSimple(mockRepo, mockValidator)
 	
 	testCases := []struct {
 		name              string
@@ -615,46 +679,7 @@ func stringPtr(s string) *string {
 	return &s
 }
 
-// Fake service constructor for testing - this will fail until real implementation exists
-func NewConfigurationApplicationService(repo interface{}, validator interface{}) *ConfigurationApplicationService {
-	// This will fail compilation until proper service struct exists
-	return &ConfigurationApplicationService{
-		repository: repo,
-		validator:  validator,
-	}
-}
 
-// Fake service struct - this will fail until real implementation exists  
-type ConfigurationApplicationService struct {
-	repository interface{}
-	validator  interface{}
-}
-
-// Fake methods - these will fail until real implementation exists
-func (s *ConfigurationApplicationService) CreateConfiguration(ctx context.Context, req dto.CreateConfigurationRequestDTO) (*dto.ConfigurationDTO, error) {
-	// FORGE RED PHASE: This will fail until implementation is provided
-	return nil, errors.New("CreateConfiguration not implemented")
-}
-
-func (s *ConfigurationApplicationService) GetConfiguration(ctx context.Context, id string) (*dto.ConfigurationDTO, error) {
-	// FORGE RED PHASE: This will fail until implementation is provided
-	return nil, errors.New("GetConfiguration not implemented")
-}
-
-func (s *ConfigurationApplicationService) ListConfigurations(ctx context.Context, page, pageSize int) (*dto.ConfigurationListDTO, error) {
-	// FORGE RED PHASE: This will fail until implementation is provided
-	return nil, errors.New("ListConfigurations not implemented")
-}
-
-func (s *ConfigurationApplicationService) UpdateConfiguration(ctx context.Context, id string, req dto.UpdateConfigurationRequestDTO) (*dto.ConfigurationDTO, error) {
-	// FORGE RED PHASE: This will fail until implementation is provided
-	return nil, errors.New("UpdateConfiguration not implemented")
-}
-
-func (s *ConfigurationApplicationService) ValidateConfiguration(ctx context.Context, id string) (*dto.ValidationResultDTO, error) {
-	// FORGE RED PHASE: This will fail until implementation is provided
-	return nil, errors.New("ValidateConfiguration not implemented")
-}
 
 // FORGE Test Requirements Summary:
 //

@@ -77,11 +77,25 @@
 
     <!-- Main Content -->
     <main class="container-fluid py-4">
-        {{block "content" .}}
-        <div class="alert alert-info">
-            <h4>Welcome to CNOC</h4>
-            <p>Cloud NetOps Command System with MDD-aligned architecture and Symphony-Level coordination.</p>
-        </div>
+        {{if eq .ContentTemplate "connection_list"}}
+            {{template "connection_content" .}}
+        {{else if eq .ContentTemplate "switch_list"}}
+            {{template "switch_content" .}}
+        {{else if eq .ContentTemplate "crd_list"}}
+            {{template "crd_content" .}}
+        {{else if eq .ContentTemplate "drift_detection"}}
+            {{template "drift_content" .}}
+        {{else if eq .ContentTemplate "repository_list"}}
+            {{template "repository_content" .}}
+        {{else if eq .ContentTemplate "vpc_list"}}
+            {{template "vpc_content" .}}
+        {{else}}
+            {{block "content" .}}
+            <div class="alert alert-info">
+                <h4>Welcome to CNOC</h4>
+                <p>Cloud NetOps Command System with MDD-aligned architecture and Symphony-Level coordination.</p>
+            </div>
+            {{end}}
         {{end}}
     </main>
 

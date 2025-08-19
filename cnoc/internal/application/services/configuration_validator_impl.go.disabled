@@ -1,0 +1,954 @@
+package services
+
+import (
+	"context"
+	"fmt"
+	"io"
+	"net"
+	"os"
+	"regexp"
+	"strings"
+	"time"
+
+	"gopkg.in/yaml.v3"
+)
+
+// ConfigurationValidatorImpl provides real implementation of ConfigurationValidator interface
+type ConfigurationValidatorImpl struct {
+	// Business rule validators
+	vpcValidator        *VPCValidator
+	connectionValidator *ConnectionValidator
+	switchValidator     *SwitchValidator
+	
+	// Performance tracking
+	metricsCollector MetricsCollector
+}
+
+// NewConfigurationValidator creates a new configuration validator
+func NewConfigurationValidator() ConfigurationValidator {
+	return &ConfigurationValidatorImpl{
+		vpcValidator:        NewVPCValidator(),
+		connectionValidator: NewConnectionValidator(),
+		switchValidator:     NewSwitchValidator(),
+		metricsCollector:   NewMetricsCollector(),
+	}
+}
+
+// ParseYAMLFile parses YAML from file path with performance constraints (<100ms)
+func (cv *ConfigurationValidatorImpl) ParseYAMLFile(ctx context.Context, filePath string) (*ConfigValidationParseResult, error) {
+	start := time.Now()
+	defer func() {
+		cv.metricsCollector.RecordParseTime("file", time.Since(start))
+	}()
+	
+	// Check context cancellation
+	if err := ctx.Err(); err != nil {
+		return nil, fmt.Errorf("context cancelled: %w", err)
+	}
+	
+	// Read file
+	content, err := os.ReadFile(filePath)
+	if err != nil {
+		return &ConfigValidationParseResult{
+			Success:     false,
+			ParsedCount: 0,
+			ParseTime:   time.Since(start),
+			Errors: []ConfigParseError{{
+				Type:        "file_error",
+				Message:     fmt.Sprintf("failed to read file: %v", err),
+				File:        filePath,
+				Recoverable: false,
+			}},
+		}, nil
+	}
+	
+	// Parse content
+	result, err := cv.ParseYAMLContent(ctx, content)
+	if err != nil {
+		return nil, err
+	}
+	
+	// Update source file for all configurations
+	for _, config := range result.Configurations {
+		config.SourceFile = filePath
+	}
+	
+	result.ParseTime = time.Since(start)
+	return result, nil
+}
+
+// ParseYAMLContent parses YAML content with performance constraints (<100ms per file)
+func (cv *ConfigurationValidatorImpl) ParseYAMLContent(ctx context.Context, content []byte) (*ConfigValidationParseResult, error) {
+	start := time.Now()
+	defer func() {
+		cv.metricsCollector.RecordParseTime("content", time.Since(start))
+	}()
+	
+	result := &ConfigValidationParseResult{
+		Success:        false,
+		ParsedCount:    0,
+		Configurations: make([]*YAMLConfiguration, 0),
+		ParseTime:      0,
+		Errors:         make([]ConfigParseError, 0),
+		Warnings:       make([]ConfigParseWarning, 0),
+		Metadata:       make(map[string]interface{}),
+	}
+	
+	// Check context cancellation
+	if err := ctx.Err(); err != nil {
+		return result, fmt.Errorf("context cancelled: %w", err)
+	}
+	
+	// Handle empty content
+	if len(content) == 0 {
+		result.Success = true
+		result.ParseTime = time.Since(start)
+		return result, nil
+	}
+	
+	// Parse multi-document YAML
+	configs, err := cv.ParseMultiDocumentYAML(ctx, content)
+	if err != nil {
+		result.Errors = append(result.Errors, ConfigParseError{
+			Type:        "parse_error",
+			Message:     err.Error(),
+			Recoverable: false,
+		})
+		result.ParseTime = time.Since(start)
+		return result, nil
+	}
+	
+	result.Success = true
+	result.ParsedCount = len(configs)
+	result.Configurations = configs
+	result.ParseTime = time.Since(start)
+	result.Metadata["parse_method"] = "yaml.v3"
+	result.Metadata["document_count"] = len(configs)
+	
+	return result, nil
+}
+
+// ParseMultiDocumentYAML parses multi-document YAML with performance constraints (<500ms)
+func (cv *ConfigurationValidatorImpl) ParseMultiDocumentYAML(ctx context.Context, content []byte) ([]*YAMLConfiguration, error) {
+	start := time.Now()
+	defer func() {
+		cv.metricsCollector.RecordParseTime("multi_document", time.Since(start))
+	}()
+	
+	var configurations []*YAMLConfiguration
+	
+	// Create YAML decoder for multi-document parsing
+	decoder := yaml.NewDecoder(strings.NewReader(string(content)))
+	
+	for {
+		// Check context cancellation
+		if err := ctx.Err(); err != nil {
+			return nil, fmt.Errorf("context cancelled during multi-document parsing: %w", err)
+		}
+		
+		var doc map[string]interface{}
+		if err := decoder.Decode(&doc); err != nil {
+			if err == io.EOF {
+				break // End of documents
+			}
+			return nil, fmt.Errorf("failed to decode YAML document: %w", err)
+		}
+		
+		// Skip empty documents
+		if len(doc) == 0 {
+			continue
+		}
+		
+		// Convert to YAMLConfiguration
+		config, err := cv.convertToYAMLConfiguration(doc)
+		if err != nil {
+			return nil, fmt.Errorf("failed to convert document to configuration: %w", err)
+		}
+		
+		configurations = append(configurations, config)
+	}
+	
+	return configurations, nil
+}
+
+// ValidateConfiguration validates a single configuration with business rules
+func (cv *ConfigurationValidatorImpl) ValidateConfiguration(ctx context.Context, config *YAMLConfiguration) (*ConfigValidationResult, error) {
+	start := time.Now()
+	defer func() {
+		cv.metricsCollector.RecordValidationTime("single", time.Since(start))
+	}()
+	
+	result := &ConfigValidationResult{
+		Valid:                  true,
+		ValidationTime:         0,
+		ConfigurationsValid:    0,
+		ConfigurationsInvalid:  0,
+		Errors:                 make([]ConfigValidationError, 0),
+		Warnings:               make([]ConfigValidationWarning, 0),
+		BusinessRuleViolations: make([]BusinessRuleViolation, 0),
+		CrossReferences:        make([]CrossReferenceResult, 0),
+	}
+	
+	// Check context cancellation
+	if err := ctx.Err(); err != nil {
+		return result, fmt.Errorf("context cancelled: %w", err)
+	}
+	
+	// Basic schema validation
+	if err := cv.validateSchema(config, result); err != nil {
+		result.ValidationTime = time.Since(start)
+		return result, err
+	}
+	
+	// Kind-specific business rule validation
+	switch config.Kind {
+	case "VPC":
+		cv.vpcValidator.ValidateVPC(config, result)
+		cv.validateVPCBusinessRules(config, result)
+	case "Connection":
+		cv.connectionValidator.ValidateConnection(config, result)
+		cv.validateConnectionBusinessRules(config, result)
+	case "Switch":
+		cv.switchValidator.ValidateSwitch(config, result)
+		cv.validateSwitchBusinessRules(config, result)
+	default:
+		result.Warnings = append(result.Warnings, ConfigValidationWarning{
+			Field:      "kind",
+			Message:    fmt.Sprintf("Unknown configuration kind: %s", config.Kind),
+			ConfigName: config.Metadata.Name,
+			Suggestion: "Verify the kind is correct and supported",
+		})
+	}
+	
+	// Determine overall validation result
+	if len(result.Errors) == 0 && len(result.BusinessRuleViolations) == 0 {
+		result.ConfigurationsValid = 1
+		result.Valid = true
+	} else {
+		result.ConfigurationsInvalid = 1
+		result.Valid = false
+	}
+	
+	result.ValidationTime = time.Since(start)
+	return result, nil
+}
+
+// ValidateMultipleConfigurations validates multiple configurations with cross-references (<500ms)
+func (cv *ConfigurationValidatorImpl) ValidateMultipleConfigurations(ctx context.Context, configs []*YAMLConfiguration) (*ConfigValidationResult, error) {
+	start := time.Now()
+	defer func() {
+		cv.metricsCollector.RecordValidationTime("multiple", time.Since(start))
+	}()
+	
+	result := &ConfigValidationResult{
+		Valid:                  true,
+		ValidationTime:         0,
+		ConfigurationsValid:    0,
+		ConfigurationsInvalid:  0,
+		Errors:                 make([]ConfigValidationError, 0),
+		Warnings:               make([]ConfigValidationWarning, 0),
+		BusinessRuleViolations: make([]BusinessRuleViolation, 0),
+		CrossReferences:        make([]CrossReferenceResult, 0),
+	}
+	
+	// Check context cancellation
+	if err := ctx.Err(); err != nil {
+		return result, fmt.Errorf("context cancelled: %w", err)
+	}
+	
+	// Validate each configuration individually
+	for _, config := range configs {
+		configResult, err := cv.ValidateConfiguration(ctx, config)
+		if err != nil {
+			return result, err
+		}
+		
+		// Aggregate results
+		result.Errors = append(result.Errors, configResult.Errors...)
+		result.Warnings = append(result.Warnings, configResult.Warnings...)
+		result.BusinessRuleViolations = append(result.BusinessRuleViolations, configResult.BusinessRuleViolations...)
+		
+		if configResult.Valid {
+			result.ConfigurationsValid++
+		} else {
+			result.ConfigurationsInvalid++
+		}
+	}
+	
+	// Perform cross-reference validation
+	cv.validateCrossReferences(configs, result)
+	
+	// Determine overall result
+	result.Valid = result.ConfigurationsInvalid == 0 && len(result.Errors) == 0
+	result.ValidationTime = time.Since(start)
+	
+	return result, nil
+}
+
+// ValidateBusinessRules validates business rules for a configuration (<100ms)
+func (cv *ConfigurationValidatorImpl) ValidateBusinessRules(ctx context.Context, config *YAMLConfiguration) (*ConfigValidationResult, error) {
+	start := time.Now()
+	defer func() {
+		cv.metricsCollector.RecordValidationTime("business_rules", time.Since(start))
+	}()
+	
+	result := &ConfigValidationResult{
+		Valid:                  true,
+		ValidationTime:         0,
+		ConfigurationsValid:    0,
+		ConfigurationsInvalid:  0,
+		Errors:                 make([]ConfigValidationError, 0),
+		Warnings:               make([]ConfigValidationWarning, 0),
+		BusinessRuleViolations: make([]BusinessRuleViolation, 0),
+		CrossReferences:        make([]CrossReferenceResult, 0),
+	}
+	
+	// Check context cancellation
+	if err := ctx.Err(); err != nil {
+		return result, fmt.Errorf("context cancelled: %w", err)
+	}
+	
+	// Apply business rules based on kind
+	switch config.Kind {
+	case "VPC":
+		cv.validateVPCBusinessRules(config, result)
+	case "Connection":
+		cv.validateConnectionBusinessRules(config, result)
+	case "Switch":
+		cv.validateSwitchBusinessRules(config, result)
+	}
+	
+	// Determine result validity
+	result.Valid = len(result.BusinessRuleViolations) == 0 && len(result.Errors) == 0
+	if result.Valid {
+		result.ConfigurationsValid = 1
+	} else {
+		result.ConfigurationsInvalid = 1
+	}
+	
+	result.ValidationTime = time.Since(start)
+	return result, nil
+}
+
+// GetValidationSchema returns schema definition for configuration types
+func (cv *ConfigurationValidatorImpl) GetValidationSchema(configType string) (*SchemaDefinition, error) {
+	schemas := map[string]*SchemaDefinition{
+		"VPC": {
+			Kind:       "VPC",
+			APIVersion: "vpc.githedgehog.com/v1beta1",
+			RequiredFields: []string{"metadata.name", "spec.ipv4Namespace", "spec.vni"},
+			OptionalFields: []string{"spec.subnets", "spec.permit", "status"},
+			FieldTypes: map[string]string{
+				"spec.vni":            "integer",
+				"spec.ipv4Namespace":  "string",
+				"spec.subnets":        "object",
+				"metadata.name":       "string",
+				"metadata.namespace":  "string",
+			},
+			BusinessRules: []BusinessRule{
+				{Name: "vni_range", Description: "VNI must be between 1 and 16777215", Type: "validation", Expression: "1 <= vni <= 16777215", Severity: "error"},
+				{Name: "vlan_range", Description: "VLAN must be between 1 and 4094", Type: "validation", Expression: "1 <= vlan <= 4094", Severity: "error"},
+				{Name: "ip_validation", Description: "IP addresses must be valid CIDR", Type: "validation", Expression: "valid_cidr(subnet)", Severity: "error"},
+			},
+		},
+		"Connection": {
+			Kind:       "Connection",
+			APIVersion: "wiring.githedgehog.com/v1beta1",
+			RequiredFields: []string{"metadata.name", "spec.unbundled"},
+			OptionalFields: []string{"spec.vpc", "status"},
+			FieldTypes: map[string]string{
+				"spec.unbundled.link.server.port": "string",
+				"spec.unbundled.link.switch.port": "string",
+				"spec.vpc.name":                   "string",
+				"metadata.name":                   "string",
+			},
+			BusinessRules: []BusinessRule{
+				{Name: "port_naming", Description: "Port names must follow naming convention", Type: "validation", Expression: "valid_port_name(port)", Severity: "error"},
+				{Name: "vpc_reference", Description: "VPC must exist if referenced", Type: "dependency", Expression: "exists_vpc(vpc.name)", Severity: "error"},
+			},
+		},
+		"Switch": {
+			Kind:       "Switch",
+			APIVersion: "wiring.githedgehog.com/v1beta1",
+			RequiredFields: []string{"metadata.name", "spec.role"},
+			OptionalFields: []string{"spec.asn", "spec.ports", "status"},
+			FieldTypes: map[string]string{
+				"spec.role": "string",
+				"spec.asn":  "integer",
+			},
+			BusinessRules: []BusinessRule{
+				{Name: "asn_range", Description: "ASN must be valid BGP ASN", Type: "validation", Expression: "valid_asn(asn)", Severity: "error"},
+				{Name: "role_validation", Description: "Role must be spine or leaf", Type: "validation", Expression: "role in ['spine', 'leaf']", Severity: "error"},
+			},
+		},
+	}
+	
+	schema, exists := schemas[configType]
+	if !exists {
+		return nil, fmt.Errorf("unknown configuration type: %s", configType)
+	}
+	
+	return schema, nil
+}
+
+// Helper methods
+
+func (cv *ConfigurationValidatorImpl) convertToYAMLConfiguration(doc map[string]interface{}) (*YAMLConfiguration, error) {
+	config := &YAMLConfiguration{
+		ParsedAt: time.Now(),
+		Spec:     make(map[string]interface{}),
+		Status:   make(map[string]interface{}),
+	}
+	
+	// Extract Kind
+	if kind, ok := doc["kind"].(string); ok {
+		config.Kind = kind
+	} else {
+		return nil, fmt.Errorf("missing or invalid 'kind' field")
+	}
+	
+	// Extract APIVersion
+	if apiVersion, ok := doc["apiVersion"].(string); ok {
+		config.APIVersion = apiVersion
+	} else {
+		return nil, fmt.Errorf("missing or invalid 'apiVersion' field")
+	}
+	
+	// Extract Metadata
+	if metadata, ok := doc["metadata"].(map[string]interface{}); ok {
+		config.Metadata = ConfigMetadata{}
+		if name, ok := metadata["name"].(string); ok {
+			config.Metadata.Name = name
+		}
+		if namespace, ok := metadata["namespace"].(string); ok {
+			config.Metadata.Namespace = namespace
+		}
+		if labels, ok := metadata["labels"].(map[string]interface{}); ok {
+			config.Metadata.Labels = make(map[string]string)
+			for k, v := range labels {
+				if str, ok := v.(string); ok {
+					config.Metadata.Labels[k] = str
+				}
+			}
+		}
+		if annotations, ok := metadata["annotations"].(map[string]interface{}); ok {
+			config.Metadata.Annotations = make(map[string]string)
+			for k, v := range annotations {
+				if str, ok := v.(string); ok {
+					config.Metadata.Annotations[k] = str
+				}
+			}
+		}
+	} else {
+		return nil, fmt.Errorf("missing or invalid 'metadata' field")
+	}
+	
+	// Extract Spec
+	if spec, ok := doc["spec"].(map[string]interface{}); ok {
+		config.Spec = spec
+	}
+	
+	// Extract Status
+	if status, ok := doc["status"].(map[string]interface{}); ok {
+		config.Status = status
+	}
+	
+	return config, nil
+}
+
+func (cv *ConfigurationValidatorImpl) validateSchema(config *YAMLConfiguration, result *ConfigValidationResult) error {
+	// Validate required fields
+	if config.Kind == "" {
+		result.Errors = append(result.Errors, ConfigValidationError{
+			Field:      "kind",
+			Message:    "Kind is required",
+			Code:       "MISSING_KIND",
+			ConfigName: config.Metadata.Name,
+			Severity:   "error",
+		})
+	}
+	
+	if config.APIVersion == "" {
+		result.Errors = append(result.Errors, ConfigValidationError{
+			Field:      "apiVersion",
+			Message:    "APIVersion is required",
+			Code:       "MISSING_API_VERSION",
+			ConfigName: config.Metadata.Name,
+			Severity:   "error",
+		})
+	}
+	
+	if config.Metadata.Name == "" {
+		result.Errors = append(result.Errors, ConfigValidationError{
+			Field:      "metadata.name",
+			Message:    "Name is required",
+			Code:       "MISSING_NAME",
+			ConfigName: config.Metadata.Name,
+			Severity:   "error",
+		})
+	}
+	
+	return nil
+}
+
+func (cv *ConfigurationValidatorImpl) validateCrossReferences(configs []*YAMLConfiguration, result *ConfigValidationResult) {
+	// Build index of available resources
+	vpcs := make(map[string]*YAMLConfiguration)
+	
+	for _, config := range configs {
+		if config.Kind == "VPC" {
+			vpcs[config.Metadata.Name] = config
+		}
+	}
+	
+	// Validate Connection -> VPC references
+	for _, config := range configs {
+		if config.Kind == "Connection" {
+			if vpcSpec, ok := config.Spec["vpc"].(map[string]interface{}); ok {
+				if vpcName, ok := vpcSpec["name"].(string); ok {
+					if vpcConfig, exists := vpcs[vpcName]; exists {
+						// Check subnet reference
+						if subnetName, ok := vpcSpec["subnet"].(string); ok {
+							if subnets, ok := vpcConfig.Spec["subnets"].(map[string]interface{}); ok {
+								if _, subnetExists := subnets[subnetName]; subnetExists {
+									result.CrossReferences = append(result.CrossReferences, CrossReferenceResult{
+										FromConfig: config.Metadata.Name,
+										ToConfig:   vpcName,
+										Reference:  fmt.Sprintf("vpc.subnet=%s", subnetName),
+										Valid:      true,
+									})
+								} else {
+									result.CrossReferences = append(result.CrossReferences, CrossReferenceResult{
+										FromConfig: config.Metadata.Name,
+										ToConfig:   vpcName,
+										Reference:  fmt.Sprintf("vpc.subnet=%s", subnetName),
+										Valid:      false,
+										Message:    fmt.Sprintf("Subnet '%s' not found in VPC '%s'", subnetName, vpcName),
+									})
+								}
+							}
+						} else {
+							result.CrossReferences = append(result.CrossReferences, CrossReferenceResult{
+								FromConfig: config.Metadata.Name,
+								ToConfig:   vpcName,
+								Reference:  "vpc.name",
+								Valid:      true,
+							})
+						}
+					} else {
+						result.CrossReferences = append(result.CrossReferences, CrossReferenceResult{
+							FromConfig: config.Metadata.Name,
+							ToConfig:   vpcName,
+							Reference:  "vpc.name",
+							Valid:      false,
+							Message:    fmt.Sprintf("VPC '%s' not found", vpcName),
+						})
+					}
+				}
+			}
+		}
+	}
+}
+
+// Business rule validation methods
+
+func (cv *ConfigurationValidatorImpl) validateVPCBusinessRules(config *YAMLConfiguration, result *ConfigValidationResult) {
+	// Validate VNI range (1-16777215)
+	if vniVal, exists := config.Spec["vni"]; exists {
+		var vni int
+		var valid bool
+		
+		switch v := vniVal.(type) {
+		case int:
+			vni = v
+			valid = true
+		case int64:
+			vni = int(v)
+			valid = true
+		case float64:
+			vni = int(v)
+			valid = true
+		default:
+			result.BusinessRuleViolations = append(result.BusinessRuleViolations, BusinessRuleViolation{
+				RuleName:   "vni_type_validation",
+				ConfigName: config.Metadata.Name,
+				Field:      "spec.vni",
+				Message:    fmt.Sprintf("VNI must be a number, got %T", v),
+				Severity:   "error",
+				Value:      v,
+				Expected:   "integer",
+			})
+		}
+		
+		if valid && (vni < 1 || vni > 16777215) {
+			result.BusinessRuleViolations = append(result.BusinessRuleViolations, BusinessRuleViolation{
+				RuleName:   "vni_range_validation",
+				ConfigName: config.Metadata.Name,
+				Field:      "spec.vni",
+				Message:    fmt.Sprintf("VNI %d is out of range (1-16777215)", vni),
+				Severity:   "error",
+				Value:      vni,
+				Expected:   "1-16777215",
+			})
+		}
+	}
+	
+	// Validate subnets
+	if subnets, ok := config.Spec["subnets"].(map[string]interface{}); ok {
+		for subnetName, subnetData := range subnets {
+			if subnet, ok := subnetData.(map[string]interface{}); ok {
+				cv.validateSubnet(subnetName, subnet, config.Metadata.Name, result)
+			}
+		}
+	}
+}
+
+func (cv *ConfigurationValidatorImpl) validateSubnet(subnetName string, subnet map[string]interface{}, configName string, result *ConfigValidationResult) {
+	// Validate VLAN range
+	if vlanVal, exists := subnet["vlan"]; exists {
+		var vlan int
+		var valid bool
+		
+		switch v := vlanVal.(type) {
+		case int:
+			vlan = v
+			valid = true
+		case int64:
+			vlan = int(v)
+			valid = true
+		case float64:
+			vlan = int(v)
+			valid = true
+		}
+		
+		if valid && (vlan < 1 || vlan > 4094) {
+			result.BusinessRuleViolations = append(result.BusinessRuleViolations, BusinessRuleViolation{
+				RuleName:   "vlan_range_validation",
+				ConfigName: configName,
+				Field:      fmt.Sprintf("spec.subnets.%s.vlan", subnetName),
+				Message:    fmt.Sprintf("VLAN %d is out of range (1-4094)", vlan),
+				Severity:   "error",
+				Value:      vlan,
+				Expected:   "1-4094",
+			})
+		}
+	}
+	
+	// Validate subnet CIDR
+	if subnetCIDR, ok := subnet["subnet"].(string); ok {
+		if _, _, err := net.ParseCIDR(subnetCIDR); err != nil {
+			result.BusinessRuleViolations = append(result.BusinessRuleViolations, BusinessRuleViolation{
+				RuleName:   "ip_range_validation",
+				ConfigName: configName,
+				Field:      fmt.Sprintf("spec.subnets.%s.subnet", subnetName),
+				Message:    fmt.Sprintf("Invalid CIDR format: %s", subnetCIDR),
+				Severity:   "error",
+				Value:      subnetCIDR,
+				Expected:   "Valid CIDR notation (e.g., 10.0.0.0/24)",
+			})
+		}
+	}
+	
+	// Validate DHCP range
+	if dhcp, ok := subnet["dhcp"].(map[string]interface{}); ok {
+		if rangeData, ok := dhcp["range"].(map[string]interface{}); ok {
+			fromIP, hasFrom := rangeData["from"].(string)
+			toIP, hasTo := rangeData["to"].(string)
+			
+			if hasFrom && hasTo {
+				fromAddr := net.ParseIP(fromIP)
+				toAddr := net.ParseIP(toIP)
+				
+				if fromAddr == nil {
+					result.BusinessRuleViolations = append(result.BusinessRuleViolations, BusinessRuleViolation{
+						RuleName:   "dhcp_range_order",
+						ConfigName: configName,
+						Field:      fmt.Sprintf("spec.subnets.%s.dhcp.range.from", subnetName),
+						Message:    fmt.Sprintf("Invalid IP address: %s", fromIP),
+						Severity:   "error",
+						Value:      fromIP,
+						Expected:   "Valid IP address",
+					})
+				}
+				
+				if toAddr == nil {
+					result.BusinessRuleViolations = append(result.BusinessRuleViolations, BusinessRuleViolation{
+						RuleName:   "dhcp_range_order",
+						ConfigName: configName,
+						Field:      fmt.Sprintf("spec.subnets.%s.dhcp.range.to", subnetName),
+						Message:    fmt.Sprintf("Invalid IP address: %s", toIP),
+						Severity:   "error",
+						Value:      toIP,
+						Expected:   "Valid IP address",
+					})
+				}
+				
+				// Check range order
+				if fromAddr != nil && toAddr != nil {
+					if compareIPs(fromAddr, toAddr) > 0 {
+						result.BusinessRuleViolations = append(result.BusinessRuleViolations, BusinessRuleViolation{
+							RuleName:   "dhcp_range_order",
+							ConfigName: configName,
+							Field:      fmt.Sprintf("spec.subnets.%s.dhcp.range", subnetName),
+							Message:    fmt.Sprintf("DHCP range 'from' IP %s must be less than 'to' IP %s", fromIP, toIP),
+							Severity:   "error",
+							Value:      fmt.Sprintf("%s-%s", fromIP, toIP),
+							Expected:   "from IP < to IP",
+						})
+					}
+				}
+			}
+		}
+	}
+}
+
+func (cv *ConfigurationValidatorImpl) validateConnectionBusinessRules(config *YAMLConfiguration, result *ConfigValidationResult) {
+	// Validate port naming conventions
+	if unbundled, ok := config.Spec["unbundled"].(map[string]interface{}); ok {
+		if link, ok := unbundled["link"].(map[string]interface{}); ok {
+			if server, ok := link["server"].(map[string]interface{}); ok {
+				if port, ok := server["port"].(string); ok {
+					if !cv.isValidPortName(port) {
+						result.BusinessRuleViolations = append(result.BusinessRuleViolations, BusinessRuleViolation{
+							RuleName:   "port_naming_convention",
+							ConfigName: config.Metadata.Name,
+							Field:      "spec.unbundled.link.server.port",
+							Message:    fmt.Sprintf("Invalid server port naming: %s", port),
+							Severity:   "error",
+							Value:      port,
+							Expected:   "server-name/interface (e.g., server-01/eth0)",
+						})
+					}
+				}
+			}
+			
+			if switchPort, ok := link["switch"].(map[string]interface{}); ok {
+				if port, ok := switchPort["port"].(string); ok {
+					if !cv.isValidSwitchPortName(port) {
+						result.BusinessRuleViolations = append(result.BusinessRuleViolations, BusinessRuleViolation{
+							RuleName:   "interface_case_validation",
+							ConfigName: config.Metadata.Name,
+							Field:      "spec.unbundled.link.switch.port",
+							Message:    fmt.Sprintf("Invalid switch port naming: %s", port),
+							Severity:   "error",
+							Value:      port,
+							Expected:   "switch-name/Interface (e.g., switch-01/Ethernet1)",
+						})
+					}
+				}
+			}
+		}
+	}
+}
+
+func (cv *ConfigurationValidatorImpl) validateSwitchBusinessRules(config *YAMLConfiguration, result *ConfigValidationResult) {
+	// Validate ASN range
+	if asnVal, exists := config.Spec["asn"]; exists {
+		var asn int
+		var valid bool
+		
+		switch v := asnVal.(type) {
+		case int:
+			asn = v
+			valid = true
+		case int64:
+			asn = int(v)
+			valid = true
+		case float64:
+			asn = int(v)
+			valid = true
+		}
+		
+		if valid && !cv.isValidASN(asn) {
+			result.BusinessRuleViolations = append(result.BusinessRuleViolations, BusinessRuleViolation{
+				RuleName:   "asn_range_validation",
+				ConfigName: config.Metadata.Name,
+				Field:      "spec.asn",
+				Message:    fmt.Sprintf("Invalid ASN: %d", asn),
+				Severity:   "error",
+				Value:      asn,
+				Expected:   "Valid BGP ASN (1-4294967295, excluding reserved ranges)",
+			})
+		}
+	}
+	
+	// Validate role
+	if role, ok := config.Spec["role"].(string); ok {
+		validRoles := []string{"spine", "leaf", "border", "edge"}
+		if !contains(validRoles, role) {
+			result.BusinessRuleViolations = append(result.BusinessRuleViolations, BusinessRuleViolation{
+				RuleName:   "role_validation",
+				ConfigName: config.Metadata.Name,
+				Field:      "spec.role",
+				Message:    fmt.Sprintf("Invalid switch role: %s", role),
+				Severity:   "error",
+				Value:      role,
+				Expected:   "One of: spine, leaf, border, edge",
+			})
+		}
+	}
+}
+
+// Utility functions
+
+func (cv *ConfigurationValidatorImpl) isValidPortName(port string) bool {
+	// Pattern: server-name/interface (e.g., server-01/eth0)
+	pattern := `^[a-zA-Z0-9\-]+/[a-zA-Z0-9]+$`
+	matched, _ := regexp.MatchString(pattern, port)
+	return matched
+}
+
+func (cv *ConfigurationValidatorImpl) isValidSwitchPortName(port string) bool {
+	// Pattern: switch-name/Ethernet# (case sensitive)
+	pattern := `^[a-zA-Z0-9\-]+/Ethernet\d+$`
+	matched, _ := regexp.MatchString(pattern, port)
+	return matched
+}
+
+func (cv *ConfigurationValidatorImpl) isValidASN(asn int) bool {
+	// Valid ASN ranges:
+	// 1-65535 (16-bit ASNs)
+	// 65536-4294967295 (32-bit ASNs)
+	// Exclude reserved ranges
+	
+	if asn < 1 || asn > 4294967295 {
+		return false
+	}
+	
+	// Reserved ranges to exclude
+	reserved := [][]int{
+		{23456, 23456},     // Reserved for AS_TRANS
+		{64496, 64511},     // Reserved for use in docs
+		{64512, 65534},     // Reserved for private use
+		{65535, 65535},     // Reserved
+		{65536, 65551},     // Reserved for use in docs and code
+		{4200000000, 4294967294}, // Reserved for private use
+	}
+	
+	for _, r := range reserved {
+		if asn >= r[0] && asn <= r[1] {
+			return false
+		}
+	}
+	
+	return true
+}
+
+func compareIPs(ip1, ip2 net.IP) int {
+	// Compare two IP addresses
+	// Returns: -1 if ip1 < ip2, 0 if equal, 1 if ip1 > ip2
+	
+	// Ensure both IPs are same type (IPv4 vs IPv6)
+	ip1 = ip1.To4()
+	ip2 = ip2.To4()
+	
+	if ip1 == nil || ip2 == nil {
+		return 0 // Can't compare different types
+	}
+	
+	for i := 0; i < len(ip1); i++ {
+		if ip1[i] < ip2[i] {
+			return -1
+		}
+		if ip1[i] > ip2[i] {
+			return 1
+		}
+	}
+	return 0
+}
+
+func contains(slice []string, item string) bool {
+	for _, s := range slice {
+		if s == item {
+			return true
+		}
+	}
+	return false
+}
+
+// Supporting validator classes
+
+type VPCValidator struct{}
+
+func NewVPCValidator() *VPCValidator {
+	return &VPCValidator{}
+}
+
+func (v *VPCValidator) ValidateVPC(config *YAMLConfiguration, result *ConfigValidationResult) {
+	// Basic VPC validation is handled in business rules
+	// This could be extended for more complex VPC-specific validations
+}
+
+type ConnectionValidator struct{}
+
+func NewConnectionValidator() *ConnectionValidator {
+	return &ConnectionValidator{}
+}
+
+func (v *ConnectionValidator) ValidateConnection(config *YAMLConfiguration, result *ConfigValidationResult) {
+	// Basic Connection validation is handled in business rules
+	// This could be extended for more complex Connection-specific validations
+}
+
+type SwitchValidator struct{}
+
+func NewSwitchValidator() *SwitchValidator {
+	return &SwitchValidator{}
+}
+
+func (v *SwitchValidator) ValidateSwitch(config *YAMLConfiguration, result *ConfigValidationResult) {
+	// Basic Switch validation is handled in business rules  
+	// This could be extended for more complex Switch-specific validations
+}
+
+type MetricsCollector struct {
+	parseMetrics      map[string][]time.Duration
+	validationMetrics map[string][]time.Duration
+}
+
+func NewMetricsCollector() MetricsCollector {
+	return MetricsCollector{
+		parseMetrics:      make(map[string][]time.Duration),
+		validationMetrics: make(map[string][]time.Duration),
+	}
+}
+
+func (mc *MetricsCollector) RecordParseTime(operation string, duration time.Duration) {
+	if mc.parseMetrics == nil {
+		mc.parseMetrics = make(map[string][]time.Duration)
+	}
+	mc.parseMetrics[operation] = append(mc.parseMetrics[operation], duration)
+}
+
+func (mc *MetricsCollector) RecordValidationTime(operation string, duration time.Duration) {
+	if mc.validationMetrics == nil {
+		mc.validationMetrics = make(map[string][]time.Duration)
+	}
+	mc.validationMetrics[operation] = append(mc.validationMetrics[operation], duration)
+}
+
+func (mc *MetricsCollector) GetAverageParseTime(operation string) time.Duration {
+	metrics, exists := mc.parseMetrics[operation]
+	if !exists || len(metrics) == 0 {
+		return 0
+	}
+	
+	var total time.Duration
+	for _, d := range metrics {
+		total += d
+	}
+	return total / time.Duration(len(metrics))
+}
+
+func (mc *MetricsCollector) GetAverageValidationTime(operation string) time.Duration {
+	metrics, exists := mc.validationMetrics[operation]
+	if !exists || len(metrics) == 0 {
+		return 0
+	}
+	
+	var total time.Duration
+	for _, d := range metrics {
+		total += d
+	}
+	return total / time.Duration(len(metrics))
+}
