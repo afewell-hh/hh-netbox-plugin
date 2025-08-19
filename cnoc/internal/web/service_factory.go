@@ -39,7 +39,7 @@ type ServiceFactory struct {
 
 // NewServiceFactory creates a new service factory with properly wired dependencies
 func NewServiceFactory() *ServiceFactory {
-	return NewServiceFactoryWithoutGitOps()
+	return NewServiceFactoryWithGitOps() // Enable GitOps services for real dashboard integration
 }
 
 // NewServiceFactoryWithoutGitOps creates a service factory without GitOps services (for testing)
