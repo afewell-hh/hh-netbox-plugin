@@ -9,7 +9,8 @@ services:
     volumes:
       # Mount the plugin source code for live reloading
       # Mount the inner netbox_hedgehog directory, not the repo root
-      - /home/ubuntu/afewell-hh/hh-netbox-plugin/netbox_hedgehog:/opt/netbox/netbox/netbox_hedgehog:ro
+      # Remove :ro to allow migrations to be created
+      - /home/ubuntu/afewell-hh/hh-netbox-plugin/netbox_hedgehog:/opt/netbox/netbox/netbox_hedgehog
     environment:
       - DEBUG=true
       - DEVELOPER=true
