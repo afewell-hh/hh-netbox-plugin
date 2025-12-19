@@ -1,0 +1,3 @@
+# Install the hh-netbox-plugin in editable mode
+# The source is mounted as a volume for live development
+-e /opt/netbox/netbox/netbox_hedgehog
