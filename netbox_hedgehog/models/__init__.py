@@ -7,13 +7,16 @@ from .vpc_api import (
 from .wiring_api import (
     Connection, Server, Switch, SwitchGroup, VLANNamespace
 )
+from .topology_planning import (
+    SwitchModel, SwitchPortGroup, NICModel, BreakoutOption
+)
 
 __all__ = [
     'HedgehogFabric',
     'BaseCRD',
     # VPC API
     'VPC',
-    'External', 
+    'External',
     'ExternalAttachment',
     'ExternalPeering',
     'IPv4Namespace',
@@ -22,7 +25,12 @@ __all__ = [
     # Wiring API
     'Connection',
     'Server',
-    'Switch', 
+    'Switch',
     'SwitchGroup',
     'VLANNamespace',
+    # Topology Planning (DIET)
+    'SwitchModel',
+    'SwitchPortGroup',
+    'NICModel',
+    'BreakoutOption',
 ]

@@ -104,7 +104,7 @@ class CRDTypeChoices(ChoiceSet):
 
 class ConnectionTypeChoices(ChoiceSet):
     """Choices for Hedgehog connection types"""
-    
+
     UNBUNDLED = 'unbundled'
     BUNDLED = 'bundled'
     MCLAG = 'mclag'
@@ -112,7 +112,7 @@ class ConnectionTypeChoices(ChoiceSet):
     FABRIC = 'fabric'
     VPC_LOOPBACK = 'vpc_loopback'
     EXTERNAL = 'external'
-    
+
     CHOICES = [
         (UNBUNDLED, 'Unbundled'),
         (BUNDLED, 'Bundled'),
@@ -122,3 +122,10 @@ class ConnectionTypeChoices(ChoiceSet):
         (VPC_LOOPBACK, 'VPC Loopback'),
         (EXTERNAL, 'External'),
     ]
+
+# =============================================================================
+# Topology Planning Choices (DIET Module)
+# =============================================================================
+# Note: Choice sets for topology planning models will be added here as needed.
+# Reference data models (SwitchModel, NICModel, etc.) use simple fields.
+# Plan models (TopologyPlan, ServerClass, etc.) will add status/category choices.
