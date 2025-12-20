@@ -174,9 +174,11 @@ def calculate_switch_quantity(switch_class) -> int:
 
     # Step 5: Calculate logical ports per switch
     # NOTE: For MVP, we assume all ports on the switch are the same
-    # Get port count from DeviceType's InterfaceTemplates
-    # For now, using a default of 64 ports (DS5000 standard)
-    # TODO: Query dcim.InterfaceTemplate.objects.filter(device_type=device_extension.device_type).count()
+    # TODO: Replace hardcoded port count with actual count from InterfaceTemplate
+    #       Query: dcim.InterfaceTemplate.objects.filter(
+    #           device_type=device_extension.device_type
+    #       ).count()
+    #       This will support switches with different port counts (32, 48, 64, etc.)
     physical_ports = 64  # MVP default for DS5000
 
     logical_ports_per_switch = physical_ports * breakout.logical_ports
