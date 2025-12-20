@@ -86,3 +86,18 @@ class VLANNamespaceSerializer(BaseCRDSerializer):
     class Meta:
         model = models.VLANNamespace
         fields = '__all__'
+
+
+# =============================================================================
+# Topology Planning Serializers (DIET Module)
+# =============================================================================
+# Import simple serializers (no REST API views yet, just needed for events/webhooks)
+from .serializers_simple import (
+    BreakoutOptionSerializer,
+    DeviceTypeExtensionSerializer,
+    TopologyPlanSerializer,
+    PlanServerClassSerializer,
+    PlanSwitchClassSerializer,
+    PlanServerConnectionSerializer,
+    PlanMCLAGDomainSerializer,
+)

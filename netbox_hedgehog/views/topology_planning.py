@@ -79,6 +79,7 @@ class TopologyPlanListView(generic.ObjectListView):
 class TopologyPlanView(generic.ObjectView):
     """Detail view for a single TopologyPlan"""
     queryset = models.TopologyPlan.objects.all()
+    template_name = 'netbox_hedgehog/topologyplan.html'
 
     def get_extra_context(self, request, instance):
         """Add server and switch classes to context"""
@@ -138,6 +139,7 @@ class PlanServerClassListView(generic.ObjectListView):
 class PlanServerClassView(generic.ObjectView):
     """Detail view for a single PlanServerClass"""
     queryset = models.PlanServerClass.objects.all()
+    template_name = 'netbox_hedgehog/planserverclass.html'
 
 
 class PlanServerClassEditView(generic.ObjectEditView):
@@ -164,6 +166,7 @@ class PlanSwitchClassListView(generic.ObjectListView):
 class PlanSwitchClassView(generic.ObjectView):
     """Detail view for a single PlanSwitchClass"""
     queryset = models.PlanSwitchClass.objects.all()
+    template_name = 'netbox_hedgehog/planswitchclass.html'
 
 
 class PlanSwitchClassEditView(generic.ObjectEditView):
