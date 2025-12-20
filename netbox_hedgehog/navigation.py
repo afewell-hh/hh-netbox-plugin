@@ -183,6 +183,42 @@ menu = PluginMenu(
         )),
         ('Topology Planning (DIET)', (
             PluginMenuItem(
+                link='plugins:netbox_hedgehog:topologyplan_list',
+                link_text='Topology Plans',
+                buttons=(
+                    PluginMenuButton(
+                        link='plugins:netbox_hedgehog:topologyplan_add',
+                        title='Add Topology Plan',
+                        icon_class='mdi mdi-plus-thick',
+                        color=ButtonColorChoices.GREEN
+                    ),
+                )
+            ),
+            PluginMenuItem(
+                link='plugins:netbox_hedgehog:planserverclass_list',
+                link_text='Server Classes',
+                buttons=(
+                    PluginMenuButton(
+                        link='plugins:netbox_hedgehog:planserverclass_add',
+                        title='Add Server Class',
+                        icon_class='mdi mdi-plus-thick',
+                        color=ButtonColorChoices.GREEN
+                    ),
+                )
+            ),
+            PluginMenuItem(
+                link='plugins:netbox_hedgehog:planswitchclass_list',
+                link_text='Switch Classes',
+                buttons=(
+                    PluginMenuButton(
+                        link='plugins:netbox_hedgehog:planswitchclass_add',
+                        title='Add Switch Class',
+                        icon_class='mdi mdi-plus-thick',
+                        color=ButtonColorChoices.GREEN
+                    ),
+                )
+            ),
+            PluginMenuItem(
                 link='plugins:netbox_hedgehog:breakoutoption_list',
                 link_text='Breakout Options',
                 buttons=(

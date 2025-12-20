@@ -26,7 +26,10 @@ from .views.wiring_api import (
 # Import Topology Planning views (DIET)
 from .views.topology_planning import (
     BreakoutOptionListView, BreakoutOptionView, BreakoutOptionEditView, BreakoutOptionDeleteView,
-    DeviceTypeExtensionListView, DeviceTypeExtensionView, DeviceTypeExtensionEditView, DeviceTypeExtensionDeleteView
+    DeviceTypeExtensionListView, DeviceTypeExtensionView, DeviceTypeExtensionEditView, DeviceTypeExtensionDeleteView,
+    TopologyPlanListView, TopologyPlanView, TopologyPlanEditView, TopologyPlanDeleteView, TopologyPlanRecalculateView,
+    PlanServerClassListView, PlanServerClassView, PlanServerClassEditView, PlanServerClassDeleteView,
+    PlanSwitchClassListView, PlanSwitchClassView, PlanSwitchClassEditView, PlanSwitchClassDeleteView
 )
 # from .views.crd_views import FabricCRDListView, CRDDetailView, ApplyCRDView, DeleteCRDView
 
@@ -210,6 +213,31 @@ urlpatterns = [
     path('device-type-extensions/<int:pk>/edit/', DeviceTypeExtensionEditView.as_view(), name='devicetypeextension_edit'),
     path('device-type-extensions/<int:pk>/delete/', DeviceTypeExtensionDeleteView.as_view(), name='devicetypeextension_delete'),
     path('device-type-extensions/<int:pk>/changelog/', DeviceTypeExtensionView.as_view(), name='devicetypeextension_changelog'),
+
+    # TopologyPlan URLs (DIET-004)
+    path('topology-plans/', TopologyPlanListView.as_view(), name='topologyplan_list'),
+    path('topology-plans/add/', TopologyPlanEditView.as_view(), name='topologyplan_add'),
+    path('topology-plans/<int:pk>/', TopologyPlanView.as_view(), name='topologyplan_detail'),
+    path('topology-plans/<int:pk>/edit/', TopologyPlanEditView.as_view(), name='topologyplan_edit'),
+    path('topology-plans/<int:pk>/delete/', TopologyPlanDeleteView.as_view(), name='topologyplan_delete'),
+    path('topology-plans/<int:pk>/changelog/', TopologyPlanView.as_view(), name='topologyplan_changelog'),
+    path('topology-plans/<int:pk>/recalculate/', TopologyPlanRecalculateView.as_view(), name='topologyplan_recalculate'),
+
+    # PlanServerClass URLs (DIET-004)
+    path('plan-server-classes/', PlanServerClassListView.as_view(), name='planserverclass_list'),
+    path('plan-server-classes/add/', PlanServerClassEditView.as_view(), name='planserverclass_add'),
+    path('plan-server-classes/<int:pk>/', PlanServerClassView.as_view(), name='planserverclass_detail'),
+    path('plan-server-classes/<int:pk>/edit/', PlanServerClassEditView.as_view(), name='planserverclass_edit'),
+    path('plan-server-classes/<int:pk>/delete/', PlanServerClassDeleteView.as_view(), name='planserverclass_delete'),
+    path('plan-server-classes/<int:pk>/changelog/', PlanServerClassView.as_view(), name='planserverclass_changelog'),
+
+    # PlanSwitchClass URLs (DIET-004)
+    path('plan-switch-classes/', PlanSwitchClassListView.as_view(), name='planswitchclass_list'),
+    path('plan-switch-classes/add/', PlanSwitchClassEditView.as_view(), name='planswitchclass_add'),
+    path('plan-switch-classes/<int:pk>/', PlanSwitchClassView.as_view(), name='planswitchclass_detail'),
+    path('plan-switch-classes/<int:pk>/edit/', PlanSwitchClassEditView.as_view(), name='planswitchclass_edit'),
+    path('plan-switch-classes/<int:pk>/delete/', PlanSwitchClassDeleteView.as_view(), name='planswitchclass_delete'),
+    path('plan-switch-classes/<int:pk>/changelog/', PlanSwitchClassView.as_view(), name='planswitchclass_changelog'),
 
     # Other URLs
     path('topology/', TopologyView.as_view(), name='topology'),

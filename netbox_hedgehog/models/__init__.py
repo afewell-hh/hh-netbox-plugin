@@ -31,6 +31,11 @@ from .wiring_api import (
 from .topology_planning import (
     BreakoutOption,
     DeviceTypeExtension,
+    TopologyPlan,
+    PlanServerClass,
+    PlanSwitchClass,
+    PlanServerConnection,
+    PlanMCLAGDomain,
 )
 
 __all__ = [
@@ -54,4 +59,9 @@ __all__ = [
     # DIET Planning Models
     'BreakoutOption',
     'DeviceTypeExtension',
+    'TopologyPlan',
+    'PlanServerClass',
+    'PlanSwitchClass',
+    'PlanServerConnection',
+    'PlanMCLAGDomain',
 ]

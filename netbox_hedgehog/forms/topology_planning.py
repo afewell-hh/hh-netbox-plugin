@@ -5,10 +5,16 @@ Forms for BreakoutOption and DeviceTypeExtension models.
 
 from django import forms
 from netbox.forms import NetBoxModelForm
-from dcim.models import DeviceType
+from dcim.models import DeviceType, ModuleType
 from utilities.forms.fields import DynamicModelChoiceField
 
-from ..models.topology_planning import BreakoutOption, DeviceTypeExtension
+from ..models.topology_planning import (
+    BreakoutOption,
+    DeviceTypeExtension,
+    TopologyPlan,
+    PlanServerClass,
+    PlanSwitchClass,
+)
 
 
 class BreakoutOptionForm(NetBoxModelForm):
@@ -87,4 +93,137 @@ class DeviceTypeExtensionForm(NetBoxModelForm):
             'native_speed': 'Native port speed in Gbps (e.g., 800 for 800G)',
             'uplink_ports': 'Default number of uplink ports to reserve for spine connections',
             'notes': 'Additional Hedgehog-specific notes about this device type',
+        }
+
+
+# =============================================================================
+# Topology Plan Forms (DIET-004)
+# =============================================================================
+
+class TopologyPlanForm(NetBoxModelForm):
+    """
+    Form for creating and editing TopologyPlans.
+
+    TopologyPlans are the top-level container for network designs, containing
+    server classes, switch classes, and connection specifications.
+    """
+
+    class Meta:
+        model = TopologyPlan
+        fields = [
+            'name',
+            'customer_name',
+            'description',
+            'status',
+            'notes',
+            'tags',
+        ]
+        widgets = {
+            'description': forms.Textarea(attrs={'rows': 4}),
+            'notes': forms.Textarea(attrs={'rows': 4}),
+        }
+        help_texts = {
+            'name': "Plan name (e.g., 'Cambium 2MW', '128-GPU Training Cluster')",
+            'customer_name': 'Customer or project name (optional)',
+            'description': 'Detailed description of the topology plan',
+            'status': 'Current status of the plan',
+            'notes': 'Additional notes about this plan',
+        }
+
+
+class PlanServerClassForm(NetBoxModelForm):
+    """
+    Form for creating and editing PlanServerClasses.
+
+    Server classes define groups of identical servers with their quantities
+    and connection requirements. Quantity is the primary user input that
+    drives switch quantity calculations.
+    """
+
+    plan = forms.ModelChoiceField(
+        queryset=TopologyPlan.objects.all(),
+        label='Topology Plan',
+        help_text='Select the topology plan this server class belongs to'
+    )
+
+    server_device_type = forms.ModelChoiceField(
+        queryset=DeviceType.objects.all(),
+        label='Server Device Type',
+        help_text='Select the NetBox DeviceType for this server model'
+    )
+
+    class Meta:
+        model = PlanServerClass
+        fields = [
+            'plan',
+            'server_class_id',
+            'description',
+            'category',
+            'quantity',
+            'gpus_per_server',
+            'server_device_type',
+            'notes',
+            'tags',
+        ]
+        widgets = {
+            'notes': forms.Textarea(attrs={'rows': 3}),
+        }
+        help_texts = {
+            'server_class_id': "Unique identifier (e.g., 'INF-B200', 'GPU-001')",
+            'description': 'Human-readable description of this server class',
+            'category': 'Server category (GPU, Storage, Infrastructure)',
+            'quantity': 'Number of servers in this class (PRIMARY INPUT)',
+            'gpus_per_server': 'Number of GPUs per server (0 for non-GPU servers)',
+            'server_device_type': 'Optional reference to NetBox DeviceType',
+            'notes': 'Additional notes about this server class',
+        }
+
+
+class PlanSwitchClassForm(NetBoxModelForm):
+    """
+    Form for creating and editing PlanSwitchClasses.
+
+    Switch classes define groups of identical switches. Their quantities are
+    automatically calculated based on server port demand, but can be manually
+    overridden via the override_quantity field.
+    """
+
+    plan = forms.ModelChoiceField(
+        queryset=TopologyPlan.objects.all(),
+        label='Topology Plan',
+        help_text='Select the topology plan this switch class belongs to'
+    )
+
+    device_type_extension = forms.ModelChoiceField(
+        queryset=DeviceTypeExtension.objects.select_related('device_type', 'device_type__manufacturer'),
+        label='Device Type (with Hedgehog Extension)',
+        help_text='Select the switch DeviceType with Hedgehog metadata'
+    )
+
+    class Meta:
+        model = PlanSwitchClass
+        fields = [
+            'plan',
+            'switch_class_id',
+            'fabric',
+            'hedgehog_role',
+            'device_type_extension',
+            'uplink_ports_per_switch',
+            'mclag_pair',
+            'override_quantity',
+            'notes',
+            'tags',
+        ]
+        widgets = {
+            'notes': forms.Textarea(attrs={'rows': 3}),
+        }
+        help_texts = {
+            'switch_class_id': "Unique identifier (e.g., 'fe-gpu-leaf', 'be-spine')",
+            'fabric': 'Fabric type (Frontend, Backend, OOB)',
+            'hedgehog_role': 'Hedgehog role (Spine, Server Leaf, Border Leaf)',
+            'device_type_extension': 'Switch model with Hedgehog-specific metadata',
+            'uplink_ports_per_switch': 'Number of uplink ports to reserve per switch',
+            'mclag_pair': 'Whether switches are deployed in MCLAG pairs (affects quantity rounding)',
+            'override_quantity': 'Manual override of calculated quantity (leave empty to use calculated value)',
+            'notes': 'Additional notes about this switch class',
         }

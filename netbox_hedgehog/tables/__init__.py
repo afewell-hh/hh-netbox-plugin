@@ -1,7 +1,13 @@
 from .fabric import FabricTable
 from .vpc_api import VPCTable, ExternalTable, IPv4NamespaceTable, ExternalAttachmentTable, ExternalPeeringTable, VPCAttachmentTable, VPCPeeringTable
 from .wiring_api import ConnectionTable, SwitchTable, ServerTable, SwitchGroupTable, VLANNamespaceTable
-from .topology_planning import BreakoutOptionTable, DeviceTypeExtensionTable
+from .topology_planning import (
+    BreakoutOptionTable,
+    DeviceTypeExtensionTable,
+    TopologyPlanTable,
+    PlanServerClassTable,
+    PlanSwitchClassTable,
+)
 
 __all__ = [
     'FabricTable',
@@ -19,4 +25,7 @@ __all__ = [
     'VLANNamespaceTable',
     'BreakoutOptionTable',
     'DeviceTypeExtensionTable',
+    'TopologyPlanTable',
+    'PlanServerClassTable',
+    'PlanSwitchClassTable',
 ]

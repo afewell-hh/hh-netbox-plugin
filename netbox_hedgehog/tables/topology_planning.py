@@ -6,7 +6,13 @@ Tables for displaying BreakoutOption and DeviceTypeExtension models.
 import django_tables2 as tables
 from netbox.tables import NetBoxTable, columns
 
-from ..models.topology_planning import BreakoutOption, DeviceTypeExtension
+from ..models.topology_planning import (
+    BreakoutOption,
+    DeviceTypeExtension,
+    TopologyPlan,
+    PlanServerClass,
+    PlanSwitchClass,
+)
 
 
 class BreakoutOptionTable(NetBoxTable):
@@ -91,4 +97,196 @@ class DeviceTypeExtensionTable(NetBoxTable):
         )
         default_columns = (
             'device_type', 'mclag_capable', 'hedgehog_roles', 'native_speed', 'uplink_ports'
+        )
+
+
+# =============================================================================
+# Topology Plan Tables (DIET-004)
+# =============================================================================
+
+class TopologyPlanTable(NetBoxTable):
+    """
+    Table for displaying TopologyPlans.
+
+    Shows plan name, customer, status, and metadata with links to detail view.
+    """
+
+    name = tables.Column(
+        linkify=True,
+        verbose_name='Plan Name'
+    )
+
+    customer_name = tables.Column(
+        verbose_name='Customer'
+    )
+
+    status = tables.Column(
+        verbose_name='Status'
+    )
+
+    created_by = tables.Column(
+        verbose_name='Created By',
+        accessor='created_by__username',
+        orderable=False
+    )
+
+    # Computed properties from model
+    total_servers = tables.Column(
+        verbose_name='Servers',
+        accessor='pk',
+        orderable=False,
+        empty_values=()
+    )
+
+    total_switches = tables.Column(
+        verbose_name='Switches',
+        accessor='pk',
+        orderable=False,
+        empty_values=()
+    )
+
+    def render_total_servers(self, record):
+        """Render total server count from plan property"""
+        return sum(sc.quantity for sc in record.server_classes.all())
+
+    def render_total_switches(self, record):
+        """Render total switch count from plan property"""
+        return sum(sc.effective_quantity for sc in record.switch_classes.all())
+
+    class Meta(NetBoxTable.Meta):
+        model = TopologyPlan
+        fields = (
+            'pk', 'id', 'name', 'customer_name', 'status', 'created_by',
+            'total_servers', 'total_switches', 'description',
+            'tags', 'created', 'last_updated'
+        )
+        default_columns = (
+            'name', 'customer_name', 'status', 'total_servers', 'total_switches', 'created_by'
+        )
+
+
+class PlanServerClassTable(NetBoxTable):
+    """
+    Table for displaying PlanServerClasses.
+
+    Shows server class details including quantities and GPU counts.
+    """
+
+    server_class_id = tables.Column(
+        linkify=True,
+        verbose_name='Server Class ID'
+    )
+
+    plan = tables.Column(
+        linkify=True,
+        verbose_name='Plan'
+    )
+
+    category = tables.Column(
+        verbose_name='Category'
+    )
+
+    quantity = tables.Column(
+        verbose_name='Quantity'
+    )
+
+    gpus_per_server = tables.Column(
+        verbose_name='GPUs/Server'
+    )
+
+    total_gpus = tables.Column(
+        verbose_name='Total GPUs',
+        accessor='pk',
+        orderable=False,
+        empty_values=()
+    )
+
+    def render_total_gpus(self, record):
+        """Render total GPU count (quantity × gpus_per_server)"""
+        return record.quantity * record.gpus_per_server
+
+    server_device_type = tables.Column(
+        linkify=True,
+        verbose_name='Device Type',
+        accessor='server_device_type'
+    )
+
+    class Meta(NetBoxTable.Meta):
+        model = PlanServerClass
+        fields = (
+            'pk', 'id', 'server_class_id', 'plan', 'description', 'category',
+            'quantity', 'gpus_per_server', 'total_gpus', 'server_device_type',
+            'tags', 'created', 'last_updated'
+        )
+        default_columns = (
+            'server_class_id', 'plan', 'category', 'quantity', 'gpus_per_server', 'total_gpus'
+        )
+
+
+class PlanSwitchClassTable(NetBoxTable):
+    """
+    Table for displaying PlanSwitchClasses.
+
+    Shows switch class details with calculated vs override vs effective quantities.
+    """
+
+    switch_class_id = tables.Column(
+        linkify=True,
+        verbose_name='Switch Class ID'
+    )
+
+    plan = tables.Column(
+        linkify=True,
+        verbose_name='Plan'
+    )
+
+    fabric = tables.Column(
+        verbose_name='Fabric'
+    )
+
+    hedgehog_role = tables.Column(
+        verbose_name='Role'
+    )
+
+    device_type_extension = tables.Column(
+        verbose_name='Device Type',
+        accessor='device_type_extension__device_type',
+        linkify=lambda record: record.device_type_extension.device_type.get_absolute_url()
+            if record.device_type_extension and record.device_type_extension.device_type else None
+    )
+
+    calculated_quantity = tables.Column(
+        verbose_name='Calculated'
+    )
+
+    override_quantity = tables.Column(
+        verbose_name='Override'
+    )
+
+    effective_quantity = tables.Column(
+        verbose_name='Effective',
+        accessor='pk',
+        orderable=False,
+        empty_values=()
+    )
+
+    def render_effective_quantity(self, record):
+        """Render effective quantity (override ?? calculated)"""
+        return record.effective_quantity
+
+    mclag_pair = tables.BooleanColumn(
+        verbose_name='MCLAG Pair'
+    )
+
+    class Meta(NetBoxTable.Meta):
+        model = PlanSwitchClass
+        fields = (
+            'pk', 'id', 'switch_class_id', 'plan', 'fabric', 'hedgehog_role',
+            'device_type_extension', 'calculated_quantity', 'override_quantity',
+            'effective_quantity', 'mclag_pair', 'uplink_ports_per_switch',
+            'tags', 'created', 'last_updated'
+        )
+        default_columns = (
+            'switch_class_id', 'plan', 'fabric', 'hedgehog_role',
+            'calculated_quantity', 'override_quantity', 'effective_quantity'
         )
