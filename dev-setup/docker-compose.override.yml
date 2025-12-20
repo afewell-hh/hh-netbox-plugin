@@ -1,0 +1,37 @@
+version: '3.4'
+services:
+  netbox:
+    build:
+      context: .
+      dockerfile: Dockerfile-Plugins
+    image: netbox:latest-plugins-dev
+    pull_policy: never
+    volumes:
+      # Mount the plugin source code for live reloading
+      # Mount the inner netbox_hedgehog directory, not the repo root
+      # Remove :ro to allow migrations to be created
+      - /home/ubuntu/afewell-hh/hh-netbox-plugin/netbox_hedgehog:/opt/netbox/netbox/netbox_hedgehog
+    environment:
+      - DEBUG=true
+      - DEVELOPER=true
+    command: python manage.py runserver 0.0.0.0:8000
+    ports:
+      - "8000:8000"
+
+  netbox-worker:
+    build:
+      context: .
+      dockerfile: Dockerfile-Plugins
+    image: netbox:latest-plugins-dev
+    pull_policy: never
+    volumes:
+      - /home/ubuntu/afewell-hh/hh-netbox-plugin/netbox_hedgehog:/opt/netbox/netbox/netbox_hedgehog:ro
+    environment:
+      - DEBUG=true
+      - DEVELOPER=true
+
+  netbox-housekeeping:
+    image: netbox:latest-plugins-dev
+    pull_policy: never
+    volumes:
+      - /home/ubuntu/afewell-hh/hh-netbox-plugin/netbox_hedgehog:/opt/netbox/netbox/netbox_hedgehog:ro

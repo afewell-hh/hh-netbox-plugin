@@ -1,7 +1,7 @@
 {
   "permissions": {
     "allow": [
-      "Bash(*)",
+      "Bash",
       "Read(*)",
       "Write(*)",
       "Edit(*)",
@@ -11,8 +11,8 @@
       "LS(*)",
       "NotebookEdit(*)",
       "NotebookRead(*)",
-      "WebFetch(*)",
-      "WebSearch(*)",
+      "WebFetch(domain:*)",
+      "WebSearch",
       "TodoRead",
       "TodoWrite",
       "Agent(*)"

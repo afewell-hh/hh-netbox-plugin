@@ -1,0 +1,17 @@
+FROM netboxcommunity/netbox:latest
+
+# Copy plugin requirements first (needed for installation)
+COPY ./plugin_requirements.txt /opt/netbox/
+
+# Install development dependencies using uv (NetBox's package manager)
+RUN /usr/local/bin/uv pip install --no-cache \
+    ipython \
+    django-extensions \
+    coverage \
+    django-debug-toolbar \
+    kubernetes>=24.0.0 \
+    pyyaml>=6.0 \
+    jsonschema>=4.0.0
+
+# Note: The plugin itself is mounted as a volume for live development
+# Plugin will be auto-discovered by NetBox's plugin system

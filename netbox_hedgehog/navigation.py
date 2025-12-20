@@ -181,5 +181,31 @@ menu = PluginMenu(
                 )
             ),
         )),
+        ('Topology Planning (DIET)', (
+            PluginMenuItem(
+                link='plugins:netbox_hedgehog:breakoutoption_list',
+                link_text='Breakout Options',
+                buttons=(
+                    PluginMenuButton(
+                        link='plugins:netbox_hedgehog:breakoutoption_add',
+                        title='Add Breakout Option',
+                        icon_class='mdi mdi-plus-thick',
+                        color=ButtonColorChoices.GREEN
+                    ),
+                )
+            ),
+            PluginMenuItem(
+                link='plugins:netbox_hedgehog:devicetypeextension_list',
+                link_text='Device Type Extensions',
+                buttons=(
+                    PluginMenuButton(
+                        link='plugins:netbox_hedgehog:devicetypeextension_add',
+                        title='Add Device Type Extension',
+                        icon_class='mdi mdi-plus-thick',
+                        color=ButtonColorChoices.GREEN
+                    ),
+                )
+            ),
+        )),
     )
 )
