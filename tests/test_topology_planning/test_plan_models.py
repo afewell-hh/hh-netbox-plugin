@@ -74,7 +74,7 @@ class TopologyPlanTestCase(TestCase):
         self.assertEqual(plan.status, TopologyPlanStatusChoices.DRAFT)
 
     def test_topology_plan_timestamps(self):
-        """Test TopologyPlan has created_at and updated_at timestamps"""
+        """Test TopologyPlan inherits created and last_updated from NetBoxModel"""
         from netbox_hedgehog.models.topology_planning import TopologyPlan
 
         plan = TopologyPlan.objects.create(
@@ -82,8 +82,8 @@ class TopologyPlanTestCase(TestCase):
             created_by=self.user
         )
 
-        self.assertIsNotNone(plan.created_at)
-        self.assertIsNotNone(plan.updated_at)
+        self.assertIsNotNone(plan.created)
+        self.assertIsNotNone(plan.last_updated)
 
     def test_topology_plan_cascade_delete(self):
         """Test TopologyPlan cascades delete to related objects"""
@@ -427,6 +427,7 @@ class PlanServerConnectionTestCase(TestCase):
             server_class=self.server_class,
             connection_id='TEST',
             ports_per_connection=1,
+            speed=100,
             target_switch_class=self.switch_class,
             nic_module_type=None  # Optional for MVP
         )
@@ -442,6 +443,7 @@ class PlanServerConnectionTestCase(TestCase):
             connection_id='FE-001',
             connection_name='frontend',
             ports_per_connection=2,
+            speed=200,
             target_switch_class=self.switch_class
         )
 
@@ -455,6 +457,7 @@ class PlanServerConnectionTestCase(TestCase):
             server_class=self.server_class,
             connection_id='TEST',
             ports_per_connection=1,
+            speed=100,
             target_switch_class=self.switch_class
         )
 
@@ -467,15 +470,44 @@ class PlanServerConnectionTestCase(TestCase):
     def test_plan_server_connection_defaults(self):
         """Test PlanServerConnection default values"""
         from netbox_hedgehog.models.topology_planning import PlanServerConnection
+        from netbox_hedgehog.choices import ConnectionTypeChoices
 
         connection = PlanServerConnection.objects.create(
             server_class=self.server_class,
             connection_id='TEST',
             ports_per_connection=1,
+            speed=100,
             target_switch_class=self.switch_class
         )
 
-        self.assertEqual(connection.speed, 0)
+        # hedgehog_conn_type defaults to 'unbundled'
+        self.assertEqual(connection.hedgehog_conn_type, ConnectionTypeChoices.UNBUNDLED)
+
+    def test_plan_server_connection_speed_required(self):
+        """Test speed field is required and must be >= 1"""
+        from netbox_hedgehog.models.topology_planning import PlanServerConnection
+
+        # Speed is required (no default)
+        with self.assertRaises(ValidationError):
+            connection = PlanServerConnection(
+                server_class=self.server_class,
+                connection_id='TEST',
+                ports_per_connection=1,
+                target_switch_class=self.switch_class
+                # Missing speed
+            )
+            connection.full_clean()
+
+        # Speed must be >= 1
+        with self.assertRaises(ValidationError):
+            connection = PlanServerConnection(
+                server_class=self.server_class,
+                connection_id='TEST-2',
+                ports_per_connection=1,
+                speed=0,  # Invalid
+                target_switch_class=self.switch_class
+            )
+            connection.full_clean()
 
 
 class PlanMCLAGDomainTestCase(TestCase):

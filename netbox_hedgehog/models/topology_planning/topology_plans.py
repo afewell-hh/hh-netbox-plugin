@@ -20,6 +20,7 @@ from netbox_hedgehog.choices import (
     FabricTypeChoices,
     HedgehogRoleChoices,
     ConnectionDistributionChoices,
+    ConnectionTypeChoices,
     PortTypeChoices,
 )
 
@@ -67,23 +68,13 @@ class TopologyPlan(NetBoxModel):
         help_text="User who created this plan"
     )
 
-    created_at = models.DateTimeField(
-        auto_now_add=True,
-        help_text="When the plan was created"
-    )
-
-    updated_at = models.DateTimeField(
-        auto_now=True,
-        help_text="When the plan was last updated"
-    )
-
     notes = models.TextField(
         blank=True,
         help_text="Additional notes about this plan"
     )
 
     class Meta:
-        ordering = ['-created_at']
+        ordering = ['-created']
         verbose_name = "Topology Plan"
         verbose_name_plural = "Topology Plans"
 
@@ -91,7 +82,7 @@ class TopologyPlan(NetBoxModel):
         return self.name
 
     def get_absolute_url(self):
-        return reverse('plugins:netbox_hedgehog:topologyplan', args=[self.pk])
+        return reverse('plugins:netbox_hedgehog:topologyplan_detail', args=[self.pk])
 
 
 class PlanServerClass(NetBoxModel):
@@ -160,7 +151,7 @@ class PlanServerClass(NetBoxModel):
         return f"{self.server_class_id} ({self.quantity}x {self.server_device_type})"
 
     def get_absolute_url(self):
-        return reverse('plugins:netbox_hedgehog:planserverclass', args=[self.pk])
+        return reverse('plugins:netbox_hedgehog:planserverclass_detail', args=[self.pk])
 
 
 class PlanSwitchClass(NetBoxModel):
@@ -245,7 +236,7 @@ class PlanSwitchClass(NetBoxModel):
         return f"{self.switch_class_id} ({self.effective_quantity}x {self.device_type_extension.device_type})"
 
     def get_absolute_url(self):
-        return reverse('plugins:netbox_hedgehog:planswitchclass', args=[self.pk])
+        return reverse('plugins:netbox_hedgehog:planswitchclass_detail', args=[self.pk])
 
     @property
     def effective_quantity(self):
@@ -313,7 +304,8 @@ class PlanServerConnection(NetBoxModel):
 
     hedgehog_conn_type = models.CharField(
         max_length=50,
-        blank=True,
+        choices=ConnectionTypeChoices,
+        default=ConnectionTypeChoices.UNBUNDLED,
         help_text="Hedgehog connection type (unbundled, bundled, mclag, eslag)"
     )
 
@@ -332,8 +324,7 @@ class PlanServerConnection(NetBoxModel):
     )
 
     speed = models.IntegerField(
-        default=0,
-        validators=[MinValueValidator(0)],
+        validators=[MinValueValidator(1)],
         help_text="Connection speed in Gbps (e.g., 200 for 200G)"
     )
 
@@ -361,7 +352,7 @@ class PlanServerConnection(NetBoxModel):
         return f"{self.server_class.server_class_id}/{self.connection_id} → {self.target_switch_class.switch_class_id}"
 
     def get_absolute_url(self):
-        return reverse('plugins:netbox_hedgehog:planserverconnection', args=[self.pk])
+        return reverse('plugins:netbox_hedgehog:planserverconnection_detail', args=[self.pk])
 
 
 class PlanMCLAGDomain(NetBoxModel):
@@ -423,4 +414,4 @@ class PlanMCLAGDomain(NetBoxModel):
         return f"{self.domain_id} ({self.switch_class.switch_class_id})"
 
     def get_absolute_url(self):
-        return reverse('plugins:netbox_hedgehog:planmclagdomain', args=[self.pk])
+        return reverse('plugins:netbox_hedgehog:planmclagdomain_detail', args=[self.pk])

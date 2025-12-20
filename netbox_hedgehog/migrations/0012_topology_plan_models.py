@@ -1,5 +1,9 @@
-# Generated manually for DIET-002 - Topology Plan Models
-# Simplified to avoid problematic AlterField operations
+# Generated manually for DIET-002 - Topology Plan Models (Review Fixes)
+# Addresses review findings:
+# - Remove duplicate created_at/updated_at (use NetBoxModel.created/last_updated)
+# - Add ConnectionTypeChoices to hedgehog_conn_type
+# - Make speed required (MinValueValidator(1))
+# - Update get_absolute_url() names to *_detail convention
 
 import django.core.validators
 import django.db.models.deletion
@@ -31,8 +35,6 @@ class Migration(migrations.Migration):
                 ('customer_name', models.CharField(blank=True, help_text='Customer or project name', max_length=200)),
                 ('description', models.TextField(blank=True, help_text='Detailed description of the topology plan')),
                 ('status', models.CharField(default='draft', help_text='Current status of the plan', max_length=50)),
-                ('created_at', models.DateTimeField(auto_now_add=True, help_text='When the plan was created')),
-                ('updated_at', models.DateTimeField(auto_now=True, help_text='When the plan was last updated')),
                 ('notes', models.TextField(blank=True, help_text='Additional notes about this plan')),
                 ('created_by', models.ForeignKey(blank=True, help_text='User who created this plan', null=True, on_delete=django.db.models.deletion.SET_NULL, related_name='topology_plans', to=settings.AUTH_USER_MODEL)),
                 ('tags', taggit.managers.TaggableManager(through='extras.TaggedItem', to='extras.Tag')),
@@ -40,7 +42,7 @@ class Migration(migrations.Migration):
             options={
                 'verbose_name': 'Topology Plan',
                 'verbose_name_plural': 'Topology Plans',
-                'ordering': ['-created_at'],
+                'ordering': ['-created'],
             },
             bases=(netbox.models.deletion.DeleteMixin, models.Model),
         ),
@@ -107,9 +109,9 @@ class Migration(migrations.Migration):
                 ('nic_slot', models.CharField(blank=True, help_text="NIC slot identifier (e.g., 'NIC1', 'enp1s0f0')", max_length=50)),
                 ('connection_name', models.CharField(blank=True, help_text="Descriptive connection name (e.g., 'frontend', 'backend-rail-0')", max_length=100)),
                 ('ports_per_connection', models.IntegerField(help_text='Number of ports used for this connection', validators=[django.core.validators.MinValueValidator(1)])),
-                ('hedgehog_conn_type', models.CharField(blank=True, help_text='Hedgehog connection type (unbundled, bundled, mclag, eslag)', max_length=50)),
+                ('hedgehog_conn_type', models.CharField(default='unbundled', help_text='Hedgehog connection type (unbundled, bundled, mclag, eslag)', max_length=50)),
                 ('distribution', models.CharField(blank=True, help_text='Port distribution strategy (same-switch, alternating, rail-optimized)', max_length=50)),
-                ('speed', models.IntegerField(default=0, help_text='Connection speed in Gbps (e.g., 200 for 200G)', validators=[django.core.validators.MinValueValidator(0)])),
+                ('speed', models.IntegerField(help_text='Connection speed in Gbps (e.g., 200 for 200G)', validators=[django.core.validators.MinValueValidator(1)])),
                 ('rail', models.IntegerField(blank=True, help_text='Rail number for rail-optimized distribution (0-7 for 8-rail backend)', null=True, validators=[django.core.validators.MinValueValidator(0)])),
                 ('port_type', models.CharField(blank=True, help_text='Port type (data, ipmi, pxe)', max_length=50)),
                 ('nic_module_type', models.ForeignKey(blank=True, help_text='NIC module type (optional for MVP)', null=True, on_delete=django.db.models.deletion.PROTECT, related_name='plan_server_connections', to='dcim.moduletype')),
