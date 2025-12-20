@@ -8,7 +8,7 @@ import django.core.validators
 class Migration(migrations.Migration):
 
     dependencies = [
-        ('netbox_hedgehog', '0009_seed_data_hedgehog_devices'),
+        ('netbox_hedgehog', '0008_topology_planning_models'),
     ]
 
     operations = [
