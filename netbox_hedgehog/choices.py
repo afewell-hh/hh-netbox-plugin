@@ -126,6 +126,90 @@ class ConnectionTypeChoices(ChoiceSet):
 # =============================================================================
 # Topology Planning Choices (DIET Module)
 # =============================================================================
-# Note: Choice sets for topology planning models will be added here as needed.
-# Reference data models (SwitchModel, NICModel, etc.) use simple fields.
-# Plan models (TopologyPlan, ServerClass, etc.) will add status/category choices.
+
+class TopologyPlanStatusChoices(ChoiceSet):
+    """Status choices for TopologyPlan"""
+
+    DRAFT = 'draft'
+    REVIEW = 'review'
+    APPROVED = 'approved'
+    EXPORTED = 'exported'
+
+    CHOICES = [
+        (DRAFT, 'Draft'),
+        (REVIEW, 'Review'),
+        (APPROVED, 'Approved'),
+        (EXPORTED, 'Exported'),
+    ]
+
+
+class ServerClassCategoryChoices(ChoiceSet):
+    """Category choices for PlanServerClass"""
+
+    GPU = 'gpu'
+    STORAGE = 'storage'
+    INFRASTRUCTURE = 'infrastructure'
+
+    CHOICES = [
+        (GPU, 'GPU'),
+        (STORAGE, 'Storage'),
+        (INFRASTRUCTURE, 'Infrastructure'),
+    ]
+
+
+class FabricTypeChoices(ChoiceSet):
+    """Fabric type choices for PlanSwitchClass"""
+
+    FRONTEND = 'frontend'
+    BACKEND = 'backend'
+    OOB = 'oob'
+
+    CHOICES = [
+        (FRONTEND, 'Frontend'),
+        (BACKEND, 'Backend'),
+        (OOB, 'Out-of-Band'),
+    ]
+
+
+class HedgehogRoleChoices(ChoiceSet):
+    """Hedgehog role choices for PlanSwitchClass"""
+
+    SPINE = 'spine'
+    SERVER_LEAF = 'server-leaf'
+    BORDER_LEAF = 'border-leaf'
+    VIRTUAL = 'virtual'
+
+    CHOICES = [
+        (SPINE, 'Spine'),
+        (SERVER_LEAF, 'Server Leaf'),
+        (BORDER_LEAF, 'Border Leaf'),
+        (VIRTUAL, 'Virtual'),
+    ]
+
+
+class ConnectionDistributionChoices(ChoiceSet):
+    """Distribution choices for PlanServerConnection"""
+
+    SAME_SWITCH = 'same-switch'
+    ALTERNATING = 'alternating'
+    RAIL_OPTIMIZED = 'rail-optimized'
+
+    CHOICES = [
+        (SAME_SWITCH, 'Same Switch'),
+        (ALTERNATING, 'Alternating'),
+        (RAIL_OPTIMIZED, 'Rail-Optimized'),
+    ]
+
+
+class PortTypeChoices(ChoiceSet):
+    """Port type choices for PlanServerConnection"""
+
+    DATA = 'data'
+    IPMI = 'ipmi'
+    PXE = 'pxe'
+
+    CHOICES = [
+        (DATA, 'Data'),
+        (IPMI, 'IPMI'),
+        (PXE, 'PXE'),
+    ]

@@ -8,7 +8,7 @@ Reference Data (leverages NetBox core models):
 - DeviceTypeExtension: Hedgehog-specific metadata for NetBox DeviceTypes
 - Switch/Server/NIC specs: Use dcim.DeviceType, dcim.ModuleType
 
-Planning Models (to be implemented in future commits):
+Planning Models:
 - TopologyPlan: Container for a topology plan
 - PlanServerClass: Server class definition in a plan
 - PlanSwitchClass: Switch class definition in a plan
@@ -21,7 +21,22 @@ from .reference_data import (
     DeviceTypeExtension,
 )
 
+from .topology_plans import (
+    TopologyPlan,
+    PlanServerClass,
+    PlanSwitchClass,
+    PlanServerConnection,
+    PlanMCLAGDomain,
+)
+
 __all__ = [
+    # Reference Data
     'BreakoutOption',
     'DeviceTypeExtension',
+    # Planning Models
+    'TopologyPlan',
+    'PlanServerClass',
+    'PlanSwitchClass',
+    'PlanServerConnection',
+    'PlanMCLAGDomain',
 ]
