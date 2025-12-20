@@ -74,13 +74,11 @@ class TopologyPlanListView(generic.ObjectListView):
     """List view for TopologyPlans"""
     queryset = models.TopologyPlan.objects.all()
     table = tables.TopologyPlanTable
-    template_name = 'netbox_hedgehog/topology_planning/topologyplan_list.html'
 
 
 class TopologyPlanView(generic.ObjectView):
     """Detail view for a single TopologyPlan"""
     queryset = models.TopologyPlan.objects.all()
-    template_name = 'netbox_hedgehog/topology_planning/topologyplan.html'
 
     def get_extra_context(self, request, instance):
         """Add server and switch classes to context"""
@@ -94,13 +92,11 @@ class TopologyPlanEditView(generic.ObjectEditView):
     """Create/Edit view for TopologyPlans"""
     queryset = models.TopologyPlan.objects.all()
     form = forms.TopologyPlanForm
-    template_name = 'netbox_hedgehog/topology_planning/topologyplan_edit.html'
 
 
 class TopologyPlanDeleteView(generic.ObjectDeleteView):
     """Delete view for TopologyPlans"""
     queryset = models.TopologyPlan.objects.all()
-    template_name = 'netbox_hedgehog/topology_planning/topologyplan_delete.html'
 
 
 class TopologyPlanRecalculateView(generic.ObjectView):
@@ -137,26 +133,22 @@ class PlanServerClassListView(generic.ObjectListView):
     """List view for PlanServerClasses"""
     queryset = models.PlanServerClass.objects.all()
     table = tables.PlanServerClassTable
-    template_name = 'netbox_hedgehog/topology_planning/planserverclass_list.html'
 
 
 class PlanServerClassView(generic.ObjectView):
     """Detail view for a single PlanServerClass"""
     queryset = models.PlanServerClass.objects.all()
-    template_name = 'netbox_hedgehog/topology_planning/planserverclass.html'
 
 
 class PlanServerClassEditView(generic.ObjectEditView):
     """Create/Edit view for PlanServerClasses"""
     queryset = models.PlanServerClass.objects.all()
     form = forms.PlanServerClassForm
-    template_name = 'netbox_hedgehog/topology_planning/planserverclass_edit.html'
 
 
 class PlanServerClassDeleteView(generic.ObjectDeleteView):
     """Delete view for PlanServerClasses"""
     queryset = models.PlanServerClass.objects.all()
-    template_name = 'netbox_hedgehog/topology_planning/planserverclass_delete.html'
 
 
 # =============================================================================
@@ -167,23 +159,19 @@ class PlanSwitchClassListView(generic.ObjectListView):
     """List view for PlanSwitchClasses"""
     queryset = models.PlanSwitchClass.objects.all()
     table = tables.PlanSwitchClassTable
-    template_name = 'netbox_hedgehog/topology_planning/planswitchclass_list.html'
 
 
 class PlanSwitchClassView(generic.ObjectView):
     """Detail view for a single PlanSwitchClass"""
     queryset = models.PlanSwitchClass.objects.all()
-    template_name = 'netbox_hedgehog/topology_planning/planswitchclass.html'
 
 
 class PlanSwitchClassEditView(generic.ObjectEditView):
     """Create/Edit view for PlanSwitchClasses"""
     queryset = models.PlanSwitchClass.objects.all()
     form = forms.PlanSwitchClassForm
-    template_name = 'netbox_hedgehog/topology_planning/planswitchclass_edit.html'
 
 
 class PlanSwitchClassDeleteView(generic.ObjectDeleteView):
     """Delete view for PlanSwitchClasses"""
     queryset = models.PlanSwitchClass.objects.all()
-    template_name = 'netbox_hedgehog/topology_planning/planswitchclass_delete.html'
