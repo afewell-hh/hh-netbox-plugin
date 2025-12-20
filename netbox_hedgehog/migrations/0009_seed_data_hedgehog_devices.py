@@ -288,7 +288,7 @@ class Migration(migrations.Migration):
 
     dependencies = [
         ('dcim', '0216_latitude_longitude_validators'),
-        ('netbox_hedgehog', '0008_topology_planning_models'),
+        ('netbox_hedgehog', '0010_devicetypeextension_fields'),
     ]
 
     operations = [
