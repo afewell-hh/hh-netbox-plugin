@@ -66,6 +66,9 @@ def load_seed_data(apps, schema_editor):
             device_type=ds5000,
             mclag_capable=False,
             hedgehog_roles=['spine', 'server-leaf'],
+            supported_breakouts=['1x800g', '2x400g', '4x200g', '8x100g'],
+            native_speed=800,
+            uplink_ports=8,
             notes='Primary switch for large Hedgehog deployments. Supports 800G native with breakout to 400G/200G/100G.',
         )
 
@@ -97,6 +100,9 @@ def load_seed_data(apps, schema_editor):
             device_type=ds3000,
             mclag_capable=False,
             hedgehog_roles=['server-leaf', 'border-leaf'],
+            supported_breakouts=['1x100g', '4x25g', '4x10g'],
+            native_speed=100,
+            uplink_ports=4,
             notes='Smaller switch for edge/border deployments. Supports 100G native with breakout to 25G/10G.',
         )
 
@@ -128,6 +134,9 @@ def load_seed_data(apps, schema_editor):
             device_type=sn5600,
             mclag_capable=True,
             hedgehog_roles=['spine', 'server-leaf'],
+            supported_breakouts=['1x800g', '2x400g', '4x200g', '8x100g'],
+            native_speed=800,
+            uplink_ports=8,
             notes='High-end switch with MCLAG support for redundant topologies. 800G native with breakout options.',
         )
 
@@ -159,6 +168,9 @@ def load_seed_data(apps, schema_editor):
             device_type=es1000,
             mclag_capable=False,
             hedgehog_roles=['virtual'],
+            supported_breakouts=['1x1g'],
+            native_speed=1,
+            uplink_ports=2,
             notes='Management and virtual network switch. 1G copper ports.',
         )
 

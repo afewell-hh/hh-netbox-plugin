@@ -23,6 +23,11 @@ from .views.wiring_api import (
     SwitchGroupListView, SwitchGroupView, SwitchGroupEditView, SwitchGroupDeleteView,
     VLANNamespaceListView, VLANNamespaceView, VLANNamespaceEditView, VLANNamespaceDeleteView
 )
+# Import Topology Planning views (DIET)
+from .views.topology_planning import (
+    BreakoutOptionListView, BreakoutOptionView, BreakoutOptionEditView, BreakoutOptionDeleteView,
+    DeviceTypeExtensionListView, DeviceTypeExtensionView, DeviceTypeExtensionEditView, DeviceTypeExtensionDeleteView
+)
 # from .views.crd_views import FabricCRDListView, CRDDetailView, ApplyCRDView, DeleteCRDView
 
 # Other Views
@@ -188,7 +193,24 @@ urlpatterns = [
     path('vlan-namespaces/<int:pk>/edit/', VLANNamespaceEditView.as_view(), name='vlannamespace_edit'),
     path('vlan-namespaces/<int:pk>/delete/', VLANNamespaceDeleteView.as_view(), name='vlannamespace_delete'),
     path('vlan-namespaces/<int:pk>/changelog/', VLANNamespaceView.as_view(), name='vlannamespace_changelog'),
-    
+
+    # Topology Planning URLs (DIET)
+    # BreakoutOption URLs
+    path('breakout-options/', BreakoutOptionListView.as_view(), name='breakoutoption_list'),
+    path('breakout-options/add/', BreakoutOptionEditView.as_view(), name='breakoutoption_add'),
+    path('breakout-options/<int:pk>/', BreakoutOptionView.as_view(), name='breakoutoption'),
+    path('breakout-options/<int:pk>/edit/', BreakoutOptionEditView.as_view(), name='breakoutoption_edit'),
+    path('breakout-options/<int:pk>/delete/', BreakoutOptionDeleteView.as_view(), name='breakoutoption_delete'),
+    path('breakout-options/<int:pk>/changelog/', BreakoutOptionView.as_view(), name='breakoutoption_changelog'),
+
+    # DeviceTypeExtension URLs
+    path('device-type-extensions/', DeviceTypeExtensionListView.as_view(), name='devicetypeextension_list'),
+    path('device-type-extensions/add/', DeviceTypeExtensionEditView.as_view(), name='devicetypeextension_add'),
+    path('device-type-extensions/<int:pk>/', DeviceTypeExtensionView.as_view(), name='devicetypeextension'),
+    path('device-type-extensions/<int:pk>/edit/', DeviceTypeExtensionEditView.as_view(), name='devicetypeextension_edit'),
+    path('device-type-extensions/<int:pk>/delete/', DeviceTypeExtensionDeleteView.as_view(), name='devicetypeextension_delete'),
+    path('device-type-extensions/<int:pk>/changelog/', DeviceTypeExtensionView.as_view(), name='devicetypeextension_changelog'),
+
     # Other URLs
     path('topology/', TopologyView.as_view(), name='topology'),
 ]

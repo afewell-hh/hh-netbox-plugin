@@ -98,6 +98,25 @@ class DeviceTypeExtension(NetBoxModel):
         help_text="List of supported Hedgehog roles: spine, server-leaf, border-leaf, virtual"
     )
 
+    supported_breakouts = models.JSONField(
+        default=list,
+        blank=True,
+        help_text="List of supported breakout IDs (e.g., ['1x800g', '2x400g', '4x200g']). Used by calc engine to select appropriate BreakoutOption."
+    )
+
+    native_speed = models.IntegerField(
+        null=True,
+        blank=True,
+        help_text="Native port speed in Gbps (e.g., 800 for 800G). Used for fallback when no breakout matches."
+    )
+
+    uplink_ports = models.IntegerField(
+        null=True,
+        blank=True,
+        validators=[MinValueValidator(0)],
+        help_text="Default number of uplink ports to reserve for spine connections"
+    )
+
     notes = models.TextField(
         blank=True,
         help_text="Additional Hedgehog-specific notes about this device type"
