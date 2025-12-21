@@ -89,7 +89,7 @@ class BreakoutOptionUITestCase(TestCase):
         response = self.client.get(url)
 
         self.assertEqual(response.status_code, 200)
-        self.assertIn('breakoutoption_list.html', [t.name for t in response.templates])
+        self.assertTemplateUsed(response, 'netbox_hedgehog/topology_planning/breakoutoption_list.html')
 
     def test_list_view_displays_all_objects(self):
         """Test that list view renders all breakout options"""
@@ -111,7 +111,7 @@ class BreakoutOptionUITestCase(TestCase):
         response = self.client.get(url)
 
         self.assertEqual(response.status_code, 200)
-        self.assertIn('breakoutoption.html', [t.name for t in response.templates])
+        self.assertTemplateUsed(response, 'netbox_hedgehog/topology_planning/breakoutoption.html')
 
     def test_detail_view_renders_expected_data(self):
         """Test that detail view displays correct breakout option data"""
@@ -136,7 +136,7 @@ class BreakoutOptionUITestCase(TestCase):
         response = self.client.get(url)
 
         self.assertEqual(response.status_code, 200)
-        self.assertIn('breakoutoption_edit.html', [t.name for t in response.templates])
+        self.assertTemplateUsed(response, 'netbox_hedgehog/topology_planning/breakoutoption_edit.html')
 
     def test_add_form_contains_required_fields(self):
         """Test that add form renders all required fields"""
@@ -292,8 +292,10 @@ class BreakoutOptionUITestCase(TestCase):
         response = self.client.get(url)
 
         self.assertEqual(response.status_code, 200)
+        # Verify object name appears in delete confirmation
         self.assertContains(response, 'test-2x400g')
-        self.assertContains(response, 'confirm')  # Confirmation message
+        # Verify it's a delete confirmation form (check for standard NetBox delete elements)
+        self.assertContains(response, 'type="submit"')
 
     def test_delete_post_removes_object(self):
         """Test that POST to delete endpoint removes object"""
@@ -327,8 +329,8 @@ class BreakoutOptionUITestCase(TestCase):
         url = reverse('plugins:netbox_hedgehog:breakoutoption_list')
         response = self.client.get(url)
 
-        # Should be forbidden (NetBox typically shows 403 or redirects)
-        self.assertIn(response.status_code, [403, 302])
+        # Should be forbidden (authenticated but unauthorized)
+        self.assertEqual(response.status_code, 403)
 
     def test_add_view_without_permission_forbidden(self):
         """Test that add view returns 403 without add permission"""
@@ -336,7 +338,7 @@ class BreakoutOptionUITestCase(TestCase):
         url = reverse('plugins:netbox_hedgehog:breakoutoption_add')
         response = self.client.get(url)
 
-        self.assertIn(response.status_code, [403, 302])
+        self.assertEqual(response.status_code, 403)
 
     def test_edit_view_without_permission_forbidden(self):
         """Test that edit view returns 403 without change permission"""
@@ -344,7 +346,7 @@ class BreakoutOptionUITestCase(TestCase):
         url = reverse('plugins:netbox_hedgehog:breakoutoption_edit', args=[self.breakout1.pk])
         response = self.client.get(url)
 
-        self.assertIn(response.status_code, [403, 302])
+        self.assertEqual(response.status_code, 403)
 
     def test_delete_view_without_permission_forbidden(self):
         """Test that delete view returns 403 without delete permission"""
@@ -352,7 +354,7 @@ class BreakoutOptionUITestCase(TestCase):
         url = reverse('plugins:netbox_hedgehog:breakoutoption_delete', args=[self.breakout1.pk])
         response = self.client.get(url)
 
-        self.assertIn(response.status_code, [403, 302])
+        self.assertEqual(response.status_code, 403)
 
     def test_crud_operations_with_object_permission_succeed(self):
         """Test that CRUD operations succeed with ObjectPermission"""
@@ -390,10 +392,55 @@ class BreakoutOptionUITestCase(TestCase):
         response = self.client.get(url)
         self.assertEqual(response.status_code, 200)
 
-        # Test delete view
+        # Test delete view (GET)
         url = reverse('plugins:netbox_hedgehog:breakoutoption_delete', args=[self.breakout1.pk])
         response = self.client.get(url)
         self.assertEqual(response.status_code, 200)
+
+        # Test create operation (POST)
+        url = reverse('plugins:netbox_hedgehog:breakoutoption_add')
+        data = {
+            'breakout_id': 'test-perm-create',
+            'from_speed': 400,
+            'logical_ports': 2,
+            'logical_speed': 200,
+        }
+        response = self.client.post(url, data)
+        # Should redirect after successful creation (302)
+        self.assertEqual(response.status_code, 302)
+        # Verify object was created
+        self.assertTrue(BreakoutOption.objects.filter(breakout_id='test-perm-create').exists())
+
+        # Test edit operation (POST)
+        url = reverse('plugins:netbox_hedgehog:breakoutoption_edit', args=[self.breakout1.pk])
+        data = {
+            'breakout_id': 'test-2x400g',
+            'from_speed': 800,
+            'logical_ports': 2,
+            'logical_speed': 400,
+            'optic_type': 'QSFP-UPDATED',  # Changed value
+        }
+        response = self.client.post(url, data)
+        # Should redirect after successful update (302)
+        self.assertEqual(response.status_code, 302)
+        # Verify object was updated
+        self.breakout1.refresh_from_db()
+        self.assertEqual(self.breakout1.optic_type, 'QSFP-UPDATED')
+
+        # Test delete operation (POST)
+        # Create a temp object to delete
+        temp_obj = BreakoutOption.objects.create(
+            breakout_id='test-perm-delete',
+            from_speed=100,
+            logical_ports=1,
+            logical_speed=100
+        )
+        url = reverse('plugins:netbox_hedgehog:breakoutoption_delete', args=[temp_obj.pk])
+        response = self.client.post(url, {'confirm': True})
+        # Should redirect after successful deletion (302)
+        self.assertEqual(response.status_code, 302)
+        # Verify object was deleted
+        self.assertFalse(BreakoutOption.objects.filter(pk=temp_obj.pk).exists())
 
 
 class DeviceTypeExtensionUITestCase(TestCase):
@@ -466,7 +513,7 @@ class DeviceTypeExtensionUITestCase(TestCase):
         response = self.client.get(url)
 
         self.assertEqual(response.status_code, 200)
-        self.assertIn('devicetypeextension_list.html', [t.name for t in response.templates])
+        self.assertTemplateUsed(response, 'netbox_hedgehog/topology_planning/devicetypeextension_list.html')
 
     def test_list_view_displays_device_types(self):
         """Test that list view renders device type information"""
@@ -487,7 +534,7 @@ class DeviceTypeExtensionUITestCase(TestCase):
         response = self.client.get(url)
 
         self.assertEqual(response.status_code, 200)
-        self.assertIn('devicetypeextension.html', [t.name for t in response.templates])
+        self.assertTemplateUsed(response, 'netbox_hedgehog/topology_planning/devicetypeextension.html')
 
     def test_detail_view_renders_expected_data(self):
         """Test that detail view displays correct extension data"""
@@ -510,7 +557,7 @@ class DeviceTypeExtensionUITestCase(TestCase):
         response = self.client.get(url)
 
         self.assertEqual(response.status_code, 200)
-        self.assertIn('devicetypeextension_edit.html', [t.name for t in response.templates])
+        self.assertTemplateUsed(response, 'netbox_hedgehog/topology_planning/devicetypeextension_edit.html')
 
     def test_add_form_contains_required_fields(self):
         """Test that add form renders all required fields"""
@@ -649,7 +696,10 @@ class DeviceTypeExtensionUITestCase(TestCase):
         response = self.client.get(url)
 
         self.assertEqual(response.status_code, 200)
-        self.assertContains(response, 'confirm')
+        # Verify device type name appears in delete confirmation
+        self.assertContains(response, 'DS5000')
+        # Verify it's a delete confirmation form (check for standard NetBox delete elements)
+        self.assertContains(response, 'type="submit"')
 
     def test_delete_post_removes_object(self):
         """Test that POST to delete endpoint removes object"""
@@ -685,7 +735,7 @@ class DeviceTypeExtensionUITestCase(TestCase):
         url = reverse('plugins:netbox_hedgehog:devicetypeextension_list')
         response = self.client.get(url)
 
-        self.assertIn(response.status_code, [403, 302])
+        self.assertEqual(response.status_code, 403)
 
     def test_add_view_without_permission_forbidden(self):
         """Test that add view returns 403 without add permission"""
@@ -693,7 +743,7 @@ class DeviceTypeExtensionUITestCase(TestCase):
         url = reverse('plugins:netbox_hedgehog:devicetypeextension_add')
         response = self.client.get(url)
 
-        self.assertIn(response.status_code, [403, 302])
+        self.assertEqual(response.status_code, 403)
 
     def test_edit_view_without_permission_forbidden(self):
         """Test that edit view returns 403 without change permission"""
@@ -701,7 +751,7 @@ class DeviceTypeExtensionUITestCase(TestCase):
         url = reverse('plugins:netbox_hedgehog:devicetypeextension_edit', args=[self.extension1.pk])
         response = self.client.get(url)
 
-        self.assertIn(response.status_code, [403, 302])
+        self.assertEqual(response.status_code, 403)
 
     def test_delete_view_without_permission_forbidden(self):
         """Test that delete view returns 403 without delete permission"""
@@ -709,7 +759,7 @@ class DeviceTypeExtensionUITestCase(TestCase):
         url = reverse('plugins:netbox_hedgehog:devicetypeextension_delete', args=[self.extension1.pk])
         response = self.client.get(url)
 
-        self.assertIn(response.status_code, [403, 302])
+        self.assertEqual(response.status_code, 403)
 
     def test_crud_operations_with_object_permission_succeed(self):
         """Test that CRUD operations succeed with ObjectPermission"""
@@ -746,7 +796,64 @@ class DeviceTypeExtensionUITestCase(TestCase):
         response = self.client.get(url)
         self.assertEqual(response.status_code, 200)
 
-        # Test delete view
+        # Test delete view (GET)
         url = reverse('plugins:netbox_hedgehog:devicetypeextension_delete', args=[self.extension1.pk])
         response = self.client.get(url)
         self.assertEqual(response.status_code, 200)
+
+        # Test create operation (POST)
+        # Create a new device type for the extension
+        temp_device_type = DeviceType.objects.create(
+            manufacturer=self.manufacturer,
+            model='TEMP-PERM-CREATE',
+            slug='celestica-temp-perm-create'
+        )
+        url = reverse('plugins:netbox_hedgehog:devicetypeextension_add')
+        data = {
+            'device_type': temp_device_type.pk,
+            'mclag_capable': True,
+            'hedgehog_roles': ['spine'],
+            'supported_breakouts': '["1x100g"]',
+            'native_speed': 100,
+        }
+        response = self.client.post(url, data)
+        # Should redirect after successful creation (302)
+        self.assertEqual(response.status_code, 302)
+        # Verify object was created
+        self.assertTrue(DeviceTypeExtension.objects.filter(device_type=temp_device_type).exists())
+
+        # Test edit operation (POST)
+        url = reverse('plugins:netbox_hedgehog:devicetypeextension_edit', args=[self.extension1.pk])
+        data = {
+            'device_type': self.device_type1.pk,
+            'mclag_capable': True,  # Changed from False
+            'hedgehog_roles': ['spine'],
+            'supported_breakouts': '["1x800g"]',
+            'native_speed': 800,
+            'uplink_ports': 8,  # Changed value
+        }
+        response = self.client.post(url, data)
+        # Should redirect after successful update (302)
+        self.assertEqual(response.status_code, 302)
+        # Verify object was updated
+        self.extension1.refresh_from_db()
+        self.assertEqual(self.extension1.mclag_capable, True)
+        self.assertEqual(self.extension1.uplink_ports, 8)
+
+        # Test delete operation (POST)
+        # Create a temp extension to delete
+        temp_device_type2 = DeviceType.objects.create(
+            manufacturer=self.manufacturer,
+            model='TEMP-PERM-DELETE',
+            slug='celestica-temp-perm-delete'
+        )
+        temp_ext = DeviceTypeExtension.objects.create(
+            device_type=temp_device_type2,
+            mclag_capable=False
+        )
+        url = reverse('plugins:netbox_hedgehog:devicetypeextension_delete', args=[temp_ext.pk])
+        response = self.client.post(url, {'confirm': True})
+        # Should redirect after successful deletion (302)
+        self.assertEqual(response.status_code, 302)
+        # Verify object was deleted
+        self.assertFalse(DeviceTypeExtension.objects.filter(pk=temp_ext.pk).exists())
