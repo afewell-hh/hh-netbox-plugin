@@ -3,14 +3,17 @@ Topology Planning Views (DIET Module)
 CRUD views for BreakoutOption, DeviceTypeExtension, and Topology Plan models.
 """
 
+import re
 from django.contrib import messages
 from django.contrib.auth.mixins import PermissionRequiredMixin
+from django.http import HttpResponse
 from django.shortcuts import get_object_or_404, redirect
 from django.views import View
 
 from netbox.views import generic
 from .. import models, tables, forms
 from ..utils.topology_calculations import update_plan_calculations
+from ..services.yaml_generator import generate_yaml_for_plan
 
 
 # BreakoutOption Views
@@ -132,6 +135,36 @@ class TopologyPlanRecalculateView(PermissionRequiredMixin, View):
 
         # Redirect back to plan detail page
         return redirect('plugins:netbox_hedgehog:topologyplan_detail', pk=pk)
+
+
+class TopologyPlanExportView(PermissionRequiredMixin, View):
+    """
+    Export action for TopologyPlans (DIET-006).
+
+    Generates Hedgehog wiring diagram YAML from a topology plan
+    and returns it as a downloadable file.
+    """
+    permission_required = 'netbox_hedgehog.view_topologyplan'
+    raise_exception = True
+
+    def get(self, request, pk):
+        """Handle export GET request"""
+        plan = get_object_or_404(models.TopologyPlan, pk=pk)
+
+        # Generate YAML from plan
+        yaml_content = generate_yaml_for_plan(plan)
+
+        # Create filename from plan name (sanitize for filesystem)
+        filename = re.sub(r'[^a-z0-9-]', '-', plan.name.lower())
+        filename = re.sub(r'-+', '-', filename)  # Collapse multiple dashes
+        filename = filename.strip('-')  # Remove leading/trailing dashes
+        filename = f"{filename}.yaml"
+
+        # Create HTTP response with YAML content
+        response = HttpResponse(yaml_content, content_type='text/yaml; charset=utf-8')
+        response['Content-Disposition'] = f'attachment; filename="{filename}"'
+
+        return response
 
 
 # =============================================================================

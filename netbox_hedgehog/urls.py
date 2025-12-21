@@ -27,7 +27,7 @@ from .views.wiring_api import (
 from .views.topology_planning import (
     BreakoutOptionListView, BreakoutOptionView, BreakoutOptionEditView, BreakoutOptionDeleteView,
     DeviceTypeExtensionListView, DeviceTypeExtensionView, DeviceTypeExtensionEditView, DeviceTypeExtensionDeleteView,
-    TopologyPlanListView, TopologyPlanView, TopologyPlanEditView, TopologyPlanDeleteView, TopologyPlanRecalculateView,
+    TopologyPlanListView, TopologyPlanView, TopologyPlanEditView, TopologyPlanDeleteView, TopologyPlanRecalculateView, TopologyPlanExportView,
     PlanServerClassListView, PlanServerClassView, PlanServerClassEditView, PlanServerClassDeleteView,
     PlanSwitchClassListView, PlanSwitchClassView, PlanSwitchClassEditView, PlanSwitchClassDeleteView,
     PlanServerConnectionListView, PlanServerConnectionView, PlanServerConnectionEditView, PlanServerConnectionDeleteView
@@ -223,6 +223,7 @@ urlpatterns = [
     path('topology-plans/<int:pk>/delete/', TopologyPlanDeleteView.as_view(), name='topologyplan_delete'),
     path('topology-plans/<int:pk>/changelog/', TopologyPlanView.as_view(), name='topologyplan_changelog'),
     path('topology-plans/<int:pk>/recalculate/', TopologyPlanRecalculateView.as_view(), name='topologyplan_recalculate'),
+    path('topology-plans/<int:pk>/export/', TopologyPlanExportView.as_view(), name='topologyplan_export'),
 
     # PlanServerClass URLs (DIET-004)
     path('plan-server-classes/', PlanServerClassListView.as_view(), name='planserverclass_list'),
