@@ -247,7 +247,7 @@ A user following the documentation will:
    - Define Server Connections
 
 3. **Finalize (2-3 min)**
-   - Click Recalculate to update switch quantities
+   - Click Recalculate Switch Quantities to update switch quantities
    - Review calculated vs. override quantities
    - Click Export YAML to download wiring diagram
 

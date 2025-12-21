@@ -195,7 +195,7 @@ On your plan's detail page, you'll see sections for:
    - **Server Class ID**: Unique identifier (e.g., "gpu-training")
    - **Description**: Human-readable name (e.g., "GPU Training Servers")
    - **Category**: Select category (GPU, Storage, Infrastructure)
-   - **Device Type**: Select server DeviceType from NetBox
+   - **Server Device Type**: Select server DeviceType from NetBox
    - **Quantity**: Number of servers (e.g., 32) **← PRIMARY INPUT**
    - **GPUs per Server**: Optional GPU count (e.g., 8)
    - **Notes**: Optional notes
@@ -230,7 +230,7 @@ GPUs per Server: 8
    - **Description**: Human-readable name (e.g., "Frontend Leaf Switches")
    - **Fabric**: Select fabric type (Frontend, Backend, Out-of-Band)
    - **Hedgehog Role**: Select role (Spine, Server Leaf, Border Leaf, Virtual)
-   - **Device Type Extension**: Select the switch extension
+   - **Device Type (with Hedgehog Extension)**: Select the switch extension
    - **Uplink Ports per Switch**: Uplink port count (e.g., 4)
    - **MCLAG Pair**: Check if switches are deployed in pairs
    - **Override Quantity**: Optional manual override (leave blank for auto-calc)
@@ -245,7 +245,7 @@ Switch Class ID: frontend-leaf
 Description: Frontend Leaf Switches
 Fabric: Frontend
 Hedgehog Role: Server Leaf
-Device Type Extension: Celestica DS5000
+Device Type (with Hedgehog Extension): Celestica DS5000
 Uplink Ports per Switch: 4
 MCLAG Pair: No
 Override Quantity: [leave blank]
