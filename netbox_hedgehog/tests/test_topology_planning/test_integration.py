@@ -2318,9 +2318,15 @@ class BreakoutSelectionCorrectnessTestCase(TestCase):
             speed=200  # 200G connection speed
         )
 
-        # Trigger recalculation
-        from netbox_hedgehog.utils.topology_calculations import calculate_switch_quantity
-        calculated = calculate_switch_quantity(switch_class)
+        # Trigger recalculation via HTTP endpoint (UX-accurate path)
+        recalc_url = reverse('plugins:netbox_hedgehog:topologyplan_recalculate', args=[plan.pk])
+        recalc_response = self.client.post(recalc_url, follow=True)
+        self.assertEqual(recalc_response.status_code, 200,
+                        "Recalculation endpoint should succeed")
+
+        # Refresh to get calculated value
+        switch_class.refresh_from_db()
+        calculated = switch_class.calculated_quantity
 
         # Expected calculation:
         # NOTE: Current MVP implementation uses hardcoded 64 physical ports
@@ -2393,9 +2399,15 @@ class BreakoutSelectionCorrectnessTestCase(TestCase):
             speed=400  # 400G connection speed
         )
 
-        # Trigger recalculation
-        from netbox_hedgehog.utils.topology_calculations import calculate_switch_quantity
-        calculated = calculate_switch_quantity(switch_class)
+        # Trigger recalculation via HTTP endpoint (UX-accurate path)
+        recalc_url = reverse('plugins:netbox_hedgehog:topologyplan_recalculate', args=[plan.pk])
+        recalc_response = self.client.post(recalc_url, follow=True)
+        self.assertEqual(recalc_response.status_code, 200,
+                        "Recalculation endpoint should succeed")
+
+        # Refresh to get calculated value
+        switch_class.refresh_from_db()
+        calculated = switch_class.calculated_quantity
 
         # Expected calculation:
         # NOTE: Current MVP implementation uses hardcoded 64 physical ports
@@ -2467,9 +2479,15 @@ class BreakoutSelectionCorrectnessTestCase(TestCase):
             speed=100  # 100G connection speed
         )
 
-        # Trigger recalculation
-        from netbox_hedgehog.utils.topology_calculations import calculate_switch_quantity
-        calculated = calculate_switch_quantity(switch_class)
+        # Trigger recalculation via HTTP endpoint (UX-accurate path)
+        recalc_url = reverse('plugins:netbox_hedgehog:topologyplan_recalculate', args=[plan.pk])
+        recalc_response = self.client.post(recalc_url, follow=True)
+        self.assertEqual(recalc_response.status_code, 200,
+                        "Recalculation endpoint should succeed")
+
+        # Refresh to get calculated value
+        switch_class.refresh_from_db()
+        calculated = switch_class.calculated_quantity
 
         # Expected calculation:
         # NOTE: Current MVP implementation uses hardcoded 64 physical ports
