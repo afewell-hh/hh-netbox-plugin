@@ -924,8 +924,9 @@ class ServerConnectionFilteringTestCase(TestCase):
         # Should NOT create connection (stays on form with errors)
         self.assertEqual(response.status_code, 200,
                         "Form should return 200 with validation errors")
-        self.assertContains(response, 'Target switch class must be from the same plan',
-                           msg_prefix="Missing expected validation error message about plan mismatch")
+        # Django's form validation rejects the choice because queryset filtering removes cross-plan switches
+        self.assertContains(response, 'Select a valid choice',
+                           msg_prefix="Missing expected validation error - queryset filtering prevents cross-plan selection")
 
         # Verify connection was not created
         self.assertFalse(PlanServerConnection.objects.filter(connection_id='CROSS-PLAN').exists(),

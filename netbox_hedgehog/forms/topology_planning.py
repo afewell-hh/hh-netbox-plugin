@@ -255,13 +255,28 @@ class PlanServerConnectionForm(NetBoxModelForm):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
 
-        # If editing an existing connection, filter target_switch_class to same plan
+        # Filter target_switch_class based on server_class selection
+        server_class = None
+
+        # Check if editing existing connection
         if self.instance and self.instance.pk and self.instance.server_class:
-            plan = self.instance.server_class.plan
+            server_class = self.instance.server_class
+        else:
+            # For add mode, check if server_class is in form data or initial data
+            server_class_id = self.data.get('server_class') or self.initial.get('server_class')
+            if server_class_id:
+                try:
+                    server_class = PlanServerClass.objects.get(pk=server_class_id)
+                except (PlanServerClass.DoesNotExist, ValueError):
+                    pass
+
+        # Apply filtering if we found a server_class
+        if server_class:
+            plan = server_class.plan
             self.fields['target_switch_class'].queryset = PlanSwitchClass.objects.filter(plan=plan)
             self.fields['target_switch_class'].help_text = f'Switch classes from plan: {plan.name}'
         else:
-            # For new connections, add help text about plan filtering
+            # No server class selected yet - show help text
             self.fields['target_switch_class'].help_text = (
                 'Select a server class first. Target switch must be from the same plan as the server class.'
             )
@@ -282,13 +297,7 @@ class PlanServerConnectionForm(NetBoxModelForm):
             if rail is None or rail == '':  # rail can be 0, but not None or empty string
                 self.add_error('rail', 'Rail is required when distribution is set to rail-optimized.')
 
-        # Ensure target_switch_class is from same plan as server_class
-        if server_class and target_switch_class:
-            if server_class.plan != target_switch_class.plan:
-                self.add_error(
-                    'target_switch_class',
-                    f'Target switch class must be from the same plan as server class '
-                    f'({server_class.plan.name}). Selected switch is from plan {target_switch_class.plan.name}.'
-                )
+        # Note: Cross-plan validation is handled by queryset filtering in __init__()
+        # Django's form validation will reject any target_switch_class not in the filtered queryset
 
         # Don't return anything - NetBoxModelForm.clean() returns None
