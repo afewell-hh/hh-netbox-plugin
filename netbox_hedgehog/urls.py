@@ -29,7 +29,8 @@ from .views.topology_planning import (
     DeviceTypeExtensionListView, DeviceTypeExtensionView, DeviceTypeExtensionEditView, DeviceTypeExtensionDeleteView,
     TopologyPlanListView, TopologyPlanView, TopologyPlanEditView, TopologyPlanDeleteView, TopologyPlanRecalculateView,
     PlanServerClassListView, PlanServerClassView, PlanServerClassEditView, PlanServerClassDeleteView,
-    PlanSwitchClassListView, PlanSwitchClassView, PlanSwitchClassEditView, PlanSwitchClassDeleteView
+    PlanSwitchClassListView, PlanSwitchClassView, PlanSwitchClassEditView, PlanSwitchClassDeleteView,
+    PlanServerConnectionListView, PlanServerConnectionView, PlanServerConnectionEditView, PlanServerConnectionDeleteView
 )
 # from .views.crd_views import FabricCRDListView, CRDDetailView, ApplyCRDView, DeleteCRDView
 
@@ -238,6 +239,14 @@ urlpatterns = [
     path('plan-switch-classes/<int:pk>/edit/', PlanSwitchClassEditView.as_view(), name='planswitchclass_edit'),
     path('plan-switch-classes/<int:pk>/delete/', PlanSwitchClassDeleteView.as_view(), name='planswitchclass_delete'),
     path('plan-switch-classes/<int:pk>/changelog/', PlanSwitchClassView.as_view(), name='planswitchclass_changelog'),
+
+    # PlanServerConnection URLs (DIET-005)
+    path('plan-server-connections/', PlanServerConnectionListView.as_view(), name='planserverconnection_list'),
+    path('plan-server-connections/add/', PlanServerConnectionEditView.as_view(), name='planserverconnection_add'),
+    path('plan-server-connections/<int:pk>/', PlanServerConnectionView.as_view(), name='planserverconnection_detail'),
+    path('plan-server-connections/<int:pk>/edit/', PlanServerConnectionEditView.as_view(), name='planserverconnection_edit'),
+    path('plan-server-connections/<int:pk>/delete/', PlanServerConnectionDeleteView.as_view(), name='planserverconnection_delete'),
+    path('plan-server-connections/<int:pk>/changelog/', PlanServerConnectionView.as_view(), name='planserverconnection_changelog'),
 
     # Other URLs
     path('topology/', TopologyView.as_view(), name='topology'),

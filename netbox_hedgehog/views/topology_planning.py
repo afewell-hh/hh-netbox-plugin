@@ -83,10 +83,16 @@ class TopologyPlanView(generic.ObjectView):
     template_name = 'netbox_hedgehog/topologyplan.html'
 
     def get_extra_context(self, request, instance):
-        """Add server and switch classes to context"""
+        """Add server classes, switch classes, and connections to context"""
+        # Get all server connections for this plan (via server_class FK)
+        server_connections = models.PlanServerConnection.objects.filter(
+            server_class__plan=instance
+        ).select_related('server_class', 'target_switch_class')
+
         return {
             'server_classes': instance.server_classes.all(),
             'switch_classes': instance.switch_classes.all(),
+            'server_connections': server_connections,
         }
 
 
@@ -180,3 +186,40 @@ class PlanSwitchClassEditView(generic.ObjectEditView):
 class PlanSwitchClassDeleteView(generic.ObjectDeleteView):
     """Delete view for PlanSwitchClasses"""
     queryset = models.PlanSwitchClass.objects.all()
+
+
+# =============================================================================
+# PlanServerConnection Views (DIET-005)
+# =============================================================================
+
+class PlanServerConnectionListView(generic.ObjectListView):
+    """List view for PlanServerConnections"""
+    queryset = models.PlanServerConnection.objects.select_related(
+        'server_class',
+        'server_class__plan',
+        'target_switch_class',
+        'target_switch_class__plan'
+    )
+    table = tables.PlanServerConnectionTable
+
+
+class PlanServerConnectionView(generic.ObjectView):
+    """Detail view for a single PlanServerConnection"""
+    queryset = models.PlanServerConnection.objects.select_related(
+        'server_class',
+        'server_class__plan',
+        'target_switch_class',
+        'target_switch_class__plan',
+        'nic_module_type'
+    )
+
+
+class PlanServerConnectionEditView(generic.ObjectEditView):
+    """Create/Edit view for PlanServerConnections"""
+    queryset = models.PlanServerConnection.objects.all()
+    form = forms.PlanServerConnectionForm
+
+
+class PlanServerConnectionDeleteView(generic.ObjectDeleteView):
+    """Delete view for PlanServerConnections"""
+    queryset = models.PlanServerConnection.objects.all()

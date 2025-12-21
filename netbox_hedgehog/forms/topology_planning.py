@@ -14,7 +14,9 @@ from ..models.topology_planning import (
     TopologyPlan,
     PlanServerClass,
     PlanSwitchClass,
+    PlanServerConnection,
 )
+from ..choices import ConnectionDistributionChoices
 
 
 class BreakoutOptionForm(NetBoxModelForm):
@@ -227,3 +229,75 @@ class PlanSwitchClassForm(NetBoxModelForm):
             'override_quantity': 'Manual override of calculated quantity (leave empty to use calculated value)',
             'notes': 'Additional notes about this switch class',
         }
+
+
+# =============================================================================
+# PlanServerConnection Form (DIET-005)
+# =============================================================================
+
+class PlanServerConnectionForm(NetBoxModelForm):
+    """
+    Form for creating and editing PlanServerConnections.
+
+    Server connections define how servers connect to switches, including
+    port counts, distribution strategies, and optional rail assignments
+    for rail-optimized topologies.
+    """
+
+    class Meta:
+        model = PlanServerConnection
+        fields = '__all__'
+        # Note: Using '__all__' to let NetBox handle standard fields automatically
+        widgets = {
+            'connection_name': forms.TextInput(attrs={'placeholder': 'frontend, backend-rail-0, etc.'}),
+        }
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+
+        # Filter target_switch_class based on server_class selection
+        server_class = None
+
+        # Check if editing existing connection
+        if self.instance and self.instance.pk and self.instance.server_class:
+            server_class = self.instance.server_class
+        else:
+            # For add mode, check if server_class is in form data or initial data
+            server_class_id = self.data.get('server_class') or self.initial.get('server_class')
+            if server_class_id:
+                try:
+                    server_class = PlanServerClass.objects.get(pk=server_class_id)
+                except (PlanServerClass.DoesNotExist, ValueError):
+                    pass
+
+        # Apply filtering if we found a server_class
+        if server_class:
+            plan = server_class.plan
+            self.fields['target_switch_class'].queryset = PlanSwitchClass.objects.filter(plan=plan)
+            self.fields['target_switch_class'].help_text = f'Switch classes from plan: {plan.name}'
+        else:
+            # No server class selected yet - show help text
+            self.fields['target_switch_class'].help_text = (
+                'Select a server class first. Target switch must be from the same plan as the server class.'
+            )
+
+    def clean(self):
+        """Validate that rail is required when distribution is rail-optimized"""
+        # Call parent clean - it modifies self.cleaned_data in place
+        super().clean()
+
+        # Use self.cleaned_data instead of return value from super().clean()
+        distribution = self.cleaned_data.get('distribution')
+        rail = self.cleaned_data.get('rail')
+        server_class = self.cleaned_data.get('server_class')
+        target_switch_class = self.cleaned_data.get('target_switch_class')
+
+        # Rail validation: required only for rail-optimized distribution
+        if distribution == ConnectionDistributionChoices.RAIL_OPTIMIZED:
+            if rail is None or rail == '':  # rail can be 0, but not None or empty string
+                self.add_error('rail', 'Rail is required when distribution is set to rail-optimized.')
+
+        # Note: Cross-plan validation is handled by queryset filtering in __init__()
+        # Django's form validation will reject any target_switch_class not in the filtered queryset
+
+        # Don't return anything - NetBoxModelForm.clean() returns None
