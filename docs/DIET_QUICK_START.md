@@ -194,7 +194,7 @@ On your plan's detail page, you'll see sections for:
    - **Plan**: Select your plan (pre-filled if coming from plan detail)
    - **Server Class ID**: Unique identifier (e.g., "gpu-training")
    - **Description**: Human-readable name (e.g., "GPU Training Servers")
-   - **Category**: Select category (GPU, Storage, Infrastructure, Other)
+   - **Category**: Select category (GPU, Storage, Infrastructure)
    - **Device Type**: Select server DeviceType from NetBox
    - **Quantity**: Number of servers (e.g., 32) **← PRIMARY INPUT**
    - **GPUs per Server**: Optional GPU count (e.g., 8)
@@ -228,8 +228,8 @@ GPUs per Server: 8
    - **Plan**: Select your plan
    - **Switch Class ID**: Unique identifier (e.g., "frontend-leaf")
    - **Description**: Human-readable name (e.g., "Frontend Leaf Switches")
-   - **Fabric**: Select fabric type (Frontend, Backend, Management)
-   - **Hedgehog Role**: Select role (server-leaf, spine, border-leaf, virtual-edge)
+   - **Fabric**: Select fabric type (Frontend, Backend, Out-of-Band)
+   - **Hedgehog Role**: Select role (Spine, Server Leaf, Border Leaf, Virtual)
    - **Device Type Extension**: Select the switch extension
    - **Uplink Ports per Switch**: Uplink port count (e.g., 4)
    - **MCLAG Pair**: Check if switches are deployed in pairs
@@ -244,7 +244,7 @@ Plan: Customer ABC - 128 GPU Cluster
 Switch Class ID: frontend-leaf
 Description: Frontend Leaf Switches
 Fabric: Frontend
-Hedgehog Role: server-leaf
+Hedgehog Role: Server Leaf
 Device Type Extension: Celestica DS5000
 Uplink Ports per Switch: 4
 MCLAG Pair: No
