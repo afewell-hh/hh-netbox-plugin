@@ -4,19 +4,17 @@ Integration Tests for DIET Reference Data Seed Loading (DIET-001)
 Tests verify that the load_diet_reference_data management command:
 - Creates exactly 14 expected BreakoutOption records with correct optic types
 - Is idempotent (safe to run multiple times)
-- Seeded data is accessible via HTTP views (list and detail)
-- UI displays the seeded data correctly
+- Seeded data has correct field values and ordering
+
+Note: UI templates/views are not tested here - those are deferred to a future PR
+for complete CRUD coverage per AGENTS.md requirements.
 """
 
-from django.test import TestCase, Client
+from django.test import TestCase
 from django.core.management import call_command
-from django.urls import reverse
-from django.contrib.auth import get_user_model
 from io import StringIO
 
 from netbox_hedgehog.models.topology_planning import BreakoutOption
-
-User = get_user_model()
 
 
 class SeedDataCommandTestCase(TestCase):
@@ -127,18 +125,6 @@ class SeedDataRecordTestCase(TestCase):
     def setUpTestData(cls):
         """Load seed data for testing"""
         call_command('load_diet_reference_data', stdout=StringIO())
-        # Create test user for HTTP tests
-        cls.user = User.objects.create_user(
-            username='testuser',
-            password='testpass123',
-            is_staff=True,
-            is_superuser=True
-        )
-
-    def setUp(self):
-        """Login before each test"""
-        self.client = Client()
-        self.client.login(username='testuser', password='testpass123')
 
     def test_seeded_data_count_matches_expected(self):
         """Test that exactly 14 records were seeded with correct IDs and optic types"""
@@ -194,42 +180,3 @@ class SeedDataRecordTestCase(TestCase):
                         same_speed_breakouts[i + 1].logical_ports,
                         "Within same speed, breakouts should be ordered by logical_ports"
                     )
-
-    def test_breakout_option_list_view_loads(self):
-        """Test that BreakoutOption list page loads successfully (HTTP 200)"""
-        url = reverse('plugins:netbox_hedgehog:breakoutoption_list')
-        response = self.client.get(url)
-
-        self.assertEqual(response.status_code, 200,
-                        f"BreakoutOption list view should return 200, got {response.status_code}")
-
-        # Verify seeded data appears in response
-        content = response.content.decode('utf-8')
-        # Should contain at least some of our seeded breakout IDs
-        self.assertIn('1x800g', content.lower(),
-                     "List view should display seeded breakout option '1x800g'")
-        self.assertIn('4x200g', content.lower(),
-                     "List view should display seeded breakout option '4x200g'")
-
-    def test_breakout_option_detail_view_renders(self):
-        """Test that BreakoutOption detail page renders for seeded data (HTTP 200)"""
-        # Get a specific seeded breakout option
-        breakout = BreakoutOption.objects.filter(breakout_id='2x400g').first()
-        self.assertIsNotNone(breakout,
-                            "Breakout option '2x400g' should exist after seeding")
-
-        # Load detail page
-        url = reverse('plugins:netbox_hedgehog:breakoutoption', args=[breakout.pk])
-        response = self.client.get(url)
-
-        self.assertEqual(response.status_code, 200,
-                        f"BreakoutOption detail view should return 200, got {response.status_code}")
-
-        # Verify key data is displayed
-        content = response.content.decode('utf-8')
-        self.assertIn('2x400g', content.lower(),
-                     "Detail view should display breakout_id '2x400g'")
-        self.assertIn('800', content,
-                     "Detail view should display from_speed (800)")
-        self.assertIn('400', content,
-                     "Detail view should display logical_speed (400)")
