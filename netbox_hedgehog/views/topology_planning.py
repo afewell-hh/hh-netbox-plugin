@@ -143,6 +143,9 @@ class TopologyPlanExportView(PermissionRequiredMixin, View):
 
     Generates Hedgehog wiring diagram YAML from a topology plan
     and returns it as a downloadable file.
+
+    Automatically runs calculation engine before export to ensure
+    switch quantities are up-to-date.
     """
     permission_required = 'netbox_hedgehog.view_topologyplan'
     raise_exception = True
@@ -150,6 +153,10 @@ class TopologyPlanExportView(PermissionRequiredMixin, View):
     def get(self, request, pk):
         """Handle export GET request"""
         plan = get_object_or_404(models.TopologyPlan, pk=pk)
+
+        # Auto-calculate switch quantities before export
+        # This ensures effective_quantity is populated even if user hasn't clicked Recalculate
+        update_plan_calculations(plan)
 
         # Generate YAML from plan
         yaml_content = generate_yaml_for_plan(plan)

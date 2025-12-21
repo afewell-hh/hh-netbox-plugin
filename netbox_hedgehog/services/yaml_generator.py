@@ -131,6 +131,40 @@ class YAMLGenerator:
 
         return "---\n".join(yaml_parts)
 
+    def _sanitize_name(self, name: str) -> str:
+        """
+        Sanitize a name to be DNS-label safe.
+
+        DNS labels must:
+        - Be lowercase
+        - Contain only alphanumeric characters and hyphens
+        - Start and end with alphanumeric characters
+        - Be at most 63 characters long
+
+        Args:
+            name: Name to sanitize
+
+        Returns:
+            DNS-label safe name
+        """
+        # Convert to lowercase
+        sanitized = name.lower()
+
+        # Replace any non-alphanumeric (except hyphens) with hyphens
+        sanitized = re.sub(r'[^a-z0-9-]', '-', sanitized)
+
+        # Collapse multiple consecutive hyphens
+        sanitized = re.sub(r'-+', '-', sanitized)
+
+        # Remove leading/trailing hyphens
+        sanitized = sanitized.strip('-')
+
+        # Truncate to 63 characters
+        if len(sanitized) > 63:
+            sanitized = sanitized[:63].rstrip('-')
+
+        return sanitized
+
     def _generate_server_name(self, server_class: PlanServerClass, index: int) -> str:
         """
         Generate a server name based on server class and index.
@@ -143,7 +177,7 @@ class YAMLGenerator:
             Server name (e.g., 'gpu-001-001', 'gpu-001-002')
         """
         # Sanitize server class ID for use in name
-        class_id = re.sub(r'[^a-z0-9-]', '-', server_class.server_class_id.lower())
+        class_id = self._sanitize_name(server_class.server_class_id)
 
         # Pad index to 3 digits
         return f"{class_id}-{index+1:03d}"
@@ -160,7 +194,7 @@ class YAMLGenerator:
             Switch name (e.g., 'fe-leaf-01', 'fe-leaf-02')
         """
         # Sanitize switch class ID for use in name
-        class_id = re.sub(r'[^a-z0-9-]', '-', switch_class.switch_class_id.lower())
+        class_id = self._sanitize_name(switch_class.switch_class_id)
 
         # Pad index to 2 digits
         return f"{class_id}-{index+1:02d}"
@@ -267,11 +301,13 @@ class YAMLGenerator:
             # Generate server port name
             server_port = self._generate_server_port_name(connection_def, port_idx)
 
-            # Create connection name
-            conn_name = (
-                f"server--{server_name}--unbundled--{switch_name}--"
-                f"{connection_def.connection_name or connection_def.connection_id}"
+            # Sanitize connection name for DNS-label safety
+            conn_suffix = self._sanitize_name(
+                connection_def.connection_name or connection_def.connection_id
             )
+
+            # Create connection name
+            conn_name = f"server--{server_name}--unbundled--{switch_name}--{conn_suffix}"
             # Append port index if multiple ports
             if ports_per_connection > 1:
                 conn_name += f"-port{port_idx}"
@@ -339,11 +375,13 @@ class YAMLGenerator:
                 }
             })
 
-        # Create connection name
-        conn_name = (
-            f"server--{server_name}--bundled--"
-            f"{connection_def.connection_name or connection_def.connection_id}"
+        # Sanitize connection name for DNS-label safety
+        conn_suffix = self._sanitize_name(
+            connection_def.connection_name or connection_def.connection_id
         )
+
+        # Create connection name
+        conn_name = f"server--{server_name}--bundled--{conn_suffix}"
 
         # Create connection document
         connection = {
@@ -399,11 +437,13 @@ class YAMLGenerator:
                 }
             })
 
-        # Create connection name
-        conn_name = (
-            f"server--{server_name}--mclag--"
-            f"{connection_def.connection_name or connection_def.connection_id}"
+        # Sanitize connection name for DNS-label safety
+        conn_suffix = self._sanitize_name(
+            connection_def.connection_name or connection_def.connection_id
         )
+
+        # Create connection name
+        conn_name = f"server--{server_name}--mclag--{conn_suffix}"
 
         # Create connection document
         connection = {
@@ -461,11 +501,13 @@ class YAMLGenerator:
                 }
             })
 
-        # Create connection name
-        conn_name = (
-            f"server--{server_name}--eslag--"
-            f"{connection_def.connection_name or connection_def.connection_id}"
+        # Sanitize connection name for DNS-label safety
+        conn_suffix = self._sanitize_name(
+            connection_def.connection_name or connection_def.connection_id
         )
+
+        # Create connection name
+        conn_name = f"server--{server_name}--eslag--{conn_suffix}"
 
         # Create connection document
         connection = {

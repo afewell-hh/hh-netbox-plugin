@@ -1497,3 +1497,167 @@ class YAMLExportMCLAGTestCase(TestCase):
                          "MCLAG spec should have links array")
             self.assertEqual(len(spec['mclag']['links']), 2,
                            "MCLAG should have 2 links (one per switch in pair)")
+
+
+class YAMLExportEdgeCaseTestCase(TestCase):
+    """Integration tests for YAML export edge cases and error handling"""
+
+    @classmethod
+    def setUpTestData(cls):
+        """Create test data"""
+        cls.user = User.objects.create_user(
+            username='testuser',
+            password='testpass123',
+            is_staff=True,
+            is_superuser=True
+        )
+
+        cls.plan = TopologyPlan.objects.create(
+            name='Edge Case Test Plan',
+            created_by=cls.user
+        )
+
+        # Create manufacturers and device types
+        cls.manufacturer, _ = Manufacturer.objects.get_or_create(
+            name='Test Vendor',
+            defaults={'slug': 'test-vendor'}
+        )
+        cls.server_type, _ = DeviceType.objects.get_or_create(
+            manufacturer=cls.manufacturer,
+            model='TestServer',
+            defaults={'slug': 'testserver'}
+        )
+        cls.switch_type, _ = DeviceType.objects.get_or_create(
+            manufacturer=cls.manufacturer,
+            model='TestSwitch',
+            defaults={'slug': 'testswitch'}
+        )
+
+        cls.device_ext, _ = DeviceTypeExtension.objects.get_or_create(
+            device_type=cls.switch_type,
+            defaults={
+                'mclag_capable': False,
+                'hedgehog_roles': ['server-leaf'],
+                'native_speed': 800,
+                'uplink_ports': 4,
+                'supported_breakouts': ['1x800g', '2x400g', '4x200g']
+            }
+        )
+
+    def setUp(self):
+        """Login before each test"""
+        self.client = Client()
+        self.client.login(username='testuser', password='testpass123')
+
+    def test_connection_names_are_dns_label_safe(self):
+        """Test that Connection CRD names are DNS-label safe (no uppercase, underscores, spaces)"""
+        # Create server class
+        server_class = PlanServerClass.objects.create(
+            plan=self.plan,
+            server_class_id='TEST_SERVER_01',  # Uppercase and underscores
+            category=ServerClassCategoryChoices.GPU,
+            quantity=1,
+            gpus_per_server=0,
+            server_device_type=self.server_type
+        )
+
+        # Create switch class
+        switch_class = PlanSwitchClass.objects.create(
+            plan=self.plan,
+            switch_class_id='FE_LEAF_01',  # Uppercase and underscores
+            fabric=FabricTypeChoices.FRONTEND,
+            hedgehog_role=HedgehogRoleChoices.SERVER_LEAF,
+            device_type_extension=self.device_ext,
+            uplink_ports_per_switch=4,
+            calculated_quantity=1
+        )
+
+        # Create connection with problematic name
+        connection = PlanServerConnection.objects.create(
+            server_class=server_class,
+            connection_id='FE_CONN 01',  # Uppercase, underscore, space
+            connection_name='Frontend Connection',  # Uppercase, space
+            ports_per_connection=1,
+            hedgehog_conn_type=ConnectionTypeChoices.UNBUNDLED,
+            distribution=ConnectionDistributionChoices.SAME_SWITCH,
+            target_switch_class=switch_class,
+            speed=200
+        )
+
+        # Export YAML
+        url = reverse('plugins:netbox_hedgehog:topologyplan_export', args=[self.plan.pk])
+        response = self.client.get(url)
+        self.assertEqual(response.status_code, 200)
+
+        import yaml
+        content = response.content.decode('utf-8')
+        documents = list(yaml.safe_load_all(content))
+        connection_crds = [doc for doc in documents if doc and doc.get('kind') == 'Connection']
+
+        # Verify all connection names are DNS-label safe
+        for crd in connection_crds:
+            name = crd['metadata']['name']
+
+            # DNS label rules: lowercase, alphanumeric, hyphens only
+            # Must start and end with alphanumeric
+            self.assertRegex(name, r'^[a-z0-9]([-a-z0-9]*[a-z0-9])?$',
+                           f"Connection name '{name}' is not DNS-label safe")
+            self.assertNotIn('_', name, f"Connection name '{name}' contains underscore")
+            self.assertNotIn(' ', name, f"Connection name '{name}' contains space")
+            self.assertEqual(name, name.lower(), f"Connection name '{name}' contains uppercase")
+
+    def test_export_with_uncalculated_switch_quantities(self):
+        """Test that export handles plans with uncalculated switch quantities gracefully"""
+        # Create server class
+        server_class = PlanServerClass.objects.create(
+            plan=self.plan,
+            server_class_id='gpu-001',
+            category=ServerClassCategoryChoices.GPU,
+            quantity=2,
+            gpus_per_server=0,
+            server_device_type=self.server_type
+        )
+
+        # Create switch class WITHOUT calculated_quantity set
+        switch_class = PlanSwitchClass.objects.create(
+            plan=self.plan,
+            switch_class_id='fe-leaf',
+            fabric=FabricTypeChoices.FRONTEND,
+            hedgehog_role=HedgehogRoleChoices.SERVER_LEAF,
+            device_type_extension=self.device_ext,
+            uplink_ports_per_switch=4,
+            calculated_quantity=None,  # Not calculated yet!
+            override_quantity=None
+        )
+
+        # Create connection
+        connection = PlanServerConnection.objects.create(
+            server_class=server_class,
+            connection_id='fe-001',
+            connection_name='frontend',
+            ports_per_connection=2,
+            hedgehog_conn_type=ConnectionTypeChoices.UNBUNDLED,
+            distribution=ConnectionDistributionChoices.ALTERNATING,
+            target_switch_class=switch_class,
+            speed=200
+        )
+
+        # Export YAML - should auto-calculate or return meaningful YAML
+        url = reverse('plugins:netbox_hedgehog:topologyplan_export', args=[self.plan.pk])
+        response = self.client.get(url)
+        self.assertEqual(response.status_code, 200)
+
+        import yaml
+        content = response.content.decode('utf-8')
+        documents = list(yaml.safe_load_all(content))
+        connection_crds = [doc for doc in documents if doc and doc.get('kind') == 'Connection']
+
+        # Should have connections (2 servers × 2 ports = 4 connections)
+        # Even if switch quantities weren't calculated, export should still work
+        self.assertEqual(len(connection_crds), 4,
+                        "Export should generate connections even when switch quantities uncalculated")
+
+        # Verify switch class was auto-calculated
+        switch_class.refresh_from_db()
+        self.assertIsNotNone(switch_class.calculated_quantity,
+                            "Export should auto-calculate switch quantities before generating YAML")
