@@ -4,11 +4,8 @@ CRUD views for BreakoutOption, DeviceTypeExtension, and Topology Plan models.
 """
 
 from django.contrib import messages
-from django.contrib.auth.decorators import permission_required
 from django.contrib.auth.mixins import PermissionRequiredMixin
 from django.shortcuts import get_object_or_404, redirect
-from django.urls import reverse
-from django.utils.decorators import method_decorator
 from django.views import View
 
 from netbox.views import generic
