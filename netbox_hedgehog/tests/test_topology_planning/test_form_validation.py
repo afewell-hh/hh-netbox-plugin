@@ -935,7 +935,7 @@ class FormErrorHTMLStructureTestCase(TestCase):
         self.client.login(username='testuser', password='testpass123')
 
     def test_field_error_html_structure(self):
-        """Test that field errors render with proper HTML structure"""
+        """Test that field errors render with proper HTML structure (NetBox-specific)"""
         url = reverse('plugins:netbox_hedgehog:topologyplan_add')
         data = {
             # Missing required 'name' field
@@ -947,7 +947,16 @@ class FormErrorHTMLStructureTestCase(TestCase):
 
         content = response.content.decode('utf-8')
 
-        # Verify the actual error message appears (Django's default)
+        # NetBox uses specific HTML structure for errors:
+        # 1. "has-errors" class on row div containing invalid field
+        self.assertIn('has-errors', content,
+                     "Error row should have 'has-errors' class (NetBox error structure)")
+
+        # 2. aria-invalid="true" on the invalid input field
+        self.assertIn('aria-invalid="true"', content,
+                     "Invalid field should have aria-invalid='true' attribute (accessibility)")
+
+        # 3. Error message text present
         self.assertTrue(
             'This field is required' in content or 'required' in content.lower(),
             "Error message should indicate field is required"
@@ -957,7 +966,7 @@ class FormErrorHTMLStructureTestCase(TestCase):
         self.assertContains(response, 'name', status_code=200)
 
     def test_multiple_field_errors_html_structure(self):
-        """Test that multiple field errors render with proper list structure"""
+        """Test that multiple field errors render with proper HTML structure"""
         # Create fixtures
         manufacturer, _ = Manufacturer.objects.get_or_create(
             name='Dell',
@@ -985,9 +994,20 @@ class FormErrorHTMLStructureTestCase(TestCase):
         self.assertContains(response, 'server_class_id', status_code=200)
         self.assertContains(response, 'quantity', status_code=200)
 
-        # Should have multiple instances of "required" error message
+        # NetBox HTML structure for multiple errors:
+        # 1. Multiple has-errors divs (one per invalid field)
+        has_errors_count = content.count('has-errors')
+        self.assertGreaterEqual(has_errors_count, 2,
+                               "Should have multiple rows with 'has-errors' class")
+
+        # 2. Multiple aria-invalid="true" attributes (one per invalid field)
+        aria_invalid_count = content.count('aria-invalid="true"')
+        self.assertGreaterEqual(aria_invalid_count, 2,
+                               "Should have multiple fields with aria-invalid='true'")
+
+        # 3. Multiple instances of "required" error message
         required_count = content.lower().count('required')
-        self.assertGreater(required_count, 1,
+        self.assertGreater(required_count, 2,
                           "Multiple fields should have 'required' errors")
 
     def test_error_message_content(self):
@@ -1072,37 +1092,37 @@ class ParentPlanContextTestCase(TestCase):
         )
 
     def test_server_class_creation_with_plan_context(self):
-        """Test creating server class maintains plan context from URL parameter"""
+        """Test creating server class maintains plan context from URL parameter (positive path)"""
         url = reverse('plugins:netbox_hedgehog:planserverclass_add')
         url_with_context = f"{url}?plan={self.plan.pk}"
 
         data = {
             'plan': self.plan.pk,  # Should match context
             'server_class_id': 'CTX-TEST-001',
-            'category': ServerClassCategoryChoices.GPU,  # Add required field
+            'category': ServerClassCategoryChoices.GPU,
             'quantity': 5,
+            'gpus_per_server': 8,
             'server_device_type': self.server_type.pk,
         }
 
         response = self.client.post(url_with_context, data, follow=False)
 
-        # Should succeed and redirect (or 200 if form has errors)
-        # Check if object was created regardless of redirect
+        # Positive path: Must succeed with redirect
+        self.assertEqual(response.status_code, 302,
+                        "Server class creation with valid data must redirect (302)")
+
+        # Verify object was created
         server_class = PlanServerClass.objects.filter(server_class_id='CTX-TEST-001').first()
+        self.assertIsNotNone(server_class,
+                            "Server class object must be created in database")
 
-        if response.status_code == 200:
-            # Form had validation errors - print for debugging
-            # but we can still verify URL parameter worked if object was created
-            pass
+        # Verify plan context was maintained
+        self.assertEqual(server_class.plan, self.plan,
+                        "Server class must be associated with the plan from URL context")
 
-        # If object was created, verify plan context was maintained
-        if server_class:
-            self.assertEqual(server_class.plan, self.plan,
-                            "Server class should be associated with the plan from context")
-        else:
-            # If creation failed, at least verify the form loaded with plan context
-            self.assertIn(response.status_code, [200, 302],
-                         "Form should either succeed (302) or re-render (200)")
+        # Verify all data was saved correctly
+        self.assertEqual(server_class.quantity, 5)
+        self.assertEqual(server_class.gpus_per_server, 8)
 
     def test_switch_class_add_with_plan_context(self):
         """Test that PlanSwitchClass add form works with plan context"""
@@ -1134,6 +1154,56 @@ class ParentPlanContextTestCase(TestCase):
         get_response = self.client.get(url_with_context)
         self.assertEqual(get_response.status_code, 200,
                         "Switch class add form should load with plan context")
+
+
+class NonFieldErrorTestCase(TestCase):
+    """
+    Documentation of non-field error investigation for DIET forms.
+
+    Per issue #100 requirement: "Issue #100 explicitly calls for non-field error
+    rendering tests, but none exist."
+
+    FINDING: DIET topology planning forms do NOT currently implement non-field
+    validation (form-level clean() errors).
+
+    Investigation (2025-12-21):
+    - Reviewed all DIET form classes in forms/topology_planning.py
+    - TopologyPlanForm: No clean() method - only field-level validation
+    - PlanServerClassForm: No clean() method - only field-level validation
+    - PlanSwitchClassForm: No clean() method - only field-level validation
+    - PlanServerConnectionForm: HAS clean() method but only adds field-specific
+      errors via self.add_error('rail', ...) - not form-level/non-field errors
+
+    Non-field errors occur when:
+    - Form's clean() raises ValidationError without field parameter
+    - Form's clean() calls self.add_error(None, ...) or self.add_error('__all__', ...)
+    - Cross-field validation that doesn't belong to a single field
+
+    Current DIET forms use:
+    - Field-level validators (MinValueValidator, required=True)
+    - Field-specific clean() errors (add_error with field name)
+    - No form-level validation requiring non-field errors
+
+    This test documents the finding. If form-level validation is added in the
+    future (e.g., "switch count must be > server count"), non-field error tests
+    should be added at that time.
+    """
+
+    def test_non_field_errors_not_applicable_documentation(self):
+        """
+        Document that non-field error testing is not applicable to current DIET forms.
+
+        This test serves as documentation that the non-field error requirement
+        from issue #100 was investigated and found not applicable to the current
+        form implementations.
+
+        If future forms add form-level validation (clean() method returning
+        non-field errors), this test should be replaced with actual non-field
+        error rendering tests.
+        """
+        # This test always passes - it exists for documentation purposes
+        self.assertTrue(True,
+                       "DIET forms currently use only field-level validation - see docstring above")
 
 
 class FormsetDocumentationTestCase(TestCase):
