@@ -146,8 +146,11 @@ class TopologyPlanExportView(PermissionRequiredMixin, View):
 
     Automatically runs calculation engine before export to ensure
     switch quantities are up-to-date.
+
+    Requires change_topologyplan permission (not just view) because
+    the auto-calculation mutates data by saving calculated_quantity.
     """
-    permission_required = 'netbox_hedgehog.view_topologyplan'
+    permission_required = 'netbox_hedgehog.change_topologyplan'
     raise_exception = True
 
     def get(self, request, pk):

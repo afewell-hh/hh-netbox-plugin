@@ -312,6 +312,9 @@ class YAMLGenerator:
             if ports_per_connection > 1:
                 conn_name += f"-port{port_idx}"
 
+            # Apply final sanitization to ensure 63-char limit and DNS-label compliance
+            conn_name = self._sanitize_name(conn_name)
+
             # Create connection document
             connection = {
                 'apiVersion': 'wiring.githedgehog.com/v1beta1',
@@ -383,6 +386,9 @@ class YAMLGenerator:
         # Create connection name
         conn_name = f"server--{server_name}--bundled--{conn_suffix}"
 
+        # Apply final sanitization to ensure 63-char limit and DNS-label compliance
+        conn_name = self._sanitize_name(conn_name)
+
         # Create connection document
         connection = {
             'apiVersion': 'wiring.githedgehog.com/v1beta1',
@@ -444,6 +450,9 @@ class YAMLGenerator:
 
         # Create connection name
         conn_name = f"server--{server_name}--mclag--{conn_suffix}"
+
+        # Apply final sanitization to ensure 63-char limit and DNS-label compliance
+        conn_name = self._sanitize_name(conn_name)
 
         # Create connection document
         connection = {
@@ -508,6 +517,9 @@ class YAMLGenerator:
 
         # Create connection name
         conn_name = f"server--{server_name}--eslag--{conn_suffix}"
+
+        # Apply final sanitization to ensure 63-char limit and DNS-label compliance
+        conn_name = self._sanitize_name(conn_name)
 
         # Create connection document
         connection = {

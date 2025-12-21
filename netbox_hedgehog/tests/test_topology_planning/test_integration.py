@@ -1334,7 +1334,7 @@ class YAMLExportIntegrationTestCase(TestCase):
                         "User without view permission should get 403")
 
     def test_export_with_permission_succeeds(self):
-        """Test that user with view permission can export"""
+        """Test that user with change permission can export"""
         from users.models import ObjectPermission
 
         # Create non-superuser
@@ -1345,10 +1345,10 @@ class YAMLExportIntegrationTestCase(TestCase):
             is_superuser=False
         )
 
-        # Grant view permission
+        # Grant change permission (required for export due to auto-calculation)
         obj_perm = ObjectPermission.objects.create(
-            name='Test view topologyplan permission',
-            actions=['view']
+            name='Test change topologyplan permission',
+            actions=['view', 'change']
         )
         obj_perm.object_types.add(
             ContentType.objects.get_for_model(TopologyPlan)
@@ -1364,7 +1364,7 @@ class YAMLExportIntegrationTestCase(TestCase):
 
         # Should succeed
         self.assertEqual(response.status_code, 200,
-                        "User with view permission should be able to export")
+                        "User with change permission should be able to export")
 
     def test_yaml_is_syntactically_valid(self):
         """Test that exported YAML is syntactically valid"""
@@ -1661,3 +1661,117 @@ class YAMLExportEdgeCaseTestCase(TestCase):
         switch_class.refresh_from_db()
         self.assertIsNotNone(switch_class.calculated_quantity,
                             "Export should auto-calculate switch quantities before generating YAML")
+
+    def test_export_requires_change_permission_due_to_auto_calculation(self):
+        """Test that export requires change permission since it mutates data via auto-calculation"""
+        from users.models import ObjectPermission
+
+        # Create non-superuser
+        regular_user = User.objects.create_user(
+            username='viewonly',
+            password='viewonly123',
+            is_staff=True,
+            is_superuser=False
+        )
+
+        # Create plan
+        plan = TopologyPlan.objects.create(
+            name='Permission Test Plan',
+            created_by=regular_user
+        )
+
+        # Create switch class with uncalculated quantity
+        manufacturer, _ = Manufacturer.objects.get_or_create(
+            name='Test',
+            defaults={'slug': 'test'}
+        )
+        switch_type, _ = DeviceType.objects.get_or_create(
+            manufacturer=manufacturer,
+            model='TestSwitch',
+            defaults={'slug': 'testswitch'}
+        )
+        device_ext, _ = DeviceTypeExtension.objects.get_or_create(
+            device_type=switch_type,
+            defaults={'mclag_capable': False, 'native_speed': 800}
+        )
+
+        switch_class = PlanSwitchClass.objects.create(
+            plan=plan,
+            switch_class_id='test-switch',
+            device_type_extension=device_ext,
+            calculated_quantity=None  # Uncalculated
+        )
+
+        # Grant ONLY view permission (not change)
+        view_perm = ObjectPermission.objects.create(
+            name='View-only topologyplan permission',
+            actions=['view']
+        )
+        view_perm.object_types.add(
+            ContentType.objects.get_for_model(TopologyPlan)
+        )
+        view_perm.users.add(regular_user)
+
+        # Login as view-only user
+        self.client.logout()
+        self.client.force_login(regular_user)
+
+        url = reverse('plugins:netbox_hedgehog:topologyplan_export', args=[plan.pk])
+        response = self.client.get(url)
+
+        # Should get 403 because export mutates data (auto-calculation)
+        # and user only has view permission
+        self.assertEqual(response.status_code, 403,
+                        "Export should require change permission since it mutates data via auto-calculation")
+
+    def test_connection_name_respects_63_char_limit(self):
+        """Test that final Connection CRD names don't exceed 63 chars (DNS-label max)"""
+        # Create entities with very long names
+        server_class = PlanServerClass.objects.create(
+            plan=self.plan,
+            server_class_id='very-long-server-class-name-that-will-cause-issues-when-concatenated',
+            category=ServerClassCategoryChoices.GPU,
+            quantity=1,
+            gpus_per_server=0,
+            server_device_type=self.server_type
+        )
+
+        switch_class = PlanSwitchClass.objects.create(
+            plan=self.plan,
+            switch_class_id='very-long-switch-class-name-that-will-also-cause-length-problems',
+            fabric=FabricTypeChoices.FRONTEND,
+            hedgehog_role=HedgehogRoleChoices.SERVER_LEAF,
+            device_type_extension=self.device_ext,
+            uplink_ports_per_switch=4,
+            calculated_quantity=1
+        )
+
+        connection = PlanServerConnection.objects.create(
+            server_class=server_class,
+            connection_id='very-long-connection-identifier-name',
+            connection_name='super-long-connection-descriptive-name',
+            ports_per_connection=1,
+            hedgehog_conn_type=ConnectionTypeChoices.UNBUNDLED,
+            distribution=ConnectionDistributionChoices.SAME_SWITCH,
+            target_switch_class=switch_class,
+            speed=200
+        )
+
+        # Export YAML
+        url = reverse('plugins:netbox_hedgehog:topologyplan_export', args=[self.plan.pk])
+        response = self.client.get(url)
+        self.assertEqual(response.status_code, 200)
+
+        import yaml
+        content = response.content.decode('utf-8')
+        documents = list(yaml.safe_load_all(content))
+        connection_crds = [doc for doc in documents if doc and doc.get('kind') == 'Connection']
+
+        # Verify all connection names are within 63 char limit
+        for crd in connection_crds:
+            name = crd['metadata']['name']
+            self.assertLessEqual(len(name), 63,
+                               f"Connection name '{name}' exceeds 63 character DNS-label limit (len={len(name)})")
+            # Also verify it's still DNS-label safe
+            self.assertRegex(name, r'^[a-z0-9]([-a-z0-9]*[a-z0-9])?$',
+                           f"Connection name '{name}' is not DNS-label safe")
