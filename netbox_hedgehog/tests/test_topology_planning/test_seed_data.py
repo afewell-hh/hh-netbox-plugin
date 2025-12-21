@@ -2,8 +2,9 @@
 Integration Tests for DIET Reference Data Seed Loading (DIET-001)
 
 Tests verify that the load_diet_reference_data management command:
-- Creates expected BreakoutOption records
+- Creates exactly 14 expected BreakoutOption records with correct optic types
 - Is idempotent (safe to run multiple times)
+- Seeded data is accessible via HTTP views (list and detail)
 - UI displays the seeded data correctly
 """
 
@@ -126,13 +127,53 @@ class SeedDataRecordTestCase(TestCase):
     def setUpTestData(cls):
         """Load seed data for testing"""
         call_command('load_diet_reference_data', stdout=StringIO())
+        # Create test user for HTTP tests
+        cls.user = User.objects.create_user(
+            username='testuser',
+            password='testpass123',
+            is_staff=True,
+            is_superuser=True
+        )
+
+    def setUp(self):
+        """Login before each test"""
+        self.client = Client()
+        self.client.login(username='testuser', password='testpass123')
 
     def test_seeded_data_count_matches_expected(self):
-        """Test that the correct number of records were seeded"""
-        # From PRD #83, we expect at least 10 breakout options
+        """Test that exactly 14 records were seeded with correct IDs and optic types"""
         count = BreakoutOption.objects.count()
-        self.assertGreaterEqual(count, 10,
-                               "Should have at least 10 BreakoutOption records")
+        self.assertEqual(count, 14,
+                        "Should have exactly 14 BreakoutOption records")
+
+        # Validate all 14 expected breakout IDs and their optic types
+        expected_breakouts = [
+            ('1x800g', 'QSFP-DD'),
+            ('2x400g', 'QSFP-DD'),
+            ('4x200g', 'QSFP-DD'),
+            ('8x100g', 'QSFP-DD'),
+            ('1x400g', 'QSFP-DD'),
+            ('2x200g', 'QSFP-DD'),
+            ('4x100g', 'QSFP-DD'),
+            ('1x100g', 'QSFP28'),
+            ('1x40g', 'QSFP28'),
+            ('2x50g', 'QSFP28'),
+            ('4x25g', 'QSFP28'),
+            ('4x10g', 'QSFP28'),
+            ('1x10g', 'SFP+'),
+            ('1x1g', 'RJ45'),
+        ]
+
+        for breakout_id, expected_optic in expected_breakouts:
+            breakout = BreakoutOption.objects.filter(breakout_id=breakout_id).first()
+            self.assertIsNotNone(
+                breakout,
+                f"BreakoutOption '{breakout_id}' should exist"
+            )
+            self.assertEqual(
+                breakout.optic_type, expected_optic,
+                f"BreakoutOption '{breakout_id}' should have optic_type '{expected_optic}'"
+            )
 
     def test_breakout_options_ordered_correctly(self):
         """Test that breakout options are ordered by from_speed desc, logical_ports"""
@@ -153,3 +194,42 @@ class SeedDataRecordTestCase(TestCase):
                         same_speed_breakouts[i + 1].logical_ports,
                         "Within same speed, breakouts should be ordered by logical_ports"
                     )
+
+    def test_breakout_option_list_view_loads(self):
+        """Test that BreakoutOption list page loads successfully (HTTP 200)"""
+        url = reverse('plugins:netbox_hedgehog:breakoutoption_list')
+        response = self.client.get(url)
+
+        self.assertEqual(response.status_code, 200,
+                        f"BreakoutOption list view should return 200, got {response.status_code}")
+
+        # Verify seeded data appears in response
+        content = response.content.decode('utf-8')
+        # Should contain at least some of our seeded breakout IDs
+        self.assertIn('1x800g', content.lower(),
+                     "List view should display seeded breakout option '1x800g'")
+        self.assertIn('4x200g', content.lower(),
+                     "List view should display seeded breakout option '4x200g'")
+
+    def test_breakout_option_detail_view_renders(self):
+        """Test that BreakoutOption detail page renders for seeded data (HTTP 200)"""
+        # Get a specific seeded breakout option
+        breakout = BreakoutOption.objects.filter(breakout_id='2x400g').first()
+        self.assertIsNotNone(breakout,
+                            "Breakout option '2x400g' should exist after seeding")
+
+        # Load detail page
+        url = reverse('plugins:netbox_hedgehog:breakoutoption', args=[breakout.pk])
+        response = self.client.get(url)
+
+        self.assertEqual(response.status_code, 200,
+                        f"BreakoutOption detail view should return 200, got {response.status_code}")
+
+        # Verify key data is displayed
+        content = response.content.decode('utf-8')
+        self.assertIn('2x400g', content.lower(),
+                     "Detail view should display breakout_id '2x400g'")
+        self.assertIn('800', content,
+                     "Detail view should display from_speed (800)")
+        self.assertIn('400', content,
+                     "Detail view should display logical_speed (400)")

@@ -1,0 +1,60 @@
+{% extends 'generic/object.html' %}
+{% load helpers %}
+
+{% block content %}
+<div class="row mb-3">
+    <div class="col col-md-6">
+        <div class="card">
+            <h5 class="card-header">Breakout Option</h5>
+            <div class="card-body">
+                <table class="table table-hover attr-table">
+                    <tr>
+                        <th scope="row">Breakout ID</th>
+                        <td>{{ object.breakout_id }}</td>
+                    </tr>
+                    <tr>
+                        <th scope="row">From Speed</th>
+                        <td>{{ object.from_speed }}G</td>
+                    </tr>
+                    <tr>
+                        <th scope="row">Logical Ports</th>
+                        <td>{{ object.logical_ports }}</td>
+                    </tr>
+                    <tr>
+                        <th scope="row">Logical Speed</th>
+                        <td>{{ object.logical_speed }}G</td>
+                    </tr>
+                    <tr>
+                        <th scope="row">Optic Type</th>
+                        <td>{{ object.optic_type|placeholder }}</td>
+                    </tr>
+                </table>
+            </div>
+        </div>
+        {% if object.description %}
+        <div class="card">
+            <h5 class="card-header">Description</h5>
+            <div class="card-body">
+                {{ object.description|markdown }}
+            </div>
+        </div>
+        {% endif %}
+    </div>
+    <div class="col col-md-6">
+        <div class="card">
+            <h5 class="card-header">Info</h5>
+            <div class="card-body">
+                <p>
+                    <strong>Configuration:</strong> {{ object.logical_ports }}x{{ object.logical_speed }}G
+                    (from {{ object.from_speed }}G)
+                </p>
+                <p class="text-muted">
+                    This breakout configuration splits a {{ object.from_speed }}G port into
+                    {{ object.logical_ports }} logical port{% if object.logical_ports > 1 %}s{% endif %}
+                    at {{ object.logical_speed }}G each.
+                </p>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
