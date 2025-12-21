@@ -1089,3 +1089,689 @@ class ServerConnectionPermissionTestCase(TestCase):
         # Should get 302 redirect (permission check passed)
         self.assertEqual(response.status_code, 302,
                         f"User with add permission should get redirect, got {response.status_code}")
+
+
+# =============================================================================
+# YAML Export Integration Tests (DIET-006)
+# =============================================================================
+
+class YAMLExportIntegrationTestCase(TestCase):
+    """Integration tests for YAML export functionality (DIET-006)"""
+
+    @classmethod
+    def setUpTestData(cls):
+        """Create test data for export tests"""
+        cls.user = User.objects.create_user(
+            username='testuser',
+            password='testpass123',
+            is_staff=True,
+            is_superuser=True
+        )
+
+        # Create plan
+        cls.plan = TopologyPlan.objects.create(
+            name='Export Test Plan',
+            customer_name='Test Customer',
+            created_by=cls.user
+        )
+
+        # Create manufacturers and device types
+        cls.manufacturer, _ = Manufacturer.objects.get_or_create(
+            name='Celestica',
+            defaults={'slug': 'celestica'}
+        )
+        cls.server_type, _ = DeviceType.objects.get_or_create(
+            manufacturer=cls.manufacturer,
+            model='PowerEdge R750',
+            defaults={'slug': 'poweredge-r750'}
+        )
+        cls.switch_type, _ = DeviceType.objects.get_or_create(
+            manufacturer=cls.manufacturer,
+            model='DS5000',
+            defaults={'slug': 'ds5000'}
+        )
+
+        # Create device extension for switch
+        cls.device_ext, _ = DeviceTypeExtension.objects.get_or_create(
+            device_type=cls.switch_type,
+            defaults={
+                'mclag_capable': False,
+                'hedgehog_roles': ['server-leaf'],
+                'native_speed': 800,
+                'uplink_ports': 4,
+                'supported_breakouts': ['1x800g', '2x400g', '4x200g']
+            }
+        )
+
+        # Create server class
+        cls.server_class = PlanServerClass.objects.create(
+            plan=cls.plan,
+            server_class_id='GPU-001',
+            category=ServerClassCategoryChoices.GPU,
+            quantity=2,  # 2 servers
+            gpus_per_server=0,
+            server_device_type=cls.server_type
+        )
+
+        # Create switch class
+        cls.switch_class = PlanSwitchClass.objects.create(
+            plan=cls.plan,
+            switch_class_id='fe-leaf',
+            fabric=FabricTypeChoices.FRONTEND,
+            hedgehog_role=HedgehogRoleChoices.SERVER_LEAF,
+            device_type_extension=cls.device_ext,
+            uplink_ports_per_switch=4,
+            calculated_quantity=1
+        )
+
+        # Create server connection (2 ports per server, alternating distribution)
+        cls.connection = PlanServerConnection.objects.create(
+            server_class=cls.server_class,
+            connection_id='FE-001',
+            connection_name='frontend',
+            ports_per_connection=2,
+            hedgehog_conn_type=ConnectionTypeChoices.UNBUNDLED,
+            distribution=ConnectionDistributionChoices.ALTERNATING,
+            target_switch_class=cls.switch_class,
+            speed=200,
+            port_type=PortTypeChoices.DATA
+        )
+
+    def setUp(self):
+        """Login before each test"""
+        self.client = Client()
+        self.client.login(username='testuser', password='testpass123')
+
+    def test_export_button_appears_on_plan_detail_page(self):
+        """Test that export button is visible on plan detail page"""
+        url = reverse('plugins:netbox_hedgehog:topologyplan_detail', args=[self.plan.pk])
+        response = self.client.get(url)
+
+        self.assertEqual(response.status_code, 200,
+                        "Plan detail page should load successfully")
+        self.assertContains(response, 'Export YAML',
+                           msg_prefix="Export button should appear on plan detail page")
+
+    def test_export_returns_yaml_download(self):
+        """Test that clicking export returns a downloadable YAML file"""
+        url = reverse('plugins:netbox_hedgehog:topologyplan_export', args=[self.plan.pk])
+        response = self.client.get(url)
+
+        # Should return 200 OK
+        self.assertEqual(response.status_code, 200,
+                        "Export should return 200 OK")
+
+        # Should have YAML content type
+        self.assertIn('text/yaml', response.get('Content-Type', ''),
+                     "Response should have YAML content type")
+
+        # Should have Content-Disposition header with filename
+        content_disposition = response.get('Content-Disposition', '')
+        self.assertIn('attachment', content_disposition,
+                     "Response should have attachment disposition")
+        self.assertIn('export-test-plan', content_disposition.lower(),
+                     "Filename should be based on plan name")
+        self.assertIn('.yaml', content_disposition,
+                     "Filename should have .yaml extension")
+
+    def test_yaml_contains_expected_connection_count(self):
+        """Test that YAML contains correct number of Connection CRDs"""
+        url = reverse('plugins:netbox_hedgehog:topologyplan_export', args=[self.plan.pk])
+        response = self.client.get(url)
+
+        self.assertEqual(response.status_code, 200)
+
+        # Parse YAML content
+        import yaml
+        content = response.content.decode('utf-8')
+        documents = list(yaml.safe_load_all(content))
+
+        # Expected: 2 servers × 2 ports/connection = 4 Connection CRDs
+        connection_crds = [doc for doc in documents if doc and doc.get('kind') == 'Connection']
+        self.assertEqual(len(connection_crds), 4,
+                        f"Expected 4 Connection CRDs (2 servers × 2 ports), got {len(connection_crds)}")
+
+        # Verify each connection has required fields
+        for crd in connection_crds:
+            self.assertEqual(crd['apiVersion'], 'wiring.githedgehog.com/v1beta1',
+                           "Connection should have correct apiVersion")
+            self.assertIn('metadata', crd,
+                         "Connection should have metadata")
+            self.assertIn('name', crd['metadata'],
+                         "Connection should have name")
+            self.assertIn('spec', crd,
+                         "Connection should have spec")
+
+    def test_yaml_reflects_plan_state_changes(self):
+        """Test that re-exporting after plan changes reflects new state"""
+        # Initial export
+        url = reverse('plugins:netbox_hedgehog:topologyplan_export', args=[self.plan.pk])
+        response1 = self.client.get(url)
+        self.assertEqual(response1.status_code, 200)
+
+        import yaml
+        content1 = response1.content.decode('utf-8')
+        docs1 = list(yaml.safe_load_all(content1))
+        connections1 = [d for d in docs1 if d and d.get('kind') == 'Connection']
+        initial_count = len(connections1)
+
+        # Modify plan: change server quantity from 2 to 3
+        self.server_class.quantity = 3
+        self.server_class.save()
+
+        # Re-export
+        response2 = self.client.get(url)
+        self.assertEqual(response2.status_code, 200)
+
+        content2 = response2.content.decode('utf-8')
+        docs2 = list(yaml.safe_load_all(content2))
+        connections2 = [d for d in docs2 if d and d.get('kind') == 'Connection']
+        new_count = len(connections2)
+
+        # Should have 3 servers × 2 ports = 6 connections now (was 4)
+        self.assertEqual(new_count, 6,
+                        f"After increasing servers to 3, expected 6 connections, got {new_count}")
+        self.assertNotEqual(initial_count, new_count,
+                           "Connection count should change after modifying plan")
+
+    def test_no_duplicate_switch_ports(self):
+        """Test that port allocator doesn't assign duplicate switch ports"""
+        url = reverse('plugins:netbox_hedgehog:topologyplan_export', args=[self.plan.pk])
+        response = self.client.get(url)
+
+        self.assertEqual(response.status_code, 200)
+
+        import yaml
+        content = response.content.decode('utf-8')
+        documents = list(yaml.safe_load_all(content))
+        connection_crds = [doc for doc in documents if doc and doc.get('kind') == 'Connection']
+
+        # Extract all switch ports from connections
+        switch_ports = []
+        for crd in connection_crds:
+            spec = crd.get('spec', {})
+            # Handle different connection types (unbundled, bundled, mclag, eslag)
+            if 'unbundled' in spec:
+                link = spec['unbundled'].get('link', {})
+                switch_port = link.get('switch', {}).get('port', '')
+                if switch_port:
+                    switch_ports.append(switch_port)
+            elif 'bundled' in spec:
+                for link in spec['bundled'].get('links', []):
+                    switch_port = link.get('switch', {}).get('port', '')
+                    if switch_port:
+                        switch_ports.append(switch_port)
+            elif 'mclag' in spec:
+                for link in spec['mclag'].get('links', []):
+                    switch_port = link.get('switch', {}).get('port', '')
+                    if switch_port:
+                        switch_ports.append(switch_port)
+
+        # Check for duplicates
+        unique_ports = set(switch_ports)
+        self.assertEqual(len(switch_ports), len(unique_ports),
+                        f"Found duplicate switch ports: {[p for p in switch_ports if switch_ports.count(p) > 1]}")
+
+    def test_export_without_permission_fails(self):
+        """Test that user without view permission cannot export"""
+        # Create non-superuser without permissions
+        regular_user = User.objects.create_user(
+            username='regular',
+            password='regular123',
+            is_staff=True,
+            is_superuser=False
+        )
+
+        # Login as regular user
+        self.client.logout()
+        self.client.login(username='regular', password='regular123')
+
+        url = reverse('plugins:netbox_hedgehog:topologyplan_export', args=[self.plan.pk])
+        response = self.client.get(url)
+
+        # Should get 403 Forbidden
+        self.assertEqual(response.status_code, 403,
+                        "User without view permission should get 403")
+
+    def test_export_with_permission_succeeds(self):
+        """Test that user with change permission can export"""
+        from users.models import ObjectPermission
+
+        # Create non-superuser
+        regular_user = User.objects.create_user(
+            username='regular',
+            password='regular123',
+            is_staff=True,
+            is_superuser=False
+        )
+
+        # Grant change permission (required for export due to auto-calculation)
+        obj_perm = ObjectPermission.objects.create(
+            name='Test change topologyplan permission',
+            actions=['view', 'change']
+        )
+        obj_perm.object_types.add(
+            ContentType.objects.get_for_model(TopologyPlan)
+        )
+        obj_perm.users.add(regular_user)
+
+        # Login as regular user
+        self.client.logout()
+        self.client.force_login(regular_user)
+
+        url = reverse('plugins:netbox_hedgehog:topologyplan_export', args=[self.plan.pk])
+        response = self.client.get(url)
+
+        # Should succeed
+        self.assertEqual(response.status_code, 200,
+                        "User with change permission should be able to export")
+
+    def test_yaml_is_syntactically_valid(self):
+        """Test that exported YAML is syntactically valid"""
+        url = reverse('plugins:netbox_hedgehog:topologyplan_export', args=[self.plan.pk])
+        response = self.client.get(url)
+
+        self.assertEqual(response.status_code, 200)
+
+        import yaml
+        content = response.content.decode('utf-8')
+
+        # Should parse without errors
+        try:
+            documents = list(yaml.safe_load_all(content))
+            self.assertGreater(len(documents), 0,
+                             "YAML should contain at least one document")
+        except yaml.YAMLError as e:
+            self.fail(f"YAML is not syntactically valid: {e}")
+
+
+class YAMLExportMCLAGTestCase(TestCase):
+    """Integration tests for YAML export with MCLAG connections"""
+
+    @classmethod
+    def setUpTestData(cls):
+        """Create test data with MCLAG configuration"""
+        cls.user = User.objects.create_user(
+            username='testuser',
+            password='testpass123',
+            is_staff=True,
+            is_superuser=True
+        )
+
+        # Create plan
+        cls.plan = TopologyPlan.objects.create(
+            name='MCLAG Test Plan',
+            created_by=cls.user
+        )
+
+        # Create manufacturers and device types
+        cls.manufacturer, _ = Manufacturer.objects.get_or_create(
+            name='NVIDIA',
+            defaults={'slug': 'nvidia'}
+        )
+        cls.server_type, _ = DeviceType.objects.get_or_create(
+            manufacturer=cls.manufacturer,
+            model='DGX-H100',
+            defaults={'slug': 'dgx-h100'}
+        )
+        cls.switch_type, _ = DeviceType.objects.get_or_create(
+            manufacturer=cls.manufacturer,
+            model='SN5600',
+            defaults={'slug': 'sn5600'}
+        )
+
+        # Create MCLAG-capable device extension
+        cls.device_ext, _ = DeviceTypeExtension.objects.get_or_create(
+            device_type=cls.switch_type,
+            defaults={
+                'mclag_capable': True,
+                'hedgehog_roles': ['server-leaf'],
+                'native_speed': 800,
+                'uplink_ports': 4,
+                'supported_breakouts': ['1x800g', '2x400g', '4x200g']
+            }
+        )
+
+        # Create server class
+        cls.server_class = PlanServerClass.objects.create(
+            plan=cls.plan,
+            server_class_id='DGX-001',
+            category=ServerClassCategoryChoices.GPU,
+            quantity=1,
+            gpus_per_server=8,
+            server_device_type=cls.server_type
+        )
+
+        # Create switch class with MCLAG pairing
+        cls.switch_class = PlanSwitchClass.objects.create(
+            plan=cls.plan,
+            switch_class_id='fe-leaf',
+            fabric=FabricTypeChoices.FRONTEND,
+            hedgehog_role=HedgehogRoleChoices.SERVER_LEAF,
+            device_type_extension=cls.device_ext,
+            uplink_ports_per_switch=4,
+            mclag_pair=True,
+            calculated_quantity=2  # MCLAG pair
+        )
+
+        # Create MCLAG connection (2 ports, alternating between MCLAG pair)
+        cls.connection = PlanServerConnection.objects.create(
+            server_class=cls.server_class,
+            connection_id='FE-MCLAG',
+            connection_name='frontend-mclag',
+            ports_per_connection=2,
+            hedgehog_conn_type=ConnectionTypeChoices.MCLAG,
+            distribution=ConnectionDistributionChoices.ALTERNATING,
+            target_switch_class=cls.switch_class,
+            speed=200
+        )
+
+    def setUp(self):
+        """Login before each test"""
+        self.client = Client()
+        self.client.login(username='testuser', password='testpass123')
+
+    def test_mclag_connections_generated_correctly(self):
+        """Test that MCLAG connections are generated with correct structure"""
+        url = reverse('plugins:netbox_hedgehog:topologyplan_export', args=[self.plan.pk])
+        response = self.client.get(url)
+
+        self.assertEqual(response.status_code, 200)
+
+        import yaml
+        content = response.content.decode('utf-8')
+        documents = list(yaml.safe_load_all(content))
+        connection_crds = [doc for doc in documents if doc and doc.get('kind') == 'Connection']
+
+        # Should have MCLAG connections
+        mclag_connections = [c for c in connection_crds if 'mclag' in c.get('spec', {})]
+        self.assertGreater(len(mclag_connections), 0,
+                          "Should generate MCLAG connection CRDs")
+
+        # Verify MCLAG structure
+        for crd in mclag_connections:
+            spec = crd['spec']
+            self.assertIn('mclag', spec,
+                         "MCLAG connection should have mclag spec")
+            self.assertIn('links', spec['mclag'],
+                         "MCLAG spec should have links array")
+            self.assertEqual(len(spec['mclag']['links']), 2,
+                           "MCLAG should have 2 links (one per switch in pair)")
+
+
+class YAMLExportEdgeCaseTestCase(TestCase):
+    """Integration tests for YAML export edge cases and error handling"""
+
+    @classmethod
+    def setUpTestData(cls):
+        """Create test data"""
+        cls.user = User.objects.create_user(
+            username='testuser',
+            password='testpass123',
+            is_staff=True,
+            is_superuser=True
+        )
+
+        cls.plan = TopologyPlan.objects.create(
+            name='Edge Case Test Plan',
+            created_by=cls.user
+        )
+
+        # Create manufacturers and device types
+        cls.manufacturer, _ = Manufacturer.objects.get_or_create(
+            name='Test Vendor',
+            defaults={'slug': 'test-vendor'}
+        )
+        cls.server_type, _ = DeviceType.objects.get_or_create(
+            manufacturer=cls.manufacturer,
+            model='TestServer',
+            defaults={'slug': 'testserver'}
+        )
+        cls.switch_type, _ = DeviceType.objects.get_or_create(
+            manufacturer=cls.manufacturer,
+            model='TestSwitch',
+            defaults={'slug': 'testswitch'}
+        )
+
+        cls.device_ext, _ = DeviceTypeExtension.objects.get_or_create(
+            device_type=cls.switch_type,
+            defaults={
+                'mclag_capable': False,
+                'hedgehog_roles': ['server-leaf'],
+                'native_speed': 800,
+                'uplink_ports': 4,
+                'supported_breakouts': ['1x800g', '2x400g', '4x200g']
+            }
+        )
+
+    def setUp(self):
+        """Login before each test"""
+        self.client = Client()
+        self.client.login(username='testuser', password='testpass123')
+
+    def test_connection_names_are_dns_label_safe(self):
+        """Test that Connection CRD names are DNS-label safe (no uppercase, underscores, spaces)"""
+        # Create server class
+        server_class = PlanServerClass.objects.create(
+            plan=self.plan,
+            server_class_id='TEST_SERVER_01',  # Uppercase and underscores
+            category=ServerClassCategoryChoices.GPU,
+            quantity=1,
+            gpus_per_server=0,
+            server_device_type=self.server_type
+        )
+
+        # Create switch class
+        switch_class = PlanSwitchClass.objects.create(
+            plan=self.plan,
+            switch_class_id='FE_LEAF_01',  # Uppercase and underscores
+            fabric=FabricTypeChoices.FRONTEND,
+            hedgehog_role=HedgehogRoleChoices.SERVER_LEAF,
+            device_type_extension=self.device_ext,
+            uplink_ports_per_switch=4,
+            calculated_quantity=1
+        )
+
+        # Create connection with problematic name
+        connection = PlanServerConnection.objects.create(
+            server_class=server_class,
+            connection_id='FE_CONN 01',  # Uppercase, underscore, space
+            connection_name='Frontend Connection',  # Uppercase, space
+            ports_per_connection=1,
+            hedgehog_conn_type=ConnectionTypeChoices.UNBUNDLED,
+            distribution=ConnectionDistributionChoices.SAME_SWITCH,
+            target_switch_class=switch_class,
+            speed=200
+        )
+
+        # Export YAML
+        url = reverse('plugins:netbox_hedgehog:topologyplan_export', args=[self.plan.pk])
+        response = self.client.get(url)
+        self.assertEqual(response.status_code, 200)
+
+        import yaml
+        content = response.content.decode('utf-8')
+        documents = list(yaml.safe_load_all(content))
+        connection_crds = [doc for doc in documents if doc and doc.get('kind') == 'Connection']
+
+        # Verify all connection names are DNS-label safe
+        for crd in connection_crds:
+            name = crd['metadata']['name']
+
+            # DNS label rules: lowercase, alphanumeric, hyphens only
+            # Must start and end with alphanumeric
+            self.assertRegex(name, r'^[a-z0-9]([-a-z0-9]*[a-z0-9])?$',
+                           f"Connection name '{name}' is not DNS-label safe")
+            self.assertNotIn('_', name, f"Connection name '{name}' contains underscore")
+            self.assertNotIn(' ', name, f"Connection name '{name}' contains space")
+            self.assertEqual(name, name.lower(), f"Connection name '{name}' contains uppercase")
+
+    def test_export_with_uncalculated_switch_quantities(self):
+        """Test that export handles plans with uncalculated switch quantities gracefully"""
+        # Create server class
+        server_class = PlanServerClass.objects.create(
+            plan=self.plan,
+            server_class_id='gpu-001',
+            category=ServerClassCategoryChoices.GPU,
+            quantity=2,
+            gpus_per_server=0,
+            server_device_type=self.server_type
+        )
+
+        # Create switch class WITHOUT calculated_quantity set
+        switch_class = PlanSwitchClass.objects.create(
+            plan=self.plan,
+            switch_class_id='fe-leaf',
+            fabric=FabricTypeChoices.FRONTEND,
+            hedgehog_role=HedgehogRoleChoices.SERVER_LEAF,
+            device_type_extension=self.device_ext,
+            uplink_ports_per_switch=4,
+            calculated_quantity=None,  # Not calculated yet!
+            override_quantity=None
+        )
+
+        # Create connection
+        connection = PlanServerConnection.objects.create(
+            server_class=server_class,
+            connection_id='fe-001',
+            connection_name='frontend',
+            ports_per_connection=2,
+            hedgehog_conn_type=ConnectionTypeChoices.UNBUNDLED,
+            distribution=ConnectionDistributionChoices.ALTERNATING,
+            target_switch_class=switch_class,
+            speed=200
+        )
+
+        # Export YAML - should auto-calculate or return meaningful YAML
+        url = reverse('plugins:netbox_hedgehog:topologyplan_export', args=[self.plan.pk])
+        response = self.client.get(url)
+        self.assertEqual(response.status_code, 200)
+
+        import yaml
+        content = response.content.decode('utf-8')
+        documents = list(yaml.safe_load_all(content))
+        connection_crds = [doc for doc in documents if doc and doc.get('kind') == 'Connection']
+
+        # Should have connections (2 servers × 2 ports = 4 connections)
+        # Even if switch quantities weren't calculated, export should still work
+        self.assertEqual(len(connection_crds), 4,
+                        "Export should generate connections even when switch quantities uncalculated")
+
+        # Verify switch class was auto-calculated
+        switch_class.refresh_from_db()
+        self.assertIsNotNone(switch_class.calculated_quantity,
+                            "Export should auto-calculate switch quantities before generating YAML")
+
+    def test_export_requires_change_permission_due_to_auto_calculation(self):
+        """Test that export requires change permission since it mutates data via auto-calculation"""
+        from users.models import ObjectPermission
+
+        # Create non-superuser
+        regular_user = User.objects.create_user(
+            username='viewonly',
+            password='viewonly123',
+            is_staff=True,
+            is_superuser=False
+        )
+
+        # Create plan
+        plan = TopologyPlan.objects.create(
+            name='Permission Test Plan',
+            created_by=regular_user
+        )
+
+        # Create switch class with uncalculated quantity
+        manufacturer, _ = Manufacturer.objects.get_or_create(
+            name='Test',
+            defaults={'slug': 'test'}
+        )
+        switch_type, _ = DeviceType.objects.get_or_create(
+            manufacturer=manufacturer,
+            model='TestSwitch',
+            defaults={'slug': 'testswitch'}
+        )
+        device_ext, _ = DeviceTypeExtension.objects.get_or_create(
+            device_type=switch_type,
+            defaults={'mclag_capable': False, 'native_speed': 800}
+        )
+
+        switch_class = PlanSwitchClass.objects.create(
+            plan=plan,
+            switch_class_id='test-switch',
+            device_type_extension=device_ext,
+            calculated_quantity=None  # Uncalculated
+        )
+
+        # Grant ONLY view permission (not change)
+        view_perm = ObjectPermission.objects.create(
+            name='View-only topologyplan permission',
+            actions=['view']
+        )
+        view_perm.object_types.add(
+            ContentType.objects.get_for_model(TopologyPlan)
+        )
+        view_perm.users.add(regular_user)
+
+        # Login as view-only user
+        self.client.logout()
+        self.client.force_login(regular_user)
+
+        url = reverse('plugins:netbox_hedgehog:topologyplan_export', args=[plan.pk])
+        response = self.client.get(url)
+
+        # Should get 403 because export mutates data (auto-calculation)
+        # and user only has view permission
+        self.assertEqual(response.status_code, 403,
+                        "Export should require change permission since it mutates data via auto-calculation")
+
+    def test_connection_name_respects_63_char_limit(self):
+        """Test that final Connection CRD names don't exceed 63 chars (DNS-label max)"""
+        # Create entities with very long names
+        server_class = PlanServerClass.objects.create(
+            plan=self.plan,
+            server_class_id='very-long-server-class-name-that-will-cause-issues-when-concatenated',
+            category=ServerClassCategoryChoices.GPU,
+            quantity=1,
+            gpus_per_server=0,
+            server_device_type=self.server_type
+        )
+
+        switch_class = PlanSwitchClass.objects.create(
+            plan=self.plan,
+            switch_class_id='very-long-switch-class-name-that-will-also-cause-length-problems',
+            fabric=FabricTypeChoices.FRONTEND,
+            hedgehog_role=HedgehogRoleChoices.SERVER_LEAF,
+            device_type_extension=self.device_ext,
+            uplink_ports_per_switch=4,
+            calculated_quantity=1
+        )
+
+        connection = PlanServerConnection.objects.create(
+            server_class=server_class,
+            connection_id='very-long-connection-identifier-name',
+            connection_name='super-long-connection-descriptive-name',
+            ports_per_connection=1,
+            hedgehog_conn_type=ConnectionTypeChoices.UNBUNDLED,
+            distribution=ConnectionDistributionChoices.SAME_SWITCH,
+            target_switch_class=switch_class,
+            speed=200
+        )
+
+        # Export YAML
+        url = reverse('plugins:netbox_hedgehog:topologyplan_export', args=[self.plan.pk])
+        response = self.client.get(url)
+        self.assertEqual(response.status_code, 200)
+
+        import yaml
+        content = response.content.decode('utf-8')
+        documents = list(yaml.safe_load_all(content))
+        connection_crds = [doc for doc in documents if doc and doc.get('kind') == 'Connection']
+
+        # Verify all connection names are within 63 char limit
+        for crd in connection_crds:
+            name = crd['metadata']['name']
+            self.assertLessEqual(len(name), 63,
+                               f"Connection name '{name}' exceeds 63 character DNS-label limit (len={len(name)})")
+            # Also verify it's still DNS-label safe
+            self.assertRegex(name, r'^[a-z0-9]([-a-z0-9]*[a-z0-9])?$',
+                           f"Connection name '{name}' is not DNS-label safe")

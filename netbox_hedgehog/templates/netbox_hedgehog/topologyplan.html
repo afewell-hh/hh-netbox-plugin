@@ -40,12 +40,15 @@
         <div class="card">
             <h5 class="card-header">Actions</h5>
             <div class="card-body">
-                <form method="post" action="{% url 'plugins:netbox_hedgehog:topologyplan_recalculate' pk=object.pk %}">
+                <form method="post" action="{% url 'plugins:netbox_hedgehog:topologyplan_recalculate' pk=object.pk %}" class="mb-2">
                     {% csrf_token %}
                     <button type="submit" class="btn btn-primary">
                         <i class="mdi mdi-calculator"></i> Recalculate Switch Quantities
                     </button>
                 </form>
+                <a href="{% url 'plugins:netbox_hedgehog:topologyplan_export' pk=object.pk %}" class="btn btn-success">
+                    <i class="mdi mdi-download"></i> Export YAML
+                </a>
             </div>
         </div>
     </div>
