@@ -83,10 +83,16 @@ class TopologyPlanView(generic.ObjectView):
     template_name = 'netbox_hedgehog/topologyplan.html'
 
     def get_extra_context(self, request, instance):
-        """Add server and switch classes to context"""
+        """Add server classes, switch classes, and connections to context"""
+        # Get all server connections for this plan (via server_class FK)
+        server_connections = models.PlanServerConnection.objects.filter(
+            server_class__plan=instance
+        ).select_related('server_class', 'target_switch_class')
+
         return {
             'server_classes': instance.server_classes.all(),
             'switch_classes': instance.switch_classes.all(),
+            'server_connections': server_connections,
         }
 
 

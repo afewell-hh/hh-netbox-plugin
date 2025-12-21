@@ -252,6 +252,20 @@ class PlanServerConnectionForm(NetBoxModelForm):
             'connection_name': forms.TextInput(attrs={'placeholder': 'frontend, backend-rail-0, etc.'}),
         }
 
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+
+        # If editing an existing connection, filter target_switch_class to same plan
+        if self.instance and self.instance.pk and self.instance.server_class:
+            plan = self.instance.server_class.plan
+            self.fields['target_switch_class'].queryset = PlanSwitchClass.objects.filter(plan=plan)
+            self.fields['target_switch_class'].help_text = f'Switch classes from plan: {plan.name}'
+        else:
+            # For new connections, add help text about plan filtering
+            self.fields['target_switch_class'].help_text = (
+                'Select a server class first. Target switch must be from the same plan as the server class.'
+            )
+
     def clean(self):
         """Validate that rail is required when distribution is rail-optimized"""
         # Call parent clean - it modifies self.cleaned_data in place
@@ -264,7 +278,7 @@ class PlanServerConnectionForm(NetBoxModelForm):
         target_switch_class = self.cleaned_data.get('target_switch_class')
 
         # Rail validation: required only for rail-optimized distribution
-        if distribution == 'rail-optimized':
+        if distribution == ConnectionDistributionChoices.RAIL_OPTIMIZED:
             if rail is None or rail == '':  # rail can be 0, but not None or empty string
                 self.add_error('rail', 'Rail is required when distribution is set to rail-optimized.')
 
