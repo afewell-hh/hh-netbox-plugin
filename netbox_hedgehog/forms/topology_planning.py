@@ -14,7 +14,9 @@ from ..models.topology_planning import (
     TopologyPlan,
     PlanServerClass,
     PlanSwitchClass,
+    PlanServerConnection,
 )
+from ..choices import ConnectionDistributionChoices
 
 
 class BreakoutOptionForm(NetBoxModelForm):
@@ -227,3 +229,52 @@ class PlanSwitchClassForm(NetBoxModelForm):
             'override_quantity': 'Manual override of calculated quantity (leave empty to use calculated value)',
             'notes': 'Additional notes about this switch class',
         }
+
+
+# =============================================================================
+# PlanServerConnection Form (DIET-005)
+# =============================================================================
+
+class PlanServerConnectionForm(NetBoxModelForm):
+    """
+    Form for creating and editing PlanServerConnections.
+
+    Server connections define how servers connect to switches, including
+    port counts, distribution strategies, and optional rail assignments
+    for rail-optimized topologies.
+    """
+
+    class Meta:
+        model = PlanServerConnection
+        fields = '__all__'
+        # Note: Using '__all__' to let NetBox handle standard fields automatically
+        widgets = {
+            'connection_name': forms.TextInput(attrs={'placeholder': 'frontend, backend-rail-0, etc.'}),
+        }
+
+    def clean(self):
+        """Validate that rail is required when distribution is rail-optimized"""
+        # Call parent clean - it modifies self.cleaned_data in place
+        super().clean()
+
+        # Use self.cleaned_data instead of return value from super().clean()
+        distribution = self.cleaned_data.get('distribution')
+        rail = self.cleaned_data.get('rail')
+        server_class = self.cleaned_data.get('server_class')
+        target_switch_class = self.cleaned_data.get('target_switch_class')
+
+        # Rail validation: required only for rail-optimized distribution
+        if distribution == 'rail-optimized':
+            if rail is None or rail == '':  # rail can be 0, but not None or empty string
+                self.add_error('rail', 'Rail is required when distribution is set to rail-optimized.')
+
+        # Ensure target_switch_class is from same plan as server_class
+        if server_class and target_switch_class:
+            if server_class.plan != target_switch_class.plan:
+                self.add_error(
+                    'target_switch_class',
+                    f'Target switch class must be from the same plan as server class '
+                    f'({server_class.plan.name}). Selected switch is from plan {target_switch_class.plan.name}.'
+                )
+
+        # Don't return anything - NetBoxModelForm.clean() returns None

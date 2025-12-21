@@ -12,6 +12,7 @@ from ..models.topology_planning import (
     TopologyPlan,
     PlanServerClass,
     PlanSwitchClass,
+    PlanServerConnection,
 )
 
 
@@ -289,4 +290,71 @@ class PlanSwitchClassTable(NetBoxTable):
         default_columns = (
             'switch_class_id', 'plan', 'fabric', 'hedgehog_role',
             'calculated_quantity', 'override_quantity', 'effective_quantity'
+        )
+
+
+# =============================================================================
+# PlanServerConnection Table (DIET-005)
+# =============================================================================
+
+class PlanServerConnectionTable(NetBoxTable):
+    """
+    Table for displaying PlanServerConnections.
+
+    Shows server connection details including distribution, target switch,
+    speed, and rail assignment.
+    """
+
+    connection_id = tables.Column(
+        linkify=True,
+        verbose_name='Connection ID'
+    )
+
+    server_class = tables.Column(
+        linkify=True,
+        verbose_name='Server Class',
+        accessor='server_class'
+    )
+
+    target_switch_class = tables.Column(
+        linkify=True,
+        verbose_name='Target Switch Class',
+        accessor='target_switch_class'
+    )
+
+    hedgehog_conn_type = tables.Column(
+        verbose_name='Connection Type'
+    )
+
+    distribution = tables.Column(
+        verbose_name='Distribution'
+    )
+
+    ports_per_connection = tables.Column(
+        verbose_name='Ports'
+    )
+
+    speed = tables.Column(
+        verbose_name='Speed (Gbps)'
+    )
+
+    rail = tables.Column(
+        verbose_name='Rail'
+    )
+
+    port_type = tables.Column(
+        verbose_name='Port Type'
+    )
+
+    class Meta(NetBoxTable.Meta):
+        model = PlanServerConnection
+        fields = (
+            'pk', 'id', 'connection_id', 'server_class', 'connection_name',
+            'nic_slot', 'ports_per_connection', 'hedgehog_conn_type',
+            'distribution', 'target_switch_class', 'speed', 'rail',
+            'port_type', 'tags', 'created', 'last_updated'
+        )
+        default_columns = (
+            'connection_id', 'server_class', 'hedgehog_conn_type',
+            'distribution', 'target_switch_class', 'ports_per_connection', 'speed', 'rail'
         )

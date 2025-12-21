@@ -7,6 +7,7 @@ from .topology_planning import (
     TopologyPlanTable,
     PlanServerClassTable,
     PlanSwitchClassTable,
+    PlanServerConnectionTable,
 )
 
 __all__ = [
@@ -28,4 +29,5 @@ __all__ = [
     'TopologyPlanTable',
     'PlanServerClassTable',
     'PlanSwitchClassTable',
+    'PlanServerConnectionTable',
 ]

@@ -17,12 +17,16 @@ from netbox_hedgehog.models.topology_planning import (
     PlanServerClass,
     PlanSwitchClass,
     DeviceTypeExtension,
+    PlanServerConnection,
 )
 from netbox_hedgehog.choices import (
     TopologyPlanStatusChoices,
     ServerClassCategoryChoices,
     FabricTypeChoices,
     HedgehogRoleChoices,
+    ConnectionDistributionChoices,
+    ConnectionTypeChoices,
+    PortTypeChoices,
 )
 
 User = get_user_model()
@@ -474,3 +478,613 @@ class PermissionIntegrationTestCase(TestCase):
         # Verify redirect goes to detail page
         self.assertEqual(response.url, reverse('plugins:netbox_hedgehog:topologyplan_detail', args=[self.plan.pk]),
                         "Should redirect to plan detail page")
+
+
+# =============================================================================
+# PlanServerConnection Integration Tests (DIET-005)
+# =============================================================================
+
+class ServerConnectionIntegrationTestCase(TestCase):
+    """Integration tests for PlanServerConnection UI workflow"""
+
+    @classmethod
+    def setUpTestData(cls):
+        """Create test data"""
+        cls.user = User.objects.create_user(
+            username='testuser',
+            password='testpass123',
+            is_staff=True,
+            is_superuser=True
+        )
+
+        cls.plan = TopologyPlan.objects.create(
+            name='Test Plan',
+            created_by=cls.user
+        )
+
+        # Create manufacturer and device types
+        cls.manufacturer, _ = Manufacturer.objects.get_or_create(
+            name='Dell',
+            defaults={'slug': 'dell'}
+        )
+        cls.server_type, _ = DeviceType.objects.get_or_create(
+            manufacturer=cls.manufacturer,
+            model='PowerEdge R750',
+            defaults={'slug': 'poweredge-r750'}
+        )
+        cls.switch_type, _ = DeviceType.objects.get_or_create(
+            manufacturer=cls.manufacturer,
+            model='DS5000',
+            defaults={'slug': 'ds5000'}
+        )
+
+        # Create device extension
+        cls.device_ext, _ = DeviceTypeExtension.objects.get_or_create(
+            device_type=cls.switch_type,
+            defaults={
+                'mclag_capable': True,
+                'hedgehog_roles': ['spine', 'server-leaf'],
+                'native_speed': 800,
+                'uplink_ports': 4,
+                'supported_breakouts': ['1x800g', '2x400g', '4x200g']
+            }
+        )
+
+        # Create server class
+        cls.server_class = PlanServerClass.objects.create(
+            plan=cls.plan,
+            server_class_id='GPU-001',
+            category=ServerClassCategoryChoices.GPU,
+            quantity=10,
+            gpus_per_server=8,
+            server_device_type=cls.server_type
+        )
+
+        # Create switch class
+        cls.switch_class = PlanSwitchClass.objects.create(
+            plan=cls.plan,
+            switch_class_id='fe-leaf',
+            fabric=FabricTypeChoices.FRONTEND,
+            hedgehog_role=HedgehogRoleChoices.SERVER_LEAF,
+            device_type_extension=cls.device_ext,
+            uplink_ports_per_switch=4
+        )
+
+    def setUp(self):
+        """Login before each test"""
+        self.client = Client()
+        self.client.login(username='testuser', password='testpass123')
+
+    def test_connection_list_loads(self):
+        """Test that connection list page loads"""
+        url = reverse('plugins:netbox_hedgehog:planserverconnection_list')
+        response = self.client.get(url)
+
+        self.assertEqual(response.status_code, 200,
+                        f"Connection list page failed to load: {response.status_code}")
+
+    def test_connection_add_page_loads(self):
+        """Test that connection add page loads"""
+        url = reverse('plugins:netbox_hedgehog:planserverconnection_add')
+        response = self.client.get(url)
+
+        self.assertEqual(response.status_code, 200,
+                        f"Connection add page failed to load: {response.status_code}")
+
+    def test_create_connection_workflow(self):
+        """Test creating a server connection"""
+        url = reverse('plugins:netbox_hedgehog:planserverconnection_add')
+        data = {
+            'server_class': self.server_class.pk,
+            'connection_id': 'FE-001',
+            'connection_name': 'frontend',
+            'ports_per_connection': 2,
+            'hedgehog_conn_type': ConnectionTypeChoices.UNBUNDLED,
+            'distribution': ConnectionDistributionChoices.ALTERNATING,
+            'target_switch_class': self.switch_class.pk,
+            'speed': 200,
+            'port_type': PortTypeChoices.DATA,
+        }
+        response = self.client.post(url, data, follow=True)
+
+
+        self.assertEqual(response.status_code, 200,
+                        f"Connection creation failed: {response.status_code}")
+
+        # Verify creation
+        connection = PlanServerConnection.objects.filter(connection_id='FE-001').first()
+        self.assertIsNotNone(connection, "Connection was not created in database")
+        self.assertEqual(connection.ports_per_connection, 2)
+        self.assertEqual(connection.speed, 200)
+        self.assertEqual(connection.distribution, ConnectionDistributionChoices.ALTERNATING)
+
+    def test_connection_detail_page_loads(self):
+        """Test that connection detail page loads"""
+        connection = PlanServerConnection.objects.create(
+            server_class=self.server_class,
+            connection_id='FE-001',
+            ports_per_connection=2,
+            hedgehog_conn_type=ConnectionTypeChoices.UNBUNDLED,
+            distribution=ConnectionDistributionChoices.SAME_SWITCH,
+            target_switch_class=self.switch_class,
+            speed=200
+        )
+
+        url = reverse('plugins:netbox_hedgehog:planserverconnection_detail', args=[connection.pk])
+        response = self.client.get(url)
+
+        self.assertEqual(response.status_code, 200,
+                        f"Connection detail page failed to load: {response.status_code}")
+        self.assertContains(response, 'FE-001')
+
+    def test_connection_edit_workflow(self):
+        """Test editing an existing connection"""
+        connection = PlanServerConnection.objects.create(
+            server_class=self.server_class,
+            connection_id='FE-001',
+            ports_per_connection=2,
+            hedgehog_conn_type=ConnectionTypeChoices.UNBUNDLED,
+            distribution=ConnectionDistributionChoices.SAME_SWITCH,
+            target_switch_class=self.switch_class,
+            speed=200
+        )
+
+        # Load edit page
+        edit_url = reverse('plugins:netbox_hedgehog:planserverconnection_edit', args=[connection.pk])
+        get_response = self.client.get(edit_url)
+        self.assertEqual(get_response.status_code, 200)
+
+        # Submit changes
+        data = {
+            'server_class': self.server_class.pk,
+            'connection_id': 'FE-001',
+            'ports_per_connection': 4,  # Changed from 2
+            'hedgehog_conn_type': ConnectionTypeChoices.UNBUNDLED,
+            'distribution': ConnectionDistributionChoices.ALTERNATING,  # Changed
+            'target_switch_class': self.switch_class.pk,
+            'speed': 400,  # Changed from 200
+        }
+        post_response = self.client.post(edit_url, data, follow=True)
+        self.assertEqual(post_response.status_code, 200)
+
+        # Verify changes
+        connection.refresh_from_db()
+        self.assertEqual(connection.ports_per_connection, 4)
+        self.assertEqual(connection.speed, 400)
+        self.assertEqual(connection.distribution, ConnectionDistributionChoices.ALTERNATING)
+
+    def test_connection_delete_workflow(self):
+        """Test deleting a connection"""
+        connection = PlanServerConnection.objects.create(
+            server_class=self.server_class,
+            connection_id='FE-DELETE',
+            ports_per_connection=2,
+            hedgehog_conn_type=ConnectionTypeChoices.UNBUNDLED,
+            distribution=ConnectionDistributionChoices.SAME_SWITCH,
+            target_switch_class=self.switch_class,
+            speed=200
+        )
+
+        # Load delete confirmation page
+        delete_url = reverse('plugins:netbox_hedgehog:planserverconnection_delete', args=[connection.pk])
+        get_response = self.client.get(delete_url)
+        self.assertEqual(get_response.status_code, 200)
+
+        # Confirm deletion
+        post_response = self.client.post(delete_url, {'confirm': True}, follow=True)
+        self.assertEqual(post_response.status_code, 200)
+
+        # Verify deletion
+        self.assertFalse(PlanServerConnection.objects.filter(pk=connection.pk).exists())
+
+
+class ServerConnectionValidationTestCase(TestCase):
+    """Integration tests for PlanServerConnection validation rules"""
+
+    @classmethod
+    def setUpTestData(cls):
+        """Create test data"""
+        cls.user = User.objects.create_user(
+            username='testuser',
+            password='testpass123',
+            is_staff=True,
+            is_superuser=True
+        )
+
+        cls.plan = TopologyPlan.objects.create(
+            name='Test Plan',
+            created_by=cls.user
+        )
+
+        # Create manufacturer and device types
+        cls.manufacturer, _ = Manufacturer.objects.get_or_create(
+            name='Dell',
+            defaults={'slug': 'dell'}
+        )
+        cls.server_type, _ = DeviceType.objects.get_or_create(
+            manufacturer=cls.manufacturer,
+            model='PowerEdge R750',
+            defaults={'slug': 'poweredge-r750'}
+        )
+        cls.switch_type, _ = DeviceType.objects.get_or_create(
+            manufacturer=cls.manufacturer,
+            model='DS5000',
+            defaults={'slug': 'ds5000'}
+        )
+
+        # Create device extension
+        cls.device_ext, _ = DeviceTypeExtension.objects.get_or_create(
+            device_type=cls.switch_type,
+            defaults={
+                'mclag_capable': True,
+                'hedgehog_roles': ['spine', 'server-leaf'],
+                'native_speed': 800,
+                'uplink_ports': 4,
+                'supported_breakouts': ['1x800g', '2x400g', '4x200g']
+            }
+        )
+
+        # Create server class
+        cls.server_class = PlanServerClass.objects.create(
+            plan=cls.plan,
+            server_class_id='GPU-001',
+            category=ServerClassCategoryChoices.GPU,
+            quantity=10,
+            gpus_per_server=8,
+            server_device_type=cls.server_type
+        )
+
+        # Create switch class
+        cls.switch_class = PlanSwitchClass.objects.create(
+            plan=cls.plan,
+            switch_class_id='be-rail-leaf',
+            fabric=FabricTypeChoices.BACKEND,
+            hedgehog_role=HedgehogRoleChoices.SERVER_LEAF,
+            device_type_extension=cls.device_ext,
+            uplink_ports_per_switch=4
+        )
+
+    def setUp(self):
+        """Login before each test"""
+        self.client = Client()
+        self.client.login(username='testuser', password='testpass123')
+
+    def test_rail_required_for_rail_optimized(self):
+        """Test that rail is required when distribution is rail-optimized"""
+        url = reverse('plugins:netbox_hedgehog:planserverconnection_add')
+        data = {
+            'server_class': self.server_class.pk,
+            'connection_id': 'BE-RAIL-0',
+            'ports_per_connection': 1,
+            'hedgehog_conn_type': ConnectionTypeChoices.UNBUNDLED,
+            'distribution': ConnectionDistributionChoices.RAIL_OPTIMIZED,
+            'target_switch_class': self.switch_class.pk,
+            'speed': 400,
+            # rail is NOT provided - should cause validation error
+        }
+
+        response = self.client.post(url, data, follow=False)
+
+        # Should NOT create connection (stays on form with errors)
+        self.assertEqual(response.status_code, 200,
+                        "Form should return 200 with validation errors")
+        self.assertContains(response, 'Rail is required when distribution is set to rail-optimized',
+                           msg_prefix="Missing expected validation error message")
+
+        # Verify connection was not created
+        self.assertFalse(PlanServerConnection.objects.filter(connection_id='BE-RAIL-0').exists(),
+                        "Connection should not be created when validation fails")
+
+    def test_rail_not_required_for_other_distributions(self):
+        """Test that rail is NOT required for non-rail-optimized distributions"""
+        url = reverse('plugins:netbox_hedgehog:planserverconnection_add')
+        data = {
+            'server_class': self.server_class.pk,
+            'connection_id': 'FE-001',
+            'ports_per_connection': 2,
+            'hedgehog_conn_type': ConnectionTypeChoices.UNBUNDLED,
+            'distribution': ConnectionDistributionChoices.ALTERNATING,
+            'target_switch_class': self.switch_class.pk,
+            'speed': 200,
+            # rail is NOT provided - should be OK for alternating
+        }
+        response = self.client.post(url, data, follow=True)
+
+        # Should succeed
+        self.assertEqual(response.status_code, 200)
+
+        # Verify connection was created
+        connection = PlanServerConnection.objects.filter(connection_id='FE-001').first()
+        self.assertIsNotNone(connection, "Connection should be created without rail for alternating distribution")
+        self.assertIsNone(connection.rail, "Rail should be None for alternating distribution")
+
+    def test_rail_accepted_for_rail_optimized(self):
+        """Test that providing rail for rail-optimized distribution works"""
+        url = reverse('plugins:netbox_hedgehog:planserverconnection_add')
+        data = {
+            'server_class': self.server_class.pk,
+            'connection_id': 'BE-RAIL-0',
+            'ports_per_connection': 1,
+            'hedgehog_conn_type': ConnectionTypeChoices.UNBUNDLED,
+            'distribution': ConnectionDistributionChoices.RAIL_OPTIMIZED,
+            'target_switch_class': self.switch_class.pk,
+            'speed': 400,
+            'rail': 0,  # Provided - should work
+        }
+        response = self.client.post(url, data, follow=True)
+
+        # Should succeed
+        self.assertEqual(response.status_code, 200)
+
+        # Verify connection was created with rail
+        connection = PlanServerConnection.objects.filter(connection_id='BE-RAIL-0').first()
+        self.assertIsNotNone(connection, "Connection should be created with rail for rail-optimized")
+        self.assertEqual(connection.rail, 0)
+
+
+class ServerConnectionFilteringTestCase(TestCase):
+    """Integration tests for target_switch_class filtering (same plan only)"""
+
+    @classmethod
+    def setUpTestData(cls):
+        """Create test data"""
+        cls.user = User.objects.create_user(
+            username='testuser',
+            password='testpass123',
+            is_staff=True,
+            is_superuser=True
+        )
+
+        # Create TWO plans
+        cls.plan1 = TopologyPlan.objects.create(
+            name='Plan 1',
+            created_by=cls.user
+        )
+        cls.plan2 = TopologyPlan.objects.create(
+            name='Plan 2',
+            created_by=cls.user
+        )
+
+        # Create manufacturer and device types
+        cls.manufacturer, _ = Manufacturer.objects.get_or_create(
+            name='Dell',
+            defaults={'slug': 'dell'}
+        )
+        cls.server_type, _ = DeviceType.objects.get_or_create(
+            manufacturer=cls.manufacturer,
+            model='PowerEdge R750',
+            defaults={'slug': 'poweredge-r750'}
+        )
+        cls.switch_type, _ = DeviceType.objects.get_or_create(
+            manufacturer=cls.manufacturer,
+            model='DS5000',
+            defaults={'slug': 'ds5000'}
+        )
+
+        # Create device extension
+        cls.device_ext, _ = DeviceTypeExtension.objects.get_or_create(
+            device_type=cls.switch_type,
+            defaults={
+                'mclag_capable': True,
+                'hedgehog_roles': ['spine', 'server-leaf'],
+                'native_speed': 800,
+                'uplink_ports': 4,
+                'supported_breakouts': ['1x800g', '2x400g', '4x200g']
+            }
+        )
+
+        # Create server class in Plan 1
+        cls.server_class_plan1 = PlanServerClass.objects.create(
+            plan=cls.plan1,
+            server_class_id='GPU-PLAN1',
+            category=ServerClassCategoryChoices.GPU,
+            quantity=10,
+            gpus_per_server=8,
+            server_device_type=cls.server_type
+        )
+
+        # Create switch classes in both plans
+        cls.switch_class_plan1 = PlanSwitchClass.objects.create(
+            plan=cls.plan1,
+            switch_class_id='fe-leaf-plan1',
+            fabric=FabricTypeChoices.FRONTEND,
+            hedgehog_role=HedgehogRoleChoices.SERVER_LEAF,
+            device_type_extension=cls.device_ext,
+            uplink_ports_per_switch=4
+        )
+
+        cls.switch_class_plan2 = PlanSwitchClass.objects.create(
+            plan=cls.plan2,
+            switch_class_id='fe-leaf-plan2',
+            fabric=FabricTypeChoices.FRONTEND,
+            hedgehog_role=HedgehogRoleChoices.SERVER_LEAF,
+            device_type_extension=cls.device_ext,
+            uplink_ports_per_switch=4
+        )
+
+    def setUp(self):
+        """Login before each test"""
+        self.client = Client()
+        self.client.login(username='testuser', password='testpass123')
+
+    def test_cannot_use_switch_from_different_plan(self):
+        """Test that you cannot select a switch class from a different plan"""
+        url = reverse('plugins:netbox_hedgehog:planserverconnection_add')
+        data = {
+            'server_class': self.server_class_plan1.pk,  # From Plan 1
+            'connection_id': 'CROSS-PLAN',
+            'ports_per_connection': 2,
+            'hedgehog_conn_type': ConnectionTypeChoices.UNBUNDLED,
+            'distribution': ConnectionDistributionChoices.SAME_SWITCH,
+            'target_switch_class': self.switch_class_plan2.pk,  # From Plan 2 - WRONG!
+            'speed': 200,
+        }
+        response = self.client.post(url, data, follow=False)
+
+        # Should NOT create connection (stays on form with errors)
+        self.assertEqual(response.status_code, 200,
+                        "Form should return 200 with validation errors")
+        self.assertContains(response, 'Target switch class must be from the same plan',
+                           msg_prefix="Missing expected validation error message about plan mismatch")
+
+        # Verify connection was not created
+        self.assertFalse(PlanServerConnection.objects.filter(connection_id='CROSS-PLAN').exists(),
+                        "Connection should not be created when switch is from different plan")
+
+    def test_can_use_switch_from_same_plan(self):
+        """Test that you can select a switch class from the same plan"""
+        url = reverse('plugins:netbox_hedgehog:planserverconnection_add')
+        data = {
+            'server_class': self.server_class_plan1.pk,  # From Plan 1
+            'connection_id': 'SAME-PLAN',
+            'ports_per_connection': 2,
+            'hedgehog_conn_type': ConnectionTypeChoices.UNBUNDLED,
+            'distribution': ConnectionDistributionChoices.SAME_SWITCH,
+            'target_switch_class': self.switch_class_plan1.pk,  # Also from Plan 1 - CORRECT
+            'speed': 200,
+        }
+        response = self.client.post(url, data, follow=True)
+
+        # Should succeed
+        self.assertEqual(response.status_code, 200)
+
+        # Verify connection was created
+        connection = PlanServerConnection.objects.filter(connection_id='SAME-PLAN').first()
+        self.assertIsNotNone(connection, "Connection should be created when switch is from same plan")
+        self.assertEqual(connection.server_class.plan, connection.target_switch_class.plan,
+                        "Server and switch should be from the same plan")
+
+
+class ServerConnectionPermissionTestCase(TestCase):
+    """Integration tests for permission enforcement on PlanServerConnection"""
+
+    @classmethod
+    def setUpTestData(cls):
+        """Create test data"""
+        # Create superuser for setup
+        cls.superuser = User.objects.create_user(
+            username='admin',
+            password='admin123',
+            is_staff=True,
+            is_superuser=True
+        )
+
+        # Create non-superuser
+        cls.regular_user = User.objects.create_user(
+            username='regular',
+            password='regular123',
+            is_staff=True,
+            is_superuser=False
+        )
+
+        cls.plan = TopologyPlan.objects.create(
+            name='Test Plan',
+            created_by=cls.regular_user
+        )
+
+        # Create manufacturer and device types
+        cls.manufacturer, _ = Manufacturer.objects.get_or_create(
+            name='Dell',
+            defaults={'slug': 'dell'}
+        )
+        cls.server_type, _ = DeviceType.objects.get_or_create(
+            manufacturer=cls.manufacturer,
+            model='PowerEdge R750',
+            defaults={'slug': 'poweredge-r750'}
+        )
+        cls.switch_type, _ = DeviceType.objects.get_or_create(
+            manufacturer=cls.manufacturer,
+            model='DS5000',
+            defaults={'slug': 'ds5000'}
+        )
+
+        # Create device extension
+        cls.device_ext, _ = DeviceTypeExtension.objects.get_or_create(
+            device_type=cls.switch_type,
+            defaults={
+                'mclag_capable': True,
+                'hedgehog_roles': ['spine', 'server-leaf'],
+                'native_speed': 800,
+                'uplink_ports': 4,
+                'supported_breakouts': ['1x800g', '2x400g', '4x200g']
+            }
+        )
+
+        cls.server_class = PlanServerClass.objects.create(
+            plan=cls.plan,
+            server_class_id='GPU-001',
+            category=ServerClassCategoryChoices.GPU,
+            quantity=10,
+            gpus_per_server=8,
+            server_device_type=cls.server_type
+        )
+
+        cls.switch_class = PlanSwitchClass.objects.create(
+            plan=cls.plan,
+            switch_class_id='fe-leaf',
+            fabric=FabricTypeChoices.FRONTEND,
+            hedgehog_role=HedgehogRoleChoices.SERVER_LEAF,
+            device_type_extension=cls.device_ext,
+            uplink_ports_per_switch=4
+        )
+
+    def setUp(self):
+        """Create fresh client for each test"""
+        self.client = Client()
+
+    def test_create_without_permission_fails(self):
+        """Test that non-superuser without add permission cannot create"""
+        # Login as regular user without add permission
+        self.client.login(username='regular', password='regular123')
+
+        url = reverse('plugins:netbox_hedgehog:planserverconnection_add')
+        data = {
+            'server_class': self.server_class.pk,
+            'connection_id': 'FE-001',
+            'ports_per_connection': 2,
+            'hedgehog_conn_type': ConnectionTypeChoices.UNBUNDLED,
+            'distribution': ConnectionDistributionChoices.ALTERNATING,
+            'target_switch_class': self.switch_class.pk,
+            'speed': 200,
+        }
+        response = self.client.post(url, data, follow=False)
+
+        # Should get 403 Forbidden
+        self.assertEqual(response.status_code, 403,
+                        "Non-superuser without add permission should get 403")
+
+    def test_create_with_permission_succeeds(self):
+        """Test that non-superuser with add permission can create"""
+        from users.models import ObjectPermission
+
+        # Create NetBox object-level permissions for regular user
+        # Need permissions for PlanServerConnection, PlanServerClass, and PlanSwitchClass
+        obj_perm = ObjectPermission.objects.create(
+            name='Test add planserverconnection permission',
+            actions=['add', 'view']
+        )
+        obj_perm.object_types.add(
+            ContentType.objects.get_for_model(PlanServerConnection),
+            ContentType.objects.get_for_model(PlanServerClass),
+            ContentType.objects.get_for_model(PlanSwitchClass),
+        )
+        obj_perm.users.add(self.regular_user)
+
+        # Use force_login to bypass caching issues
+        self.client.force_login(self.regular_user)
+
+        url = reverse('plugins:netbox_hedgehog:planserverconnection_add')
+        data = {
+            'server_class': self.server_class.pk,
+            'connection_id': 'FE-001',
+            'ports_per_connection': 2,
+            'hedgehog_conn_type': ConnectionTypeChoices.UNBUNDLED,
+            'distribution': ConnectionDistributionChoices.ALTERNATING,
+            'target_switch_class': self.switch_class.pk,
+            'speed': 200,
+        }
+        response = self.client.post(url, data, follow=False)
+
+        # Should get 302 redirect (permission check passed)
+        self.assertEqual(response.status_code, 302,
+                        f"User with add permission should get redirect, got {response.status_code}")

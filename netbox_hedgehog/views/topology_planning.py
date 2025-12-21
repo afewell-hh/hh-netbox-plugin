@@ -180,3 +180,40 @@ class PlanSwitchClassEditView(generic.ObjectEditView):
 class PlanSwitchClassDeleteView(generic.ObjectDeleteView):
     """Delete view for PlanSwitchClasses"""
     queryset = models.PlanSwitchClass.objects.all()
+
+
+# =============================================================================
+# PlanServerConnection Views (DIET-005)
+# =============================================================================
+
+class PlanServerConnectionListView(generic.ObjectListView):
+    """List view for PlanServerConnections"""
+    queryset = models.PlanServerConnection.objects.select_related(
+        'server_class',
+        'server_class__plan',
+        'target_switch_class',
+        'target_switch_class__plan'
+    )
+    table = tables.PlanServerConnectionTable
+
+
+class PlanServerConnectionView(generic.ObjectView):
+    """Detail view for a single PlanServerConnection"""
+    queryset = models.PlanServerConnection.objects.select_related(
+        'server_class',
+        'server_class__plan',
+        'target_switch_class',
+        'target_switch_class__plan',
+        'nic_module_type'
+    )
+
+
+class PlanServerConnectionEditView(generic.ObjectEditView):
+    """Create/Edit view for PlanServerConnections"""
+    queryset = models.PlanServerConnection.objects.all()
+    form = forms.PlanServerConnectionForm
+
+
+class PlanServerConnectionDeleteView(generic.ObjectDeleteView):
+    """Delete view for PlanServerConnections"""
+    queryset = models.PlanServerConnection.objects.all()
