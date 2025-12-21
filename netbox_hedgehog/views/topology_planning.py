@@ -4,8 +4,12 @@ CRUD views for BreakoutOption, DeviceTypeExtension, and Topology Plan models.
 """
 
 from django.contrib import messages
+from django.contrib.auth.decorators import permission_required
+from django.contrib.auth.mixins import PermissionRequiredMixin
 from django.shortcuts import get_object_or_404, redirect
 from django.urls import reverse
+from django.utils.decorators import method_decorator
+from django.views import View
 
 from netbox.views import generic
 from .. import models, tables, forms
@@ -100,14 +104,15 @@ class TopologyPlanDeleteView(generic.ObjectDeleteView):
     queryset = models.TopologyPlan.objects.all()
 
 
-class TopologyPlanRecalculateView(generic.ObjectView):
+class TopologyPlanRecalculateView(PermissionRequiredMixin, View):
     """
     Recalculate action for TopologyPlans.
 
     Triggers calculation engine to update all switch quantities
     based on current server quantities and connection requirements.
     """
-    queryset = models.TopologyPlan.objects.all()
+    permission_required = 'netbox_hedgehog.change_topologyplan'
+    raise_exception = True
 
     def post(self, request, pk):
         """Handle recalculate POST request"""

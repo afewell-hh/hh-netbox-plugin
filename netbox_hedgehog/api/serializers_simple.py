@@ -45,11 +45,13 @@ class PlanSwitchClassSerializer(serializers.ModelSerializer):
 class PlanServerConnectionSerializer(serializers.ModelSerializer):
     class Meta:
         model = models.PlanServerConnection
-        fields = ['id', 'server_class', 'switch_class', 'nic_module_type',
-                  'port_type', 'ports_per_server', 'connection_speed', 'connection_distribution']
+        fields = ['id', 'server_class', 'connection_id', 'nic_module_type', 'nic_slot',
+                  'connection_name', 'ports_per_connection', 'hedgehog_conn_type',
+                  'distribution', 'target_switch_class', 'speed', 'rail', 'port_type']
 
 
 class PlanMCLAGDomainSerializer(serializers.ModelSerializer):
     class Meta:
         model = models.PlanMCLAGDomain
-        fields = ['id', 'plan', 'domain_id', 'member_switches']
+        fields = ['id', 'plan', 'domain_id', 'switch_class', 'peer_link_count',
+                  'session_link_count', 'peer_start_port', 'session_start_port']

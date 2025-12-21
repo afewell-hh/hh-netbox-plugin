@@ -8,6 +8,7 @@ loading pages, submitting forms, and checking the full request/response cycle.
 from django.test import TestCase, Client
 from django.urls import reverse
 from django.contrib.auth import get_user_model
+from django.contrib.contenttypes.models import ContentType
 
 from dcim.models import DeviceType, Manufacturer
 
@@ -384,3 +385,92 @@ class RecalculateIntegrationTestCase(TestCase):
         # calculated_quantity should now be set (even if 0)
         self.assertIsNotNone(self.switch_class.calculated_quantity,
                             "Calculation engine did not update calculated_quantity")
+
+
+class PermissionIntegrationTestCase(TestCase):
+    """Integration tests for permission enforcement"""
+
+    @classmethod
+    def setUpTestData(cls):
+        """Create test data"""
+        # Create superuser for setup
+        cls.superuser = User.objects.create_user(
+            username='admin',
+            password='admin123',
+            is_staff=True,
+            is_superuser=True
+        )
+
+        # Create non-superuser
+        cls.regular_user = User.objects.create_user(
+            username='regular',
+            password='regular123',
+            is_staff=True,
+            is_superuser=False
+        )
+
+        # Create plan owned by regular user (for object-level permission test)
+        cls.plan = TopologyPlan.objects.create(
+            name='Test Plan',
+            created_by=cls.regular_user
+        )
+
+    def setUp(self):
+        """Create fresh client for each test"""
+        self.client = Client()
+
+    def test_recalculate_requires_change_permission(self):
+        """Test that non-superuser without change permission cannot recalculate"""
+        # Login as regular user without change permission
+        self.client.login(username='regular', password='regular123')
+
+        url = reverse('plugins:netbox_hedgehog:topologyplan_recalculate', args=[self.plan.pk])
+        response = self.client.post(url)
+
+        # Should get 403 Forbidden
+        self.assertEqual(response.status_code, 403,
+                        "Non-superuser without change permission should get 403")
+
+    def test_recalculate_with_change_permission(self):
+        """Test that non-superuser with change permission can recalculate"""
+        from users.models import ObjectPermission
+
+        # Create NetBox object-level permission for regular user
+        obj_perm = ObjectPermission.objects.create(
+            name='Test change topologyplan permission',
+            actions=['change', 'view']
+        )
+        obj_perm.object_types.add(
+            ContentType.objects.get_for_model(TopologyPlan)
+        )
+        obj_perm.users.add(self.regular_user)
+
+        # Use force_login to bypass caching issues
+        self.client.force_login(self.regular_user)
+
+        url = reverse('plugins:netbox_hedgehog:topologyplan_recalculate', args=[self.plan.pk])
+        response = self.client.post(url, follow=False)
+
+        # Should get 302 redirect (permission check passed)
+        if response.status_code != 302:
+            print(f"\nDEBUG: Status code: {response.status_code}")
+            print(f"DEBUG: User permissions: {list(self.regular_user.get_all_permissions())}")
+            if hasattr(response, 'content'):
+                content = response.content.decode('utf-8')
+                # Find the actual error message
+                import re
+                match = re.search(r'<title>(.*?)</title>', content)
+                if match:
+                    print(f"DEBUG: Page title: {match.group(1)}")
+                # Look for error message in content
+                if 'Access Denied' in content or 'Permission' in content:
+                    start_idx = content.find('Access')
+                    if start_idx > 0:
+                        print(f"DEBUG: Error section: {content[start_idx:start_idx+200]}")
+
+        self.assertEqual(response.status_code, 302,
+                        f"User with change permission should get redirect, got {response.status_code}")
+
+        # Verify redirect goes to detail page
+        self.assertEqual(response.url, reverse('plugins:netbox_hedgehog:topologyplan_detail', args=[self.plan.pk]),
+                        "Should redirect to plan detail page")
