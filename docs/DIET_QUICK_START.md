@@ -133,24 +133,23 @@ Optic Type: QSFP-DD
 1. Click **Add Device Type Extension** button
 2. Fill in the form:
    - **Device Type**: Select the DeviceType to extend
-   - **Hedgehog Roles**: Comma-separated roles (e.g., "spine,server-leaf")
-   - **Port Count**: Total physical ports (e.g., 64)
-   - **Native Speed**: Port speed in Gbps (e.g., 800)
-   - **Supported Breakouts**: Comma-separated breakout IDs (e.g., "1x800g,2x400g,4x200g")
-   - **Default Uplink Ports**: Default uplink count (e.g., 4)
    - **MCLAG Capable**: Check if switch supports MCLAG
+   - **Hedgehog Roles**: Check all applicable roles (checkboxes: Spine, Server Leaf, Border Leaf, Virtual/Management)
+   - **Supported Breakouts**: JSON list of breakout IDs (e.g., `["1x800g", "2x400g", "4x200g"]`)
+   - **Native Speed**: Port speed in Gbps (e.g., 800)
+   - **Uplink Ports**: Default uplink count (e.g., 4)
+   - **Notes**: Optional notes
 
 3. Click **Create**
 
 **Example: DS5000 Extension**
 ```
 Device Type: Celestica DS5000
-Hedgehog Roles: spine,server-leaf
-Port Count: 64
+MCLAG Capable: No (unchecked)
+Hedgehog Roles: ☑ Spine, ☑ Server Leaf (checkboxes)
+Supported Breakouts: ["1x800g", "2x400g", "4x200g", "8x100g"]
 Native Speed: 800
-Supported Breakouts: 1x800g,2x400g,4x200g,8x100g
-Default Uplink Ports: 4
-MCLAG Capable: No
+Uplink Ports: 4
 ```
 
 ---
@@ -166,7 +165,7 @@ Now you can design a network topology.
 3. Fill in the form:
    - **Name**: Plan name (e.g., "Customer ABC - 128 GPU Cluster")
    - **Customer Name**: Optional customer name
-   - **Status**: Select status (Draft, Review, Approved, Deployed)
+   - **Status**: Select status (Draft, Review, Approved, Exported)
    - **Description**: Optional description
 
 4. Click **Create**
@@ -262,8 +261,8 @@ Override Quantity: [leave blank]
 
 ### Add a Connection
 
-1. From plan detail, click **Add Connection** in the Server Connections section
-   (or use navigation: Hedgehog → Topology Plans → [Your Plan] → Connections tab)
+1. From plan detail page, click **Add Server Connection** button in the Server Connections section
+   (or use navigation: Hedgehog → Topology Plans → [Your Plan] and scroll to Server Connections)
 
 2. Fill in the form:
    - **Server Class**: Select the server class
@@ -298,7 +297,7 @@ Port Type: data
 
 **Validation Rules:**
 - **Rail field** is required when distribution is "rail-optimized"
-- **Rail field** must be empty for other distribution types
+- Rail field is optional for other distribution types (can be left blank)
 - Target switch class must belong to the same plan
 
 ---
@@ -310,7 +309,7 @@ After adding server classes, switch classes, and connections, trigger the calcul
 ### Run Recalculate
 
 1. Go to your **Topology Plan detail page**
-2. Click the **Recalculate** button
+2. Click the **Recalculate Switch Quantities** button
 
    **Required Permission:** `netbox_hedgehog.change_topologyplan`
 
@@ -559,5 +558,5 @@ For API access to DIET features, see:
 ---
 
 **Document Version:** MVP (December 2024)
-**Plugin Version:** v1.0-DIET-MVP
+**Plugin Version:** 0.1.0
 **NetBox Version:** 4.0+

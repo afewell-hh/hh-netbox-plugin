@@ -37,7 +37,7 @@ The following workflows are fully documented and verified to match actual UI beh
   - Fields: breakout_id, from_speed, logical_ports, logical_speed, optic_type
   - Navigation: Hedgehog → Breakout Options → Add
 - Creating DeviceTypeExtensions via DIET UI
-  - Fields: device_type, hedgehog_roles, port_count, native_speed, supported_breakouts, default_uplink_ports, mclag_capable
+  - Fields: device_type, mclag_capable, hedgehog_roles (checkboxes), supported_breakouts (JSON list), native_speed, uplink_ports, notes
   - Navigation: Hedgehog → Device Type Extensions → Add
 
 #### 2. **Topology Plan Creation**
@@ -67,7 +67,7 @@ The following workflows are fully documented and verified to match actual UI beh
 - Adding server connections
   - Fields: server_class, connection_id, connection_name, ports_per_connection, speed, hedgehog_conn_type, distribution, target_switch_class, rail (conditional), port_type
   - Validation: Rail required for rail-optimized distribution
-  - Validation: Rail must be empty for other distributions
+  - Validation: Rail is optional for other distributions (can be left blank)
   - Validation: Target switch class must be from same plan
   - Navigation: From plan detail OR direct via menu
 - Understanding distribution types (same-switch, alternating, rail-optimized)
@@ -75,7 +75,7 @@ The following workflows are fully documented and verified to match actual UI beh
 
 #### 6. **Recalculation**
 - Triggering calculation engine from plan detail page
-  - Button label: "Recalculate" (verified in test line 1192)
+  - Button label: "Recalculate Switch Quantities" (verified in template line 46)
   - Required permission: `netbox_hedgehog.change_topologyplan`
   - Action: POST to `/topology-plans/<pk>/recalculate/`
   - Result: Success message "Recalculated N switch classes for plan '[name]'"
@@ -83,7 +83,7 @@ The following workflows are fully documented and verified to match actual UI beh
 
 #### 7. **YAML Export**
 - Exporting wiring diagram from plan detail page
-  - Button label: "Export YAML" (verified in test line 1192)
+  - Button label: "Export YAML" (verified in template line 50 and test line 1192)
   - Required permission: `netbox_hedgehog.change_topologyplan`
   - Action: GET `/topology-plans/<pk>/export/`
   - Auto-runs recalculation before export
