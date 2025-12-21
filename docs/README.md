@@ -5,7 +5,8 @@ Welcome to the comprehensive documentation for the Hedgehog NetBox Plugin! This 
 ## 📚 Documentation Index
 
 ### Getting Started
-- **[Quick Start Guide](QUICK_START.md)** - Get up and running in 5 minutes
+- **[Quick Start Guide](QUICK_START.md)** - Get up and running in 5 minutes (Operational Features)
+- **[DIET Quick Start](DIET_QUICK_START.md)** - Topology Planning for Pre-Sales (NEW)
 - **[Installation Guide](../README.md#installation)** - Complete installation instructions
 - **[Service Account Setup](SERVICE_ACCOUNT_SETUP.md)** - Kubernetes authentication setup
 
@@ -98,10 +99,15 @@ The Hedgehog NetBox Plugin is a comprehensive solution that bridges NetBox IPAM/
 
 ## 📖 Quick Navigation
 
-### New Users
+### New Users - Operational Features
 1. Start with the [Quick Start Guide](QUICK_START.md)
 2. Read the [User Guide](USER_GUIDE.md) overview
 3. Follow [Common Workflows](WORKFLOWS.md) for your use case
+
+### New Users - Topology Planning (DIET)
+1. Start with the [DIET Quick Start](DIET_QUICK_START.md)
+2. Learn about auto-calculating switch requirements
+3. Export Hedgehog wiring diagrams
 
 ### Existing NetBox Users
 1. Review [Installation Guide](../README.md#installation)
@@ -229,7 +235,8 @@ Contributions to documentation are welcome! See the development guide for detail
 
 | Document | Status | Last Updated | Audience |
 |----------|--------|--------------|----------|
-| [Quick Start](QUICK_START.md) | ✅ Complete | 2025-06-29 | New Users |
+| [Quick Start](QUICK_START.md) | ✅ Complete | 2025-06-29 | New Users (Operational) |
+| [DIET Quick Start](DIET_QUICK_START.md) | ✅ Complete | 2024-12-21 | Pre-Sales / Design |
 | [User Guide](USER_GUIDE.md) | ✅ Complete | 2025-06-29 | All Users |
 | [Workflows](WORKFLOWS.md) | ✅ Complete | 2025-06-29 | Operators |
 | [API Reference](API_REFERENCE.md) | ✅ Complete | 2025-06-29 | Developers |
