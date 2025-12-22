@@ -1,6 +1,5 @@
 """
-Services module for NetBox Hedgehog Plugin.
+Services package for Hedgehog NetBox plugin.
 
-This module contains business logic and service classes that operate
-on models but are not tied to specific views or API endpoints.
+Contains helper services for device generation, port allocation, and other utilities.
 """
