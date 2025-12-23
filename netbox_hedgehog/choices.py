@@ -269,3 +269,15 @@ class DeviceCategoryChoices(ChoiceSet):
         (OOB, 'OOB'),
         (BORDER, 'Border'),
     ]
+
+
+class GenerationStatusChoices(ChoiceSet):
+    """Generation status choices for GenerationState"""
+
+    GENERATED = 'generated'
+    DIRTY = 'dirty'
+
+    CHOICES = [
+        (GENERATED, 'Generated'),
+        (DIRTY, 'Dirty'),
+    ]

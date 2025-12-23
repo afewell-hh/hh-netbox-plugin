@@ -34,6 +34,9 @@ from .port_zones import (
 from .naming import (
     NamingTemplate,
 )
+from .generation import (
+    GenerationState,
+)
 
 __all__ = [
     # Reference Data
@@ -47,4 +50,5 @@ __all__ = [
     'PlanMCLAGDomain',
     'SwitchPortZone',
     'NamingTemplate',
+    'GenerationState',
 ]
