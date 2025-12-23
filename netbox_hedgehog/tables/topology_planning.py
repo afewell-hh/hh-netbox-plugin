@@ -13,6 +13,7 @@ from ..models.topology_planning import (
     PlanServerClass,
     PlanSwitchClass,
     PlanServerConnection,
+    SwitchPortZone,
 )
 
 
@@ -357,4 +358,56 @@ class PlanServerConnectionTable(NetBoxTable):
         default_columns = (
             'connection_id', 'server_class', 'hedgehog_conn_type',
             'distribution', 'target_switch_class', 'ports_per_connection', 'speed', 'rail'
+        )
+
+
+# =============================================================================
+# SwitchPortZone Table (DIET-011)
+# =============================================================================
+
+class SwitchPortZoneTable(NetBoxTable):
+    """
+    Table for displaying SwitchPortZones.
+    """
+
+    zone_name = tables.Column(
+        linkify=True,
+        verbose_name='Zone Name'
+    )
+
+    switch_class = tables.Column(
+        linkify=True,
+        verbose_name='Switch Class'
+    )
+
+    zone_type = tables.Column(
+        verbose_name='Zone Type'
+    )
+
+    port_spec = tables.Column(
+        verbose_name='Port Spec'
+    )
+
+    breakout_option = tables.Column(
+        verbose_name='Breakout'
+    )
+
+    allocation_strategy = tables.Column(
+        verbose_name='Strategy'
+    )
+
+    priority = tables.Column(
+        verbose_name='Priority'
+    )
+
+    class Meta(NetBoxTable.Meta):
+        model = SwitchPortZone
+        fields = (
+            'pk', 'id', 'zone_name', 'switch_class', 'zone_type', 'port_spec',
+            'breakout_option', 'allocation_strategy', 'priority', 'tags',
+            'created', 'last_updated'
+        )
+        default_columns = (
+            'zone_name', 'switch_class', 'zone_type', 'port_spec',
+            'breakout_option', 'allocation_strategy', 'priority'
         )

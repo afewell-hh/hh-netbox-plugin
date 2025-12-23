@@ -15,6 +15,7 @@ from ..models.topology_planning import (
     PlanServerClass,
     PlanSwitchClass,
     PlanServerConnection,
+    SwitchPortZone,
 )
 from ..choices import ConnectionDistributionChoices
 
@@ -301,3 +302,48 @@ class PlanServerConnectionForm(NetBoxModelForm):
         # Django's form validation will reject any target_switch_class not in the filtered queryset
 
         # Don't return anything - NetBoxModelForm.clean() returns None
+
+
+# =============================================================================
+# SwitchPortZone Form (DIET-011)
+# =============================================================================
+
+class SwitchPortZoneForm(NetBoxModelForm):
+    """
+    Form for creating and editing SwitchPortZones.
+    """
+
+    switch_class = forms.ModelChoiceField(
+        queryset=PlanSwitchClass.objects.all(),
+        label='Switch Class',
+        help_text='Switch class this port zone belongs to',
+    )
+
+    breakout_option = forms.ModelChoiceField(
+        queryset=BreakoutOption.objects.all(),
+        label='Breakout Option',
+        required=False,
+        help_text='Optional breakout option for logical ports',
+    )
+
+    class Meta:
+        model = SwitchPortZone
+        fields = [
+            'switch_class',
+            'zone_name',
+            'zone_type',
+            'port_spec',
+            'breakout_option',
+            'allocation_strategy',
+            'allocation_order',
+            'priority',
+            'tags',
+        ]
+        widgets = {
+            'allocation_order': forms.Textarea(attrs={'rows': 2}),
+        }
+        help_texts = {
+            'zone_name': "Zone name (e.g., 'server-ports', 'spine-uplinks')",
+            'port_spec': "Port specification (e.g., '1-48', '1-32:2', '1,3,5')",
+            'allocation_order': 'JSON list of port numbers used when strategy is custom',
+        }

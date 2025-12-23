@@ -2,3 +2,32 @@
 {% load helpers %}
 
 {% block title %}{{ object.breakout_id }} - Breakout Option{% endblock %}
+
+{% block content %}
+<div class="row">
+  <div class="col col-md-6">
+    <table class="table table-hover attr-table">
+      <tr>
+        <th scope="row">Breakout ID</th>
+        <td>{{ object.breakout_id }}</td>
+      </tr>
+      <tr>
+        <th scope="row">From Speed (Gbps)</th>
+        <td>{{ object.from_speed }}</td>
+      </tr>
+      <tr>
+        <th scope="row">Logical Ports</th>
+        <td>{{ object.logical_ports }}</td>
+      </tr>
+      <tr>
+        <th scope="row">Logical Speed (Gbps)</th>
+        <td>{{ object.logical_speed }}</td>
+      </tr>
+      <tr>
+        <th scope="row">Optic Type</th>
+        <td>{{ object.optic_type|placeholder }}</td>
+      </tr>
+    </table>
+  </div>
+</div>
+{% endblock %}

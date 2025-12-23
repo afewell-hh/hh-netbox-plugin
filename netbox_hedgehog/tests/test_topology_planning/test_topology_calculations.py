@@ -144,7 +144,8 @@ class CalculateSwitchQuantityTestCase(TestCase):
         )
 
         # Get or create device type extension for switch
-        cls.switch_extension, _ = DeviceTypeExtension.objects.get_or_create(
+        # Use update_or_create to ensure values are current (important for --keepdb)
+        cls.switch_extension, _ = DeviceTypeExtension.objects.update_or_create(
             device_type=cls.switch_device_type,
             defaults={
                 'mclag_capable': False,

@@ -100,4 +100,5 @@ from .serializers_simple import (
     PlanSwitchClassSerializer,
     PlanServerConnectionSerializer,
     PlanMCLAGDomainSerializer,
+    SwitchPortZoneSerializer,
 )

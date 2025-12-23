@@ -1,0 +1,37 @@
+{% extends 'generic/object.html' %}
+{% load helpers %}
+
+{% block title %}{{ object.zone_name }} - Switch Port Zone{% endblock %}
+
+{% block content %}
+<div class="row">
+  <div class="col col-md-6">
+    <table class="table table-hover attr-table">
+      <tr>
+        <th scope="row">Switch Class</th>
+        <td>{{ object.switch_class }}</td>
+      </tr>
+      <tr>
+        <th scope="row">Zone Type</th>
+        <td>{{ object.get_zone_type_display }}</td>
+      </tr>
+      <tr>
+        <th scope="row">Port Spec</th>
+        <td>{{ object.port_spec }}</td>
+      </tr>
+      <tr>
+        <th scope="row">Breakout Option</th>
+        <td>{{ object.breakout_option|placeholder }}</td>
+      </tr>
+      <tr>
+        <th scope="row">Allocation Strategy</th>
+        <td>{{ object.get_allocation_strategy_display }}</td>
+      </tr>
+      <tr>
+        <th scope="row">Priority</th>
+        <td>{{ object.priority }}</td>
+      </tr>
+    </table>
+  </div>
+</div>
+{% endblock %}
