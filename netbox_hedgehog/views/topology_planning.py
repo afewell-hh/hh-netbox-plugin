@@ -266,3 +266,41 @@ class PlanServerConnectionEditView(generic.ObjectEditView):
 class PlanServerConnectionDeleteView(generic.ObjectDeleteView):
     """Delete view for PlanServerConnections"""
     queryset = models.PlanServerConnection.objects.all()
+
+
+# =============================================================================
+# SwitchPortZone Views (DIET-011)
+# =============================================================================
+
+class SwitchPortZoneListView(generic.ObjectListView):
+    """List view for SwitchPortZones"""
+    queryset = models.SwitchPortZone.objects.select_related(
+        'switch_class',
+        'switch_class__plan',
+        'breakout_option',
+    )
+    table = tables.SwitchPortZoneTable
+    template_name = 'netbox_hedgehog/topology_planning/switchportzone_list.html'
+
+
+class SwitchPortZoneView(generic.ObjectView):
+    """Detail view for a single SwitchPortZone"""
+    queryset = models.SwitchPortZone.objects.select_related(
+        'switch_class',
+        'switch_class__plan',
+        'breakout_option',
+    )
+    template_name = 'netbox_hedgehog/topology_planning/switchportzone.html'
+
+
+class SwitchPortZoneEditView(generic.ObjectEditView):
+    """Create/Edit view for SwitchPortZones"""
+    queryset = models.SwitchPortZone.objects.all()
+    form = forms.SwitchPortZoneForm
+    template_name = 'netbox_hedgehog/topology_planning/switchportzone_edit.html'
+
+
+class SwitchPortZoneDeleteView(generic.ObjectDeleteView):
+    """Delete view for SwitchPortZones"""
+    queryset = models.SwitchPortZone.objects.all()
+    template_name = 'netbox_hedgehog/topology_planning/switchportzone_delete.html'

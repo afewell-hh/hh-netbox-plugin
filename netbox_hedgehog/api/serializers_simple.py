@@ -55,3 +55,19 @@ class PlanMCLAGDomainSerializer(serializers.ModelSerializer):
         model = models.PlanMCLAGDomain
         fields = ['id', 'plan', 'domain_id', 'switch_class', 'peer_link_count',
                   'session_link_count', 'peer_start_port', 'session_start_port']
+
+
+class SwitchPortZoneSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = models.SwitchPortZone
+        fields = [
+            'id',
+            'switch_class',
+            'zone_name',
+            'zone_type',
+            'port_spec',
+            'breakout_option',
+            'allocation_strategy',
+            'allocation_order',
+            'priority',
+        ]

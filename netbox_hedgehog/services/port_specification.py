@@ -137,13 +137,14 @@ class PortSpecification:
             )
         
         # Parse range part
-        if '-' in range_part:
-            range_ports = self._parse_range(range_part)
-            start = min(range_ports)
-            end = max(range_ports)
-        else:
-            # Single port with step (unusual but handle it)
-            start = end = self._parse_single(range_part)
+        if '-' not in range_part:
+            raise ValidationError(
+                f"Invalid interleaved format: '{s}'. Expected format: 'start-end:step'"
+            )
+
+        range_ports = self._parse_range(range_part)
+        start = min(range_ports)
+        end = max(range_ports)
         
         # Generate interleaved sequence
         return set(range(start, end + 1, step))

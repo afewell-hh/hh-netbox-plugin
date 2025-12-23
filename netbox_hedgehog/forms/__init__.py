@@ -57,6 +57,7 @@ from .topology_planning import (
     PlanServerClassForm,
     PlanSwitchClassForm,
     PlanServerConnectionForm,
+    SwitchPortZoneForm,
 )
 
 __all__ = [
@@ -79,4 +80,5 @@ __all__ = [
     'PlanServerClassForm',
     'PlanSwitchClassForm',
     'PlanServerConnectionForm',
+    'SwitchPortZoneForm',
 ]

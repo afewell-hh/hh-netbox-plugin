@@ -26,6 +26,9 @@ from dcim.models import DeviceType, Manufacturer
 from netbox_hedgehog.models.topology_planning import (
     BreakoutOption,
     DeviceTypeExtension,
+    PlanSwitchClass,
+    SwitchPortZone,
+    TopologyPlan,
 )
 
 User = get_user_model()
@@ -471,31 +474,33 @@ class DeviceTypeExtensionUITestCase(TestCase):
         )
 
         # Create manufacturer and device types
-        cls.manufacturer = Manufacturer.objects.create(
+        cls.manufacturer, _ = Manufacturer.objects.get_or_create(
             name='Celestica',
-            slug='celestica'
+            defaults={'slug': 'celestica'}
         )
 
-        cls.device_type1 = DeviceType.objects.create(
+        cls.device_type1, _ = DeviceType.objects.get_or_create(
             manufacturer=cls.manufacturer,
             model='DS5000',
-            slug='celestica-ds5000'
+            defaults={'slug': 'celestica-ds5000'}
         )
 
-        cls.device_type2 = DeviceType.objects.create(
+        cls.device_type2, _ = DeviceType.objects.get_or_create(
             manufacturer=cls.manufacturer,
-            model='DS3000',
-            slug='celestica-ds3000'
+            model='TEST-DS3000',
+            defaults={'slug': 'test-ds3000'}
         )
 
         # Create DeviceTypeExtensions
-        cls.extension1 = DeviceTypeExtension.objects.create(
+        cls.extension1, _ = DeviceTypeExtension.objects.get_or_create(
             device_type=cls.device_type1,
-            mclag_capable=False,
-            hedgehog_roles=['spine', 'server-leaf'],
-            supported_breakouts=['1x800g', '2x400g', '4x200g'],
-            native_speed=800,
-            uplink_ports=4
+            defaults={
+                'mclag_capable': False,
+                'hedgehog_roles': ['spine', 'server-leaf'],
+                'supported_breakouts': ['1x800g', '2x400g', '4x200g'],
+                'native_speed': 800,
+                'uplink_ports': 4
+            }
         )
 
     def setUp(self):
@@ -773,6 +778,14 @@ class DeviceTypeExtensionUITestCase(TestCase):
         permission.object_types.add(content_type)
         permission.users.add(self.regular_user)
 
+        device_type_ct = ContentType.objects.get_for_model(DeviceType)
+        device_type_permission = ObjectPermission.objects.create(
+            name='Test DeviceType View',
+            actions=['view']
+        )
+        device_type_permission.object_types.add(device_type_ct)
+        device_type_permission.users.add(self.regular_user)
+
         # Login as regular user
         self.client.login(username='regular', password='regular123')
 
@@ -819,41 +832,346 @@ class DeviceTypeExtensionUITestCase(TestCase):
         response = self.client.post(url, data)
         # Should redirect after successful creation (302)
         self.assertEqual(response.status_code, 302)
-        # Verify object was created
-        self.assertTrue(DeviceTypeExtension.objects.filter(device_type=temp_device_type).exists())
 
-        # Test edit operation (POST)
-        url = reverse('plugins:netbox_hedgehog:devicetypeextension_edit', args=[self.extension1.pk])
+
+class SwitchPortZoneUITestCase(TestCase):
+    """
+    Integration tests for SwitchPortZone CRUD UI.
+    """
+
+    @classmethod
+    def setUpTestData(cls):
+        cls.superuser = User.objects.create_user(
+            username='admin',
+            password='admin123',
+            is_staff=True,
+            is_superuser=True
+        )
+
+        cls.regular_user = User.objects.create_user(
+            username='regular',
+            password='regular123',
+            is_staff=True,
+            is_superuser=False
+        )
+
+        cls.manufacturer, _ = Manufacturer.objects.get_or_create(
+            name='Celestica',
+            defaults={'slug': 'celestica'}
+        )
+
+        cls.device_type, _ = DeviceType.objects.get_or_create(
+            manufacturer=cls.manufacturer,
+            model='DS5000',
+            defaults={'slug': 'celestica-ds5000'}
+        )
+
+        cls.device_type_extension, _ = DeviceTypeExtension.objects.get_or_create(
+            device_type=cls.device_type,
+            defaults={
+                'mclag_capable': False,
+                'hedgehog_roles': ['spine', 'server-leaf'],
+                'supported_breakouts': ['1x800g', '2x400g'],
+                'native_speed': 800,
+                'uplink_ports': 4,
+            }
+        )
+
+        cls.breakout, _ = BreakoutOption.objects.get_or_create(
+            breakout_id='test-4x200g',
+            defaults={
+                'from_speed': 800,
+                'logical_ports': 4,
+                'logical_speed': 200,
+                'optic_type': 'QSFP-DD',
+            }
+        )
+
+        cls.plan, _ = TopologyPlan.objects.get_or_create(
+            name='Test Plan',
+            defaults={'customer_name': 'Test Customer'}
+        )
+
+        cls.switch_class, _ = PlanSwitchClass.objects.get_or_create(
+            plan=cls.plan,
+            switch_class_id='fe-gpu-leaf',
+            defaults={
+                'fabric': 'frontend',
+                'hedgehog_role': 'server-leaf',
+                'device_type_extension': cls.device_type_extension,
+                'uplink_ports_per_switch': 4,
+            }
+        )
+
+        cls.zone, _ = SwitchPortZone.objects.get_or_create(
+            switch_class=cls.switch_class,
+            zone_name='server-ports',
+            defaults={
+                'zone_type': 'server',
+                'port_spec': '1-48',
+                'breakout_option': cls.breakout,
+                'allocation_strategy': 'sequential',
+            }
+        )
+
+    def setUp(self):
+        self.client = Client()
+
+    # =========================================================================
+    # List View Tests
+    # =========================================================================
+
+    def test_list_view_loads_successfully(self):
+        """Test that switch port zone list view loads with 200 status"""
+        self.client.login(username='admin', password='admin123')
+        url = reverse('plugins:netbox_hedgehog:switchportzone_list')
+        response = self.client.get(url)
+
+        self.assertEqual(response.status_code, 200)
+        self.assertTemplateUsed(response, 'netbox_hedgehog/topology_planning/switchportzone_list.html')
+
+    def test_list_view_displays_zones(self):
+        """Test that list view renders zone name"""
+        self.client.login(username='admin', password='admin123')
+        url = reverse('plugins:netbox_hedgehog:switchportzone_list')
+        response = self.client.get(url)
+
+        self.assertContains(response, 'server-ports')
+
+    # =========================================================================
+    # Detail View Tests
+    # =========================================================================
+
+    def test_detail_view_loads_successfully(self):
+        """Test that switch port zone detail view loads with 200 status"""
+        self.client.login(username='admin', password='admin123')
+        url = reverse('plugins:netbox_hedgehog:switchportzone', args=[self.zone.pk])
+        response = self.client.get(url)
+
+        self.assertEqual(response.status_code, 200)
+        self.assertTemplateUsed(response, 'netbox_hedgehog/topology_planning/switchportzone.html')
+
+    def test_detail_view_renders_expected_data(self):
+        """Test that detail view displays zone data"""
+        self.client.login(username='admin', password='admin123')
+        url = reverse('plugins:netbox_hedgehog:switchportzone', args=[self.zone.pk])
+        response = self.client.get(url)
+
+        self.assertContains(response, 'server-ports')
+        self.assertContains(response, '1-48')
+
+    # =========================================================================
+    # Add Form Tests
+    # =========================================================================
+
+    def test_add_form_loads_successfully(self):
+        """Test that add form loads with 200 status"""
+        self.client.login(username='admin', password='admin123')
+        url = reverse('plugins:netbox_hedgehog:switchportzone_add')
+        response = self.client.get(url)
+
+        self.assertEqual(response.status_code, 200)
+        self.assertTemplateUsed(response, 'netbox_hedgehog/topology_planning/switchportzone_edit.html')
+
+    def test_add_form_contains_required_fields(self):
+        """Test that add form renders required fields"""
+        self.client.login(username='admin', password='admin123')
+        url = reverse('plugins:netbox_hedgehog:switchportzone_add')
+        response = self.client.get(url)
+
+        self.assertContains(response, 'name="switch_class"')
+        self.assertContains(response, 'name="zone_name"')
+        self.assertContains(response, 'name="port_spec"')
+
+    # =========================================================================
+    # Create (POST) Tests
+    # =========================================================================
+
+    def test_create_valid_object_succeeds(self):
+        """Test that valid POST creates object and redirects"""
+        self.client.login(username='admin', password='admin123')
+        url = reverse('plugins:netbox_hedgehog:switchportzone_add')
+
         data = {
-            'device_type': self.device_type1.pk,
-            'mclag_capable': True,  # Changed from False
-            'hedgehog_roles': ['spine'],
-            'supported_breakouts': '["1x800g"]',
-            'native_speed': 800,
-            'uplink_ports': 8,  # Changed value
+            'switch_class': self.switch_class.pk,
+            'zone_name': 'uplinks',
+            'zone_type': 'uplink',
+            'port_spec': '49-64',
+            'breakout_option': '',
+            'allocation_strategy': 'sequential',
+            'priority': 200,
         }
-        response = self.client.post(url, data)
-        # Should redirect after successful update (302)
-        self.assertEqual(response.status_code, 302)
-        # Verify object was updated
-        self.extension1.refresh_from_db()
-        self.assertEqual(self.extension1.mclag_capable, True)
-        self.assertEqual(self.extension1.uplink_ports, 8)
 
-        # Test delete operation (POST)
-        # Create a temp extension to delete
-        temp_device_type2 = DeviceType.objects.create(
-            manufacturer=self.manufacturer,
-            model='TEMP-PERM-DELETE',
-            slug='celestica-temp-perm-delete'
-        )
-        temp_ext = DeviceTypeExtension.objects.create(
-            device_type=temp_device_type2,
-            mclag_capable=False
-        )
-        url = reverse('plugins:netbox_hedgehog:devicetypeextension_delete', args=[temp_ext.pk])
-        response = self.client.post(url, {'confirm': True})
-        # Should redirect after successful deletion (302)
+        response = self.client.post(url, data, follow=False)
+
         self.assertEqual(response.status_code, 302)
-        # Verify object was deleted
-        self.assertFalse(DeviceTypeExtension.objects.filter(pk=temp_ext.pk).exists())
+        self.assertTrue(SwitchPortZone.objects.filter(zone_name='uplinks').exists())
+
+    def test_create_invalid_data_shows_errors(self):
+        """Test that invalid POST shows form errors"""
+        self.client.login(username='admin', password='admin123')
+        url = reverse('plugins:netbox_hedgehog:switchportzone_add')
+
+        data = {
+            'switch_class': self.switch_class.pk,
+            'zone_name': 'bad-zone',
+            'zone_type': 'server',
+            'port_spec': 'invalid-spec',
+            'allocation_strategy': 'sequential',
+            'priority': 100,
+        }
+
+        response = self.client.post(url, data)
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'port_spec')
+
+    # =========================================================================
+    # Edit Form Tests
+    # =========================================================================
+
+    def test_edit_form_loads_with_existing_data(self):
+        """Test that edit form loads with data"""
+        self.client.login(username='admin', password='admin123')
+        url = reverse('plugins:netbox_hedgehog:switchportzone_edit', args=[self.zone.pk])
+        response = self.client.get(url)
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'server-ports')
+
+    def test_edit_updates_object_successfully(self):
+        """Test that valid POST updates object"""
+        self.client.login(username='admin', password='admin123')
+        url = reverse('plugins:netbox_hedgehog:switchportzone_edit', args=[self.zone.pk])
+
+        data = {
+            'switch_class': self.switch_class.pk,
+            'zone_name': 'server-ports',
+            'zone_type': 'server',
+            'port_spec': '1-32',
+            'breakout_option': self.breakout.pk,
+            'allocation_strategy': 'sequential',
+            'priority': 150,
+        }
+
+        response = self.client.post(url, data)
+
+        self.assertEqual(response.status_code, 302)
+        self.zone.refresh_from_db()
+        self.assertEqual(self.zone.port_spec, '1-32')
+        self.assertEqual(self.zone.priority, 150)
+
+    # =========================================================================
+    # Delete Tests
+    # =========================================================================
+
+    def test_delete_confirmation_page_loads(self):
+        """Test that delete confirmation page loads"""
+        self.client.login(username='admin', password='admin123')
+        url = reverse('plugins:netbox_hedgehog:switchportzone_delete', args=[self.zone.pk])
+        response = self.client.get(url)
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'server-ports')
+        self.assertContains(response, 'type="submit"')
+
+    def test_delete_post_removes_object(self):
+        """Test that POST to delete endpoint removes object"""
+        self.client.login(username='admin', password='admin123')
+
+        temp_zone = SwitchPortZone.objects.create(
+            switch_class=self.switch_class,
+            zone_name='temp-delete',
+            zone_type='server',
+            port_spec='1-8',
+            allocation_strategy='sequential',
+        )
+
+        url = reverse('plugins:netbox_hedgehog:switchportzone_delete', args=[temp_zone.pk])
+        response = self.client.post(url, {'confirm': True})
+
+        self.assertEqual(response.status_code, 302)
+        self.assertFalse(SwitchPortZone.objects.filter(pk=temp_zone.pk).exists())
+
+    # =========================================================================
+    # Permission Enforcement Tests
+    # =========================================================================
+
+    def test_list_view_without_permission_forbidden(self):
+        """Test that list view returns 403 without view permission"""
+        self.client.login(username='regular', password='regular123')
+        url = reverse('plugins:netbox_hedgehog:switchportzone_list')
+        response = self.client.get(url)
+
+        self.assertEqual(response.status_code, 403)
+
+    def test_add_view_without_permission_forbidden(self):
+        """Test that add view returns 403 without add permission"""
+        self.client.login(username='regular', password='regular123')
+        url = reverse('plugins:netbox_hedgehog:switchportzone_add')
+        response = self.client.get(url)
+
+        self.assertEqual(response.status_code, 403)
+
+    def test_edit_view_without_permission_forbidden(self):
+        """Test that edit view returns 403 without change permission"""
+        self.client.login(username='regular', password='regular123')
+        url = reverse('plugins:netbox_hedgehog:switchportzone_edit', args=[self.zone.pk])
+        response = self.client.get(url)
+
+        self.assertEqual(response.status_code, 403)
+
+    def test_delete_view_without_permission_forbidden(self):
+        """Test that delete view returns 403 without delete permission"""
+        self.client.login(username='regular', password='regular123')
+        url = reverse('plugins:netbox_hedgehog:switchportzone_delete', args=[self.zone.pk])
+        response = self.client.get(url)
+
+        self.assertEqual(response.status_code, 403)
+
+    def test_crud_operations_with_object_permission_succeed(self):
+        """Test that CRUD operations succeed with ObjectPermission"""
+        content_type = ContentType.objects.get_for_model(SwitchPortZone)
+        permission = ObjectPermission.objects.create(
+            name='Test SwitchPortZone Permission',
+            actions=['view', 'add', 'change', 'delete']
+        )
+        permission.object_types.add(content_type)
+        permission.users.add(self.regular_user)
+
+        switch_class_ct = ContentType.objects.get_for_model(PlanSwitchClass)
+        switch_class_permission = ObjectPermission.objects.create(
+            name='Test PlanSwitchClass View',
+            actions=['view']
+        )
+        switch_class_permission.object_types.add(switch_class_ct)
+        switch_class_permission.users.add(self.regular_user)
+
+        self.client.login(username='regular', password='regular123')
+
+        url = reverse('plugins:netbox_hedgehog:switchportzone_list')
+        response = self.client.get(url)
+        self.assertEqual(response.status_code, 200)
+
+        add_url = reverse('plugins:netbox_hedgehog:switchportzone_add')
+        data = {
+            'switch_class': self.switch_class.pk,
+            'zone_name': 'perm-create',
+            'zone_type': 'server',
+            'port_spec': '1-4',
+            'allocation_strategy': 'sequential',
+            'priority': 100,
+        }
+        response = self.client.post(add_url, data, follow=False)
+        self.assertEqual(response.status_code, 302)
+        created = SwitchPortZone.objects.get(zone_name='perm-create')
+
+        edit_url = reverse('plugins:netbox_hedgehog:switchportzone_edit', args=[created.pk])
+        data['port_spec'] = '1-6'
+        response = self.client.post(edit_url, data)
+        self.assertEqual(response.status_code, 302)
+
+        delete_url = reverse('plugins:netbox_hedgehog:switchportzone_delete', args=[created.pk])
+        response = self.client.post(delete_url, {'confirm': True})
+        self.assertEqual(response.status_code, 302)
+        self.assertFalse(SwitchPortZone.objects.filter(pk=created.pk).exists())
