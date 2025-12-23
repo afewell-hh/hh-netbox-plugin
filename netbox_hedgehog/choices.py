@@ -251,3 +251,21 @@ class PortTypeChoices(ChoiceSet):
         (IPMI, 'IPMI'),
         (PXE, 'PXE'),
     ]
+
+
+class DeviceCategoryChoices(ChoiceSet):
+    """Device category choices for NamingTemplate"""
+
+    SERVER = 'server'
+    LEAF = 'leaf'
+    SPINE = 'spine'
+    OOB = 'oob'
+    BORDER = 'border'
+
+    CHOICES = [
+        (SERVER, 'Server'),
+        (LEAF, 'Leaf'),
+        (SPINE, 'Spine'),
+        (OOB, 'OOB'),
+        (BORDER, 'Border'),
+    ]

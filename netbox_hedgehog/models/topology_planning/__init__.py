@@ -31,6 +31,9 @@ from .topology_plans import (
 from .port_zones import (
     SwitchPortZone,
 )
+from .naming import (
+    NamingTemplate,
+)
 
 __all__ = [
     # Reference Data
@@ -43,4 +46,5 @@ __all__ = [
     'PlanServerConnection',
     'PlanMCLAGDomain',
     'SwitchPortZone',
+    'NamingTemplate',
 ]
