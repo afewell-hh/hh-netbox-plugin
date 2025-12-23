@@ -175,15 +175,15 @@ class Command(BaseCommand):
             self.stdout.write(f'\n  Site: {site_name}')
             self.stdout.write(f'  Status: planned')
 
-            # Show tags
+            # Show tags and filtering info
             self.stdout.write(f'\n  Tagged with: hedgehog-generated')
-            self.stdout.write(f'  Tagged with: hedgehog-plan-{plan.pk}')
+            self.stdout.write(f'  Custom field: hedgehog_plan_id={plan.pk}')
 
             # Show next steps
             self.stdout.write(self.style.SUCCESS('\n💡 Next steps:'))
             self.stdout.write('  - View devices in NetBox UI')
             self.stdout.write('  - Filter by tag: hedgehog-generated')
-            self.stdout.write(f'  - Or tag: hedgehog-plan-{plan.pk}')
+            self.stdout.write(f'  - Or custom field: hedgehog_plan_id={plan.pk}')
             self.stdout.write('  - Check cable connections')
 
         except Exception as e:
