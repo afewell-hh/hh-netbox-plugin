@@ -84,6 +84,34 @@ class TopologyPlan(NetBoxModel):
     def get_absolute_url(self):
         return reverse('plugins:netbox_hedgehog:topologyplan_detail', args=[self.pk])
 
+    @property
+    def last_generated_at(self):
+        """
+        Timestamp of last generation.
+
+        Returns:
+            datetime: When objects were last generated, or None if never generated
+        """
+        try:
+            return self.generation_state.generated_at
+        except AttributeError:
+            # No GenerationState exists yet
+            return None
+
+    @property
+    def needs_regeneration(self):
+        """
+        Check if plan needs regeneration.
+
+        Returns:
+            bool: True if plan has been modified since last generation, False otherwise
+        """
+        try:
+            return self.generation_state.is_dirty()
+        except AttributeError:
+            # No GenerationState exists yet
+            return False
+
 
 class PlanServerClass(NetBoxModel):
     """

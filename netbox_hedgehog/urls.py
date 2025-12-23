@@ -27,10 +27,12 @@ from .views.wiring_api import (
 from .views.topology_planning import (
     BreakoutOptionListView, BreakoutOptionView, BreakoutOptionEditView, BreakoutOptionDeleteView,
     DeviceTypeExtensionListView, DeviceTypeExtensionView, DeviceTypeExtensionEditView, DeviceTypeExtensionDeleteView,
-    TopologyPlanListView, TopologyPlanView, TopologyPlanEditView, TopologyPlanDeleteView, TopologyPlanRecalculateView, TopologyPlanExportView,
+    TopologyPlanListView, TopologyPlanView, TopologyPlanEditView, TopologyPlanDeleteView,
+    TopologyPlanGenerateView, TopologyPlanRecalculateView, TopologyPlanExportView,
     PlanServerClassListView, PlanServerClassView, PlanServerClassEditView, PlanServerClassDeleteView,
     PlanSwitchClassListView, PlanSwitchClassView, PlanSwitchClassEditView, PlanSwitchClassDeleteView,
-    PlanServerConnectionListView, PlanServerConnectionView, PlanServerConnectionEditView, PlanServerConnectionDeleteView
+    PlanServerConnectionListView, PlanServerConnectionView, PlanServerConnectionEditView, PlanServerConnectionDeleteView,
+    SwitchPortZoneListView, SwitchPortZoneView, SwitchPortZoneEditView, SwitchPortZoneDeleteView
 )
 # from .views.crd_views import FabricCRDListView, CRDDetailView, ApplyCRDView, DeleteCRDView
 
@@ -222,6 +224,7 @@ urlpatterns = [
     path('topology-plans/<int:pk>/edit/', TopologyPlanEditView.as_view(), name='topologyplan_edit'),
     path('topology-plans/<int:pk>/delete/', TopologyPlanDeleteView.as_view(), name='topologyplan_delete'),
     path('topology-plans/<int:pk>/changelog/', TopologyPlanView.as_view(), name='topologyplan_changelog'),
+    path('topology-plans/<int:pk>/generate/', TopologyPlanGenerateView.as_view(), name='topologyplan_generate'),
     path('topology-plans/<int:pk>/recalculate/', TopologyPlanRecalculateView.as_view(), name='topologyplan_recalculate'),
     path('topology-plans/<int:pk>/export/', TopologyPlanExportView.as_view(), name='topologyplan_export'),
 
@@ -248,6 +251,14 @@ urlpatterns = [
     path('plan-server-connections/<int:pk>/edit/', PlanServerConnectionEditView.as_view(), name='planserverconnection_edit'),
     path('plan-server-connections/<int:pk>/delete/', PlanServerConnectionDeleteView.as_view(), name='planserverconnection_delete'),
     path('plan-server-connections/<int:pk>/changelog/', PlanServerConnectionView.as_view(), name='planserverconnection_changelog'),
+
+    # SwitchPortZone URLs (DIET-011)
+    path('switch-port-zones/', SwitchPortZoneListView.as_view(), name='switchportzone_list'),
+    path('switch-port-zones/add/', SwitchPortZoneEditView.as_view(), name='switchportzone_add'),
+    path('switch-port-zones/<int:pk>/', SwitchPortZoneView.as_view(), name='switchportzone'),
+    path('switch-port-zones/<int:pk>/edit/', SwitchPortZoneEditView.as_view(), name='switchportzone_edit'),
+    path('switch-port-zones/<int:pk>/delete/', SwitchPortZoneDeleteView.as_view(), name='switchportzone_delete'),
+    path('switch-port-zones/<int:pk>/changelog/', SwitchPortZoneView.as_view(), name='switchportzone_changelog'),
 
     # Other URLs
     path('topology/', TopologyView.as_view(), name='topology'),

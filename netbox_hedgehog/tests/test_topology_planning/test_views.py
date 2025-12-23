@@ -159,14 +159,14 @@ class PlanServerClassViewsTestCase(TestCase):
             created_by=cls.user
         )
 
-        cls.manufacturer = Manufacturer.objects.create(
+        cls.manufacturer, _ = Manufacturer.objects.get_or_create(
             name='Dell',
-            slug='dell'
+            defaults={'slug': 'dell'}
         )
-        cls.server_type = DeviceType.objects.create(
+        cls.server_type, _ = DeviceType.objects.get_or_create(
             manufacturer=cls.manufacturer,
             model='PowerEdge R750',
-            slug='poweredge-r750'
+            defaults={'slug': 'poweredge-r750'}
         )
 
         cls.server_class = PlanServerClass.objects.create(
@@ -197,6 +197,7 @@ class PlanServerClassViewsTestCase(TestCase):
             'category': ServerClassCategoryChoices.STORAGE,
             'quantity': 20,
             'gpus_per_server': 0,
+            'server_device_type': self.server_type.pk,
         }
         response = self.client.post(url, data, follow=True)
 
@@ -222,6 +223,7 @@ class PlanServerClassViewsTestCase(TestCase):
             'quantity': 50,  # Changed quantity
             'category': ServerClassCategoryChoices.GPU,
             'gpus_per_server': 8,
+            'server_device_type': self.server_type.pk,
         }
         response = self.client.post(url, data, follow=True)
 
@@ -234,7 +236,8 @@ class PlanServerClassViewsTestCase(TestCase):
         server_to_delete = PlanServerClass.objects.create(
             plan=self.plan,
             server_class_id='TO-DELETE',
-            quantity=5
+            quantity=5,
+            server_device_type=self.server_type,
         )
         url = reverse('plugins:netbox_hedgehog:planserverclass_delete', args=[server_to_delete.pk])
 
@@ -262,22 +265,24 @@ class PlanSwitchClassViewsTestCase(TestCase):
             created_by=cls.user
         )
 
-        cls.manufacturer = Manufacturer.objects.create(
+        cls.manufacturer, _ = Manufacturer.objects.get_or_create(
             name='Celestica',
-            slug='celestica'
+            defaults={'slug': 'celestica'}
         )
-        cls.switch_type = DeviceType.objects.create(
+        cls.switch_type, _ = DeviceType.objects.get_or_create(
             manufacturer=cls.manufacturer,
             model='DS5000',
-            slug='ds5000'
+            defaults={'slug': 'ds5000'}
         )
-        cls.device_ext = DeviceTypeExtension.objects.create(
+        cls.device_ext, _ = DeviceTypeExtension.objects.get_or_create(
             device_type=cls.switch_type,
-            mclag_capable=True,
-            hedgehog_roles=['spine', 'server-leaf'],
-            native_speed=800,
-            uplink_ports=4,
-            supported_breakouts=['1x800g', '2x400g', '4x200g']
+            defaults={
+                'mclag_capable': True,
+                'hedgehog_roles': ['spine', 'server-leaf'],
+                'native_speed': 800,
+                'uplink_ports': 4,
+                'supported_breakouts': ['1x800g', '2x400g', '4x200g']
+            }
         )
 
         cls.switch_class = PlanSwitchClass.objects.create(
@@ -380,22 +385,24 @@ class RecalculateActionTestCase(TestCase):
         )
 
         # Create device type and extension for switch
-        cls.manufacturer = Manufacturer.objects.create(
+        cls.manufacturer, _ = Manufacturer.objects.get_or_create(
             name='Celestica',
-            slug='celestica'
+            defaults={'slug': 'celestica'}
         )
-        cls.switch_type = DeviceType.objects.create(
+        cls.switch_type, _ = DeviceType.objects.get_or_create(
             manufacturer=cls.manufacturer,
             model='DS5000',
-            slug='ds5000'
+            defaults={'slug': 'ds5000'}
         )
-        cls.device_ext = DeviceTypeExtension.objects.create(
+        cls.device_ext, _ = DeviceTypeExtension.objects.get_or_create(
             device_type=cls.switch_type,
-            mclag_capable=True,
-            hedgehog_roles=['spine', 'server-leaf'],
-            native_speed=800,
-            uplink_ports=4,
-            supported_breakouts=['1x800g', '2x400g', '4x200g']
+            defaults={
+                'mclag_capable': True,
+                'hedgehog_roles': ['spine', 'server-leaf'],
+                'native_speed': 800,
+                'uplink_ports': 4,
+                'supported_breakouts': ['1x800g', '2x400g', '4x200g']
+            }
         )
 
         cls.switch_class = PlanSwitchClass.objects.create(

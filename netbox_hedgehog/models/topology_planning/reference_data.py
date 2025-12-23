@@ -62,7 +62,7 @@ class BreakoutOption(NetBoxModel):
         verbose_name_plural = "Breakout Options"
 
     def __str__(self):
-        return f"{self.logical_ports}x{self.logical_speed}G (from {self.from_speed}G)"
+        return f"{self.breakout_id} - {self.logical_ports}x{self.logical_speed}G (from {self.from_speed}G)"
 
     def get_absolute_url(self):
         return reverse('plugins:netbox_hedgehog:breakoutoption', args=[self.pk])

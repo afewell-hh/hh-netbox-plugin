@@ -201,6 +201,44 @@ class ConnectionDistributionChoices(ChoiceSet):
     ]
 
 
+class PortZoneTypeChoices(ChoiceSet):
+    """Zone type choices for SwitchPortZone"""
+
+    SERVER = 'server'
+    UPLINK = 'uplink'
+    MCLAG = 'mclag'
+    PEER = 'peer'
+    SESSION = 'session'
+    OOB = 'oob'
+    FABRIC = 'fabric'
+
+    CHOICES = [
+        (SERVER, 'Server'),
+        (UPLINK, 'Uplink'),
+        (MCLAG, 'MCLAG'),
+        (PEER, 'Peer'),
+        (SESSION, 'Session'),
+        (OOB, 'OOB'),
+        (FABRIC, 'Fabric'),
+    ]
+
+
+class AllocationStrategyChoices(ChoiceSet):
+    """Allocation strategy choices for SwitchPortZone"""
+
+    SEQUENTIAL = 'sequential'
+    INTERLEAVED = 'interleaved'
+    SPACED = 'spaced'
+    CUSTOM = 'custom'
+
+    CHOICES = [
+        (SEQUENTIAL, 'Sequential'),
+        (INTERLEAVED, 'Interleaved'),
+        (SPACED, 'Spaced'),
+        (CUSTOM, 'Custom'),
+    ]
+
+
 class PortTypeChoices(ChoiceSet):
     """Port type choices for PlanServerConnection"""
 
@@ -212,4 +250,34 @@ class PortTypeChoices(ChoiceSet):
         (DATA, 'Data'),
         (IPMI, 'IPMI'),
         (PXE, 'PXE'),
+    ]
+
+
+class DeviceCategoryChoices(ChoiceSet):
+    """Device category choices for NamingTemplate"""
+
+    SERVER = 'server'
+    LEAF = 'leaf'
+    SPINE = 'spine'
+    OOB = 'oob'
+    BORDER = 'border'
+
+    CHOICES = [
+        (SERVER, 'Server'),
+        (LEAF, 'Leaf'),
+        (SPINE, 'Spine'),
+        (OOB, 'OOB'),
+        (BORDER, 'Border'),
+    ]
+
+
+class GenerationStatusChoices(ChoiceSet):
+    """Generation status choices for GenerationState"""
+
+    GENERATED = 'generated'
+    DIRTY = 'dirty'
+
+    CHOICES = [
+        (GENERATED, 'Generated'),
+        (DIRTY, 'Dirty'),
     ]

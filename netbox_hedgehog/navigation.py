@@ -219,6 +219,18 @@ menu = PluginMenu(
                 )
             ),
             PluginMenuItem(
+                link='plugins:netbox_hedgehog:switchportzone_list',
+                link_text='Switch Port Zones',
+                buttons=(
+                    PluginMenuButton(
+                        link='plugins:netbox_hedgehog:switchportzone_add',
+                        title='Add Switch Port Zone',
+                        icon_class='mdi mdi-plus-thick',
+                        color=ButtonColorChoices.GREEN
+                    ),
+                )
+            ),
+            PluginMenuItem(
                 link='plugins:netbox_hedgehog:breakoutoption_list',
                 link_text='Breakout Options',
                 buttons=(
