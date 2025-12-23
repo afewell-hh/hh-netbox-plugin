@@ -329,7 +329,132 @@ After adding server classes, switch classes, and connections, trigger the calcul
 
 ---
 
-## Step 9: Export YAML Wiring Diagram
+## Step 9: Generate NetBox Devices (Optional)
+
+**New in DIET-011:** You can now generate actual NetBox Device objects from your topology plan. This creates real devices, interfaces, and cables in NetBox for visualization, IP planning, and pre-deployment validation.
+
+### When to Use Generate
+
+- **Pre-deployment validation**: Create devices to verify your design before deployment
+- **IP planning**: Generate devices to allocate IP addresses in NetBox
+- **Visualization**: Use NetBox's rack and device views to see your topology
+- **Documentation**: Generate a complete NetBox inventory from your plan
+
+**Note:** This is optional. You can still export YAML without generating devices.
+
+### Run Generate
+
+1. Go to your **Topology Plan detail page**
+2. Click the **Generate Devices** button
+
+   **Required Permission:** `netbox_hedgehog.change_topologyplan`
+
+3. You'll see a **preview page** showing:
+   - Number of devices to create (servers + switches)
+   - Number of interfaces to create
+   - Number of cables to create
+   - Site name where devices will be created (default: "Hedgehog")
+   - Warnings if plan is empty or incomplete
+
+4. Review the preview and click **Generate** to confirm
+
+5. You'll see a success message: "Generation complete: created N devices, M interfaces, P cables"
+
+6. Navigate to **Devices → Devices** in NetBox to see your generated infrastructure
+
+### What Gets Created
+
+**Devices:**
+- One Device per server (based on server class quantity)
+- One Device per switch (based on switch effective quantity)
+- All devices are tagged with `hedgehog-generated`
+- Devices have custom fields: `hedgehog_plan_id`, `hedgehog_class`, `hedgehog_fabric`, `hedgehog_role`
+- Device status: `Planned`
+- Device site: `Hedgehog` (auto-created if doesn't exist)
+
+**Interfaces:**
+- Server interfaces for each connection (e.g., `enp1s0f0`, `enp1s0f1`)
+- Switch interfaces with breakout naming (e.g., `Ethernet1/1/1`, `Ethernet1/1/2`)
+- Interface type: `Other`
+- Interfaces are enabled by default
+
+**Cables:**
+- One Cable per server-to-switch connection
+- Cables connect server interfaces to allocated switch ports
+- Cables are tagged with `hedgehog-generated`
+- Cables are properly terminated on both ends
+
+### Regeneration and Updates
+
+If you modify your plan after generation, you can regenerate:
+
+1. Go back to the **Topology Plan detail page**
+2. Click **Generate Devices** again
+3. The preview will show:
+   - **"Previously generated"** section with counts from last generation
+   - **"Plan has changed since last generation"** warning (if applicable)
+   - New counts reflecting updated plan
+
+4. Click **Generate** to confirm
+
+**What happens during regeneration:**
+- All previously generated devices, interfaces, and cables are **deleted**
+- New objects are created based on the current plan
+- This ensures NetBox always reflects your latest design
+
+**⚠️ Warning:** Regeneration is destructive. Any manual changes to generated devices (IP addresses, rack assignments, etc.) will be lost. If you need to preserve customizations, use the "Export YAML" workflow instead.
+
+### Example: Generated Topology
+
+**Before Generation:**
+- Plan: "Customer ABC - 128 GPU Cluster"
+- 32x GPU servers
+- 2x Frontend leaf switches (calculated)
+
+**After Generation:**
+- 32x Server devices (`gpu-training-001` through `gpu-training-032`)
+- 2x Switch devices (`frontend-leaf-01`, `frontend-leaf-02`)
+- 64x Server interfaces (32 servers × 2 ports each)
+- 64x Switch interfaces (ports allocated sequentially)
+- 64x Cables connecting servers to switches
+
+You can now:
+- Assign IP addresses to interfaces
+- Place devices in racks
+- Document power connections
+- Export NetBox inventory
+- Validate design before deployment
+
+### Viewing Generated Objects
+
+**Navigate to Generated Devices:**
+1. Go to **Devices → Devices**
+2. Filter by tag: `hedgehog-generated`
+3. Or filter by custom field: `hedgehog_plan_id=[your plan ID]`
+
+**View Topology:**
+1. Click on any generated device
+2. View its interfaces in the **Interfaces** tab
+3. Click on an interface to see cable connections
+4. Follow cable to see connected device
+
+**View Cables:**
+1. Go to **Devices → Cables**
+2. Filter by tag: `hedgehog-generated`
+3. See all server-to-switch connections
+
+### Generation State Tracking
+
+After generation, the plan tracks:
+- When devices were last generated (`generated_at`)
+- How many objects were created (`device_count`, `interface_count`, `cable_count`)
+- Plan state at generation time (for change detection)
+
+This helps detect when your plan has changed and needs regeneration.
+
+---
+
+## Step 10: Export YAML Wiring Diagram
 
 Once your plan is complete, export it as Hedgehog wiring YAML.
 
@@ -433,8 +558,10 @@ If you need more (or fewer) switches than calculated:
 | View plans, classes, reference data | `netbox_hedgehog.view_topologyplan` (and related) |
 | Create/edit plans, classes | `netbox_hedgehog.add_*`, `netbox_hedgehog.change_*` |
 | Recalculate switch quantities | `netbox_hedgehog.change_topologyplan` |
+| Generate NetBox devices | `netbox_hedgehog.change_topologyplan` |
 | Export YAML | `netbox_hedgehog.change_topologyplan` |
 | Delete plans, classes | `netbox_hedgehog.delete_*` |
+| View generated devices in NetBox | `dcim.view_device`, `dcim.view_interface`, `dcim.view_cable` |
 
 Superusers have all permissions by default.
 
@@ -497,6 +624,51 @@ Superusers have all permissions by default.
 
 **Fix:** Edit the existing extension instead of creating a new one.
 
+### Generate Devices button shows "No server classes defined" or "No switch classes defined"
+
+**Cause:** The plan doesn't have both servers and switches configured.
+
+**Fix:**
+1. Add at least one server class with quantity > 0
+2. Add at least one switch class
+3. Add connections between them
+4. Run recalculate to ensure switch quantities are populated
+5. Try generate again
+
+### "Permission denied" on Generate Devices
+
+**Cause:** User lacks `change_topologyplan` permission.
+
+**Fix:** Contact NetBox administrator to grant `netbox_hedgehog.change_topologyplan` permission.
+
+### Generate creates too many or too few devices
+
+**Cause:** Server quantities or switch effective quantities don't match expectations.
+
+**Fix:**
+1. Check server class quantities in the plan
+2. Check switch class effective_quantity (should show after recalculate)
+3. If switch effective_quantity is wrong, check connections and run recalculate
+4. If you want different switch quantities, set override_quantity on switch class
+
+### After regeneration, my IP assignments / rack assignments are gone
+
+**Cause:** Regeneration deletes and recreates all devices. Manual customizations are lost.
+
+**Fix:**
+- This is expected behavior for the MVP
+- If you need to preserve customizations, don't regenerate - use the plan as reference only
+- Post-MVP will support update-in-place instead of full regeneration
+
+### Plan shows "Plan has changed since last generation" but I didn't change anything
+
+**Cause:** Something in the plan changed (server quantity, switch quantity, connections) since last generation.
+
+**Fix:**
+- Review what changed (check server quantities, switch effective_quantity)
+- If plan is correct, regenerate to sync NetBox with the plan
+- If you don't want to regenerate, you can ignore the warning
+
 ---
 
 ## What's Not in MVP
@@ -505,10 +677,12 @@ The following features are planned but not yet available:
 
 - **Templates**: Pre-configured topology plan templates
 - **MCLAG Domain Connections**: Automatic generation of peer-link and session CRDs
-- **Fabric Connections**: Spine-to-leaf uplink generation
-- **Switch/Server CRDs**: Only Connection CRDs are generated
+- **Fabric Connections**: Spine-to-leaf uplink generation in YAML export
+- **Switch/Server CRDs**: Only Connection CRDs are generated in YAML
 - **Bulk Import/Export**: CSV import of server/switch classes
-- **Visualization**: Topology diagram preview
+- **Visualization**: Interactive topology diagram preview
+- **Update-in-place Generation**: Regeneration currently deletes/recreates all devices
+- **Custom Site Selection**: Generated devices currently go to "Hedgehog" site only
 
 These will be added in future releases after MVP.
 
@@ -546,7 +720,16 @@ After completing this guide, you should be able to:
 - ✅ Define breakout options and device type extensions
 - ✅ Build topology plans with server and switch classes
 - ✅ Auto-calculate switch requirements based on port demand
+- ✅ Generate NetBox devices for visualization and pre-deployment validation
 - ✅ Export Hedgehog wiring YAML for deployment
+
+**Recommended Workflow:**
+1. Create a topology plan with servers, switches, and connections
+2. Recalculate switch quantities
+3. Generate NetBox devices to visualize and validate the design
+4. Assign IPs, document rack positions, review topology
+5. Export YAML for actual Hedgehog deployment
+6. (Optional) Regenerate devices if plan changes
 
 For more details on the operational features (managing live Hedgehog fabrics), see:
 - [Quick Start Guide](QUICK_START.md) - Fabric management and CRD sync
@@ -557,6 +740,6 @@ For API access to DIET features, see:
 
 ---
 
-**Document Version:** MVP (December 2024)
-**Plugin Version:** 0.1.0
+**Document Version:** DIET-011 (December 2024)
+**Plugin Version:** 0.2.0
 **NetBox Version:** 4.0+
