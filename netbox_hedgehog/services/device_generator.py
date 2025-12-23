@@ -63,26 +63,31 @@ class DeviceGenerator:
         """
         Delete all previously generated objects for this plan.
 
-        Deletes Devices (which cascades to Interfaces) and Cables that
-        were tagged as hedgehog-generated for this plan.
+        Deletes Cables first (to avoid termination protection issues), then
+        Devices (which cascades to Interfaces). All deletions are scoped to
+        this specific plan using hedgehog_plan_id.
         """
-        # Find devices generated for this plan
+        from dcim.models import Cable
+
+        # IMPORTANT: Delete cables FIRST before devices to avoid termination
+        # protection issues in NetBox. Cables must be plan-scoped to avoid
+        # deleting cables from other plans.
+        cables_to_delete = Cable.objects.filter(
+            tags__slug=self.DEFAULT_TAG_SLUG,
+            custom_field_data__hedgehog_plan_id=str(self.plan.pk)
+        )
+        cable_count = cables_to_delete.count()
+        if cable_count > 0:
+            cables_to_delete.delete()
+
+        # Now delete devices for this plan (interfaces will cascade)
         devices_to_delete = Device.objects.filter(
             tags__slug=self.DEFAULT_TAG_SLUG,
             custom_field_data__hedgehog_plan_id=str(self.plan.pk)
         )
-
-        # Delete devices (interfaces will cascade)
         device_count = devices_to_delete.count()
         if device_count > 0:
             devices_to_delete.delete()
-
-        # Cables need explicit cleanup since they reference interfaces, not devices
-        from dcim.models import Cable
-        cables_to_delete = Cable.objects.filter(tags__slug=self.DEFAULT_TAG_SLUG)
-        cable_count = cables_to_delete.count()
-        if cable_count > 0:
-            cables_to_delete.delete()
 
     @transaction.atomic
     def generate_all(self) -> GenerationResult:

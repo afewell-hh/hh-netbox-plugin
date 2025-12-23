@@ -180,11 +180,23 @@ class TopologyPlanGenerateIntegrationTestCase(TestCase):
 
         This ensures test isolation when using --keepdb by removing any
         objects created by previous test runs or the current test.
+
+        NOTE: This is a test-only cleanup that removes ALL hedgehog-generated
+        objects across ALL plans (for test isolation). Production cleanup
+        in DeviceGenerator is plan-scoped.
         """
         from dcim.models import Cable
 
+        # IMPORTANT: Delete cables FIRST to avoid termination protection issues
+        try:
+            tag = Tag.objects.filter(slug='hedgehog-generated').first()
+            if tag:
+                # Test cleanup is intentionally global (all plans) for isolation
+                Cable.objects.filter(tags=tag).delete()
+        except Exception:
+            pass  # Ignore errors during cleanup
+
         # Delete ALL devices that have hedgehog_plan_id in custom_field_data
-        # This is more reliable than tag-based deletion
         try:
             # Query for all devices with any hedgehog plan ID
             devices_with_hedgehog = Device.objects.all()
@@ -195,16 +207,7 @@ class TopologyPlanGenerateIntegrationTestCase(TestCase):
         except Exception:
             pass  # Ignore errors during cleanup
 
-        # Delete all cables with hedgehog-generated tag
-        try:
-            tag = Tag.objects.filter(slug='hedgehog-generated').first()
-            if tag:
-                Cable.objects.filter(tags=tag).delete()
-        except Exception:
-            pass  # Ignore errors during cleanup
-
-        # Also delete any remaining interfaces not attached to devices
-        # (orphaned interfaces)
+        # Also delete any remaining orphaned interfaces
         try:
             Interface.objects.filter(device__isnull=True, device_type__isnull=True).delete()
         except Exception:
@@ -705,6 +708,119 @@ class TopologyPlanGenerateIntegrationTestCase(TestCase):
         overlap = first_device_ids & second_device_ids
         self.assertEqual(len(overlap), 0,
                         "Regeneration should delete old devices and create new ones")
+
+    def test_regeneration_is_plan_scoped(self):
+        """Test that regeneration only affects the current plan, not other plans"""
+        from dcim.models import Cable
+
+        # Create a second plan with its own devices
+        plan2 = TopologyPlan.objects.create(
+            name='Second Plan',
+            status=TopologyPlanStatusChoices.DRAFT
+        )
+        server_class2 = PlanServerClass.objects.create(
+            plan=plan2,
+            server_class_id='other-server',
+            category=ServerClassCategoryChoices.GPU,
+            quantity=1,
+            server_device_type=self.server_type
+        )
+        switch_class2 = PlanSwitchClass.objects.create(
+            plan=plan2,
+            switch_class_id='other-leaf',
+            fabric=FabricTypeChoices.FRONTEND,
+            hedgehog_role=HedgehogRoleChoices.SERVER_LEAF,
+            device_type_extension=self.device_ext,
+            uplink_ports_per_switch=4,
+            mclag_pair=False,
+            calculated_quantity=1
+        )
+        port_zone2 = SwitchPortZone.objects.create(
+            switch_class=switch_class2,
+            zone_name='server-downlinks',
+            zone_type=PortZoneTypeChoices.SERVER,
+            port_spec='1-60',
+            breakout_option=self.breakout_4x200g,
+            allocation_strategy=AllocationStrategyChoices.SEQUENTIAL,
+            priority=100
+        )
+        connection2 = PlanServerConnection.objects.create(
+            server_class=server_class2,
+            connection_id='other-conn',
+            connection_name='other',
+            ports_per_connection=1,
+            hedgehog_conn_type=ConnectionTypeChoices.UNBUNDLED,
+            distribution=ConnectionDistributionChoices.SAME_SWITCH,
+            target_switch_class=switch_class2,
+            speed=200
+        )
+
+        # Generate devices for BOTH plans
+        url1 = reverse('plugins:netbox_hedgehog:topologyplan_generate', args=[self.plan.pk])
+        url2 = reverse('plugins:netbox_hedgehog:topologyplan_generate', args=[plan2.pk])
+
+        # Generate plan 1
+        response1 = self.client.post(url1, follow=True)
+        self.assertEqual(response1.status_code, 200,
+                        "Plan 1 generation should succeed")
+
+        # Generate plan 2
+        response2 = self.client.post(url2, follow=True)
+        self.assertEqual(response2.status_code, 200,
+                        "Plan 2 generation should succeed")
+
+        # Count devices and cables for each plan
+        plan1_devices = Device.objects.filter(
+            custom_field_data__hedgehog_plan_id=str(self.plan.pk)
+        )
+        plan2_devices = Device.objects.filter(
+            custom_field_data__hedgehog_plan_id=str(plan2.pk)
+        )
+        plan1_cables = Cable.objects.filter(
+            custom_field_data__hedgehog_plan_id=str(self.plan.pk)
+        )
+        plan2_cables = Cable.objects.filter(
+            custom_field_data__hedgehog_plan_id=str(plan2.pk)
+        )
+
+        # Verify both plans have objects
+        self.assertEqual(plan1_devices.count(), 3,
+                        "Plan 1 should have 3 devices (2 servers + 1 switch)")
+        self.assertEqual(plan2_devices.count(), 2,
+                        "Plan 2 should have 2 devices (1 server + 1 switch)")
+        self.assertEqual(plan1_cables.count(), 4,
+                        "Plan 1 should have 4 cables")
+        self.assertEqual(plan2_cables.count(), 1,
+                        "Plan 2 should have 1 cable")
+
+        # Now REGENERATE plan 1 only
+        response3 = self.client.post(url1, follow=True)
+        self.assertEqual(response3.status_code, 200,
+                        "Plan 1 regeneration should succeed")
+
+        # Plan 1 should still have devices (regenerated)
+        plan1_devices_after = Device.objects.filter(
+            custom_field_data__hedgehog_plan_id=str(self.plan.pk)
+        )
+        self.assertEqual(plan1_devices_after.count(), 3,
+                        "Plan 1 should still have 3 devices after regeneration")
+
+        # CRITICAL: Plan 2 devices and cables should be UNAFFECTED
+        plan2_devices_after = Device.objects.filter(
+            custom_field_data__hedgehog_plan_id=str(plan2.pk)
+        )
+        plan2_cables_after = Cable.objects.filter(
+            custom_field_data__hedgehog_plan_id=str(plan2.pk)
+        )
+
+        self.assertEqual(plan2_devices_after.count(), 2,
+                        "Plan 2 devices should NOT be affected by Plan 1 regeneration")
+        self.assertEqual(plan2_cables_after.count(), 1,
+                        "Plan 2 cables should NOT be affected by Plan 1 regeneration")
+
+        # Clean up plan 2 objects manually
+        plan2_cables.delete()
+        plan2_devices.delete()
 
     # =============================================================================
     # Test: Invalid Plan Cases
