@@ -113,6 +113,10 @@ class TopologyPlanGenerateIntegrationTestCase(TestCase):
 
     def setUp(self):
         """Login as admin before each test"""
+        # Clean up any generated objects from previous test runs
+        # This ensures test isolation even with --keepdb
+        self._cleanup_all_generated_objects()
+
         self.client = Client()
         self.client.login(username='admin', password='testpass123')
 
@@ -164,6 +168,47 @@ class TopologyPlanGenerateIntegrationTestCase(TestCase):
             target_switch_class=self.switch_class,
             speed=200
         )
+
+    def tearDown(self):
+        """Clean up after each test"""
+        # Ensure all generated objects are removed after each test
+        self._cleanup_all_generated_objects()
+
+    def _cleanup_all_generated_objects(self):
+        """
+        Delete all generated NetBox objects (devices, interfaces, cables).
+
+        This ensures test isolation when using --keepdb by removing any
+        objects created by previous test runs or the current test.
+        """
+        from dcim.models import Cable
+
+        # Delete ALL devices that have hedgehog_plan_id in custom_field_data
+        # This is more reliable than tag-based deletion
+        try:
+            # Query for all devices with any hedgehog plan ID
+            devices_with_hedgehog = Device.objects.all()
+            for device in devices_with_hedgehog:
+                if device.custom_field_data and 'hedgehog_plan_id' in device.custom_field_data:
+                    # Delete will cascade to interfaces
+                    device.delete()
+        except Exception:
+            pass  # Ignore errors during cleanup
+
+        # Delete all cables with hedgehog-generated tag
+        try:
+            tag = Tag.objects.filter(slug='hedgehog-generated').first()
+            if tag:
+                Cable.objects.filter(tags=tag).delete()
+        except Exception:
+            pass  # Ignore errors during cleanup
+
+        # Also delete any remaining interfaces not attached to devices
+        # (orphaned interfaces)
+        try:
+            Interface.objects.filter(device__isnull=True, device_type__isnull=True).delete()
+        except Exception:
+            pass  # Ignore errors during cleanup
 
     # =============================================================================
     # Test: Preview GET Request
@@ -265,12 +310,24 @@ class TopologyPlanGenerateIntegrationTestCase(TestCase):
         self.assertEqual(response.status_code, 200,
                         "Generation should succeed")
 
-        # Verify interfaces were created
-        # 2 servers × 2 ports = 4 server interfaces
-        # 1 switch × 4 ports (allocated for 4 server connections) = 4 switch interfaces
-        # Total = 8 interfaces
-        self.assertEqual(Interface.objects.count(), 8,
-                        "Should create 8 interfaces (4 server + 4 switch)")
+        # Verify interfaces were created and cabled
+        # We expect 4 cables, each connecting 2 interfaces = 8 cabled interfaces
+        # This is more reliable than counting all interfaces since NetBox may
+        # auto-instantiate template interfaces from DeviceType
+        from dcim.models import Cable
+
+        plan_devices = Device.objects.filter(
+            custom_field_data__hedgehog_plan_id=str(self.plan.pk)
+        )
+
+        # Count interfaces that have cables attached (cable_end is not null)
+        cabled_interfaces = Interface.objects.filter(
+            device__in=plan_devices,
+            cable__isnull=False
+        ).distinct()
+
+        self.assertEqual(cabled_interfaces.count(), 8,
+                        "Should create 8 cabled interfaces (4 server + 4 switch)")
 
     def test_generate_post_creates_cables(self):
         """Test that POST request creates NetBox Cable objects"""
