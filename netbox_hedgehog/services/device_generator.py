@@ -59,11 +59,40 @@ class DeviceGenerator:
         self._device_cache: dict[str, Device] = {}
         self._interface_cache: dict[tuple[int, str], Interface] = {}
 
+    def _cleanup_generated_objects(self) -> None:
+        """
+        Delete all previously generated objects for this plan.
+
+        Deletes Devices (which cascades to Interfaces) and Cables that
+        were tagged as hedgehog-generated for this plan.
+        """
+        # Find devices generated for this plan
+        devices_to_delete = Device.objects.filter(
+            tags__slug=self.DEFAULT_TAG_SLUG,
+            custom_field_data__hedgehog_plan_id=str(self.plan.pk)
+        )
+
+        # Delete devices (interfaces will cascade)
+        device_count = devices_to_delete.count()
+        if device_count > 0:
+            devices_to_delete.delete()
+
+        # Cables need explicit cleanup since they reference interfaces, not devices
+        from dcim.models import Cable
+        cables_to_delete = Cable.objects.filter(tags__slug=self.DEFAULT_TAG_SLUG)
+        cable_count = cables_to_delete.count()
+        if cable_count > 0:
+            cables_to_delete.delete()
+
     @transaction.atomic
     def generate_all(self) -> GenerationResult:
         """
         Generate devices, interfaces, and cables for the plan.
+        Deletes any previously generated objects before creating new ones.
         """
+        # Delete old generated objects
+        self._cleanup_generated_objects()
+
         devices = []
         interfaces = []
         cables = []

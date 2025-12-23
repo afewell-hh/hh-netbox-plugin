@@ -1,0 +1,89 @@
+{% extends 'generic/object.html' %}
+{% load helpers %}
+
+{% block content %}
+<div class="row mb-3">
+    <div class="col col-md-6">
+        <div class="card">
+            <h5 class="card-header">Generation Preview</h5>
+            <div class="card-body">
+                <table class="table table-hover attr-table">
+                    <tr>
+                        <th scope="row">Plan</th>
+                        <td>
+                            <a href="{% url 'plugins:netbox_hedgehog:topologyplan_detail' pk=object.pk %}">
+                                {{ object.name }}
+                            </a>
+                        </td>
+                    </tr>
+                    <tr>
+                        <th scope="row">Devices</th>
+                        <td>{{ total_devices }}</td>
+                    </tr>
+                    <tr>
+                        <th scope="row">Servers</th>
+                        <td>{{ server_count }}</td>
+                    </tr>
+                    <tr>
+                        <th scope="row">Switches</th>
+                        <td>{{ switch_count }}</td>
+                    </tr>
+                    <tr>
+                        <th scope="row">Interfaces</th>
+                        <td>{{ interface_count }}</td>
+                    </tr>
+                    <tr>
+                        <th scope="row">Cables</th>
+                        <td>{{ cable_count }}</td>
+                    </tr>
+                    <tr>
+                        <th scope="row">Site</th>
+                        <td>{{ site_name }}</td>
+                    </tr>
+                </table>
+                <p class="text-muted mb-0">Counts reflect the current plan inputs.</p>
+            </div>
+        </div>
+    </div>
+    <div class="col col-md-6">
+        <div class="card">
+            <h5 class="card-header">Warnings</h5>
+            <div class="card-body">
+                {% if generation_state %}
+                    <p class="text-warning mb-1">
+                        <i class="mdi mdi-alert"></i>
+                        Previously generated at {{ generation_state.generated_at }}
+                    </p>
+                    {% if needs_regeneration %}
+                        <p class="text-warning mb-0">Plan has changed since last generation.</p>
+                    {% else %}
+                        <p class="text-muted mb-0">Plan has not changed since last generation.</p>
+                    {% endif %}
+                {% else %}
+                    <p class="text-muted mb-0">No previous generation detected.</p>
+                {% endif %}
+                {% if server_count == 0 %}
+                    <p class="text-danger mt-2 mb-0">No server classes defined.</p>
+                {% endif %}
+                {% if switch_count == 0 %}
+                    <p class="text-danger mt-2 mb-0">No switch classes defined.</p>
+                {% endif %}
+            </div>
+        </div>
+        <div class="card mt-3">
+            <h5 class="card-header">Confirm</h5>
+            <div class="card-body">
+                <form method="post">
+                    {% csrf_token %}
+                    <button type="submit" class="btn btn-warning">
+                        <i class="mdi mdi-cube"></i> Generate Devices
+                    </button>
+                    <a href="{% url 'plugins:netbox_hedgehog:topologyplan_detail' pk=object.pk %}" class="btn btn-secondary">
+                        Cancel
+                    </a>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

@@ -8,12 +8,11 @@ from django.db import models
 from django.core.validators import MinValueValidator
 from django.core.exceptions import ValidationError
 from django.urls import reverse
-from netbox.models import NetBoxModel
 
 from netbox_hedgehog.choices import GenerationStatusChoices
 
 
-class GenerationState(NetBoxModel):
+class GenerationState(models.Model):
     """
     Tracks generation state for a TopologyPlan.
 

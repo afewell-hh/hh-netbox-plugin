@@ -6,12 +6,14 @@ CRUD views for BreakoutOption, DeviceTypeExtension, and Topology Plan models.
 import re
 from django.contrib import messages
 from django.contrib.auth.mixins import PermissionRequiredMixin
+from django.core.exceptions import ValidationError
 from django.http import HttpResponse
-from django.shortcuts import get_object_or_404, redirect
+from django.shortcuts import get_object_or_404, redirect, render
 from django.views import View
 
 from netbox.views import generic
 from .. import models, tables, forms
+from ..services.device_generator import DeviceGenerator
 from ..utils.topology_calculations import update_plan_calculations
 from ..services.yaml_generator import generate_yaml_for_plan
 
@@ -108,6 +110,75 @@ class TopologyPlanEditView(generic.ObjectEditView):
 class TopologyPlanDeleteView(generic.ObjectDeleteView):
     """Delete view for TopologyPlans"""
     queryset = models.TopologyPlan.objects.all()
+
+
+class TopologyPlanGenerateView(PermissionRequiredMixin, View):
+    """
+    Preview and generate NetBox objects for a topology plan.
+
+    GET: show preview counts and warnings
+    POST: run generation via DeviceGenerator
+    """
+    permission_required = 'netbox_hedgehog.change_topologyplan'
+    raise_exception = True
+    template_name = 'netbox_hedgehog/topology_planning/topologyplan_generate.html'
+
+    def get(self, request, pk):
+        plan = get_object_or_404(models.TopologyPlan, pk=pk)
+        context = self._build_context(plan)
+        return render(request, self.template_name, context)
+
+    def post(self, request, pk):
+        plan = get_object_or_404(models.TopologyPlan, pk=pk)
+        if plan.server_classes.count() == 0 or plan.switch_classes.count() == 0:
+            messages.error(
+                request,
+                "Generation requires at least one server class and one switch class."
+            )
+            return redirect('plugins:netbox_hedgehog:topologyplan_generate', pk=plan.pk)
+
+        generator = DeviceGenerator(plan=plan)
+        try:
+            result = generator.generate_all()
+        except ValidationError as exc:
+            messages.error(request, f"Generation failed: {' '.join(exc.messages)}")
+            return redirect('plugins:netbox_hedgehog:topologyplan_generate', pk=plan.pk)
+        except Exception as exc:  # pragma: no cover - safety net for UI feedback
+            messages.error(request, f"Generation failed: {exc}")
+            return redirect('plugins:netbox_hedgehog:topologyplan_generate', pk=plan.pk)
+
+        messages.success(
+            request,
+            "Generation complete: "
+            f"{result.device_count} devices, "
+            f"{result.interface_count} interfaces, "
+            f"{result.cable_count} cables."
+        )
+        return redirect('plugins:netbox_hedgehog:topologyplan_detail', pk=plan.pk)
+
+    def _build_context(self, plan):
+        server_classes = plan.server_classes.prefetch_related('connections')
+        switch_classes = plan.switch_classes.all()
+
+        server_count = sum(sc.quantity for sc in server_classes)
+        switch_count = sum(sc.effective_quantity for sc in switch_classes)
+        port_count = sum(
+            sc.quantity * connection.ports_per_connection
+            for sc in server_classes
+            for connection in sc.connections.all()
+        )
+
+        return {
+            'object': plan,
+            'server_count': server_count,
+            'switch_count': switch_count,
+            'total_devices': server_count + switch_count,
+            'interface_count': port_count * 2,
+            'cable_count': port_count,
+            'generation_state': getattr(plan, 'generation_state', None),
+            'needs_regeneration': plan.needs_regeneration,
+            'site_name': DeviceGenerator.DEFAULT_SITE_NAME,
+        }
 
 
 class TopologyPlanRecalculateView(PermissionRequiredMixin, View):
