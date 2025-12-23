@@ -64,3 +64,7 @@ node_modules
 
 # Secrets
 .env
+
+# Local helpers and artifacts
+check_error_html.py
+tw-tus1-netbox-inventory.xlsx
