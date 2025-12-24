@@ -9,6 +9,7 @@ that users can actually complete this workflow in a browser.
 """
 
 import pytest
+import re
 from playwright.sync_api import Page, expect
 from .conftest import NETBOX_URL
 
@@ -37,10 +38,10 @@ class TestGenerateDevicesWorkflow:
         page.click('a:has-text("Topology Plans")')
 
         # Verify we're on the topology plans list page
-        expect(page).to_have_url(pytest.regexp(r'.*/plugins/netbox_hedgehog/topology-plans/.*'))
+        expect(page).to_have_url(re.compile(r'.*/plugins/hedgehog/topology-plans/.*'))
 
         # Verify page title or heading
-        expect(page.locator('h1, h2, .page-title')).to_contain_text('Topology Plans')
+        expect(page.locator('.page-title, h1.page-title')).to_contain_text('Topology Plans')
 
     def test_generate_button_visible_on_plan_detail(self, authenticated_page: Page):
         """
@@ -52,7 +53,7 @@ class TestGenerateDevicesWorkflow:
         page = authenticated_page
 
         # Navigate to topology plans
-        page.goto(f'{NETBOX_URL}/plugins/netbox_hedgehog/topology-plans/')
+        page.goto(f'{NETBOX_URL}/plugins/hedgehog/topology-plans/')
 
         # Check if any plans exist
         plans_exist = page.locator('table tbody tr').count() > 0
@@ -64,7 +65,7 @@ class TestGenerateDevicesWorkflow:
         page.click('table tbody tr:first-child td a:first-child')
 
         # Verify we're on plan detail page
-        expect(page).to_have_url(pytest.regexp(r'.*/topology-plans/\d+/$'))
+        expect(page).to_have_url(re.compile(r'.*/topology-plans/\d+/$'))
 
         # Verify Generate Devices button exists
         generate_button = page.locator('a:has-text("Generate Devices"), button:has-text("Generate Devices")')
@@ -84,7 +85,7 @@ class TestGenerateDevicesWorkflow:
         page = authenticated_page
 
         # Navigate to topology plans
-        page.goto(f'{NETBOX_URL}/plugins/netbox_hedgehog/topology-plans/')
+        page.goto(f'{NETBOX_URL}/plugins/hedgehog/topology-plans/')
 
         # Check if any plans exist
         if page.locator('table tbody tr').count() == 0:
@@ -101,7 +102,7 @@ class TestGenerateDevicesWorkflow:
         generate_button.click()
 
         # Verify we're on the generate preview page
-        expect(page).to_have_url(pytest.regexp(r'.*/topology-plans/\d+/generate/$'))
+        expect(page).to_have_url(re.compile(r'.*/topology-plans/\d+/generate/$'))
 
         # Verify preview page shows counts
         # The preview should show:
@@ -127,7 +128,7 @@ class TestGenerateDevicesWorkflow:
         page = authenticated_page
 
         # Navigate directly to the empty test plan
-        page.goto(f'{NETBOX_URL}/plugins/netbox_hedgehog/topology-plans/6/')
+        page.goto(f'{NETBOX_URL}/plugins/hedgehog/topology-plans/6/')
 
         # Click Generate Devices button
         generate_button = page.locator('a:has-text("Generate Devices"), button:has-text("Generate Devices")').first
@@ -137,7 +138,7 @@ class TestGenerateDevicesWorkflow:
         generate_button.click()
 
         # Verify we're on the generate preview page
-        expect(page).to_have_url(pytest.regexp(r'.*/topology-plans/6/generate/$'))
+        expect(page).to_have_url(re.compile(r'.*/topology-plans/6/generate/$'))
 
         # Verify warning/alert appears about empty plan
         expect(page.locator('text=/warning/i, text=/no.*server/i, text=/no.*switch/i, .alert-warning')).to_be_visible()
@@ -152,7 +153,7 @@ class TestGenerateDevicesWorkflow:
         page = authenticated_page
 
         # Navigate to topology plans
-        page.goto(f'{NETBOX_URL}/plugins/netbox_hedgehog/topology-plans/')
+        page.goto(f'{NETBOX_URL}/plugins/hedgehog/topology-plans/')
 
         # Check if any plans exist
         if page.locator('table tbody tr').count() == 0:
@@ -184,7 +185,7 @@ class TestGenerateDevicesWorkflow:
         confirm_button.click()
 
         # Should redirect to plan detail page
-        expect(page).to_have_url(pytest.regexp(r'.*/topology-plans/\d+/$'), timeout=30000)
+        expect(page).to_have_url(re.compile(r'.*/topology-plans/\d+/$'), timeout=30000)
 
         # Verify success message appears
         expect(page.locator('text=/generation complete/i, .alert-success, .message-success')).to_be_visible(timeout=5000)
@@ -194,7 +195,7 @@ class TestGenerateDevicesWorkflow:
         page.locator('a:has-text("Devices")').nth(1).click()  # Click the Devices submenu
 
         # Wait for devices page to load
-        expect(page).to_have_url(pytest.regexp(r'.*/dcim/devices/.*'))
+        expect(page).to_have_url(re.compile(r'.*/dcim/devices/.*'))
 
         # Filter by hedgehog-generated tag
         # NetBox filtering UI varies, so we need to find the filter form
@@ -260,7 +261,7 @@ class TestGenerateDevicesWorkflow:
         page = authenticated_page
 
         # Navigate to topology plans
-        page.goto(f'{NETBOX_URL}/plugins/netbox_hedgehog/topology-plans/')
+        page.goto(f'{NETBOX_URL}/plugins/hedgehog/topology-plans/')
 
         if page.locator('table tbody tr').count() == 0:
             pytest.skip("No topology plans exist")
@@ -299,13 +300,13 @@ class TestGenerateDevicesWithTestData:
         page = authenticated_page
 
         # Navigate to UX Test Plan 1 (ID 4)
-        page.goto(f'{NETBOX_URL}/plugins/netbox_hedgehog/topology-plans/4/')
+        page.goto(f'{NETBOX_URL}/plugins/hedgehog/topology-plans/4/')
 
         # Click Generate Devices
         page.click('a:has-text("Generate Devices"), button:has-text("Generate Devices")')
 
         # Read device counts from preview page
-        page.wait_for_url(pytest.regexp(r'.*/topology-plans/4/generate/$'))
+        page.wait_for_url(re.compile(r'.*/topology-plans/4/generate/$'))
 
         # Look for device count in preview (e.g., "Total Devices: 5")
         # The exact format depends on template, so we use flexible matching
@@ -315,7 +316,7 @@ class TestGenerateDevicesWithTestData:
         page.click('button:has-text("Generate"), input[type="submit"][value*="Generate"]')
 
         # Wait for success message
-        expect(page).to_have_url(pytest.regexp(r'.*/topology-plans/4/$'), timeout=30000)
+        expect(page).to_have_url(re.compile(r'.*/topology-plans/4/$'), timeout=30000)
         expect(page.locator('text=/generation complete/i, .alert-success')).to_be_visible()
 
         # Navigate to Devices to verify count
@@ -336,7 +337,7 @@ class TestGenerateDevicesWithTestData:
         page = authenticated_page
 
         # Navigate to UX Test Plan 1 (ID 4)
-        page.goto(f'{NETBOX_URL}/plugins/netbox_hedgehog/topology-plans/4/')
+        page.goto(f'{NETBOX_URL}/plugins/hedgehog/topology-plans/4/')
 
         # Check if already generated
         if 'regenerate' in page.content().lower():
@@ -346,7 +347,7 @@ class TestGenerateDevicesWithTestData:
             # First time - generate
             page.click('a:has-text("Generate Devices"), button:has-text("Generate Devices")')
             page.click('button:has-text("Generate"), input[type="submit"][value*="Generate"]')
-            expect(page).to_have_url(pytest.regexp(r'.*/topology-plans/4/$'), timeout=30000)
+            expect(page).to_have_url(re.compile(r'.*/topology-plans/4/$'), timeout=30000)
 
         # Navigate to Cables page
         page.goto(f'{NETBOX_URL}/dcim/cables/')
@@ -374,17 +375,17 @@ class TestGenerateDevicesWithTestData:
         page = authenticated_page
 
         # Step 1: Generate Plan A (ID 4)
-        page.goto(f'{NETBOX_URL}/plugins/netbox_hedgehog/topology-plans/4/')
+        page.goto(f'{NETBOX_URL}/plugins/hedgehog/topology-plans/4/')
 
         # Generate if not already generated
         page.click('a:has-text("Generate Devices"), button:has-text("Generate Devices")')
         generate_or_regenerate = page.locator('button:has-text("Generate"), button:has-text("Regenerate")')
         generate_or_regenerate.first.click()
 
-        expect(page).to_have_url(pytest.regexp(r'.*/topology-plans/4/$'), timeout=30000)
+        expect(page).to_have_url(re.compile(r'.*/topology-plans/4/$'), timeout=30000)
 
         # Step 2: Generate Plan B (ID 5)
-        page.goto(f'{NETBOX_URL}/plugins/netbox_hedgehog/topology-plans/5/')
+        page.goto(f'{NETBOX_URL}/plugins/hedgehog/topology-plans/5/')
         page.click('a:has-text("Generate Devices"), button:has-text("Generate Devices")')
 
         # Count devices on Plan B preview
@@ -394,14 +395,14 @@ class TestGenerateDevicesWithTestData:
         generate_or_regenerate = page.locator('button:has-text("Generate"), button:has-text("Regenerate")')
         generate_or_regenerate.first.click()
 
-        expect(page).to_have_url(pytest.regexp(r'.*/topology-plans/5/$'), timeout=30000)
+        expect(page).to_have_url(re.compile(r'.*/topology-plans/5/$'), timeout=30000)
 
         # Step 3: Get Plan B device count by navigating to preview again
         page.click('a:has-text("Generate Devices"), button:has-text("Generate Devices")')
         plan_b_preview_content = page.content()
 
         # Step 4: Regenerate Plan A
-        page.goto(f'{NETBOX_URL}/plugins/netbox_hedgehog/topology-plans/4/')
+        page.goto(f'{NETBOX_URL}/plugins/hedgehog/topology-plans/4/')
         page.click('a:has-text("Generate Devices"), button:has-text("Generate Devices")')
 
         # Should show regeneration warning
@@ -411,10 +412,10 @@ class TestGenerateDevicesWithTestData:
         regenerate_button = page.locator('button:has-text("Regenerate"), button:has-text("Generate")')
         regenerate_button.first.click()
 
-        expect(page).to_have_url(pytest.regexp(r'.*/topology-plans/4/$'), timeout=30000)
+        expect(page).to_have_url(re.compile(r'.*/topology-plans/4/$'), timeout=30000)
 
         # Step 5: Verify Plan B unchanged
-        page.goto(f'{NETBOX_URL}/plugins/netbox_hedgehog/topology-plans/5/')
+        page.goto(f'{NETBOX_URL}/plugins/hedgehog/topology-plans/5/')
         page.click('a:has-text("Generate Devices"), button:has-text("Generate Devices")')
 
         plan_b_preview_after = page.content()

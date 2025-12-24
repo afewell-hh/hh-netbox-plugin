@@ -4,9 +4,20 @@ Pytest configuration and fixtures for browser-based UX tests.
 Provides browser instances and authenticated sessions for testing.
 """
 
+# CRITICAL: Prevent pytest from importing parent netbox_hedgehog package
+# Browser tests run on HOST (not in container) so Django/NetBox aren't available
+import sys
+import os
+
+# Remove parent package paths from sys.modules to prevent import attempts
+# This must happen BEFORE any other imports that might trigger parent imports
+if 'netbox_hedgehog' in sys.modules:
+    del sys.modules['netbox_hedgehog']
+if 'netbox_hedgehog.tests' in sys.modules:
+    del sys.modules['netbox_hedgehog.tests']
+
 import pytest
 from playwright.sync_api import Page, expect, Browser, BrowserContext
-import os
 
 
 # NetBox connection details
@@ -68,8 +79,8 @@ def authenticated_page(page: Page) -> Page:
     page.wait_for_url(f'{NETBOX_URL}/', timeout=5000)
 
     # Verify we see the logged-in user indicator
-    # NetBox shows username in the navbar when logged in
-    expect(page.locator('text=' + NETBOX_USERNAME)).to_be_visible(timeout=5000)
+    # Look for the login success toast message (more specific than searching for "admin")
+    expect(page.locator('text=/Logged in as/i')).to_be_visible(timeout=5000)
 
     return page
 

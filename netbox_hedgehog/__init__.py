@@ -1,4 +1,11 @@
-from netbox.plugins import PluginConfig
+try:
+    from netbox.plugins import PluginConfig
+except ModuleNotFoundError:
+    # Django/NetBox not available - this is OK for browser UX tests
+    # Browser tests run on HOST machine and connect via HTTP
+    # They don't need Django imports, just the test code
+    PluginConfig = object  # Dummy base class
+
 
 class HedgehogPluginConfig(PluginConfig):
     name = 'netbox_hedgehog'
