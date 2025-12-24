@@ -1,0 +1,147 @@
+name: Browser UX Tests
+
+on:
+  push:
+    branches: [ main, develop, 'diet-*' ]
+  pull_request:
+    branches: [ main, develop ]
+  workflow_dispatch:  # Allow manual trigger
+
+jobs:
+  browser-tests:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout plugin code
+        uses: actions/checkout@v4
+        with:
+          path: hh-netbox-plugin
+
+      - name: Checkout netbox-docker
+        uses: actions/checkout@v4
+        with:
+          repository: netbox-community/netbox-docker
+          path: netbox-docker
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+
+      - name: Install Playwright
+        run: |
+          pip install playwright pytest-playwright
+          python -m playwright install chromium
+          python -m playwright install-deps chromium
+
+      - name: Configure NetBox Docker
+        run: |
+          cd netbox-docker
+
+          # Create docker-compose.override.yml to mount plugin
+          cat > docker-compose.override.yml << 'EOF'
+          services:
+            netbox:
+              volumes:
+                - ../hh-netbox-plugin:/opt/netbox/netbox/netbox_hedgehog:ro
+          EOF
+
+          # Create Dockerfile-Plugins to install plugin dependencies
+          cat > Dockerfile-Plugins << 'EOF'
+          ARG FROM
+          FROM ${FROM}
+
+          # Install plugin dependencies (if any)
+          # RUN pip install -r /opt/netbox/netbox/netbox_hedgehog/requirements.txt
+
+          # Install the plugin
+          RUN pip install -e /opt/netbox/netbox/netbox_hedgehog/
+          EOF
+
+          # Create plugin configuration
+          mkdir -p configuration
+          cat > configuration/plugins.py << 'EOF'
+          PLUGINS = ['netbox_hedgehog']
+          PLUGINS_CONFIG = {
+              'netbox_hedgehog': {
+                  'kubernetes_config_file': None,
+                  'sync_interval': 300,
+                  'enable_webhooks': True,
+                  'max_concurrent_syncs': 5,
+              }
+          }
+          EOF
+
+      - name: Start NetBox
+        run: |
+          cd netbox-docker
+          docker compose pull
+          docker compose up -d
+
+          # Wait for NetBox to be ready
+          echo "Waiting for NetBox to start..."
+          for i in {1..60}; do
+            if curl -f http://localhost:8000/login/ > /dev/null 2>&1; then
+              echo "NetBox is ready!"
+              break
+            fi
+            echo "Waiting... ($i/60)"
+            sleep 5
+          done
+
+      - name: Check NetBox status
+        run: |
+          docker compose -f netbox-docker/docker-compose.yml ps
+          docker compose -f netbox-docker/docker-compose.yml logs netbox | tail -50
+
+      - name: Run NetBox migrations
+        run: |
+          cd netbox-docker
+          docker compose exec -T netbox python manage.py migrate netbox_hedgehog
+
+      - name: Create superuser
+        run: |
+          cd netbox-docker
+          docker compose exec -T netbox python manage.py shell << 'EOF'
+          from django.contrib.auth import get_user_model
+          User = get_user_model()
+          if not User.objects.filter(username='admin').exists():
+              User.objects.create_superuser('admin', 'admin@example.com', 'admin')
+              print('Superuser created')
+          else:
+              print('Superuser already exists')
+          EOF
+
+      - name: Set up test data
+        run: |
+          cd netbox-docker
+          docker compose exec -T netbox python manage.py setup_ux_test_data --clean
+
+      - name: Run browser UX tests
+        run: |
+          cd hh-netbox-plugin/netbox_hedgehog/tests/test_ux
+          python -m pytest -v --tb=short
+        env:
+          NETBOX_URL: http://localhost:8000
+          NETBOX_USERNAME: admin
+          NETBOX_PASSWORD: admin
+
+      - name: Upload screenshots on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-screenshots
+          path: hh-netbox-plugin/test-screenshots/
+          if-no-files-found: ignore
+
+      - name: Show NetBox logs on failure
+        if: failure()
+        run: |
+          cd netbox-docker
+          docker compose logs netbox | tail -200
+
+      - name: Clean up
+        if: always()
+        run: |
+          cd netbox-docker
+          docker compose down -v
