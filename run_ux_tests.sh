@@ -24,10 +24,10 @@ cd "$(dirname "$0")/netbox_hedgehog/tests/test_ux"
 
 # Run pytest with explicit path to avoid parent conftest.py files
 # Use --override-ini to disable pytest-django
+# Note: Omitting --headed runs in headless mode (default)
 python3 -m pytest \
     --override-ini="addopts=-p no:django" \
     --browser chromium \
-    --headed=false \
     -v \
     "$@"
 

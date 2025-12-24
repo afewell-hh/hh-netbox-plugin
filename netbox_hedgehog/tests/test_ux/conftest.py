@@ -14,6 +14,10 @@ NETBOX_URL = os.environ.get('NETBOX_URL', 'http://localhost:8000')
 NETBOX_USERNAME = os.environ.get('NETBOX_USERNAME', 'admin')
 NETBOX_PASSWORD = os.environ.get('NETBOX_PASSWORD', 'admin')
 
+# IMPORTANT: Plugin URL base is /plugins/hedgehog/ (not /plugins/netbox_hedgehog/)
+# This is set by base_url='hedgehog' in __init__.py:HedgehogPluginConfig
+# Tests should use: f'{NETBOX_URL}/plugins/hedgehog/topology-plans/'
+
 
 @pytest.fixture(scope="session")
 def browser_context_args(browser_context_args):
@@ -46,7 +50,7 @@ def authenticated_page(page: Page) -> Page:
 
     Usage:
         def test_something(authenticated_page: Page):
-            authenticated_page.goto(f'{NETBOX_URL}/plugins/netbox_hedgehog/...')
+            authenticated_page.goto(f'{NETBOX_URL}/plugins/hedgehog/...')
             # Test authenticated functionality
     """
     # Navigate to login page
