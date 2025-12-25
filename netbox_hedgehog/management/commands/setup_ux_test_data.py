@@ -14,6 +14,8 @@ Usage:
 from django.core.management.base import BaseCommand
 from django.db import transaction
 from dcim.models import DeviceType, Manufacturer
+from dcim.models import Cable, Device, Interface
+from extras.models import Tag
 
 from netbox_hedgehog.models.topology_planning import (
     TopologyPlan,
@@ -23,6 +25,7 @@ from netbox_hedgehog.models.topology_planning import (
     DeviceTypeExtension,
     BreakoutOption,
     SwitchPortZone,
+    GenerationState,
 )
 from netbox_hedgehog.choices import (
     TopologyPlanStatusChoices,
@@ -79,10 +82,21 @@ class Command(BaseCommand):
 
     def _cleanup_test_data(self):
         """Remove existing UX test data"""
-        # Delete test plans (cascades to related objects)
-        deleted_count = TopologyPlan.objects.filter(
-            name__startswith='UX Test Plan'
-        ).delete()[0]
+        # Remove generated objects from prior UX test runs
+        tag = Tag.objects.filter(slug='hedgehog-generated').first()
+        if tag:
+            Cable.objects.filter(tags=tag).delete()
+            Device.objects.filter(tags=tag).delete()
+            Interface.objects.filter(tags=tag).delete()
+
+        # Delete in dependency order due to PROTECT on target_switch_class
+        plans = TopologyPlan.objects.filter(name__startswith='UX Test Plan')
+        PlanServerConnection.objects.filter(server_class__plan__in=plans).delete()
+        SwitchPortZone.objects.filter(switch_class__plan__in=plans).delete()
+        PlanSwitchClass.objects.filter(plan__in=plans).delete()
+        PlanServerClass.objects.filter(plan__in=plans).delete()
+        GenerationState.objects.filter(plan__in=plans).delete()
+        deleted_count = plans.delete()[0]
 
         if deleted_count > 0:
             self.stdout.write(f'  Deleted {deleted_count} test plans')
