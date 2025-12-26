@@ -6,7 +6,7 @@ CRUD views for BreakoutOption, DeviceTypeExtension, and Topology Plan models.
 import re
 from django.contrib import messages
 from django.contrib.auth.mixins import PermissionRequiredMixin
-from django.core.exceptions import ValidationError
+from django.core.exceptions import PermissionDenied, ValidationError
 from django.http import HttpResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.views import View
@@ -16,6 +16,11 @@ from .. import models, tables, forms
 from ..services.device_generator import DeviceGenerator
 from ..utils.topology_calculations import update_plan_calculations
 from ..services.yaml_generator import generate_yaml_for_plan
+
+
+def _require_topologyplan_change_permission(request):
+    if not request.user.has_perm('netbox_hedgehog.change_topologyplan'):
+        raise PermissionDenied
 
 
 # BreakoutOption Views
@@ -124,11 +129,13 @@ class TopologyPlanGenerateView(PermissionRequiredMixin, View):
     template_name = 'netbox_hedgehog/topology_planning/topologyplan_generate.html'
 
     def get(self, request, pk):
+        _require_topologyplan_change_permission(request)
         plan = get_object_or_404(models.TopologyPlan, pk=pk)
         context = self._build_context(plan)
         return render(request, self.template_name, context)
 
     def post(self, request, pk):
+        _require_topologyplan_change_permission(request)
         plan = get_object_or_404(models.TopologyPlan, pk=pk)
         if plan.server_classes.count() == 0 or plan.switch_classes.count() == 0:
             messages.error(
@@ -193,6 +200,7 @@ class TopologyPlanRecalculateView(PermissionRequiredMixin, View):
 
     def post(self, request, pk):
         """Handle recalculate POST request"""
+        _require_topologyplan_change_permission(request)
         plan = get_object_or_404(models.TopologyPlan, pk=pk)
 
         # Run calculation engine
@@ -226,6 +234,7 @@ class TopologyPlanExportView(PermissionRequiredMixin, View):
 
     def get(self, request, pk):
         """Handle export GET request"""
+        _require_topologyplan_change_permission(request)
         plan = get_object_or_404(models.TopologyPlan, pk=pk)
 
         # Auto-calculate switch quantities before export

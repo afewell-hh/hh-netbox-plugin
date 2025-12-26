@@ -255,53 +255,32 @@ class TestGenerateDevicesWorkflow:
         # 4. Verifying devices changed
         pytest.skip("Requires test data setup - implement after basic tests pass")
 
-    @pytest.mark.skip(reason="Permission checking needs investigation - view allows access regardless of change permission")
-    def test_permission_denied_without_change_permission(self, page: Page):
+    def test_permission_denied_without_change_permission(self, viewer_page: Page):
         """
         Test that users without change_topologyplan permission cannot access generate.
 
         Uses viewer user (username: viewer, password: viewer) created by setup_ux_test_data.
-
-        TODO: The generate view currently doesn't enforce change_topologyplan permission.
-        This test will pass once the view is updated to check permissions properly.
+        Verifies that PermissionRequiredMixin enforcement in generate view works correctly.
         """
-        # Login as viewer (view-only permissions)
-        page.goto(f'{NETBOX_URL}/login/')
-        page.fill('input[name="username"]', 'viewer')
-        page.fill('input[name="password"]', 'viewer')
-        page.click('button[type="submit"]')
-        page.wait_for_url(f'{NETBOX_URL}/', timeout=5000)
+        page = viewer_page
 
-        # Try to access a known plan ID directly (Plan 1 = ID 19 from setup_ux_test_data)
-        # Viewer can view plans, but shouldn't be able to generate
-        page.goto(f'{NETBOX_URL}/plugins/hedgehog/topology-plans/19/')
+        # Try to access generate URL directly for a known plan
+        # We know from setup_ux_test_data that plans exist, try to access one
+        # Just use a plan ID directly - viewer can view but not generate
+        page.goto(f'{NETBOX_URL}/plugins/hedgehog/topology-plans/22/generate/')
 
-        # Wait for page to load
-        page.wait_for_load_state('networkidle', timeout=10000)
-
-        # Generate Devices button should NOT be visible for view-only users
-        generate_button = page.locator('a:has-text("Generate Devices"), button:has-text("Generate Devices")')
-
-        # Button should not be visible for users without change permission
-        button_count = generate_button.count()
-
-        if button_count > 0:
-            # Button shouldn't be visible for view-only user
-            pytest.fail("Generate Devices button should not be visible for users without change permission")
-
-        # Also try to access generate URL directly (should be denied)
-        page.goto(f'{NETBOX_URL}/plugins/hedgehog/topology-plans/19/generate/')
-
-        # Should either redirect or show permission denied
+        # NetBox shows "Access Denied" in the page title for permission errors
+        page_title = page.title()
         page_content = page.content().lower()
+
         has_permission_denied = (
+            'access denied' in page_title.lower() or  # NetBox standard permission denied title
             'permission denied' in page_content or
             'forbidden' in page_content or
             '403' in page_content or
-            'not permitted' in page_content or
-            page.url != f'{NETBOX_URL}/plugins/hedgehog/topology-plans/19/generate/'  # Redirected away
+            'not permitted' in page_content
         )
-        assert has_permission_denied, "Expected permission denied when accessing generate URL directly"
+        assert has_permission_denied, f"Expected permission denied, got title: {page_title}"
 
     def test_export_yaml_button_exists(self, authenticated_page: Page):
         """

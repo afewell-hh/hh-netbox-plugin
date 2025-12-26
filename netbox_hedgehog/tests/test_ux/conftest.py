@@ -24,6 +24,8 @@ from playwright.sync_api import Page, expect, Browser, BrowserContext
 NETBOX_URL = os.environ.get('NETBOX_URL', 'http://localhost:8000')
 NETBOX_USERNAME = os.environ.get('NETBOX_USERNAME', 'admin')
 NETBOX_PASSWORD = os.environ.get('NETBOX_PASSWORD', 'admin')
+NETBOX_VIEWER_USERNAME = os.environ.get('NETBOX_VIEWER_USERNAME', 'viewer')
+NETBOX_VIEWER_PASSWORD = os.environ.get('NETBOX_VIEWER_PASSWORD', 'viewer')
 
 # IMPORTANT: Plugin URL base is /plugins/hedgehog/ (not /plugins/netbox_hedgehog/)
 # This is set by base_url='hedgehog' in __init__.py:HedgehogPluginConfig
@@ -47,6 +49,15 @@ def browser_context_args(browser_context_args):
     }
 
 
+def _login(page: Page, username: str, password: str) -> None:
+    page.goto(f'{NETBOX_URL}/login/')
+    page.fill('input[name="username"]', username)
+    page.fill('input[name="password"]', password)
+    page.click('button[type="submit"]')
+    page.wait_for_url(f'{NETBOX_URL}/', timeout=5000)
+    expect(page.locator('text=/Logged in as/i')).to_be_visible(timeout=5000)
+
+
 @pytest.fixture
 def authenticated_page(page: Page) -> Page:
     """
@@ -64,24 +75,17 @@ def authenticated_page(page: Page) -> Page:
             authenticated_page.goto(f'{NETBOX_URL}/plugins/hedgehog/...')
             # Test authenticated functionality
     """
-    # Navigate to login page
-    page.goto(f'{NETBOX_URL}/login/')
+    _login(page, NETBOX_USERNAME, NETBOX_PASSWORD)
 
-    # Fill in login form
-    page.fill('input[name="username"]', NETBOX_USERNAME)
-    page.fill('input[name="password"]', NETBOX_PASSWORD)
+    return page
 
-    # Submit form
-    page.click('button[type="submit"]')
 
-    # Wait for navigation to complete and verify we're logged in
-    # NetBox redirects to home page after login
-    page.wait_for_url(f'{NETBOX_URL}/', timeout=5000)
-
-    # Verify we see the logged-in user indicator
-    # Look for the login success toast message (more specific than searching for "admin")
-    expect(page.locator('text=/Logged in as/i')).to_be_visible(timeout=5000)
-
+@pytest.fixture
+def viewer_page(page: Page) -> Page:
+    """
+    Fixture providing a logged-in viewer session (view-only permissions).
+    """
+    _login(page, NETBOX_VIEWER_USERNAME, NETBOX_VIEWER_PASSWORD)
     return page
 
 
