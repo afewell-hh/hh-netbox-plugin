@@ -66,15 +66,27 @@ class Command(BaseCommand):
                 plan2 = self._create_test_plan_2(manufacturer, breakout_option, device_ext)
                 empty_plan = self._create_empty_plan()
 
+                # Pre-generate plan2 so we can test regeneration warning
+                self.stdout.write('\n  Pre-generating Plan 2 for regeneration tests...')
+                self._generate_plan(plan2)
+
+                # Create limited-permission user for permission tests
+                self.stdout.write('  Creating limited-permission user...')
+                self._create_limited_user()
+
                 self.stdout.write(self.style.SUCCESS('\n✅ Test data created successfully!'))
                 self.stdout.write('\nCreated Plans:')
                 self.stdout.write(f'  1. {plan1.name} (ID: {plan1.pk}) - Ready for generation')
-                self.stdout.write(f'  2. {plan2.name} (ID: {plan2.pk}) - Multi-plan test')
+                self.stdout.write(f'  2. {plan2.name} (ID: {plan2.pk}) - Pre-generated for regeneration tests')
                 self.stdout.write(f'  3. {empty_plan.name} (ID: {empty_plan.pk}) - Empty plan for warnings')
 
+                self.stdout.write('\nCreated Users:')
+                self.stdout.write('  - admin / admin (superuser)')
+                self.stdout.write('  - viewer / viewer (view-only permissions)')
+
                 self.stdout.write('\n📝 Next steps:')
-                self.stdout.write('  - Run browser tests: python3 test_framework_simple.py')
-                self.stdout.write('  - Tests will use these plans to validate the UI')
+                self.stdout.write('  - Run browser tests: python3 -m pytest -v')
+                self.stdout.write('  - Tests will use these plans and users to validate the UI')
 
         except Exception as e:
             self.stdout.write(self.style.ERROR(f'\n❌ Error creating test data: {str(e)}'))
@@ -100,6 +112,19 @@ class Command(BaseCommand):
 
         if deleted_count > 0:
             self.stdout.write(f'  Deleted {deleted_count} test plans')
+
+        # Delete viewer user
+        from django.contrib.auth import get_user_model
+        User = get_user_model()
+        viewer_deleted = User.objects.filter(username='viewer').delete()[0]
+        if viewer_deleted > 0:
+            self.stdout.write(f'  Deleted viewer user')
+
+        # Delete test site
+        from dcim.models import Site
+        site_deleted = Site.objects.filter(slug='ux-test-site').delete()[0]
+        if site_deleted > 0:
+            self.stdout.write(f'  Deleted test site')
 
     def _create_reference_data(self):
         """Create manufacturer, device types, extensions, breakout options"""
@@ -279,3 +304,50 @@ class Command(BaseCommand):
 
         self.stdout.write('    ✓ Empty Plan created')
         return plan
+
+    def _generate_plan(self, plan):
+        """Pre-generate devices for a plan to test regeneration warnings"""
+        from netbox_hedgehog.services.device_generator import DeviceGenerator
+        from dcim.models import Site
+
+        # Get or create a site for the generated devices
+        site, _ = Site.objects.get_or_create(
+            name='UX Test Site',
+            defaults={'slug': 'ux-test-site'}
+        )
+
+        # Generate devices using the DeviceGenerator service
+        generator = DeviceGenerator(plan, site)
+        result = generator.generate_all()
+
+        self.stdout.write(f'    ✓ Plan pre-generated ({result.device_count} devices, {result.cable_count} cables)')
+
+    def _create_limited_user(self):
+        """Create a user with view-only permissions for permission tests"""
+        from django.contrib.auth import get_user_model
+        from django.contrib.auth.models import Permission
+        from django.contrib.contenttypes.models import ContentType
+
+        User = get_user_model()
+
+        # Delete existing viewer user if exists
+        User.objects.filter(username='viewer').delete()
+
+        # Create viewer user
+        viewer = User.objects.create_user(
+            username='viewer',
+            email='viewer@example.com',
+            password='viewer',
+            is_staff=True,  # Need is_staff to access admin interface
+            is_active=True
+        )
+
+        # Add view permissions for topology planning models
+        content_type = ContentType.objects.get_for_model(TopologyPlan)
+        view_permission = Permission.objects.get(
+            content_type=content_type,
+            codename='view_topologyplan'
+        )
+        viewer.user_permissions.add(view_permission)
+
+        self.stdout.write('    ✓ Viewer user created (username: viewer, password: viewer)')
