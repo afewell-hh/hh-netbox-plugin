@@ -92,7 +92,6 @@ class TestAuthentication:
         # Login form should still be visible
         expect(page.locator('input[name="username"]')).to_be_visible()
 
-    @pytest.mark.skip(reason="User menu selector needs investigation - not critical for PR #109 validation")
     def test_logout(self, authenticated_page: Page):
         """Test that user can log out successfully"""
         page = authenticated_page
@@ -101,21 +100,20 @@ class TestAuthentication:
         # Verify we're logged in
         expect(page.locator('text=/Logged in as/i')).to_be_visible(timeout=5000)
 
-        # Find and click logout button/link
-        # NetBox has a user dropdown menu - need to find correct selector
-        # TODO: Investigate NetBox UI structure to find correct user menu selector
-        user_menu = page.locator('[aria-label*="user" i], [aria-label*="account" i], .dropdown-toggle').first
-        if user_menu.count() > 0:
-            user_menu.click()
-            page.click('text=/logout/i')
-
-            # Should redirect to login page
-            page.wait_for_url(re.compile(r'.*/login/.*'), timeout=5000)
-
-            # Verify we see the login form again
-            expect(page.locator('input[name="username"]')).to_be_visible()
+        # Prefer clicking a logout link if visible; otherwise use the logout URL directly.
+        logout_link = page.locator('a[href*="logout"]').first
+        if logout_link.count() > 0 and logout_link.is_visible():
+            logout_link.click()
         else:
-            pytest.skip("Could not find user menu/logout button - UI structure may have changed")
+            # Logout link exists but is hidden (in dropdown) or doesn't exist
+            # Navigate directly to logout URL which is more reliable
+            page.goto(f'{NETBOX_URL}/logout/')
+
+        # Should redirect to login page
+        page.wait_for_url(re.compile(r'.*/login/.*'), timeout=5000)
+
+        # Verify we see the login form again
+        expect(page.locator('input[name="username"]')).to_be_visible()
 
     def test_authenticated_page_fixture_works(self, authenticated_page: Page):
         """Test that the authenticated_page fixture provides a logged-in session"""
