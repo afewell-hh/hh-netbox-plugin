@@ -2106,7 +2106,7 @@ class MCLAGEvenCountEnforcementTestCase(TestCase):
 
         # Trigger recalculation
         from netbox_hedgehog.utils.topology_calculations import update_plan_calculations
-        summary = update_plan_calculations(plan)
+        update_plan_calculations(plan)
 
         # Verify switch class was calculated
         switch_class.refresh_from_db()

@@ -206,11 +206,20 @@ class TopologyPlanRecalculateView(PermissionRequiredMixin, View):
         # Run calculation engine
         result = update_plan_calculations(plan)
 
-        # Show success message
-        messages.success(
-            request,
-            f"Recalculated {len(result)} switch classes for plan '{plan.name}'."
-        )
+        # Show success message for successfully calculated switches
+        if result['summary']:
+            messages.success(
+                request,
+                f"Recalculated {len(result['summary'])} switch classes for plan '{plan.name}'."
+            )
+
+        # Show error messages for any validation errors
+        if result['errors']:
+            for error_info in result['errors']:
+                messages.error(
+                    request,
+                    f"Error calculating '{error_info['switch_class']}': {error_info['error']}"
+                )
 
         # Redirect back to plan detail page
         return redirect('plugins:netbox_hedgehog:topologyplan_detail', pk=pk)
@@ -239,7 +248,16 @@ class TopologyPlanExportView(PermissionRequiredMixin, View):
 
         # Auto-calculate switch quantities before export
         # This ensures effective_quantity is populated even if user hasn't clicked Recalculate
-        update_plan_calculations(plan)
+        result = update_plan_calculations(plan)
+
+        # Warn user if there were calculation errors (but continue with export)
+        if result['errors']:
+            for error_info in result['errors']:
+                messages.warning(
+                    request,
+                    f"Calculation error for '{error_info['switch_class']}': {error_info['error']}. "
+                    "Export will use existing quantities."
+                )
 
         # Generate YAML from plan
         yaml_content = generate_yaml_for_plan(plan)
