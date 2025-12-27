@@ -14,6 +14,58 @@ from django.core.exceptions import ValidationError
 from netbox_hedgehog.models.topology_planning import BreakoutOption
 
 
+def get_physical_port_count(device_type: 'DeviceType') -> int:
+    """
+    Get physical port count for a device type from InterfaceTemplate.
+
+    Queries NetBox InterfaceTemplate to count the number of interface templates
+    defined for the device type. This provides the accurate port count for
+    switches with any number of ports (32, 48, 64, etc.).
+
+    Args:
+        device_type: NetBox DeviceType instance
+
+    Returns:
+        int: Number of physical ports on the device type
+            - Returns actual count from InterfaceTemplate if available
+            - Returns 64 (default) if no InterfaceTemplates defined
+
+    Examples:
+        >>> # DS5000 with 64 InterfaceTemplates
+        >>> device_type = DeviceType.objects.get(slug='ds5000')
+        >>> get_physical_port_count(device_type)
+        64
+
+        >>> # DS3000 with 32 InterfaceTemplates
+        >>> device_type = DeviceType.objects.get(slug='ds3000')
+        >>> get_physical_port_count(device_type)
+        32
+
+        >>> # Device type without InterfaceTemplates (legacy)
+        >>> device_type = DeviceType.objects.get(slug='legacy-switch')
+        >>> get_physical_port_count(device_type)
+        64  # Fallback
+
+    Note:
+        This function counts ALL InterfaceTemplates, which is appropriate for
+        uniform-port switches (DS5000, DS3000). For mixed-port switches
+        (ES1000 with 48×1G + 4×25G), use zone-based capacity from DIET-SPEC-002.
+    """
+    from dcim.models import InterfaceTemplate
+
+    port_count = InterfaceTemplate.objects.filter(
+        device_type=device_type
+    ).count()
+
+    if port_count == 0:
+        # No InterfaceTemplates defined - use fallback
+        # This maintains backward compatibility for device types created
+        # before InterfaceTemplates were added
+        return 64
+
+    return port_count
+
+
 def determine_optimal_breakout(
     native_speed: int,
     required_speed: int,
@@ -227,13 +279,7 @@ def calculate_switch_quantity(switch_class) -> int:
     )
 
     # Step 5: Calculate logical ports per switch
-    # NOTE: For MVP, we assume all ports on the switch are the same
-    # TODO: Replace hardcoded port count with actual count from InterfaceTemplate
-    #       Query: dcim.InterfaceTemplate.objects.filter(
-    #           device_type=device_extension.device_type
-    #       ).count()
-    #       This will support switches with different port counts (32, 48, 64, etc.)
-    physical_ports = 64  # MVP default for DS5000
+    physical_ports = get_physical_port_count(device_extension.device_type)
 
     logical_ports_per_switch = physical_ports * breakout.logical_ports
 
@@ -303,7 +349,7 @@ def _calculate_rail_optimized_switches(switch_class, rail_connections) -> int:
     )
 
     # Calculate available ports per switch
-    physical_ports = 64  # MVP default for DS5000
+    physical_ports = get_physical_port_count(device_extension.device_type)
     logical_ports_per_switch = physical_ports * breakout.logical_ports
     uplink_ports = switch_class.uplink_ports_per_switch
     available_ports_per_switch = logical_ports_per_switch - uplink_ports
@@ -565,7 +611,7 @@ def calculate_spine_quantity(spine_switch_class) -> int:
     )
 
     # Calculate available ports per spine
-    physical_ports = 64  # MVP default for DS5000
+    physical_ports = get_physical_port_count(device_extension.device_type)
     logical_ports_per_spine = physical_ports * breakout.logical_ports
 
     # Spines may have uplink ports for border/external connections
