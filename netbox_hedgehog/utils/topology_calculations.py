@@ -9,6 +9,8 @@ uplink reservations, and MCLAG pairing requirements.
 import math
 from typing import Optional
 
+from django.core.exceptions import ValidationError
+
 from netbox_hedgehog.models.topology_planning import BreakoutOption
 
 
@@ -23,17 +25,25 @@ def determine_optimal_breakout(
     Finds the best BreakoutOption from the database that matches:
     1. The native port speed
     2. The required logical port speed
-    3. Is in the supported_breakouts list
+    3. Is in the supported_breakouts list (if policy is set)
+
+    Policy Semantics:
+    - If supported_breakouts is empty: No policy enforced, synthetic fallback allowed
+    - If supported_breakouts is non-empty: Strict allow-list, only listed breakouts permitted
 
     Args:
         native_speed: Native port speed in Gbps (e.g., 800 for 800G)
         required_speed: Required connection speed in Gbps (e.g., 200 for 200G)
-        supported_breakouts: List of supported breakout IDs (e.g., ['1x800g', '2x400g', '4x200g'])
+        supported_breakouts: List of supported breakout IDs (empty = no policy)
 
     Returns:
         BreakoutOption: The optimal breakout configuration
             - If exact match found: returns matching BreakoutOption from DB
-            - If no match found: creates synthetic 1:1 breakout (fallback)
+            - If no match but 1:1 in policy: returns 1:1 BreakoutOption from DB
+            - If no match and no policy (empty list): creates synthetic 1:1 breakout
+
+    Raises:
+        ValidationError: If supported_breakouts is non-empty but has no suitable match
 
     Examples:
         >>> determine_optimal_breakout(800, 400, ['1x800g', '2x400g', '4x200g'])
@@ -46,9 +56,15 @@ def determine_optimal_breakout(
         <BreakoutOption: 4x25G (from 100G)>
 
         >>> determine_optimal_breakout(800, 50, ['1x800g', '2x400g'])  # No 50G option
-        <BreakoutOption: 1x800G (from 800G)>  # Falls back to native
+        <BreakoutOption: 1x800G (from 800G)>  # Falls back to native if in policy
+
+        >>> determine_optimal_breakout(800, 200, [])  # Empty = no policy
+        <SyntheticBreakout: 1x800G>  # Synthetic fallback allowed
+
+        >>> determine_optimal_breakout(800, 50, ['2x400g', '4x200g'])  # No match in policy
+        ValidationError  # No 50G or 1x800g in policy
     """
-    # Try to find exact match in supported breakouts
+    # If supported_breakouts is non-empty (policy set), enforce strict allow-list
     if supported_breakouts:
         # Query for breakout options that match:
         # 1. Native speed matches
@@ -73,10 +89,19 @@ def determine_optimal_breakout(
         if fallback_breakout:
             return fallback_breakout
 
-    # Ultimate fallback: create synthetic 1:1 breakout
+        # No match found in allow-list - raise ValidationError
+        raise ValidationError(
+            f"No suitable breakout found for {required_speed}G connection on {native_speed}G port. "
+            f"Supported breakouts: {', '.join(supported_breakouts)}. "
+            f"Add a compatible breakout option (e.g., matching speed or 1x{native_speed}g) "
+            f"to the device type's supported_breakouts list."
+        )
+
+    # No policy set (supported_breakouts is empty)
+    # Create synthetic 1:1 breakout as fallback
     # This is not saved to DB, just used for calculation
     class SyntheticBreakout:
-        """Synthetic breakout option for fallback"""
+        """Synthetic breakout option for fallback when no policy exists"""
         def __init__(self, speed):
             self.breakout_id = f'1x{speed}g'
             self.from_speed = speed
@@ -92,11 +117,12 @@ def calculate_switch_quantity(switch_class) -> int:
 
     Implements the core calculation algorithm:
     1. Sum port demand from all connections targeting this switch class
-    2. Determine optimal breakout based on connection speeds
-    3. Calculate logical ports per switch (physical_ports × breakout_factor)
-    4. Subtract uplink ports from available capacity
-    5. Calculate switches needed: ceil(total_ports_needed / available_ports)
-    6. Enforce MCLAG even-count requirement if mclag_pair=True
+    2. For rail-optimized connections, calculate switches per rail
+    3. Determine optimal breakout based on connection speeds
+    4. Calculate logical ports per switch (physical_ports × breakout_factor)
+    5. Subtract uplink ports from available capacity
+    6. Calculate switches needed: ceil(total_ports_needed / available_ports)
+    7. Enforce MCLAG even-count requirement if mclag_pair=True
 
     Args:
         switch_class: PlanSwitchClass instance to calculate quantity for
@@ -105,21 +131,26 @@ def calculate_switch_quantity(switch_class) -> int:
         int: Required number of switches
             - Returns 0 if no connections target this switch class
             - Always returns even number if mclag_pair=True
+            - For rail-optimized: returns switches_per_rail × num_rails
 
     Algorithm:
-        total_ports_needed = SUM(server_class.quantity × connection.ports_per_connection)
-                             for each connection targeting this switch_class
-
-        breakout = determine_optimal_breakout(native_speed, connection_speed, supported_breakouts)
-        logical_ports_per_switch = physical_ports × breakout.logical_ports
-        available_ports = logical_ports_per_switch - uplink_ports_per_switch
-
-        switches_needed = CEILING(total_ports_needed / available_ports)
-
-        if mclag_pair and switches_needed % 2 != 0:
-            switches_needed += 1  # Round up to even
-
-        return switches_needed
+        # Check for rail-optimized connections
+        if any connection has distribution='rail-optimized':
+            # Calculate per-rail: one switch per rail minimum
+            num_rails = count distinct rail values
+            ports_per_rail = SUM(server_quantity × ports_per_connection) for each rail
+            switches_per_rail = CEILING(ports_per_rail / available_ports)
+            return switches_per_rail × num_rails
+        else:
+            # Standard calculation
+            total_ports_needed = SUM(server_class.quantity × connection.ports_per_connection)
+            breakout = determine_optimal_breakout(native_speed, connection_speed, supported_breakouts)
+            logical_ports_per_switch = physical_ports × breakout.logical_ports
+            available_ports = logical_ports_per_switch - uplink_ports_per_switch
+            switches_needed = CEILING(total_ports_needed / available_ports)
+            if mclag_pair and switches_needed % 2 != 0:
+                switches_needed += 1
+            return switches_needed
 
     Examples:
         >>> # 32 servers × 2x200G ports, DS5000 switch (64×800G), 4 uplinks
@@ -133,10 +164,10 @@ def calculate_switch_quantity(switch_class) -> int:
         >>> calculate_switch_quantity(switch_class)
         2
 
-        >>> # Same but with MCLAG enabled
-        >>> # 32 servers would calculate to 1, but MCLAG requires even → 2
-        >>> calculate_switch_quantity(switch_class_mclag)
-        2
+        >>> # Rail-optimized: 32 servers × 1x400G × 8 rails
+        >>> # 32 ports per rail, 96 available → 1 switch per rail × 8 = 8 switches
+        >>> calculate_switch_quantity(switch_class_rails)
+        8
     """
     # Get all connections targeting this switch class
     connections = switch_class.incoming_connections.all()
@@ -145,6 +176,29 @@ def calculate_switch_quantity(switch_class) -> int:
         # No connections = no switches needed
         return 0
 
+    # Check for rail-optimized connections
+    rail_optimized_connections = connections.filter(distribution='rail-optimized')
+    has_rail_optimized = rail_optimized_connections.exists()
+
+    if has_rail_optimized:
+        # Rail-optimized calculation: switches per rail
+        # NOTE: This assumes ALL connections to this switch are rail-optimized
+        # If mixing rail-optimized and non-rail connections, non-rail connections
+        # will be ignored in the calculation, potentially under-counting switches.
+        #
+        # RECOMMENDATION: Add model-level validation to prevent mixing:
+        #   - Option 1: Add "fabric_mode" field (normal|rail-only|rail-optimized)
+        #               and enforce connection types based on mode
+        #   - Option 2: Add clean() method to PlanServerConnection to validate
+        #               that all connections to a rail-optimized switch are rail-optimized
+        #
+        # TODO(Agent A): Add validation when fabric_mode is implemented per Agent C feedback
+        return _calculate_rail_optimized_switches(
+            switch_class,
+            rail_optimized_connections
+        )
+
+    # Standard (non-rail) calculation
     # Step 1: Calculate total port demand
     total_ports_needed = 0
     connection_speeds = []
@@ -206,6 +260,328 @@ def calculate_switch_quantity(switch_class) -> int:
     return switches_needed
 
 
+def _calculate_rail_optimized_switches(switch_class, rail_connections) -> int:
+    """
+    Calculate switch quantity for rail-optimized connections.
+
+    Rail-optimized distribution means servers are connected to specific rails,
+    with one dedicated switch per rail. This is common in GPU clusters where
+    backend connections use rail-optimized distribution for optimal performance.
+
+    Args:
+        switch_class: PlanSwitchClass instance
+        rail_connections: QuerySet of rail-optimized connections
+
+    Returns:
+        int: switches_per_rail × number_of_rails
+
+    Algorithm:
+        1. Group connections by rail number
+        2. For each rail, calculate port demand
+        3. Calculate switches needed per rail
+        4. Return switches_per_rail × num_rails
+
+    Example:
+        32 servers × 1 port per rail × 8 rails
+        Each rail: 32 ports needed
+        Available: 96 ports per switch
+        Result: ceil(32/96) × 8 = 1 × 8 = 8 switches
+    """
+    # Get device extension for switch specs
+    device_extension = switch_class.device_type_extension
+    native_speed = device_extension.native_speed or 800
+    supported_breakouts = device_extension.supported_breakouts or []
+
+    # Get connection speed (assume all rail connections use same speed)
+    primary_speed = rail_connections.first().speed if rail_connections.exists() else 800
+
+    # Determine optimal breakout
+    breakout = determine_optimal_breakout(
+        native_speed=native_speed,
+        required_speed=primary_speed,
+        supported_breakouts=supported_breakouts
+    )
+
+    # Calculate available ports per switch
+    physical_ports = 64  # MVP default for DS5000
+    logical_ports_per_switch = physical_ports * breakout.logical_ports
+    uplink_ports = switch_class.uplink_ports_per_switch
+    available_ports_per_switch = logical_ports_per_switch - uplink_ports
+
+    if available_ports_per_switch <= 0:
+        return 0
+
+    # Group connections by rail and calculate port demand per rail
+    rails = {}
+    for connection in rail_connections:
+        rail_num = connection.rail
+        if rail_num is None:
+            # Skip connections without rail number
+            continue
+
+        if rail_num not in rails:
+            rails[rail_num] = 0
+
+        server_quantity = connection.server_class.quantity
+        ports_per_connection = connection.ports_per_connection
+        rails[rail_num] += server_quantity * ports_per_connection
+
+    if not rails:
+        # No valid rail connections
+        return 0
+
+    # Calculate switches needed per rail (use max across all rails)
+    # In rail-optimized topology, all rails should have same port demand
+    max_ports_per_rail = max(rails.values())
+    switches_per_rail = math.ceil(max_ports_per_rail / available_ports_per_switch)
+
+    # Ensure at least 1 switch per rail
+    if switches_per_rail == 0:
+        switches_per_rail = 1
+
+    # Total switches = switches_per_rail × number_of_rails
+    num_rails = len(rails)
+    total_switches = switches_per_rail * num_rails
+
+    # Validate MCLAG compatibility with rail count
+    # MCLAG requires even switch count, but rail-optimized assumes 1:1 rail-to-switch mapping
+    # If rail count is odd and MCLAG is enabled, configuration is incompatible
+    if switch_class.mclag_pair and total_switches % 2 != 0:
+        raise ValidationError(
+            f"Switch class '{switch_class.switch_class_id}' has incompatible configuration: "
+            f"{num_rails} rails (odd count) with MCLAG enabled. "
+            f"MCLAG requires even switch count for pairing, but rail-optimized distribution "
+            f"requires {switches_per_rail} switch(es) per rail × {num_rails} rails = {total_switches} total. "
+            f"Either use an even number of rails or disable MCLAG."
+        )
+
+    return total_switches
+
+
+def determine_leaf_uplink_breakout(
+    leaf_switch_class,
+    spines_needed: int,
+    min_link_speed: int = 800
+):
+    """
+    Determine required uplink breakout for a leaf to connect to all spines.
+
+    When the number of spines exceeds the physical uplink ports on a leaf,
+    breakout is required to create enough logical ports for even distribution.
+
+    Args:
+        leaf_switch_class: PlanSwitchClass instance (leaf switch)
+        spines_needed: Number of spine switches to connect to
+        min_link_speed: Minimum acceptable link speed in Gbps (default: 800)
+
+    Returns:
+        BreakoutOption: Selected breakout configuration, or None if impossible
+
+    Algorithm:
+        1. Calculate required breakout factor: ceil(spines_needed / physical_ports)
+        2. Find smallest supported breakout where:
+           - logical_ports >= breakout_factor_needed
+           - logical_speed >= min_link_speed
+        3. Return None if no valid breakout exists
+
+    Examples:
+        >>> # 32 physical ports, 64 spines → needs 2x breakout
+        >>> # Available: 2x400G (64 logical ports @ 400G)
+        >>> determine_leaf_uplink_breakout(leaf, 64, 400)
+        <BreakoutOption: 2x400G>
+
+        >>> # 32 physical ports, 16 spines → no breakout needed
+        >>> determine_leaf_uplink_breakout(leaf, 16, 800)
+        <BreakoutOption: 1x800G>
+
+        >>> # 32 physical ports, 512 spines → impossible (needs 16x)
+        >>> determine_leaf_uplink_breakout(leaf, 512, 100)
+        None
+    """
+    # Early exit for edge cases
+    if spines_needed <= 0:
+        # No spines = no uplink interfaces needed
+        return None
+
+    # Get physical uplink ports
+    physical_uplink_ports = leaf_switch_class.uplink_ports_per_switch
+
+    if physical_uplink_ports <= 0:
+        # No uplink ports configured
+        return None
+
+    # Get device extension for supported breakouts
+    device_extension = leaf_switch_class.device_type_extension
+    native_speed = device_extension.native_speed or 800
+    supported_breakouts = device_extension.supported_breakouts or []
+
+    # Calculate minimum breakout factor needed
+    # If spines <= physical_ports, factor is 1 (no breakout)
+    breakout_factor_needed = math.ceil(spines_needed / physical_uplink_ports)
+
+    # If supported_breakouts is empty (no policy), create synthetic 1x when appropriate
+    if not supported_breakouts:
+        if breakout_factor_needed == 1 and native_speed >= min_link_speed:
+            # No policy set - safe to create synthetic 1:1 breakout
+            class SyntheticBreakout:
+                """Synthetic 1x breakout for fallback when no policy exists"""
+                def __init__(self, speed):
+                    self.breakout_id = f'1x{speed}g'
+                    self.from_speed = speed
+                    self.logical_ports = 1
+                    self.logical_speed = speed
+
+            return SyntheticBreakout(native_speed)
+        else:
+            # No breakouts configured and need breakout (not 1x)
+            return None
+
+    # supported_breakouts is non-empty - enforce policy
+    # Query for all supported breakout options from DB
+    # Filter by: native speed matches, breakout_id is in supported list
+    candidate_breakouts = BreakoutOption.objects.filter(
+        from_speed=native_speed,
+        breakout_id__in=supported_breakouts
+    ).order_by('logical_ports')  # Order by factor (smallest first)
+
+    # Find smallest breakout that satisfies both:
+    # 1. logical_ports >= breakout_factor_needed
+    # 2. logical_speed >= min_link_speed
+    for breakout in candidate_breakouts:
+        # Check if this breakout provides enough logical ports
+        if breakout.logical_ports >= breakout_factor_needed:
+            # Check if link speed is acceptable
+            if breakout.logical_speed >= min_link_speed:
+                return breakout
+
+    # No valid breakout found in supported list
+    # Do NOT create synthetic - policy explicitly excludes what we need
+    return None
+
+
+def calculate_spine_quantity(spine_switch_class) -> int:
+    """
+    Calculate required spine switch quantity based on leaf uplink demand.
+
+    Spine switches aggregate uplinks from all leaf switches in the same fabric.
+    This function calculates how many spine switches are needed to accommodate
+    all leaf uplinks.
+
+    IMPORTANT: After calculating spine quantity, use determine_leaf_uplink_breakout()
+    to verify that leaves can physically connect to all spines (may require breakouts).
+
+    Args:
+        spine_switch_class: PlanSwitchClass instance with hedgehog_role='spine'
+
+    Returns:
+        int: Required number of spine switches
+            - Returns 0 if no leaves exist in the same fabric
+            - Based on total uplink demand from all leaves
+
+    Algorithm:
+        1. Find all leaf switches in the same fabric and plan
+        2. Calculate total uplink demand: sum(leaf.effective_quantity × leaf.uplink_ports_per_switch)
+        3. Calculate available downlink ports per spine
+        4. Spine quantity = ceil(total_uplink_demand / available_downlink_ports)
+
+    Usage Pattern:
+        # Step 1: Calculate how many spines are needed (bandwidth-based)
+        spines_needed = calculate_spine_quantity(spine_switch_class)
+
+        # Step 2: For each leaf class, determine required uplink breakout
+        for leaf in leaf_switches:
+            breakout = determine_leaf_uplink_breakout(
+                leaf_switch_class=leaf,
+                spines_needed=spines_needed,
+                min_link_speed=800  # Or appropriate speed for your topology
+            )
+            if breakout is None:
+                # Error: Cannot connect to all spines with supported breakouts
+                # Either reduce spine count or use different switch model
+                raise ValidationError(...)
+            # Use breakout during device generation to create proper interfaces
+
+    Examples:
+        >>> # 2 leaf switches × 32 uplinks = 64 uplink ports
+        >>> # Spine: 64 ports available (no uplinks on spine)
+        >>> # Result: ceil(64/64) = 1 spine
+        >>> calculate_spine_quantity(fe_spine)
+        1
+
+        >>> # Multiple leaves: 2 GPU + 1 Storage-A + 1 Storage-B
+        >>> # (2 + 1 + 1) × 32 uplinks = 128 uplink ports
+        >>> # Spine: 64 ports available
+        >>> # Result: ceil(128/64) = 2 spines
+        >>> calculate_spine_quantity(fe_spine)
+        2
+
+        >>> # Large fabric: 128 leaves × 32 uplinks = 4096 uplink ports
+        >>> # Spine: 64 ports available
+        >>> # Result: ceil(4096/64) = 64 spines
+        >>> # Note: Each leaf needs 2x breakout (64 spines ÷ 32 ports = 2x)
+        >>> calculate_spine_quantity(fe_spine)
+        64
+    """
+    # Get all switch classes in the same plan and fabric
+    plan = spine_switch_class.plan
+    fabric = spine_switch_class.fabric
+
+    # Find all leaf switches (server-leaf, border-leaf) in the same fabric
+    # Exclude spine switches themselves
+    leaf_switches = plan.switch_classes.filter(
+        fabric=fabric,
+        hedgehog_role__in=['server-leaf', 'border-leaf']
+    ).exclude(
+        pk=spine_switch_class.pk
+    )
+
+    if not leaf_switches.exists():
+        # No leaves = no spines needed
+        return 0
+
+    # Calculate total uplink demand from all leaves
+    total_uplink_demand = 0
+    for leaf in leaf_switches:
+        # Use effective_quantity (respects overrides)
+        leaf_quantity = leaf.effective_quantity
+        uplink_ports = leaf.uplink_ports_per_switch
+        total_uplink_demand += leaf_quantity * uplink_ports
+
+    if total_uplink_demand == 0:
+        # No uplink demand
+        return 0
+
+    # Calculate available downlink ports on spine
+    device_extension = spine_switch_class.device_type_extension
+    native_speed = device_extension.native_speed or 800
+    supported_breakouts = device_extension.supported_breakouts or []
+
+    # Spines typically use 1x800G (no breakout) for leaf connections
+    # Use the native speed (800G) for spine-to-leaf links
+    breakout = determine_optimal_breakout(
+        native_speed=native_speed,
+        required_speed=native_speed,  # Use native speed for spine
+        supported_breakouts=supported_breakouts
+    )
+
+    # Calculate available ports per spine
+    physical_ports = 64  # MVP default for DS5000
+    logical_ports_per_spine = physical_ports * breakout.logical_ports
+
+    # Spines may have uplink ports for border/external connections
+    spine_uplink_ports = spine_switch_class.uplink_ports_per_switch
+    available_downlink_ports = logical_ports_per_spine - spine_uplink_ports
+
+    if available_downlink_ports <= 0:
+        # All ports reserved for uplinks, cannot accept leaf connections
+        return 0
+
+    # Calculate spines needed
+    spines_needed = math.ceil(total_uplink_demand / available_downlink_ports)
+
+    return spines_needed
+
+
 def update_plan_calculations(plan):
     """
     Update calculated_quantity for all switch classes in a topology plan.
@@ -216,36 +592,116 @@ def update_plan_calculations(plan):
     - Connection specifications change
     - Switch classes are added/modified
 
+    Calculation order:
+    1. Calculate leaf switch quantities first (based on server connections)
+    2. Calculate spine quantities second (based on leaf uplinks)
+
     Args:
         plan: TopologyPlan instance
 
     Returns:
-        dict: Summary of calculations
+        dict: Results containing summary and errors
             {
-                'switch_class_id': {
-                    'calculated': int,
-                    'override': int or None,
-                    'effective': int
+                'summary': {
+                    'switch_class_id': {
+                        'calculated': int,
+                        'override': int or None,
+                        'effective': int
+                    },
+                    ...
                 },
-                ...
+                'errors': [
+                    {
+                        'switch_class': 'switch_class_id',
+                        'error': 'error message'
+                    },
+                    ...
+                ]
             }
 
     Example:
-        >>> summary = update_plan_calculations(plan)
-        >>> summary['fe-gpu-leaf']
+        >>> result = update_plan_calculations(plan)
+        >>> result['summary']['fe-gpu-leaf']
         {'calculated': 2, 'override': None, 'effective': 2}
+        >>> result['errors']
+        []  # No errors
     """
     summary = {}
+    errors = []
 
-    for switch_class in plan.switch_classes.all():
-        calculated = calculate_switch_quantity(switch_class)
-        switch_class.calculated_quantity = calculated
-        switch_class.save(update_fields=['calculated_quantity'])
+    # First pass: Calculate leaf switches (server-leaf, border-leaf)
+    leaf_switches = plan.switch_classes.filter(
+        hedgehog_role__in=['server-leaf', 'border-leaf']
+    )
+    for switch_class in leaf_switches:
+        try:
+            calculated = calculate_switch_quantity(switch_class)
+            switch_class.calculated_quantity = calculated
+            switch_class.save(update_fields=['calculated_quantity'])
 
-        summary[switch_class.switch_class_id] = {
-            'calculated': calculated,
-            'override': switch_class.override_quantity,
-            'effective': switch_class.effective_quantity
-        }
+            summary[switch_class.switch_class_id] = {
+                'calculated': calculated,
+                'override': switch_class.override_quantity,
+                'effective': switch_class.effective_quantity
+            }
+        except ValidationError as e:
+            errors.append({
+                'switch_class': switch_class.switch_class_id,
+                'error': str(e)
+            })
 
-    return summary
+    # Second pass: Calculate spine switches (based on leaf quantities)
+    # Skip if leaf calculations failed - spines depend on accurate leaf quantities
+    if errors:
+        # Leaf errors exist - skip spine calculations to avoid inconsistent results
+        spine_switches = plan.switch_classes.filter(hedgehog_role='spine')
+        for switch_class in spine_switches:
+            errors.append({
+                'switch_class': switch_class.switch_class_id,
+                'error': 'Skipped: spine calculation requires successful leaf calculations'
+            })
+    else:
+        # No leaf errors - safe to calculate spines
+        spine_switches = plan.switch_classes.filter(hedgehog_role='spine')
+        for switch_class in spine_switches:
+            try:
+                calculated = calculate_spine_quantity(switch_class)
+                switch_class.calculated_quantity = calculated
+                switch_class.save(update_fields=['calculated_quantity'])
+
+                summary[switch_class.switch_class_id] = {
+                    'calculated': calculated,
+                    'override': switch_class.override_quantity,
+                    'effective': switch_class.effective_quantity
+                }
+            except ValidationError as e:
+                errors.append({
+                    'switch_class': switch_class.switch_class_id,
+                    'error': str(e)
+                })
+
+    # Third pass: Any other switch types (virtual, etc.)
+    other_switches = plan.switch_classes.exclude(
+        hedgehog_role__in=['server-leaf', 'border-leaf', 'spine']
+    )
+    for switch_class in other_switches:
+        try:
+            calculated = calculate_switch_quantity(switch_class)
+            switch_class.calculated_quantity = calculated
+            switch_class.save(update_fields=['calculated_quantity'])
+
+            summary[switch_class.switch_class_id] = {
+                'calculated': calculated,
+                'override': switch_class.override_quantity,
+                'effective': switch_class.effective_quantity
+            }
+        except ValidationError as e:
+            errors.append({
+                'switch_class': switch_class.switch_class_id,
+                'error': str(e)
+            })
+
+    return {
+        'summary': summary,
+        'errors': errors
+    }
