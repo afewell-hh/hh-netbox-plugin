@@ -34,7 +34,7 @@ Switch classes
 - fe-storage-leaf-a (Frontend, server-leaf, uplinks=32)
 - fe-storage-leaf-b (Frontend, server-leaf, uplinks=32)
 - fe-spine (Frontend, spine, uplinks=0)
-- be-rail-leaf (Backend, server-leaf, uplinks=32, override_quantity=8)
+- be-rail-leaf (Backend, server-leaf, uplinks=32, rail-aware calculation)
 - be-spine (Backend, spine, uplinks=0)
 
 Port zones (server downlinks only)
@@ -66,13 +66,15 @@ Expected Counts
 ---------------
 - Servers: 146 (128 GPU + 18 storage)
 - Leaf switches: 12
-  - fe-gpu-leaf: 2
-  - fe-storage-leaf-a: 1
-  - fe-storage-leaf-b: 1
-  - be-rail-leaf: 8 (override)
-- Spines: 0 (current calculation does not populate spine quantities)
-- Total switches used by generator: 12
-- Total devices: 158
+  - fe-gpu-leaf: 2 (MCLAG pair, calculated)
+  - fe-storage-leaf-a: 1 (calculated)
+  - fe-storage-leaf-b: 1 (calculated)
+  - be-rail-leaf: 8 (rail-aware calculation: 1 per rail × 8 rails)
+- Spine switches: 6
+  - fe-spine: 2 (calculated: 4 frontend leaves × 32 uplinks = 128 / 64 ports per spine = 2)
+  - be-spine: 4 (calculated: 8 backend leaves × 32 uplinks = 256 / 64 ports per spine = 4)
+- Total switches: 18 (12 leaves + 6 spines)
+- Total devices: 164 (146 servers + 18 switches)
 - Port demand (connections): 548
 - Interfaces: 1,096 (2 per connection)
 - Cables: 548
@@ -81,13 +83,13 @@ Execution Notes
 ---------------
 - Plan created via NetBox plugin objects (server/switch classes, connections, zones).
 - Generate Devices preview shows:
-  - Devices: 158
+  - Devices: 164 (146 servers + 18 switches)
   - Servers: 146
-  - Switches: 12
+  - Switches: 18 (12 leaves + 6 spines)
   - Interfaces: 1,096
   - Cables: 548
 - Generation completed with:
-  - Devices: 158
+  - Devices: 164
   - Interfaces: 1,096
   - Cables: 548
 
@@ -97,9 +99,9 @@ Sample checks after generation:
 - fe-gpu-leaf-01 uses odd physical ports only (1..63, step 2)
 - be-rail-leaf-01 uses odd physical ports only (1..31, step 2)
 
-Known Gaps
-----------
-- Spine switch quantities are not calculated unless explicitly modeled by
-  additional connection logic. Both fe-spine and be-spine remain at 0.
-- Rail-optimized sizing is not handled by the calculator; override_quantity
-  was used to force be-rail-leaf to 8 switches.
+Resolved Features
+-----------------
+- ✅ Rail-aware leaf sizing: be-rail-leaf now calculates to 8 switches automatically
+  (1 switch per rail × 8 rails) without needing override_quantity
+- ✅ Spine sizing: fe-spine and be-spine quantities are calculated based on
+  leaf uplink demand (fe-spine: 2, be-spine: 4)

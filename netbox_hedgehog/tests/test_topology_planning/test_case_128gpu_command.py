@@ -84,13 +84,13 @@ class Case128GpuCommandTestCase(TestCase):
             GenerationState.objects.filter(plan=self.plan).delete()
             GenerationState.objects.create(
                 plan=self.plan,
-                device_count=158,
+                device_count=164,
                 interface_count=1096,
                 cable_count=548,
                 snapshot={},
                 status=GenerationStatusChoices.GENERATED,
             )
-            return GenerationResult(158, 1096, 548)
+            return GenerationResult(164, 1096, 548)
 
         with patch(
             "netbox_hedgehog.views.topology_planning.DeviceGenerator.generate_all",
@@ -101,7 +101,7 @@ class Case128GpuCommandTestCase(TestCase):
 
         state = GenerationState.objects.filter(plan=self.plan).first()
         self.assertIsNotNone(state, "GenerationState should be created after POST")
-        self.assertEqual(state.device_count, 158)
+        self.assertEqual(state.device_count, 164)
         self.assertEqual(state.interface_count, 1096)
         self.assertEqual(state.cable_count, 548)
 
