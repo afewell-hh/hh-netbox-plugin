@@ -85,9 +85,22 @@ class Command(BaseCommand):
                     plan = existing_plan
                 else:
                     plan = self._create_case_data()
-                    update_plan_calculations(plan)
+                    result = update_plan_calculations(plan)
+
+                    # Check for calculation errors - test cases must be perfect
+                    if result['errors']:
+                        self.stdout.write(self.style.ERROR("❌ Calculation errors detected:"))
+                        for error_info in result['errors']:
+                            self.stdout.write(
+                                f"  - {error_info['switch_class']}: {error_info['error']}"
+                            )
+                        raise ValidationError(
+                            "Test case has calculation errors. Fix the plan configuration."
+                        )
+
                     self.stdout.write(self.style.SUCCESS("✅ Case created successfully."))
                     self.stdout.write(f"  Plan: {plan.name} (ID: {plan.pk})")
+                    self.stdout.write(f"  Calculated {len(result['summary'])} switch classes")
 
                 if options["generate"]:
                     self.stdout.write("⚙️  Generating devices for case...")
@@ -226,7 +239,6 @@ class Command(BaseCommand):
             device_type_extension=ds5000_ext,
             uplink_ports_per_switch=32,
             mclag_pair=False,
-            override_quantity=8,
         )
         PlanSwitchClass.objects.create(
             plan=plan,
