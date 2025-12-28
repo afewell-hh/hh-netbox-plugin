@@ -27,7 +27,9 @@ from netbox_hedgehog.utils.topology_calculations import (
     determine_leaf_uplink_breakout,
     update_plan_calculations,
 )
-from dcim.models import DeviceType, Manufacturer
+from dcim.models import DeviceType, Manufacturer, InterfaceTemplate
+from netbox_hedgehog.choices import PortZoneTypeChoices
+from netbox_hedgehog.models.topology_planning import SwitchPortZone
 
 User = get_user_model()
 
@@ -1839,3 +1841,226 @@ class UpdatePlanCalculationsErrorHandlingTestCase(TestCase):
 
         # Spine should have a calculated value
         self.assertIsInstance(result['summary']['fe-spine']['calculated'], int)
+
+
+class ZoneBasedCapacityIntegrationTestCase(TestCase):
+    """Integration tests for SPEC-001/002/003 calculation expectations."""
+
+    @classmethod
+    def setUpTestData(cls):
+        cls.manufacturer = Manufacturer.objects.create(name='Test', slug='test')
+
+    def _create_interface_templates(
+        self,
+        device_type: DeviceType,
+        count: int,
+        port_type: str = '100gbase-x-qsfp28',
+        name_pattern: str = 'Ethernet1/{}'
+    ):
+        for index in range(1, count + 1):
+            InterfaceTemplate.objects.create(
+                device_type=device_type,
+                name=name_pattern.format(index),
+                type=port_type
+            )
+
+    def test_calculate_switch_quantity_uses_actual_port_count_for_ds3000(self):
+        """DS3000 (32 ports) should size leaf count based on 32 ports."""
+        device_type = DeviceType.objects.create(
+            manufacturer=self.manufacturer,
+            model='DS3000',
+            slug='ds3000'
+        )
+        self._create_interface_templates(device_type, 32, port_type='100gbase-x-qsfp28')
+        extension = DeviceTypeExtension.objects.create(
+            device_type=device_type,
+            native_speed=100,
+            supported_breakouts=['1x100g']
+        )
+        BreakoutOption.objects.get_or_create(
+            breakout_id='1x100g',
+            defaults={'from_speed': 100, 'logical_ports': 1, 'logical_speed': 100}
+        )
+
+        plan = TopologyPlan.objects.create(name='ds3000-plan')
+        switch_class = PlanSwitchClass.objects.create(
+            plan=plan,
+            device_type_extension=extension,
+            switch_class_id='fe-leaf',
+            uplink_ports_per_switch=4
+        )
+        server_type = DeviceType.objects.create(
+            manufacturer=self.manufacturer,
+            model='Server',
+            slug='server'
+        )
+        server_class = PlanServerClass.objects.create(
+            plan=plan,
+            server_class_id='server',
+            description='Server',
+            category='storage',
+            quantity=100,
+            gpus_per_server=0,
+            server_device_type=server_type
+        )
+        PlanServerConnection.objects.create(
+            server_class=server_class,
+            connection_id='fe',
+            connection_name='frontend',
+            ports_per_connection=1,
+            hedgehog_conn_type='unbundled',
+            distribution='same-switch',
+            target_switch_class=switch_class,
+            speed=100,
+            port_type='data'
+        )
+
+        switches_needed = calculate_switch_quantity(switch_class)
+
+        self.assertEqual(switches_needed, 4)
+
+    def test_calculate_switch_quantity_with_mixed_port_switch_es1000(self):
+        """ES1000 should use server zone capacity without uplink subtraction."""
+        device_type = DeviceType.objects.create(
+            manufacturer=self.manufacturer,
+            model='ES1000-48',
+            slug='es1000-48'
+        )
+        extension = DeviceTypeExtension.objects.create(
+            device_type=device_type,
+            native_speed=1,
+            supported_breakouts=['1x1g']
+        )
+        BreakoutOption.objects.get_or_create(
+            breakout_id='1x1g',
+            defaults={'from_speed': 1, 'logical_ports': 1, 'logical_speed': 1}
+        )
+        BreakoutOption.objects.get_or_create(
+            breakout_id='1x25g',
+            defaults={'from_speed': 25, 'logical_ports': 1, 'logical_speed': 25}
+        )
+
+        plan = TopologyPlan.objects.create(name='es1000-plan')
+        switch_class = PlanSwitchClass.objects.create(
+            plan=plan,
+            device_type_extension=extension,
+            switch_class_id='access',
+            uplink_ports_per_switch=4
+        )
+        server_type = DeviceType.objects.create(
+            manufacturer=self.manufacturer,
+            model='Server-1g',
+            slug='server-1g'
+        )
+        server_class = PlanServerClass.objects.create(
+            plan=plan,
+            server_class_id='server-1g',
+            description='Server',
+            category='storage',
+            quantity=100,
+            gpus_per_server=0,
+            server_device_type=server_type
+        )
+        PlanServerConnection.objects.create(
+            server_class=server_class,
+            connection_id='mgmt',
+            connection_name='mgmt',
+            ports_per_connection=1,
+            hedgehog_conn_type='unbundled',
+            distribution='same-switch',
+            target_switch_class=switch_class,
+            speed=1,
+            port_type='data'
+        )
+
+        breakout_1g = BreakoutOption.objects.get(breakout_id='1x1g')
+        breakout_25g = BreakoutOption.objects.get(breakout_id='1x25g')
+        SwitchPortZone.objects.create(
+            switch_class=switch_class,
+            zone_name='server-ports',
+            zone_type=PortZoneTypeChoices.SERVER,
+            port_spec='1-48',
+            breakout_option=breakout_1g,
+            priority=100
+        )
+        SwitchPortZone.objects.create(
+            switch_class=switch_class,
+            zone_name='spine-uplinks',
+            zone_type=PortZoneTypeChoices.UPLINK,
+            port_spec='49-52',
+            breakout_option=breakout_25g,
+            priority=100
+        )
+
+        switches_needed = calculate_switch_quantity(switch_class)
+
+        self.assertEqual(switches_needed, 3)
+
+    def test_calculate_switch_quantity_with_zone_derived_uplinks(self):
+        """Fallback path should subtract uplinks derived from zones."""
+        device_type = DeviceType.objects.create(
+            manufacturer=self.manufacturer,
+            model='DS5000',
+            slug='ds5000'
+        )
+        self._create_interface_templates(
+            device_type,
+            64,
+            port_type='800gbase-x-qsfp-dd'
+        )
+        extension = DeviceTypeExtension.objects.create(
+            device_type=device_type,
+            native_speed=800,
+            supported_breakouts=['1x800g']
+        )
+        BreakoutOption.objects.get_or_create(
+            breakout_id='1x800g',
+            defaults={'from_speed': 800, 'logical_ports': 1, 'logical_speed': 800}
+        )
+
+        plan = TopologyPlan.objects.create(name='uplink-zone-plan')
+        switch_class = PlanSwitchClass.objects.create(
+            plan=plan,
+            device_type_extension=extension,
+            switch_class_id='fe-leaf',
+            uplink_ports_per_switch=None
+        )
+        server_type = DeviceType.objects.create(
+            manufacturer=self.manufacturer,
+            model='Server-800g',
+            slug='server-800g'
+        )
+        server_class = PlanServerClass.objects.create(
+            plan=plan,
+            server_class_id='server-800g',
+            description='Server',
+            category='storage',
+            quantity=100,
+            gpus_per_server=0,
+            server_device_type=server_type
+        )
+        PlanServerConnection.objects.create(
+            server_class=server_class,
+            connection_id='fe',
+            connection_name='frontend',
+            ports_per_connection=2,
+            hedgehog_conn_type='unbundled',
+            distribution='same-switch',
+            target_switch_class=switch_class,
+            speed=800,
+            port_type='data'
+        )
+
+        breakout_800g = BreakoutOption.objects.get(breakout_id='1x800g')
+        SwitchPortZone.objects.create(
+            switch_class=switch_class,
+            zone_name='spine-uplinks',
+            zone_type=PortZoneTypeChoices.UPLINK,
+            port_spec='61-64',
+            breakout_option=breakout_800g,
+            priority=100
+        )
+
+        switches_needed = calculate_switch_quantity(switch_class)
+
+        self.assertEqual(switches_needed, 4)

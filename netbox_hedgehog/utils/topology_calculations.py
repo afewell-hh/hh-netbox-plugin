@@ -7,11 +7,38 @@ uplink reservations, and MCLAG pairing requirements.
 """
 
 import math
+from dataclasses import dataclass
 from typing import Optional
 
 from django.core.exceptions import ValidationError
 
-from netbox_hedgehog.models.topology_planning import BreakoutOption
+from netbox_hedgehog.choices import PortZoneTypeChoices
+from netbox_hedgehog.models.topology_planning import BreakoutOption, SwitchPortZone
+from netbox_hedgehog.services.port_specification import PortSpecification
+
+
+@dataclass
+class PortCapacity:
+    """
+    Structured port capacity information for a connection type.
+
+    Attributes:
+        native_speed: Native port speed in Gbps (before breakout)
+        port_count: Number of physical ports in the zone
+        source_zone: SwitchPortZone if zone-based, None if fallback
+        is_fallback: True if using DeviceTypeExtension.native_speed fallback
+
+    Examples:
+        Zone-based (ES1000 server zone):
+        >>> PortCapacity(native_speed=1, port_count=48, source_zone=zone, is_fallback=False)
+
+        Fallback (DS5000 with no zones):
+        >>> PortCapacity(native_speed=800, port_count=64, source_zone=None, is_fallback=True)
+    """
+    native_speed: int
+    port_count: int
+    source_zone: Optional['SwitchPortZone']
+    is_fallback: bool
 
 
 def get_physical_port_count(device_type: 'DeviceType') -> int:
@@ -64,6 +91,115 @@ def get_physical_port_count(device_type: 'DeviceType') -> int:
         return 64
 
     return port_count
+
+
+def get_port_capacity_for_connection(
+    device_extension: 'DeviceTypeExtension',
+    switch_class: 'PlanSwitchClass',
+    connection_type: str
+) -> PortCapacity:
+    """
+    Get port capacity for a specific connection type (server/uplink/fabric).
+
+    For switches with SwitchPortZone defined, returns zone-specific capacity.
+    For switches without zones, falls back to DeviceTypeExtension.native_speed.
+
+    Args:
+        device_extension: DeviceTypeExtension with native_speed fallback
+        switch_class: PlanSwitchClass with port zones
+        connection_type: Connection type ('server', 'uplink', 'fabric')
+                        Must match PortZoneTypeChoices values
+
+    Returns:
+        PortCapacity with native_speed, port_count, source_zone, is_fallback
+
+    Raises:
+        ValidationError: If connection_type invalid
+        ValidationError: If no zones AND no native_speed fallback available
+        ValidationError: If zone exists but has no breakout_option
+
+    Examples:
+        >>> # ES1000 with zones defined
+        >>> capacity = get_port_capacity_for_connection(ext, switch_class, 'server')
+        >>> capacity.native_speed  # 1 (from 'server-ports' zone)
+        >>> capacity.port_count    # 48 (ports 1-48)
+        >>> capacity.is_fallback   # False
+
+        >>> # DS5000 without zones (legacy)
+        >>> capacity = get_port_capacity_for_connection(ext, switch_class, 'server')
+        >>> capacity.native_speed  # 800 (from ext.native_speed)
+        >>> capacity.port_count    # 64 (from get_physical_port_count())
+        >>> capacity.is_fallback   # True
+    """
+    # Step 1: Validate connection_type
+    # NOTE: Must match PortZoneTypeChoices values
+    valid_types = [
+        PortZoneTypeChoices.SERVER,
+        PortZoneTypeChoices.UPLINK,
+        PortZoneTypeChoices.FABRIC
+    ]
+    if connection_type not in valid_types:
+        raise ValidationError(
+            f"Invalid connection_type: '{connection_type}'. "
+            f"Must be one of: {', '.join(valid_types)}"
+        )
+
+    # Step 2: Query for zones matching connection type
+    zones = SwitchPortZone.objects.filter(
+        switch_class=switch_class,
+        zone_type=connection_type
+    ).select_related('breakout_option').order_by('priority')
+
+    # Step 3: Zone-based path (new behavior)
+    if zones.exists():
+        # Use first zone (ordered by priority)
+        zone = zones.first()
+
+        # Validate zone has breakout_option
+        if not zone.breakout_option:
+            raise ValidationError(
+                f"SwitchPortZone '{zone.zone_name}' has no breakout_option defined. "
+                f"Cannot determine native speed."
+            )
+
+        # Get speed from breakout option
+        native_speed = zone.breakout_option.from_speed
+
+        # Parse port spec to get port count
+        try:
+            port_list = PortSpecification(zone.port_spec).parse()
+            port_count = len(port_list)
+        except ValidationError as e:
+            raise ValidationError(
+                f"Invalid port_spec in zone '{zone.zone_name}': {e}"
+            )
+
+        return PortCapacity(
+            native_speed=native_speed,
+            port_count=port_count,
+            source_zone=zone,
+            is_fallback=False
+        )
+
+    # Step 4: Fallback path (legacy behavior - backward compatible)
+    # No zones defined - use DeviceTypeExtension.native_speed
+
+    native_speed = device_extension.native_speed
+    if not native_speed:
+        raise ValidationError(
+            f"Device type '{device_extension.device_type.slug}' has no zones "
+            f"and no native_speed fallback defined. Cannot determine capacity."
+        )
+
+    # Reuse SPEC-001 function for port count (consistent logic)
+    port_count = get_physical_port_count(device_extension.device_type)
+
+    return PortCapacity(
+        native_speed=native_speed,
+        port_count=port_count,
+        source_zone=None,
+        is_fallback=True
+    )
 
 
 def determine_optimal_breakout(
@@ -268,7 +404,15 @@ def calculate_switch_quantity(switch_class) -> int:
 
     # Step 3: Get switch capacity from DeviceTypeExtension
     device_extension = switch_class.device_type_extension
-    native_speed = device_extension.native_speed or 800
+
+    # Get zone-based capacity for server connections
+    capacity = get_port_capacity_for_connection(
+        device_extension=device_extension,
+        switch_class=switch_class,
+        connection_type=PortZoneTypeChoices.SERVER
+    )
+    native_speed = capacity.native_speed
+    physical_ports = capacity.port_count
     supported_breakouts = device_extension.supported_breakouts or []
 
     # Step 4: Determine optimal breakout
@@ -279,13 +423,18 @@ def calculate_switch_quantity(switch_class) -> int:
     )
 
     # Step 5: Calculate logical ports per switch
-    physical_ports = get_physical_port_count(device_extension.device_type)
-
     logical_ports_per_switch = physical_ports * breakout.logical_ports
 
-    # Step 6: Subtract uplink ports
-    uplink_ports = switch_class.uplink_ports_per_switch
-    available_ports_per_switch = logical_ports_per_switch - uplink_ports
+    # Step 6: Subtract uplink ports (conditional based on capacity source)
+    # Zone-based (is_fallback=False): capacity.port_count is server zone ONLY (excludes uplinks)
+    # Fallback (is_fallback=True): capacity.port_count includes ALL ports (must subtract uplinks)
+    if capacity.is_fallback:
+        # Fallback path: total ports includes uplinks, subtract them
+        uplink_ports = switch_class.uplink_ports_per_switch
+        available_ports_per_switch = logical_ports_per_switch - uplink_ports
+    else:
+        # Zone-based path: server zone already excludes uplinks, don't subtract
+        available_ports_per_switch = logical_ports_per_switch
 
     if available_ports_per_switch <= 0:
         # All ports reserved for uplinks, cannot accept server connections
@@ -335,11 +484,19 @@ def _calculate_rail_optimized_switches(switch_class, rail_connections) -> int:
     """
     # Get device extension for switch specs
     device_extension = switch_class.device_type_extension
-    native_speed = device_extension.native_speed or 800
-    supported_breakouts = device_extension.supported_breakouts or []
 
     # Get connection speed (assume all rail connections use same speed)
     primary_speed = rail_connections.first().speed if rail_connections.exists() else 800
+
+    # Get zone-based capacity for server connections
+    capacity = get_port_capacity_for_connection(
+        device_extension=device_extension,
+        switch_class=switch_class,
+        connection_type=PortZoneTypeChoices.SERVER
+    )
+    native_speed = capacity.native_speed
+    physical_ports = capacity.port_count
+    supported_breakouts = device_extension.supported_breakouts or []
 
     # Determine optimal breakout
     breakout = determine_optimal_breakout(
@@ -349,10 +506,16 @@ def _calculate_rail_optimized_switches(switch_class, rail_connections) -> int:
     )
 
     # Calculate available ports per switch
-    physical_ports = get_physical_port_count(device_extension.device_type)
     logical_ports_per_switch = physical_ports * breakout.logical_ports
-    uplink_ports = switch_class.uplink_ports_per_switch
-    available_ports_per_switch = logical_ports_per_switch - uplink_ports
+
+    # Conditional uplink subtraction based on capacity source
+    if capacity.is_fallback:
+        # Fallback path: total ports includes uplinks, subtract them
+        uplink_ports = switch_class.uplink_ports_per_switch
+        available_ports_per_switch = logical_ports_per_switch - uplink_ports
+    else:
+        # Zone-based path: server zone already excludes uplinks, don't subtract
+        available_ports_per_switch = logical_ports_per_switch
 
     if available_ports_per_switch <= 0:
         return 0
@@ -599,11 +762,20 @@ def calculate_spine_quantity(spine_switch_class) -> int:
 
     # Calculate available downlink ports on spine
     device_extension = spine_switch_class.device_type_extension
-    native_speed = device_extension.native_speed or 800
+
+    # Get zone-based capacity for uplink connections (fabric/downlink ports)
+    # NOTE: Using UPLINK zone type for spine downlink ports (leaf uplinks connect here)
+    capacity = get_port_capacity_for_connection(
+        device_extension=device_extension,
+        switch_class=spine_switch_class,
+        connection_type=PortZoneTypeChoices.UPLINK
+    )
+    native_speed = capacity.native_speed
+    physical_ports = capacity.port_count
     supported_breakouts = device_extension.supported_breakouts or []
 
     # Spines typically use 1x800G (no breakout) for leaf connections
-    # Use the native speed (800G) for spine-to-leaf links
+    # Use the native speed for spine-to-leaf links
     breakout = determine_optimal_breakout(
         native_speed=native_speed,
         required_speed=native_speed,  # Use native speed for spine
@@ -611,12 +783,17 @@ def calculate_spine_quantity(spine_switch_class) -> int:
     )
 
     # Calculate available ports per spine
-    physical_ports = get_physical_port_count(device_extension.device_type)
     logical_ports_per_spine = physical_ports * breakout.logical_ports
 
+    # Conditional uplink subtraction based on capacity source
     # Spines may have uplink ports for border/external connections
-    spine_uplink_ports = spine_switch_class.uplink_ports_per_switch
-    available_downlink_ports = logical_ports_per_spine - spine_uplink_ports
+    if capacity.is_fallback:
+        # Fallback path: total ports includes uplinks, subtract them
+        spine_uplink_ports = spine_switch_class.uplink_ports_per_switch
+        available_downlink_ports = logical_ports_per_spine - spine_uplink_ports
+    else:
+        # Zone-based path: uplink zone already configured for downlink capacity
+        available_downlink_ports = logical_ports_per_spine
 
     if available_downlink_ports <= 0:
         # All ports reserved for uplinks, cannot accept leaf connections
