@@ -202,6 +202,73 @@ def get_port_capacity_for_connection(
     )
 
 
+def get_uplink_port_count(switch_class: 'PlanSwitchClass') -> int:
+    """
+    Get uplink port count with override and zone-based derivation.
+
+    Priority order:
+    1. PlanSwitchClass.uplink_ports_per_switch (explicit override)
+    2. SwitchPortZone with zone_type='uplink' (derived from zones)
+    3. Error (neither override nor zones defined)
+
+    Args:
+        switch_class: PlanSwitchClass with optional uplink configuration
+
+    Returns:
+        int: Number of uplink ports to reserve
+
+    Raises:
+        ValidationError: If neither override nor zones are defined
+
+    Examples:
+        >>> # Case 1: Explicit override (highest priority)
+        >>> switch_class.uplink_ports_per_switch = 8
+        >>> get_uplink_port_count(switch_class)
+        8
+
+        >>> # Case 2: Derived from zones
+        >>> # Zone: port_spec='49-52' → 4 ports
+        >>> switch_class.uplink_ports_per_switch = None
+        >>> get_uplink_port_count(switch_class)
+        4
+
+        >>> # Case 3: Override takes precedence over zones
+        >>> # Even if zones exist, override wins
+        >>> switch_class.uplink_ports_per_switch = 6
+        >>> get_uplink_port_count(switch_class)  # Returns 6, not zone count
+        6
+    """
+    # Priority 1: Explicit override (plan-level)
+    if switch_class.uplink_ports_per_switch is not None:
+        return switch_class.uplink_ports_per_switch
+
+    # Priority 2: Derive from uplink zones
+    uplink_zones = SwitchPortZone.objects.filter(
+        switch_class=switch_class,
+        zone_type=PortZoneTypeChoices.UPLINK
+    )
+
+    if uplink_zones.exists():
+        # Sum port counts across all uplink zones
+        total_uplink_ports = 0
+        for zone in uplink_zones:
+            try:
+                port_list = PortSpecification(zone.port_spec).parse()
+                total_uplink_ports += len(port_list)
+            except ValidationError as e:
+                raise ValidationError(
+                    f"Invalid port_spec in uplink zone '{zone.zone_name}': {e}"
+                )
+
+        return total_uplink_ports
+
+    # Priority 3: Error - no configuration found
+    raise ValidationError(
+        f"Switch class '{switch_class.switch_class_id}' has no uplink capacity defined. "
+        f"Set PlanSwitchClass.uplink_ports_per_switch or create SwitchPortZone with zone_type='uplink'."
+    )
+
+
 def determine_optimal_breakout(
     native_speed: int,
     required_speed: int,
@@ -334,7 +401,8 @@ def calculate_switch_quantity(switch_class) -> int:
             total_ports_needed = SUM(server_class.quantity × connection.ports_per_connection)
             breakout = determine_optimal_breakout(native_speed, connection_speed, supported_breakouts)
             logical_ports_per_switch = physical_ports × breakout.logical_ports
-            available_ports = logical_ports_per_switch - uplink_ports_per_switch
+            uplink_ports = get_uplink_port_count(switch_class)  # Override or zone-derived
+            available_ports = logical_ports_per_switch - uplink_ports
             switches_needed = CEILING(total_ports_needed / available_ports)
             if mclag_pair and switches_needed % 2 != 0:
                 switches_needed += 1
@@ -430,7 +498,7 @@ def calculate_switch_quantity(switch_class) -> int:
     # Fallback (is_fallback=True): capacity.port_count includes ALL ports (must subtract uplinks)
     if capacity.is_fallback:
         # Fallback path: total ports includes uplinks, subtract them
-        uplink_ports = switch_class.uplink_ports_per_switch
+        uplink_ports = get_uplink_port_count(switch_class)
         available_ports_per_switch = logical_ports_per_switch - uplink_ports
     else:
         # Zone-based path: server zone already excludes uplinks, don't subtract
@@ -511,7 +579,7 @@ def _calculate_rail_optimized_switches(switch_class, rail_connections) -> int:
     # Conditional uplink subtraction based on capacity source
     if capacity.is_fallback:
         # Fallback path: total ports includes uplinks, subtract them
-        uplink_ports = switch_class.uplink_ports_per_switch
+        uplink_ports = get_uplink_port_count(switch_class)
         available_ports_per_switch = logical_ports_per_switch - uplink_ports
     else:
         # Zone-based path: server zone already excludes uplinks, don't subtract
@@ -612,11 +680,16 @@ def determine_leaf_uplink_breakout(
         # No spines = no uplink interfaces needed
         return None
 
-    # Get physical uplink ports
-    physical_uplink_ports = leaf_switch_class.uplink_ports_per_switch
+    # Get physical uplink ports (use helper to support zone-based derivation)
+    try:
+        physical_uplink_ports = get_uplink_port_count(leaf_switch_class)
+    except ValidationError:
+        # No uplink configuration (neither override nor zones)
+        # This is expected for switches that don't have uplinks (e.g., top-of-rack only)
+        return None
 
     if physical_uplink_ports <= 0:
-        # No uplink ports configured
+        # No uplink ports configured (override set to 0)
         return None
 
     # Get device extension for supported breakouts
@@ -689,7 +762,8 @@ def calculate_spine_quantity(spine_switch_class) -> int:
 
     Algorithm:
         1. Find all leaf switches in the same fabric and plan
-        2. Calculate total uplink demand: sum(leaf.effective_quantity × leaf.uplink_ports_per_switch)
+        2. Calculate total uplink demand: sum(leaf.effective_quantity × get_uplink_port_count(leaf))
+           - get_uplink_port_count() returns override or zone-derived uplink count per leaf
         3. Calculate available downlink ports per spine
         4. Spine quantity = ceil(total_uplink_demand / available_downlink_ports)
 
@@ -753,7 +827,20 @@ def calculate_spine_quantity(spine_switch_class) -> int:
     for leaf in leaf_switches:
         # Use effective_quantity (respects overrides)
         leaf_quantity = leaf.effective_quantity
-        uplink_ports = leaf.uplink_ports_per_switch
+
+        # Get uplink port count (supports zone-based derivation)
+        # Fail fast if any leaf lacks uplink configuration (per SPEC-003)
+        try:
+            uplink_ports = get_uplink_port_count(leaf)
+        except ValidationError as e:
+            raise ValidationError(
+                f"Spine calculation failed: leaf switch class '{leaf.switch_class_id}' "
+                f"has no uplink configuration. Either set uplink_ports_per_switch or "
+                f"create SwitchPortZone with zone_type='uplink'. "
+                f"For switches that intentionally have no spine uplinks, "
+                f"set uplink_ports_per_switch=0."
+            ) from e
+
         total_uplink_demand += leaf_quantity * uplink_ports
 
     if total_uplink_demand == 0:
@@ -789,7 +876,7 @@ def calculate_spine_quantity(spine_switch_class) -> int:
     # Spines may have uplink ports for border/external connections
     if capacity.is_fallback:
         # Fallback path: total ports includes uplinks, subtract them
-        spine_uplink_ports = spine_switch_class.uplink_ports_per_switch
+        spine_uplink_ports = get_uplink_port_count(spine_switch_class)
         available_downlink_ports = logical_ports_per_spine - spine_uplink_ports
     else:
         # Zone-based path: uplink zone already configured for downlink capacity
