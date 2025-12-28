@@ -53,6 +53,15 @@ For filtering logic:
 - Do not run manage.py on the host.
 - Plugin code is volume-mounted; most changes do not require a restart.
 
+## Local Dev Workflow (Golden Path)
+- Default to local container iteration for speed; use CI only when needed.
+- Before intensive dev sessions, reset DIET data to remove stale plans:
+  - `scripts/reset_local_dev.sh`
+- For a full clean local NetBox reset (occasional, heavier):
+  - `scripts/reset_local_dev.sh --full`
+- For targeted cleanup of a single plan:
+  - `docker compose exec netbox python manage.py reset_diet_data --plan <plan_id> --no-input`
+
 ## Code Review and PR Workflow
 - Use a feature branch per issue: `diet-<issue>-<short-desc>`.
 - Open a PR before merging; do not commit directly to main.
@@ -74,6 +83,8 @@ For filtering logic:
 - Prefer integration tests in `netbox_hedgehog/tests/test_topology_planning/`.
 - If adding new UI, add new integration tests near related ones.
 - When touching models, create and apply migrations via the container.
+- For interactive inspection of the 128-GPU case, use:
+  - `docker compose exec netbox python manage.py setup_case_128gpu_odd_ports --clean --generate --report`
 
 ## Reporting Requirements
 In your final update, include:
