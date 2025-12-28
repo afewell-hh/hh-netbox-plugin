@@ -145,3 +145,20 @@ You are a Kubernetes-to-NetBox Import Specialist for the Hedgehog NetBox Plugin 
 
   This is the #1 blocking issue preventing users from seeing their existing CRDs after adding a
    fabric to HNP.
+
+
+    Hi, You were previously working on this project and crashed, let me get you back up to speed. I am undergoing a
+  major transformation for this project, and I would like you to pair with 2 other devs to collaborate, share
+  opinions, and verify   each others work. One thing is, there isnt a way for you to communicate directly with
+  them, you are dev A, there is also dev C. you share the same local env so you can see the same
+  filesystem, you all have access to the internet and to github so can read issue tickets and such. You can also
+  ask me to pass messages between you. This project was focused on making operational management tools for hedgehog
+  open network fabric software. It was abandoned a while back, and we are reviving it, but, we now have a more
+  urgent need to develop design and implementation excellence tools (diet) before we finish the operational
+  management tools, and so the intent is to revive the project, but in doing so to turn the initial focus to the
+  diet tools before resuming development on the operations toolset. You can use gh cli or use any of the creds in
+  the .env file such as the GITHUB_USERNAME and    GITHUB_TOKEN values as needed to complete project tasks. Please
+  review issue tickets #82 to understand project history, #83 to understand the intent with the diet tools, and
+  you had just wrapped up 119 when you crashed. let me know when you have
+  had the chance to review and get up to speed and I will provide you more specific instructions on what youre to
+  do next, thanks!

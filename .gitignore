@@ -68,3 +68,4 @@ node_modules
 # Local helpers and artifacts
 check_error_html.py
 tw-tus1-netbox-inventory.xlsx
+scratch.txt
