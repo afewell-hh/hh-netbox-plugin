@@ -1,11 +1,7 @@
 name: DIET CI Tests
 
 on:
-  push:
-    branches: [ main, develop, 'diet-*' ]
-  pull_request:
-    branches: [ main, develop ]
-  workflow_dispatch:  # Allow manual trigger
+  workflow_dispatch:  # Manual trigger only during MVP push
   schedule:
     # Nightly fresh-install verification at 2 AM UTC
     - cron: '0 2 * * *'
