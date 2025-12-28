@@ -43,9 +43,16 @@ jobs:
 
           # Create Dockerfile-Plugins
           cat > Dockerfile-Plugins << 'EOF'
-          ARG FROM
-          FROM ${FROM}
-          RUN pip install -e /opt/netbox/netbox/netbox_hedgehog/
+          FROM netboxcommunity/netbox:latest
+
+          # Install plugin dependencies
+          RUN /usr/local/bin/uv pip install --no-cache \
+              kubernetes>=24.0.0 \
+              pyyaml>=6.0 \
+              jsonschema>=4.0.0
+
+          # Note: Plugin code is mounted as a volume at runtime
+          # and auto-discovered by NetBox's plugin system
           EOF
 
           # Create plugin configuration
@@ -138,9 +145,16 @@ jobs:
 
           # Create Dockerfile-Plugins
           cat > Dockerfile-Plugins << 'EOF'
-          ARG FROM
-          FROM ${FROM}
-          RUN pip install -e /opt/netbox/netbox/netbox_hedgehog/
+          FROM netboxcommunity/netbox:latest
+
+          # Install plugin dependencies
+          RUN /usr/local/bin/uv pip install --no-cache \
+              kubernetes>=24.0.0 \
+              pyyaml>=6.0 \
+              jsonschema>=4.0.0
+
+          # Note: Plugin code is mounted as a volume at runtime
+          # and auto-discovered by NetBox's plugin system
           EOF
 
           # Create plugin configuration
@@ -352,9 +366,16 @@ jobs:
 
           # Create Dockerfile-Plugins
           cat > Dockerfile-Plugins << 'EOF'
-          ARG FROM
-          FROM ${FROM}
-          RUN pip install -e /opt/netbox/netbox/netbox_hedgehog/
+          FROM netboxcommunity/netbox:latest
+
+          # Install plugin dependencies
+          RUN /usr/local/bin/uv pip install --no-cache \
+              kubernetes>=24.0.0 \
+              pyyaml>=6.0 \
+              jsonschema>=4.0.0
+
+          # Note: Plugin code is mounted as a volume at runtime
+          # and auto-discovered by NetBox's plugin system
           EOF
 
           # Create plugin configuration
