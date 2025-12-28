@@ -12,6 +12,28 @@ This document describes:
 
 ## Three-Tier Testing Approach
 
+## Local Development Workflow (Fast Iteration)
+
+Use the local NetBox container for rapid iteration. Reset DIET data as needed to avoid stale state.
+
+**Quick reset (recommended for daily use)**:
+```bash
+cd /home/ubuntu/afewell-hh/hh-netbox-plugin
+scripts/reset_local_dev.sh
+```
+
+**Full reset (occasional, heavier)**:
+```bash
+cd /home/ubuntu/afewell-hh/hh-netbox-plugin
+scripts/reset_local_dev.sh --full
+```
+
+**Plan-scoped cleanup (fastest)**:
+```bash
+cd /home/ubuntu/afewell-hh/netbox-docker
+docker compose exec netbox python manage.py reset_diet_data --plan <plan_id> --no-input
+```
+
 ### Tier 1: Fast Unit & Integration Tests (Every PR)
 
 **Purpose**: Catch bugs quickly without requiring a full NetBox deployment.
