@@ -59,6 +59,8 @@ For filtering logic:
   - `scripts/reset_local_dev.sh`
 - For a full clean local NetBox reset (occasional, heavier):
   - `scripts/reset_local_dev.sh --full`
+- To purge inventory and reseed only DIET baselines:
+  - `scripts/reset_local_dev.sh --purge-inventory`
 - For targeted cleanup of a single plan:
   - `docker compose exec netbox python manage.py reset_diet_data --plan <plan_id> --no-input`
 

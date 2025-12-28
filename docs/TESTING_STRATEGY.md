@@ -22,6 +22,12 @@ cd /home/ubuntu/afewell-hh/hh-netbox-plugin
 scripts/reset_local_dev.sh
 ```
 
+**Quick reset + purge inventory (return to near-empty NetBox inventory)**:
+```bash
+cd /home/ubuntu/afewell-hh/hh-netbox-plugin
+scripts/reset_local_dev.sh --purge-inventory
+```
+
 **Full reset (occasional, heavier)**:
 ```bash
 cd /home/ubuntu/afewell-hh/hh-netbox-plugin

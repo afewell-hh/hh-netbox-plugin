@@ -3,10 +3,11 @@ set -euo pipefail
 
 NETBOX_DOCKER_DIR="${NETBOX_DOCKER_DIR:-/home/ubuntu/afewell-hh/netbox-docker}"
 FULL_RESET="false"
+PURGE_INVENTORY="false"
 
 usage() {
   cat <<'USAGE'
-Usage: scripts/reset_local_dev.sh [--full]
+Usage: scripts/reset_local_dev.sh [--full] [--purge-inventory]
 
 Quick reset (default):
   - Clears DIET planning data and generated objects
@@ -17,6 +18,10 @@ Full reset (--full):
   - Runs migrations
   - Reseeds DIET reference data + device types
 
+Purge inventory (--purge-inventory):
+  - Removes ALL Manufacturers, DeviceTypes, ModuleTypes, ModuleTypeProfiles
+  - Intended to return NetBox to a near-empty inventory before reseeding
+
 Environment:
   NETBOX_DOCKER_DIR  Path to netbox-docker (default: /home/ubuntu/afewell-hh/netbox-docker)
 USAGE
@@ -26,6 +31,10 @@ while [[ $# -gt 0 ]]; do
   case "$1" in
     --full)
       FULL_RESET="true"
+      shift
+      ;;
+    --purge-inventory)
+      PURGE_INVENTORY="true"
       shift
       ;;
     -h|--help)
@@ -66,6 +75,11 @@ if [[ "$FULL_RESET" == "true" ]]; then
 else
   echo "[QUICK] Resetting DIET data only..."
   docker compose exec -T netbox python manage.py reset_diet_data --no-input
+fi
+
+if [[ "$PURGE_INVENTORY" == "true" ]]; then
+  echo "[PURGE] Removing all Manufacturers, DeviceTypes, ModuleTypes, ModuleTypeProfiles..."
+  docker compose exec -T netbox python manage.py shell -c "from dcim.models import Manufacturer, DeviceType, ModuleType, ModuleTypeProfile; ModuleTypeProfile.objects.all().delete(); ModuleType.objects.all().delete(); DeviceType.objects.all().delete(); Manufacturer.objects.all().delete();"
 fi
 
 docker compose exec -T netbox python manage.py load_diet_reference_data
