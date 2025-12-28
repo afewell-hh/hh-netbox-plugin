@@ -11,7 +11,7 @@ from django.core.management.base import BaseCommand
 from django.db import transaction
 from django.core.exceptions import ValidationError
 
-from dcim.models import Manufacturer, DeviceType, Cable, Device, Interface
+from dcim.models import Manufacturer, DeviceType, InterfaceTemplate, Cable, Device, Interface
 from extras.models import Tag
 
 from netbox_hedgehog.models.topology_planning import (
@@ -171,20 +171,46 @@ class Command(BaseCommand):
             name="Generic",
             defaults={"slug": "generic"},
         )
-        gpu_type, _ = DeviceType.objects.get_or_create(
+        gpu_fe_type = self._ensure_server_device_type(
             manufacturer=manufacturer,
-            model="GPU-Server",
-            defaults={"slug": "gpu-server"},
+            model="GPU-Server-FE",
+            slug="gpu-server-fe",
+            interface_specs=[
+                ("eth1", "200gbase-x-qsfp56"),
+                ("eth2", "200gbase-x-qsfp56"),
+            ],
         )
-        storage_type, _ = DeviceType.objects.get_or_create(
+        gpu_be_type = self._ensure_server_device_type(
             manufacturer=manufacturer,
-            model="Storage-Server",
-            defaults={"slug": "storage-server"},
+            model="GPU-Server-FE-BE",
+            slug="gpu-server-fe-be",
+            interface_specs=[
+                ("eth1", "200gbase-x-qsfp56"),
+                ("eth2", "200gbase-x-qsfp56"),
+                ("cx7-1", "400gbase-x-qsfpdd"),
+                ("cx7-2", "400gbase-x-qsfpdd"),
+                ("cx7-3", "400gbase-x-qsfpdd"),
+                ("cx7-4", "400gbase-x-qsfpdd"),
+                ("cx7-5", "400gbase-x-qsfpdd"),
+                ("cx7-6", "400gbase-x-qsfpdd"),
+                ("cx7-7", "400gbase-x-qsfpdd"),
+                ("cx7-8", "400gbase-x-qsfpdd"),
+            ],
+        )
+        storage_type = self._ensure_server_device_type(
+            manufacturer=manufacturer,
+            model="Storage-Server-200G",
+            slug="storage-server-200g",
+            interface_specs=[
+                ("eth1", "200gbase-x-qsfp56"),
+                ("eth2", "200gbase-x-qsfp56"),
+            ],
         )
 
         ds5000_ext = self._ensure_ds5000_extension()
         breakout_4x200 = self._ensure_breakout("4x200g", 800, 4, 200)
         breakout_2x400 = self._ensure_breakout("2x400g", 800, 2, 400)
+        breakout_1x800 = self._ensure_breakout("1x800g", 800, 1, 800)
 
         plan = TopologyPlan.objects.create(
             name=PLAN_NAME,
@@ -201,7 +227,7 @@ class Command(BaseCommand):
             fabric=FabricTypeChoices.FRONTEND,
             hedgehog_role=HedgehogRoleChoices.SERVER_LEAF,
             device_type_extension=ds5000_ext,
-            uplink_ports_per_switch=32,
+            uplink_ports_per_switch=None,
             mclag_pair=True,
         )
         fe_storage_leaf_a = PlanSwitchClass.objects.create(
@@ -210,7 +236,7 @@ class Command(BaseCommand):
             fabric=FabricTypeChoices.FRONTEND,
             hedgehog_role=HedgehogRoleChoices.SERVER_LEAF,
             device_type_extension=ds5000_ext,
-            uplink_ports_per_switch=32,
+            uplink_ports_per_switch=None,
             mclag_pair=False,
         )
         fe_storage_leaf_b = PlanSwitchClass.objects.create(
@@ -219,7 +245,7 @@ class Command(BaseCommand):
             fabric=FabricTypeChoices.FRONTEND,
             hedgehog_role=HedgehogRoleChoices.SERVER_LEAF,
             device_type_extension=ds5000_ext,
-            uplink_ports_per_switch=32,
+            uplink_ports_per_switch=None,
             mclag_pair=False,
         )
         PlanSwitchClass.objects.create(
@@ -237,7 +263,7 @@ class Command(BaseCommand):
             fabric=FabricTypeChoices.BACKEND,
             hedgehog_role=HedgehogRoleChoices.SERVER_LEAF,
             device_type_extension=ds5000_ext,
-            uplink_ports_per_switch=32,
+            uplink_ports_per_switch=None,
             mclag_pair=False,
         )
         PlanSwitchClass.objects.create(
@@ -261,15 +287,30 @@ class Command(BaseCommand):
                 priority=100,
             )
 
+        def add_uplink_zone(switch_class, breakout, name="uplinks"):
+            SwitchPortZone.objects.create(
+                switch_class=switch_class,
+                zone_name=name,
+                zone_type=PortZoneTypeChoices.UPLINK,
+                port_spec="2-64:2",
+                breakout_option=breakout,
+                allocation_strategy=AllocationStrategyChoices.SEQUENTIAL,
+                priority=100,
+            )
+
         add_server_zone(fe_gpu_leaf, breakout_4x200)
         add_server_zone(fe_storage_leaf_a, breakout_4x200)
         add_server_zone(fe_storage_leaf_b, breakout_4x200)
+        add_uplink_zone(fe_gpu_leaf, breakout_1x800)
+        add_uplink_zone(fe_storage_leaf_a, breakout_1x800)
+        add_uplink_zone(fe_storage_leaf_b, breakout_1x800)
 
         be_rail_leaf = PlanSwitchClass.objects.get(
             plan=plan,
             switch_class_id="be-rail-leaf",
         )
         add_server_zone(be_rail_leaf, breakout_2x400)
+        add_uplink_zone(be_rail_leaf, breakout_1x800, name="backend-uplinks")
 
         gpu_fe_only = PlanServerClass.objects.create(
             plan=plan,
@@ -278,7 +319,7 @@ class Command(BaseCommand):
             category=ServerClassCategoryChoices.GPU,
             quantity=96,
             gpus_per_server=8,
-            server_device_type=gpu_type,
+            server_device_type=gpu_fe_type,
         )
         gpu_with_be = PlanServerClass.objects.create(
             plan=plan,
@@ -287,7 +328,7 @@ class Command(BaseCommand):
             category=ServerClassCategoryChoices.GPU,
             quantity=32,
             gpus_per_server=8,
-            server_device_type=gpu_type,
+            server_device_type=gpu_be_type,
         )
         storage_a = PlanServerClass.objects.create(
             plan=plan,
@@ -385,7 +426,14 @@ class Command(BaseCommand):
             model="DS5000",
             defaults={"slug": "ds5000"},
         )
-        ext, _ = DeviceTypeExtension.objects.get_or_create(
+        if InterfaceTemplate.objects.filter(device_type=device_type).count() == 0:
+            for index in range(1, 65):
+                InterfaceTemplate.objects.get_or_create(
+                    device_type=device_type,
+                    name=f"Ethernet1/{index}",
+                    defaults={"type": "800gbase-x-qsfpdd"},
+                )
+        ext, created = DeviceTypeExtension.objects.get_or_create(
             device_type=device_type,
             defaults={
                 "mclag_capable": False,
@@ -396,4 +444,44 @@ class Command(BaseCommand):
                 "notes": "Auto-created for 128-GPU odd-port case",
             },
         )
+        if not created:
+            updated_fields = []
+            if ext.native_speed is None:
+                ext.native_speed = 800
+                updated_fields.append("native_speed")
+            if not ext.supported_breakouts:
+                ext.supported_breakouts = ["1x800g", "2x400g", "4x200g", "8x100g"]
+                updated_fields.append("supported_breakouts")
+            if ext.uplink_ports is None:
+                ext.uplink_ports = 32
+                updated_fields.append("uplink_ports")
+            if not ext.hedgehog_roles:
+                ext.hedgehog_roles = ["spine", "server-leaf"]
+                updated_fields.append("hedgehog_roles")
+            if updated_fields:
+                ext.save(update_fields=updated_fields)
         return ext
+
+    def _ensure_server_device_type(
+        self,
+        manufacturer: Manufacturer,
+        model: str,
+        slug: str,
+        interface_specs: list[tuple[str, str]],
+    ) -> DeviceType:
+        device_type, _ = DeviceType.objects.get_or_create(
+            manufacturer=manufacturer,
+            model=model,
+            defaults={
+                "slug": slug,
+                "u_height": 2,
+                "is_full_depth": True,
+            },
+        )
+        for name, interface_type in interface_specs:
+            InterfaceTemplate.objects.get_or_create(
+                device_type=device_type,
+                name=name,
+                defaults={"type": interface_type},
+            )
+        return device_type
