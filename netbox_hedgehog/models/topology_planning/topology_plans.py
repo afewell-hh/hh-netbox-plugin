@@ -225,9 +225,12 @@ class PlanSwitchClass(NetBoxModel):
     )
 
     uplink_ports_per_switch = models.IntegerField(
-        default=0,
+        null=True,
+        blank=True,
         validators=[MinValueValidator(0)],
-        help_text="Number of ports reserved for uplinks (spine connections)"
+        help_text="Number of ports reserved for uplinks (explicit override). "
+                  "If not set, uplink capacity will be derived from SwitchPortZone with zone_type='uplink'. "
+                  "Either this field or uplink zones must be defined."
     )
 
     mclag_pair = models.BooleanField(

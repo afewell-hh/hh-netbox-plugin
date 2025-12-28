@@ -114,7 +114,11 @@ class DeviceTypeExtension(NetBoxModel):
         null=True,
         blank=True,
         validators=[MinValueValidator(0)],
-        help_text="Default number of uplink ports to reserve for spine connections"
+        help_text="[DEPRECATED] Number of ports reserved for uplinks. "
+                  "This field is unused in calculations. "
+                  "Use PlanSwitchClass.uplink_ports_per_switch or "
+                  "define SwitchPortZone with zone_type='uplink'. "
+                  "Will be removed in v2.0."
     )
 
     notes = models.TextField(
