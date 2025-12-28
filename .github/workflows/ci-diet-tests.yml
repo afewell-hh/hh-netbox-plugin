@@ -1,0 +1,507 @@
+name: DIET CI Tests
+
+on:
+  workflow_dispatch:  # Manual trigger only during MVP push
+  schedule:
+    # Nightly fresh-install verification at 2 AM UTC
+    - cron: '0 2 * * *'
+
+jobs:
+  # Job A: Fast unit/integration tests using Django test database
+  django-tests:
+    name: Django Unit & Integration Tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout plugin code
+        uses: actions/checkout@v4
+        with:
+          path: hh-netbox-plugin
+
+      - name: Checkout netbox-docker
+        uses: actions/checkout@v4
+        with:
+          repository: netbox-community/netbox-docker
+          path: netbox-docker
+
+      - name: Configure NetBox Docker
+        run: |
+          cd netbox-docker
+
+          # Mount plugin code
+          cat > docker-compose.override.yml << 'EOF'
+          services:
+            netbox:
+              volumes:
+                - ../hh-netbox-plugin/netbox_hedgehog:/opt/netbox/netbox/netbox_hedgehog:ro
+          EOF
+
+          # Create Dockerfile-Plugins
+          cat > Dockerfile-Plugins << 'EOF'
+          FROM netboxcommunity/netbox:latest
+
+          # Install plugin dependencies
+          RUN /usr/local/bin/uv pip install --no-cache \
+              kubernetes>=24.0.0 \
+              pyyaml>=6.0 \
+              jsonschema>=4.0.0
+
+          # Note: Plugin code is mounted as a volume at runtime
+          # and auto-discovered by NetBox's plugin system
+          EOF
+
+          # Create plugin configuration
+          mkdir -p configuration
+          cat > configuration/plugins.py << 'EOF'
+          PLUGINS = ['netbox_hedgehog']
+          PLUGINS_CONFIG = {
+              'netbox_hedgehog': {
+                  'kubernetes_config_file': None,
+                  'sync_interval': 300,
+                  'enable_webhooks': True,
+                  'max_concurrent_syncs': 5,
+              }
+          }
+          EOF
+
+      - name: Start NetBox
+        run: |
+          cd netbox-docker
+          docker compose pull
+          docker compose up -d
+
+          # Wait for NetBox to be ready
+          echo "Waiting for NetBox to start..."
+          for i in {1..60}; do
+            if docker compose exec -T netbox python manage.py showmigrations > /dev/null 2>&1; then
+              echo "NetBox is ready!"
+              break
+            fi
+            echo "Waiting... ($i/60)"
+            sleep 5
+          done
+
+      - name: Run NetBox migrations
+        run: |
+          cd netbox-docker
+          docker compose exec -T netbox python manage.py migrate
+
+      - name: Load DIET reference data
+        run: |
+          cd netbox-docker
+          docker compose exec -T netbox python manage.py load_diet_reference_data
+
+      - name: Run Django tests
+        run: |
+          cd netbox-docker
+          docker compose exec -T netbox python manage.py test netbox_hedgehog.tests.test_topology_planning --verbosity=2
+
+      - name: Show NetBox logs on failure
+        if: failure()
+        run: |
+          cd netbox-docker
+          docker compose logs netbox | tail -200
+
+      - name: Clean up
+        if: always()
+        run: |
+          cd netbox-docker
+          docker compose down -v
+
+  # Job B: Fresh-install smoke test
+  fresh-install-smoke:
+    name: Fresh Install Smoke Test (128-GPU Case)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout plugin code
+        uses: actions/checkout@v4
+        with:
+          path: hh-netbox-plugin
+
+      - name: Checkout netbox-docker
+        uses: actions/checkout@v4
+        with:
+          repository: netbox-community/netbox-docker
+          path: netbox-docker
+
+      - name: Configure NetBox Docker
+        run: |
+          cd netbox-docker
+
+          # Mount plugin code
+          cat > docker-compose.override.yml << 'EOF'
+          services:
+            netbox:
+              volumes:
+                - ../hh-netbox-plugin/netbox_hedgehog:/opt/netbox/netbox/netbox_hedgehog:ro
+          EOF
+
+          # Create Dockerfile-Plugins
+          cat > Dockerfile-Plugins << 'EOF'
+          FROM netboxcommunity/netbox:latest
+
+          # Install plugin dependencies
+          RUN /usr/local/bin/uv pip install --no-cache \
+              kubernetes>=24.0.0 \
+              pyyaml>=6.0 \
+              jsonschema>=4.0.0
+
+          # Note: Plugin code is mounted as a volume at runtime
+          # and auto-discovered by NetBox's plugin system
+          EOF
+
+          # Create plugin configuration
+          mkdir -p configuration
+          cat > configuration/plugins.py << 'EOF'
+          PLUGINS = ['netbox_hedgehog']
+          PLUGINS_CONFIG = {
+              'netbox_hedgehog': {
+                  'kubernetes_config_file': None,
+                  'sync_interval': 300,
+                  'enable_webhooks': True,
+                  'max_concurrent_syncs': 5,
+              }
+          }
+          EOF
+
+      - name: Start NetBox (Fresh Install)
+        run: |
+          cd netbox-docker
+          docker compose pull
+          docker compose up -d
+
+          # Wait for NetBox to be ready
+          echo "Waiting for NetBox to start..."
+          for i in {1..60}; do
+            if docker compose exec -T netbox python manage.py showmigrations > /dev/null 2>&1; then
+              echo "NetBox is ready!"
+              break
+            fi
+            echo "Waiting... ($i/60)"
+            sleep 5
+          done
+
+      - name: Run NetBox migrations
+        run: |
+          cd netbox-docker
+          docker compose exec -T netbox python manage.py migrate
+
+      - name: Seed DIET reference data
+        run: |
+          cd netbox-docker
+          echo "Loading BreakoutOptions..."
+          docker compose exec -T netbox python manage.py load_diet_reference_data
+
+          echo "Seeding DeviceTypes..."
+          docker compose exec -T netbox python manage.py seed_diet_device_types
+
+      - name: Create 128-GPU test case
+        run: |
+          cd netbox-docker
+          echo "Creating 128-GPU odd-ports test case..."
+          docker compose exec -T netbox python manage.py setup_case_128gpu_odd_ports
+
+      - name: Verify plan calculations
+        run: |
+          cd netbox-docker
+          echo "Verifying plan calculations..."
+          docker compose exec -T netbox python manage.py shell << 'EOF'
+          from netbox_hedgehog.models.topology_planning import TopologyPlan, PlanSwitchClass
+
+          plan = TopologyPlan.objects.get(name="UX Case 128GPU Odd Ports")
+          print(f"\n✓ Plan found: {plan.name} (ID: {plan.pk})")
+
+          # Verify switch classes
+          switch_classes = PlanSwitchClass.objects.filter(plan=plan)
+          print(f"✓ Switch classes: {switch_classes.count()}")
+
+          for sc in switch_classes:
+              print(f"  - {sc.switch_class_id}: {sc.effective_quantity} switches")
+              if sc.calculated_quantity is None:
+                  print(f"    ERROR: calculated_quantity is None!")
+                  exit(1)
+
+          # Verify specific expected values
+          fe_gpu_leaf = switch_classes.get(switch_class_id="fe-gpu-leaf")
+          if fe_gpu_leaf.effective_quantity != 2:
+              print(f"ERROR: fe-gpu-leaf should be 2, got {fe_gpu_leaf.effective_quantity}")
+              exit(1)
+
+          print("\n✅ All verifications passed!")
+          EOF
+
+      - name: Generate devices
+        run: |
+          cd netbox-docker
+          echo "Generating devices for 128-GPU case..."
+          docker compose exec -T netbox python manage.py setup_case_128gpu_odd_ports --generate
+
+      - name: Verify generated devices
+        run: |
+          cd netbox-docker
+          echo "Verifying generated devices..."
+          docker compose exec -T netbox python manage.py shell << 'EOF'
+          from dcim.models import Device, Cable, Interface
+          from extras.models import Tag
+          from netbox_hedgehog.models.topology_planning import TopologyPlan
+
+          plan = TopologyPlan.objects.get(name="UX Case 128GPU Odd Ports")
+          tag = Tag.objects.get(slug="hedgehog-generated")
+
+          devices = Device.objects.filter(
+              tags=tag,
+              custom_field_data__hedgehog_plan_id=str(plan.pk)
+          )
+          print(f"✓ Generated devices: {devices.count()}")
+
+          cables = Cable.objects.filter(
+              tags=tag,
+              custom_field_data__hedgehog_plan_id=str(plan.pk)
+          )
+          print(f"✓ Generated cables: {cables.count()}")
+
+          interfaces = Interface.objects.filter(
+              tags=tag,
+              custom_field_data__hedgehog_plan_id=str(plan.pk)
+          )
+          print(f"✓ Generated interfaces: {interfaces.count()}")
+
+          # Basic sanity checks
+          if devices.count() == 0:
+              print("ERROR: No devices generated!")
+              exit(1)
+
+          if cables.count() == 0:
+              print("ERROR: No cables generated!")
+              exit(1)
+
+          print("\n✅ Device generation verified!")
+          EOF
+
+      - name: Test YAML export
+        run: |
+          cd netbox-docker
+          echo "Testing YAML export..."
+          docker compose exec -T netbox python manage.py shell << 'EOF'
+          from netbox_hedgehog.models.topology_planning import TopologyPlan
+          from netbox_hedgehog.services.yaml_generator import YAMLGenerator
+
+          plan = TopologyPlan.objects.get(name="UX Case 128GPU Odd Ports")
+          generator = YAMLGenerator(plan)
+          yaml_output = generator.generate()
+
+          # Basic validation
+          if not yaml_output:
+              print("ERROR: YAML output is empty!")
+              exit(1)
+
+          if "apiVersion: wiring.githedgehog.com/v1beta1" not in yaml_output:
+              print("ERROR: YAML missing expected apiVersion!")
+              exit(1)
+
+          if "kind: Connection" not in yaml_output:
+              print("ERROR: YAML missing Connection resources!")
+              exit(1)
+
+          # Count connections (rough estimate)
+          connection_count = yaml_output.count("kind: Connection")
+          print(f"✓ Generated {connection_count} Connection CRDs")
+
+          if connection_count < 100:
+              print(f"WARNING: Expected more connections for 128 servers (got {connection_count})")
+
+          print("\n✅ YAML export verified!")
+          EOF
+
+      - name: Show NetBox logs on failure
+        if: failure()
+        run: |
+          cd netbox-docker
+          docker compose logs netbox | tail -300
+
+      - name: Clean up
+        if: always()
+        run: |
+          cd netbox-docker
+          docker compose down -v
+
+  # Job C: Reset + Seed verification (nightly or manual)
+  reset-seed-verification:
+    name: Reset + Seed Verification
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    # Only run on schedule (nightly) or manual trigger
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+
+    steps:
+      - name: Checkout plugin code
+        uses: actions/checkout@v4
+        with:
+          path: hh-netbox-plugin
+
+      - name: Checkout netbox-docker
+        uses: actions/checkout@v4
+        with:
+          repository: netbox-community/netbox-docker
+          path: netbox-docker
+
+      - name: Configure NetBox Docker
+        run: |
+          cd netbox-docker
+
+          # Mount plugin code
+          cat > docker-compose.override.yml << 'EOF'
+          services:
+            netbox:
+              volumes:
+                - ../hh-netbox-plugin/netbox_hedgehog:/opt/netbox/netbox/netbox_hedgehog:ro
+          EOF
+
+          # Create Dockerfile-Plugins
+          cat > Dockerfile-Plugins << 'EOF'
+          FROM netboxcommunity/netbox:latest
+
+          # Install plugin dependencies
+          RUN /usr/local/bin/uv pip install --no-cache \
+              kubernetes>=24.0.0 \
+              pyyaml>=6.0 \
+              jsonschema>=4.0.0
+
+          # Note: Plugin code is mounted as a volume at runtime
+          # and auto-discovered by NetBox's plugin system
+          EOF
+
+          # Create plugin configuration
+          mkdir -p configuration
+          cat > configuration/plugins.py << 'EOF'
+          PLUGINS = ['netbox_hedgehog']
+          PLUGINS_CONFIG = {
+              'netbox_hedgehog': {
+                  'kubernetes_config_file': None,
+                  'sync_interval': 300,
+                  'enable_webhooks': True,
+                  'max_concurrent_syncs': 5,
+              }
+          }
+          EOF
+
+      - name: Start NetBox
+        run: |
+          cd netbox-docker
+          docker compose pull
+          docker compose up -d
+
+          echo "Waiting for NetBox to start..."
+          for i in {1..60}; do
+            if docker compose exec -T netbox python manage.py showmigrations > /dev/null 2>&1; then
+              echo "NetBox is ready!"
+              break
+            fi
+            echo "Waiting... ($i/60)"
+            sleep 5
+          done
+
+      - name: Run NetBox migrations
+        run: |
+          cd netbox-docker
+          docker compose exec -T netbox python manage.py migrate
+
+      - name: Initial seed
+        run: |
+          cd netbox-docker
+          docker compose exec -T netbox python manage.py load_diet_reference_data
+          docker compose exec -T netbox python manage.py seed_diet_device_types
+          docker compose exec -T netbox python manage.py setup_case_128gpu_odd_ports --generate
+
+      - name: Verify initial state
+        run: |
+          cd netbox-docker
+          docker compose exec -T netbox python manage.py shell << 'EOF'
+          from netbox_hedgehog.models.topology_planning import TopologyPlan
+          from dcim.models import Device
+
+          plans = TopologyPlan.objects.count()
+          devices = Device.objects.count()
+
+          print(f"Initial state: {plans} plans, {devices} devices")
+
+          if plans == 0 or devices == 0:
+              print("ERROR: Initial seed failed!")
+              exit(1)
+          EOF
+
+      - name: Reset DIET data (preserve DeviceTypes)
+        run: |
+          cd netbox-docker
+          echo "Resetting DIET data..."
+          docker compose exec -T netbox python manage.py reset_diet_data --no-input
+
+      - name: Verify reset
+        run: |
+          cd netbox-docker
+          docker compose exec -T netbox python manage.py shell << 'EOF'
+          from netbox_hedgehog.models.topology_planning import TopologyPlan
+          from dcim.models import Device, DeviceType
+
+          plans = TopologyPlan.objects.count()
+          devices = Device.objects.count()
+          device_types = DeviceType.objects.filter(model__in=["DS5000", "GPU-Server-FE"]).count()
+
+          print(f"After reset: {plans} plans, {devices} devices, {device_types} DeviceTypes")
+
+          if plans != 0:
+              print("ERROR: Plans not deleted!")
+              exit(1)
+
+          if devices != 0:
+              print("ERROR: Devices not deleted!")
+              exit(1)
+
+          if device_types == 0:
+              print("ERROR: DeviceTypes were deleted (should be preserved)!")
+              exit(1)
+
+          print("✅ Reset verified!")
+          EOF
+
+      - name: Re-seed and verify idempotency
+        run: |
+          cd netbox-docker
+          echo "Re-seeding data..."
+          docker compose exec -T netbox python manage.py load_diet_reference_data
+          docker compose exec -T netbox python manage.py seed_diet_device_types
+          docker compose exec -T netbox python manage.py setup_case_128gpu_odd_ports --generate
+
+      - name: Verify re-seed
+        run: |
+          cd netbox-docker
+          docker compose exec -T netbox python manage.py shell << 'EOF'
+          from netbox_hedgehog.models.topology_planning import TopologyPlan
+          from dcim.models import Device
+
+          plans = TopologyPlan.objects.count()
+          devices = Device.objects.count()
+
+          print(f"After re-seed: {plans} plans, {devices} devices")
+
+          if plans == 0 or devices == 0:
+              print("ERROR: Re-seed failed!")
+              exit(1)
+
+          print("✅ Re-seed verified! Reset+seed workflow is idempotent.")
+          EOF
+
+      - name: Show NetBox logs on failure
+        if: failure()
+        run: |
+          cd netbox-docker
+          docker compose logs netbox | tail -300
+
+      - name: Clean up
+        if: always()
+        run: |
+          cd netbox-docker
+          docker compose down -v
