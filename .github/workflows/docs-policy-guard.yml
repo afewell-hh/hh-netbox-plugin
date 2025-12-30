@@ -1,0 +1,51 @@
+name: Documentation Policy Guard
+
+# Prevents planning/spec docs outside docs/ to maintain single source of truth
+# See AGENTS.md "File Organization" section for policy details
+
+on:
+  pull_request:
+    paths:
+      - '**.md'
+
+jobs:
+  check-doc-policy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Block planning docs outside docs/
+        run: |
+          echo "Checking for planning docs outside docs/..."
+
+          # Get list of changed markdown files in PR
+          changed_files=$(git diff --name-only origin/${{ github.base_ref }}...HEAD | grep '\.md$' || true)
+
+          if [ -z "$changed_files" ]; then
+            echo "✓ No markdown files changed"
+            exit 0
+          fi
+
+          # Check for DIET planning docs in root or specs/
+          violations=$(echo "$changed_files" | grep -E '^(DIET_|specs/DIET-)' || true)
+
+          if [ -n "$violations" ]; then
+            echo "❌ POLICY VIOLATION: Planning docs found outside docs/"
+            echo ""
+            echo "The following files violate documentation policy:"
+            echo "$violations"
+            echo ""
+            echo "Policy: All DIET design decisions and planning must live in GitHub issues."
+            echo "See AGENTS.md 'File Organization' section for details."
+            echo ""
+            echo "To fix:"
+            echo "  1. Move valuable content to the relevant GitHub issue as a comment"
+            echo "  2. Delete the file from root/specs/"
+            echo "  3. Reference the issue in docs/DIET_README.md if needed"
+            exit 1
+          fi
+
+          echo "✓ No policy violations detected"
