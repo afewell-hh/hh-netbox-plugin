@@ -372,7 +372,7 @@ def calculate_switch_quantity(switch_class) -> int:
 
     Implements the core calculation algorithm:
     1. Sum port demand from all connections targeting this switch class
-    2. For rail-optimized connections, calculate switches per rail
+    2. For rail-optimized connections, calculate total demand across rails
     3. Determine optimal breakout based on connection speeds
     4. Calculate logical ports per switch (physical_ports × breakout_factor)
     5. Subtract uplink ports from available capacity
@@ -386,16 +386,17 @@ def calculate_switch_quantity(switch_class) -> int:
         int: Required number of switches
             - Returns 0 if no connections target this switch class
             - Always returns even number if mclag_pair=True
-            - For rail-optimized: returns switches_per_rail × num_rails
+            - For rail-optimized: rails can share switches when capacity allows
 
     Algorithm:
         # Check for rail-optimized connections
         if any connection has distribution='rail-optimized':
-            # Calculate per-rail: one switch per rail minimum
+            # Calculate total demand across rails and allow sharing
             num_rails = count distinct rail values
             ports_per_rail = SUM(server_quantity × ports_per_connection) for each rail
-            switches_per_rail = CEILING(ports_per_rail / available_ports)
-            return switches_per_rail × num_rails
+            total_ports = SUM(ports_per_rail for all rails)
+            switches_needed = CEILING(total_ports / available_ports)
+            return switches_needed
         else:
             # Standard calculation
             total_ports_needed = SUM(server_class.quantity × connection.ports_per_connection)
@@ -421,9 +422,9 @@ def calculate_switch_quantity(switch_class) -> int:
         2
 
         >>> # Rail-optimized: 32 servers × 1x400G × 8 rails
-        >>> # 32 ports per rail, 96 available → 1 switch per rail × 8 = 8 switches
+        >>> # Total demand: 256 ports, 64 available → ceil(256/64) = 4 switches
         >>> calculate_switch_quantity(switch_class_rails)
-        8
+        4
     """
     # Get all connections targeting this switch class
     connections = switch_class.incoming_connections.all()
@@ -527,28 +528,27 @@ def _calculate_rail_optimized_switches(switch_class, rail_connections) -> int:
     """
     Calculate switch quantity for rail-optimized connections.
 
-    Rail-optimized distribution means servers are connected to specific rails,
-    with one dedicated switch per rail. This is common in GPU clusters where
-    backend connections use rail-optimized distribution for optimal performance.
+    Rail-optimized distribution means servers spread across rails connect to
+    switches such that all NICs on the same rail connect to the same switch.
+    Multiple rails can share a switch when capacity allows.
 
     Args:
         switch_class: PlanSwitchClass instance
         rail_connections: QuerySet of rail-optimized connections
 
     Returns:
-        int: switches_per_rail × number_of_rails
+        int: Total switches needed based on total port demand across all rails
 
     Algorithm:
         1. Group connections by rail number
-        2. For each rail, calculate port demand
-        3. Calculate switches needed per rail
-        4. Return switches_per_rail × num_rails
+        2. Calculate TOTAL port demand across all rails
+        3. Calculate total switches = ceil(total_demand / available_ports)
+        4. Multiple rails share switches when capacity allows
 
     Example:
-        32 servers × 1 port per rail × 8 rails
-        Each rail: 32 ports needed
-        Available: 96 ports per switch
-        Result: ceil(32/96) × 8 = 1 × 8 = 8 switches
+        32 servers × 1×400G NIC per rail × 8 rails = 256×400G total demand
+        Each switch: 64×400G capacity
+        Result: ceil(256/64) = 4 switches (2 rails per switch)
     """
     # Get device extension for switch specs
     device_extension = switch_class.device_type_extension
@@ -607,30 +607,21 @@ def _calculate_rail_optimized_switches(switch_class, rail_connections) -> int:
         # No valid rail connections
         return 0
 
-    # Calculate switches needed per rail (use max across all rails)
-    # In rail-optimized topology, all rails should have same port demand
-    max_ports_per_rail = max(rails.values())
-    switches_per_rail = math.ceil(max_ports_per_rail / available_ports_per_switch)
-
-    # Ensure at least 1 switch per rail
-    if switches_per_rail == 0:
-        switches_per_rail = 1
-
-    # Total switches = switches_per_rail × number_of_rails
+    # Calculate TOTAL port demand across all rails
+    # Rails can share switches when capacity allows
+    total_port_demand = sum(rails.values())
     num_rails = len(rails)
-    total_switches = switches_per_rail * num_rails
 
-    # Validate MCLAG compatibility with rail count
-    # MCLAG requires even switch count, but rail-optimized assumes 1:1 rail-to-switch mapping
-    # If rail count is odd and MCLAG is enabled, configuration is incompatible
+    # Calculate total switches needed based on total demand
+    total_switches = math.ceil(total_port_demand / available_ports_per_switch)
+
+    # Ensure at least 1 switch if there's any demand
+    if total_port_demand > 0 and total_switches == 0:
+        total_switches = 1
+
+    # Enforce MCLAG even-count requirement
     if switch_class.mclag_pair and total_switches % 2 != 0:
-        raise ValidationError(
-            f"Switch class '{switch_class.switch_class_id}' has incompatible configuration: "
-            f"{num_rails} rails (odd count) with MCLAG enabled. "
-            f"MCLAG requires even switch count for pairing, but rail-optimized distribution "
-            f"requires {switches_per_rail} switch(es) per rail × {num_rails} rails = {total_switches} total. "
-            f"Either use an even number of rails or disable MCLAG."
-        )
+        total_switches += 1
 
     return total_switches
 
@@ -850,12 +841,12 @@ def calculate_spine_quantity(spine_switch_class) -> int:
     # Calculate available downlink ports on spine
     device_extension = spine_switch_class.device_type_extension
 
-    # Get zone-based capacity for uplink connections (fabric/downlink ports)
-    # NOTE: Using UPLINK zone type for spine downlink ports (leaf uplinks connect here)
+    # Get zone-based capacity for fabric connections (spine downlinks to leaves)
+    # Spine's FABRIC zone is for leaf downlinks, UPLINK zone is for border/external
     capacity = get_port_capacity_for_connection(
         device_extension=device_extension,
         switch_class=spine_switch_class,
-        connection_type=PortZoneTypeChoices.UPLINK
+        connection_type=PortZoneTypeChoices.FABRIC
     )
     native_speed = capacity.native_speed
     physical_ports = capacity.port_count

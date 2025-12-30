@@ -452,8 +452,8 @@ class CalculateSwitchQuantityTestCase(TestCase):
         # 1 port needed ÷ 192 available = ceil(0.005) = 1 switch
         self.assertEqual(result, 1)
 
-    def test_rail_optimized_distribution_calculates_per_rail(self):
-        """Test rail-optimized connections calculate switches per rail"""
+    def test_rail_optimized_distribution_allows_rail_sharing(self):
+        """Test rail-optimized connections allow multiple rails per switch"""
         # Create backend rail leaf switch class
         be_rail_leaf = PlanSwitchClass.objects.create(
             plan=self.plan,
@@ -461,8 +461,26 @@ class CalculateSwitchQuantityTestCase(TestCase):
             fabric='backend',
             hedgehog_role='server-leaf',
             device_type_extension=self.switch_extension,
-            uplink_ports_per_switch=32,
+            uplink_ports_per_switch=None,
             mclag_pair=False
+        )
+
+        breakout_2x400 = BreakoutOption.objects.get(breakout_id='2x400g')
+        SwitchPortZone.objects.create(
+            switch_class=be_rail_leaf,
+            zone_name='server-ports',
+            zone_type=PortZoneTypeChoices.SERVER,
+            port_spec='1-32',
+            breakout_option=breakout_2x400,
+            priority=100
+        )
+        SwitchPortZone.objects.create(
+            switch_class=be_rail_leaf,
+            zone_name='uplink-ports',
+            zone_type=PortZoneTypeChoices.UPLINK,
+            port_spec='33-64',
+            breakout_option=breakout_2x400,
+            priority=200
         )
 
         # Create server class: 32 GPU servers
@@ -490,14 +508,11 @@ class CalculateSwitchQuantityTestCase(TestCase):
         # Calculate switch quantity
         result = calculate_switch_quantity(be_rail_leaf)
 
-        # Expected calculation with rail-awareness:
-        # - 8 rails with rail-optimized distribution
-        # - 32 servers × 1 port per rail = 32 ports per rail
-        # - 64 physical ports × 2 breakout (2x400G) = 128 logical ports
-        # - 128 - 32 uplink = 96 available ports per switch
-        # - 32 ports per rail ÷ 96 available = 0.33... → ceil = 1 switch per rail
-        # - 1 switch × 8 rails = 8 switches total
-        self.assertEqual(result, 8)
+        # Issue #123: Backend rail calculation (32 servers, 8 rails, 256x400G total)
+        # Zone-based model: 32 server ports + 32 uplink ports on DS5000
+        # Each 800G port can break to 2x400G => 64x400G server ports per switch
+        # 256 / 64 = 4 switches (2 rails per switch, not 1 per rail)
+        self.assertEqual(result, 4)
 
 
 class CalculateSpineQuantityTestCase(TestCase):
@@ -1290,8 +1305,26 @@ class EdgeCaseValidationTestCase(TestCase):
             fabric='backend',
             hedgehog_role='server-leaf',
             device_type_extension=self.switch_extension,
-            uplink_ports_per_switch=32,
+            uplink_ports_per_switch=None,
             mclag_pair=True  # MCLAG enabled
+        )
+
+        breakout_2x400 = BreakoutOption.objects.get(breakout_id='2x400g')
+        SwitchPortZone.objects.create(
+            switch_class=be_rail_leaf,
+            zone_name='server-ports',
+            zone_type=PortZoneTypeChoices.SERVER,
+            port_spec='1-32',
+            breakout_option=breakout_2x400,
+            priority=100
+        )
+        SwitchPortZone.objects.create(
+            switch_class=be_rail_leaf,
+            zone_name='uplink-ports',
+            zone_type=PortZoneTypeChoices.UPLINK,
+            port_spec='33-64',
+            breakout_option=breakout_2x400,
+            priority=200
         )
 
         # Create server class
@@ -1320,9 +1353,9 @@ class EdgeCaseValidationTestCase(TestCase):
         # Calculate switch quantity
         result = calculate_switch_quantity(be_rail_leaf)
 
-        # 4 rails × 1 switch per rail = 4 (even)
-        # With MCLAG: 4 is already even, no adjustment needed
-        self.assertEqual(result, 4)
+        # Total demand: 4 rails × 16 servers = 64 ports
+        # 64 / 64 = 1 switch, but MCLAG enforces even count -> 2
+        self.assertEqual(result, 2)
 
     def test_zero_spines_returns_none_breakout(self):
         """Test that breakout returns None when no spines needed"""
