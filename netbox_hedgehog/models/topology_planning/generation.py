@@ -10,6 +10,10 @@ from django.core.exceptions import ValidationError
 from django.urls import reverse
 
 from netbox_hedgehog.choices import GenerationStatusChoices
+from netbox_hedgehog.utils.snapshot_builder import (
+    build_plan_snapshot,
+    compare_snapshots,
+)
 
 
 class GenerationState(models.Model):
@@ -70,81 +74,29 @@ class GenerationState(models.Model):
         """Get absolute URL for this object"""
         return reverse('plugins:netbox_hedgehog:generationstate', args=[self.pk])
 
-    def is_dirty(self):
+    def is_dirty(self) -> bool:
         """
         Check if plan has been modified since generation.
 
+        Compares current plan state against snapshot saved at generation time.
+        Detects changes to server classes, switch classes, connections, port
+        zones, and MCLAG domains.
+
         Returns:
             bool: True if plan differs from snapshot, False otherwise
+
+        Example:
+            >>> state = GenerationState.objects.get(plan=plan)
+            >>> state.is_dirty()
+            False  # No changes since generation
+            >>> plan.server_classes.first().quantity = 64
+            >>> plan.server_classes.first().save()
+            >>> state.is_dirty()
+            True  # Quantity changed
+
+        Note:
+            Uses shared snapshot builder (netbox_hedgehog.utils.snapshot_builder)
+            to ensure consistency with DeviceGenerator snapshot logic.
         """
-        # Build current state snapshot
-        current_snapshot = self._build_current_snapshot()
-
-        # Compare server classes
-        if not self._compare_server_classes(
-            current_snapshot.get('server_classes', []),
-            self.snapshot.get('server_classes', [])
-        ):
-            return True
-
-        # Compare switch classes
-        if not self._compare_switch_classes(
-            current_snapshot.get('switch_classes', []),
-            self.snapshot.get('switch_classes', [])
-        ):
-            return True
-
-        return False
-
-    def _build_current_snapshot(self):
-        """Build snapshot of current plan state"""
-        snapshot = {
-            'server_classes': [],
-            'switch_classes': []
-        }
-
-        # Capture server classes
-        for server_class in self.plan.server_classes.all():
-            snapshot['server_classes'].append({
-                'server_class_id': server_class.server_class_id,
-                'quantity': server_class.quantity
-            })
-
-        # Capture switch classes
-        for switch_class in self.plan.switch_classes.all():
-            snapshot['switch_classes'].append({
-                'switch_class_id': switch_class.switch_class_id,
-                'effective_quantity': switch_class.effective_quantity
-            })
-
-        return snapshot
-
-    def _compare_server_classes(self, current, snapshot):
-        """Compare server classes between current state and snapshot"""
-        # Build lookup dicts
-        current_dict = {
-            sc['server_class_id']: sc['quantity']
-            for sc in current
-        }
-        snapshot_dict = {
-            sc['server_class_id']: sc['quantity']
-            for sc in snapshot
-        }
-
-        # Compare
-        return current_dict == snapshot_dict
-
-    def _compare_switch_classes(self, current, snapshot):
-        """Compare switch classes between current state and snapshot"""
-        # Build lookup dicts
-        current_dict = {
-            sc['switch_class_id']: sc['effective_quantity']
-            for sc in current
-        }
-        snapshot_dict = {
-            sc['switch_class_id']: sc['effective_quantity']
-            for sc in snapshot
-        }
-
-        # Compare
-        return current_dict == snapshot_dict
+        current = build_plan_snapshot(self.plan)
+        return not compare_snapshots(current, self.snapshot)

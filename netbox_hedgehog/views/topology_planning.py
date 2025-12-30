@@ -18,9 +18,27 @@ from ..utils.topology_calculations import update_plan_calculations
 from ..services.yaml_generator import generate_yaml_for_plan
 
 
-def _require_topologyplan_change_permission(request):
-    if not request.user.has_perm('netbox_hedgehog.change_topologyplan'):
-        raise PermissionDenied
+def _require_topologyplan_change_permission(request, plan=None):
+    """
+    Check change_topologyplan permission.
+
+    Supports both model-level and object-level (ObjectPermission) checks.
+
+    Args:
+        request: HTTP request with user
+        plan: Optional TopologyPlan instance for object-level permission check
+
+    Raises:
+        PermissionDenied: If user lacks permission
+    """
+    if plan is not None:
+        # Object-level permission check (supports ObjectPermission)
+        if not request.user.has_perm('netbox_hedgehog.change_topologyplan', plan):
+            raise PermissionDenied
+    else:
+        # Model-level permission check
+        if not request.user.has_perm('netbox_hedgehog.change_topologyplan'):
+            raise PermissionDenied
 
 
 # BreakoutOption Views
@@ -186,6 +204,128 @@ class TopologyPlanGenerateView(PermissionRequiredMixin, View):
             'needs_regeneration': plan.needs_regeneration,
             'site_name': DeviceGenerator.DEFAULT_SITE_NAME,
         }
+
+
+class TopologyPlanGenerateUpdateView(View):
+    """
+    Unified generate/update action for TopologyPlans (DIET #127).
+
+    Single endpoint that:
+    1. Auto-recalculates switch quantities before generation
+    2. Generates/regenerates NetBox objects via DeviceGenerator
+    3. Creates/updates GenerationState with comprehensive snapshot
+
+    Replaces dual "Generate" + "Recalculate" buttons with single unified action.
+
+    POST: Generate or update devices based on current plan state
+
+    Note: Permission checks are done manually inside post() to support
+    both model-level and object-level (ObjectPermission) permissions.
+    """
+
+    # Required DCIM permissions for device/cable generation
+    REQUIRED_DCIM_PERMISSIONS = [
+        'dcim.add_device',
+        'dcim.delete_device',
+        'dcim.add_interface',
+        'dcim.add_cable',
+        'dcim.delete_cable',
+    ]
+
+    def post(self, request, pk):
+        """
+        Handle unified generate/update POST request.
+
+        Workflow:
+        1. Check permissions (change_topologyplan + 6 DCIM perms)
+        2. Validate plan has server + switch classes
+        3. Auto-recalculate switch quantities
+        4. Generate/regenerate devices via DeviceGenerator
+        5. Redirect to detail page with success/error message
+
+        Args:
+            request: HTTP request
+            pk: TopologyPlan primary key
+
+        Returns:
+            HttpResponse redirect to detail page
+        """
+        # Get plan first (needed for object-level permission check)
+        plan = get_object_or_404(models.TopologyPlan, pk=pk)
+
+        # Enforce change_topologyplan permission (supports ObjectPermission)
+        _require_topologyplan_change_permission(request, plan)
+
+        # Enforce DCIM permissions (required for device/cable generation)
+        self._require_dcim_permissions(request)
+
+        # Validate plan has required classes
+        if plan.server_classes.count() == 0:
+            messages.error(
+                request,
+                "Cannot generate devices: plan requires at least one server class."
+            )
+            return redirect('plugins:netbox_hedgehog:topologyplan_detail', pk=plan.pk)
+
+        if plan.switch_classes.count() == 0:
+            messages.error(
+                request,
+                "Cannot generate devices: plan requires at least one switch class."
+            )
+            return redirect('plugins:netbox_hedgehog:topologyplan_detail', pk=plan.pk)
+
+        # Step 1: Auto-recalculate switch quantities (fail-fast on calc errors)
+        calc_result = update_plan_calculations(plan)
+        if calc_result['errors']:
+            # Show first calculation error and abort
+            first_error = calc_result['errors'][0]
+            switch_class_id = (
+                first_error.get('switch_class_id')
+                or first_error.get('switch_class')
+                or 'unknown'
+            )
+            message = first_error.get('message') or first_error.get('error') or 'Unknown error'
+            messages.error(
+                request,
+                f"Cannot generate devices due to calculation errors: "
+                f"{switch_class_id}: {message}"
+            )
+            return redirect('plugins:netbox_hedgehog:topologyplan_detail', pk=plan.pk)
+
+        # Step 2: Generate/regenerate devices
+        generator = DeviceGenerator(plan=plan)
+        try:
+            result = generator.generate_all()
+        except ValidationError as exc:
+            messages.error(request, f"Generation failed: {' '.join(exc.messages)}")
+            return redirect('plugins:netbox_hedgehog:topologyplan_detail', pk=plan.pk)
+        except Exception as exc:  # pragma: no cover - safety net for UI feedback
+            messages.error(request, f"Generation failed: {exc}")
+            return redirect('plugins:netbox_hedgehog:topologyplan_detail', pk=plan.pk)
+
+        # Success
+        messages.success(
+            request,
+            f"Devices updated successfully: "
+            f"{result.device_count} devices, "
+            f"{result.interface_count} interfaces, "
+            f"{result.cable_count} cables."
+        )
+        return redirect('plugins:netbox_hedgehog:topologyplan_detail', pk=plan.pk)
+
+    def _require_dcim_permissions(self, request):
+        """
+        Enforce DCIM permissions required for device/cable generation.
+
+        Raises:
+            PermissionDenied: If user lacks any required DCIM permission
+        """
+        for perm in self.REQUIRED_DCIM_PERMISSIONS:
+            if not request.user.has_perm(perm):
+                raise PermissionDenied(
+                    f"Device generation requires '{perm}' permission. "
+                    f"Contact administrator for device management permissions."
+                )
 
 
 class TopologyPlanRecalculateView(PermissionRequiredMixin, View):

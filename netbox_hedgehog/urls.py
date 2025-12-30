@@ -28,7 +28,7 @@ from .views.topology_planning import (
     BreakoutOptionListView, BreakoutOptionView, BreakoutOptionEditView, BreakoutOptionDeleteView,
     DeviceTypeExtensionListView, DeviceTypeExtensionView, DeviceTypeExtensionEditView, DeviceTypeExtensionDeleteView,
     TopologyPlanListView, TopologyPlanView, TopologyPlanEditView, TopologyPlanDeleteView,
-    TopologyPlanGenerateView, TopologyPlanRecalculateView, TopologyPlanExportView,
+    TopologyPlanGenerateView, TopologyPlanGenerateUpdateView, TopologyPlanRecalculateView, TopologyPlanExportView,
     PlanServerClassListView, PlanServerClassView, PlanServerClassEditView, PlanServerClassDeleteView,
     PlanSwitchClassListView, PlanSwitchClassView, PlanSwitchClassEditView, PlanSwitchClassDeleteView,
     PlanServerConnectionListView, PlanServerConnectionView, PlanServerConnectionEditView, PlanServerConnectionDeleteView,
@@ -225,6 +225,7 @@ urlpatterns = [
     path('topology-plans/<int:pk>/delete/', TopologyPlanDeleteView.as_view(), name='topologyplan_delete'),
     path('topology-plans/<int:pk>/changelog/', TopologyPlanView.as_view(), name='topologyplan_changelog'),
     path('topology-plans/<int:pk>/generate/', TopologyPlanGenerateView.as_view(), name='topologyplan_generate'),
+    path('topology-plans/<int:pk>/generate-update/', TopologyPlanGenerateUpdateView.as_view(), name='topologyplan_generate_update'),
     path('topology-plans/<int:pk>/recalculate/', TopologyPlanRecalculateView.as_view(), name='topologyplan_recalculate'),
     path('topology-plans/<int:pk>/export/', TopologyPlanExportView.as_view(), name='topologyplan_export'),
 
