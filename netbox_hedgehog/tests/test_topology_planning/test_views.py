@@ -601,10 +601,22 @@ class GenerateUpdateRailCalculationTestCase(TestCase):
         DS5000: 32×800G server ports with 2×400G breakout = 64×400G capacity
         Expected: 256÷64 = 4 switches (rails share), NOT 8 (1 per rail)
         """
+        from unittest.mock import patch
+        from netbox_hedgehog.services.device_generator import GenerationResult
+
         url = reverse('plugins:netbox_hedgehog:topologyplan_generate_update', args=[self.plan.pk])
 
-        # POST to generate/update endpoint
-        response = self.client.post(url, follow=True)
+        # Mock DeviceGenerator.generate_all() to avoid slow device creation
+        # We're testing calculation logic, not actual device generation
+        mock_result = GenerationResult(
+            device_count=36,  # 32 servers + 4 switches
+            interface_count=256,
+            cable_count=256
+        )
+
+        with patch('netbox_hedgehog.views.topology_planning.DeviceGenerator.generate_all', return_value=mock_result):
+            # POST to generate/update endpoint
+            response = self.client.post(url, follow=True)
 
         # Should redirect to detail page
         self.assertEqual(response.status_code, 200)
@@ -627,7 +639,6 @@ class GenerateUpdateRailCalculationTestCase(TestCase):
             "Should show success message after generation"
         )
         # Check for success header (avoiding brittle device count check)
-        # Total devices = 32 servers + 4 switches = 36
         self.assertTrue(
             any('Devices generated successfully' in str(m.message) for m in messages),
             "Success message should confirm devices generated"
@@ -635,19 +646,25 @@ class GenerateUpdateRailCalculationTestCase(TestCase):
 
     def test_rail_calculation_idempotent_via_endpoint(self):
         """Test that multiple POST requests produce identical results (idempotency)"""
+        from unittest.mock import patch
+        from netbox_hedgehog.services.device_generator import GenerationResult
+
         url = reverse('plugins:netbox_hedgehog:topologyplan_generate_update', args=[self.plan.pk])
 
-        # First POST
-        response1 = self.client.post(url, follow=True)
-        self.assertEqual(response1.status_code, 200)
-        self.be_rail_leaf.refresh_from_db()
-        first_quantity = self.be_rail_leaf.calculated_quantity
+        mock_result = GenerationResult(device_count=36, interface_count=256, cable_count=256)
 
-        # Second POST (should produce identical result)
-        response2 = self.client.post(url, follow=True)
-        self.assertEqual(response2.status_code, 200)
-        self.be_rail_leaf.refresh_from_db()
-        second_quantity = self.be_rail_leaf.calculated_quantity
+        with patch('netbox_hedgehog.views.topology_planning.DeviceGenerator.generate_all', return_value=mock_result):
+            # First POST
+            response1 = self.client.post(url, follow=True)
+            self.assertEqual(response1.status_code, 200)
+            self.be_rail_leaf.refresh_from_db()
+            first_quantity = self.be_rail_leaf.calculated_quantity
+
+            # Second POST (should produce identical result)
+            response2 = self.client.post(url, follow=True)
+            self.assertEqual(response2.status_code, 200)
+            self.be_rail_leaf.refresh_from_db()
+            second_quantity = self.be_rail_leaf.calculated_quantity
 
         # Results must be identical
         self.assertEqual(
