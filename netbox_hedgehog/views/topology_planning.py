@@ -111,17 +111,56 @@ class TopologyPlanView(generic.ObjectView):
     template_name = 'netbox_hedgehog/topologyplan.html'
 
     def get_extra_context(self, request, instance):
-        """Add server classes, switch classes, and connections to context"""
+        """Add server classes, switch classes, connections, and permissions to context"""
         # Get all server connections for this plan (via server_class FK)
         server_connections = models.PlanServerConnection.objects.filter(
             server_class__plan=instance
         ).select_related('server_class', 'target_switch_class')
 
+        # Check if user can generate devices (object-level permission + DCIM perms)
+        can_generate_devices = self._can_user_generate_devices(request, instance)
+
         return {
             'server_classes': instance.server_classes.all(),
             'switch_classes': instance.switch_classes.all(),
             'server_connections': server_connections,
+            'can_generate_devices': can_generate_devices,
         }
+
+    def _can_user_generate_devices(self, request, instance):
+        """
+        Check if user has all permissions required to generate devices.
+
+        Requires:
+        - Object-level change_topologyplan permission (supports ObjectPermission)
+        - All DCIM permissions (add/delete device, add interface, add/delete cable)
+
+        Args:
+            request: HTTP request with user
+            instance: TopologyPlan instance
+
+        Returns:
+            bool: True if user has all required permissions
+        """
+        # Required DCIM permissions
+        required_perms = [
+            'dcim.add_device',
+            'dcim.delete_device',
+            'dcim.add_interface',
+            'dcim.add_cable',
+            'dcim.delete_cable',
+        ]
+
+        # Check object-level change_topologyplan permission
+        if not request.user.has_perm('netbox_hedgehog.change_topologyplan', instance):
+            return False
+
+        # Check all required DCIM permissions
+        for perm in required_perms:
+            if not request.user.has_perm(perm):
+                return False
+
+        return True
 
 
 class TopologyPlanEditView(generic.ObjectEditView):
