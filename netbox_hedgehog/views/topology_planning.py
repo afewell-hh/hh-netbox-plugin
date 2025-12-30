@@ -9,7 +9,7 @@ from django.contrib.auth.mixins import PermissionRequiredMixin
 from django.core.exceptions import PermissionDenied, ValidationError
 from django.http import HttpResponse
 from django.shortcuts import get_object_or_404, redirect, render
-from django.utils.safestring import mark_safe
+from django.utils.html import format_html
 from django.views import View
 
 from netbox.views import generic
@@ -346,11 +346,12 @@ class TopologyPlanGenerateUpdateView(View):
         # Success - use HTML formatting for better visibility
         messages.success(
             request,
-            mark_safe(
-                f"<strong>Devices generated successfully!</strong><br>"
-                f"Created {result.device_count} devices, "
-                f"{result.interface_count} interfaces, "
-                f"and {result.cable_count} cables."
+            format_html(
+                "<strong>Devices generated successfully!</strong><br>"
+                "Created {} devices, {} interfaces, and {} cables.",
+                result.device_count,
+                result.interface_count,
+                result.cable_count
             )
         )
         return redirect('plugins:netbox_hedgehog:topologyplan_detail', pk=plan.pk)

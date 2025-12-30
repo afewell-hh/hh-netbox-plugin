@@ -610,7 +610,6 @@ def _calculate_rail_optimized_switches(switch_class, rail_connections) -> int:
     # Calculate TOTAL port demand across all rails
     # Rails can share switches when capacity allows
     total_port_demand = sum(rails.values())
-    num_rails = len(rails)
 
     # Calculate total switches needed based on total demand
     total_switches = math.ceil(total_port_demand / available_ports_per_switch)
