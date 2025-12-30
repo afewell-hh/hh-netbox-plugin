@@ -456,3 +456,220 @@ class RecalculateActionTestCase(TestCase):
         self.assertEqual(self.switch_class.override_quantity, 10)
         # Effective should still use override
         self.assertEqual(self.switch_class.effective_quantity, 10)
+
+
+class GenerateUpdateRailCalculationTestCase(TestCase):
+    """
+    Integration test for rail-optimized calculation via generate/update endpoint.
+
+    Tests Issue #123: Rails can share switches when capacity allows.
+    Verifies end-to-end flow from POST request through calculation to response.
+    """
+
+    @classmethod
+    def setUpTestData(cls):
+        """Create minimal rail-optimized topology matching Issue #123"""
+        cls.user = User.objects.create_user(
+            username='testuser',
+            password='testpass123',
+            is_staff=True,
+            is_superuser=True
+        )
+
+        # Grant all required permissions
+        from django.contrib.auth.models import Permission
+        permissions = Permission.objects.filter(
+            codename__in=[
+                'add_device', 'delete_device', 'add_interface',
+                'add_cable', 'delete_cable', 'change_topologyplan'
+            ]
+        )
+        cls.user.user_permissions.add(*permissions)
+
+        cls.plan = TopologyPlan.objects.create(
+            name='Issue #123 Rail Test',
+            created_by=cls.user
+        )
+
+        # Create manufacturer and device types
+        cls.manufacturer, _ = Manufacturer.objects.get_or_create(
+            name='Celestica',
+            defaults={'slug': 'celestica'}
+        )
+
+        cls.switch_type, _ = DeviceType.objects.get_or_create(
+            manufacturer=cls.manufacturer,
+            model='DS5000',
+            defaults={'slug': 'ds5000'}
+        )
+
+        cls.server_type, _ = DeviceType.objects.get_or_create(
+            manufacturer=cls.manufacturer,
+            model='B200',
+            defaults={'slug': 'b200'}
+        )
+
+        # Create device type extension
+        cls.device_ext, _ = DeviceTypeExtension.objects.get_or_create(
+            device_type=cls.switch_type,
+            defaults={
+                'mclag_capable': True,
+                'hedgehog_roles': ['server-leaf'],
+                'native_speed': 800,
+                'supported_breakouts': ['1x800g', '2x400g', '4x200g']
+            }
+        )
+
+        # Create BreakoutOption for 2x400G
+        from netbox_hedgehog.models.topology_planning import BreakoutOption
+        cls.breakout_2x400, _ = BreakoutOption.objects.get_or_create(
+            breakout_id='2x400g',
+            defaults={
+                'from_speed': 800,
+                'logical_ports': 2,
+                'logical_speed': 400
+            }
+        )
+
+        # Create backend rail leaf switch class
+        cls.be_rail_leaf = PlanSwitchClass.objects.create(
+            plan=cls.plan,
+            switch_class_id='be-rail-leaf',
+            fabric=FabricTypeChoices.BACKEND,
+            hedgehog_role=HedgehogRoleChoices.SERVER_LEAF,
+            device_type_extension=cls.device_ext,
+            calculated_quantity=0
+        )
+
+        # Create SwitchPortZones (32 server + 32 uplink)
+        from netbox_hedgehog.models.topology_planning import SwitchPortZone
+        from netbox_hedgehog.choices import PortZoneTypeChoices
+
+        SwitchPortZone.objects.create(
+            switch_class=cls.be_rail_leaf,
+            zone_name='server-ports',
+            zone_type=PortZoneTypeChoices.SERVER,
+            port_spec='1-32',
+            breakout_option=cls.breakout_2x400,
+            priority=10
+        )
+
+        SwitchPortZone.objects.create(
+            switch_class=cls.be_rail_leaf,
+            zone_name='uplink-to-spine',
+            zone_type=PortZoneTypeChoices.UPLINK,
+            port_spec='33-64',
+            breakout_option=cls.breakout_2x400,
+            priority=20
+        )
+
+        # Create server class: 32 servers
+        cls.server_class = PlanServerClass.objects.create(
+            plan=cls.plan,
+            server_class_id='GPU-B200',
+            server_device_type=cls.server_type,
+            quantity=32,
+            gpus_per_server=8,
+            category=ServerClassCategoryChoices.GPU
+        )
+
+        # Create 8 rail-optimized connections (1 per rail)
+        from netbox_hedgehog.models.topology_planning import PlanServerConnection
+        from netbox_hedgehog.choices import ConnectionTypeChoices
+        for rail_num in range(8):
+            PlanServerConnection.objects.create(
+                connection_id=f'BE-RAIL-{rail_num}',
+                server_class=cls.server_class,
+                target_switch_class=cls.be_rail_leaf,
+                ports_per_connection=1,
+                speed=400,
+                hedgehog_conn_type=ConnectionTypeChoices.UNBUNDLED,
+                distribution='rail-optimized',
+                rail=rail_num
+            )
+
+    def setUp(self):
+        """Login before each test"""
+        self.client = Client()
+        self.client.login(username='testuser', password='testpass123')
+
+    def test_rail_calculation_via_generate_update_endpoint(self):
+        """
+        Test that generate/update endpoint calculates correct rail-optimized switches.
+
+        Issue #123: 32 servers × 8 rails × 1×400G/rail = 256×400G total
+        DS5000: 32×800G server ports with 2×400G breakout = 64×400G capacity
+        Expected: 256÷64 = 4 switches (rails share), NOT 8 (1 per rail)
+        """
+        from unittest.mock import patch
+        from netbox_hedgehog.services.device_generator import GenerationResult
+
+        url = reverse('plugins:netbox_hedgehog:topologyplan_generate_update', args=[self.plan.pk])
+
+        # Mock DeviceGenerator.generate_all() to avoid slow device creation
+        # We're testing calculation logic, not actual device generation
+        mock_result = GenerationResult(
+            device_count=36,  # 32 servers + 4 switches
+            interface_count=256,
+            cable_count=256
+        )
+
+        with patch('netbox_hedgehog.views.topology_planning.DeviceGenerator.generate_all', return_value=mock_result):
+            # POST to generate/update endpoint
+            response = self.client.post(url, follow=True)
+
+        # Should redirect to detail page
+        self.assertEqual(response.status_code, 200)
+
+        # Verify calculation was triggered and succeeded
+        self.be_rail_leaf.refresh_from_db()
+
+        # Critical assertion: 4 switches (rails share), not 8
+        self.assertEqual(
+            self.be_rail_leaf.calculated_quantity,
+            4,
+            "Rail-optimized calculation should produce 4 switches (2 rails per switch), "
+            "not 8 (1 per rail). See Issue #123."
+        )
+
+        # Verify success message appears in response
+        messages = list(response.context['messages'])
+        self.assertTrue(
+            any('success' in str(m.tags) for m in messages),
+            "Should show success message after generation"
+        )
+        # Check for success header (avoiding brittle device count check)
+        self.assertTrue(
+            any('Devices generated successfully' in str(m.message) for m in messages),
+            "Success message should confirm devices generated"
+        )
+
+    def test_rail_calculation_idempotent_via_endpoint(self):
+        """Test that multiple POST requests produce identical results (idempotency)"""
+        from unittest.mock import patch
+        from netbox_hedgehog.services.device_generator import GenerationResult
+
+        url = reverse('plugins:netbox_hedgehog:topologyplan_generate_update', args=[self.plan.pk])
+
+        mock_result = GenerationResult(device_count=36, interface_count=256, cable_count=256)
+
+        with patch('netbox_hedgehog.views.topology_planning.DeviceGenerator.generate_all', return_value=mock_result):
+            # First POST
+            response1 = self.client.post(url, follow=True)
+            self.assertEqual(response1.status_code, 200)
+            self.be_rail_leaf.refresh_from_db()
+            first_quantity = self.be_rail_leaf.calculated_quantity
+
+            # Second POST (should produce identical result)
+            response2 = self.client.post(url, follow=True)
+            self.assertEqual(response2.status_code, 200)
+            self.be_rail_leaf.refresh_from_db()
+            second_quantity = self.be_rail_leaf.calculated_quantity
+
+        # Results must be identical
+        self.assertEqual(
+            first_quantity,
+            second_quantity,
+            "Generate/update must be idempotent across multiple POSTs"
+        )
+        self.assertEqual(second_quantity, 4, "Both runs should produce 4 switches")

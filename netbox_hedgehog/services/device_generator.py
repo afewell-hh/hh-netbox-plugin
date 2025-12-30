@@ -31,6 +31,7 @@ from netbox_hedgehog.models.topology_planning import (
     TopologyPlan,
 )
 from netbox_hedgehog.services.port_allocator import PortAllocatorV2
+from netbox_hedgehog.utils.snapshot_builder import build_plan_snapshot
 
 
 @dataclass(frozen=True)
@@ -346,30 +347,10 @@ class DeviceGenerator:
             device_count=device_count,
             interface_count=interface_count,
             cable_count=cable_count,
-            snapshot=self._build_snapshot(),
+            snapshot=build_plan_snapshot(self.plan),
             status=GenerationStatusChoices.GENERATED,
         )
         state.save()
-
-    def _build_snapshot(self) -> dict:
-        snapshot = {
-            'server_classes': [],
-            'switch_classes': [],
-        }
-
-        for server_class in self.plan.server_classes.all():
-            snapshot['server_classes'].append({
-                'server_class_id': server_class.server_class_id,
-                'quantity': server_class.quantity,
-            })
-
-        for switch_class in self.plan.switch_classes.all():
-            snapshot['switch_classes'].append({
-                'switch_class_id': switch_class.switch_class_id,
-                'effective_quantity': switch_class.effective_quantity,
-            })
-
-        return snapshot
 
     def _render_device_name(
         self,
