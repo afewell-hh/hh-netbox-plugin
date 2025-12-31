@@ -17,6 +17,8 @@ from .. import models, tables, forms
 from ..services.device_generator import DeviceGenerator
 from ..utils.topology_calculations import update_plan_calculations
 from ..services.yaml_generator import generate_yaml_for_plan
+from ..jobs.device_generation import DeviceGenerationJob
+from ..choices import GenerationStatusChoices
 
 
 def _require_topologyplan_change_permission(request, plan=None):
@@ -332,29 +334,32 @@ class TopologyPlanGenerateUpdateView(View):
             )
             return redirect('plugins:netbox_hedgehog:topologyplan_detail', pk=plan.pk)
 
-        # Step 2: Generate/regenerate devices
-        generator = DeviceGenerator(plan=plan)
-        try:
-            result = generator.generate_all()
-        except ValidationError as exc:
-            messages.error(request, f"Generation failed: {' '.join(exc.messages)}")
-            return redirect('plugins:netbox_hedgehog:topologyplan_detail', pk=plan.pk)
-        except Exception as exc:  # pragma: no cover - safety net for UI feedback
-            messages.error(request, f"Generation failed: {exc}")
-            return redirect('plugins:netbox_hedgehog:topologyplan_detail', pk=plan.pk)
-
-        # Success - use HTML formatting for better visibility
-        messages.success(
-            request,
-            format_html(
-                "<strong>Devices generated successfully!</strong><br>"
-                "Created {} devices, {} interfaces, and {} cables.",
-                result.device_count,
-                result.interface_count,
-                result.cable_count
-            )
+        # Step 2: Enqueue background job for device generation
+        # Create/update GenerationState with QUEUED status
+        state, created = models.GenerationState.objects.update_or_create(
+            plan=plan,
+            defaults={
+                'status': GenerationStatusChoices.QUEUED,
+                'device_count': 0,
+                'interface_count': 0,
+                'cable_count': 0,
+                'snapshot': {},
+            }
         )
-        return redirect('plugins:netbox_hedgehog:topologyplan_detail', pk=plan.pk)
+
+        # Enqueue DeviceGenerationJob (passing plan_id as arg, not instance)
+        job = DeviceGenerationJob.enqueue(
+            name=f"Generate devices for plan: {plan.name}",
+            user=request.user,
+            plan_id=plan.pk,
+        )
+
+        # Link job to GenerationState
+        state.job = job
+        state.save()
+
+        # Redirect to NetBox Job detail page
+        return redirect(job.get_absolute_url())
 
     def _require_dcim_permissions(self, request):
         """
@@ -479,10 +484,42 @@ class PlanServerClassEditView(generic.ObjectEditView):
     queryset = models.PlanServerClass.objects.all()
     form = forms.PlanServerClassForm
 
+    def dispatch(self, request, *args, **kwargs):
+        """Check if plan is locked before allowing edit"""
+        # For edit (not create), check plan locking
+        if kwargs.get('pk'):
+            obj = get_object_or_404(self.queryset, pk=kwargs['pk'])
+            if self._is_plan_locked(obj.plan, request):
+                return redirect('plugins:netbox_hedgehog:topologyplan_detail', pk=obj.plan.pk)
+        return super().dispatch(request, *args, **kwargs)
+
+    def _is_plan_locked(self, plan, request):
+        """Check if plan is locked during generation"""
+        if hasattr(plan, 'generation_state'):
+            if plan.generation_state.status in [GenerationStatusChoices.QUEUED, GenerationStatusChoices.IN_PROGRESS]:
+                messages.error(
+                    request,
+                    "Cannot modify plan during device generation. Wait for job to complete."
+                )
+                return True
+        return False
+
 
 class PlanServerClassDeleteView(generic.ObjectDeleteView):
     """Delete view for PlanServerClasses"""
     queryset = models.PlanServerClass.objects.all()
+
+    def dispatch(self, request, *args, **kwargs):
+        """Check if plan is locked before allowing delete"""
+        obj = get_object_or_404(self.queryset, pk=kwargs['pk'])
+        if hasattr(obj.plan, 'generation_state'):
+            if obj.plan.generation_state.status in [GenerationStatusChoices.QUEUED, GenerationStatusChoices.IN_PROGRESS]:
+                messages.error(
+                    request,
+                    "Cannot modify plan during device generation. Wait for job to complete."
+                )
+                return redirect('plugins:netbox_hedgehog:topologyplan_detail', pk=obj.plan.pk)
+        return super().dispatch(request, *args, **kwargs)
 
 
 # =============================================================================
@@ -506,10 +543,35 @@ class PlanSwitchClassEditView(generic.ObjectEditView):
     queryset = models.PlanSwitchClass.objects.all()
     form = forms.PlanSwitchClassForm
 
+    def dispatch(self, request, *args, **kwargs):
+        """Check if plan is locked before allowing edit"""
+        if kwargs.get('pk'):
+            obj = get_object_or_404(self.queryset, pk=kwargs['pk'])
+            if hasattr(obj.plan, 'generation_state'):
+                if obj.plan.generation_state.status in [GenerationStatusChoices.QUEUED, GenerationStatusChoices.IN_PROGRESS]:
+                    messages.error(
+                        request,
+                        "Cannot modify plan during device generation. Wait for job to complete."
+                    )
+                    return redirect('plugins:netbox_hedgehog:topologyplan_detail', pk=obj.plan.pk)
+        return super().dispatch(request, *args, **kwargs)
+
 
 class PlanSwitchClassDeleteView(generic.ObjectDeleteView):
     """Delete view for PlanSwitchClasses"""
     queryset = models.PlanSwitchClass.objects.all()
+
+    def dispatch(self, request, *args, **kwargs):
+        """Check if plan is locked before allowing delete"""
+        obj = get_object_or_404(self.queryset, pk=kwargs['pk'])
+        if hasattr(obj.plan, 'generation_state'):
+            if obj.plan.generation_state.status in [GenerationStatusChoices.QUEUED, GenerationStatusChoices.IN_PROGRESS]:
+                messages.error(
+                    request,
+                    "Cannot modify plan during device generation. Wait for job to complete."
+                )
+                return redirect('plugins:netbox_hedgehog:topologyplan_detail', pk=obj.plan.pk)
+        return super().dispatch(request, *args, **kwargs)
 
 
 # =============================================================================
@@ -543,10 +605,35 @@ class PlanServerConnectionEditView(generic.ObjectEditView):
     queryset = models.PlanServerConnection.objects.all()
     form = forms.PlanServerConnectionForm
 
+    def dispatch(self, request, *args, **kwargs):
+        """Check if plan is locked before allowing edit"""
+        if kwargs.get('pk'):
+            obj = get_object_or_404(self.queryset, pk=kwargs['pk'])
+            if hasattr(obj.server_class.plan, 'generation_state'):
+                if obj.server_class.plan.generation_state.status in [GenerationStatusChoices.QUEUED, GenerationStatusChoices.IN_PROGRESS]:
+                    messages.error(
+                        request,
+                        "Cannot modify plan during device generation. Wait for job to complete."
+                    )
+                    return redirect('plugins:netbox_hedgehog:topologyplan_detail', pk=obj.server_class.plan.pk)
+        return super().dispatch(request, *args, **kwargs)
+
 
 class PlanServerConnectionDeleteView(generic.ObjectDeleteView):
     """Delete view for PlanServerConnections"""
     queryset = models.PlanServerConnection.objects.all()
+
+    def dispatch(self, request, *args, **kwargs):
+        """Check if plan is locked before allowing delete"""
+        obj = get_object_or_404(self.queryset, pk=kwargs['pk'])
+        if hasattr(obj.server_class.plan, 'generation_state'):
+            if obj.server_class.plan.generation_state.status in [GenerationStatusChoices.QUEUED, GenerationStatusChoices.IN_PROGRESS]:
+                messages.error(
+                    request,
+                    "Cannot modify plan during device generation. Wait for job to complete."
+                )
+                return redirect('plugins:netbox_hedgehog:topologyplan_detail', pk=obj.server_class.plan.pk)
+        return super().dispatch(request, *args, **kwargs)
 
 
 # =============================================================================

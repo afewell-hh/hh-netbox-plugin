@@ -28,6 +28,10 @@ Minimum test coverage for any UI flow:
   - Without permission -> 403 or access denied.
   - With NetBox ObjectPermission -> success.
 
+Integration test fidelity:
+- Do not mock core generation/update paths in UX flow tests unless an additional
+  unmocked integration test covers the same flow.
+
 For validation rules:
 - Write negative tests for invalid data.
 - Confirm the error message or form error appears in the response.

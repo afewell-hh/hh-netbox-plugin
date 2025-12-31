@@ -276,8 +276,14 @@ class GenerationStatusChoices(ChoiceSet):
 
     GENERATED = 'generated'
     DIRTY = 'dirty'
+    QUEUED = 'queued'
+    IN_PROGRESS = 'in_progress'
+    FAILED = 'failed'
 
     CHOICES = [
         (GENERATED, 'Generated'),
         (DIRTY, 'Dirty'),
+        (QUEUED, 'Queued'),
+        (IN_PROGRESS, 'In Progress'),
+        (FAILED, 'Failed'),
     ]
