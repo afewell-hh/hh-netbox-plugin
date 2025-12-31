@@ -24,27 +24,31 @@
                     <tr>
                         <th scope="row">Device Generation</th>
                         <td>
-                            {% if object.generation_state.status == 'queued' or object.generation_state.status == 'in_progress' %}
+                            {% if object.generation_state and object.generation_state.status == 'queued' or object.generation_state and object.generation_state.status == 'in_progress' %}
                                 {# Job running - QUEUED or IN_PROGRESS #}
                                 <span class="badge badge-info">
                                     <i class="mdi mdi-loading mdi-spin"></i>
                                     {% if object.generation_state.status == 'queued' %}Queued{% else %}In Progress{% endif %}
                                 </span>
+                                {% if object.generation_state.job %}
                                 <br><small class="text-muted">
                                     <a href="{{ object.generation_state.job.get_absolute_url }}" target="_blank">
                                         View job progress
                                     </a>
                                 </small>
-                            {% elif object.generation_state.status == 'failed' %}
+                                {% endif %}
+                            {% elif object.generation_state and object.generation_state.status == 'failed' %}
                                 {# Job failed #}
                                 <span class="badge badge-danger">
                                     <i class="mdi mdi-alert-circle"></i> Failed
                                 </span>
                                 <br><small class="text-muted">
                                     Last attempted {{ object.last_generated_at|naturaltime }}.
+                                    {% if object.generation_state.job %}
                                     <a href="{{ object.generation_state.job.get_absolute_url }}" target="_blank">
                                         View error details
                                     </a>
+                                    {% endif %}
                                 </small>
                             {% elif not object.last_generated_at %}
                                 {# Never generated #}
@@ -109,15 +113,17 @@
             <h5 class="card-header">Actions</h5>
             <div class="card-body">
                 {# Unified Generate/Update Button (DIET #127 + #132) #}
-                {% if object.generation_state.status == 'queued' or object.generation_state.status == 'in_progress' %}
+                {% if object.generation_state and object.generation_state.status == 'queued' or object.generation_state and object.generation_state.status == 'in_progress' %}
                     {# Job running - disable button and show job link #}
                     <button type="button" class="btn btn-warning mb-2" disabled>
                         <i class="mdi mdi-loading mdi-spin"></i> Generation In Progress
                     </button>
+                    {% if object.generation_state.job %}
                     <br>
                     <a href="{{ object.generation_state.job.get_absolute_url }}" class="btn btn-sm btn-info" target="_blank">
                         <i class="mdi mdi-eye"></i> View Job Status
                     </a>
+                    {% endif %}
                 {% elif can_generate_devices %}
                 <form method="post" action="{% url 'plugins:netbox_hedgehog:topologyplan_generate_update' pk=object.pk %}" class="mb-2" id="generate-form">
                     {% csrf_token %}
@@ -192,7 +198,7 @@
                 {% else %}
                     <p class="text-muted">No server classes defined yet.</p>
                 {% endif %}
-                {% if object.generation_state.status == 'queued' or object.generation_state.status == 'in_progress' %}
+                {% if object.generation_state and object.generation_state.status == 'queued' or object.generation_state and object.generation_state.status == 'in_progress' %}
                     <button type="button" class="btn btn-sm btn-success" disabled title="Plan is locked during device generation">
                         <i class="mdi mdi-plus-thick"></i> Add Server Class
                     </button>
@@ -242,7 +248,7 @@
                 {% else %}
                     <p class="text-muted">No switch classes defined yet.</p>
                 {% endif %}
-                {% if object.generation_state.status == 'queued' or object.generation_state.status == 'in_progress' %}
+                {% if object.generation_state and object.generation_state.status == 'queued' or object.generation_state and object.generation_state.status == 'in_progress' %}
                     <button type="button" class="btn btn-sm btn-success" disabled title="Plan is locked during device generation">
                         <i class="mdi mdi-plus-thick"></i> Add Switch Class
                     </button>
@@ -305,7 +311,7 @@
                 {% else %}
                     <p class="text-muted">No server connections defined yet.</p>
                 {% endif %}
-                {% if object.generation_state.status == 'queued' or object.generation_state.status == 'in_progress' %}
+                {% if object.generation_state and object.generation_state.status == 'queued' or object.generation_state and object.generation_state.status == 'in_progress' %}
                     <button type="button" class="btn btn-sm btn-success" disabled title="Plan is locked during device generation">
                         <i class="mdi mdi-plus-thick"></i> Add Server Connection
                     </button>

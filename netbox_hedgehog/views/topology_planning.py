@@ -485,12 +485,28 @@ class PlanServerClassEditView(generic.ObjectEditView):
     form = forms.PlanServerClassForm
 
     def dispatch(self, request, *args, **kwargs):
-        """Check if plan is locked before allowing edit"""
-        # For edit (not create), check plan locking
+        """Check if plan is locked before allowing edit or create"""
+        from netbox_hedgehog.models import TopologyPlan
+
+        plan = None
+
+        # For edit, get plan from existing object
         if kwargs.get('pk'):
             obj = get_object_or_404(self.queryset, pk=kwargs['pk'])
-            if self._is_plan_locked(obj.plan, request):
-                return redirect('plugins:netbox_hedgehog:topologyplan_detail', pk=obj.plan.pk)
+            plan = obj.plan
+        # For create, get plan from query param or POST data
+        else:
+            plan_id = request.GET.get('plan') or request.POST.get('plan')
+            if plan_id:
+                try:
+                    plan = TopologyPlan.objects.get(pk=plan_id)
+                except TopologyPlan.DoesNotExist:
+                    pass  # Let form validation handle invalid plan
+
+        # Check if plan is locked
+        if plan and self._is_plan_locked(plan, request):
+            return redirect('plugins:netbox_hedgehog:topologyplan_detail', pk=plan.pk)
+
         return super().dispatch(request, *args, **kwargs)
 
     def _is_plan_locked(self, plan, request):
@@ -544,16 +560,33 @@ class PlanSwitchClassEditView(generic.ObjectEditView):
     form = forms.PlanSwitchClassForm
 
     def dispatch(self, request, *args, **kwargs):
-        """Check if plan is locked before allowing edit"""
+        """Check if plan is locked before allowing edit or create"""
+        from netbox_hedgehog.models import TopologyPlan
+
+        plan = None
+
+        # For edit, get plan from existing object
         if kwargs.get('pk'):
             obj = get_object_or_404(self.queryset, pk=kwargs['pk'])
-            if hasattr(obj.plan, 'generation_state'):
-                if obj.plan.generation_state.status in [GenerationStatusChoices.QUEUED, GenerationStatusChoices.IN_PROGRESS]:
-                    messages.error(
-                        request,
-                        "Cannot modify plan during device generation. Wait for job to complete."
-                    )
-                    return redirect('plugins:netbox_hedgehog:topologyplan_detail', pk=obj.plan.pk)
+            plan = obj.plan
+        # For create, get plan from query param or POST data
+        else:
+            plan_id = request.GET.get('plan') or request.POST.get('plan')
+            if plan_id:
+                try:
+                    plan = TopologyPlan.objects.get(pk=plan_id)
+                except TopologyPlan.DoesNotExist:
+                    pass  # Let form validation handle invalid plan
+
+        # Check if plan is locked
+        if plan and hasattr(plan, 'generation_state'):
+            if plan.generation_state.status in [GenerationStatusChoices.QUEUED, GenerationStatusChoices.IN_PROGRESS]:
+                messages.error(
+                    request,
+                    "Cannot modify plan during device generation. Wait for job to complete."
+                )
+                return redirect('plugins:netbox_hedgehog:topologyplan_detail', pk=plan.pk)
+
         return super().dispatch(request, *args, **kwargs)
 
 
@@ -606,16 +639,32 @@ class PlanServerConnectionEditView(generic.ObjectEditView):
     form = forms.PlanServerConnectionForm
 
     def dispatch(self, request, *args, **kwargs):
-        """Check if plan is locked before allowing edit"""
+        """Check if plan is locked before allowing edit or create"""
+        plan = None
+
+        # For edit, get plan from existing object
         if kwargs.get('pk'):
             obj = get_object_or_404(self.queryset, pk=kwargs['pk'])
-            if hasattr(obj.server_class.plan, 'generation_state'):
-                if obj.server_class.plan.generation_state.status in [GenerationStatusChoices.QUEUED, GenerationStatusChoices.IN_PROGRESS]:
-                    messages.error(
-                        request,
-                        "Cannot modify plan during device generation. Wait for job to complete."
-                    )
-                    return redirect('plugins:netbox_hedgehog:topologyplan_detail', pk=obj.server_class.plan.pk)
+            plan = obj.server_class.plan
+        # For create, get plan from server_class in POST data
+        else:
+            server_class_id = request.POST.get('server_class')
+            if server_class_id:
+                try:
+                    server_class = models.PlanServerClass.objects.get(pk=server_class_id)
+                    plan = server_class.plan
+                except models.PlanServerClass.DoesNotExist:
+                    pass  # Let form validation handle invalid server_class
+
+        # Check if plan is locked
+        if plan and hasattr(plan, 'generation_state'):
+            if plan.generation_state.status in [GenerationStatusChoices.QUEUED, GenerationStatusChoices.IN_PROGRESS]:
+                messages.error(
+                    request,
+                    "Cannot modify plan during device generation. Wait for job to complete."
+                )
+                return redirect('plugins:netbox_hedgehog:topologyplan_detail', pk=plan.pk)
+
         return super().dispatch(request, *args, **kwargs)
 
 
