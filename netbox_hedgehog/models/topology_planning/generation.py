@@ -62,6 +62,15 @@ class GenerationState(models.Model):
         help_text="Current generation status"
     )
 
+    job = models.ForeignKey(
+        to='core.Job',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='topology_generation',
+        help_text="NetBox Job executing or that executed this generation"
+    )
+
     class Meta:
         verbose_name = "Generation State"
         verbose_name_plural = "Generation States"

@@ -37,6 +37,7 @@ from .topology_planning import (
     PlanServerConnection,
     PlanMCLAGDomain,
     SwitchPortZone,
+    GenerationState,
 )
 
 __all__ = [
@@ -66,4 +67,5 @@ __all__ = [
     'PlanServerConnection',
     'PlanMCLAGDomain',
     'SwitchPortZone',
+    'GenerationState',
 ]
