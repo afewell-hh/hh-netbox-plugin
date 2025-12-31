@@ -4,10 +4,11 @@ CRUD views for BreakoutOption, DeviceTypeExtension, and Topology Plan models.
 """
 
 import re
+from django.conf import settings
 from django.contrib import messages
 from django.contrib.auth.mixins import PermissionRequiredMixin
 from django.core.exceptions import PermissionDenied, ValidationError
-from django.http import HttpResponse
+from django.http import HttpResponse, HttpResponseBadRequest
 from django.shortcuts import get_object_or_404, redirect, render
 from django.utils.html import format_html
 from django.views import View
@@ -123,11 +124,40 @@ class TopologyPlanView(generic.ObjectView):
         # Check if user can generate devices (object-level permission + DCIM perms)
         can_generate_devices = self._can_user_generate_devices(request, instance)
 
+        # Calculate expected counts for modal data attributes
+        server_classes = instance.server_classes.prefetch_related('connections')
+        switch_classes = instance.switch_classes.all()
+
+        server_count = sum(sc.quantity for sc in server_classes)
+        switch_count = sum(sc.effective_quantity for sc in switch_classes)
+        port_count = sum(
+            sc.quantity * connection.ports_per_connection
+            for sc in server_classes
+            for connection in sc.connections.all()
+        )
+
+        expected_device_count = server_count + switch_count
+        expected_interface_count = port_count * 2  # Each cable has 2 interfaces
+        expected_cable_count = port_count
+
+        # Check if this is first-time generation (no devices exist yet)
+        has_existing_devices = (
+            hasattr(instance, 'generation_state') and
+            instance.generation_state.device_count > 0
+        )
+        is_first_time = not has_existing_devices
+        is_destructive = has_existing_devices
+
         return {
             'server_classes': instance.server_classes.all(),
             'switch_classes': instance.switch_classes.all(),
             'server_connections': server_connections,
             'can_generate_devices': can_generate_devices,
+            'is_first_time_generation': is_first_time,
+            'is_destructive_regeneration': is_destructive,
+            'expected_device_count': expected_device_count,
+            'expected_interface_count': expected_interface_count,
+            'expected_cable_count': expected_cable_count,
         }
 
     def _can_user_generate_devices(self, request, instance):
@@ -316,7 +346,19 @@ class TopologyPlanGenerateUpdateView(View):
             )
             return redirect('plugins:netbox_hedgehog:topologyplan_detail', pk=plan.pk)
 
-        # Step 1: Auto-recalculate switch quantities (fail-fast on calc errors)
+        # Step 1: Check if plan is already locked (QUEUED or IN_PROGRESS)
+        if hasattr(plan, 'generation_state'):
+            status = plan.generation_state.status
+            if status in [GenerationStatusChoices.QUEUED, GenerationStatusChoices.IN_PROGRESS]:
+                status_label = "queued" if status == GenerationStatusChoices.QUEUED else "in progress"
+                messages.error(
+                    request,
+                    f"Cannot start generation: a job is already {status_label} for this plan. "
+                    "Wait for the current job to complete before starting a new one."
+                )
+                return redirect('plugins:netbox_hedgehog:topologyplan_detail', pk=plan.pk)
+
+        # Step 2: Auto-recalculate switch quantities (fail-fast on calc errors)
         calc_result = update_plan_calculations(plan)
         if calc_result['errors']:
             # Show first calculation error and abort
@@ -334,7 +376,7 @@ class TopologyPlanGenerateUpdateView(View):
             )
             return redirect('plugins:netbox_hedgehog:topologyplan_detail', pk=plan.pk)
 
-        # Step 2: Enqueue background job for device generation
+        # Step 3: Enqueue background job for device generation
         # Create/update GenerationState with QUEUED status
         state, created = models.GenerationState.objects.update_or_create(
             plan=plan,
@@ -347,11 +389,16 @@ class TopologyPlanGenerateUpdateView(View):
             }
         )
 
+        # Get timeout from plugin config (default: 3600 seconds = 1 hour)
+        plugin_config = settings.PLUGINS_CONFIG.get('netbox_hedgehog', {})
+        timeout = plugin_config.get('device_generation_timeout', 3600)
+
         # Enqueue DeviceGenerationJob (passing plan_id as arg, not instance)
         job = DeviceGenerationJob.enqueue(
             name=f"Generate devices for plan: {plan.name}",
             user=request.user,
             plan_id=plan.pk,
+            timeout=timeout,
         )
 
         # Link job to GenerationState
