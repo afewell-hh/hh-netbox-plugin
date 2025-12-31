@@ -129,7 +129,7 @@
                     {% csrf_token %}
                     {% if not object.last_generated_at %}
                         {# Never generated - show "Generate" #}
-                        <button type="button" class="btn btn-warning" id="generate-btn"
+                        <button type="submit" class="btn btn-warning" id="generate-btn"
                                 data-first-time="{{ is_first_time_generation|yesno:'true,false' }}"
                                 data-destructive="{{ is_destructive_regeneration|yesno:'true,false' }}"
                                 data-device-count="{{ expected_device_count }}"
@@ -139,7 +139,7 @@
                         </button>
                     {% elif object.needs_regeneration %}
                         {# Out of sync - show "Update" #}
-                        <button type="button" class="btn btn-warning" id="generate-btn"
+                        <button type="submit" class="btn btn-warning" id="generate-btn"
                                 data-first-time="{{ is_first_time_generation|yesno:'true,false' }}"
                                 data-destructive="{{ is_destructive_regeneration|yesno:'true,false' }}"
                                 data-device-count="{{ expected_device_count }}"
@@ -154,7 +154,7 @@
                         </button>
                     {% else %}
                         {# In sync - show "Regenerate" #}
-                        <button type="button" class="btn btn-outline-warning" id="generate-btn"
+                        <button type="submit" class="btn btn-outline-warning" id="generate-btn"
                                 data-first-time="{{ is_first_time_generation|yesno:'true,false' }}"
                                 data-destructive="{{ is_destructive_regeneration|yesno:'true,false' }}"
                                 data-device-count="{{ expected_device_count }}"
@@ -351,16 +351,14 @@
 </div>
 
 {# Destructive Confirmation Modal #}
-<div class="modal fade" id="destructiveConfirmModal" tabindex="-1" role="dialog" aria-labelledby="destructiveConfirmModalLabel" aria-hidden="true">
-  <div class="modal-dialog" role="document">
+<div class="modal fade" id="destructiveConfirmModal" tabindex="-1" aria-labelledby="destructiveConfirmModalLabel" aria-hidden="true">
+  <div class="modal-dialog">
     <div class="modal-content">
       <div class="modal-header bg-warning">
         <h5 class="modal-title" id="destructiveConfirmModalLabel">
           <i class="mdi mdi-alert"></i> Confirm Destructive Regeneration
         </h5>
-        <button type="button" class="close" data-dismiss="modal" aria-label="Close">
-          <span aria-hidden="true">&times;</span>
-        </button>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
       </div>
       <div class="modal-body">
         <p><strong>Warning:</strong> This will delete and recreate all devices, interfaces, and cables for this plan.</p>
@@ -368,37 +366,8 @@
         <p>Are you sure you want to continue?</p>
       </div>
       <div class="modal-footer">
-        <button type="button" class="btn btn-secondary" data-dismiss="modal">Cancel</button>
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
         <button type="button" class="btn btn-warning" id="confirmDestructiveBtn">Yes, Regenerate</button>
-      </div>
-    </div>
-  </div>
-</div>
-
-{# Expectation Guidance Modal #}
-<div class="modal fade" id="expectationGuidanceModal" tabindex="-1" role="dialog" aria-labelledby="expectationGuidanceModalLabel" aria-hidden="true">
-  <div class="modal-dialog" role="document">
-    <div class="modal-content">
-      <div class="modal-header bg-info text-white">
-        <h5 class="modal-title" id="expectationGuidanceModalLabel">
-          <i class="mdi mdi-information"></i> Device Generation Started
-        </h5>
-        <button type="button" class="close text-white" data-dismiss="modal" aria-label="Close">
-          <span aria-hidden="true">&times;</span>
-        </button>
-      </div>
-      <div class="modal-body">
-        <p>Device generation has been queued as a background job.</p>
-        <p><strong>Expected results:</strong></p>
-        <ul>
-          <li id="expected-devices-msg">Devices: <span id="expected-devices">0</span></li>
-          <li id="expected-interfaces-msg">Interfaces: <span id="expected-interfaces">0</span></li>
-          <li id="expected-cables-msg">Cables: <span id="expected-cables">0</span></li>
-        </ul>
-        <p>You will be redirected to the job status page to monitor progress.</p>
-      </div>
-      <div class="modal-footer">
-        <button type="button" class="btn btn-primary" id="viewJobBtn">View Job Status</button>
       </div>
     </div>
   </div>
@@ -417,53 +386,36 @@ document.addEventListener('DOMContentLoaded', function() {
     }
 
     // Extract data attributes from button
-    const isFirstTime = generateBtn.getAttribute('data-first-time') === 'true';
     const isDestructive = generateBtn.getAttribute('data-destructive') === 'true';
-    const deviceCount = generateBtn.getAttribute('data-device-count');
-    const interfaceCount = generateBtn.getAttribute('data-interface-count');
-    const cableCount = generateBtn.getAttribute('data-cable-count');
 
-    // Handle generate button click
-    generateBtn.addEventListener('click', function(e) {
-        e.preventDefault();
+    // Get modal element and create Bootstrap 5 modal instance
+    const destructiveModalEl = document.getElementById('destructiveConfirmModal');
+    let destructiveModal = null;
+    if (destructiveModalEl && typeof bootstrap !== 'undefined') {
+        destructiveModal = new bootstrap.Modal(destructiveModalEl);
+    }
 
-        if (isDestructive) {
-            // Show destructive confirmation modal first
-            $('#destructiveConfirmModal').modal('show');
-        } else {
-            // First-time generation: submit directly
-            submitFormWithGuidance();
+    // Handle form submit event (intercept if JS enabled)
+    generateForm.addEventListener('submit', function(e) {
+        if (isDestructive && destructiveModal) {
+            // Show destructive confirmation modal and prevent immediate submit
+            e.preventDefault();
+            destructiveModal.show();
         }
+        // If not destructive or no modal support, allow form to submit normally
     });
 
     // Handle destructive confirmation
     const confirmDestructiveBtn = document.getElementById('confirmDestructiveBtn');
-    if (confirmDestructiveBtn) {
+    if (confirmDestructiveBtn && destructiveModal) {
         confirmDestructiveBtn.addEventListener('click', function() {
-            $('#destructiveConfirmModal').modal('hide');
-            submitFormWithGuidance();
-        });
-    }
+            // Hide modal and submit form
+            destructiveModal.hide();
 
-    // Submit form and show expectation guidance modal
-    function submitFormWithGuidance() {
-        // Populate expectation guidance modal with counts
-        document.getElementById('expected-devices').textContent = deviceCount || '0';
-        document.getElementById('expected-interfaces').textContent = interfaceCount || '0';
-        document.getElementById('expected-cables').textContent = cableCount || '0';
-
-        // Show expectation guidance modal
-        $('#expectationGuidanceModal').modal('show');
-
-        // Submit form (will redirect to job page)
-        generateForm.submit();
-    }
-
-    // Handle "View Job Status" button (just closes modal, redirect happens automatically)
-    const viewJobBtn = document.getElementById('viewJobBtn');
-    if (viewJobBtn) {
-        viewJobBtn.addEventListener('click', function() {
-            $('#expectationGuidanceModal').modal('hide');
+            // Wait for modal to finish hiding before submitting
+            destructiveModalEl.addEventListener('hidden.bs.modal', function() {
+                generateForm.submit();
+            }, { once: true });
         });
     }
 });
