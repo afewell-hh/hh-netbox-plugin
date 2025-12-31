@@ -265,6 +265,78 @@ class GenerationUXEnhancementsTestCase(TestCase):
 
         self.assertEqual(response.context['expected_device_count'], expected_devices)
 
+    def test_detail_page_includes_expectation_modal_markup(self):
+        """
+        Test 1d: Detail page should include expectation modal HTML.
+
+        Given: Plan (any state)
+        When: Load detail page
+        Then:
+          - Expectation modal element exists (#expectationGuidanceModal)
+          - Modal contains "Start Generation" button (#proceedGenerationBtn)
+          - Modal has placeholders for device/interface/cable counts
+
+        This verifies acceptance criteria: "Expectation modal shown before enqueue for all cases"
+        """
+        url = reverse('plugins:netbox_hedgehog:topologyplan_detail', args=[self.plan.pk])
+        response = self.client.get(url)
+
+        self.assertEqual(response.status_code, 200)
+        content = response.content.decode()
+
+        # Verify expectation modal exists
+        self.assertIn('id="expectationGuidanceModal"', content,
+                      "Expectation modal must be present in template")
+
+        # Verify "Start Generation" button exists
+        self.assertIn('id="proceedGenerationBtn"', content,
+                      "Start Generation button must be present in modal")
+
+        # Verify modal has count placeholders
+        self.assertIn('id="expected-devices"', content,
+                      "Modal must have device count placeholder")
+        self.assertIn('id="expected-interfaces"', content,
+                      "Modal must have interface count placeholder")
+        self.assertIn('id="expected-cables"', content,
+                      "Modal must have cable count placeholder")
+
+        # Verify modal title/content
+        self.assertIn('Start Device Generation', content,
+                      "Modal should have clear title")
+
+    def test_detail_page_includes_destructive_modal_markup(self):
+        """
+        Test 1e: Detail page should include destructive confirmation modal HTML.
+
+        Given: Plan (any state)
+        When: Load detail page
+        Then:
+          - Destructive modal element exists (#destructiveConfirmModal)
+          - Modal contains confirmation button (#confirmDestructiveBtn)
+          - Modal has warning message
+
+        This verifies the destructive confirmation flow for regeneration.
+        """
+        url = reverse('plugins:netbox_hedgehog:topologyplan_detail', args=[self.plan.pk])
+        response = self.client.get(url)
+
+        self.assertEqual(response.status_code, 200)
+        content = response.content.decode()
+
+        # Verify destructive modal exists
+        self.assertIn('id="destructiveConfirmModal"', content,
+                      "Destructive confirmation modal must be present in template")
+
+        # Verify confirmation button exists
+        self.assertIn('id="confirmDestructiveBtn"', content,
+                      "Destructive confirmation button must be present in modal")
+
+        # Verify warning content
+        self.assertIn('Warning', content,
+                      "Modal should contain warning language")
+        self.assertIn('destructive', content.lower(),
+                      "Modal should explicitly mention destructive nature")
+
     # =========================================================================
     # Test Group 2: Backend Plan Locking Enforcement
     # =========================================================================
