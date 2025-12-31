@@ -367,7 +367,36 @@
       </div>
       <div class="modal-footer">
         <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
-        <button type="button" class="btn btn-warning" id="confirmDestructiveBtn">Yes, Regenerate</button>
+        <button type="button" class="btn btn-warning" id="confirmDestructiveBtn">Yes, Continue</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+{# Expectation Guidance Modal #}
+<div class="modal fade" id="expectationGuidanceModal" tabindex="-1" aria-labelledby="expectationGuidanceModalLabel" aria-hidden="true">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <div class="modal-header bg-info text-white">
+        <h5 class="modal-title" id="expectationGuidanceModalLabel">
+          <i class="mdi mdi-information"></i> Start Device Generation
+        </h5>
+        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body">
+        <p>This will generate devices as a background job.</p>
+        <p><strong>Expected results:</strong></p>
+        <ul>
+          <li>Devices: <span id="expected-devices">0</span></li>
+          <li>Interfaces: <span id="expected-interfaces">0</span></li>
+          <li>Cables: <span id="expected-cables">0</span></li>
+        </ul>
+        <p>You will be redirected to the job status page to monitor progress.</p>
+        <p><small class="text-muted">Generation may take several minutes for large topologies.</small></p>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+        <button type="button" class="btn btn-primary" id="proceedGenerationBtn">Start Generation</button>
       </div>
     </div>
   </div>
@@ -385,39 +414,71 @@ document.addEventListener('DOMContentLoaded', function() {
         return; // Elements not present on this page
     }
 
+    // Check if Bootstrap is available for modal support
+    if (typeof bootstrap === 'undefined') {
+        return; // No modal support, allow normal form submission
+    }
+
     // Extract data attributes from button
     const isDestructive = generateBtn.getAttribute('data-destructive') === 'true';
+    const deviceCount = generateBtn.getAttribute('data-device-count');
+    const interfaceCount = generateBtn.getAttribute('data-interface-count');
+    const cableCount = generateBtn.getAttribute('data-cable-count');
 
-    // Get modal element and create Bootstrap 5 modal instance
+    // Create modal instances
     const destructiveModalEl = document.getElementById('destructiveConfirmModal');
-    let destructiveModal = null;
-    if (destructiveModalEl && typeof bootstrap !== 'undefined') {
-        destructiveModal = new bootstrap.Modal(destructiveModalEl);
+    const expectationModalEl = document.getElementById('expectationGuidanceModal');
+
+    const destructiveModal = new bootstrap.Modal(destructiveModalEl);
+    const expectationModal = new bootstrap.Modal(expectationModalEl);
+
+    // Populate expectation modal with counts
+    function populateExpectationModal() {
+        document.getElementById('expected-devices').textContent = deviceCount || '0';
+        document.getElementById('expected-interfaces').textContent = interfaceCount || '0';
+        document.getElementById('expected-cables').textContent = cableCount || '0';
+    }
+
+    // Show expectation modal (final step before submission)
+    function showExpectationModal() {
+        populateExpectationModal();
+        expectationModal.show();
     }
 
     // Handle form submit event (intercept if JS enabled)
     generateForm.addEventListener('submit', function(e) {
-        if (isDestructive && destructiveModal) {
-            // Show destructive confirmation modal and prevent immediate submit
-            e.preventDefault();
+        e.preventDefault(); // Always prevent default when modals are available
+
+        if (isDestructive) {
+            // Show destructive confirmation modal first
             destructiveModal.show();
+        } else {
+            // Show expectation modal directly for first-time generation
+            showExpectationModal();
         }
-        // If not destructive or no modal support, allow form to submit normally
     });
 
-    // Handle destructive confirmation
+    // Handle destructive confirmation -> expectation modal
     const confirmDestructiveBtn = document.getElementById('confirmDestructiveBtn');
-    if (confirmDestructiveBtn && destructiveModal) {
-        confirmDestructiveBtn.addEventListener('click', function() {
-            // Hide modal and submit form
-            destructiveModal.hide();
+    confirmDestructiveBtn.addEventListener('click', function() {
+        destructiveModal.hide();
 
-            // Wait for modal to finish hiding before submitting
-            destructiveModalEl.addEventListener('hidden.bs.modal', function() {
-                generateForm.submit();
-            }, { once: true });
-        });
-    }
+        // Wait for destructive modal to hide, then show expectation modal
+        destructiveModalEl.addEventListener('hidden.bs.modal', function() {
+            showExpectationModal();
+        }, { once: true });
+    });
+
+    // Handle final "Start Generation" button -> submit form
+    const proceedGenerationBtn = document.getElementById('proceedGenerationBtn');
+    proceedGenerationBtn.addEventListener('click', function() {
+        expectationModal.hide();
+
+        // Wait for modal to hide, then submit form
+        expectationModalEl.addEventListener('hidden.bs.modal', function() {
+            generateForm.submit();
+        }, { once: true });
+    });
 });
 </script>
 {% endblock %}
