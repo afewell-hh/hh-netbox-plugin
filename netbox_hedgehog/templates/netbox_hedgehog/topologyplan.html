@@ -129,17 +129,42 @@
                     {% csrf_token %}
                     {% if not object.last_generated_at %}
                         {# Never generated - show "Generate" #}
-                        <button type="submit" class="btn btn-warning" id="generate-btn">
+                        <button type="submit" class="btn btn-warning" id="generate-btn"
+                                data-first-time="{{ is_first_time_generation|yesno:'true,false' }}"
+                                data-destructive="{{ is_destructive_regeneration|yesno:'true,false' }}"
+                                data-device-count="{{ expected_device_count }}"
+                                data-interface-count="{{ expected_interface_count }}"
+                                data-cable-count="{{ expected_cable_count }}">
                             <i class="mdi mdi-cube"></i> <span class="btn-text">Generate Devices</span>
                         </button>
                     {% elif object.needs_regeneration %}
                         {# Out of sync - show "Update" #}
-                        <button type="submit" class="btn btn-warning" id="generate-btn">
+                        <button type="submit" class="btn btn-warning" id="generate-btn"
+                                data-first-time="{{ is_first_time_generation|yesno:'true,false' }}"
+                                data-destructive="{{ is_destructive_regeneration|yesno:'true,false' }}"
+                                data-device-count="{{ expected_device_count }}"
+                                data-interface-count="{{ expected_interface_count }}"
+                                data-cable-count="{{ expected_cable_count }}"
+                                {% if object.generation_state %}
+                                data-existing-devices="{{ object.generation_state.device_count }}"
+                                data-existing-interfaces="{{ object.generation_state.interface_count }}"
+                                data-existing-cables="{{ object.generation_state.cable_count }}"
+                                {% endif %}>
                             <i class="mdi mdi-cube"></i> <span class="btn-text">Update Devices</span>
                         </button>
                     {% else %}
                         {# In sync - show "Regenerate" #}
-                        <button type="submit" class="btn btn-outline-warning" id="generate-btn">
+                        <button type="submit" class="btn btn-outline-warning" id="generate-btn"
+                                data-first-time="{{ is_first_time_generation|yesno:'true,false' }}"
+                                data-destructive="{{ is_destructive_regeneration|yesno:'true,false' }}"
+                                data-device-count="{{ expected_device_count }}"
+                                data-interface-count="{{ expected_interface_count }}"
+                                data-cable-count="{{ expected_cable_count }}"
+                                {% if object.generation_state %}
+                                data-existing-devices="{{ object.generation_state.device_count }}"
+                                data-existing-interfaces="{{ object.generation_state.interface_count }}"
+                                data-existing-cables="{{ object.generation_state.cable_count }}"
+                                {% endif %}>
                             <i class="mdi mdi-cube"></i> <span class="btn-text">Regenerate Devices</span>
                         </button>
                     {% endif %}
@@ -324,6 +349,58 @@
         </div>
     </div>
 </div>
+
+{# Destructive Confirmation Modal #}
+<div class="modal fade" id="destructiveConfirmModal" tabindex="-1" aria-labelledby="destructiveConfirmModalLabel" aria-hidden="true">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <div class="modal-header bg-warning">
+        <h5 class="modal-title" id="destructiveConfirmModalLabel">
+          <i class="mdi mdi-alert"></i> Confirm Destructive Regeneration
+        </h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body">
+        <p><strong>Warning:</strong> This will delete and recreate all devices, interfaces, and cables for this plan.</p>
+        <p>This is a destructive operation that cannot be undone.</p>
+        <p>Are you sure you want to continue?</p>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+        <button type="button" class="btn btn-warning" id="confirmDestructiveBtn">Yes, Continue</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+{# Expectation Guidance Modal #}
+<div class="modal fade" id="expectationGuidanceModal" tabindex="-1" aria-labelledby="expectationGuidanceModalLabel" aria-hidden="true">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <div class="modal-header bg-info text-white">
+        <h5 class="modal-title" id="expectationGuidanceModalLabel">
+          <i class="mdi mdi-information"></i> Start Device Generation
+        </h5>
+        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body">
+        <p>This will generate devices as a background job.</p>
+        <p><strong>Expected results:</strong></p>
+        <ul>
+          <li>Devices: <span id="expected-devices">0</span></li>
+          <li>Interfaces: <span id="expected-interfaces">0</span></li>
+          <li>Cables: <span id="expected-cables">0</span></li>
+        </ul>
+        <p>You will be redirected to the job status page to monitor progress.</p>
+        <p><small class="text-muted">Generation may take several minutes for large topologies.</small></p>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+        <button type="button" class="btn btn-primary" id="proceedGenerationBtn">Start Generation</button>
+      </div>
+    </div>
+  </div>
+</div>
 {% endblock %}
 
 {% block javascript %}
@@ -333,25 +410,75 @@ document.addEventListener('DOMContentLoaded', function() {
     const generateForm = document.getElementById('generate-form');
     const generateBtn = document.getElementById('generate-btn');
 
-    if (generateForm && generateBtn) {
-        generateForm.addEventListener('submit', function(e) {
-            // Disable button to prevent duplicate submissions
-            generateBtn.disabled = true;
-
-            // Change button text to show loading state
-            const btnText = generateBtn.querySelector('.btn-text');
-            const icon = generateBtn.querySelector('i');
-
-            if (btnText) {
-                btnText.textContent = 'Generating...';
-            }
-
-            // Change icon to loading spinner
-            if (icon) {
-                icon.className = 'mdi mdi-loading mdi-spin';
-            }
-        });
+    if (!generateForm || !generateBtn) {
+        return; // Elements not present on this page
     }
+
+    // Check if Bootstrap is available for modal support
+    if (typeof bootstrap === 'undefined') {
+        return; // No modal support, allow normal form submission
+    }
+
+    // Extract data attributes from button
+    const isDestructive = generateBtn.getAttribute('data-destructive') === 'true';
+    const deviceCount = generateBtn.getAttribute('data-device-count');
+    const interfaceCount = generateBtn.getAttribute('data-interface-count');
+    const cableCount = generateBtn.getAttribute('data-cable-count');
+
+    // Create modal instances
+    const destructiveModalEl = document.getElementById('destructiveConfirmModal');
+    const expectationModalEl = document.getElementById('expectationGuidanceModal');
+
+    const destructiveModal = new bootstrap.Modal(destructiveModalEl);
+    const expectationModal = new bootstrap.Modal(expectationModalEl);
+
+    // Populate expectation modal with counts
+    function populateExpectationModal() {
+        document.getElementById('expected-devices').textContent = deviceCount || '0';
+        document.getElementById('expected-interfaces').textContent = interfaceCount || '0';
+        document.getElementById('expected-cables').textContent = cableCount || '0';
+    }
+
+    // Show expectation modal (final step before submission)
+    function showExpectationModal() {
+        populateExpectationModal();
+        expectationModal.show();
+    }
+
+    // Handle form submit event (intercept if JS enabled)
+    generateForm.addEventListener('submit', function(e) {
+        e.preventDefault(); // Always prevent default when modals are available
+
+        if (isDestructive) {
+            // Show destructive confirmation modal first
+            destructiveModal.show();
+        } else {
+            // Show expectation modal directly for first-time generation
+            showExpectationModal();
+        }
+    });
+
+    // Handle destructive confirmation -> expectation modal
+    const confirmDestructiveBtn = document.getElementById('confirmDestructiveBtn');
+    confirmDestructiveBtn.addEventListener('click', function() {
+        destructiveModal.hide();
+
+        // Wait for destructive modal to hide, then show expectation modal
+        destructiveModalEl.addEventListener('hidden.bs.modal', function() {
+            showExpectationModal();
+        }, { once: true });
+    });
+
+    // Handle final "Start Generation" button -> submit form
+    const proceedGenerationBtn = document.getElementById('proceedGenerationBtn');
+    proceedGenerationBtn.addEventListener('click', function() {
+        expectationModal.hide();
+
+        // Wait for modal to hide, then submit form
+        expectationModalEl.addEventListener('hidden.bs.modal', function() {
+            generateForm.submit();
+        }, { once: true });
+    });
 });
 </script>
 {% endblock %}

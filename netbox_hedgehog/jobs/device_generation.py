@@ -46,15 +46,28 @@ class DeviceGenerationJob(JobRunner):
 
         self.logger.info(f"Starting device generation for plan: {plan.name} (ID: {plan.pk})")
 
-        # Update GenerationState to IN_PROGRESS
-        state = plan.generation_state
-        state.status = GenerationStatusChoices.IN_PROGRESS
-        state.save()
+        # Get or create GenerationState and update to IN_PROGRESS
+        from netbox_hedgehog.models import GenerationState
+        state, created = GenerationState.objects.get_or_create(
+            plan=plan,
+            defaults={
+                'status': GenerationStatusChoices.IN_PROGRESS,
+                'device_count': 0,
+                'interface_count': 0,
+                'cable_count': 0,
+                'snapshot': {},
+                'job': self.job,
+            }
+        )
+        if not created:
+            state.status = GenerationStatusChoices.IN_PROGRESS
+            state.job = self.job
+            state.save()
 
         self.logger.info("Status updated to IN_PROGRESS")
 
         # Execute device generation
-        generator = DeviceGenerator(plan=plan)
+        generator = DeviceGenerator(plan=plan, logger=self.logger)
 
         try:
             self.logger.info("Calling DeviceGenerator.generate_all()...")

@@ -51,11 +51,12 @@ class DeviceGenerator:
     DEFAULT_TAG_SLUG = "hedgehog-generated"
     DEFAULT_ROLE_COLOR = "9e9e9e"
 
-    def __init__(self, plan: TopologyPlan, site: Site | None = None):
+    def __init__(self, plan: TopologyPlan, site: Site | None = None, logger=None):
         self.plan = plan
         self.site = site or self._ensure_default_site()
         self.tag = self._ensure_default_tag()
         self.port_allocator = PortAllocatorV2()
+        self.logger = logger
 
         self._device_cache: dict[str, Device] = {}
         self._interface_cache: dict[tuple[int, str], Interface] = {}
@@ -96,21 +97,40 @@ class DeviceGenerator:
         Generate devices, interfaces, and cables for the plan.
         Deletes any previously generated objects before creating new ones.
         """
-        # Delete old generated objects
+        # Milestone 1: Starting device generation
+        if self.logger:
+            self.logger.info(f"Starting device generation for plan: {self.plan.name}")
+
+        # Milestone 2: Cleaning up old objects
+        if self.logger:
+            self.logger.info("Cleaning up previously generated objects")
         self._cleanup_generated_objects()
 
         devices = []
         interfaces = []
         cables = []
 
+        # Milestone 3: Creating switch devices
+        if self.logger:
+            self.logger.info("Creating switch devices")
         switch_devices = self._create_switch_devices(devices)
+
+        # Milestone 4: Creating server devices
+        if self.logger:
+            self.logger.info("Creating server devices")
         server_devices = self._create_server_devices(devices)
 
+        # Milestone 5: Creating connections (interfaces and cables)
+        if self.logger:
+            self.logger.info("Creating connections (interfaces and cables)")
         interfaces, cables = self._create_connections(
             switch_devices,
             server_devices,
         )
 
+        # Milestone 6: Tagging and finalizing
+        if self.logger:
+            self.logger.info("Tagging objects and finalizing generation")
         self._tag_objects(devices, interfaces, cables)
         self._upsert_generation_state(
             device_count=len(devices),
