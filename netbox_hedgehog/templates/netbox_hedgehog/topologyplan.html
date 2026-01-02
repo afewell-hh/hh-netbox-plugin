@@ -128,8 +128,9 @@
                 <form method="post" action="{% url 'plugins:netbox_hedgehog:topologyplan_generate_update' pk=object.pk %}" class="mb-2" id="generate-form">
                     {% csrf_token %}
                     {% if not object.last_generated_at %}
-                        {# Never generated - show "Generate" #}
-                        <button type="submit" class="btn btn-warning" id="generate-btn"
+                        {# Never generated - show "Generate" - triggers expectation modal directly #}
+                        <button type="button" class="btn btn-warning" id="generate-btn"
+                                data-bs-toggle="modal" data-bs-target="#expectationGuidanceModal"
                                 data-first-time="{{ is_first_time_generation|yesno:'true,false' }}"
                                 data-destructive="{{ is_destructive_regeneration|yesno:'true,false' }}"
                                 data-device-count="{{ expected_device_count }}"
@@ -138,8 +139,9 @@
                             <i class="mdi mdi-cube"></i> <span class="btn-text">Generate Devices</span>
                         </button>
                     {% elif object.needs_regeneration %}
-                        {# Out of sync - show "Update" #}
-                        <button type="submit" class="btn btn-warning" id="generate-btn"
+                        {# Out of sync - show "Update" - triggers destructive modal first #}
+                        <button type="button" class="btn btn-warning" id="generate-btn"
+                                data-bs-toggle="modal" data-bs-target="#destructiveConfirmModal"
                                 data-first-time="{{ is_first_time_generation|yesno:'true,false' }}"
                                 data-destructive="{{ is_destructive_regeneration|yesno:'true,false' }}"
                                 data-device-count="{{ expected_device_count }}"
@@ -153,8 +155,9 @@
                             <i class="mdi mdi-cube"></i> <span class="btn-text">Update Devices</span>
                         </button>
                     {% else %}
-                        {# In sync - show "Regenerate" #}
-                        <button type="submit" class="btn btn-outline-warning" id="generate-btn"
+                        {# In sync - show "Regenerate" - triggers destructive modal first #}
+                        <button type="button" class="btn btn-outline-warning" id="generate-btn"
+                                data-bs-toggle="modal" data-bs-target="#destructiveConfirmModal"
                                 data-first-time="{{ is_first_time_generation|yesno:'true,false' }}"
                                 data-destructive="{{ is_destructive_regeneration|yesno:'true,false' }}"
                                 data-device-count="{{ expected_device_count }}"
@@ -367,7 +370,7 @@
       </div>
       <div class="modal-footer">
         <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
-        <button type="button" class="btn btn-warning" id="confirmDestructiveBtn">Yes, Continue</button>
+        <button type="button" class="btn btn-warning" id="confirmDestructiveBtn" data-bs-toggle="modal" data-bs-target="#expectationGuidanceModal">Yes, Continue</button>
       </div>
     </div>
   </div>
@@ -396,7 +399,7 @@
       </div>
       <div class="modal-footer">
         <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
-        <button type="button" class="btn btn-primary" id="proceedGenerationBtn">Start Generation</button>
+        <button type="button" class="btn btn-primary" id="proceedGenerationBtn" onclick="document.getElementById('generate-form').submit()">Start Generation</button>
       </div>
     </div>
   </div>
@@ -407,77 +410,23 @@
 {{ block.super }}
 <script>
 document.addEventListener('DOMContentLoaded', function() {
-    const generateForm = document.getElementById('generate-form');
     const generateBtn = document.getElementById('generate-btn');
+    const expectationModalEl = document.getElementById('expectationGuidanceModal');
 
-    if (!generateForm || !generateBtn) {
+    if (!generateBtn || !expectationModalEl) {
         return; // Elements not present on this page
     }
 
-    // Check if Bootstrap is available for modal support
-    if (typeof bootstrap === 'undefined') {
-        return; // No modal support, allow normal form submission
-    }
+    // Populate expectation modal with device counts when it's shown
+    // This works with Bootstrap's data-attribute API (no need for global bootstrap object)
+    expectationModalEl.addEventListener('show.bs.modal', function() {
+        const deviceCount = generateBtn.getAttribute('data-device-count');
+        const interfaceCount = generateBtn.getAttribute('data-interface-count');
+        const cableCount = generateBtn.getAttribute('data-cable-count');
 
-    // Extract data attributes from button
-    const isDestructive = generateBtn.getAttribute('data-destructive') === 'true';
-    const deviceCount = generateBtn.getAttribute('data-device-count');
-    const interfaceCount = generateBtn.getAttribute('data-interface-count');
-    const cableCount = generateBtn.getAttribute('data-cable-count');
-
-    // Create modal instances
-    const destructiveModalEl = document.getElementById('destructiveConfirmModal');
-    const expectationModalEl = document.getElementById('expectationGuidanceModal');
-
-    const destructiveModal = new bootstrap.Modal(destructiveModalEl);
-    const expectationModal = new bootstrap.Modal(expectationModalEl);
-
-    // Populate expectation modal with counts
-    function populateExpectationModal() {
         document.getElementById('expected-devices').textContent = deviceCount || '0';
         document.getElementById('expected-interfaces').textContent = interfaceCount || '0';
         document.getElementById('expected-cables').textContent = cableCount || '0';
-    }
-
-    // Show expectation modal (final step before submission)
-    function showExpectationModal() {
-        populateExpectationModal();
-        expectationModal.show();
-    }
-
-    // Handle form submit event (intercept if JS enabled)
-    generateForm.addEventListener('submit', function(e) {
-        e.preventDefault(); // Always prevent default when modals are available
-
-        if (isDestructive) {
-            // Show destructive confirmation modal first
-            destructiveModal.show();
-        } else {
-            // Show expectation modal directly for first-time generation
-            showExpectationModal();
-        }
-    });
-
-    // Handle destructive confirmation -> expectation modal
-    const confirmDestructiveBtn = document.getElementById('confirmDestructiveBtn');
-    confirmDestructiveBtn.addEventListener('click', function() {
-        destructiveModal.hide();
-
-        // Wait for destructive modal to hide, then show expectation modal
-        destructiveModalEl.addEventListener('hidden.bs.modal', function() {
-            showExpectationModal();
-        }, { once: true });
-    });
-
-    // Handle final "Start Generation" button -> submit form
-    const proceedGenerationBtn = document.getElementById('proceedGenerationBtn');
-    proceedGenerationBtn.addEventListener('click', function() {
-        expectationModal.hide();
-
-        // Wait for modal to hide, then submit form
-        expectationModalEl.addEventListener('hidden.bs.modal', function() {
-            generateForm.submit();
-        }, { once: true });
     });
 });
 </script>
