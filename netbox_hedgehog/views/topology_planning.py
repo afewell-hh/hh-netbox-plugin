@@ -349,7 +349,10 @@ class TopologyPlanGenerateUpdateView(View):
         # Step 1: Check if plan is already locked (QUEUED or IN_PROGRESS)
         if hasattr(plan, 'generation_state'):
             status = plan.generation_state.status
-            if status in [GenerationStatusChoices.QUEUED, GenerationStatusChoices.IN_PROGRESS]:
+            job = plan.generation_state.job
+
+            # Allow re-enqueue if job was deleted (orphaned state)
+            if status in [GenerationStatusChoices.QUEUED, GenerationStatusChoices.IN_PROGRESS] and job is not None:
                 status_label = "queued" if status == GenerationStatusChoices.QUEUED else "in progress"
                 messages.error(
                     request,
@@ -357,6 +360,16 @@ class TopologyPlanGenerateUpdateView(View):
                     "Wait for the current job to complete before starting a new one."
                 )
                 return redirect('plugins:netbox_hedgehog:topologyplan_detail', pk=plan.pk)
+
+            # If job is None but status is QUEUED/IN_PROGRESS, reset to FAILED
+            # This handles the orphaned job scenario (user deleted job from Jobs page)
+            if status in [GenerationStatusChoices.QUEUED, GenerationStatusChoices.IN_PROGRESS] and job is None:
+                plan.generation_state.status = GenerationStatusChoices.FAILED
+                plan.generation_state.save()
+                messages.warning(
+                    request,
+                    "Previous job was deleted. Resetting generation state to allow new generation."
+                )
 
         # Step 2: Auto-recalculate switch quantities (fail-fast on calc errors)
         calc_result = update_plan_calculations(plan)

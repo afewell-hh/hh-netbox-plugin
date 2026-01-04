@@ -25,17 +25,25 @@
                         <th scope="row">Device Generation</th>
                         <td>
                             {% if object.generation_state and object.generation_state.status == 'queued' or object.generation_state and object.generation_state.status == 'in_progress' %}
-                                {# Job running - QUEUED or IN_PROGRESS #}
-                                <span class="badge badge-info">
-                                    <i class="mdi mdi-loading mdi-spin"></i>
-                                    {% if object.generation_state.status == 'queued' %}Queued{% else %}In Progress{% endif %}
-                                </span>
                                 {% if object.generation_state.job %}
-                                <br><small class="text-muted">
-                                    <a href="{{ object.generation_state.job.get_absolute_url }}" target="_blank">
-                                        View job progress
-                                    </a>
-                                </small>
+                                    {# Job running - QUEUED or IN_PROGRESS with valid job #}
+                                    <span class="badge badge-info">
+                                        <i class="mdi mdi-loading mdi-spin"></i>
+                                        {% if object.generation_state.status == 'queued' %}Queued{% else %}In Progress{% endif %}
+                                    </span>
+                                    <br><small class="text-muted">
+                                        <a href="{{ object.generation_state.job.get_absolute_url }}" target="_blank">
+                                            View job progress
+                                        </a>
+                                    </small>
+                                {% else %}
+                                    {# Orphaned job - job was deleted but state still shows QUEUED/IN_PROGRESS #}
+                                    <span class="badge badge-warning">
+                                        <i class="mdi mdi-alert"></i> Job Deleted
+                                    </span>
+                                    <br><small class="text-muted">
+                                        The background job was deleted. Click "Generate Devices" to start a new job.
+                                    </small>
                                 {% endif %}
                             {% elif object.generation_state and object.generation_state.status == 'failed' %}
                                 {# Job failed #}
@@ -113,18 +121,24 @@
             <h5 class="card-header">Actions</h5>
             <div class="card-body">
                 {# Unified Generate/Update Button (DIET #127 + #132) #}
-                {% if object.generation_state and object.generation_state.status == 'queued' or object.generation_state and object.generation_state.status == 'in_progress' %}
+                {# Check for active job (not orphaned) #}
+                {% if object.generation_state and object.generation_state.job and object.generation_state.status == 'queued' or object.generation_state and object.generation_state.job and object.generation_state.status == 'in_progress' %}
                     {# Job running - disable button and show job link #}
                     <button type="button" class="btn btn-warning mb-2" disabled>
                         <i class="mdi mdi-loading mdi-spin"></i> Generation In Progress
                     </button>
-                    {% if object.generation_state.job %}
                     <br>
                     <a href="{{ object.generation_state.job.get_absolute_url }}" class="btn btn-sm btn-info" target="_blank">
                         <i class="mdi mdi-eye"></i> View Job Status
                     </a>
-                    {% endif %}
                 {% elif can_generate_devices %}
+                    {# Show orphaned job warning if applicable #}
+                    {% if object.generation_state and not object.generation_state.job and object.generation_state.status == 'queued' or object.generation_state and not object.generation_state.job and object.generation_state.status == 'in_progress' %}
+                        <div class="alert alert-warning mb-2" role="alert">
+                            <i class="mdi mdi-alert"></i>
+                            <strong>Job Deleted:</strong> The background job was deleted. Starting a new generation will reset the state.
+                        </div>
+                    {% endif %}
                 <form method="post" action="{% url 'plugins:netbox_hedgehog:topologyplan_generate_update' pk=object.pk %}" class="mb-2" id="generate-form">
                     {% csrf_token %}
                     {% if not object.last_generated_at %}
