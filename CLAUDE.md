@@ -11,6 +11,7 @@ tests.
 - Keep work reviewable: small PRs, clear commits, explicit tests.
 - Be honest about risk and test gaps.
 - Keep DIET (design-time) code separate from operational code.
+- Single source of truth: design decisions live in GitHub issues, not repo docs.
 
 ## Required Testing Standard (UX-Accurate TDD)
 Unit tests alone are insufficient. Every user-facing change must include
@@ -27,12 +28,22 @@ Minimum test coverage for any UI flow:
   - Without permission -> 403 or access denied.
   - With NetBox ObjectPermission -> success.
 
+Integration test fidelity:
+- Do not mock core generation/update paths in UX flow tests unless an additional
+  unmocked integration test covers the same flow.
+
 For validation rules:
 - Write negative tests for invalid data.
 - Confirm the error message or form error appears in the response.
 
 For filtering logic:
 - Create multiple objects and assert only the correct subset is offered.
+
+Regression guardrails:
+- If behavior and tests conflict, update tests to match the approved issue.
+- Do not “fix” code to satisfy outdated tests or stale docs.
+- Example: If issue #123 says “4 be-rail-leaf switches” but tests expect 8,
+  update the tests to expect 4 and keep the correct code path.
 
 ## NetBox Plugin Conventions
 - Use NetBox generic views/forms/tables/templates.
@@ -45,6 +56,7 @@ For filtering logic:
 ## Required Context (Read First)
 - #82 (project analysis), #83 (DIET PRD), #84 (DIET sprint plan).
 - Check the current DIET issue for scope and dependencies.
+- Treat the issue thread as the source of truth when docs conflict.
 
 ## Environment Rules
 - Always run Django/NetBox commands inside the container:
@@ -59,6 +71,8 @@ For filtering logic:
   - `scripts/reset_local_dev.sh`
 - For a full clean local NetBox reset (occasional, heavier):
   - `scripts/reset_local_dev.sh --full`
+- To purge inventory and reseed only DIET baselines:
+  - `scripts/reset_local_dev.sh --purge-inventory`
 - For targeted cleanup of a single plan:
   - `docker compose exec netbox python manage.py reset_diet_data --plan <plan_id> --no-input`
 
@@ -97,6 +111,9 @@ In your final update, include:
 - Place DIET models in `netbox_hedgehog/models/topology_planning/`.
 - Place DIET views in `netbox_hedgehog/views/topology_planning/`.
 - Do not modify operational code unless explicitly required.
+- Do not add new planning/spec/research docs in the repo unless explicitly requested.
+  Use GitHub issues for design decisions; if a doc is required, put it in `docs/`
+  and link it to the issue.
 
 ## When In Doubt
 - Ask for clarification.
