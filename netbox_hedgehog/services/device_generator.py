@@ -494,7 +494,11 @@ class DeviceGenerator:
 
     def _generate_server_port_name(self, connection_def: PlanServerConnection, port_idx: int) -> str:
         if connection_def.nic_slot:
-            base = connection_def.nic_slot.rstrip('f0123456789')
+            import re
+
+            # Preserve nic_slot uniqueness; only strip trailing f<digits> if present.
+            match = re.match(r'^(.*)f\\d+$', connection_def.nic_slot)
+            base = match.group(1) if match else connection_def.nic_slot
             return f"{base}f{port_idx}"
 
         conn_id = slugify(connection_def.connection_id)
