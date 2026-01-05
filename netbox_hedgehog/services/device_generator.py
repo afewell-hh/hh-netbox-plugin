@@ -18,6 +18,7 @@ from extras.models import Tag
 from netbox_hedgehog.choices import (
     ConnectionDistributionChoices,
     DeviceCategoryChoices,
+    FabricTypeChoices,
     HedgehogRoleChoices,
     PortTypeChoices,
     PortZoneTypeChoices,
@@ -31,6 +32,7 @@ from netbox_hedgehog.models.topology_planning import (
     TopologyPlan,
 )
 from netbox_hedgehog.services.port_allocator import PortAllocatorV2
+from netbox_hedgehog.services.port_specification import PortSpecification
 from netbox_hedgehog.utils.snapshot_builder import build_plan_snapshot
 
 
@@ -313,7 +315,190 @@ class DeviceGenerator:
                         cable.save()
                         cables.append(cable)
 
+        fabric_interfaces, fabric_cables = self._create_fabric_connections(switch_devices)
+        interfaces.extend(fabric_interfaces)
+        cables.extend(fabric_cables)
+
         return interfaces, cables
+
+    def _create_fabric_connections(
+        self,
+        switch_devices: dict[str, Device],
+    ) -> tuple[list[Interface], list[Cable]]:
+        interfaces: list[Interface] = []
+        cables: list[Cable] = []
+
+        if not switch_devices:
+            return interfaces, cables
+
+        switch_classes = {
+            switch_class.switch_class_id: switch_class
+            for switch_class in self.plan.switch_classes.all()
+        }
+
+        for fabric in (
+            FabricTypeChoices.FRONTEND,
+            FabricTypeChoices.BACKEND,
+            FabricTypeChoices.OOB,
+        ):
+            leaves = [
+                device
+                for device in switch_devices.values()
+                if device.custom_field_data.get('hedgehog_fabric') == fabric
+                and device.custom_field_data.get('hedgehog_role')
+                in (HedgehogRoleChoices.SERVER_LEAF, HedgehogRoleChoices.BORDER_LEAF)
+            ]
+            spines = [
+                device
+                for device in switch_devices.values()
+                if device.custom_field_data.get('hedgehog_fabric') == fabric
+                and device.custom_field_data.get('hedgehog_role') == HedgehogRoleChoices.SPINE
+            ]
+
+            if not leaves or not spines:
+                continue
+
+            leaves = sorted(leaves, key=lambda device: device.name)
+            spines = sorted(spines, key=lambda device: device.name)
+
+            for leaf in leaves:
+                leaf_class = self._get_switch_class_for_device(leaf, switch_classes)
+                uplink_zones = leaf_class.port_zones.filter(
+                    zone_type=PortZoneTypeChoices.UPLINK
+                ).order_by('priority', 'zone_name')
+
+                if not uplink_zones.exists():
+                    raise ValidationError(
+                        f"Leaf switch class '{leaf_class.switch_class_id}' has no uplink zones defined."
+                    )
+
+                leaf_ports = self._allocate_ports_for_zones(leaf.name, uplink_zones)
+                total_uplinks = len(leaf_ports)
+
+                if total_uplinks == 0:
+                    continue
+
+                base = total_uplinks // len(spines)
+                remainder = total_uplinks % len(spines)
+                cursor = 0
+
+                for spine_index, spine in enumerate(spines):
+                    link_count = base + (1 if spine_index < remainder else 0)
+                    if link_count == 0:
+                        continue
+
+                    spine_class = self._get_switch_class_for_device(spine, switch_classes)
+                    fabric_zones = spine_class.port_zones.filter(
+                        zone_type=PortZoneTypeChoices.FABRIC
+                    ).order_by('priority', 'zone_name')
+
+                    if not fabric_zones.exists():
+                        raise ValidationError(
+                            f"Spine switch class '{spine_class.switch_class_id}' has no fabric zones defined."
+                        )
+
+                    spine_ports = self._allocate_ports_for_zones(
+                        spine.name,
+                        fabric_zones,
+                        count=link_count,
+                    )
+
+                    leaf_slice = leaf_ports[cursor:cursor + link_count]
+                    cursor += link_count
+
+                    for (leaf_zone, leaf_port), (spine_zone, spine_port) in zip(leaf_slice, spine_ports):
+                        leaf_interface = self._get_or_create_interface(
+                            device=leaf,
+                            name=leaf_port.name,
+                            interfaces=interfaces,
+                            custom_fields={
+                                'hedgehog_plan_id': str(self.plan.pk),
+                                'hedgehog_zone': leaf_zone.zone_name,
+                                'hedgehog_physical_port': leaf_port.physical_port,
+                                'hedgehog_breakout_index': leaf_port.breakout_index,
+                            },
+                            interface_type=self._interface_type_for_zone(leaf_zone),
+                        )
+
+                        spine_interface = self._get_or_create_interface(
+                            device=spine,
+                            name=spine_port.name,
+                            interfaces=interfaces,
+                            custom_fields={
+                                'hedgehog_plan_id': str(self.plan.pk),
+                                'hedgehog_zone': spine_zone.zone_name,
+                                'hedgehog_physical_port': spine_port.physical_port,
+                                'hedgehog_breakout_index': spine_port.breakout_index,
+                            },
+                            interface_type=self._interface_type_for_zone(spine_zone),
+                        )
+
+                        cable = Cable(
+                            a_terminations=[leaf_interface],
+                            b_terminations=[spine_interface],
+                        )
+                        cable.custom_field_data = {
+                            'hedgehog_plan_id': str(self.plan.pk),
+                        }
+                        cable.save()
+                        cables.append(cable)
+
+        return interfaces, cables
+
+    def _get_switch_class_for_device(
+        self,
+        device: Device,
+        switch_classes: dict[str, PlanSwitchClass],
+    ) -> PlanSwitchClass:
+        class_id = device.custom_field_data.get('hedgehog_class')
+        switch_class = switch_classes.get(class_id)
+        if not switch_class:
+            raise ValidationError(
+                f"Switch class '{class_id}' is missing for device '{device.name}'."
+            )
+        return switch_class
+
+    def _allocate_ports_for_zones(self, switch_name, zones, count: int | None = None):
+        allocated: list[tuple[object, object]] = []
+
+        for zone in zones:
+            zone_capacity = self._get_zone_logical_port_count(zone)
+            if count is not None:
+                remaining = count - len(allocated)
+                if remaining <= 0:
+                    break
+                zone_capacity = min(zone_capacity, remaining)
+
+            if zone_capacity <= 0:
+                continue
+
+            slots = self.port_allocator.allocate(switch_name, zone, zone_capacity)
+            allocated.extend((zone, slot) for slot in slots)
+
+        if count is not None and len(allocated) < count:
+            raise ValidationError(
+                f"Not enough ports available on switch '{switch_name}' to allocate {count} links."
+            )
+
+        return allocated
+
+    @staticmethod
+    def _get_zone_logical_port_count(zone) -> int:
+        if not zone.breakout_option:
+            raise ValidationError(
+                f"SwitchPortZone '{zone.zone_name}' has no breakout_option defined."
+            )
+
+        port_list = PortSpecification(zone.port_spec).parse()
+        logical_ports = zone.breakout_option.logical_ports or 1
+        return len(port_list) * logical_ports
+
+    def _interface_type_for_zone(self, zone) -> str:
+        speed = None
+        breakout = zone.breakout_option
+        if breakout:
+            speed = breakout.logical_speed or breakout.from_speed
+        return self._speed_to_interface_type(speed or 0)
 
     def _get_or_create_interface(
         self,
@@ -326,6 +511,16 @@ class DeviceGenerator:
         cache_key = (device.pk, name)
         if cache_key in self._interface_cache:
             return self._interface_cache[cache_key]
+
+        existing = Interface.objects.filter(device=device, name=name).first()
+        if existing:
+            existing.custom_field_data = {
+                **(existing.custom_field_data or {}),
+                **custom_fields,
+            }
+            existing.save()
+            self._interface_cache[cache_key] = existing
+            return existing
 
         interface = Interface(
             device=device,

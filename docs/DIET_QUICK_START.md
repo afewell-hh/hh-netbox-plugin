@@ -384,6 +384,31 @@ After adding server classes, switch classes, and connections, trigger the calcul
 - Cables are tagged with `hedgehog-generated`
 - Cables are properly terminated on both ends
 
+### Fabric Connections
+
+When generating devices, HNP automatically creates fabric connections between
+leaf and spine switches.
+
+**Topology:**
+- Full-mesh within each fabric (frontend, backend, OOB)
+- Each leaf connects to every spine in its fabric
+- Example: 4 leaves × 2 spines × 16 uplinks per spine = 128 fabric cables
+
+**Port Allocation:**
+- Leaf switches: Ports allocated from `zone_type='uplink'` zones
+- Spine switches: Ports allocated from `zone_type='fabric'` zones
+- Breakout interfaces created automatically when needed (e.g., `E1/1/1`, `E1/1/2`)
+
+**Link Distribution:**
+- Total uplinks per leaf divided evenly across spines
+- Formula: `base = total_uplinks // spine_count`, remainder distributed to first spines
+- Example: 32 uplinks, 3 spines → 11, 11, 10 links
+
+**Validation:**
+- Generation requires UPLINK zones on leaf switches
+- Generation requires FABRIC zones on spine switches
+- Missing zones will produce validation errors
+
 ### Regeneration and Updates
 
 If you modify your plan after generation, you can regenerate:
@@ -514,8 +539,8 @@ spec:
 
 **Not included in MVP:**
 - MCLAG domain connections (post-MVP)
-- Fabric (spine-leaf) connections (post-MVP)
 - Switch or Server CRDs (only Connection CRDs)
+- YAML export for fabric connections (post-MVP)
 
 ---
 

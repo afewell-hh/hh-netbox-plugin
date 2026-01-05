@@ -65,33 +65,50 @@ Connections
 Expected Counts
 ---------------
 - Servers: 146 (128 GPU + 18 storage)
-- Leaf switches: 12
+- Leaf switches: 8
   - fe-gpu-leaf: 2 (MCLAG pair, calculated)
   - fe-storage-leaf-a: 1 (calculated)
   - fe-storage-leaf-b: 1 (calculated)
-  - be-rail-leaf: 8 (rail-aware calculation: 1 per rail × 8 rails)
-- Spine switches: 6
+  - be-rail-leaf: 4 (calculated)
+- Spine switches: 4
   - fe-spine: 2 (calculated: 4 frontend leaves × 32 uplinks = 128 / 64 ports per spine = 2)
-  - be-spine: 4 (calculated: 8 backend leaves × 32 uplinks = 256 / 64 ports per spine = 4)
-- Total switches: 18 (12 leaves + 6 spines)
-- Total devices: 164 (146 servers + 18 switches)
+  - be-spine: 2 (calculated: 4 backend leaves × 32 uplinks = 128 / 64 ports per spine = 2)
+- Total switches: 12 (8 leaves + 4 spines)
+- Total devices: 158 (146 servers + 12 switches)
 - Port demand (connections): 548
-- Interfaces: 1,096 (2 per connection)
-- Cables: 548
+- Interfaces: 1,096 (server + fabric interfaces)
+- Cables: 804
+  - Server-to-switch: 548
+  - Fabric (leaf-to-spine): 256
+    - Frontend fabric: 128
+    - Backend fabric: 128
 
 Execution Notes
 ---------------
 - Plan created via NetBox plugin objects (server/switch classes, connections, zones).
 - Generate Devices preview shows:
-  - Devices: 164 (146 servers + 18 switches)
+  - Devices: 158 (146 servers + 12 switches)
   - Servers: 146
-  - Switches: 18 (12 leaves + 6 spines)
+  - Switches: 12 (8 leaves + 4 spines)
   - Interfaces: 1,096
-  - Cables: 548
+  - Cables: 548 (preview does not include fabric cabling yet)
 - Generation completed with:
-  - Devices: 164
+  - Devices: 158
   - Interfaces: 1,096
-  - Cables: 548
+  - Cables: 804
+
+Fabric Connection Breakdown
+---------------------------
+
+**Frontend Fabric** (128 cables):
+- fe-gpu-leaf (2 switches, MCLAG pair): 2 × 32 uplinks = 64 uplinks
+- fe-storage-leaf-a (1 switch): 32 uplinks
+- fe-storage-leaf-b (1 switch): 32 uplinks
+- Total: 128 uplinks distributed across 2 fe-spines
+
+**Backend Fabric** (128 cables):
+- be-rail-leaf (4 switches): 4 × 32 uplinks = 128 uplinks
+- Total: 128 uplinks distributed across 2 be-spines
 
 Port Allocation Verification
 ----------------------------
