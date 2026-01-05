@@ -541,6 +541,7 @@ class PlanServerConnectionFormValidationTestCase(TestCase):
         data = {
             'server_class': self.server_class.pk,
             'connection_id': 'fe-001',
+            'nic_slot': 'eth1',  # Required per Issue #138: must have either nic_slot or server_interface_template
             'connection_name': 'frontend',
             'ports_per_connection': 2,
             'hedgehog_conn_type': ConnectionTypeChoices.UNBUNDLED,
@@ -629,6 +630,7 @@ class PlanServerConnectionFormValidationTestCase(TestCase):
         data_no_rail = {
             'server_class': self.server_class.pk,
             'connection_id': 'rail-test-fail',
+            'nic_slot': 'cx7-1',  # Required per Issue #138
             'connection_name': 'backend-rail',
             'ports_per_connection': 1,
             'hedgehog_conn_type': ConnectionTypeChoices.UNBUNDLED,
@@ -652,6 +654,7 @@ class PlanServerConnectionFormValidationTestCase(TestCase):
         data_with_rail = {
             'server_class': self.server_class.pk,
             'connection_id': 'rail-test-success',
+            'nic_slot': 'cx7-1',  # Required per Issue #138
             'connection_name': 'backend-rail-0',
             'ports_per_connection': 1,
             'hedgehog_conn_type': ConnectionTypeChoices.UNBUNDLED,
@@ -676,6 +679,7 @@ class PlanServerConnectionFormValidationTestCase(TestCase):
         data = {
             'server_class': self.server_class.pk,
             'connection_id': 'alt-test',
+            'nic_slot': 'eth1',  # Required per Issue #138
             'connection_name': 'frontend-alt',
             'ports_per_connection': 2,
             'hedgehog_conn_type': ConnectionTypeChoices.UNBUNDLED,

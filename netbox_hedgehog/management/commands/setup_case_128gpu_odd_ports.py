@@ -280,7 +280,7 @@ class Command(BaseCommand):
             uplink_ports_per_switch=None,
             mclag_pair=False,
         )
-        PlanSwitchClass.objects.create(
+        fe_spine = PlanSwitchClass.objects.create(
             plan=plan,
             switch_class_id="fe-spine",
             fabric=FabricTypeChoices.FRONTEND,
@@ -298,7 +298,7 @@ class Command(BaseCommand):
             uplink_ports_per_switch=None,
             mclag_pair=False,
         )
-        PlanSwitchClass.objects.create(
+        be_spine = PlanSwitchClass.objects.create(
             plan=plan,
             switch_class_id="be-spine",
             fabric=FabricTypeChoices.BACKEND,
@@ -330,12 +330,24 @@ class Command(BaseCommand):
                 priority=100,
             )
 
+        def add_fabric_zone(switch_class, breakout, name="leaf-downlinks"):
+            SwitchPortZone.objects.create(
+                switch_class=switch_class,
+                zone_name=name,
+                zone_type=PortZoneTypeChoices.FABRIC,
+                port_spec="1-64",
+                breakout_option=breakout,
+                allocation_strategy=AllocationStrategyChoices.SEQUENTIAL,
+                priority=100,
+            )
+
         add_server_zone(fe_gpu_leaf, breakout_4x200)
         add_server_zone(fe_storage_leaf_a, breakout_4x200)
         add_server_zone(fe_storage_leaf_b, breakout_4x200)
         add_uplink_zone(fe_gpu_leaf, breakout_1x800)
         add_uplink_zone(fe_storage_leaf_a, breakout_1x800)
         add_uplink_zone(fe_storage_leaf_b, breakout_1x800)
+        add_fabric_zone(fe_spine, breakout_1x800)
 
         be_rail_leaf = PlanSwitchClass.objects.get(
             plan=plan,
@@ -343,6 +355,7 @@ class Command(BaseCommand):
         )
         add_server_zone(be_rail_leaf, breakout_2x400)
         add_uplink_zone(be_rail_leaf, breakout_1x800, name="backend-uplinks")
+        add_fabric_zone(be_spine, breakout_1x800)
 
         gpu_fe_only = PlanServerClass.objects.create(
             plan=plan,
