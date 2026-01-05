@@ -46,8 +46,38 @@ class PlanServerConnectionSerializer(serializers.ModelSerializer):
     class Meta:
         model = models.PlanServerConnection
         fields = ['id', 'server_class', 'connection_id', 'nic_module_type', 'nic_slot',
-                  'connection_name', 'ports_per_connection', 'hedgehog_conn_type',
-                  'distribution', 'target_switch_class', 'speed', 'rail', 'port_type']
+                  'server_interface_template', 'connection_name', 'ports_per_connection',
+                  'hedgehog_conn_type', 'distribution', 'target_switch_class', 'speed',
+                  'rail', 'port_type']
+
+    def validate(self, attrs):
+        """
+        Run model-level validation (Issue #138 API validation).
+
+        DRF ModelSerializer doesn't call model.clean() by default,
+        so we manually invoke it to ensure API validation matches web UI.
+        """
+        from django.core.exceptions import ValidationError as DjangoValidationError
+        from rest_framework.exceptions import ValidationError as DRFValidationError
+
+        # Create temporary instance with validated data
+        instance = self.instance or models.PlanServerConnection()
+        for key, value in attrs.items():
+            setattr(instance, key, value)
+
+        # Run model validation
+        try:
+            instance.clean()
+        except DjangoValidationError as e:
+            # Convert Django ValidationError to DRF ValidationError
+            if hasattr(e, 'message_dict'):
+                raise DRFValidationError(e.message_dict)
+            elif hasattr(e, 'messages'):
+                raise DRFValidationError({'non_field_errors': e.messages})
+            else:
+                raise DRFValidationError(str(e))
+
+        return attrs
 
 
 class PlanMCLAGDomainSerializer(serializers.ModelSerializer):

@@ -292,19 +292,15 @@ class DeviceGenerator:
                                 'hedgehog_physical_port': switch_port.physical_port,
                                 'hedgehog_breakout_index': switch_port.breakout_index,
                             },
+                            interface_type=self._speed_to_interface_type(connection_def.speed),
                         )
 
-                        server_port_name = self._generate_server_port_name(
-                            connection_def,
-                            port_index,
-                        )
-                        server_interface = self._get_or_create_interface(
+                        # Use new interface assignment logic (Issue #138 fix)
+                        server_interface = self._get_or_assign_server_interface(
                             device=server_device,
-                            name=server_port_name,
+                            connection_def=connection_def,
+                            port_index=port_index,
                             interfaces=interfaces,
-                            custom_fields={
-                                'hedgehog_plan_id': str(self.plan.pk),
-                            },
                         )
 
                         cable = Cable(
@@ -325,6 +321,7 @@ class DeviceGenerator:
         name: str,
         interfaces: list[Interface],
         custom_fields: dict,
+        interface_type: str = InterfaceTypeChoices.TYPE_OTHER,
     ) -> Interface:
         cache_key = (device.pk, name)
         if cache_key in self._interface_cache:
@@ -333,7 +330,7 @@ class DeviceGenerator:
         interface = Interface(
             device=device,
             name=name,
-            type=InterfaceTypeChoices.TYPE_OTHER,
+            type=interface_type,
             enabled=True,
         )
         interface.custom_field_data = custom_fields
@@ -341,6 +338,34 @@ class DeviceGenerator:
         interfaces.append(interface)
         self._interface_cache[cache_key] = interface
         return interface
+
+    @staticmethod
+    def _speed_to_interface_type(speed_gbps: int) -> str:
+        """
+        Map connection speed to NetBox interface type (Issue #138, AC#8).
+
+        NOTE: This uses connection_def.speed, which is correct because the port
+        allocator only allocates from zones where breakout logical_speed matches
+        connection speed. This is a design invariant - if they diverge, port
+        allocation will fail before we reach this point.
+
+        Args:
+            speed_gbps: Connection speed in Gbps (e.g., 800, 400, 200, 100, 40, 25, 10, 1)
+
+        Returns:
+            NetBox InterfaceTypeChoices constant
+        """
+        speed_map = {
+            800: InterfaceTypeChoices.TYPE_800GE_QSFP_DD,
+            400: InterfaceTypeChoices.TYPE_400GE_QSFP_DD,
+            200: InterfaceTypeChoices.TYPE_200GE_QSFP56,
+            100: InterfaceTypeChoices.TYPE_100GE_QSFP28,
+            40: InterfaceTypeChoices.TYPE_40GE_QSFP_PLUS,
+            25: InterfaceTypeChoices.TYPE_25GE_SFP28,
+            10: InterfaceTypeChoices.TYPE_10GE_SFP_PLUS,
+            1: InterfaceTypeChoices.TYPE_1GE_SFP,
+        }
+        return speed_map.get(speed_gbps, InterfaceTypeChoices.TYPE_OTHER)
 
     def _tag_objects(
         self,
@@ -474,3 +499,80 @@ class DeviceGenerator:
 
         conn_id = slugify(connection_def.connection_id)
         return f"port-{conn_id}-{port_idx}"
+
+    def _get_or_assign_server_interface(
+        self,
+        device: Device,
+        connection_def: PlanServerConnection,
+        port_index: int,
+        interfaces: list[Interface],
+    ) -> Interface:
+        """
+        Get or assign server interface for connection (Issue #138 fix).
+
+        If connection has server_interface_template, tries to use existing
+        interfaces from device type. Otherwise falls back to creating new
+        with legacy naming.
+
+        Args:
+            device: Server Device instance
+            connection_def: PlanServerConnection configuration
+            port_index: Index of port in connection (0-based)
+            interfaces: List to append interface to if created
+
+        Returns:
+            Interface instance (existing or newly created)
+        """
+        from dcim.models import Interface
+
+        if connection_def.server_interface_template:
+            # Get interface sequence from template
+            interface_sequence = connection_def._get_available_interface_sequence()
+
+            if port_index < len(interface_sequence):
+                # Get the Nth interface template from sequence
+                target_template = interface_sequence[port_index]
+
+                # Look for existing interface with matching name
+                existing = Interface.objects.filter(
+                    device=device,
+                    name=target_template.name
+                ).first()
+
+                if existing:
+                    # Found inherited interface - return it
+                    # Cache it for future lookups
+                    cache_key = (device.pk, existing.name)
+                    self._interface_cache[cache_key] = existing
+                    return existing
+                else:
+                    # Template exists but device doesn't have it yet
+                    # This shouldn't happen if device properly inherits from DeviceType
+                    # Create interface matching template
+                    interface = Interface(
+                        device=device,
+                        name=target_template.name,
+                        type=target_template.type,
+                        enabled=True,
+                    )
+                    interface.custom_field_data = {
+                        'hedgehog_plan_id': str(self.plan.pk),
+                    }
+                    interface.save()
+                    interfaces.append(interface)
+                    self._interface_cache[(device.pk, interface.name)] = interface
+                    return interface
+
+        # Fallback to legacy behavior (generate new interface name)
+        server_port_name = self._generate_server_port_name(
+            connection_def,
+            port_index,
+        )
+        return self._get_or_create_interface(
+            device=device,
+            name=server_port_name,
+            interfaces=interfaces,
+            custom_fields={
+                'hedgehog_plan_id': str(self.plan.pk),
+            },
+        )

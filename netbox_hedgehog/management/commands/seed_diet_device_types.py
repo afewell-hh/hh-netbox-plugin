@@ -141,7 +141,7 @@ class Command(BaseCommand):
             for index in range(1, 65):
                 InterfaceTemplate.objects.create(
                     device_type=device_type,
-                    name=f"Ethernet1/{index}",
+                    name=f"E1/{index}",  # Fixed: was Ethernet1/{index}
                     type="800gbase-x-qsfpdd",
                 )
             self.stdout.write("    ✓ Created 64 InterfaceTemplates")

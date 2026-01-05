@@ -5,7 +5,7 @@ Forms for BreakoutOption and DeviceTypeExtension models.
 
 from django import forms
 from netbox.forms import NetBoxModelForm
-from dcim.models import DeviceType, ModuleType
+from dcim.models import DeviceType, ModuleType, InterfaceTemplate
 from utilities.forms.fields import DynamicModelChoiceField
 
 from ..models.topology_planning import (
@@ -245,6 +245,14 @@ class PlanServerConnectionForm(NetBoxModelForm):
     for rail-optimized topologies.
     """
 
+    server_interface_template = DynamicModelChoiceField(
+        queryset=InterfaceTemplate.objects.none(),
+        required=False,
+        label='Server Interface',
+        help_text='Select the first server interface for this connection. '
+                  'If multiple ports are needed, subsequent interfaces will be used automatically.'
+    )
+
     class Meta:
         model = PlanServerConnection
         fields = '__all__'
@@ -276,14 +284,33 @@ class PlanServerConnectionForm(NetBoxModelForm):
             plan = server_class.plan
             self.fields['target_switch_class'].queryset = PlanSwitchClass.objects.filter(plan=plan)
             self.fields['target_switch_class'].help_text = f'Switch classes from plan: {plan.name}'
+
+            # Filter server_interface_template to device type interfaces
+            if server_class.server_device_type:
+                self.fields['server_interface_template'].queryset = InterfaceTemplate.objects.filter(
+                    device_type=server_class.server_device_type
+                ).order_by('name')
+
+                # Show available interface count
+                interface_count = self.fields['server_interface_template'].queryset.count()
+                self.fields['server_interface_template'].help_text = (
+                    f'Select first interface from {server_class.server_device_type} '
+                    f'({interface_count} interfaces available). '
+                    f'Subsequent interfaces will be used if ports_per_connection > 1.'
+                )
         else:
             # No server class selected yet - show help text
             self.fields['target_switch_class'].help_text = (
                 'Select a server class first. Target switch must be from the same plan as the server class.'
             )
+            self.fields['server_interface_template'].help_text = (
+                'Select a server class first to see available interfaces.'
+            )
 
     def clean(self):
-        """Validate that rail is required when distribution is rail-optimized"""
+        """Validate form data including interface selection"""
+        from django.core.exceptions import ValidationError as DjangoValidationError
+
         # Call parent clean - it modifies self.cleaned_data in place
         super().clean()
 
@@ -297,6 +324,38 @@ class PlanServerConnectionForm(NetBoxModelForm):
         if distribution == ConnectionDistributionChoices.RAIL_OPTIMIZED:
             if rail is None or rail == '':  # rail can be 0, but not None or empty string
                 self.add_error('rail', 'Rail is required when distribution is set to rail-optimized.')
+
+        # Interface validation is handled by model.clean()
+        # Create temporary instance to validate
+        if self.cleaned_data and not self._errors:
+            # Use existing instance if available (edit mode), otherwise create temp
+            if self.instance and self.instance.pk:
+                # Update existing instance with form data for validation
+                for key, value in self.cleaned_data.items():
+                    if hasattr(self.instance, key):
+                        setattr(self.instance, key, value)
+                temp_instance = self.instance
+            else:
+                # Create new temporary instance
+                temp_instance = PlanServerConnection(**{
+                    k: v for k, v in self.cleaned_data.items()
+                    if k in [f.name for f in PlanServerConnection._meta.get_fields()]
+                })
+                # Initialize custom_field_data to avoid AttributeError in NetBox model clean()
+                if temp_instance.custom_field_data is None:
+                    temp_instance.custom_field_data = {}
+
+            try:
+                temp_instance.clean()
+            except DjangoValidationError as e:
+                # Surface model validation errors to form
+                if hasattr(e, 'message_dict'):
+                    for field, errors in e.message_dict.items():
+                        for error in errors:
+                            self.add_error(field, error)
+                elif hasattr(e, 'messages'):
+                    for error in e.messages:
+                        self.add_error(None, error)
 
         # Note: Cross-plan validation is handled by queryset filtering in __init__()
         # Django's form validation will reject any target_switch_class not in the filtered queryset
