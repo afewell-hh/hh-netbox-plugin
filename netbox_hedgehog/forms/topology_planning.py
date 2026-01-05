@@ -332,14 +332,18 @@ class PlanServerConnectionForm(NetBoxModelForm):
             if self.instance and self.instance.pk:
                 # Update existing instance with form data for validation
                 for key, value in self.cleaned_data.items():
+                    if key == 'tags':
+                        continue
                     if hasattr(self.instance, key):
                         setattr(self.instance, key, value)
                 temp_instance = self.instance
+                if temp_instance.custom_field_data is None:
+                    temp_instance.custom_field_data = {}
             else:
                 # Create new temporary instance
                 temp_instance = PlanServerConnection(**{
                     k: v for k, v in self.cleaned_data.items()
-                    if k in [f.name for f in PlanServerConnection._meta.get_fields()]
+                    if k != 'tags' and k in [f.name for f in PlanServerConnection._meta.get_fields()]
                 })
                 # Initialize custom_field_data to avoid AttributeError in NetBox model clean()
                 if temp_instance.custom_field_data is None:
