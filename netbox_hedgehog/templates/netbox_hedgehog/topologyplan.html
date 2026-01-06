@@ -198,9 +198,16 @@
                     {% endif %}
                 </button>
                 {% endif %}
-                <a href="{% url 'plugins:netbox_hedgehog:topologyplan_export' pk=object.pk %}" class="btn btn-success">
-                    <i class="mdi mdi-download"></i> Export YAML
-                </a>
+                {% comment %} Export YAML button - disabled until generation completes (DIET-139) {% endcomment %}
+                {% if object.generation_state and object.generation_state.status == 'generated' %}
+                    <a href="{% url 'plugins:netbox_hedgehog:topologyplan_export' pk=object.pk %}" class="btn btn-success">
+                        <i class="mdi mdi-download"></i> Export YAML
+                    </a>
+                {% else %}
+                    <button class="btn btn-secondary" disabled title="Device generation must be completed before exporting YAML">
+                        <i class="mdi mdi-download"></i> Export YAML
+                    </button>
+                {% endif %}
             </div>
         </div>
     </div>
