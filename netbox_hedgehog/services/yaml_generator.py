@@ -1,73 +1,33 @@
 """
-YAML Generation Service for Topology Plans (DIET-006)
+YAML Generation Service for Topology Plans (DIET-139)
 
-This service generates Hedgehog wiring diagram YAML from a TopologyPlan.
-It creates Connection CRDs for server-to-switch connections based on the
-plan's server classes, switch classes, and connection specifications.
+This service generates Hedgehog wiring diagram YAML from NetBox inventory
+(Devices, Interfaces, Cables) created by device generation.
+
+IMPORTANT: This is an inventory-based export that reads actual NetBox objects,
+NOT a plan-based generator. Port names come from Interface.name (authoritative).
 """
 
 import re
-from typing import List, Dict, Any, Tuple
+from typing import Dict, Any, List
 from collections import defaultdict
+from django.core.exceptions import ValidationError
 
-from ..models.topology_planning import (
-    TopologyPlan,
-    PlanServerClass,
-    PlanSwitchClass,
-    PlanServerConnection,
-)
-from ..choices import ConnectionTypeChoices, ConnectionDistributionChoices
+from dcim.models import Cable, Interface, Device
 
-
-class PortAllocator:
-    """
-    Tracks port allocation for switches to prevent duplicate assignments.
-
-    Each switch has a limited number of ports, and this class ensures
-    no port is assigned twice.
-    """
-
-    def __init__(self):
-        """Initialize port allocation tracking"""
-        self.allocated_ports: Dict[str, set] = defaultdict(set)
-        self.next_port: Dict[str, int] = defaultdict(lambda: 1)
-
-    def allocate(self, switch_name: str, port_count: int = 1) -> List[str]:
-        """
-        Allocate one or more ports on a switch.
-
-        Args:
-            switch_name: Name of the switch
-            port_count: Number of consecutive ports to allocate
-
-        Returns:
-            List of allocated port names (e.g., ['E1/1', 'E1/2'])
-        """
-        allocated = []
-        for _ in range(port_count):
-            # Find next available port
-            port_num = self.next_port[switch_name]
-            port_name = f"E1/{port_num}"
-
-            # Mark as allocated
-            self.allocated_ports[switch_name].add(port_name)
-            allocated.append(port_name)
-
-            # Increment for next allocation
-            self.next_port[switch_name] = port_num + 1
-
-        return allocated
+from ..models.topology_planning import TopologyPlan
 
 
 class YAMLGenerator:
     """
-    Generates Hedgehog wiring YAML from a TopologyPlan.
+    Generates Hedgehog wiring YAML from NetBox inventory (DIET-139).
 
-    This class orchestrates the generation of Connection CRDs by:
-    1. Creating switch instances from switch classes
-    2. Creating server instances from server classes
-    3. Generating connections for each server based on connection definitions
-    4. Handling MCLAG and other advanced connection types
+    This is an inventory-based generator that reads from:
+    - Devices (for role detection)
+    - Interfaces (for port names with breakout suffixes)
+    - Cables (for connections)
+
+    All created by DeviceGenerator and tagged with hedgehog_plan_id.
     """
 
     def __init__(self, plan: TopologyPlan):
@@ -78,50 +38,72 @@ class YAMLGenerator:
             plan: TopologyPlan instance to generate YAML for
         """
         self.plan = plan
-        self.port_allocator = PortAllocator()
 
     def generate(self) -> str:
         """
-        Generate complete Hedgehog wiring YAML for the plan.
+        Generate complete Hedgehog wiring YAML from NetBox inventory (DIET-139).
+
+        Reads Cables from NetBox and generates Connection CRDs with:
+        - Exact Interface.name values (including breakout suffixes)
+        - Deterministic ordering (by Cable ID)
+        - Connection type detection (unbundled/fabric)
+        - Cable validation (termination counts, role combinations)
+        - Fabric link aggregation (multiple cables per leaf-spine pair)
 
         Returns:
             YAML string containing all Connection CRDs
+
+        Raises:
+            ValidationError: If cable topology is invalid
         """
         import yaml
 
-        # Generate all connection documents
-        documents = []
+        # Query cables from NetBox inventory (order by ID for determinism)
+        cables = Cable.objects.filter(
+            custom_field_data__hedgehog_plan_id=str(self.plan.pk)
+        ).order_by('id')
 
-        # Add header comment
+        # Separate cables by connection type and aggregate fabric links
+        unbundled_crds = []
+        fabric_links_by_pair = defaultdict(list)  # (leaf_device, spine_device) -> [link_data]
+
+        for cable in cables:
+            try:
+                conn_type, link_data = self._cable_to_link_data(cable)
+
+                if conn_type == 'unbundled':
+                    # Unbundled: one CRD per cable
+                    unbundled_crds.append(self._create_unbundled_crd(link_data))
+
+                elif conn_type == 'fabric':
+                    # Fabric: aggregate by leaf-spine pair
+                    device_pair = (link_data['leaf_device'], link_data['spine_device'])
+                    fabric_links_by_pair[device_pair].append(link_data)
+
+            except ValidationError as e:
+                # Re-raise with cable ID context
+                raise ValidationError(f"Cable {cable.id}: {str(e)}")
+
+        # Generate fabric CRDs (one per leaf-spine pair with all links)
+        fabric_crds = []
+        for (leaf_device, spine_device), links in fabric_links_by_pair.items():
+            fabric_crds.append(self._create_fabric_crd(leaf_device, spine_device, links))
+
+        # Combine all documents (unbundled first, then fabric, both sorted by name)
+        documents = sorted(unbundled_crds, key=lambda d: d['metadata']['name']) + \
+                    sorted(fabric_crds, key=lambda d: d['metadata']['name'])
+
+        # Build YAML output
         header_comment = (
-            f"# Generated by Hedgehog NetBox Plugin - Topology Planner\n"
+            f"# Generated by Hedgehog NetBox Plugin - Topology Planner (DIET-139)\n"
             f"# Plan: {self.plan.name}\n"
             f"# Customer: {self.plan.customer_name or 'N/A'}\n"
-            f"# Generated: {self.plan.last_updated.isoformat() if hasattr(self.plan, 'last_updated') else 'N/A'}\n"
+            f"# Source: NetBox Inventory (Devices, Interfaces, Cables)\n"
+            f"# Connection Count: {len(documents)}\n"
         )
 
-        # Generate connections for each server class
-        for server_class in self.plan.server_classes.all():
-            connections = server_class.connections.all()
-
-            for connection_def in connections:
-                # Generate connections for each server in the class
-                for server_idx in range(server_class.quantity):
-                    server_name = self._generate_server_name(server_class, server_idx)
-
-                    # Generate connections for this server
-                    server_connections = self._generate_connections_for_server(
-                        server_name,
-                        server_class,
-                        connection_def,
-                        server_idx
-                    )
-                    documents.extend(server_connections)
-
-        # Convert to YAML
         if not documents:
-            # Return empty YAML if no connections
-            return header_comment + "\n# No connections defined in this plan\n"
+            return header_comment + "\n# No cables found in NetBox inventory for this plan\n"
 
         # Serialize each document separately and combine
         yaml_parts = [header_comment]
@@ -130,6 +112,239 @@ class YAMLGenerator:
             yaml_parts.append(yaml_str)
 
         return "---\n".join(yaml_parts)
+
+    def _cable_to_link_data(self, cable: Cable) -> tuple:
+        """
+        Extract connection type and link data from a NetBox Cable (DIET-139).
+
+        Args:
+            cable: Cable instance from NetBox inventory
+
+        Returns:
+            Tuple of (connection_type, link_data_dict)
+            - connection_type: 'unbundled' or 'fabric'
+            - link_data_dict: Contains device/interface info for the link
+
+        Raises:
+            ValidationError: If cable has invalid topology
+        """
+        # Validate cable terminations (NetBox 4.x returns lists, not querysets)
+        a_terminations = cable.a_terminations if isinstance(cable.a_terminations, list) else list(cable.a_terminations.all())
+        b_terminations = cable.b_terminations if isinstance(cable.b_terminations, list) else list(cable.b_terminations.all())
+
+        # Check termination counts (single-termination only for MVP)
+        if len(a_terminations) == 0 or len(b_terminations) == 0:
+            raise ValidationError("Cable has missing terminations on one or both sides.")
+
+        if len(a_terminations) > 1 or len(b_terminations) > 1:
+            raise ValidationError(
+                "Cable has multiple terminations on one side. Single-termination cables only."
+            )
+
+        # Check termination types (must be Interface objects)
+        if not isinstance(a_terminations[0], Interface) or not isinstance(b_terminations[0], Interface):
+            raise ValidationError("Cable terminations must be Interface objects.")
+
+        iface_a = a_terminations[0]
+        iface_b = b_terminations[0]
+
+        # Get devices
+        device_a = iface_a.device
+        device_b = iface_b.device
+
+        # Determine connection type and validate roles
+        conn_type = self._determine_connection_type(device_a, device_b, cable.id)
+
+        if conn_type == 'unbundled':
+            # Server-switch connection
+            # Determine which device is server vs switch
+            if device_a.role.slug == 'server':
+                server_device, server_iface = device_a, iface_a
+                switch_device, switch_iface = device_b, iface_b
+            else:
+                server_device, server_iface = device_b, iface_b
+                switch_device, switch_iface = device_a, iface_a
+
+            return ('unbundled', {
+                'server_device': server_device,
+                'server_iface': server_iface,
+                'switch_device': switch_device,
+                'switch_iface': switch_iface,
+            })
+
+        elif conn_type == 'fabric':
+            # Switch-switch connection (fabric)
+            # Deterministic ordering: leaf/border before spine
+            role_a = device_a.role.slug
+            role_b = device_b.role.slug
+
+            # Determine leaf vs spine
+            if role_a in ('leaf', 'border') and role_b == 'spine':
+                leaf_device, leaf_iface = device_a, iface_a
+                spine_device, spine_iface = device_b, iface_b
+            elif role_b in ('leaf', 'border') and role_a == 'spine':
+                leaf_device, leaf_iface = device_b, iface_b
+                spine_device, spine_iface = device_a, iface_a
+            else:
+                # Both same role - alphabetical by device name
+                if device_a.name < device_b.name:
+                    leaf_device, leaf_iface = device_a, iface_a
+                    spine_device, spine_iface = device_b, iface_b
+                else:
+                    leaf_device, leaf_iface = device_b, iface_b
+                    spine_device, spine_iface = device_a, iface_a
+
+            return ('fabric', {
+                'leaf_device': leaf_device,
+                'leaf_iface': leaf_iface,
+                'spine_device': spine_device,
+                'spine_iface': spine_iface,
+            })
+
+        else:
+            raise ValidationError(f"Unknown connection type: {conn_type}")
+
+    def _create_unbundled_crd(self, link_data: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Create unbundled Connection CRD from link data.
+
+        Args:
+            link_data: Dictionary with server_device, server_iface, switch_device, switch_iface
+
+        Returns:
+            Connection CRD dictionary
+        """
+        server_device = link_data['server_device']
+        server_iface = link_data['server_iface']
+        switch_device = link_data['switch_device']
+        switch_iface = link_data['switch_iface']
+
+        # Generate CRD name (based on real-world example: server-03-fe-nic-1--unbundled--leaf-01)
+        # MUST include server interface name to ensure uniqueness when multiple ports connect to same switch
+        crd_name = self._sanitize_name(
+            f"{server_device.name}-{server_iface.name}--unbundled--{switch_device.name}"
+        )
+
+        return {
+            'apiVersion': 'wiring.githedgehog.com/v1beta1',
+            'kind': 'Connection',
+            'metadata': {
+                'name': crd_name,
+                'namespace': 'default',
+            },
+            'spec': {
+                'unbundled': {
+                    'link': {
+                        'server': {
+                            'port': f"{server_device.name}/{server_iface.name}",
+                        },
+                        'switch': {
+                            'port': f"{switch_device.name}/{switch_iface.name}",
+                        },
+                    },
+                },
+            },
+        }
+
+    def _create_fabric_crd(
+        self,
+        leaf_device: Device,
+        spine_device: Device,
+        links: List[Dict[str, Any]]
+    ) -> Dict[str, Any]:
+        """
+        Create fabric Connection CRD aggregating multiple links (DIET-139).
+
+        Args:
+            leaf_device: Leaf switch device
+            spine_device: Spine switch device
+            links: List of link_data dicts for this leaf-spine pair
+
+        Returns:
+            Connection CRD dictionary with aggregated fabric links
+
+        Note:
+            IP addresses (leaf.ip, spine.ip) are NOT included in the wiring diagram.
+            Hedgehog's hhfab utility automatically injects IP addresses during the
+            fabric build process. This is the standard workflow - HNP does not assign IPs.
+        """
+        # Generate CRD name (based on real-world example: spine-02--fabric--border-leaf-01)
+        crd_name = self._sanitize_name(
+            f"{spine_device.name}--fabric--{leaf_device.name}"
+        )
+
+        # Build fabric links array (one entry per cable)
+        # NOTE: No IP addresses - hhfab injects them automatically during build
+        fabric_links = []
+        for link_data in links:
+            fabric_links.append({
+                'leaf': {
+                    'port': f"{link_data['leaf_device'].name}/{link_data['leaf_iface'].name}",
+                    # 'ip' field omitted - hhfab injects during build
+                },
+                'spine': {
+                    'port': f"{link_data['spine_device'].name}/{link_data['spine_iface'].name}",
+                    # 'ip' field omitted - hhfab injects during build
+                },
+            })
+
+        return {
+            'apiVersion': 'wiring.githedgehog.com/v1beta1',
+            'kind': 'Connection',
+            'metadata': {
+                'name': crd_name,
+                'namespace': 'default',
+            },
+            'spec': {
+                'fabric': {
+                    'links': fabric_links,
+                },
+            },
+        }
+
+    def _determine_connection_type(self, device_a: Device, device_b: Device, cable_id: int) -> str:
+        """
+        Determine Hedgehog connection type from device roles (DIET-139).
+
+        Args:
+            device_a: First device
+            device_b: Second device
+            cable_id: Cable ID for error messages
+
+        Returns:
+            'unbundled' for server↔switch, 'fabric' for switch↔switch
+
+        Raises:
+            ValidationError: If role combination is invalid
+        """
+        role_a = device_a.role.slug
+        role_b = device_b.role.slug
+
+        # Define switch roles
+        switch_roles = {'leaf', 'spine', 'border', 'oob'}
+
+        # Server↔server is not supported
+        if role_a == 'server' and role_b == 'server':
+            raise ValidationError(
+                "Server-to-server connections are not supported. "
+                "Expected server↔switch or switch↔switch."
+            )
+
+        # Server↔switch → unbundled
+        if role_a == 'server' and role_b in switch_roles:
+            return 'unbundled'
+        if role_b == 'server' and role_a in switch_roles:
+            return 'unbundled'
+
+        # Switch↔switch → fabric
+        if role_a in switch_roles and role_b in switch_roles:
+            return 'fabric'
+
+        # Invalid combination
+        raise ValidationError(
+            f"Invalid device role combination: {role_a} ↔ {role_b}. "
+            f"Expected server↔switch or switch↔switch."
+        )
 
     def _sanitize_name(self, name: str) -> str:
         """
@@ -165,466 +380,22 @@ class YAMLGenerator:
 
         return sanitized
 
-    def _generate_server_name(self, server_class: PlanServerClass, index: int) -> str:
-        """
-        Generate a server name based on server class and index.
-
-        Args:
-            server_class: Server class
-            index: Server index (0-based)
-
-        Returns:
-            Server name (e.g., 'gpu-001-001', 'gpu-001-002')
-        """
-        # Sanitize server class ID for use in name
-        class_id = self._sanitize_name(server_class.server_class_id)
-
-        # Pad index to 3 digits
-        return f"{class_id}-{index+1:03d}"
-
-    def _generate_switch_name(self, switch_class: PlanSwitchClass, index: int) -> str:
-        """
-        Generate a switch name based on switch class and index.
-
-        Args:
-            switch_class: Switch class
-            index: Switch index (0-based)
-
-        Returns:
-            Switch name (e.g., 'fe-leaf-01', 'fe-leaf-02')
-        """
-        # Sanitize switch class ID for use in name
-        class_id = self._sanitize_name(switch_class.switch_class_id)
-
-        # Pad index to 2 digits
-        return f"{class_id}-{index+1:02d}"
-
-    def _generate_connections_for_server(
-        self,
-        server_name: str,
-        server_class: PlanServerClass,
-        connection_def: PlanServerConnection,
-        server_idx: int
-    ) -> List[Dict[str, Any]]:
-        """
-        Generate Connection CRDs for a single server's connection definition.
-
-        Args:
-            server_name: Name of the server
-            server_class: Server class this server belongs to
-            connection_def: Connection definition specifying how to connect
-            server_idx: Index of this server within its class (for distribution)
-
-        Returns:
-            List of Connection CRD dictionaries
-        """
-        connections = []
-        target_switch_class = connection_def.target_switch_class
-        conn_type = connection_def.hedgehog_conn_type
-        distribution = connection_def.distribution
-        ports_per_connection = connection_def.ports_per_connection
-
-        # Get switch instances for this connection
-        switch_instances = self._get_switch_instances(target_switch_class)
-
-        if not switch_instances:
-            # No switches available - skip
-            return []
-
-        # Handle different connection types
-        if conn_type == ConnectionTypeChoices.UNBUNDLED:
-            connections = self._generate_unbundled_connections(
-                server_name,
-                connection_def,
-                switch_instances,
-                server_idx,
-                ports_per_connection
-            )
-        elif conn_type == ConnectionTypeChoices.BUNDLED:
-            connection = self._generate_bundled_connection(
-                server_name,
-                connection_def,
-                switch_instances,
-                server_idx,
-                ports_per_connection
-            )
-            if connection:
-                connections = [connection]
-        elif conn_type == ConnectionTypeChoices.MCLAG:
-            connection = self._generate_mclag_connection(
-                server_name,
-                connection_def,
-                switch_instances,
-                server_idx,
-                ports_per_connection
-            )
-            if connection:
-                connections = [connection]
-        elif conn_type == ConnectionTypeChoices.ESLAG:
-            connection = self._generate_eslag_connection(
-                server_name,
-                connection_def,
-                switch_instances,
-                server_idx,
-                ports_per_connection
-            )
-            if connection:
-                connections = [connection]
-
-        return connections
-
-    def _generate_unbundled_connections(
-        self,
-        server_name: str,
-        connection_def: PlanServerConnection,
-        switch_instances: List[str],
-        server_idx: int,
-        ports_per_connection: int
-    ) -> List[Dict[str, Any]]:
-        """Generate unbundled connection CRDs (one CRD per port)"""
-        connections = []
-        distribution = connection_def.distribution
-
-        for port_idx in range(ports_per_connection):
-            # Determine which switch this port connects to
-            switch_name = self._select_switch_for_port(
-                switch_instances,
-                distribution,
-                server_idx,
-                port_idx
-            )
-
-            # Allocate a port on the selected switch
-            switch_ports = self.port_allocator.allocate(switch_name, 1)
-            switch_port = switch_ports[0]
-
-            # Generate server port name
-            server_port = self._generate_server_port_name(connection_def, port_idx)
-
-            # Sanitize connection name for DNS-label safety
-            conn_suffix = self._sanitize_name(
-                connection_def.connection_name or connection_def.connection_id
-            )
-
-            # Create connection name
-            conn_name = f"server--{server_name}--unbundled--{switch_name}--{conn_suffix}"
-            # Append port index if multiple ports
-            if ports_per_connection > 1:
-                conn_name += f"-port{port_idx}"
-
-            # Apply final sanitization to ensure 63-char limit and DNS-label compliance
-            conn_name = self._sanitize_name(conn_name)
-
-            # Create connection document
-            connection = {
-                'apiVersion': 'wiring.githedgehog.com/v1beta1',
-                'kind': 'Connection',
-                'metadata': {
-                    'name': conn_name,
-                    'namespace': 'default'
-                },
-                'spec': {
-                    'unbundled': {
-                        'link': {
-                            'server': {
-                                'port': f"{server_name}/{server_port}"
-                            },
-                            'switch': {
-                                'port': f"{switch_name}/{switch_port}"
-                            }
-                        }
-                    }
-                }
-            }
-            connections.append(connection)
-
-        return connections
-
-    def _generate_bundled_connection(
-        self,
-        server_name: str,
-        connection_def: PlanServerConnection,
-        switch_instances: List[str],
-        server_idx: int,
-        ports_per_connection: int
-    ) -> Dict[str, Any]:
-        """Generate a single bundled connection CRD with multiple links"""
-        distribution = connection_def.distribution
-        links = []
-
-        for port_idx in range(ports_per_connection):
-            # Determine which switch this port connects to
-            switch_name = self._select_switch_for_port(
-                switch_instances,
-                distribution,
-                server_idx,
-                port_idx
-            )
-
-            # Allocate a port on the selected switch
-            switch_ports = self.port_allocator.allocate(switch_name, 1)
-            switch_port = switch_ports[0]
-
-            # Generate server port name
-            server_port = self._generate_server_port_name(connection_def, port_idx)
-
-            # Add link
-            links.append({
-                'server': {
-                    'port': f"{server_name}/{server_port}"
-                },
-                'switch': {
-                    'port': f"{switch_name}/{switch_port}"
-                }
-            })
-
-        # Sanitize connection name for DNS-label safety
-        conn_suffix = self._sanitize_name(
-            connection_def.connection_name or connection_def.connection_id
-        )
-
-        # Create connection name
-        conn_name = f"server--{server_name}--bundled--{conn_suffix}"
-
-        # Apply final sanitization to ensure 63-char limit and DNS-label compliance
-        conn_name = self._sanitize_name(conn_name)
-
-        # Create connection document
-        connection = {
-            'apiVersion': 'wiring.githedgehog.com/v1beta1',
-            'kind': 'Connection',
-            'metadata': {
-                'name': conn_name,
-                'namespace': 'default'
-            },
-            'spec': {
-                'bundled': {
-                    'links': links
-                }
-            }
-        }
-
-        return connection
-
-    def _generate_mclag_connection(
-        self,
-        server_name: str,
-        connection_def: PlanServerConnection,
-        switch_instances: List[str],
-        server_idx: int,
-        ports_per_connection: int
-    ) -> Dict[str, Any]:
-        """Generate an MCLAG connection CRD with alternating links across switch pair"""
-        if len(switch_instances) < 2:
-            # MCLAG requires at least 2 switches
-            return None
-
-        links = []
-
-        # MCLAG connections alternate between the first two switches
-        for port_idx in range(ports_per_connection):
-            # Alternate between switch 0 and switch 1
-            switch_name = switch_instances[port_idx % 2]
-
-            # Allocate a port on the selected switch
-            switch_ports = self.port_allocator.allocate(switch_name, 1)
-            switch_port = switch_ports[0]
-
-            # Generate server port name
-            server_port = self._generate_server_port_name(connection_def, port_idx)
-
-            # Add link
-            links.append({
-                'server': {
-                    'port': f"{server_name}/{server_port}"
-                },
-                'switch': {
-                    'port': f"{switch_name}/{switch_port}"
-                }
-            })
-
-        # Sanitize connection name for DNS-label safety
-        conn_suffix = self._sanitize_name(
-            connection_def.connection_name or connection_def.connection_id
-        )
-
-        # Create connection name
-        conn_name = f"server--{server_name}--mclag--{conn_suffix}"
-
-        # Apply final sanitization to ensure 63-char limit and DNS-label compliance
-        conn_name = self._sanitize_name(conn_name)
-
-        # Create connection document
-        connection = {
-            'apiVersion': 'wiring.githedgehog.com/v1beta1',
-            'kind': 'Connection',
-            'metadata': {
-                'name': conn_name,
-                'namespace': 'default'
-            },
-            'spec': {
-                'mclag': {
-                    'links': links
-                }
-            }
-        }
-
-        return connection
-
-    def _generate_eslag_connection(
-        self,
-        server_name: str,
-        connection_def: PlanServerConnection,
-        switch_instances: List[str],
-        server_idx: int,
-        ports_per_connection: int
-    ) -> Dict[str, Any]:
-        """Generate an ESLAG connection CRD"""
-        # ESLAG is similar to bundled but uses 'eslag' spec key
-        links = []
-        distribution = connection_def.distribution
-
-        for port_idx in range(ports_per_connection):
-            # Determine which switch this port connects to
-            switch_name = self._select_switch_for_port(
-                switch_instances,
-                distribution,
-                server_idx,
-                port_idx
-            )
-
-            # Allocate a port on the selected switch
-            switch_ports = self.port_allocator.allocate(switch_name, 1)
-            switch_port = switch_ports[0]
-
-            # Generate server port name
-            server_port = self._generate_server_port_name(connection_def, port_idx)
-
-            # Add link
-            links.append({
-                'server': {
-                    'port': f"{server_name}/{server_port}"
-                },
-                'switch': {
-                    'port': f"{switch_name}/{switch_port}"
-                }
-            })
-
-        # Sanitize connection name for DNS-label safety
-        conn_suffix = self._sanitize_name(
-            connection_def.connection_name or connection_def.connection_id
-        )
-
-        # Create connection name
-        conn_name = f"server--{server_name}--eslag--{conn_suffix}"
-
-        # Apply final sanitization to ensure 63-char limit and DNS-label compliance
-        conn_name = self._sanitize_name(conn_name)
-
-        # Create connection document
-        connection = {
-            'apiVersion': 'wiring.githedgehog.com/v1beta1',
-            'kind': 'Connection',
-            'metadata': {
-                'name': conn_name,
-                'namespace': 'default'
-            },
-            'spec': {
-                'eslag': {
-                    'links': links
-                }
-            }
-        }
-
-        return connection
-
-    def _select_switch_for_port(
-        self,
-        switch_instances: List[str],
-        distribution: str,
-        server_idx: int,
-        port_idx: int
-    ) -> str:
-        """
-        Select which switch instance a port should connect to based on distribution strategy.
-
-        Args:
-            switch_instances: List of available switch names
-            distribution: Distribution strategy
-            server_idx: Index of the server within its class
-            port_idx: Index of the port within the connection
-
-        Returns:
-            Name of the selected switch
-        """
-        if not switch_instances:
-            raise ValueError("No switch instances available")
-
-        if len(switch_instances) == 1:
-            # Only one switch, use it
-            return switch_instances[0]
-
-        if distribution == ConnectionDistributionChoices.ALTERNATING:
-            # Alternate ports between switches
-            return switch_instances[port_idx % len(switch_instances)]
-        elif distribution == ConnectionDistributionChoices.SAME_SWITCH:
-            # All ports of a server go to the same switch
-            # Distribute servers across switches
-            return switch_instances[server_idx % len(switch_instances)]
-        else:
-            # Default: same-switch behavior
-            return switch_instances[server_idx % len(switch_instances)]
-
-    def _generate_server_port_name(self, connection_def: PlanServerConnection, port_idx: int) -> str:
-        """
-        Generate server port name based on NIC slot and port index.
-
-        Args:
-            connection_def: Connection definition
-            port_idx: Port index (0-based)
-
-        Returns:
-            Port name (e.g., 'enp1s0f0', 'enp1s0f1')
-        """
-        # If NIC slot is specified, use it as base
-        if connection_def.nic_slot:
-            # Assume format like 'enp1s0' and append 'f{port_idx}'
-            base = connection_def.nic_slot.rstrip('f0123456789')
-            return f"{base}f{port_idx}"
-
-        # Default: use connection_id and port index
-        conn_id = re.sub(r'[^a-z0-9]', '', connection_def.connection_id.lower())
-        return f"port-{conn_id}-{port_idx}"
-
-    def _get_switch_instances(self, switch_class: PlanSwitchClass) -> List[str]:
-        """
-        Get list of switch instance names for a switch class.
-
-        Args:
-            switch_class: Switch class
-
-        Returns:
-            List of switch names (e.g., ['fe-leaf-01', 'fe-leaf-02'])
-        """
-        quantity = switch_class.effective_quantity
-        if quantity == 0:
-            return []
-
-        return [
-            self._generate_switch_name(switch_class, i)
-            for i in range(quantity)
-        ]
-
 
 def generate_yaml_for_plan(plan: TopologyPlan) -> str:
     """
-    Convenience function to generate YAML for a topology plan.
+    Convenience function to generate YAML for a topology plan (DIET-139).
+
+    This function reads from NetBox inventory (Devices, Interfaces, Cables)
+    created by DeviceGenerator, NOT from the plan's class/connection definitions.
 
     Args:
         plan: TopologyPlan instance
 
     Returns:
-        YAML string containing Connection CRDs
+        YAML string containing Connection CRDs from NetBox inventory
+
+    Raises:
+        ValidationError: If cable topology is invalid
     """
     generator = YAMLGenerator(plan)
     return generator.generate()

@@ -13,13 +13,14 @@ from django.shortcuts import get_object_or_404, redirect, render
 from django.utils.html import format_html
 from django.views import View
 
+from dcim.models import Device, Cable
+
 from netbox.views import generic
-from .. import models, tables, forms
+from .. import models, tables, forms, choices
 from ..services.device_generator import DeviceGenerator
 from ..utils.topology_calculations import update_plan_calculations
 from ..services.yaml_generator import generate_yaml_for_plan
 from ..jobs.device_generation import DeviceGenerationJob
-from ..choices import GenerationStatusChoices
 
 
 def _require_topologyplan_change_permission(request, plan=None):
@@ -475,40 +476,75 @@ class TopologyPlanRecalculateView(PermissionRequiredMixin, View):
 
 class TopologyPlanExportView(PermissionRequiredMixin, View):
     """
-    Export action for TopologyPlans (DIET-006).
+    Export action for TopologyPlans (DIET-139).
 
-    Generates Hedgehog wiring diagram YAML from a topology plan
-    and returns it as a downloadable file.
+    Generates Hedgehog wiring diagram YAML from a topology plan's NetBox inventory
+    (Devices, Interfaces, Cables created by device generation).
 
-    Automatically runs calculation engine before export to ensure
-    switch quantities are up-to-date.
+    IMPORTANT: Export is inventory-based and read-only.
+    - Requires device generation to be completed before export
+    - Does NOT mutate the plan (removed update_plan_calculations call)
+    - Reads actual NetBox Interface names for port naming (including breakout suffixes)
 
-    Requires change_topologyplan permission (not just view) because
-    the auto-calculation mutates data by saving calculated_quantity.
+    Requires change_topologyplan permission for historical reasons (permission model unchanged).
     """
     permission_required = 'netbox_hedgehog.change_topologyplan'
     raise_exception = True
 
     def get(self, request, pk):
-        """Handle export GET request"""
+        """Handle export GET request with precondition validation (DIET-139)"""
         _require_topologyplan_change_permission(request)
         plan = get_object_or_404(models.TopologyPlan, pk=pk)
 
-        # Auto-calculate switch quantities before export
-        # This ensures effective_quantity is populated even if user hasn't clicked Recalculate
-        result = update_plan_calculations(plan)
+        # ===== PRECONDITION VALIDATION (DIET-139) =====
+        # Export requires device generation to be completed
 
-        # Warn user if there were calculation errors (but continue with export)
-        if result['errors']:
-            for error_info in result['errors']:
-                messages.warning(
-                    request,
-                    f"Calculation error for '{error_info['switch_class']}': {error_info['error']}. "
-                    "Export will use existing quantities."
-                )
+        # Check 1: Generation state must exist
+        try:
+            generation_state = plan.generation_state
+        except AttributeError:
+            return HttpResponseBadRequest(
+                "Device generation has not been run for this plan. "
+                "Click 'Generate Devices' to create NetBox inventory first."
+            )
 
-        # Generate YAML from plan
-        yaml_content = generate_yaml_for_plan(plan)
+        # Check 2: Generation status must be GENERATED
+        if generation_state.status != choices.GenerationStatusChoices.GENERATED:
+            return HttpResponseBadRequest(
+                f"Device generation status is '{generation_state.status}'. "
+                f"Complete device generation before exporting YAML."
+            )
+
+        # Check 3: Devices must exist in NetBox
+        device_count = Device.objects.filter(
+            custom_field_data__hedgehog_plan_id=str(plan.pk)
+        ).count()
+        if device_count == 0:
+            return HttpResponseBadRequest(
+                "No devices found in NetBox inventory for this plan. "
+                "Device generation may have failed or devices were deleted."
+            )
+
+        # Check 4: Cables must exist in NetBox
+        cable_count = Cable.objects.filter(
+            custom_field_data__hedgehog_plan_id=str(plan.pk)
+        ).count()
+        if cable_count == 0:
+            return HttpResponseBadRequest(
+                "No cables found in NetBox inventory for this plan. "
+                "Device generation may have failed or is incomplete."
+            )
+
+        # ===== GENERATE YAML FROM INVENTORY (DIET-139) =====
+        # Do NOT call update_plan_calculations - export is read-only
+
+        # Generate YAML from NetBox inventory (not from plan allocation)
+        try:
+            yaml_content = generate_yaml_for_plan(plan)
+        except Exception as e:
+            return HttpResponseBadRequest(
+                f"YAML generation failed: {str(e)}"
+            )
 
         # Create filename from plan name (sanitize for filesystem)
         filename = re.sub(r'[^a-z0-9-]', '-', plan.name.lower())
