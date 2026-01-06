@@ -95,6 +95,20 @@ class FabricProfileImporterTestCase(TestCase):
         native_speed = self.importer.derive_native_speed(port_profiles)
         self.assertEqual(native_speed, 25)
 
+    def test_derive_native_speed_handles_decimal_speeds(self):
+        """Derive native_speed from decimal speeds like 2.5G (EPS203)."""
+        port_profiles = {
+            "2.5GBASE-T": {
+                "speed": {
+                    "default": "2.5G",
+                    "supported": ["100M", "1G", "2.5G"]
+                }
+            }
+        }
+
+        native_speed = self.importer.derive_native_speed(port_profiles)
+        self.assertEqual(native_speed, 2.5)
+
     def test_derive_supported_breakouts_from_port_profiles(self):
         """Extract and normalize supported breakout mode strings."""
         port_profiles = {

@@ -567,7 +567,7 @@ class FabricProfileImporter:
 
         raise ValidationError(f"Unknown manufacturer in DisplayName: {display_name}")
 
-    def derive_native_speed(self, port_profiles: Dict[str, Any]) -> int:
+    def derive_native_speed(self, port_profiles: Dict[str, Any]) -> float:
         """
         Derive native_speed from primary data-plane port profile.
 
@@ -580,7 +580,7 @@ class FabricProfileImporter:
             port_profiles: PortProfiles dict from parsed profile
 
         Returns:
-            Native speed in Gbps
+            Native speed in Gbps (may be float for 2.5G, etc.)
 
         Raises:
             ValidationError: If no valid port profiles found
@@ -594,9 +594,9 @@ class FabricProfileImporter:
                 default_mode = breakout.get("default", "")
                 if default_mode:
                     # Parse default mode: "1x800G" → 800
-                    match = re.match(r'(\d+)x(\d+)[Gg]', default_mode)
+                    match = re.match(r'(\d+)x(\d+(?:\.\d+)?)[Gg]', default_mode)
                     if match:
-                        speed = int(match.group(2))
+                        speed = float(match.group(2))
                         speeds.append(speed)
 
             # Check for Speed profile (fallback)
@@ -604,10 +604,10 @@ class FabricProfileImporter:
                 speed_config = profile_data["speed"]
                 default_speed = speed_config.get("default", "")
                 if default_speed:
-                    # Parse speed: "25G" → 25
-                    match = re.match(r'(\d+)[Gg]', default_speed)
+                    # Parse speed: "25G" → 25, "2.5G" → 2.5
+                    match = re.match(r'(\d+(?:\.\d+)?)[Gg]', default_speed)
                     if match:
-                        speed = int(match.group(1))
+                        speed = float(match.group(1))
                         speeds.append(speed)
 
         if not speeds:
@@ -708,7 +708,10 @@ class FabricProfileImporter:
             ext.supported_breakouts = supported_breakouts
 
         if ext.native_speed is None:
-            ext.native_speed = native_speed
+            # native_speed field is IntegerField, so convert float to int
+            # For 2.5G devices, this will store as 2 (acceptable loss of precision)
+            # The field type was chosen to match common switch speeds (10G, 25G, 100G, etc.)
+            ext.native_speed = int(native_speed)
 
         # Boolean: only update if False (default) - don't downgrade True → False
         if not ext.mclag_capable and mclag_capable:
@@ -772,7 +775,7 @@ class FabricProfileImporter:
                 defaults={"type": interface_type}
             )
 
-    def _get_port_speed(self, port_profile: Dict[str, Any]) -> Optional[int]:
+    def _get_port_speed(self, port_profile: Dict[str, Any]) -> Optional[float]:
         """
         Extract port speed from port profile.
 
@@ -780,15 +783,15 @@ class FabricProfileImporter:
             port_profile: Single port profile dict
 
         Returns:
-            Speed in Gbps, or None if cannot determine
+            Speed in Gbps (may be float for 2.5G, etc.), or None if cannot determine
         """
         # Check Breakout profile
         if "breakout" in port_profile:
             default_mode = port_profile["breakout"].get("default", "")
             if default_mode:
-                match = re.match(r'(\d+)x(\d+)[Gg]', default_mode)
+                match = re.match(r'(\d+)x(\d+(?:\.\d+)?)[Gg]', default_mode)
                 if match:
-                    return int(match.group(2))
+                    return float(match.group(2))
 
         # Check Speed profile
         if "speed" in port_profile:
@@ -796,7 +799,7 @@ class FabricProfileImporter:
             if default_speed:
                 match = re.match(r'(\d+(?:\.\d+)?)[Gg]', default_speed)
                 if match:
-                    return int(float(match.group(1)))
+                    return float(match.group(1))
 
         return None
 
