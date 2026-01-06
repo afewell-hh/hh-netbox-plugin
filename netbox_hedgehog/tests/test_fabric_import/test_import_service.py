@@ -106,15 +106,14 @@ class FabricProfileImporterTestCase(TestCase):
 
         supported_breakouts = self.importer.derive_supported_breakouts(port_profiles)
 
-        # Should be normalized to lowercase, comma-separated
-        self.assertIsInstance(supported_breakouts, str)
-        breakout_list = [b.strip() for b in supported_breakouts.split(',')]
-        self.assertIn("1x800g", breakout_list)
-        self.assertIn("2x400g", breakout_list)
-        self.assertIn("4x200g", breakout_list)
+        # Should be a list of normalized lowercase strings
+        self.assertIsInstance(supported_breakouts, list)
+        self.assertIn("1x800g", supported_breakouts)
+        self.assertIn("2x400g", supported_breakouts)
+        self.assertIn("4x200g", supported_breakouts)
 
     def test_derive_supported_breakouts_empty_when_no_breakout_profiles(self):
-        """No breakout profiles should return empty string."""
+        """No breakout profiles should return empty list."""
         port_profiles = {
             "SFP28-25G": {
                 "speed": {
@@ -125,7 +124,7 @@ class FabricProfileImporterTestCase(TestCase):
         }
 
         supported_breakouts = self.importer.derive_supported_breakouts(port_profiles)
-        self.assertEqual(supported_breakouts, "")
+        self.assertEqual(supported_breakouts, [])
 
     def test_create_or_update_device_type_extension(self):
         """Create DeviceTypeExtension with derived fields."""
@@ -159,6 +158,8 @@ class FabricProfileImporterTestCase(TestCase):
 
         self.assertEqual(ext.device_type, device_type)
         self.assertEqual(ext.native_speed, 800)
+        # supported_breakouts is a JSONField list
+        self.assertIsInstance(ext.supported_breakouts, list)
         self.assertIn("1x800g", ext.supported_breakouts)
         self.assertIn("2x400g", ext.supported_breakouts)
         self.assertFalse(ext.mclag_capable)
@@ -175,7 +176,7 @@ class FabricProfileImporterTestCase(TestCase):
         existing_ext = DeviceTypeExtension.objects.create(
             device_type=device_type,
             native_speed=400,  # User modified this
-            supported_breakouts="1x400g,2x200g",  # User modified this
+            supported_breakouts=["1x400g", "2x200g"],  # User modified this (list)
             mclag_capable=True  # User modified this
         )
 
@@ -202,7 +203,7 @@ class FabricProfileImporterTestCase(TestCase):
 
         # Should NOT overwrite existing values
         self.assertEqual(ext.native_speed, 400)  # User value preserved
-        self.assertEqual(ext.supported_breakouts, "1x400g,2x200g")  # User value preserved
+        self.assertEqual(ext.supported_breakouts, ["1x400g", "2x200g"])  # User value preserved (list)
         self.assertTrue(ext.mclag_capable)  # User value preserved
 
     def test_create_interface_templates_from_ports(self):

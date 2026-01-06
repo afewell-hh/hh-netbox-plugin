@@ -2,10 +2,11 @@
 Unit tests for FabricProfileGoParser (DIET-144).
 
 These tests validate parsing of Hedgehog Fabric switch profiles from Go source files.
-Tests fetch real profiles from GitHub to ensure parsing accuracy.
+Tests use local fixtures (committed) to ensure deterministic, offline testing.
 """
 
 import unittest
+from pathlib import Path
 from typing import Dict, Any
 
 from netbox_hedgehog.utils.fabric_import import FabricProfileGoParser
@@ -15,19 +16,16 @@ class FabricProfileGoParserTestCase(unittest.TestCase):
     """Tests for FabricProfileGoParser."""
 
     def setUp(self):
-        """Set up parser instance for each test."""
+        """Set up parser instance and fixture paths for each test."""
         self.parser = FabricProfileGoParser()
-        # Use master branch (fabric repo uses master, not main)
-        self.fabric_ref = "master"
+        # Local fixtures directory (relative to this test file)
+        self.fixtures_dir = Path(__file__).parent / "fixtures"
 
     def test_parse_celestica_ds5000(self):
         """Parse Celestica DS5000 profile and validate all fields."""
-        profile_url = (
-            f"https://raw.githubusercontent.com/githedgehog/fabric/{self.fabric_ref}/"
-            "pkg/ctrl/switchprofile/p_bcm_celestica_ds5000.go"
-        )
+        fixture_path = self.fixtures_dir / "p_bcm_celestica_ds5000.go"
 
-        result = self.parser.parse_profile_from_url(profile_url)
+        result = self.parser.parse_profile_from_file(str(fixture_path))
 
         # Validate ObjectMeta
         self.assertEqual(result["object_meta"]["name"], "celestica-ds5000")
@@ -71,12 +69,9 @@ class FabricProfileGoParserTestCase(unittest.TestCase):
 
     def test_parse_celestica_ds3000(self):
         """Parse Celestica DS3000 profile and validate all fields."""
-        profile_url = (
-            f"https://raw.githubusercontent.com/githedgehog/fabric/{self.fabric_ref}/"
-            "pkg/ctrl/switchprofile/p_bcm_celestica_ds3000.go"
-        )
+        fixture_path = self.fixtures_dir / "p_bcm_celestica_ds3000.go"
 
-        result = self.parser.parse_profile_from_url(profile_url)
+        result = self.parser.parse_profile_from_file(str(fixture_path))
 
         # Validate ObjectMeta
         self.assertEqual(result["object_meta"]["name"], "celestica-ds3000")
@@ -90,12 +85,9 @@ class FabricProfileGoParserTestCase(unittest.TestCase):
 
     def test_parse_edgecore_dcs203(self):
         """Parse Edgecore DCS203 profile (mixed-port device)."""
-        profile_url = (
-            f"https://raw.githubusercontent.com/githedgehog/fabric/{self.fabric_ref}/"
-            "pkg/ctrl/switchprofile/p_bcm_edgecore_dcs203.go"
-        )
+        fixture_path = self.fixtures_dir / "p_bcm_edgecore_dcs203.go"
 
-        result = self.parser.parse_profile_from_url(profile_url)
+        result = self.parser.parse_profile_from_file(str(fixture_path))
 
         # Validate ObjectMeta
         self.assertEqual(result["object_meta"]["name"], "edgecore-dcs203")
@@ -111,26 +103,19 @@ class FabricProfileGoParserTestCase(unittest.TestCase):
         self.assertGreater(len(port_profiles), 1, "DCS203 should have multiple port profiles")
 
     def test_parse_virtual_vs(self):
-        """Virtual VS profile uses dynamic references and cannot be parsed by regex parser."""
-        profile_url = (
-            f"https://raw.githubusercontent.com/githedgehog/fabric/{self.fabric_ref}/"
-            "pkg/ctrl/switchprofile/p_bcm_vs.go"
-        )
-
-        # VS profile dynamically references DellS5248FON ports with lo.OmitBy() filtering
+        """Virtual VS profile would use dynamic references - not provided as fixture."""
+        # VS profile dynamically references other profiles with lo.OmitBy() filtering
         # This cannot be parsed by our regex-based parser, which is expected
         # We only need to parse static hardware profiles, not virtual test fixtures
-        with self.assertRaises(Exception):
-            self.parser.parse_profile_from_url(profile_url)
+        # Since we don't include VS in fixtures (it's not a real hardware profile),
+        # we just document that this is intentionally unsupported
+        self.skipTest("VS profile is virtual/dynamic and not included in fixtures")
 
     def test_parser_extracts_port_profiles_correctly(self):
         """Validate PortProfiles extraction for DS5000."""
-        profile_url = (
-            f"https://raw.githubusercontent.com/githedgehog/fabric/{self.fabric_ref}/"
-            "pkg/ctrl/switchprofile/p_bcm_celestica_ds5000.go"
-        )
+        fixture_path = self.fixtures_dir / "p_bcm_celestica_ds5000.go"
 
-        result = self.parser.parse_profile_from_url(profile_url)
+        result = self.parser.parse_profile_from_file(str(fixture_path))
         port_profiles = result["spec"]["port_profiles"]
 
         # Should have at least OSFP-800G and SFP28-25G
@@ -149,12 +134,9 @@ class FabricProfileGoParserTestCase(unittest.TestCase):
 
     def test_parser_extracts_breakout_modes_from_mode_names(self):
         """Validate breakout mode parsing from mode names like '2x400g'."""
-        profile_url = (
-            f"https://raw.githubusercontent.com/githedgehog/fabric/{self.fabric_ref}/"
-            "pkg/ctrl/switchprofile/p_bcm_celestica_ds5000.go"
-        )
+        fixture_path = self.fixtures_dir / "p_bcm_celestica_ds5000.go"
 
-        result = self.parser.parse_profile_from_url(profile_url)
+        result = self.parser.parse_profile_from_file(str(fixture_path))
         port_profiles = result["spec"]["port_profiles"]
 
         osfp_breakout = port_profiles["OSFP-800G"]["breakout"]["supported"]
@@ -169,12 +151,9 @@ class FabricProfileGoParserTestCase(unittest.TestCase):
 
     def test_parser_skips_management_ports(self):
         """Verify parser excludes management ports from Ports list."""
-        profile_url = (
-            f"https://raw.githubusercontent.com/githedgehog/fabric/{self.fabric_ref}/"
-            "pkg/ctrl/switchprofile/p_bcm_celestica_ds5000.go"
-        )
+        fixture_path = self.fixtures_dir / "p_bcm_celestica_ds5000.go"
 
-        result = self.parser.parse_profile_from_url(profile_url)
+        result = self.parser.parse_profile_from_file(str(fixture_path))
         ports = result["spec"]["ports"]
 
         # Check no port key contains management-like names
@@ -188,35 +167,26 @@ class FabricProfileGoParserTestCase(unittest.TestCase):
 
     def test_parser_handles_mclag_feature_flag(self):
         """Validate MCLAG feature extraction."""
-        profile_url = (
-            f"https://raw.githubusercontent.com/githedgehog/fabric/{self.fabric_ref}/"
-            "pkg/ctrl/switchprofile/p_bcm_celestica_ds5000.go"
-        )
+        fixture_path = self.fixtures_dir / "p_bcm_celestica_ds5000.go"
 
-        result = self.parser.parse_profile_from_url(profile_url)
+        result = self.parser.parse_profile_from_file(str(fixture_path))
         features = result["spec"]["features"]
 
         self.assertIn("MCLAG", features)
         self.assertIsInstance(features["MCLAG"], bool)
 
-    def test_parser_raises_error_for_invalid_url(self):
-        """Parser should raise error for non-existent profile."""
-        invalid_url = (
-            f"https://raw.githubusercontent.com/githedgehog/fabric/{self.fabric_ref}/"
-            "pkg/ctrl/switchprofile/p_bcm_nonexistent_device.go"
-        )
+    def test_parser_raises_error_for_invalid_file(self):
+        """Parser should raise error for non-existent profile file."""
+        nonexistent_path = self.fixtures_dir / "p_bcm_nonexistent_device.go"
 
-        with self.assertRaises(Exception):
-            self.parser.parse_profile_from_url(invalid_url)
+        with self.assertRaises(FileNotFoundError):
+            self.parser.parse_profile_from_file(str(nonexistent_path))
 
     def test_parser_validates_required_fields(self):
         """Parser should validate presence of required fields."""
-        profile_url = (
-            f"https://raw.githubusercontent.com/githedgehog/fabric/{self.fabric_ref}/"
-            "pkg/ctrl/switchprofile/p_bcm_celestica_ds5000.go"
-        )
+        fixture_path = self.fixtures_dir / "p_bcm_celestica_ds5000.go"
 
-        result = self.parser.parse_profile_from_url(profile_url)
+        result = self.parser.parse_profile_from_file(str(fixture_path))
 
         # Required top-level keys
         self.assertIn("object_meta", result)

@@ -44,6 +44,25 @@ class FabricProfileGoParser:
         """Initialize the parser."""
         pass
 
+    def parse_profile_from_file(self, file_path: str) -> Dict[str, Any]:
+        """
+        Parse a fabric profile from a local Go source file.
+
+        Args:
+            file_path: Path to the .go profile file
+
+        Returns:
+            Dictionary with parsed profile data (same format as parse_profile_from_url)
+
+        Raises:
+            FileNotFoundError: If file doesn't exist
+            ValidationError: If parsing fails or required fields missing
+        """
+        with open(file_path, 'r', encoding='utf-8') as f:
+            go_source = f.read()
+
+        return self._parse_go_source(go_source)
+
     def parse_profile_from_url(self, url: str) -> Dict[str, Any]:
         """
         Fetch and parse a fabric profile from a GitHub URL.
