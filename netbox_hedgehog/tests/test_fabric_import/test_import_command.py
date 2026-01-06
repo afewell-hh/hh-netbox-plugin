@@ -252,9 +252,9 @@ class ImportFabricProfilesCommandTestCase(TestCase):
             stdout=out
         )
 
-        # Should have created/retrieved manufacturers
+        # Should have created/retrieved manufacturers (using seed data names)
         self.assertTrue(Manufacturer.objects.filter(name="Celestica").exists())
-        self.assertTrue(Manufacturer.objects.filter(name="Edgecore").exists())
+        self.assertTrue(Manufacturer.objects.filter(name="Edge-Core").exists())
 
     def test_command_shows_summary_stats(self):
         """Command output should include summary statistics."""

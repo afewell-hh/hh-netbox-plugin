@@ -523,12 +523,13 @@ class FabricProfileImporter:
     """
 
     # Manufacturer name mapping (DisplayName prefix → Manufacturer name)
+    # IMPORTANT: Must match existing seed data manufacturer names to avoid duplicates
     MANUFACTURER_MAP = {
         "Celestica": "Celestica",
         "Dell": "Dell",
         "NVIDIA": "NVIDIA",
-        "Edgecore": "Edgecore",
-        "Edge-Core": "Edgecore",  # Normalize
+        "Edgecore": "Edge-Core",  # Use seed data name "Edge-Core" (migration 0009)
+        "Edge-Core": "Edge-Core",
         "Supermicro": "Supermicro",
         "Virtual": "Hedgehog",  # Virtual switches → Hedgehog vendor
         "Hedgehog": "Hedgehog",
@@ -708,10 +709,15 @@ class FabricProfileImporter:
             ext.supported_breakouts = supported_breakouts
 
         if ext.native_speed is None:
-            # native_speed field is IntegerField, so convert float to int
-            # For 2.5G devices, this will store as 2 (acceptable loss of precision)
-            # The field type was chosen to match common switch speeds (10G, 25G, 100G, etc.)
-            ext.native_speed = int(native_speed)
+            # native_speed field is IntegerField, cannot store decimal speeds accurately
+            # For decimal speeds (e.g., 2.5G), store None rather than corrupt data
+            # The accurate speed info is preserved in supported_breakouts field
+            if native_speed == int(native_speed):
+                ext.native_speed = int(native_speed)
+            else:
+                # Decimal speed (2.5G, etc.) - leave as None
+                # supported_breakouts field contains accurate speed information
+                ext.native_speed = None
 
         # Boolean: only update if False (default) - don't downgrade True → False
         if not ext.mclag_capable and mclag_capable:

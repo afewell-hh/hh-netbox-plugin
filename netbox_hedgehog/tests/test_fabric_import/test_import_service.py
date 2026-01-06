@@ -42,8 +42,8 @@ class FabricProfileImporterTestCase(TestCase):
             ("Celestica DS5000", "Celestica"),
             ("Dell S5248F-ON", "Dell"),
             ("NVIDIA SN5600", "NVIDIA"),
-            ("Edge-Core DCS203", "Edgecore"),
-            ("Edgecore EPS203", "Edgecore"),
+            ("Edge-Core DCS203", "Edge-Core"),  # Must match seed data
+            ("Edgecore EPS203", "Edge-Core"),  # Normalized to seed data name
             ("Virtual Switch", "Hedgehog"),
         ]
 
@@ -107,7 +107,40 @@ class FabricProfileImporterTestCase(TestCase):
         }
 
         native_speed = self.importer.derive_native_speed(port_profiles)
+        # Returns 2.5 as float (accurate parsing)
         self.assertEqual(native_speed, 2.5)
+
+    def test_create_extension_stores_none_for_decimal_native_speed(self):
+        """DeviceTypeExtension stores None for decimal native_speed (IntegerField limitation)."""
+        device_type = DeviceType.objects.create(
+            manufacturer=self.celestica,
+            model='TEST-EPS203',
+            slug='test-eps203'
+        )
+
+        parsed_data = {
+            "object_meta": {"name": "test-eps203"},
+            "spec": {
+                "display_name": "Test EPS203",
+                "features": {"MCLAG": False},
+                "ports": {},
+                "port_profiles": {
+                    "2.5GBASE-T": {
+                        "speed": {
+                            "default": "2.5G",
+                            "supported": ["2.5G"]
+                        }
+                    }
+                }
+            }
+        }
+
+        ext = self.importer.create_or_update_extension(device_type, parsed_data)
+
+        # native_speed should be None (not truncated) for decimal speeds
+        # Accurate speed info is in supported_breakouts
+        self.assertIsNone(ext.native_speed,
+            "Decimal speeds should store as None, not truncated integer")
 
     def test_derive_supported_breakouts_from_port_profiles(self):
         """Extract and normalize supported breakout mode strings."""
