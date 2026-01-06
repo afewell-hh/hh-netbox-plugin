@@ -18,7 +18,6 @@ Usage:
     python manage.py import_fabric_profiles --dry-run
 """
 
-import os
 from pathlib import Path
 from typing import List, Dict, Any
 
