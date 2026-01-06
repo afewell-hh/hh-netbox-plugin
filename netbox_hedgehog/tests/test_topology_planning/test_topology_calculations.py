@@ -1888,7 +1888,7 @@ class ZoneBasedCapacityIntegrationTestCase(TestCase):
         device_type: DeviceType,
         count: int,
         port_type: str = '100gbase-x-qsfp28',
-        name_pattern: str = 'Ethernet1/{}'
+        name_pattern: str = 'E1/{}'
     ):
         for index in range(1, count + 1):
             InterfaceTemplate.objects.create(

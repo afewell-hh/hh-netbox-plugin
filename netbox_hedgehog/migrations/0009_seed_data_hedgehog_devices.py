@@ -57,7 +57,7 @@ def load_seed_data(apps, schema_editor):
         for i in range(1, 65):
             InterfaceTemplate.objects.create(
                 device_type=ds5000,
-                name=f'Ethernet1/{i}',
+                name=f'E1/{i}',
                 type='800gbase-x-qsfpdd',
             )
 
@@ -88,7 +88,7 @@ def load_seed_data(apps, schema_editor):
         for i in range(1, 33):
             InterfaceTemplate.objects.create(
                 device_type=ds3000,
-                name=f'Ethernet1/{i}',
+                name=f'E1/{i}',
                 type='100gbase-x-qsfp28',
             )
 
@@ -119,7 +119,7 @@ def load_seed_data(apps, schema_editor):
         for i in range(1, 65):
             InterfaceTemplate.objects.create(
                 device_type=sn5600,
-                name=f'Ethernet1/{i}',
+                name=f'E1/{i}',
                 type='800gbase-x-qsfpdd',
             )
 
@@ -150,7 +150,7 @@ def load_seed_data(apps, schema_editor):
         for i in range(1, 49):
             InterfaceTemplate.objects.create(
                 device_type=es1000,
-                name=f'Ethernet1/{i}',
+                name=f'E1/{i}',
                 type='1000base-t',
             )
 
