@@ -26,6 +26,7 @@ from django.core.management.base import BaseCommand, CommandError
 from django.db import transaction
 
 from dcim.models import DeviceType, Manufacturer
+from netbox_hedgehog.models.topology_planning import DeviceTypeExtension
 from netbox_hedgehog.utils.fabric_import import (
     FabricProfileGoParser,
     FabricProfileImporter,
@@ -189,15 +190,21 @@ class Command(BaseCommand):
         """
         Fetch profile file list from GitHub.
 
+        NOTE: Virtual switch profiles (p_bcm_vs.go, p_clsp_vs.go) are intentionally
+        excluded because they use dynamic references and cannot be parsed by the
+        regex-based parser. This is expected behavior - we import 18 hardware profiles
+        only (13 BCM + 5 CLSP).
+
         Args:
             fabric_ref: Git reference (tag or commit SHA)
 
         Returns:
             List of (filename, url) tuples
         """
-        # Known profile files (from fabric repo)
+        # Known hardware profile files (from fabric repo)
+        # EXCLUDES virtual profiles: p_bcm_vs.go, p_clsp_vs.go
         PROFILE_FILES = [
-            # BCM profiles
+            # BCM profiles (13 hardware profiles)
             "p_bcm_celestica_ds2000.go",
             "p_bcm_celestica_ds3000.go",
             "p_bcm_celestica_ds4000.go",
@@ -211,18 +218,18 @@ class Command(BaseCommand):
             "p_bcm_edgecore_dcs501.go",
             "p_bcm_edgecore_eps203.go",
             "p_bcm_supermicro_sse_c4632.go",
-            # CLSP profiles
+            # CLSP profiles (5 hardware profiles)
             "p_clsp_celestica_ds2000.go",
             "p_clsp_celestica_ds3000.go",
             "p_clsp_celestica_ds4000.go",
             "p_clsp_celestica_ds4101.go",
             "p_clsp_celestica_ds5000.go",
-            # Virtual profiles are excluded (dynamic references)
         ]
 
         base_url = f"https://raw.githubusercontent.com/githedgehog/fabric/{fabric_ref}/pkg/ctrl/switchprofile"
 
-        self.stdout.write(f"Fetching profiles from fabric@{fabric_ref}")
+        self.stdout.write(f"Fetching {len(PROFILE_FILES)} hardware profiles from fabric@{fabric_ref}")
+        self.stdout.write("(Virtual switch profiles excluded - cannot be parsed)")
         return [(f, f"{base_url}/{f}") for f in PROFILE_FILES]
 
     @transaction.atomic
@@ -262,8 +269,10 @@ class Command(BaseCommand):
         )
 
         # Create or update extension (only fills empty fields)
+        # Check if extension already exists to determine created vs updated
+        extension_exists = DeviceTypeExtension.objects.filter(device_type=device_type).exists()
         extension = importer.create_or_update_extension(device_type, parsed_data)
-        extension_created = extension.pk is not None
+        extension_created = not extension_exists
 
         # Create interface templates (only if missing)
         ports = spec.get("ports", {})
@@ -275,11 +284,8 @@ class Command(BaseCommand):
         interface_templates_created = final_template_count - initial_template_count
 
         # Create breakout options (only if missing)
-        initial_breakout_count = importer.__class__.__module__  # Placeholder
-        importer.create_breakout_options(port_profiles)
-        # Note: Can't easily track breakout option count without querying
-        # Setting to 0 for now - breakout options are shared across profiles
-        breakout_options_created = 0
+        # Returns count of newly created options
+        breakout_options_created = importer.create_breakout_options(port_profiles)
 
         return {
             "device_type_created": device_type_created,

@@ -803,7 +803,7 @@ class FabricProfileImporter:
 
         return None
 
-    def create_breakout_options(self, port_profiles: Dict[str, Any]) -> None:
+    def create_breakout_options(self, port_profiles: Dict[str, Any]) -> int:
         """
         Create BreakoutOption records from breakout modes.
 
@@ -811,7 +811,12 @@ class FabricProfileImporter:
 
         Args:
             port_profiles: PortProfiles dict from parsed profile
+
+        Returns:
+            Number of new BreakoutOption records created
         """
+        created_count = 0
+
         for profile_name, profile_data in port_profiles.items():
             if "breakout" not in profile_data:
                 continue
@@ -827,7 +832,7 @@ class FabricProfileImporter:
                 optic_type = self._infer_optic_type(parsed["from_speed"])
 
                 # Create if doesn't exist
-                BreakoutOption.objects.get_or_create(
+                _, created = BreakoutOption.objects.get_or_create(
                     breakout_id=mode_name,
                     defaults={
                         "from_speed": parsed["from_speed"],
@@ -836,6 +841,11 @@ class FabricProfileImporter:
                         "optic_type": optic_type,
                     }
                 )
+
+                if created:
+                    created_count += 1
+
+        return created_count
 
     def _infer_optic_type(self, from_speed: int) -> str:
         """
