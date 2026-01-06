@@ -8,6 +8,13 @@ import re
 import requests
 from typing import Dict, List, Any, Optional
 from django.core.exceptions import ValidationError
+from django.db import transaction
+
+from dcim.models import DeviceType, Manufacturer, InterfaceTemplate
+from netbox_hedgehog.models.topology_planning import (
+    DeviceTypeExtension,
+    BreakoutOption,
+)
 
 
 class FabricProfileGoParser:
@@ -497,3 +504,353 @@ class FabricProfileGoParser:
         # Validate ports is not empty
         if not data["spec"]["ports"]:
             raise ValidationError("spec.ports is empty - no ports found")
+
+
+class FabricProfileImporter:
+    """
+    Import service for Hedgehog Fabric switch profiles into NetBox.
+
+    Creates/updates DeviceType, DeviceTypeExtension, InterfaceTemplate, and BreakoutOption
+    records from parsed fabric profile data.
+
+    CRITICAL GUARDRAILS:
+    - Only fills missing/empty fields on existing DeviceTypeExtension
+    - Never overwrites non-empty values
+    - InterfaceTemplates: E1/x naming, data-plane ports only (skip management)
+    - Breakouts: normalize to lowercase, create only if missing
+    - native_speed: derive from primary data-plane port profile
+    - uplink_ports: leave null (deprecated)
+    """
+
+    # Manufacturer name mapping (DisplayName prefix → Manufacturer name)
+    MANUFACTURER_MAP = {
+        "Celestica": "Celestica",
+        "Dell": "Dell",
+        "NVIDIA": "NVIDIA",
+        "Edgecore": "Edgecore",
+        "Edge-Core": "Edgecore",  # Normalize
+        "Supermicro": "Supermicro",
+        "Virtual": "Hedgehog",  # Virtual switches → Hedgehog vendor
+        "Hedgehog": "Hedgehog",
+    }
+
+    # Speed → NetBox interface type mapping
+    SPEED_TO_INTERFACE_TYPE = {
+        800: "800gbase-x-qsfpdd",
+        400: "400gbase-x-qsfpdd",
+        200: "200gbase-x-qsfp56",
+        100: "100gbase-x-qsfp28",
+        50: "50gbase-x-sfp56",
+        40: "40gbase-x-qsfpp",
+        25: "25gbase-x-sfp28",
+        10: "10gbase-x-sfpp",
+        2.5: "2.5gbase-t",  # Copper (EPS203)
+        1: "1000base-x-sfp",
+    }
+
+    def extract_manufacturer(self, display_name: str) -> str:
+        """
+        Extract manufacturer name from DisplayName.
+
+        Args:
+            display_name: Profile DisplayName (e.g., "Celestica DS5000")
+
+        Returns:
+            Normalized manufacturer name
+
+        Raises:
+            ValidationError: If manufacturer cannot be determined
+        """
+        for prefix, manufacturer in self.MANUFACTURER_MAP.items():
+            if display_name.startswith(prefix):
+                return manufacturer
+
+        raise ValidationError(f"Unknown manufacturer in DisplayName: {display_name}")
+
+    def derive_native_speed(self, port_profiles: Dict[str, Any]) -> int:
+        """
+        Derive native_speed from primary data-plane port profile.
+
+        Rules:
+        - Use highest speed from Breakout profiles (preferred)
+        - Fall back to Speed profiles if no Breakout profiles exist
+        - Ignore management/low-speed ports
+
+        Args:
+            port_profiles: PortProfiles dict from parsed profile
+
+        Returns:
+            Native speed in Gbps
+
+        Raises:
+            ValidationError: If no valid port profiles found
+        """
+        speeds = []
+
+        for profile_name, profile_data in port_profiles.items():
+            # Check for Breakout profile (preferred)
+            if "breakout" in profile_data:
+                breakout = profile_data["breakout"]
+                default_mode = breakout.get("default", "")
+                if default_mode:
+                    # Parse default mode: "1x800G" → 800
+                    match = re.match(r'(\d+)x(\d+)[Gg]', default_mode)
+                    if match:
+                        speed = int(match.group(2))
+                        speeds.append(speed)
+
+            # Check for Speed profile (fallback)
+            elif "speed" in profile_data:
+                speed_config = profile_data["speed"]
+                default_speed = speed_config.get("default", "")
+                if default_speed:
+                    # Parse speed: "25G" → 25
+                    match = re.match(r'(\d+)[Gg]', default_speed)
+                    if match:
+                        speed = int(match.group(1))
+                        speeds.append(speed)
+
+        if not speeds:
+            raise ValidationError("No valid port profiles found to derive native_speed")
+
+        # Return highest speed
+        return max(speeds)
+
+    def derive_supported_breakouts(self, port_profiles: Dict[str, Any]) -> List[str]:
+        """
+        Extract and normalize supported breakout mode strings.
+
+        Args:
+            port_profiles: PortProfiles dict from parsed profile
+
+        Returns:
+            List of normalized breakout mode strings (e.g., ["1x800g", "2x400g"])
+        """
+        breakout_modes = set()
+
+        for profile_name, profile_data in port_profiles.items():
+            if "breakout" in profile_data:
+                breakout = profile_data["breakout"]
+                supported = breakout.get("supported", {})
+
+                # Add all supported mode names (already normalized to lowercase by parser)
+                for mode_name in supported.keys():
+                    breakout_modes.add(mode_name)
+
+        # Return sorted list for consistent ordering
+        return sorted(breakout_modes)
+
+    def parse_breakout_mode_name(self, mode_name: str) -> Dict[str, int]:
+        """
+        Parse breakout mode name to extract fields.
+
+        Args:
+            mode_name: Breakout mode string (e.g., "4x200g")
+
+        Returns:
+            Dict with from_speed, logical_ports, logical_speed
+
+        Examples:
+            "1x800g" → {from_speed: 800, logical_ports: 1, logical_speed: 800}
+            "4x200g" → {from_speed: 800, logical_ports: 4, logical_speed: 200}
+        """
+        match = re.match(r'(\d+)x(\d+)[Gg]', mode_name)
+        if not match:
+            raise ValidationError(f"Invalid breakout mode name: {mode_name}")
+
+        logical_ports = int(match.group(1))
+        logical_speed = int(match.group(2))
+        from_speed = logical_ports * logical_speed
+
+        return {
+            "from_speed": from_speed,
+            "logical_ports": logical_ports,
+            "logical_speed": logical_speed,
+        }
+
+    @transaction.atomic
+    def create_or_update_extension(
+        self,
+        device_type: DeviceType,
+        parsed_data: Dict[str, Any]
+    ) -> DeviceTypeExtension:
+        """
+        Create or update DeviceTypeExtension with derived fields.
+
+        CRITICAL: Only updates fields that are currently empty/null/default.
+        Never overwrites existing non-empty values.
+
+        Args:
+            device_type: NetBox DeviceType instance
+            parsed_data: Parsed profile data from FabricProfileGoParser
+
+        Returns:
+            DeviceTypeExtension instance
+        """
+        spec = parsed_data["spec"]
+        port_profiles = spec.get("port_profiles", {})
+        features = spec.get("features", {})
+
+        # Derive values from parsed data
+        native_speed = self.derive_native_speed(port_profiles)
+        supported_breakouts = self.derive_supported_breakouts(port_profiles)
+        mclag_capable = features.get("MCLAG", False)
+
+        # Get or create extension
+        ext, created = DeviceTypeExtension.objects.get_or_create(
+            device_type=device_type
+        )
+
+        # Only update fields that are empty/null/default
+        # This preserves user modifications
+
+        if not ext.supported_breakouts:  # Empty list
+            ext.supported_breakouts = supported_breakouts
+
+        if ext.native_speed is None:
+            ext.native_speed = native_speed
+
+        # Boolean: only update if False (default) - don't downgrade True → False
+        if not ext.mclag_capable and mclag_capable:
+            ext.mclag_capable = True
+
+        # uplink_ports: leave null (deprecated field)
+        # Do not set this field
+
+        # hedgehog_roles: leave empty for now (not in minimal spec)
+        # Can be added in future enhancement
+
+        ext.save()
+        return ext
+
+    def create_interface_templates(
+        self,
+        device_type: DeviceType,
+        parsed_ports: Dict[str, Any],
+        port_profiles: Dict[str, Any]
+    ) -> None:
+        """
+        Create InterfaceTemplates from parsed ports.
+
+        Rules:
+        - Only create for data-plane ports (skip management ports)
+        - Use E1/N naming from fabric
+        - Map port profile → NetBox interface type
+
+        Args:
+            device_type: NetBox DeviceType instance
+            parsed_ports: Ports dict from parsed profile
+            port_profiles: PortProfiles dict from parsed profile
+        """
+        for port_name, port_config in parsed_ports.items():
+            # Skip management ports (M1, eth0, mgmt0)
+            if port_name.startswith("M") or port_name in ["eth0", "mgmt0"]:
+                continue
+
+            # Get port profile
+            profile_name = port_config.get("profile")
+            if not profile_name or profile_name not in port_profiles:
+                continue
+
+            profile = port_profiles[profile_name]
+
+            # Determine speed for interface type mapping
+            speed = self._get_port_speed(profile)
+            if not speed:
+                continue
+
+            # Map to NetBox interface type
+            interface_type = self.SPEED_TO_INTERFACE_TYPE.get(speed)
+            if not interface_type:
+                # Unknown speed - skip
+                continue
+
+            # Create or update interface template
+            InterfaceTemplate.objects.get_or_create(
+                device_type=device_type,
+                name=port_name,  # Already in E1/N format
+                defaults={"type": interface_type}
+            )
+
+    def _get_port_speed(self, port_profile: Dict[str, Any]) -> Optional[int]:
+        """
+        Extract port speed from port profile.
+
+        Args:
+            port_profile: Single port profile dict
+
+        Returns:
+            Speed in Gbps, or None if cannot determine
+        """
+        # Check Breakout profile
+        if "breakout" in port_profile:
+            default_mode = port_profile["breakout"].get("default", "")
+            if default_mode:
+                match = re.match(r'(\d+)x(\d+)[Gg]', default_mode)
+                if match:
+                    return int(match.group(2))
+
+        # Check Speed profile
+        if "speed" in port_profile:
+            default_speed = port_profile["speed"].get("default", "")
+            if default_speed:
+                match = re.match(r'(\d+(?:\.\d+)?)[Gg]', default_speed)
+                if match:
+                    return int(float(match.group(1)))
+
+        return None
+
+    def create_breakout_options(self, port_profiles: Dict[str, Any]) -> None:
+        """
+        Create BreakoutOption records from breakout modes.
+
+        Uses get_or_create() to avoid duplicates.
+
+        Args:
+            port_profiles: PortProfiles dict from parsed profile
+        """
+        for profile_name, profile_data in port_profiles.items():
+            if "breakout" not in profile_data:
+                continue
+
+            breakout = profile_data["breakout"]
+            supported = breakout.get("supported", {})
+
+            for mode_name in supported.keys():
+                # Parse mode name
+                parsed = self.parse_breakout_mode_name(mode_name)
+
+                # Infer optic type from from_speed
+                optic_type = self._infer_optic_type(parsed["from_speed"])
+
+                # Create if doesn't exist
+                BreakoutOption.objects.get_or_create(
+                    breakout_id=mode_name,
+                    defaults={
+                        "from_speed": parsed["from_speed"],
+                        "logical_ports": parsed["logical_ports"],
+                        "logical_speed": parsed["logical_speed"],
+                        "optic_type": optic_type,
+                    }
+                )
+
+    def _infer_optic_type(self, from_speed: int) -> str:
+        """
+        Infer optic type from native speed.
+
+        Args:
+            from_speed: Native port speed in Gbps
+
+        Returns:
+            Optic type string
+        """
+        if from_speed >= 800:
+            return "QSFP-DD"
+        elif from_speed >= 400:
+            return "QSFP-DD"
+        elif from_speed >= 100:
+            return "QSFP28"
+        elif from_speed >= 40:
+            return "QSFP+"
+        else:
+            return "SFP28"

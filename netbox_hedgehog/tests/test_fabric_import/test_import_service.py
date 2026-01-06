@@ -22,9 +22,15 @@ class FabricProfileImporterTestCase(TestCase):
     @classmethod
     def setUpTestData(cls):
         """Create test data."""
-        # Create manufacturers
-        cls.celestica = Manufacturer.objects.create(name='Celestica', slug='celestica')
-        cls.edgecore = Manufacturer.objects.create(name='Edgecore', slug='edgecore')
+        # Get or create manufacturers (use get_or_create for test db reuse)
+        cls.celestica, _ = Manufacturer.objects.get_or_create(
+            name='Celestica',
+            defaults={'slug': 'celestica'}
+        )
+        cls.edgecore, _ = Manufacturer.objects.get_or_create(
+            name='Edgecore',
+            defaults={'slug': 'edgecore'}
+        )
 
     def setUp(self):
         """Set up importer for each test."""
@@ -130,8 +136,8 @@ class FabricProfileImporterTestCase(TestCase):
         """Create DeviceTypeExtension with derived fields."""
         device_type = DeviceType.objects.create(
             manufacturer=self.celestica,
-            model='DS5000',
-            slug='ds5000'
+            model='TEST-DS5000-CREATE',
+            slug='test-ds5000-create'
         )
 
         parsed_data = {
@@ -168,8 +174,8 @@ class FabricProfileImporterTestCase(TestCase):
         """Existing non-empty extension fields should not be overwritten."""
         device_type = DeviceType.objects.create(
             manufacturer=self.celestica,
-            model='DS5000',
-            slug='ds5000'
+            model='TEST-DS5000-UPDATE',
+            slug='test-ds5000-update'
         )
 
         # Create existing extension with user-modified values
@@ -210,8 +216,8 @@ class FabricProfileImporterTestCase(TestCase):
         """Create InterfaceTemplates from parsed ports."""
         device_type = DeviceType.objects.create(
             manufacturer=self.celestica,
-            model='DS5000',
-            slug='ds5000'
+            model='TEST-DS5000-INTFTPL',
+            slug='test-ds5000-intftpl'
         )
 
         parsed_ports = {
