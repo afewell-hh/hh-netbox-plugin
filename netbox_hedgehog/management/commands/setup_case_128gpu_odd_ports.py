@@ -475,7 +475,7 @@ class Command(BaseCommand):
             for index in range(1, 65):
                 InterfaceTemplate.objects.get_or_create(
                     device_type=device_type,
-                    name=f"Ethernet1/{index}",
+                    name=f"E1/{index}",
                     defaults={"type": "800gbase-x-qsfpdd"},
                 )
         ext, created = DeviceTypeExtension.objects.get_or_create(

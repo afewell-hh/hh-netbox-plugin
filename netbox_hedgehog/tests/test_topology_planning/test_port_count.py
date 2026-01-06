@@ -15,7 +15,7 @@ def create_interface_templates(
     device_type: DeviceType,
     count: int,
     port_type: str = '100gbase-x-qsfp28',
-    name_pattern: str = 'Ethernet1/{}'
+    name_pattern: str = 'E1/{}'
 ) -> list[InterfaceTemplate]:
     """Create InterfaceTemplate rows for test device types."""
     return [
@@ -81,7 +81,7 @@ class GetPhysicalPortCountTestCase(TestCase):
             device_type,
             4,
             port_type='25gbase-x-sfp28',
-            name_pattern='Ethernet1/5{}'
+            name_pattern='E1/5{}'
         )
 
         port_count = get_physical_port_count(device_type)
