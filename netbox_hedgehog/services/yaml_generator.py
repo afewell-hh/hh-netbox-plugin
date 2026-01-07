@@ -466,7 +466,7 @@ class YAMLGenerator:
 
             # Get profile name from device type extension
             try:
-                device_type_ext = switch.device_type.devicetypeextension
+                device_type_ext = switch.device_type.hedgehog_metadata
                 profile_name = device_type_ext.hedgehog_profile_name
                 if not profile_name:
                     raise ValidationError(
