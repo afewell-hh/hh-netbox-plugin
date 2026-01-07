@@ -535,7 +535,32 @@ class FabricProfileImporter:
         "Hedgehog": "Hedgehog",
     }
 
-    # Speed → NetBox interface type mapping
+    # Port profile name → NetBox interface type mapping (DIET-148)
+    # These take precedence over speed-based fallback mapping
+    PROFILE_NAME_TO_INTERFACE_TYPE = {
+        # 800G profiles
+        "OSFP-800G": "800gbase-x-osfp",        # Celestica DS5000 variants (CRITICAL FIX)
+        "OSFP-2x400G": "800gbase-x-osfp",     # Dual 400G OSFP (future-proofing)
+
+        # 400G profiles
+        "QSFPDD-400G": "400gbase-x-qsfpdd",   # DS4000 variants, Dell Z9332F
+        "OSFP-400G": "400gbase-x-osfp",       # Future OSFP 400G variants
+
+        # 100G profiles
+        "QSFP28-100G": "100gbase-x-qsfp28",   # DS3000, Dell, Edgecore switches
+
+        # 25G profiles
+        "SFP28-25G": "25gbase-x-sfp28",       # DS2000, Dell S5248F, virtual switches
+
+        # 10G profiles
+        "SFP28-10G": "10gbase-x-sfpp",        # Management/console ports
+        "RJ45-10G": "10gbase-x-sfpp",         # Edgecore DCS203/DS3000 console
+
+        # 2.5G profiles (copper)
+        "RJ45-2.5G": "2.5gbase-t",            # Edgecore EPS203 copper ports
+    }
+
+    # Speed → NetBox interface type mapping (fallback for unmapped profiles)
     SPEED_TO_INTERFACE_TYPE = {
         800: "800gbase-x-qsfpdd",
         400: "400gbase-x-qsfpdd",
@@ -547,6 +572,80 @@ class FabricProfileImporter:
         10: "10gbase-x-sfpp",
         2.5: "2.5gbase-t",  # Copper (EPS203)
         1: "1000base-x-sfp",
+    }
+
+    # Alias profiles: profiles that reference another profile's spec entirely (DIET-148)
+    # Format: profile_name → {reference_profile, display_name, manufacturer}
+    ALIAS_PROFILES = {
+        "supermicro-sse-c4632sb": {
+            "reference": "celestica-ds3000",
+            "display_name": "Supermicro SSE-C4632SB",
+            "manufacturer": "Supermicro",
+            "notes": "Electrically identical to Celestica DS3000",
+            "source_file": "p_bcm_supermicro_sse_c4632.go",
+            "reference_file": "p_bcm_celestica_ds3000.go",
+        }
+    }
+
+    # Virtual switch profiles (manually defined, cannot be parsed) (DIET-148)
+    # These use dynamic Go code (lo.OmitBy) to derive from Dell S5248F-ON
+    VIRTUAL_SWITCH_PROFILES = {
+        "vs": {
+            "display_name": "Virtual Switch",
+            "manufacturer": "Hedgehog",
+            "model": "vs",
+            "ports": {
+                # E1/1 through E1/48: SFP28-25G (Dell S5248F-ON base ports)
+                # E1/49-56 removed (high-speed uplink ports not supported on VS)
+                **{f"E1/{i}": {"profile": "SFP28-25G"} for i in range(1, 49)},
+            },
+            "port_profiles": {
+                "SFP28-25G": {
+                    "speed": {
+                        "default": "25G",
+                        "supported": ["1G", "10G", "25G"]
+                    }
+                }
+            },
+            "features": {
+                "MCLAG": True,
+                "ESLAG": True,
+                "Subinterfaces": True,
+                "L2VNI": True,
+                "L3VNI": True,
+                "RoCE": True,
+                "ACLs": False,
+                "ECMPRoCEQPN": False,
+            },
+            "notes": "Virtual switch derived from Dell S5248F-ON (E1/1-48 only, no breakouts)",
+        },
+        "vs-clsp": {
+            "display_name": "Virtual Switch CLS+",
+            "manufacturer": "Hedgehog",
+            "model": "vs-clsp",
+            "ports": {
+                **{f"E1/{i}": {"profile": "SFP28-25G"} for i in range(1, 49)},
+            },
+            "port_profiles": {
+                "SFP28-25G": {
+                    "speed": {
+                        "default": "25G",
+                        "supported": ["1G", "10G", "25G"]
+                    }
+                }
+            },
+            "features": {
+                "MCLAG": True,
+                "ESLAG": True,
+                "Subinterfaces": True,
+                "L2VNI": True,
+                "L3VNI": True,
+                "RoCE": True,
+                "ACLs": False,
+                "ECMPRoCEQPN": False,
+            },
+            "notes": "Virtual switch CLS+ derived from Dell S5248F-ON (E1/1-48 only, no breakouts)",
+        }
     }
 
     def extract_manufacturer(self, display_name: str) -> str:
@@ -763,16 +862,18 @@ class FabricProfileImporter:
 
             profile = port_profiles[profile_name]
 
-            # Determine speed for interface type mapping
-            speed = self._get_port_speed(profile)
-            if not speed:
-                continue
+            # DIET-148: Try profile name mapping first (explicit overrides)
+            interface_type = self.PROFILE_NAME_TO_INTERFACE_TYPE.get(profile_name)
 
-            # Map to NetBox interface type
-            interface_type = self.SPEED_TO_INTERFACE_TYPE.get(speed)
+            # Fallback: Use speed-based mapping (existing logic)
             if not interface_type:
-                # Unknown speed - skip
-                continue
+                speed = self._get_port_speed(profile)
+                if not speed:
+                    continue
+                interface_type = self.SPEED_TO_INTERFACE_TYPE.get(speed)
+                if not interface_type:
+                    # Unknown speed - skip
+                    continue
 
             # Create or update interface template
             InterfaceTemplate.objects.get_or_create(

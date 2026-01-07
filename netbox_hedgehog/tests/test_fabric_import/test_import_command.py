@@ -64,7 +64,7 @@ class ImportFabricProfilesCommandTestCase(TestCase):
 
         # Should show success
         self.assertIn("Import Complete", output)
-        self.assertIn("Profiles processed: 3", output)
+        self.assertIn("Profiles processed: 5", output)
 
         # Should create device types (check specific models, not total count)
         self.assertTrue(DeviceType.objects.filter(model="celestica-ds5000").exists())

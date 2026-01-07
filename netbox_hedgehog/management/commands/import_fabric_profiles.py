@@ -18,6 +18,7 @@ Usage:
     python manage.py import_fabric_profiles --dry-run
 """
 
+from copy import deepcopy
 from pathlib import Path
 from typing import List, Dict, Any
 
@@ -76,6 +77,13 @@ class Command(BaseCommand):
         parser = FabricProfileGoParser()
         importer = FabricProfileImporter()
 
+        alias_filename_map = {
+            config.get("source_file"): profile_name
+            for profile_name, config in importer.ALIAS_PROFILES.items()
+            if config.get("source_file")
+        }
+        parsed_cache = {}
+
         # Track stats
         stats = {
             "processed": 0,
@@ -91,19 +99,41 @@ class Command(BaseCommand):
         # Process each profile
         for profile_file in profile_files:
             try:
-                # Parse profile
                 if source_dir:
-                    parsed_data = parser.parse_profile_from_file(profile_file)
+                    filename = Path(profile_file).name
                 else:
-                    # profile_file is (filename, url) tuple
-                    filename, url = profile_file
-                    parsed_data = parser.parse_profile_from_url(url)
+                    filename, _ = profile_file
 
-                profile_name = parsed_data["object_meta"]["name"]
+                alias_name = alias_filename_map.get(filename)
 
-                # Filter by profile name if specified
-                if profile_names and profile_name not in profile_names:
-                    continue
+                if alias_name:
+                    if profile_names and alias_name not in profile_names:
+                        continue
+                    parsed_data = self._build_alias_profile_data(
+                        alias_name,
+                        importer,
+                        parsed_cache,
+                        parser,
+                        source_dir,
+                        fabric_ref,
+                    )
+                    profile_name = alias_name
+                else:
+                    # Parse profile
+                    if source_dir:
+                        parsed_data = parser.parse_profile_from_file(profile_file)
+                    else:
+                        # profile_file is (filename, url) tuple
+                        _, url = profile_file
+                        parsed_data = parser.parse_profile_from_url(url)
+
+                    profile_name = parsed_data["object_meta"]["name"]
+
+                    # Filter by profile name if specified
+                    if profile_names and profile_name not in profile_names:
+                        continue
+
+                    parsed_cache[profile_name] = parsed_data
 
                 stats["processed"] += 1
 
@@ -144,6 +174,41 @@ class Command(BaseCommand):
                 )
                 if options["verbosity"] >= 2:
                     raise
+
+        # Import virtual switch profiles (manual definitions)
+        for profile_name, profile_config in importer.VIRTUAL_SWITCH_PROFILES.items():
+            if profile_names and profile_name not in profile_names:
+                continue
+
+            parsed_data = self._build_virtual_profile_data(profile_name, profile_config)
+            stats["processed"] += 1
+
+            if dry_run:
+                self.stdout.write(
+                    self.style.WARNING(f"[DRY RUN] Would import: {profile_name}")
+                )
+                manufacturer = importer.extract_manufacturer(profile_config["display_name"])
+                self.stdout.write(f"  Manufacturer: {manufacturer}")
+                self.stdout.write(f"  Model: {profile_name}")
+                continue
+
+            result = self._import_profile(parsed_data, importer)
+            if result["device_type_created"]:
+                stats["device_types_created"] += 1
+            else:
+                stats["device_types_updated"] += 1
+
+            if result["extension_created"]:
+                stats["extensions_created"] += 1
+            else:
+                stats["extensions_updated"] += 1
+
+            stats["interface_templates_created"] += result["interface_templates_created"]
+            stats["breakout_options_created"] += result["breakout_options_created"]
+
+            self.stdout.write(
+                self.style.SUCCESS(f"✓ Imported: {profile_name}")
+            )
 
         # Print summary
         self.stdout.write("\n" + "=" * 60)
@@ -191,8 +256,7 @@ class Command(BaseCommand):
 
         NOTE: Virtual switch profiles (p_bcm_vs.go, p_clsp_vs.go) are intentionally
         excluded because they use dynamic references and cannot be parsed by the
-        regex-based parser. This is expected behavior - we import 18 hardware profiles
-        only (13 BCM + 5 CLSP).
+        regex-based parser. These are imported separately with manual definitions.
 
         Args:
             fabric_ref: Git reference (tag or commit SHA)
@@ -228,8 +292,67 @@ class Command(BaseCommand):
         base_url = f"https://raw.githubusercontent.com/githedgehog/fabric/{fabric_ref}/pkg/ctrl/switchprofile"
 
         self.stdout.write(f"Fetching {len(PROFILE_FILES)} hardware profiles from fabric@{fabric_ref}")
-        self.stdout.write("(Virtual switch profiles excluded - cannot be parsed)")
+        self.stdout.write("(Virtual switch profiles imported separately)")
         return [(f, f"{base_url}/{f}") for f in PROFILE_FILES]
+
+    def _build_alias_profile_data(
+        self,
+        alias_name: str,
+        importer: FabricProfileImporter,
+        parsed_cache: Dict[str, Any],
+        parser: FabricProfileGoParser,
+        source_dir: str,
+        fabric_ref: str,
+    ) -> Dict[str, Any]:
+        """
+        Build parsed_data for alias profile by cloning the reference profile.
+        """
+        alias_config = importer.ALIAS_PROFILES[alias_name]
+        reference_name = alias_config["reference"]
+        reference_data = parsed_cache.get(reference_name)
+        if not reference_data:
+            reference_file = alias_config.get("reference_file")
+            if not reference_file:
+                raise CommandError(
+                    f"Alias profile '{alias_name}' requires reference '{reference_name}' "
+                    "to be imported first."
+                )
+
+            if source_dir:
+                reference_path = Path(source_dir) / reference_file
+                reference_data = parser.parse_profile_from_file(str(reference_path))
+            else:
+                base_url = (
+                    f"https://raw.githubusercontent.com/githedgehog/fabric/"
+                    f"{fabric_ref}/pkg/ctrl/switchprofile"
+                )
+                reference_url = f"{base_url}/{reference_file}"
+                reference_data = parser.parse_profile_from_url(reference_url)
+
+            parsed_cache[reference_name] = reference_data
+
+        parsed_data = deepcopy(reference_data)
+        parsed_data["object_meta"]["name"] = alias_name
+        parsed_data["spec"]["display_name"] = alias_config["display_name"]
+        return parsed_data
+
+    def _build_virtual_profile_data(
+        self,
+        profile_name: str,
+        profile_config: Dict[str, Any],
+    ) -> Dict[str, Any]:
+        """
+        Build parsed_data for manually defined virtual switch profiles.
+        """
+        return {
+            "object_meta": {"name": profile_name},
+            "spec": {
+                "display_name": profile_config["display_name"],
+                "ports": profile_config["ports"],
+                "port_profiles": profile_config["port_profiles"],
+                "features": profile_config["features"],
+            },
+        }
 
     @transaction.atomic
     def _import_profile(

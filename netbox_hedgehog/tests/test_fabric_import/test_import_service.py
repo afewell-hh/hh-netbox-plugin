@@ -290,7 +290,7 @@ class FabricProfileImporterTestCase(TestCase):
 
         # Check E1/1
         e1_1 = templates.get(name="E1/1")
-        self.assertEqual(e1_1.type, "800gbase-x-qsfpdd")
+        self.assertEqual(e1_1.type, "800gbase-x-osfp")
 
         # Check E1/65
         e1_65 = templates.get(name="E1/65")
@@ -341,3 +341,291 @@ class FabricProfileImporterTestCase(TestCase):
                 self.assertEqual(result["from_speed"], expected["from_speed"])
                 self.assertEqual(result["logical_ports"], expected["logical_ports"])
                 self.assertEqual(result["logical_speed"], expected["logical_speed"])
+
+
+# =============================================================================
+# DIET-148: Port Mapping and Nonstandard Profile Tests
+# =============================================================================
+
+class ProfileNameMappingTestCase(TestCase):
+    """Test profile-name-aware interface type mapping (DIET-148)."""
+
+    def setUp(self):
+        """Set up importer for each test."""
+        self.importer = FabricProfileImporter()
+
+    def test_osfp_800g_maps_to_osfp_not_qsfpdd(self):
+        """OSFP-800G profile should map to 800gbase-x-osfp."""
+        # Explicit profile name mapping
+        interface_type = self.importer.PROFILE_NAME_TO_INTERFACE_TYPE.get("OSFP-800G")
+        self.assertEqual(interface_type, "800gbase-x-osfp")
+
+        # Should NOT use speed-based fallback for OSFP-800G
+        speed_fallback = self.importer.SPEED_TO_INTERFACE_TYPE.get(800)
+        self.assertEqual(speed_fallback, "800gbase-x-qsfpdd")  # Fallback is qsfpdd
+        self.assertNotEqual(interface_type, speed_fallback)  # But OSFP overrides it
+
+    def test_unmapped_profile_falls_back_to_speed(self):
+        """Profiles not in PROFILE_NAME_TO_INTERFACE_TYPE should use speed fallback."""
+        # Fictional profile not in map
+        fictional_profile = "QSFP56-200G-Custom"
+
+        # Should not be in explicit map
+        self.assertNotIn(fictional_profile, self.importer.PROFILE_NAME_TO_INTERFACE_TYPE)
+
+        # Should fall back to speed-based mapping (200G → qsfp56)
+        # This verifies backward compatibility
+        self.assertEqual(self.importer.SPEED_TO_INTERFACE_TYPE[200], "200gbase-x-qsfp56")
+
+    def test_all_fabric_profiles_have_mapping(self):
+        """All actual fabric port profiles should have a mapping."""
+        # Known profiles from fabric source
+        known_profiles = [
+            "OSFP-800G",
+            "OSFP-2x400G",
+            "QSFPDD-400G",
+            "QSFP28-100G",
+            "SFP28-25G",
+            "SFP28-10G",
+            "RJ45-10G",
+            "RJ45-2.5G",
+        ]
+
+        for profile_name in known_profiles:
+            # Either in explicit map OR has speed-based fallback
+            has_explicit = profile_name in self.importer.PROFILE_NAME_TO_INTERFACE_TYPE
+
+            # If not explicit, verify it would work via speed fallback
+            # (This test documents coverage)
+            if not has_explicit:
+                self.fail(f"Profile {profile_name} not in PROFILE_NAME_TO_INTERFACE_TYPE map")
+
+
+class DS5000ImportTestCase(TestCase):
+    """Test DS5000 import produces OSFP interface types (DIET-148)."""
+
+    @classmethod
+    def setUpTestData(cls):
+        """Create manufacturer."""
+        cls.manufacturer, _ = Manufacturer.objects.get_or_create(
+            name="Celestica",
+            defaults={'slug': 'celestica'}
+        )
+
+    def setUp(self):
+        """Set up importer and parser for each test."""
+        from netbox_hedgehog.utils.fabric_import import FabricProfileGoParser
+        self.parser = FabricProfileGoParser()
+        self.importer = FabricProfileImporter()
+
+    def test_ds5000_imports_with_osfp_interface_type(self):
+        """DS5000 should create InterfaceTemplates with 800gbase-x-osfp type."""
+        # Load DS5000 fixture
+        from pathlib import Path
+        fixture_path = Path(__file__).parent / "fixtures" / "p_bcm_celestica_ds5000.go"
+
+        with open(fixture_path) as f:
+            parsed_data = self.parser._parse_go_source(f.read())
+
+        # Verify profile name is OSFP-800G (not QSFPDD-800G)
+        ports = parsed_data["spec"]["ports"]
+        sample_port = ports["E1/1"]
+        self.assertEqual(sample_port["profile"], "OSFP-800G")
+
+        # Create device type
+        device_type = DeviceType.objects.create(
+            manufacturer=self.manufacturer,
+            model="test-celestica-ds5000-osfp",
+            slug="test-celestica-ds5000-osfp"
+        )
+
+        # Import interface templates
+        self.importer.create_interface_templates(
+            device_type,
+            parsed_data["spec"]["ports"],
+            parsed_data["spec"]["port_profiles"]
+        )
+
+        # CRITICAL: Verify OSFP interface type (not QSFP-DD)
+        osfp_interfaces = device_type.interfacetemplates.filter(type="800gbase-x-osfp")
+        qsfpdd_interfaces = device_type.interfacetemplates.filter(type="800gbase-x-qsfpdd")
+
+        self.assertEqual(osfp_interfaces.count(), 64, "Should have 64 OSFP 800G ports")
+        self.assertEqual(qsfpdd_interfaces.count(), 0, "Should have ZERO QSFP-DD 800G ports")
+
+        # Verify SFP28 ports also created correctly
+        sfp28_interfaces = device_type.interfacetemplates.filter(type="25gbase-x-sfp28")
+        self.assertEqual(sfp28_interfaces.count(), 2, "Should have 2 SFP28 25G ports (E1/65-66)")
+
+
+class AliasProfileTestCase(TestCase):
+    """Test alias profile import (Supermicro SSE-C4632) (DIET-148)."""
+
+    @classmethod
+    def setUpTestData(cls):
+        """Create manufacturers."""
+        cls.celestica, _ = Manufacturer.objects.get_or_create(
+            name="Celestica",
+            defaults={'slug': 'celestica'}
+        )
+        cls.supermicro, _ = Manufacturer.objects.get_or_create(
+            name="Supermicro",
+            defaults={'slug': 'supermicro'}
+        )
+
+    def setUp(self):
+        """Set up importer and parser for each test."""
+        from netbox_hedgehog.utils.fabric_import import FabricProfileGoParser
+        self.parser = FabricProfileGoParser()
+        self.importer = FabricProfileImporter()
+
+    def test_supermicro_sse_c4632_imports_as_alias(self):
+        """Supermicro SSE-C4632 should import with DS3000 specs."""
+        # Verify alias config exists
+        alias_config = self.importer.ALIAS_PROFILES.get("supermicro-sse-c4632sb")
+        self.assertIsNotNone(alias_config)
+        self.assertEqual(alias_config["reference"], "celestica-ds3000")
+        self.assertEqual(alias_config["manufacturer"], "Supermicro")
+
+        # Import reference profile first (DS3000)
+        ds3000_dt = self._import_ds3000()
+
+        # Simulate alias import
+        sse_dt = DeviceType.objects.create(
+            manufacturer=self.supermicro,
+            model="test-supermicro-sse-c4632sb",
+            slug="test-supermicro-sse-c4632sb"
+        )
+
+        # Should have same interface count as DS3000
+        ds3000_interface_count = ds3000_dt.interfacetemplates.count()
+
+        # Import SSE-C4632 interfaces (using DS3000 parsed data)
+        from pathlib import Path
+        ds3000_fixture = Path(__file__).parent / "fixtures" / "p_bcm_celestica_ds3000.go"
+        with open(ds3000_fixture) as f:
+            parsed_data = self.parser._parse_go_source(f.read())
+
+        self.importer.create_interface_templates(
+            sse_dt,
+            parsed_data["spec"]["ports"],
+            parsed_data["spec"]["port_profiles"]
+        )
+
+        sse_interface_count = sse_dt.interfacetemplates.count()
+
+        # Verify same specs as DS3000
+        self.assertEqual(sse_interface_count, ds3000_interface_count)
+        self.assertEqual(sse_dt.interfacetemplates.filter(type="100gbase-x-qsfp28").count(), 32)
+        self.assertEqual(sse_dt.interfacetemplates.filter(type="10gbase-x-sfpp").count(), 1)
+
+    def _import_ds3000(self):
+        """Helper: import DS3000 for comparison."""
+        dt = DeviceType.objects.create(
+            manufacturer=self.celestica,
+            model="test-celestica-ds3000-ref",
+            slug="test-celestica-ds3000-ref"
+        )
+
+        from pathlib import Path
+        fixture = Path(__file__).parent / "fixtures" / "p_bcm_celestica_ds3000.go"
+        with open(fixture) as f:
+            parsed_data = self.parser._parse_go_source(f.read())
+
+        self.importer.create_interface_templates(
+            dt,
+            parsed_data["spec"]["ports"],
+            parsed_data["spec"]["port_profiles"]
+        )
+
+        return dt
+
+
+class VirtualSwitchTestCase(TestCase):
+    """Test virtual switch import (vs, vs-clsp) (DIET-148)."""
+
+    @classmethod
+    def setUpTestData(cls):
+        """Create manufacturer."""
+        cls.manufacturer, _ = Manufacturer.objects.get_or_create(
+            name="Hedgehog",
+            defaults={'slug': 'hedgehog'}
+        )
+
+    def setUp(self):
+        """Set up importer for each test."""
+        self.importer = FabricProfileImporter()
+
+    def test_vs_has_48_ports_no_breakouts(self):
+        """Virtual switch should have E1/1-48 only, no breakout support."""
+        # Get VS config
+        vs_config = self.importer.VIRTUAL_SWITCH_PROFILES.get("vs")
+        self.assertIsNotNone(vs_config)
+
+        # Verify port count
+        self.assertEqual(len(vs_config["ports"]), 48)
+
+        # Verify port range (E1/1 - E1/48)
+        port_names = list(vs_config["ports"].keys())
+        self.assertEqual(port_names[0], "E1/1")
+        self.assertEqual(port_names[-1], "E1/48")
+
+        # Verify NO E1/49-56 (uplink ports removed)
+        self.assertNotIn("E1/49", vs_config["ports"])
+        self.assertNotIn("E1/56", vs_config["ports"])
+
+        # Verify all ports use SFP28-25G
+        for port_name, port_config in vs_config["ports"].items():
+            self.assertEqual(port_config["profile"], "SFP28-25G")
+
+        # Verify NO breakout profiles
+        port_profiles = vs_config["port_profiles"]
+        for profile_name, profile_config in port_profiles.items():
+            self.assertNotIn("breakout", profile_config,
+                           f"VS should not have breakout profiles, found in {profile_name}")
+            self.assertIn("speed", profile_config,
+                         f"VS should use speed profiles, missing in {profile_name}")
+
+    def test_vs_import_creates_correct_device_type(self):
+        """Importing VS should create DeviceType with 48 SFP28 interfaces."""
+        vs_config = self.importer.VIRTUAL_SWITCH_PROFILES["vs"]
+
+        # Create device type
+        device_type = DeviceType.objects.create(
+            manufacturer=self.manufacturer,
+            model="test-vs",
+            slug="test-vs"
+        )
+
+        # Construct parsed data format
+        parsed_data = {
+            "spec": {
+                "ports": vs_config["ports"],
+                "port_profiles": vs_config["port_profiles"],
+                "features": vs_config["features"],
+            }
+        }
+
+        # Import interfaces
+        self.importer.create_interface_templates(
+            device_type,
+            parsed_data["spec"]["ports"],
+            parsed_data["spec"]["port_profiles"]
+        )
+
+        # Verify interface count and types
+        interfaces = device_type.interfacetemplates.all()
+        self.assertEqual(interfaces.count(), 48)
+
+        # All should be SFP28 25G
+        sfp28_interfaces = device_type.interfacetemplates.filter(type="25gbase-x-sfp28")
+        self.assertEqual(sfp28_interfaces.count(), 48)
+
+        # Verify DeviceTypeExtension has no breakout support
+        from netbox_hedgehog.models.topology_planning import DeviceTypeExtension
+        ext = DeviceTypeExtension.objects.create(device_type=device_type)
+        self.importer.create_or_update_extension(device_type, parsed_data)
+        ext.refresh_from_db()
+
+        self.assertEqual(ext.supported_breakouts, [], "VS should have no breakouts")
+        self.assertEqual(ext.native_speed, 25, "VS native speed should be 25G")
