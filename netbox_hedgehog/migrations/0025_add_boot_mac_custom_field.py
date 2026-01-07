@@ -30,7 +30,7 @@ def create_custom_fields(apps, schema_editor):
         )
 
         if created:
-            custom_field.content_types.set(content_types)
+            custom_field.object_types.set(content_types)
 
 
 class Migration(migrations.Migration):
