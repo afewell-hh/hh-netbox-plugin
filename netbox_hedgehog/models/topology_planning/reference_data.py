@@ -126,6 +126,14 @@ class DeviceTypeExtension(NetBoxModel):
         help_text="Additional Hedgehog-specific notes about this device type"
     )
 
+    hedgehog_profile_name = models.CharField(
+        max_length=100,
+        blank=True,
+        null=True,
+        help_text="Hedgehog fabric switch profile name (e.g., 'celestica-ds5000', 'dell-s5248f-on'). "
+                  "Imported from fabric profile metadata. Allows tracking the original profile source."
+    )
+
     class Meta:
         verbose_name = "Device Type Extension (Hedgehog)"
         verbose_name_plural = "Device Type Extensions (Hedgehog)"

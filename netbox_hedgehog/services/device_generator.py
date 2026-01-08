@@ -203,6 +203,7 @@ class DeviceGenerator:
                     'hedgehog_class': switch_class.switch_class_id,
                     'hedgehog_fabric': switch_class.fabric or "",
                     'hedgehog_role': switch_class.hedgehog_role or "",
+                    'boot_mac': self._generate_boot_mac(name),
                 }
                 device.save()
                 devices.append(device)
@@ -775,3 +776,28 @@ class DeviceGenerator:
                 'hedgehog_plan_id': str(self.plan.pk),
             },
         )
+
+    def _generate_boot_mac(self, device_name: str) -> str:
+        """
+        Generate deterministic boot MAC address for switch devices.
+
+        Uses locally administered MAC address range (02:00:00:xx:xx:xx)
+        with device name for determinism (stable across regenerations).
+
+        Args:
+            device_name: NetBox device name (ensures same device = same MAC)
+
+        Returns:
+            MAC address string in format "02:00:00:xx:xx:xx"
+        """
+        import hashlib
+
+        # Hash device name for deterministic MAC generation
+        # Using name ensures stability even if device ordering changes
+        hash_bytes = hashlib.sha256(device_name.encode()).digest()
+
+        # Locally administered MAC: bit 1 of first octet = 1 (0x02)
+        # Unicast: bit 0 of first octet = 0
+        mac_bytes = bytes([0x02]) + hash_bytes[1:6]
+
+        return ':'.join(f'{b:02x}' for b in mac_bytes)
