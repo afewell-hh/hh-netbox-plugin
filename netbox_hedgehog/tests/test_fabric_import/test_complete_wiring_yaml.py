@@ -226,6 +226,64 @@ class CompleteWiringYAMLTestCase(TestCase):
             "Server spec should contain only description per authoritative schema"
         )
 
+    def test_connection_crd_generated_from_cables(self):
+        """Verify Connection CRDs are generated from NetBox Cables."""
+        # Create switch and server devices
+        switch = Device.objects.create(
+            name='spine-01',
+            device_type=self.switch_type,
+            role=self.spine_role,
+            site=self.site,
+            custom_field_data={
+                'hedgehog_plan_id': str(self.plan.pk),
+                'hedgehog_role': 'spine',
+                'boot_mac': '02:00:00:aa:bb:cc'
+            }
+        )
+        server = Device.objects.create(
+            name='server-01',
+            device_type=self.server_type,
+            role=self.server_role,
+            site=self.site,
+            custom_field_data={
+                'hedgehog_plan_id': str(self.plan.pk)
+            }
+        )
+
+        # Create interfaces
+        from dcim.models import Interface
+        switch_iface = Interface.objects.create(
+            device=switch,
+            name='E1/1',
+            type='1000base-t'
+        )
+        server_iface = Interface.objects.create(
+            device=server,
+            name='eth0',
+            type='1000base-t'
+        )
+
+        # Create cable connecting them
+        from dcim.models import Cable
+        cable = Cable.objects.create(
+            custom_field_data={'hedgehog_plan_id': str(self.plan.pk)}
+        )
+        cable.a_terminations.add(server_iface)
+        cable.b_terminations.add(switch_iface)
+
+        yaml_output = self.generator.generate()
+        docs = list(yaml.safe_load_all(yaml_output))
+
+        # Verify Connection CRD is generated
+        connections = [doc for doc in docs if isinstance(doc, dict) and doc.get('kind') == 'Connection']
+        self.assertGreater(len(connections), 0, "Should generate Connection CRD from cable")
+
+        # Verify connection structure
+        conn = connections[0]
+        self.assertIn('spec', conn)
+        # Should be unbundled (server-to-switch)
+        self.assertTrue('unbundled' in conn['spec'], "Server-to-switch should use unbundled connection")
+
     def test_boot_mac_generation_is_deterministic(self):
         """Verify same device gets same boot_mac across regenerations."""
         # Import DeviceGenerator
