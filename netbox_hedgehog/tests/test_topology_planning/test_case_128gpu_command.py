@@ -2,6 +2,8 @@
 Integration tests for setup_case_128gpu_odd_ports management command.
 """
 
+import yaml
+
 from io import StringIO
 from unittest.mock import patch
 
@@ -216,7 +218,16 @@ class Case128GpuRailDistributionTestCase(TestCase):
 
     def test_rail_grouping_across_all_servers(self):
         """Test that all servers' rail N connects to the same switch(es)."""
+        import math
+        import re
         from dcim.models import Device
+
+        be_rail_switches = list(
+            Device.objects.filter(
+                name__startswith='be-rail-leaf-',
+                custom_field_data__hedgehog_plan_id=str(self.plan.pk)
+            ).order_by('name')
+        )
 
         # Filter backend cables by checking terminations in Python
         backend_cables = []
@@ -259,9 +270,62 @@ class Case128GpuRailDistributionTestCase(TestCase):
 
         # Each rail should connect to exactly 1 switch (8 rails / 4 switches = 2 rails per switch)
         # So we expect each rail to consistently use one switch across all servers
+        rails_per_switch = math.ceil(len(rail_to_switches) / len(be_rail_switches))
         for interface_name, switches in rail_to_switches.items():
+            match = re.search(r'be-rail-(\d+)', interface_name)
+            self.assertIsNotNone(
+                match,
+                f"Expected backend rail interface name to include rail number: {interface_name}"
+            )
+            rail = int(match.group(1))
+            expected_switch = be_rail_switches[rail // rails_per_switch].name
             self.assertEqual(
                 len(switches), 1,
                 f"Rail interface {interface_name} should connect to exactly 1 switch across all servers, "
                 f"but connects to {len(switches)} switches: {switches}"
             )
+            self.assertEqual(
+                list(switches)[0],
+                expected_switch,
+                f"Rail interface {interface_name} should map to {expected_switch}",
+            )
+
+
+class Case128GpuYamlExportTestCase(TestCase):
+    """Validate YAML export works for the 128-GPU case data."""
+
+    @classmethod
+    def setUpTestData(cls):
+        call_command(
+            "setup_case_128gpu_odd_ports",
+            "--clean",
+            "--generate",
+            stdout=StringIO(),
+        )
+        cls.plan = TopologyPlan.objects.get(name=PLAN_NAME)
+
+        User = get_user_model()
+        cls.superuser = User.objects.create_user(
+            username="case-exporter",
+            password="case-exporter",
+            is_staff=True,
+            is_superuser=True,
+        )
+
+    def test_yaml_export_succeeds_for_case(self):
+        self.client.force_login(self.superuser)
+        url = reverse("plugins:netbox_hedgehog:topologyplan_export", args=[self.plan.pk])
+        response = self.client.get(url)
+
+        self.assertEqual(response.status_code, 200)
+
+        documents = list(yaml.safe_load_all(response.content.decode("utf-8")))
+        switch_docs = [
+            doc for doc in documents
+            if doc and doc.get("kind") == "Switch"
+        ]
+        self.assertTrue(switch_docs, "Expected Switch CRDs in export output")
+        self.assertTrue(
+            all(doc.get("spec", {}).get("profile") for doc in switch_docs),
+            "All Switch CRDs must include spec.profile",
+        )
