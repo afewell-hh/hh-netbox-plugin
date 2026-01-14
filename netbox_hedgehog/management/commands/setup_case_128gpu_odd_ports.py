@@ -486,11 +486,15 @@ class Command(BaseCommand):
                 "supported_breakouts": ["1x800g", "2x400g", "4x200g", "8x100g"],
                 "native_speed": 800,
                 "uplink_ports": 32,
+                "hedgehog_profile_name": "celestica-ds5000",
                 "notes": "Auto-created for 128-GPU odd-port case",
             },
         )
         if not created:
             updated_fields = []
+            if not ext.hedgehog_profile_name:
+                ext.hedgehog_profile_name = "celestica-ds5000"
+                updated_fields.append("hedgehog_profile_name")
             if ext.native_speed is None:
                 ext.native_speed = 800
                 updated_fields.append("native_speed")

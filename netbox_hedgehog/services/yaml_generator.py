@@ -291,6 +291,250 @@ class YAMLGenerator:
             },
         }
 
+    def _create_mclag_domain_crd(
+        self,
+        switch1_device: Device,
+        switch2_device: Device,
+        peer_links: List[Dict[str, Any]],
+        session_links: List[Dict[str, Any]]
+    ) -> Dict[str, Any]:
+        """
+        Create MCLAG Domain Connection CRD from peer and session links (Issue #151).
+
+        Args:
+            switch1_device: First MCLAG peer switch
+            switch2_device: Second MCLAG peer switch
+            peer_links: List of link_data dicts for peer links
+            session_links: List of link_data dicts for session links
+
+        Returns:
+            Connection CRD dictionary with mclagDomain spec
+        """
+        # Generate CRD name (format: switch1--mclag-domain--switch2)
+        # Use alphabetical ordering for deterministic names
+        if switch1_device.name < switch2_device.name:
+            crd_name = self._sanitize_name(
+                f"{switch1_device.name}--mclag-domain--{switch2_device.name}"
+            )
+        else:
+            crd_name = self._sanitize_name(
+                f"{switch2_device.name}--mclag-domain--{switch1_device.name}"
+            )
+            # Swap for consistency
+            switch1_device, switch2_device = switch2_device, switch1_device
+
+        # Build peer links array
+        peer_links_list = []
+        for link_data in peer_links:
+            # Determine which interface belongs to which switch
+            if link_data['device_a'] == switch1_device:
+                port1 = f"{switch1_device.name}/{link_data['iface_a'].name}"
+                port2 = f"{switch2_device.name}/{link_data['iface_b'].name}"
+            else:
+                port1 = f"{switch1_device.name}/{link_data['iface_b'].name}"
+                port2 = f"{switch2_device.name}/{link_data['iface_a'].name}"
+
+            peer_links_list.append({
+                'switch1': {'port': port1},
+                'switch2': {'port': port2}
+            })
+
+        # Build session links array
+        session_links_list = []
+        for link_data in session_links:
+            # Determine which interface belongs to which switch
+            if link_data['device_a'] == switch1_device:
+                port1 = f"{switch1_device.name}/{link_data['iface_a'].name}"
+                port2 = f"{switch2_device.name}/{link_data['iface_b'].name}"
+            else:
+                port1 = f"{switch1_device.name}/{link_data['iface_b'].name}"
+                port2 = f"{switch2_device.name}/{link_data['iface_a'].name}"
+
+            session_links_list.append({
+                'switch1': {'port': port1},
+                'switch2': {'port': port2}
+            })
+
+        return {
+            'apiVersion': 'wiring.githedgehog.com/v1beta1',
+            'kind': 'Connection',
+            'metadata': {
+                'name': crd_name,
+                'namespace': 'default',
+            },
+            'spec': {
+                'mclagDomain': {
+                    'peerLinks': peer_links_list,
+                    'sessionLinks': session_links_list
+                }
+            }
+        }
+
+    def _create_mclag_crd(
+        self,
+        server_device: Device,
+        switch1_device: Device,
+        switch2_device: Device,
+        links: List[Dict[str, Any]]
+    ) -> Dict[str, Any]:
+        """
+        Create MCLAG Connection CRD for server with dual-homed MCLAG (Issue #151).
+
+        Args:
+            server_device: Server device
+            switch1_device: First switch in MCLAG pair
+            switch2_device: Second switch in MCLAG pair
+            links: List of link_data dicts (must have exactly 2 links)
+
+        Returns:
+            Connection CRD dictionary with mclag spec
+        """
+        # Generate CRD name (format: server--mclag--switch1--switch2)
+        # Use alphabetical ordering for switches
+        if switch1_device.name < switch2_device.name:
+            crd_name = self._sanitize_name(
+                f"{server_device.name}--mclag--{switch1_device.name}--{switch2_device.name}"
+            )
+        else:
+            crd_name = self._sanitize_name(
+                f"{server_device.name}--mclag--{switch2_device.name}--{switch1_device.name}"
+            )
+            switch1_device, switch2_device = switch2_device, switch1_device
+
+        # Build MCLAG links array
+        mclag_links = []
+        for link_data in links:
+            server_iface = link_data['server_iface']
+            switch_device = link_data['switch_device']
+            switch_iface = link_data['switch_iface']
+
+            mclag_links.append({
+                'server': {
+                    'port': f"{server_device.name}/{server_iface.name}"
+                },
+                'switch': {
+                    'port': f"{switch_device.name}/{switch_iface.name}"
+                }
+            })
+
+        return {
+            'apiVersion': 'wiring.githedgehog.com/v1beta1',
+            'kind': 'Connection',
+            'metadata': {
+                'name': crd_name,
+                'namespace': 'default',
+            },
+            'spec': {
+                'mclag': {
+                    'links': mclag_links
+                }
+            }
+        }
+
+    def _create_eslag_crd(
+        self,
+        server_device: Device,
+        links: List[Dict[str, Any]]
+    ) -> Dict[str, Any]:
+        """
+        Create ESLAG Connection CRD for server with ESLAG redundancy (Issue #151).
+
+        Args:
+            server_device: Server device
+            links: List of link_data dicts (2-4 links to different switches)
+
+        Returns:
+            Connection CRD dictionary with eslag spec
+        """
+        # Collect unique switch devices from links
+        switch_names = sorted(set(link_data['switch_device'].name for link_data in links))
+
+        # Generate CRD name (format: server--eslag--switch1--switch2--...)
+        crd_name = self._sanitize_name(
+            f"{server_device.name}--eslag--{('--').join(switch_names)}"
+        )
+
+        # Build ESLAG links array
+        eslag_links = []
+        for link_data in links:
+            server_iface = link_data['server_iface']
+            switch_device = link_data['switch_device']
+            switch_iface = link_data['switch_iface']
+
+            eslag_links.append({
+                'server': {
+                    'port': f"{server_device.name}/{server_iface.name}"
+                },
+                'switch': {
+                    'port': f"{switch_device.name}/{switch_iface.name}"
+                }
+            })
+
+        return {
+            'apiVersion': 'wiring.githedgehog.com/v1beta1',
+            'kind': 'Connection',
+            'metadata': {
+                'name': crd_name,
+                'namespace': 'default',
+            },
+            'spec': {
+                'eslag': {
+                    'links': eslag_links
+                }
+            }
+        }
+
+    def _create_bundled_crd(
+        self,
+        server_device: Device,
+        switch_device: Device,
+        links: List[Dict[str, Any]]
+    ) -> Dict[str, Any]:
+        """
+        Create Bundled Connection CRD for server with LACP bond to single switch (Issue #151).
+
+        Args:
+            server_device: Server device
+            switch_device: Switch device
+            links: List of link_data dicts (multiple links to same switch)
+
+        Returns:
+            Connection CRD dictionary with bundled spec
+        """
+        # Generate CRD name (format: server--bundled--switch)
+        crd_name = self._sanitize_name(
+            f"{server_device.name}--bundled--{switch_device.name}"
+        )
+
+        # Build bundled links array
+        bundled_links = []
+        for link_data in links:
+            server_iface = link_data['server_iface']
+            switch_iface = link_data['switch_iface']
+
+            bundled_links.append({
+                'server': {
+                    'port': f"{server_device.name}/{server_iface.name}"
+                },
+                'switch': {
+                    'port': f"{switch_device.name}/{switch_iface.name}"
+                }
+            })
+
+        return {
+            'apiVersion': 'wiring.githedgehog.com/v1beta1',
+            'kind': 'Connection',
+            'metadata': {
+                'name': crd_name,
+                'namespace': 'default',
+            },
+            'spec': {
+                'bundled': {
+                    'links': bundled_links
+                }
+            }
+        }
+
     def _determine_connection_type(self, device_a: Device, device_b: Device, cable_id: int) -> str:
         """
         Determine Hedgehog connection type from device roles (DIET-139).
@@ -438,16 +682,19 @@ class YAMLGenerator:
 
     def _generate_switches(self) -> List[Dict[str, Any]]:
         """
-        Generate Switch CRDs from NetBox Devices with switch roles.
+        Generate Switch CRDs from NetBox Devices with switch roles (Issue #151).
 
         Reads:
         - Device.name, Device.role
-        - custom_field_data['boot_mac']
+        - custom_field_data['boot_mac', 'hedgehog_class']
         - device_type.devicetypeextension.hedgehog_profile_name
+        - PlanSwitchClass.groups, redundancy_type, redundancy_group
 
         Returns:
-            List of Switch CRD dicts with spec: {role, profile, boot}
+            List of Switch CRD dicts with spec: {role, profile, boot, groups, redundancy, ecmp}
         """
+        from ..models.topology_planning import PlanSwitchClass
+
         switch_crds = []
         existing_names = set()
 
@@ -486,7 +733,7 @@ class YAMLGenerator:
                     f"Switch {switch.name} missing boot_mac in custom_field_data"
                 )
 
-            # Build spec
+            # Build base spec
             spec = {
                 'role': self._map_netbox_role_to_hedgehog(switch),
                 'profile': profile_name,
@@ -494,6 +741,36 @@ class YAMLGenerator:
                     'mac': boot_mac
                 }
             }
+
+            # Add MCLAG/ESLAG fields (Issue #151)
+            # Read hedgehog_class custom field to look up PlanSwitchClass
+            hedgehog_class_id = switch.custom_field_data.get('hedgehog_class')
+            if hedgehog_class_id:
+                try:
+                    switch_class = PlanSwitchClass.objects.get(
+                        plan=self.plan,
+                        switch_class_id=hedgehog_class_id
+                    )
+
+                    # Add groups field (if set)
+                    if switch_class.groups:
+                        spec['groups'] = switch_class.groups
+
+                    # Add redundancy field (if redundancy_type is set)
+                    if switch_class.redundancy_type:
+                        spec['redundancy'] = {
+                            'type': switch_class.redundancy_type
+                        }
+                        if switch_class.redundancy_group:
+                            spec['redundancy']['group'] = switch_class.redundancy_group
+
+                except PlanSwitchClass.DoesNotExist:
+                    # hedgehog_class is set but doesn't match any PlanSwitchClass
+                    # This is a data consistency error - log but continue
+                    pass
+
+            # Add ecmp field (always empty dict per schema)
+            spec['ecmp'] = {}
 
             # MVP: Omit VTEPIP (Phase 2: VPC integration)
             # MVP: Omit portBreakouts/Speeds/AutoNegs (use profile defaults)
@@ -558,45 +835,162 @@ class YAMLGenerator:
 
     def _generate_connection_crds(self) -> List[Dict[str, Any]]:
         """
-        Generate Connection CRDs from NetBox Cables (existing logic).
+        Generate Connection CRDs from NetBox Cables with MCLAG/ESLAG/bundled support (Issue #151).
 
-        Moved from generate() method for consistency with new architecture.
+        Routes cables to appropriate CRD types based on hedgehog_zone classification:
+        - 'peer' + 'session' → mclagDomain
+        - 'server' → mclag/eslag/bundled (grouped by server)
+        - fabric (switch↔switch, no zone) → fabric
+        - unbundled (server↔switch, single link) → unbundled
 
         Returns:
-            List of Connection CRD dicts (unbundled + fabric)
+            List of Connection CRD dicts (all types)
         """
         # Query cables from NetBox inventory (order by ID for determinism)
         cables = Cable.objects.filter(
             custom_field_data__hedgehog_plan_id=str(self.plan.pk)
         ).order_by('id')
 
-        # Separate cables by connection type and aggregate fabric links
+        # Classify cables by zone and topology
+        mclag_domain_links = defaultdict(lambda: {'peer': [], 'session': []})  # (sw1, sw2) -> {peer: [...], session: [...]}
+        server_links = defaultdict(list)  # server_device -> [link_data]
+        fabric_links_by_pair = defaultdict(list)  # (leaf, spine) -> [link_data]
         unbundled_crds = []
-        fabric_links_by_pair = defaultdict(list)  # (leaf_device, spine_device) -> [link_data]
 
         for cable in cables:
             try:
-                conn_type, link_data = self._cable_to_link_data(cable)
+                # Get cable terminations
+                a_terminations = cable.a_terminations if isinstance(cable.a_terminations, list) else list(cable.a_terminations.all())
+                b_terminations = cable.b_terminations if isinstance(cable.b_terminations, list) else list(cable.b_terminations.all())
 
-                if conn_type == 'unbundled':
-                    # Unbundled: one CRD per cable
-                    unbundled_crds.append(self._create_unbundled_crd(link_data))
+                if not a_terminations or not b_terminations:
+                    continue
 
-                elif conn_type == 'fabric':
-                    # Fabric: aggregate by leaf-spine pair
-                    device_pair = (link_data['leaf_device'], link_data['spine_device'])
-                    fabric_links_by_pair[device_pair].append(link_data)
+                iface_a = a_terminations[0]
+                iface_b = b_terminations[0]
+                device_a = iface_a.device
+                device_b = iface_b.device
+
+                # Get hedgehog_zone classification
+                zone = cable.custom_field_data.get('hedgehog_zone', '').lower()
+
+                # Route by zone
+                if zone == 'peer':
+                    # MCLAG domain peer link
+                    switch_pair = tuple(sorted([device_a.name, device_b.name]))
+                    mclag_domain_links[switch_pair]['peer'].append({
+                        'device_a': device_a,
+                        'device_b': device_b,
+                        'iface_a': iface_a,
+                        'iface_b': iface_b
+                    })
+
+                elif zone == 'session':
+                    # MCLAG domain session link
+                    switch_pair = tuple(sorted([device_a.name, device_b.name]))
+                    mclag_domain_links[switch_pair]['session'].append({
+                        'device_a': device_a,
+                        'device_b': device_b,
+                        'iface_a': iface_a,
+                        'iface_b': iface_b
+                    })
+
+                elif zone == 'server':
+                    # Server connection (mclag/eslag/bundled - determine later by grouping)
+                    if device_a.role.slug == 'server':
+                        server_device = device_a
+                        server_iface = iface_a
+                        switch_device = device_b
+                        switch_iface = iface_b
+                    else:
+                        server_device = device_b
+                        server_iface = iface_b
+                        switch_device = device_a
+                        switch_iface = iface_a
+
+                    server_links[server_device].append({
+                        'server_iface': server_iface,
+                        'switch_device': switch_device,
+                        'switch_iface': switch_iface
+                    })
+
+                else:
+                    # No zone classification - use legacy role-based detection
+                    conn_type, link_data = self._cable_to_link_data(cable)
+
+                    if conn_type == 'unbundled':
+                        unbundled_crds.append(self._create_unbundled_crd(link_data))
+                    elif conn_type == 'fabric':
+                        device_pair = (link_data['leaf_device'], link_data['spine_device'])
+                        fabric_links_by_pair[device_pair].append(link_data)
 
             except ValidationError as e:
-                # Re-raise with cable ID context
                 raise ValidationError(f"Cable {cable.id}: {str(e)}")
 
-        # Generate fabric CRDs (one per leaf-spine pair with all links)
+        # Generate MCLAG domain CRDs
+        mclag_domain_crds = []
+        for switch_pair, links in mclag_domain_links.items():
+            # Get switch devices by name (sorted alphabetically)
+            switch1 = Device.objects.get(name=switch_pair[0])
+            switch2 = Device.objects.get(name=switch_pair[1])
+
+            mclag_domain_crds.append(self._create_mclag_domain_crd(
+                switch1, switch2,
+                links['peer'], links['session']
+            ))
+
+        # Generate server connection CRDs (mclag/eslag/bundled/unbundled)
+        server_conn_crds = []
+        for server_device, links in server_links.items():
+            if len(links) == 1:
+                # Single link → unbundled (should be rare with zone='server')
+                link_data = links[0]
+                crd_name = self._sanitize_name(
+                    f"{server_device.name}--unbundled--{link_data['switch_device'].name}"
+                )
+                server_conn_crds.append({
+                    'apiVersion': 'wiring.githedgehog.com/v1beta1',
+                    'kind': 'Connection',
+                    'metadata': {'name': crd_name, 'namespace': 'default'},
+                    'spec': {
+                        'unbundled': {
+                            'link': {
+                                'server': {'port': f"{server_device.name}/{link_data['server_iface'].name}"},
+                                'switch': {'port': f"{link_data['switch_device'].name}/{link_data['switch_iface'].name}"}
+                            }
+                        }
+                    }
+                })
+
+            elif len(links) == 2:
+                # 2 links → check if same switch (bundled) or different switches (mclag)
+                switch1 = links[0]['switch_device']
+                switch2 = links[1]['switch_device']
+
+                if switch1 == switch2:
+                    # Same switch → bundled
+                    server_conn_crds.append(self._create_bundled_crd(server_device, switch1, links))
+                else:
+                    # Different switches → mclag
+                    server_conn_crds.append(self._create_mclag_crd(server_device, switch1, switch2, links))
+
+            elif len(links) > 2:
+                # 3+ links → check if same switch (bundled) or multiple switches (eslag)
+                unique_switches = set(link['switch_device'] for link in links)
+
+                if len(unique_switches) == 1:
+                    # All same switch → bundled
+                    server_conn_crds.append(self._create_bundled_crd(server_device, links[0]['switch_device'], links))
+                else:
+                    # Multiple switches → eslag
+                    server_conn_crds.append(self._create_eslag_crd(server_device, links))
+
+        # Generate fabric CRDs
         fabric_crds = []
         for (leaf_device, spine_device), links in fabric_links_by_pair.items():
             fabric_crds.append(self._create_fabric_crd(leaf_device, spine_device, links))
 
-        return unbundled_crds + fabric_crds
+        return mclag_domain_crds + server_conn_crds + unbundled_crds + fabric_crds
 
     def _generate_vlannamespaces(self) -> List[Dict[str, Any]]:
         """
@@ -646,24 +1040,42 @@ class YAMLGenerator:
 
     def _generate_switchgroups(self) -> List[Dict[str, Any]]:
         """
-        Generate SwitchGroup CRDs for MCLAG/ESLAG redundancy groups.
+        Generate SwitchGroup CRDs for MCLAG/ESLAG redundancy groups (Issue #151).
 
-        MVP: Returns empty list (MCLAG support deferred to Phase 2).
-
-        Phase 2 implementation will:
-        - Query PlanMCLAGDomain objects
-        - Create one SwitchGroup per domain
-        - Populate spec.type only (e.g., "mclag" or "eslag")
-
-        NOTE: Per authoritative schema, SwitchGroup spec contains only:
-        - type: string (mclag | eslag)
-        Switch membership is tracked via Switch CRD spec.groups field, NOT in SwitchGroup.
+        Reads:
+        - PlanMCLAGDomain.switch_group_name
 
         Returns:
-            Empty list for MVP
+            List of SwitchGroup CRD dicts with empty spec: {}
+
+        NOTE: Per authoritative Hedgehog schema, SwitchGroup has EMPTY spec (marker object only).
+        Switch membership is tracked via Switch CRD spec.groups field, NOT in SwitchGroup.
         """
-        # TODO: Phase 2 - MCLAG support
-        return []
+        from ..models.topology_planning import PlanMCLAGDomain
+
+        switchgroup_crds = []
+
+        # Query MCLAG domains for this plan
+        domains = PlanMCLAGDomain.objects.filter(plan=self.plan).order_by('switch_group_name')
+
+        for domain in domains:
+            # Validate DNS-1123 compliance (should already be validated by model.clean())
+            if not domain.switch_group_name:
+                raise ValidationError(
+                    f"PlanMCLAGDomain {domain.domain_id} missing switch_group_name"
+                )
+
+            switchgroup_crds.append({
+                'apiVersion': 'wiring.githedgehog.com/v1beta1',
+                'kind': 'SwitchGroup',
+                'metadata': {
+                    'name': domain.switch_group_name,
+                    'namespace': 'default'
+                },
+                'spec': {}  # Empty spec per authoritative schema
+            })
+
+        return switchgroup_crds
 
 
 def generate_yaml_for_plan(plan: TopologyPlan) -> str:

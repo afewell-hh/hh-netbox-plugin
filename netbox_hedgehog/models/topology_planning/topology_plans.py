@@ -9,6 +9,7 @@ DeviceTypeExtension model for Hedgehog-specific metadata.
 from django.db import models
 from django.urls import reverse
 from django.core.validators import MinValueValidator
+from django.core.exceptions import ValidationError
 from django.contrib.auth import get_user_model
 from netbox.models import NetBoxModel
 from dcim.models import DeviceType, ModuleType
@@ -257,6 +258,32 @@ class PlanSwitchClass(NetBoxModel):
         help_text="Additional notes about this switch class"
     )
 
+    # MCLAG/ESLAG redundancy configuration (Issue #151)
+    groups = models.JSONField(
+        default=list,
+        blank=True,
+        help_text="List of SwitchGroup names this switch belongs to. "
+                  "Auto-populated from redundancy_group if not set. (e.g., ['mclag-1'])"
+    )
+
+    redundancy_type = models.CharField(
+        max_length=50,
+        choices=[
+            ('mclag', 'MCLAG - Multi-Chassis Link Aggregation'),
+            ('eslag', 'ESLAG - Enhanced Server Link Aggregation')
+        ],
+        blank=True,
+        null=True,
+        help_text="Redundancy type for switches in this class. Leave blank for standalone switches."
+    )
+
+    redundancy_group = models.CharField(
+        max_length=100,
+        blank=True,
+        null=True,
+        help_text="Redundancy group name (must match a SwitchGroup). Required if redundancy_type is set."
+    )
+
     class Meta:
         ordering = ['plan', 'fabric', 'switch_class_id']
         verbose_name = "Switch Class"
@@ -268,6 +295,31 @@ class PlanSwitchClass(NetBoxModel):
 
     def get_absolute_url(self):
         return reverse('plugins:netbox_hedgehog:planswitchclass_detail', args=[self.pk])
+
+    def clean(self):
+        """Validate redundancy configuration."""
+        super().clean()
+
+        # If redundancy_type is set, redundancy_group is required
+        if self.redundancy_type and not self.redundancy_group:
+            raise ValidationError({
+                'redundancy_group': 'Redundancy group name is required when redundancy type is set.'
+            })
+
+        # Auto-populate groups from redundancy_group (if not already set)
+        if self.redundancy_group:
+            if not self.groups:
+                self.groups = [self.redundancy_group]  # Auto-populate
+            elif self.redundancy_group not in self.groups:
+                raise ValidationError({
+                    'groups': f'Redundancy group "{self.redundancy_group}" must be included in groups list.'
+                })
+
+        # MCLAG switch count validation (if calculated_quantity is set)
+        if self.mclag_pair and self.calculated_quantity and self.calculated_quantity % 2 != 0:
+            raise ValidationError({
+                'calculated_quantity': f'MCLAG switch class must have even switch count, got {self.calculated_quantity}.'
+            })
 
     @property
     def effective_quantity(self):
@@ -537,14 +589,49 @@ class PlanMCLAGDomain(NetBoxModel):
         help_text="Starting port number for session links"
     )
 
+    # SwitchGroup CRD configuration (Issue #151)
+    switch_group_name = models.CharField(
+        max_length=100,
+        help_text="Name for generated SwitchGroup CRD (e.g., 'mclag-1', 'eslag-storage')"
+    )
+
+    redundancy_type = models.CharField(
+        max_length=50,
+        choices=[
+            ('mclag', 'MCLAG'),
+            ('eslag', 'ESLAG')
+        ],
+        default='mclag',
+        help_text="Redundancy type for this domain"
+    )
+
     class Meta:
-        ordering = ['plan', 'domain_id']
+        ordering = ['plan', 'switch_group_name']
         verbose_name = "MCLAG Domain"
         verbose_name_plural = "MCLAG Domains"
-        unique_together = [['plan', 'domain_id']]
+        unique_together = [['plan', 'switch_group_name']]
 
     def __str__(self):
         return f"{self.domain_id} ({self.switch_class.switch_class_id})"
 
     def get_absolute_url(self):
         return reverse('plugins:netbox_hedgehog:planmclagdomain_detail', args=[self.pk])
+
+    def clean(self):
+        """Validate switch_group_name DNS-1123 compliance."""
+        super().clean()
+
+        import re
+
+        # DNS-1123 validation for switch_group_name
+        if self.switch_group_name:
+            if not re.match(r'^[a-z0-9]([-a-z0-9]*[a-z0-9])?$', self.switch_group_name):
+                raise ValidationError({
+                    'switch_group_name': 'Must be valid DNS-1123 label (lowercase, alphanumeric + hyphens, '
+                                        'start/end with alphanumeric).'
+                })
+
+            if len(self.switch_group_name) > 63:
+                raise ValidationError({
+                    'switch_group_name': 'Must be max 63 characters.'
+                })
