@@ -69,3 +69,7 @@ node_modules
 check_error_html.py
 tw-tus1-netbox-inventory.xlsx
 scratch.txt
+
+# hhfab validation directory
+/hhfab/
+
