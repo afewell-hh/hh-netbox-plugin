@@ -4,6 +4,7 @@ Device generation service for topology planning.
 Creates NetBox Devices, Interfaces, and Cables from a TopologyPlan.
 """
 
+import math
 from dataclasses import dataclass
 from typing import Iterable
 
@@ -62,6 +63,7 @@ class DeviceGenerator:
 
         self._device_cache: dict[str, Device] = {}
         self._interface_cache: dict[tuple[int, str], Interface] = {}
+        self._rail_count_cache: dict[tuple[str, str], int] = {}  # (server_class_id, switch_class_id) -> total_rails
 
     def _cleanup_generated_objects(self) -> None:
         """
@@ -272,12 +274,22 @@ class DeviceGenerator:
 
                     zone = self._select_zone_for_connection(connection_def)
 
+                    # Pre-calculate total_rails for rail-optimized connections
+                    total_rails = None
+                    if connection_def.distribution == ConnectionDistributionChoices.RAIL_OPTIMIZED:
+                        total_rails = self._get_total_rails_for_target(
+                            server_class,
+                            connection_def.target_switch_class,
+                        )
+
                     for port_index in range(connection_def.ports_per_connection):
                         switch_device = self._select_switch_instance(
                             switch_instances,
                             connection_def.distribution,
                             server_index,
                             port_index,
+                            rail=connection_def.rail,
+                            total_rails=total_rails,
                         )
                         switch_port = self.port_allocator.allocate(
                             switch_device.name,
@@ -652,12 +664,54 @@ class DeviceGenerator:
                 devices.append(switch_devices[name])
         return devices
 
+    def _get_total_rails_for_target(
+        self,
+        server_class: 'PlanServerClass',
+        target_switch_class: PlanSwitchClass,
+    ) -> int:
+        """
+        Calculate total number of distinct rails for rail-optimized connections
+        targeting a specific switch class.
+
+        Results are cached by (server_class_id, switch_class_id) to avoid
+        recomputation in loops.
+
+        Args:
+            server_class: Server class containing connections
+            target_switch_class: Target switch class to filter by
+
+        Returns:
+            Number of distinct non-null rails (e.g., 8 for 8-rail backend)
+        """
+        cache_key = (server_class.server_class_id, target_switch_class.switch_class_id)
+
+        if cache_key in self._rail_count_cache:
+            return self._rail_count_cache[cache_key]
+
+        # Get all rail-optimized connections for this target switch class
+        rail_optimized_connections = server_class.connections.filter(
+            distribution=ConnectionDistributionChoices.RAIL_OPTIMIZED,
+            target_switch_class=target_switch_class,
+            rail__isnull=False,
+        )
+
+        # Get distinct rail values
+        distinct_rails = rail_optimized_connections.values_list('rail', flat=True).distinct()
+        total_rails = len(distinct_rails)
+
+        # Cache result
+        self._rail_count_cache[cache_key] = total_rails
+
+        return total_rails
+
     def _select_switch_instance(
         self,
         switch_instances: list[Device],
         distribution: str,
         server_index: int,
         port_index: int,
+        rail: int | None = None,
+        total_rails: int | None = None,
     ) -> Device:
         if len(switch_instances) == 1:
             return switch_instances[0]
@@ -666,6 +720,25 @@ class DeviceGenerator:
             return switch_instances[port_index % len(switch_instances)]
         if distribution == ConnectionDistributionChoices.SAME_SWITCH:
             return switch_instances[server_index % len(switch_instances)]
+        if distribution == ConnectionDistributionChoices.RAIL_OPTIMIZED:
+            # Rail-optimized: all servers' NIC at position N connect to same switch(es)
+            # Algorithm: rails_per_switch = ceil(total_rails / num_switches)
+            #            switch_index = rail // rails_per_switch
+            if rail is None:
+                raise ValidationError(
+                    "Rail number required for rail-optimized distribution"
+                )
+            if total_rails is None or total_rails == 0:
+                raise ValidationError(
+                    "Total rails required for rail-optimized distribution"
+                )
+
+            num_switches = len(switch_instances)
+            rails_per_switch = math.ceil(total_rails / num_switches)
+            switch_index = rail // rails_per_switch
+
+            return switch_instances[switch_index]
+
         return switch_instances[server_index % len(switch_instances)]
 
     def _select_zone_for_connection(self, connection: PlanServerConnection):

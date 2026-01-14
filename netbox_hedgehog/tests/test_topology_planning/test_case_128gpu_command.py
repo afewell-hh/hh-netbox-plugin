@@ -2,6 +2,8 @@
 Integration tests for setup_case_128gpu_odd_ports management command.
 """
 
+import yaml
+
 from io import StringIO
 from unittest.mock import patch
 
@@ -141,3 +143,189 @@ class Case128GpuCommandTestCase(TestCase):
         )
         self.assertFalse(form.is_valid())
         self.assertIn("rail", form.errors)
+
+
+class Case128GpuRailDistributionTestCase(TestCase):
+    """Validate rail-optimized backend allocation distributes correctly across switches."""
+
+    @classmethod
+    def setUpTestData(cls):
+        from dcim.models import Cable
+
+        call_command(
+            "setup_case_128gpu_odd_ports",
+            "--clean",
+            "--generate",
+            stdout=StringIO(),
+        )
+        cls.plan = TopologyPlan.objects.get(name=PLAN_NAME)
+        cls.cables = Cable.objects.filter(
+            custom_field_data__hedgehog_plan_id=str(cls.plan.pk)
+        )
+
+    def test_backend_rails_distributed_across_switches(self):
+        """Test that backend rails are distributed across switches, not servers."""
+        from dcim.models import Device
+
+        # Get backend rail leaf switches
+        be_rail_switches = Device.objects.filter(
+            name__startswith='be-rail-leaf-',
+            custom_field_data__hedgehog_plan_id=str(self.plan.pk)
+        ).order_by('name')
+
+        self.assertEqual(be_rail_switches.count(), 4, "Should have 4 be-rail-leaf switches")
+
+        # Filter backend cables by checking terminations in Python
+        # (Cable model uses generic 'terminations' field, not a_terminations/b_terminations for queries)
+        backend_cables = []
+        for cable in self.cables:
+            a_terms = cable.a_terminations if isinstance(cable.a_terminations, list) else list(cable.a_terminations.all())
+            b_terms = cable.b_terminations if isinstance(cable.b_terminations, list) else list(cable.b_terminations.all())
+
+            if len(a_terms) > 0 and len(b_terms) > 0:
+                a_device = a_terms[0].device
+                b_device = b_terms[0].device
+
+                if a_device.name.startswith('gpu-with-backend-') and b_device.name.startswith('be-rail-leaf-'):
+                    backend_cables.append(cable)
+
+        self.assertEqual(len(backend_cables), 256, "Should have 256 backend connections")
+
+        # For each server, verify rails are distributed across different switches
+        for server_num in range(1, 33):  # 32 servers
+            server_name = f'gpu-with-backend-{server_num:03d}'
+
+            # Get cables for this server
+            server_cables = []
+            for cable in backend_cables:
+                a_terms = cable.a_terminations if isinstance(cable.a_terminations, list) else list(cable.a_terminations.all())
+                if len(a_terms) > 0 and a_terms[0].device.name == server_name:
+                    server_cables.append(cable)
+
+            # Get the switches this server connects to
+            connected_switches = set()
+            for cable in server_cables:
+                b_terms = cable.b_terminations if isinstance(cable.b_terminations, list) else list(cable.b_terminations.all())
+                switch_name = b_terms[0].device.name
+                connected_switches.add(switch_name)
+
+            # Each server should connect to multiple switches (not all to one)
+            self.assertGreater(
+                len(connected_switches), 1,
+                f"{server_name} backend NICs should connect to multiple switches, "
+                f"but all connect to: {connected_switches}"
+            )
+
+    def test_rail_grouping_across_all_servers(self):
+        """Test that all servers' rail N connects to the same switch(es)."""
+        import math
+        import re
+        from dcim.models import Device
+
+        be_rail_switches = list(
+            Device.objects.filter(
+                name__startswith='be-rail-leaf-',
+                custom_field_data__hedgehog_plan_id=str(self.plan.pk)
+            ).order_by('name')
+        )
+
+        # Filter backend cables by checking terminations in Python
+        backend_cables = []
+        for cable in self.cables:
+            a_terms = cable.a_terminations if isinstance(cable.a_terminations, list) else list(cable.a_terminations.all())
+            b_terms = cable.b_terminations if isinstance(cable.b_terminations, list) else list(cable.b_terminations.all())
+
+            if len(a_terms) > 0 and len(b_terms) > 0:
+                a_device = a_terms[0].device
+                b_device = b_terms[0].device
+
+                if a_device.name.startswith('gpu-with-backend-') and b_device.name.startswith('be-rail-leaf-'):
+                    backend_cables.append(cable)
+
+        # Group cables by server interface name (which corresponds to rail position)
+        # We expect 8 different interface names (one per rail position)
+        rail_to_switches = {}  # rail_position -> set of switch names
+
+        for cable in backend_cables:
+            a_terms = cable.a_terminations if isinstance(cable.a_terminations, list) else list(cable.a_terminations.all())
+            b_terms = cable.b_terminations if isinstance(cable.b_terminations, list) else list(cable.b_terminations.all())
+
+            server_interface = a_terms[0]
+            switch_interface = b_terms[0]
+
+            # Use interface name as rail identifier
+            # (In 128-GPU case, server interfaces should be named consistently)
+            interface_name = server_interface.name
+            switch_name = switch_interface.device.name
+
+            if interface_name not in rail_to_switches:
+                rail_to_switches[interface_name] = set()
+            rail_to_switches[interface_name].add(switch_name)
+
+        # We should have 8 distinct interface names (8 rails)
+        self.assertEqual(
+            len(rail_to_switches), 8,
+            f"Should have 8 distinct rail positions, found {len(rail_to_switches)}"
+        )
+
+        # Each rail should connect to exactly 1 switch (8 rails / 4 switches = 2 rails per switch)
+        # So we expect each rail to consistently use one switch across all servers
+        rails_per_switch = math.ceil(len(rail_to_switches) / len(be_rail_switches))
+        for interface_name, switches in rail_to_switches.items():
+            match = re.search(r'be-rail-(\d+)', interface_name)
+            self.assertIsNotNone(
+                match,
+                f"Expected backend rail interface name to include rail number: {interface_name}"
+            )
+            rail = int(match.group(1))
+            expected_switch = be_rail_switches[rail // rails_per_switch].name
+            self.assertEqual(
+                len(switches), 1,
+                f"Rail interface {interface_name} should connect to exactly 1 switch across all servers, "
+                f"but connects to {len(switches)} switches: {switches}"
+            )
+            self.assertEqual(
+                list(switches)[0],
+                expected_switch,
+                f"Rail interface {interface_name} should map to {expected_switch}",
+            )
+
+
+class Case128GpuYamlExportTestCase(TestCase):
+    """Validate YAML export works for the 128-GPU case data."""
+
+    @classmethod
+    def setUpTestData(cls):
+        call_command(
+            "setup_case_128gpu_odd_ports",
+            "--clean",
+            "--generate",
+            stdout=StringIO(),
+        )
+        cls.plan = TopologyPlan.objects.get(name=PLAN_NAME)
+
+        User = get_user_model()
+        cls.superuser = User.objects.create_user(
+            username="case-exporter",
+            password="case-exporter",
+            is_staff=True,
+            is_superuser=True,
+        )
+
+    def test_yaml_export_succeeds_for_case(self):
+        self.client.force_login(self.superuser)
+        url = reverse("plugins:netbox_hedgehog:topologyplan_export", args=[self.plan.pk])
+        response = self.client.get(url)
+
+        self.assertEqual(response.status_code, 200)
+
+        documents = list(yaml.safe_load_all(response.content.decode("utf-8")))
+        switch_docs = [
+            doc for doc in documents
+            if doc and doc.get("kind") == "Switch"
+        ]
+        self.assertTrue(switch_docs, "Expected Switch CRDs in export output")
+        self.assertTrue(
+            all(doc.get("spec", {}).get("profile") for doc in switch_docs),
+            "All Switch CRDs must include spec.profile",
+        )
