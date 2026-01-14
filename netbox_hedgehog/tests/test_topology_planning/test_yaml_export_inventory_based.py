@@ -20,6 +20,7 @@ from netbox_hedgehog.models.topology_planning import (
     TopologyPlan,
     PlanServerClass,
     PlanSwitchClass,
+    PlanMCLAGDomain,
     DeviceTypeExtension,
     PlanServerConnection,
     SwitchPortZone,
@@ -95,6 +96,7 @@ class YAMLExportTestBase(TestCase):
                 'native_speed': 800,
                 'supported_breakouts': ['1x800g', '2x400g', '4x200g', '8x100g'],  # List, not string
                 'uplink_ports': 0,
+                'hedgehog_profile_name': 'test-switch-profile',
             }
         )
 
@@ -951,6 +953,313 @@ class YAMLExportUnbundledUniquenessTestCase(YAMLExportTestBase):
             self.assertIn(server_iface_name, name,
                          f"CRD name '{name}' must include server interface '{server_iface_name}' "
                          f"to ensure uniqueness when multiple ports connect to same switch")
+
+
+class YAMLExportRedundancyCRDsTestCase(YAMLExportTestBase):
+    """Test MCLAG/ESLAG/bundled Connection CRDs and SwitchGroup export."""
+
+    def setUp(self):
+        self.client = Client()
+        self.client.login(username='testuser', password='testpass123')
+
+    def _create_generation_state(self, plan, device_count, interface_count, cable_count):
+        GenerationState.objects.create(
+            plan=plan,
+            status=GenerationStatusChoices.GENERATED,
+            device_count=device_count,
+            interface_count=interface_count,
+            cable_count=cable_count,
+            snapshot={}
+        )
+
+    def _create_switch_device(self, plan, name, hedgehog_class, hedgehog_role='server-leaf'):
+        digits = ''.join([ch for ch in name if ch.isdigit()])
+        mac_suffix = int(digits) if digits else 0
+        return Device.objects.create(
+            name=name,
+            device_type=self.switch_type,
+            role=self.leaf_role,
+            site=self.site,
+            custom_field_data={
+                'hedgehog_plan_id': str(plan.pk),
+                'hedgehog_class': hedgehog_class,
+                'hedgehog_role': hedgehog_role,
+                'boot_mac': f"0c:20:12:ff:00:{mac_suffix:02x}",
+            }
+        )
+
+    def _create_server_device(self, plan, name):
+        return Device.objects.create(
+            name=name,
+            device_type=self.server_type,
+            role=self.server_role,
+            site=self.site,
+            custom_field_data={'hedgehog_plan_id': str(plan.pk)}
+        )
+
+    def _create_interface(self, device, name):
+        existing = Interface.objects.filter(device=device, name=name).first()
+        if existing:
+            return existing
+
+        return Interface.objects.create(
+            device=device,
+            name=name,
+            type='100gbase-x-qsfp28'
+        )
+
+    def _create_cable(self, plan, iface_a, iface_b, zone):
+        cable = Cable(
+            a_terminations=[iface_a],
+            b_terminations=[iface_b],
+        )
+        cable.custom_field_data = {
+            'hedgehog_plan_id': str(plan.pk),
+            'hedgehog_zone': zone,
+        }
+        cable.save()
+        return cable
+
+    def test_export_generates_switchgroups_and_mclag_domain(self):
+        """MCLAG SwitchGroups and mclag-domain connections render from inventory."""
+        plan = TopologyPlan.objects.create(
+            name='MCLAG Domain Export Plan',
+            created_by=self.user
+        )
+
+        switch_class = PlanSwitchClass.objects.create(
+            plan=plan,
+            switch_class_id='leaf',
+            fabric=FabricTypeChoices.FRONTEND,
+            hedgehog_role=HedgehogRoleChoices.SERVER_LEAF,
+            device_type_extension=self.device_ext,
+            calculated_quantity=2,
+            groups=['mclag-1'],
+            redundancy_type='mclag',
+            redundancy_group='mclag-1',
+        )
+
+        PlanMCLAGDomain.objects.create(
+            plan=plan,
+            domain_id='mclag-1',
+            switch_class=switch_class,
+            peer_link_count=2,
+            session_link_count=2,
+            peer_start_port=1,
+            session_start_port=1,
+            switch_group_name='mclag-1',
+            redundancy_type='mclag',
+        )
+
+        leaf_01 = self._create_switch_device(plan, 'leaf-01', 'leaf')
+        leaf_02 = self._create_switch_device(plan, 'leaf-02', 'leaf')
+
+        # Session links (E1/1-2)
+        for idx in (1, 2):
+            a = self._create_interface(leaf_01, f'E1/{idx}')
+            b = self._create_interface(leaf_02, f'E1/{idx}')
+            self._create_cable(plan, a, b, zone=PortZoneTypeChoices.SESSION)
+
+        # Peer links (E1/3-4)
+        for idx in (3, 4):
+            a = self._create_interface(leaf_01, f'E1/{idx}')
+            b = self._create_interface(leaf_02, f'E1/{idx}')
+            self._create_cable(plan, a, b, zone=PortZoneTypeChoices.PEER)
+
+        self._create_generation_state(plan, device_count=2, interface_count=8, cable_count=4)
+
+        url = reverse('plugins:netbox_hedgehog:topologyplan_export', args=[plan.pk])
+        response = self.client.get(url)
+        self.assertEqual(response.status_code, 200)
+
+        documents = list(yaml.safe_load_all(response.content.decode('utf-8')))
+        switchgroups = [doc for doc in documents if doc and doc.get('kind') == 'SwitchGroup']
+        self.assertEqual(len(switchgroups), 1)
+        self.assertEqual(switchgroups[0]['metadata']['name'], 'mclag-1')
+        self.assertEqual(switchgroups[0]['spec'], {})
+
+        switch_docs = {
+            doc['metadata']['name']: doc
+            for doc in documents
+            if doc and doc.get('kind') == 'Switch'
+        }
+        for leaf_name in ('leaf-01', 'leaf-02'):
+            self.assertIn(leaf_name, switch_docs)
+            spec = switch_docs[leaf_name]['spec']
+            self.assertEqual(spec.get('groups'), ['mclag-1'])
+            self.assertEqual(spec.get('redundancy', {}).get('group'), 'mclag-1')
+            self.assertEqual(spec.get('redundancy', {}).get('type'), 'mclag')
+
+        domain_crds = [
+            doc for doc in documents
+            if doc and doc.get('kind') == 'Connection' and 'mclagDomain' in doc.get('spec', {})
+        ]
+        self.assertEqual(len(domain_crds), 1)
+        domain_spec = domain_crds[0]['spec']['mclagDomain']
+        self.assertEqual(len(domain_spec.get('peerLinks', [])), 2)
+        self.assertEqual(len(domain_spec.get('sessionLinks', [])), 2)
+
+    def test_export_generates_mclag_connections(self):
+        """Server dual-homing to MCLAG pair exports mclag Connection CRD."""
+        plan = TopologyPlan.objects.create(
+            name='MCLAG Server Export Plan',
+            created_by=self.user
+        )
+
+        switch_class = PlanSwitchClass.objects.create(
+            plan=plan,
+            switch_class_id='leaf',
+            fabric=FabricTypeChoices.FRONTEND,
+            hedgehog_role=HedgehogRoleChoices.SERVER_LEAF,
+            device_type_extension=self.device_ext,
+            calculated_quantity=2,
+            groups=['mclag-1'],
+            redundancy_type='mclag',
+            redundancy_group='mclag-1',
+        )
+
+        PlanMCLAGDomain.objects.create(
+            plan=plan,
+            domain_id='mclag-1',
+            switch_class=switch_class,
+            peer_link_count=2,
+            session_link_count=2,
+            peer_start_port=1,
+            session_start_port=1,
+            switch_group_name='mclag-1',
+            redundancy_type='mclag',
+        )
+
+        leaf_01 = self._create_switch_device(plan, 'leaf-01', 'leaf')
+        leaf_02 = self._create_switch_device(plan, 'leaf-02', 'leaf')
+        server = self._create_server_device(plan, 'compute-01')
+
+        server_iface_1 = self._create_interface(server, 'enp2s1')
+        server_iface_2 = self._create_interface(server, 'enp2s2')
+        leaf_iface_1 = self._create_interface(leaf_01, 'E1/5')
+        leaf_iface_2 = self._create_interface(leaf_02, 'E1/5')
+
+        self._create_cable(plan, server_iface_1, leaf_iface_1, zone=PortZoneTypeChoices.SERVER)
+        self._create_cable(plan, server_iface_2, leaf_iface_2, zone=PortZoneTypeChoices.SERVER)
+
+        self._create_generation_state(plan, device_count=3, interface_count=4, cable_count=2)
+
+        url = reverse('plugins:netbox_hedgehog:topologyplan_export', args=[plan.pk])
+        response = self.client.get(url)
+        self.assertEqual(response.status_code, 200)
+
+        documents = list(yaml.safe_load_all(response.content.decode('utf-8')))
+        mclag_crds = [
+            doc for doc in documents
+            if doc and doc.get('kind') == 'Connection' and 'mclag' in doc.get('spec', {})
+        ]
+        self.assertEqual(len(mclag_crds), 1)
+        links = mclag_crds[0]['spec']['mclag']['links']
+        self.assertEqual(len(links), 2)
+
+    def test_export_generates_eslag_connections(self):
+        """Server connected to 3-switch ESLAG group exports eslag Connection CRD."""
+        plan = TopologyPlan.objects.create(
+            name='ESLAG Export Plan',
+            created_by=self.user
+        )
+
+        switch_class = PlanSwitchClass.objects.create(
+            plan=plan,
+            switch_class_id='eslag-leaf',
+            fabric=FabricTypeChoices.FRONTEND,
+            hedgehog_role=HedgehogRoleChoices.SERVER_LEAF,
+            device_type_extension=self.device_ext,
+            calculated_quantity=3,
+            groups=['eslag-1'],
+            redundancy_type='eslag',
+            redundancy_group='eslag-1',
+        )
+
+        PlanMCLAGDomain.objects.create(
+            plan=plan,
+            domain_id='eslag-1',
+            switch_class=switch_class,
+            peer_link_count=1,
+            session_link_count=1,
+            peer_start_port=1,
+            session_start_port=1,
+            switch_group_name='eslag-1',
+            redundancy_type='eslag',
+        )
+
+        leaf_01 = self._create_switch_device(plan, 'leaf-01', 'eslag-leaf')
+        leaf_02 = self._create_switch_device(plan, 'leaf-02', 'eslag-leaf')
+        leaf_03 = self._create_switch_device(plan, 'leaf-03', 'eslag-leaf')
+        server = self._create_server_device(plan, 'storage-01')
+
+        server_iface_1 = self._create_interface(server, 'enp2s1')
+        server_iface_2 = self._create_interface(server, 'enp2s2')
+        server_iface_3 = self._create_interface(server, 'enp2s3')
+
+        self._create_cable(plan, server_iface_1, self._create_interface(leaf_01, 'E1/1'),
+                           zone=PortZoneTypeChoices.SERVER)
+        self._create_cable(plan, server_iface_2, self._create_interface(leaf_02, 'E1/1'),
+                           zone=PortZoneTypeChoices.SERVER)
+        self._create_cable(plan, server_iface_3, self._create_interface(leaf_03, 'E1/1'),
+                           zone=PortZoneTypeChoices.SERVER)
+
+        self._create_generation_state(plan, device_count=4, interface_count=6, cable_count=3)
+
+        url = reverse('plugins:netbox_hedgehog:topologyplan_export', args=[plan.pk])
+        response = self.client.get(url)
+        self.assertEqual(response.status_code, 200)
+
+        documents = list(yaml.safe_load_all(response.content.decode('utf-8')))
+        eslag_crds = [
+            doc for doc in documents
+            if doc and doc.get('kind') == 'Connection' and 'eslag' in doc.get('spec', {})
+        ]
+        self.assertEqual(len(eslag_crds), 1)
+        links = eslag_crds[0]['spec']['eslag']['links']
+        self.assertEqual(len(links), 3)
+
+    def test_export_generates_bundled_connections(self):
+        """Multiple links to a single switch export bundled Connection CRD."""
+        plan = TopologyPlan.objects.create(
+            name='Bundled Export Plan',
+            created_by=self.user
+        )
+
+        PlanSwitchClass.objects.create(
+            plan=plan,
+            switch_class_id='leaf',
+            fabric=FabricTypeChoices.FRONTEND,
+            hedgehog_role=HedgehogRoleChoices.SERVER_LEAF,
+            device_type_extension=self.device_ext,
+            calculated_quantity=1,
+        )
+
+        leaf = self._create_switch_device(plan, 'leaf-01', 'leaf')
+        server = self._create_server_device(plan, 'app-01')
+
+        server_iface_1 = self._create_interface(server, 'enp2s1')
+        server_iface_2 = self._create_interface(server, 'enp2s2')
+        leaf_iface_1 = self._create_interface(leaf, 'E1/1')
+        leaf_iface_2 = self._create_interface(leaf, 'E1/2')
+
+        self._create_cable(plan, server_iface_1, leaf_iface_1, zone=PortZoneTypeChoices.SERVER)
+        self._create_cable(plan, server_iface_2, leaf_iface_2, zone=PortZoneTypeChoices.SERVER)
+
+        self._create_generation_state(plan, device_count=2, interface_count=4, cable_count=2)
+
+        url = reverse('plugins:netbox_hedgehog:topologyplan_export', args=[plan.pk])
+        response = self.client.get(url)
+        self.assertEqual(response.status_code, 200)
+
+        documents = list(yaml.safe_load_all(response.content.decode('utf-8')))
+        bundled_crds = [
+            doc for doc in documents
+            if doc and doc.get('kind') == 'Connection' and 'bundled' in doc.get('spec', {})
+        ]
+        self.assertEqual(len(bundled_crds), 1)
+        links = bundled_crds[0]['spec']['bundled']['links']
+        self.assertEqual(len(links), 2)
 
 
 class YAMLExportUITestCase(YAMLExportTestBase):
