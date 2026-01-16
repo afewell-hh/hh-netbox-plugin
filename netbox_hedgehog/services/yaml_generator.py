@@ -653,6 +653,119 @@ class YAMLGenerator:
         existing_names.add(unique_name)
         return unique_name
 
+    def _generate_port_configuration(self, switch_class: 'PlanSwitchClass') -> Dict[str, Dict[str, Any]]:
+        """
+        Generate portBreakouts, portSpeeds, and portAutoNegs for a switch class.
+
+        Reads SwitchPortZone data to determine which ports have breakouts and their speeds.
+
+        Args:
+            switch_class: PlanSwitchClass instance
+
+        Returns:
+            Dict with keys: portBreakouts, portSpeeds, portAutoNegs
+
+        Example output for fe-gpu-leaf (odd ports = 4x200g, even ports = 1x800g):
+            {
+                'portBreakouts': {'1': '4x200g', '3': '4x200g', ...},
+                'portSpeeds': {'1/1': '200g', '1/2': '200g', '2': '800g', ...},
+                'portAutoNegs': {'1/1': False, '1/2': False, '2': False, ...}
+            }
+        """
+        from ..models.topology_planning import SwitchPortZone
+
+        port_breakouts = {}
+        port_speeds = {}
+        port_auto_negs = {}
+
+        # Query all port zones for this switch class
+        zones = SwitchPortZone.objects.filter(switch_class=switch_class).order_by('priority')
+
+        for zone in zones:
+            # Parse port_spec to get list of physical ports
+            # Formats: "1-32", "1-63:2" (odds), "2-64:2" (evens)
+            ports = self._parse_port_spec(zone.port_spec)
+
+            if zone.breakout_option:
+                # Ports have breakout configured
+                breakout_id = zone.breakout_option.breakout_id
+                logical_ports = zone.breakout_option.logical_ports
+                logical_speed = zone.breakout_option.logical_speed
+
+                # Check if this is a "real" breakout or just native speed (1x)
+                if logical_ports == 1:
+                    # 1x<speed> means native speed, no actual breakout
+                    # Don't add to portBreakouts, treat as native port
+                    for port in ports:
+                        port_speeds[str(port)] = f"{logical_speed}g"
+                        port_auto_negs[str(port)] = False
+                else:
+                    # Real breakout (2x, 4x, 8x, etc.)
+                    for port in ports:
+                        # Add breakout config (e.g., "1": "4x200g")
+                        port_breakouts[str(port)] = breakout_id
+
+                        # Add speed for each logical port (e.g., "1/1": "200g")
+                        for subport in range(1, logical_ports + 1):
+                            logical_port_name = f"{port}/{subport}"
+                            port_speeds[logical_port_name] = f"{logical_speed}g"
+                            port_auto_negs[logical_port_name] = False
+            else:
+                # No breakout - ports use native speed
+                native_speed = switch_class.device_type_extension.native_speed
+                for port in ports:
+                    port_speeds[str(port)] = f"{native_speed}g"
+                    port_auto_negs[str(port)] = False
+
+        return {
+            'portBreakouts': port_breakouts,
+            'portSpeeds': port_speeds,
+            'portAutoNegs': port_auto_negs
+        }
+
+    def _parse_port_spec(self, port_spec: str) -> List[int]:
+        """
+        Parse port_spec string into list of port numbers.
+
+        Formats:
+        - "1-32" → [1, 2, 3, ..., 32]
+        - "1-63:2" → [1, 3, 5, ..., 63] (odds)
+        - "2-64:2" → [2, 4, 6, ..., 64] (evens)
+        - "1,5,9-12" → [1, 5, 9, 10, 11, 12]
+
+        Args:
+            port_spec: Port specification string
+
+        Returns:
+            List of port numbers
+        """
+        ports = []
+
+        # Split by comma for multiple ranges
+        parts = port_spec.split(',')
+
+        for part in parts:
+            part = part.strip()
+
+            # Check for range with step (e.g., "1-63:2")
+            if ':' in part:
+                range_part, step = part.split(':')
+                step = int(step)
+            else:
+                range_part = part
+                step = 1
+
+            # Check for range (e.g., "1-32")
+            if '-' in range_part:
+                start, end = range_part.split('-')
+                start, end = int(start), int(end)
+                ports.extend(range(start, end + 1, step))
+            else:
+                # Single port
+                ports.append(int(range_part))
+
+        return sorted(ports)
+
     def _map_netbox_role_to_hedgehog(self, device: Device) -> str:
         """
         Map NetBox device role to Hedgehog switch role.
@@ -769,11 +882,28 @@ class YAMLGenerator:
                     # This is a data consistency error - log but continue
                     pass
 
+            # Add port configuration fields (DIET-151)
+            # Generate portBreakouts, portSpeeds, portAutoNegs from SwitchPortZone data
+            if hedgehog_class_id:
+                try:
+                    switch_class = PlanSwitchClass.objects.get(
+                        plan=self.plan,
+                        switch_class_id=hedgehog_class_id
+                    )
+                    port_config = self._generate_port_configuration(switch_class)
+                    if port_config['portBreakouts']:
+                        spec['portBreakouts'] = port_config['portBreakouts']
+                    if port_config['portSpeeds']:
+                        spec['portSpeeds'] = port_config['portSpeeds']
+                    if port_config['portAutoNegs']:
+                        spec['portAutoNegs'] = port_config['portAutoNegs']
+                except PlanSwitchClass.DoesNotExist:
+                    pass
+
             # Add ecmp field (always empty dict per schema)
             spec['ecmp'] = {}
 
             # MVP: Omit VTEPIP (Phase 2: VPC integration)
-            # MVP: Omit portBreakouts/Speeds/AutoNegs (use profile defaults)
 
             switch_crds.append({
                 'apiVersion': 'wiring.githedgehog.com/v1beta1',
