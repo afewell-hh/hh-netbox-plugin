@@ -353,8 +353,8 @@ class TopologyPlanGenerateUpdateView(View):
             job = plan.generation_state.job
 
             # Allow re-enqueue if job was deleted (orphaned state)
-            if status in [GenerationStatusChoices.QUEUED, GenerationStatusChoices.IN_PROGRESS] and job is not None:
-                status_label = "queued" if status == GenerationStatusChoices.QUEUED else "in progress"
+            if status in [choices.GenerationStatusChoices.QUEUED, choices.GenerationStatusChoices.IN_PROGRESS] and job is not None:
+                status_label = "queued" if status == choices.GenerationStatusChoices.QUEUED else "in progress"
                 messages.error(
                     request,
                     f"Cannot start generation: a job is already {status_label} for this plan. "
@@ -364,8 +364,8 @@ class TopologyPlanGenerateUpdateView(View):
 
             # If job is None but status is QUEUED/IN_PROGRESS, reset to FAILED
             # This handles the orphaned job scenario (user deleted job from Jobs page)
-            if status in [GenerationStatusChoices.QUEUED, GenerationStatusChoices.IN_PROGRESS] and job is None:
-                plan.generation_state.status = GenerationStatusChoices.FAILED
+            if status in [choices.GenerationStatusChoices.QUEUED, choices.GenerationStatusChoices.IN_PROGRESS] and job is None:
+                plan.generation_state.status = choices.GenerationStatusChoices.FAILED
                 plan.generation_state.save()
                 messages.warning(
                     request,
@@ -395,7 +395,7 @@ class TopologyPlanGenerateUpdateView(View):
         state, created = models.GenerationState.objects.update_or_create(
             plan=plan,
             defaults={
-                'status': GenerationStatusChoices.QUEUED,
+                'status': choices.GenerationStatusChoices.QUEUED,
                 'device_count': 0,
                 'interface_count': 0,
                 'cable_count': 0,
@@ -608,7 +608,7 @@ class PlanServerClassEditView(generic.ObjectEditView):
     def _is_plan_locked(self, plan, request):
         """Check if plan is locked during generation"""
         if hasattr(plan, 'generation_state'):
-            if plan.generation_state.status in [GenerationStatusChoices.QUEUED, GenerationStatusChoices.IN_PROGRESS]:
+            if plan.generation_state.status in [choices.GenerationStatusChoices.QUEUED, choices.GenerationStatusChoices.IN_PROGRESS]:
                 messages.error(
                     request,
                     "Cannot modify plan during device generation. Wait for job to complete."
@@ -625,7 +625,7 @@ class PlanServerClassDeleteView(generic.ObjectDeleteView):
         """Check if plan is locked before allowing delete"""
         obj = get_object_or_404(self.queryset, pk=kwargs['pk'])
         if hasattr(obj.plan, 'generation_state'):
-            if obj.plan.generation_state.status in [GenerationStatusChoices.QUEUED, GenerationStatusChoices.IN_PROGRESS]:
+            if obj.plan.generation_state.status in [choices.GenerationStatusChoices.QUEUED, choices.GenerationStatusChoices.IN_PROGRESS]:
                 messages.error(
                     request,
                     "Cannot modify plan during device generation. Wait for job to complete."
@@ -676,7 +676,7 @@ class PlanSwitchClassEditView(generic.ObjectEditView):
 
         # Check if plan is locked
         if plan and hasattr(plan, 'generation_state'):
-            if plan.generation_state.status in [GenerationStatusChoices.QUEUED, GenerationStatusChoices.IN_PROGRESS]:
+            if plan.generation_state.status in [choices.GenerationStatusChoices.QUEUED, choices.GenerationStatusChoices.IN_PROGRESS]:
                 messages.error(
                     request,
                     "Cannot modify plan during device generation. Wait for job to complete."
@@ -694,7 +694,7 @@ class PlanSwitchClassDeleteView(generic.ObjectDeleteView):
         """Check if plan is locked before allowing delete"""
         obj = get_object_or_404(self.queryset, pk=kwargs['pk'])
         if hasattr(obj.plan, 'generation_state'):
-            if obj.plan.generation_state.status in [GenerationStatusChoices.QUEUED, GenerationStatusChoices.IN_PROGRESS]:
+            if obj.plan.generation_state.status in [choices.GenerationStatusChoices.QUEUED, choices.GenerationStatusChoices.IN_PROGRESS]:
                 messages.error(
                     request,
                     "Cannot modify plan during device generation. Wait for job to complete."
@@ -754,7 +754,7 @@ class PlanServerConnectionEditView(generic.ObjectEditView):
 
         # Check if plan is locked
         if plan and hasattr(plan, 'generation_state'):
-            if plan.generation_state.status in [GenerationStatusChoices.QUEUED, GenerationStatusChoices.IN_PROGRESS]:
+            if plan.generation_state.status in [choices.GenerationStatusChoices.QUEUED, choices.GenerationStatusChoices.IN_PROGRESS]:
                 messages.error(
                     request,
                     "Cannot modify plan during device generation. Wait for job to complete."
@@ -772,7 +772,7 @@ class PlanServerConnectionDeleteView(generic.ObjectDeleteView):
         """Check if plan is locked before allowing delete"""
         obj = get_object_or_404(self.queryset, pk=kwargs['pk'])
         if hasattr(obj.server_class.plan, 'generation_state'):
-            if obj.server_class.plan.generation_state.status in [GenerationStatusChoices.QUEUED, GenerationStatusChoices.IN_PROGRESS]:
+            if obj.server_class.plan.generation_state.status in [choices.GenerationStatusChoices.QUEUED, choices.GenerationStatusChoices.IN_PROGRESS]:
                 messages.error(
                     request,
                     "Cannot modify plan during device generation. Wait for job to complete."
