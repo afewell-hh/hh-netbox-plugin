@@ -119,6 +119,15 @@ class YAMLExportTestBase(TestCase):
                 'optic_type': 'QSFP-DD',
             }
         )
+        cls.breakout_1x800, _ = BreakoutOption.objects.get_or_create(
+            breakout_id='1x800g',
+            defaults={
+                'from_speed': 800,
+                'logical_ports': 1,
+                'logical_speed': 800,
+                'optic_type': 'QSFP-DD',
+            }
+        )
 
         # Create device roles (use correct slugs)
         cls.server_role, _ = DeviceRole.objects.get_or_create(
@@ -484,6 +493,15 @@ class YAMLExportBreakoutNamingTestCase(YAMLExportTestBase):
             allocation_strategy=AllocationStrategyChoices.SEQUENTIAL,
             priority=100
         )
+        SwitchPortZone.objects.create(
+            switch_class=self.switch_class,
+            zone_name='uplink',
+            zone_type=PortZoneTypeChoices.UPLINK,
+            port_spec='49-50',
+            breakout_option=self.breakout_1x800,
+            allocation_strategy=AllocationStrategyChoices.SEQUENTIAL,
+            priority=200
+        )
 
         # Create server connection - use correct field names
         self.connection = PlanServerConnection.objects.create(
@@ -591,6 +609,37 @@ class YAMLExportBreakoutNamingTestCase(YAMLExportTestBase):
             self.assertIn(yaml_port, netbox_interface_names,
                          f"YAML port {yaml_port} not found in NetBox interfaces. "
                          f"YAML should read from inventory, not regenerate names.")
+
+    def test_switch_crd_includes_port_configuration(self):
+        """Switch CRD includes portBreakouts, portSpeeds, and portAutoNegs."""
+        url = reverse('plugins:netbox_hedgehog:topologyplan_export', args=[self.plan.pk])
+        response = self.client.get(url)
+
+        self.assertEqual(response.status_code, 200,
+                        "YAML export should succeed after device generation")
+
+        documents = list(yaml.safe_load_all(response.content.decode('utf-8')))
+        switch_docs = [
+            doc for doc in documents
+            if doc and doc.get('kind') == 'Switch'
+        ]
+        self.assertTrue(switch_docs, "Expected Switch CRDs in export output")
+
+        spec = switch_docs[0].get('spec', {})
+        port_breakouts = spec.get('portBreakouts', {})
+        port_speeds = spec.get('portSpeeds', {})
+        port_auto_negs = spec.get('portAutoNegs', {})
+
+        # Breakout ports should be represented in portBreakouts
+        self.assertEqual(port_breakouts.get('1'), '4x200g')
+        self.assertEqual(port_speeds.get('1/1'), '200g')
+        self.assertEqual(port_speeds.get('1/4'), '200g')
+        self.assertFalse(port_auto_negs.get('1/1'))
+
+        # 1x breakouts are treated as native ports (no portBreakouts entry)
+        self.assertNotIn('49', port_breakouts)
+        self.assertEqual(port_speeds.get('49'), '800g')
+        self.assertFalse(port_auto_negs.get('49'))
 
     def test_yaml_export_does_not_mutate_plan(self):
         """
