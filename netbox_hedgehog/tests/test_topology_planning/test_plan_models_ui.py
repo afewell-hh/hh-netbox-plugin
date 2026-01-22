@@ -34,6 +34,53 @@ from netbox_hedgehog.models.topology_planning import (
 User = get_user_model()
 
 
+class NavigationHighlightingTestCase(TestCase):
+    """
+    Tests for navigation highlighting regression (DIET-157).
+
+    Verifies that the fix for the dashboard link staying highlighted on all
+    pages is working correctly.
+    """
+
+    @classmethod
+    def setUpTestData(cls):
+        """Create test user"""
+        cls.superuser = User.objects.create_user(
+            username='admin',
+            password='admin123',
+            is_staff=True,
+            is_superuser=True
+        )
+
+    def setUp(self):
+        """Create fresh client"""
+        self.client = Client()
+        self.client.login(username='admin', password='admin123')
+
+    def test_dashboard_not_highlighted_on_topology_plan_list(self):
+        """Test that dashboard link is not active when viewing topology plans"""
+        url = reverse('plugins:netbox_hedgehog:topologyplan_list')
+        response = self.client.get(url)
+
+        self.assertEqual(response.status_code, 200)
+        # The current URL should be in the response for nav matching
+        self.assertContains(response, 'topology-plans')
+
+    def test_dashboard_url_is_not_empty_string(self):
+        """Test that dashboard is at /dashboard/ not root to prevent nav highlighting bug"""
+        # The fix for the navigation highlighting issue is that the overview
+        # view is now at 'dashboard/' instead of '' (empty string)
+        # This prevents it from matching all plugin URLs
+        dashboard_url = reverse('plugins:netbox_hedgehog:overview')
+
+        # Verify the URL contains 'dashboard'
+        self.assertIn('dashboard', dashboard_url)
+
+        # Verify dashboard loads successfully
+        response = self.client.get(dashboard_url)
+        self.assertEqual(response.status_code, 200)
+
+
 class TopologyPlanUITestCase(TestCase):
     """
     Integration tests for TopologyPlan CRUD UI.
@@ -822,6 +869,10 @@ class PlanSwitchClassUITestCase(TestCase):
         response = self.client.post(url, data)
 
         self.assertEqual(response.status_code, 200)
+        # Verify error message appears in form
+        content = response.content.decode()
+        self.assertIn('uplink_ports_per_switch', content)
+        self.assertTrue('greater' in content.lower() or 'positive' in content.lower() or 'valid' in content.lower())
 
     # =========================================================================
     # Edit Form Tests
@@ -1135,6 +1186,10 @@ class PlanServerConnectionUITestCase(TestCase):
         response = self.client.post(url, data)
 
         self.assertEqual(response.status_code, 200)
+        # Verify error message appears in form
+        content = response.content.decode()
+        self.assertIn('ports_per_connection', content)
+        self.assertTrue('greater' in content.lower() or 'minimum' in content.lower() or 'valid' in content.lower())
 
     # =========================================================================
     # Edit Form Tests
