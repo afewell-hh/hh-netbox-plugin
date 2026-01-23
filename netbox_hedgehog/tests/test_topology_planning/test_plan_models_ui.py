@@ -57,14 +57,35 @@ class NavigationHighlightingTestCase(TestCase):
         self.client = Client()
         self.client.login(username='admin', password='admin123')
 
-    def test_dashboard_not_highlighted_on_topology_plan_list(self):
-        """Test that dashboard link is not active when viewing topology plans"""
-        url = reverse('plugins:netbox_hedgehog:topologyplan_list')
-        response = self.client.get(url)
+    def test_dashboard_url_differs_from_other_pages(self):
+        """Test that dashboard URL is distinct from other plugin URLs"""
+        # The bug was that dashboard was at '' (empty string), which matched
+        # all plugin URLs causing the dashboard link to stay highlighted everywhere.
+        # This test verifies the URLs are actually different now.
 
+        dashboard_url = reverse('plugins:netbox_hedgehog:overview')
+        topology_url = reverse('plugins:netbox_hedgehog:topologyplan_list')
+
+        # Verify URLs are different
+        self.assertNotEqual(dashboard_url, topology_url)
+
+        # Verify dashboard URL doesn't use empty path (which would match everything)
+        # The dashboard should be at a specific path like '/plugins/hedgehog/dashboard/'
+        self.assertIn('dashboard', dashboard_url)
+        self.assertNotEqual(dashboard_url.rstrip('/').split('/')[-1], '')
+
+        # Verify topology plans URL is distinct
+        self.assertIn('topology-plans', topology_url)
+
+        # Fetch topology plan list and verify it loads successfully
+        response = self.client.get(topology_url)
         self.assertEqual(response.status_code, 200)
-        # The current URL should be in the response for nav matching
+
+        # The response should contain the topology plans content, not dashboard content
         self.assertContains(response, 'topology-plans')
+        # Dashboard link should exist in nav but not be the current page
+        self.assertContains(response, '/dashboard/')
+        self.assertNotEqual(response.wsgi_request.path, dashboard_url)
 
     def test_dashboard_url_is_not_empty_string(self):
         """Test that dashboard is at /dashboard/ not root to prevent nav highlighting bug"""
