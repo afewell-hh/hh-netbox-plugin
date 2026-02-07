@@ -56,6 +56,8 @@ docker compose up -d
 
 **IMPORTANT**: Per AGENTS.md, always run Django/NetBox commands inside the container using `docker compose exec netbox`.
 
+**NOTE**: E2E tests are opt-in and require setting `RUN_E2E_TESTS=true` to prevent database setup issues when Playwright is not available.
+
 ### Run All E2E Tests
 
 ```bash
@@ -63,10 +65,10 @@ docker compose up -d
 cd /home/ubuntu/afewell-hh/netbox-docker
 
 # Run with visible browser (for debugging)
-docker compose exec -e PLAYWRIGHT_HEADLESS=false netbox python manage.py test netbox_hedgehog.tests.test_e2e
+docker compose exec -e RUN_E2E_TESTS=true -e PLAYWRIGHT_HEADLESS=false netbox python manage.py test netbox_hedgehog.tests.test_e2e
 
 # Run headless (for CI/automation)
-docker compose exec -e PLAYWRIGHT_HEADLESS=true netbox python manage.py test netbox_hedgehog.tests.test_e2e --keepdb
+docker compose exec -e RUN_E2E_TESTS=true -e PLAYWRIGHT_HEADLESS=true netbox python manage.py test netbox_hedgehog.tests.test_e2e --keepdb
 ```
 
 ### Run Specific E2E Test
@@ -76,10 +78,10 @@ docker compose exec -e PLAYWRIGHT_HEADLESS=true netbox python manage.py test net
 cd /home/ubuntu/afewell-hh/netbox-docker
 
 # Run only navigation highlighting tests
-docker compose exec netbox python manage.py test netbox_hedgehog.tests.test_e2e.test_navigation_highlighting --keepdb
+docker compose exec -e RUN_E2E_TESTS=true netbox python manage.py test netbox_hedgehog.tests.test_e2e.test_navigation_highlighting --keepdb
 
 # Run a specific test method
-docker compose exec netbox python manage.py test \
+docker compose exec -e RUN_E2E_TESTS=true netbox python manage.py test \
   netbox_hedgehog.tests.test_e2e.test_navigation_highlighting.NavigationHighlightingE2ETestCase.test_dashboard_not_highlighted_on_topology_plans_page \
   --keepdb
 ```
@@ -112,6 +114,10 @@ If you need to run in the container:
    ```
 
 ## Environment Variables
+
+- `RUN_E2E_TESTS`: Set to `true` to enable E2E tests (default: `false`)
+  - **REQUIRED** to run E2E tests - prevents database setup issues when disabled
+  - Example: `RUN_E2E_TESTS=true python manage.py test ...`
 
 - `PLAYWRIGHT_HEADLESS`: Set to `false` to see browser UI (default: `true`)
   - Useful for debugging test failures

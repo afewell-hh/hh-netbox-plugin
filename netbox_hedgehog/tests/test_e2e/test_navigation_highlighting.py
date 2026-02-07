@@ -22,6 +22,7 @@ See netbox_hedgehog/tests/test_e2e/README.md for setup instructions.
 
 import os
 import time
+import unittest
 from django.contrib.staticfiles.testing import StaticLiveServerTestCase
 from django.contrib.auth import get_user_model
 
@@ -36,7 +37,14 @@ except ImportError:
 
 User = get_user_model()
 
+# Check for opt-in environment variable to enable E2E tests
+RUN_E2E_TESTS = os.environ.get('RUN_E2E_TESTS', 'false').lower() == 'true'
 
+
+@unittest.skipUnless(
+    RUN_E2E_TESTS and PLAYWRIGHT_AVAILABLE,
+    "E2E tests disabled. Set RUN_E2E_TESTS=true and install Playwright to enable."
+)
 class NavigationHighlightingE2ETestCase(StaticLiveServerTestCase):
     """
     E2E tests for navigation highlighting using Playwright.
@@ -49,38 +57,24 @@ class NavigationHighlightingE2ETestCase(StaticLiveServerTestCase):
         """Set up Playwright browser"""
         super().setUpClass()
 
-        # Check if Playwright module is available
-        if not PLAYWRIGHT_AVAILABLE:
-            cls.playwright_available = False
-            cls.skip_reason = "Playwright not installed (pip install playwright)"
-            return
-
-        # Try to start Playwright browser
-        try:
-            cls.playwright = sync_playwright().start()
-            # Use chromium for consistent testing
-            # headless=False for debugging, headless=True for CI
-            headless = os.environ.get('PLAYWRIGHT_HEADLESS', 'true').lower() == 'true'
-            cls.browser = cls.playwright.chromium.launch(headless=headless)
-            cls.context = cls.browser.new_context()
-            cls.playwright_available = True
-        except Exception as e:
-            cls.playwright_available = False
-            cls.skip_reason = f"Playwright not available: {e}"
+        # At this point, we know Playwright is available (class-level skip handles it)
+        cls.playwright = sync_playwright().start()
+        # Use chromium for consistent testing
+        # headless=False for debugging, headless=True for CI
+        headless = os.environ.get('PLAYWRIGHT_HEADLESS', 'true').lower() == 'true'
+        cls.browser = cls.playwright.chromium.launch(headless=headless)
+        cls.context = cls.browser.new_context()
 
     @classmethod
     def tearDownClass(cls):
         """Clean up Playwright resources"""
-        if cls.playwright_available:
-            cls.context.close()
-            cls.browser.close()
-            cls.playwright.stop()
+        cls.context.close()
+        cls.browser.close()
+        cls.playwright.stop()
         super().tearDownClass()
 
     def setUp(self):
         """Set up test user and browser page"""
-        if not self.playwright_available:
-            self.skipTest(self.skip_reason)
 
         # Create superuser for testing
         self.user = User.objects.create_user(
