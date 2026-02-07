@@ -139,35 +139,42 @@ class NavigationHighlightingE2ETestCase(StaticLiveServerTestCase):
         - aria-current attribute
         - Computed styles (color, font-weight, etc.)
 
-        Returns True if the link appears to be in active state.
+        Returns tuple: (found: bool, is_active: bool)
+        - (True, True): Link found and appears active
+        - (True, False): Link found but not active
+        - (False, False): Link not found (cannot determine state)
         """
         try:
             # Open the Hedgehog dropdown to reveal menu
             hedgehog_menu = self.page.locator('text=Hedgehog').first
-            if hedgehog_menu.is_visible():
-                hedgehog_menu.click()
-                time.sleep(0.3)  # Wait for dropdown animation
+            if not hedgehog_menu.is_visible():
+                return (False, False)  # Menu not found
+
+            hedgehog_menu.click()
+            time.sleep(0.3)  # Wait for dropdown animation
 
             # Find the specific link
             link = self.page.locator(f'a:has-text("{link_text}")').first
             if not link.is_visible():
-                return False
+                return (False, False)  # Link not found after opening menu
+
+            # Link was found - now check if it's active
 
             # Check 1: CSS classes
             classes = link.get_attribute('class') or ''
             if 'active' in classes.lower() or 'selected' in classes.lower():
-                return True
+                return (True, True)
 
             # Check 2: aria-current attribute (accessibility indicator)
             aria_current = link.get_attribute('aria-current')
             if aria_current in ['page', 'true', 'location']:
-                return True
+                return (True, True)
 
             # Check 3: Parent element classes
             parent = link.locator('xpath=..')
             parent_classes = parent.get_attribute('class') or ''
             if 'active' in parent_classes.lower() or 'selected' in parent_classes.lower():
-                return True
+                return (True, True)
 
             # Check 4: Computed styles (as a heuristic)
             # Active links often have different font-weight or color
@@ -184,16 +191,29 @@ class NavigationHighlightingE2ETestCase(StaticLiveServerTestCase):
             }''', link_text)
 
             if computed_style:
-                # Bold font weight (700+) often indicates active state
-                font_weight = int(computed_style.get('fontWeight', '400'))
-                if font_weight >= 700:
-                    return True
+                # Parse font-weight - can be numeric (400, 700) or keyword (normal, bold)
+                font_weight_value = computed_style.get('fontWeight', '400')
 
-            return False
+                # Convert keywords to numeric values
+                weight_map = {'normal': 400, 'bold': 700, 'bolder': 800, 'lighter': 300}
+                if font_weight_value in weight_map:
+                    font_weight = weight_map[font_weight_value]
+                else:
+                    try:
+                        font_weight = int(font_weight_value)
+                    except (ValueError, TypeError):
+                        font_weight = 400  # Default to normal if unparseable
+
+                # Bold font weight (700+) often indicates active state
+                if font_weight >= 700:
+                    return (True, True)
+
+            # Link was found but no active indicators detected
+            return (True, False)
 
         except Exception as e:
             print(f"Error checking if link '{link_text}' is active: {e}")
-            return False
+            return (False, False)  # Error means we couldn't determine state
 
     def _get_current_url_path(self):
         """Get the current URL path (without domain)"""
@@ -219,21 +239,21 @@ class NavigationHighlightingE2ETestCase(StaticLiveServerTestCase):
         current_path = self._get_current_url_path()
         self.assertIn('dashboard', current_path)
 
-        # CRITICAL CHECK: Dashboard link should exist in navigation
-        dashboard_link_exists = self.page.locator('a:has-text("Dashboard")').count() > 0
-        self.assertTrue(dashboard_link_exists, "Dashboard link should exist in navigation")
+        # CRITICAL CHECK: Dashboard link must be found in navigation
+        link_found, is_active = self._is_link_active("Dashboard")
+
+        self.assertTrue(link_found,
+                       "Dashboard link must be visible in navigation. "
+                       "If this fails, either the navigation structure changed or "
+                       "the dropdown didn't open properly.")
 
         # OPTIONAL CHECK: If NetBox uses active state indicators, verify them
         # Note: This may not apply if NetBox uses JS-based URL matching without classes
         # We check but don't fail the test if active state detection is inconclusive
-        is_active = self._is_link_active("Dashboard")
-
-        # Log the result for debugging but don't enforce it
-        # (NetBox's implementation may not use detectable active states)
         if is_active:
-            print("✓ Dashboard link detected as active (CSS/aria/style-based)")
+            print("[PASS] Dashboard link detected as active (CSS/aria/style-based)")
         else:
-            print("⚠ Dashboard link active state not detected (may use JS URL matching)")
+            print("[INFO] Dashboard link active state not detected (may use JS URL matching)")
 
         # The important verification is that we're on the dashboard page
         # URL-based matching would make this link highlighted client-side
@@ -266,8 +286,15 @@ class NavigationHighlightingE2ETestCase(StaticLiveServerTestCase):
         self.assertTrue(heading_visible, "Should see Topology Plans heading")
 
         # CRITICAL REGRESSION CHECK: Dashboard link should NOT be active
-        dashboard_is_active = self._is_link_active("Dashboard")
+        dashboard_found, dashboard_is_active = self._is_link_active("Dashboard")
 
+        # First verify we could actually find the link
+        self.assertTrue(dashboard_found,
+                       "Dashboard link must be visible in navigation. "
+                       "If this fails, either the navigation structure changed or "
+                       "the dropdown didn't open properly.")
+
+        # Now verify it's NOT active (this is the main regression test)
         self.assertFalse(dashboard_is_active,
                         "Dashboard link should NOT be active/highlighted on Topology Plans page. "
                         "If this fails, the DIET-157 bug has regressed - the dashboard link is "
