@@ -24,7 +24,15 @@ import os
 import time
 from django.contrib.staticfiles.testing import StaticLiveServerTestCase
 from django.contrib.auth import get_user_model
-from playwright.sync_api import sync_playwright, expect
+
+# Conditional import - allows module to load even when Playwright isn't installed
+try:
+    from playwright.sync_api import sync_playwright, expect
+    PLAYWRIGHT_AVAILABLE = True
+except ImportError:
+    PLAYWRIGHT_AVAILABLE = False
+    sync_playwright = None
+    expect = None
 
 User = get_user_model()
 
@@ -41,7 +49,13 @@ class NavigationHighlightingE2ETestCase(StaticLiveServerTestCase):
         """Set up Playwright browser"""
         super().setUpClass()
 
-        # Check if Playwright is available
+        # Check if Playwright module is available
+        if not PLAYWRIGHT_AVAILABLE:
+            cls.playwright_available = False
+            cls.skip_reason = "Playwright not installed (pip install playwright)"
+            return
+
+        # Try to start Playwright browser
         try:
             cls.playwright = sync_playwright().start()
             # Use chromium for consistent testing
