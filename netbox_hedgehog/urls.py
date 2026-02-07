@@ -1,5 +1,5 @@
 from django.urls import path
-from django.views.generic import TemplateView, ListView, CreateView, UpdateView, DeleteView
+from django.views.generic import TemplateView, ListView, CreateView, UpdateView, DeleteView, RedirectView
 from netbox.views.generic import ObjectView
 
 from .models import HedgehogFabric, VPC, External
@@ -86,8 +86,10 @@ class TopologyView(TemplateView):
     template_name = 'netbox_hedgehog/topology.html'
 
 urlpatterns = [
-    path('', OverviewView.as_view(), name='overview'),
-    
+    # Redirect plugin root to dashboard (preserves bookmarks/docs)
+    path('', RedirectView.as_view(pattern_name='plugins:netbox_hedgehog:overview', permanent=False)),
+    path('dashboard/', OverviewView.as_view(), name='overview'),
+
     # Fabric URLs
     path('fabrics/', FabricListView.as_view(), name='fabric_list'),
     path('fabrics/add/', FabricCreateView.as_view(), name='fabric_add'),

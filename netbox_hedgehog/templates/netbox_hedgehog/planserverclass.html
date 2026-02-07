@@ -1,1 +1,117 @@
 {% extends 'generic/object.html' %}
+{% load helpers %}
+
+{% block title %}{{ object.server_class_id }} - Server Class{% endblock %}
+
+{% block content %}
+<div class="row">
+  <div class="col col-md-6">
+    <div class="card">
+      <h5 class="card-header">Server Class Details</h5>
+      <div class="card-body">
+        <table class="table table-hover attr-table">
+          <tr>
+            <th scope="row">Server Class ID</th>
+            <td>{{ object.server_class_id }}</td>
+          </tr>
+          <tr>
+            <th scope="row">Topology Plan</th>
+            <td>
+              <a href="{% url 'plugins:netbox_hedgehog:topologyplan_detail' pk=object.plan.pk %}">
+                {{ object.plan.name }}
+              </a>
+            </td>
+          </tr>
+          <tr>
+            <th scope="row">Category</th>
+            <td>{% badge object.get_category_display %}</td>
+          </tr>
+          <tr>
+            <th scope="row">Server Device Type</th>
+            <td>
+              <a href="{% url 'dcim:devicetype' pk=object.server_device_type.pk %}">
+                {{ object.server_device_type }}
+              </a>
+            </td>
+          </tr>
+          <tr>
+            <th scope="row">Quantity</th>
+            <td><strong>{{ object.quantity }}</strong></td>
+          </tr>
+          <tr>
+            <th scope="row">GPUs per Server</th>
+            <td>{{ object.gpus_per_server }}</td>
+          </tr>
+          <tr>
+            <th scope="row">Total GPUs</th>
+            <td><strong>{% widthratio object.quantity 1 object.gpus_per_server %}</strong></td>
+          </tr>
+        </table>
+      </div>
+    </div>
+    {% if object.description %}
+    <div class="card mt-3">
+      <h5 class="card-header">Description</h5>
+      <div class="card-body">
+        {{ object.description|markdown }}
+      </div>
+    </div>
+    {% endif %}
+    {% if object.notes %}
+    <div class="card mt-3">
+      <h5 class="card-header">Notes</h5>
+      <div class="card-body">
+        {{ object.notes|markdown }}
+      </div>
+    </div>
+    {% endif %}
+  </div>
+  <div class="col col-md-6">
+    <div class="card">
+      <h5 class="card-header">
+        Connections
+        <span class="badge badge-secondary">{{ object.connections.count }}</span>
+      </h5>
+      <div class="card-body">
+        {% if object.connections.all %}
+          <table class="table table-sm table-hover">
+            <thead>
+              <tr>
+                <th>Connection ID</th>
+                <th>Type</th>
+                <th>Target Switch</th>
+                <th>Ports</th>
+                <th>Speed</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for conn in object.connections.all %}
+              <tr>
+                <td>
+                  <a href="{% url 'plugins:netbox_hedgehog:planserverconnection_detail' pk=conn.pk %}">
+                    {{ conn.connection_id }}
+                  </a>
+                </td>
+                <td>{{ conn.get_hedgehog_conn_type_display }}</td>
+                <td>
+                  <a href="{% url 'plugins:netbox_hedgehog:planswitchclass_detail' pk=conn.target_switch_class.pk %}">
+                    {{ conn.target_switch_class.switch_class_id }}
+                  </a>
+                </td>
+                <td>{{ conn.ports_per_connection }}</td>
+                <td>{{ conn.speed }}G</td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        {% else %}
+          <p class="text-muted">No connections defined yet.</p>
+        {% endif %}
+        <a href="{% url 'plugins:netbox_hedgehog:planserverconnection_add' %}?server_class={{ object.pk }}" class="btn btn-sm btn-success mt-2">
+          <i class="mdi mdi-plus-thick"></i> Add Connection
+        </a>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

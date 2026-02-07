@@ -1,1 +1,150 @@
 {% extends 'generic/object.html' %}
+{% load helpers %}
+
+{% block title %}{{ object.switch_class_id }} - Switch Class{% endblock %}
+
+{% block content %}
+<div class="row">
+  <div class="col col-md-6">
+    <div class="card">
+      <h5 class="card-header">Switch Class Details</h5>
+      <div class="card-body">
+        <table class="table table-hover attr-table">
+          <tr>
+            <th scope="row">Switch Class ID</th>
+            <td>{{ object.switch_class_id }}</td>
+          </tr>
+          <tr>
+            <th scope="row">Topology Plan</th>
+            <td>
+              <a href="{% url 'plugins:netbox_hedgehog:topologyplan_detail' pk=object.plan.pk %}">
+                {{ object.plan.name }}
+              </a>
+            </td>
+          </tr>
+          <tr>
+            <th scope="row">Fabric</th>
+            <td>{% badge object.get_fabric_display %}</td>
+          </tr>
+          <tr>
+            <th scope="row">Hedgehog Role</th>
+            <td>{% badge object.get_hedgehog_role_display bg_color="blue" %}</td>
+          </tr>
+          <tr>
+            <th scope="row">Device Type Extension</th>
+            <td>
+              <a href="{% url 'plugins:netbox_hedgehog:devicetypeextension' pk=object.device_type_extension.pk %}">
+                {{ object.device_type_extension.device_type }}
+              </a>
+            </td>
+          </tr>
+          <tr>
+            <th scope="row">MCLAG Pair</th>
+            <td>{% checkmark object.mclag_pair %}</td>
+          </tr>
+          <tr>
+            <th scope="row">Uplink Ports per Switch</th>
+            <td>{{ object.uplink_ports_per_switch|placeholder }}</td>
+          </tr>
+          <tr>
+            <th scope="row">Calculated Quantity</th>
+            <td>{{ object.calculated_quantity|placeholder }}</td>
+          </tr>
+          <tr>
+            <th scope="row">Override Quantity</th>
+            <td>{{ object.override_quantity|placeholder }}</td>
+          </tr>
+          <tr>
+            <th scope="row">Effective Quantity</th>
+            <td><strong>{{ object.effective_quantity }}</strong></td>
+          </tr>
+        </table>
+      </div>
+    </div>
+  </div>
+  <div class="col col-md-6">
+    <div class="card">
+      <h5 class="card-header">
+        Incoming Connections
+        <span class="badge badge-secondary">{{ object.incoming_connections.count }}</span>
+      </h5>
+      <div class="card-body">
+        {% if object.incoming_connections.all %}
+          <table class="table table-sm table-hover">
+            <thead>
+              <tr>
+                <th>Connection ID</th>
+                <th>From Server Class</th>
+                <th>Type</th>
+                <th>Ports</th>
+                <th>Speed</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for conn in object.incoming_connections.all %}
+              <tr>
+                <td>
+                  <a href="{% url 'plugins:netbox_hedgehog:planserverconnection_detail' pk=conn.pk %}">
+                    {{ conn.connection_id }}
+                  </a>
+                </td>
+                <td>
+                  <a href="{% url 'plugins:netbox_hedgehog:planserverclass_detail' pk=conn.server_class.pk %}">
+                    {{ conn.server_class.server_class_id }}
+                  </a>
+                </td>
+                <td>{{ conn.get_hedgehog_conn_type_display }}</td>
+                <td>{{ conn.ports_per_connection }}</td>
+                <td>{{ conn.speed }}G</td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        {% else %}
+          <p class="text-muted">No incoming connections defined yet.</p>
+        {% endif %}
+      </div>
+    </div>
+
+    <div class="card mt-3">
+      <h5 class="card-header">
+        Port Zones
+        <span class="badge badge-secondary">{{ object.port_zones.count }}</span>
+      </h5>
+      <div class="card-body">
+        {% if object.port_zones.all %}
+          <table class="table table-sm table-hover">
+            <thead>
+              <tr>
+                <th>Zone Name</th>
+                <th>Type</th>
+                <th>Port Spec</th>
+                <th>Breakout</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for zone in object.port_zones.all %}
+              <tr>
+                <td>
+                  <a href="{% url 'plugins:netbox_hedgehog:switchportzone' pk=zone.pk %}">
+                    {{ zone.zone_name }}
+                  </a>
+                </td>
+                <td>{{ zone.get_zone_type_display }}</td>
+                <td>{{ zone.port_spec }}</td>
+                <td>{{ zone.breakout_option|placeholder }}</td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        {% else %}
+          <p class="text-muted">No port zones defined yet.</p>
+        {% endif %}
+        <a href="{% url 'plugins:netbox_hedgehog:switchportzone_add' %}?switch_class={{ object.pk }}" class="btn btn-sm btn-success mt-2">
+          <i class="mdi mdi-plus-thick"></i> Add Port Zone
+        </a>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
