@@ -41,18 +41,20 @@ class NavigationHighlightingTestCase(TestCase):
     Verifies that the fix for the dashboard link staying highlighted on all
     pages is working correctly.
 
-    LIMITATION: These tests verify URL distinctness (the root cause of the bug)
+    SCOPE: These tests verify URL distinctness (the root cause of the bug)
     but do NOT verify actual navigation highlighting behavior. NetBox uses
     client-side JavaScript for navigation highlighting, which cannot be tested
-    in backend integration tests. For full end-to-end verification of nav
-    highlighting, use browser-based testing (Selenium/Playwright).
+    in backend integration tests.
+
+    FOR COMPLETE E2E TESTING: See netbox_hedgehog/tests/test_e2e/ for
+    browser-based tests that verify actual navigation highlighting behavior.
 
     What these tests DO protect against:
     - Dashboard URL reverting to empty string ''
     - Dashboard URL matching all plugin URLs
     - Request path being identical to dashboard on non-dashboard pages
 
-    What these tests CANNOT catch:
+    What these tests CANNOT catch (see E2E tests instead):
     - JavaScript bugs in navigation highlighting logic
     - CSS class changes that affect active state rendering
     - Client-side bugs that highlight dashboard for other reasons

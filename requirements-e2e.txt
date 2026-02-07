@@ -1,0 +1,5 @@
+# E2E Testing Requirements
+# Install with: pip install -r requirements-e2e.txt
+# Then run: playwright install chromium
+
+playwright>=1.40.0
