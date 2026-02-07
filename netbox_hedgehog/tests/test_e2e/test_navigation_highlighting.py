@@ -247,16 +247,11 @@ class NavigationHighlightingE2ETestCase(StaticLiveServerTestCase):
                        "If this fails, either the navigation structure changed or "
                        "the dropdown didn't open properly.")
 
-        # OPTIONAL CHECK: If NetBox uses active state indicators, verify them
-        # Note: This may not apply if NetBox uses JS-based URL matching without classes
-        # We check but don't fail the test if active state detection is inconclusive
-        if is_active:
-            print("[PASS] Dashboard link detected as active (CSS/aria/style-based)")
-        else:
-            print("[INFO] Dashboard link active state not detected (may use JS URL matching)")
-
-        # The important verification is that we're on the dashboard page
-        # URL-based matching would make this link highlighted client-side
+        # CRITICAL ASSERTION: Dashboard link must be active when on dashboard page
+        self.assertTrue(is_active,
+                       "Dashboard link must be active/highlighted when viewing the dashboard page. "
+                       "If this fails, the navigation highlighting is broken - the active link "
+                       "indicator is not appearing on the current page.")
 
     def test_dashboard_not_highlighted_on_topology_plans_page(self):
         """
