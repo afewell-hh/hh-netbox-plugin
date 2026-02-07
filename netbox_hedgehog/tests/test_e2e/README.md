@@ -22,48 +22,66 @@ E2E tests fill this gap by running tests in an actual browser.
 
 ## Setup
 
-### 1. Install Playwright
+### 1. Install Playwright in Container
+
+Per AGENTS.md, all setup must be done inside the NetBox container:
 
 ```bash
-# Install Python package
-pip install playwright
+# Navigate to netbox-docker directory
+cd /home/ubuntu/afewell-hh/netbox-docker
 
-# Install browser binaries (Chromium, Firefox, WebKit)
-playwright install chromium
+# Install Playwright in the container
+docker compose exec netbox bash -c "/opt/netbox/venv/bin/pip install playwright"
+
+# Install Chromium browser in the container
+docker compose exec netbox bash -c "/opt/netbox/venv/bin/playwright install chromium chromium-dependencies"
+```
+
+**Note**: For persistent setup across container rebuilds, add to your Dockerfile:
+```dockerfile
+RUN /opt/netbox/venv/bin/pip install playwright && \
+    /opt/netbox/venv/bin/playwright install chromium chromium-dependencies
 ```
 
 ### 2. Ensure NetBox is Running
 
-E2E tests need a running NetBox instance. Use the docker-compose setup:
+E2E tests need a running NetBox instance:
 
 ```bash
-cd /path/to/netbox-docker
+cd /home/ubuntu/afewell-hh/netbox-docker
 docker compose up -d
 ```
 
 ## Running E2E Tests
 
+**IMPORTANT**: Per AGENTS.md, always run Django/NetBox commands inside the container using `docker compose exec netbox`.
+
 ### Run All E2E Tests
 
 ```bash
-# From the plugin root directory
-cd /home/ubuntu/afewell-hh/hh-netbox-plugin
+# Navigate to netbox-docker directory
+cd /home/ubuntu/afewell-hh/netbox-docker
 
 # Run with visible browser (for debugging)
-PLAYWRIGHT_HEADLESS=false python manage.py test netbox_hedgehog.tests.test_e2e
+docker compose exec -e PLAYWRIGHT_HEADLESS=false netbox python manage.py test netbox_hedgehog.tests.test_e2e
 
 # Run headless (for CI/automation)
-PLAYWRIGHT_HEADLESS=true python manage.py test netbox_hedgehog.tests.test_e2e
+docker compose exec -e PLAYWRIGHT_HEADLESS=true netbox python manage.py test netbox_hedgehog.tests.test_e2e --keepdb
 ```
 
 ### Run Specific E2E Test
 
 ```bash
+# Navigate to netbox-docker directory
+cd /home/ubuntu/afewell-hh/netbox-docker
+
 # Run only navigation highlighting tests
-python manage.py test netbox_hedgehog.tests.test_e2e.test_navigation_highlighting
+docker compose exec netbox python manage.py test netbox_hedgehog.tests.test_e2e.test_navigation_highlighting --keepdb
 
 # Run a specific test method
-python manage.py test netbox_hedgehog.tests.test_e2e.test_navigation_highlighting.NavigationHighlightingE2ETestCase.test_dashboard_not_highlighted_on_topology_plans_page
+docker compose exec netbox python manage.py test \
+  netbox_hedgehog.tests.test_e2e.test_navigation_highlighting.NavigationHighlightingE2ETestCase.test_dashboard_not_highlighted_on_topology_plans_page \
+  --keepdb
 ```
 
 ### Run from Docker Container
