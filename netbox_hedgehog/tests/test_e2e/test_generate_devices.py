@@ -30,7 +30,9 @@ import time
 import unittest
 from django.contrib.staticfiles.testing import StaticLiveServerTestCase
 from django.contrib.auth import get_user_model
-from dcim.models import Site, Device, DeviceType, DeviceRole, Manufacturer
+from dcim.models import Device
+
+from .helpers import create_base_test_data, cleanup_base_test_data
 
 # Conditional import - allows module to load even when Playwright isn't installed
 try:
@@ -86,19 +88,19 @@ class GenerateDevicesE2ETestCase(StaticLiveServerTestCase):
             is_superuser=True
         )
 
+        # Create base test data (DeviceTypes, Extensions, etc.)
+        self.test_data = create_base_test_data()
+
         # Create new page for each test
         self.page = self.context.new_page()
 
         # Login to NetBox
         self._login()
 
-        # Create base test data (site, manufacturer, device types, roles, etc.)
-        self._create_base_test_data()
-
     def tearDown(self):
         """Clean up after each test"""
-        # Clean up test data
-        self._cleanup_test_data()
+        # Clean up base test data
+        cleanup_base_test_data()
 
         if hasattr(self, 'page'):
             self.page.close()
@@ -114,52 +116,6 @@ class GenerateDevicesE2ETestCase(StaticLiveServerTestCase):
         self.page.click('button[type="submit"]')
         self.page.wait_for_load_state('networkidle')
 
-    def _create_base_test_data(self):
-        """Create base NetBox objects needed for device generation"""
-        # Create site
-        self.site, _ = Site.objects.get_or_create(
-            name='E2E Generate Test Site',
-            slug='e2e-generate-test-site'
-        )
-
-        # Create manufacturer
-        self.manufacturer, _ = Manufacturer.objects.get_or_create(
-            name='E2E Test Manufacturer',
-            slug='e2e-test-mfg'
-        )
-
-        # Create device roles
-        self.server_role, _ = DeviceRole.objects.get_or_create(
-            name='E2E Server',
-            slug='e2e-server',
-            defaults={'color': 'blue'}
-        )
-        self.switch_role, _ = DeviceRole.objects.get_or_create(
-            name='E2E Switch',
-            slug='e2e-switch',
-            defaults={'color': 'green'}
-        )
-
-        # Create device types
-        self.server_type, _ = DeviceType.objects.get_or_create(
-            manufacturer=self.manufacturer,
-            model='E2E Test Server',
-            slug='e2e-test-server'
-        )
-        self.switch_type, _ = DeviceType.objects.get_or_create(
-            manufacturer=self.manufacturer,
-            model='E2E Test Switch',
-            slug='e2e-test-switch'
-        )
-
-    def _cleanup_test_data(self):
-        """Clean up test data created during tests"""
-        # Delete any generated devices (tagged with hedgehog-generated)
-        Device.objects.filter(name__startswith='e2e-test-').delete()
-
-        # Cleanup will happen in tearDown
-        # DeviceType, DeviceRole, Manufacturer, Site deletions
-
     def _create_test_plan_with_servers(self):
         """Create a topology plan with server classes for testing"""
         from netbox_hedgehog.models.topology_planning import (
@@ -169,8 +125,7 @@ class GenerateDevicesE2ETestCase(StaticLiveServerTestCase):
         # Create plan
         plan = TopologyPlan.objects.create(
             name=f'E2E Generate Test Plan {int(time.time())}',
-            customer_name='E2E Test Customer',
-            site=self.site
+            customer_name='E2E Test Customer'
         )
 
         # Create server class
@@ -178,19 +133,21 @@ class GenerateDevicesE2ETestCase(StaticLiveServerTestCase):
             plan=plan,
             server_class_id='e2e-test-servers',
             description='E2E Test Servers',
-            category='GPU',
+            category='gpu',
             quantity=3,  # 3 servers
-            gpus_per_server=8
+            gpus_per_server=8,
+            server_device_type=self.test_data['server_type']
         )
 
         # Create switch class (for connections)
         switch_class = PlanSwitchClass.objects.create(
             plan=plan,
             switch_class_id='e2e-test-frontend-leaf',
-            fabric='Frontend',
+            fabric='frontend',
             hedgehog_role='server-leaf',
             calculated_quantity=2,
-            effective_quantity=2
+            effective_quantity=2,
+            device_type_extension=self.test_data['switch_ext']
         )
 
         # Create server connection (to frontend switches)
@@ -305,8 +262,7 @@ class GenerateDevicesE2ETestCase(StaticLiveServerTestCase):
         # Create empty plan (no servers)
         empty_plan = TopologyPlan.objects.create(
             name='E2E Empty Test Plan',
-            customer_name='E2E Empty',
-            site=self.site
+            customer_name='E2E Empty'
         )
 
         try:

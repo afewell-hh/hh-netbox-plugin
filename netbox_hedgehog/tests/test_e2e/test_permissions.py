@@ -30,7 +30,8 @@ from django.contrib.staticfiles.testing import StaticLiveServerTestCase
 from django.contrib.auth import get_user_model
 from django.contrib.contenttypes.models import ContentType
 from users.models import ObjectPermission
-from dcim.models import Site
+
+from .helpers import create_base_test_data, cleanup_base_test_data
 
 # Conditional import - allows module to load even when Playwright isn't installed
 try:
@@ -104,20 +105,16 @@ class PermissionsE2ETestCase(StaticLiveServerTestCase):
         view_permission.object_types.add(content_type)
         view_permission.users.add(self.viewer_user)
 
-        # Create test site
-        self.site, _ = Site.objects.get_or_create(
-            name='E2E Perms Test Site',
-            slug='e2e-perms-test-site'
-        )
+        # Create base test data (DeviceTypes, Extensions, etc.)
+        self.test_data = create_base_test_data()
 
         # Create new page for each test
         self.page = self.context.new_page()
 
     def tearDown(self):
         """Clean up after each test"""
-        # Clean up test site
-        if hasattr(self, 'site'):
-            self.site.delete()
+        # Clean up base test data
+        cleanup_base_test_data()
 
         if hasattr(self, 'page'):
             self.page.close()
@@ -152,8 +149,7 @@ class PermissionsE2ETestCase(StaticLiveServerTestCase):
         from netbox_hedgehog.models.topology_planning import TopologyPlan
         return TopologyPlan.objects.create(
             name='Perms Test Plan',
-            customer_name='Perms Customer',
-            site=self.site
+            customer_name='Perms Customer'
         )
 
     # =========================================================================

@@ -49,13 +49,20 @@ jobs:
           pip install playwright pytest-playwright
           playwright install chromium chromium-dependencies
 
+      - name: Clone netbox-docker
+        run: |
+          git clone https://github.com/netbox-community/netbox-docker.git
+          cd netbox-docker
+          git checkout release
+
+      - name: Copy plugin to netbox-docker
+        run: |
+          mkdir -p netbox-docker/configuration/plugins
+          cp -r netbox_hedgehog netbox-docker/configuration/plugins/
+
       - name: Start NetBox container
         run: |
           cd netbox-docker
-
-          # Copy plugin into netbox-docker plugins directory
-          mkdir -p plugins/netbox_hedgehog
-          cp -r ../netbox_hedgehog/* plugins/netbox_hedgehog/
 
           # Start NetBox with docker compose
           docker compose up -d
@@ -66,6 +73,12 @@ jobs:
 
           # Verify NetBox is accessible
           curl -I http://localhost:8000/login/
+
+      - name: Install Playwright in container
+        run: |
+          cd netbox-docker
+          docker compose exec -T netbox pip install playwright
+          docker compose exec -T netbox playwright install chromium chromium-dependencies
 
       - name: Create NetBox superuser
         run: |

@@ -28,7 +28,8 @@ import yaml
 from pathlib import Path
 from django.contrib.staticfiles.testing import StaticLiveServerTestCase
 from django.contrib.auth import get_user_model
-from dcim.models import Site
+
+from .helpers import create_base_test_data, cleanup_base_test_data
 
 # Conditional import - allows module to load even when Playwright isn't installed
 try:
@@ -99,17 +100,14 @@ class ExportYAMLE2ETestCase(StaticLiveServerTestCase):
             is_superuser=True
         )
 
+        # Create base test data (DeviceTypes, Extensions, etc.)
+        self.test_data = create_base_test_data()
+
         # Create new page for each test
         self.page = self.context.new_page()
 
         # Login to NetBox
         self._login()
-
-        # Create test site
-        self.site, _ = Site.objects.get_or_create(
-            name='E2E Export Test Site',
-            slug='e2e-export-test-site'
-        )
 
     def tearDown(self):
         """Clean up after each test"""
@@ -117,9 +115,8 @@ class ExportYAMLE2ETestCase(StaticLiveServerTestCase):
         for file in self.download_dir.glob('*'):
             file.unlink()
 
-        # Clean up test site
-        if hasattr(self, 'site'):
-            self.site.delete()
+        # Clean up base test data
+        cleanup_base_test_data()
 
         if hasattr(self, 'page'):
             self.page.close()
@@ -144,8 +141,7 @@ class ExportYAMLE2ETestCase(StaticLiveServerTestCase):
         # Create plan
         plan = TopologyPlan.objects.create(
             name=f'E2E Export Test Plan {int(time.time())}',
-            customer_name='E2E Export Customer',
-            site=self.site
+            customer_name='E2E Export Customer'
         )
 
         # Create server class
@@ -153,19 +149,21 @@ class ExportYAMLE2ETestCase(StaticLiveServerTestCase):
             plan=plan,
             server_class_id='export-test-servers',
             description='Export Test Servers',
-            category='GPU',
+            category='gpu',
             quantity=2,
-            gpus_per_server=8
+            gpus_per_server=8,
+            server_device_type=self.test_data['server_type']
         )
 
         # Create switch class
         switch_class = PlanSwitchClass.objects.create(
             plan=plan,
             switch_class_id='export-test-leaf',
-            fabric='Frontend',
+            fabric='frontend',
             hedgehog_role='server-leaf',
             calculated_quantity=2,
-            effective_quantity=2
+            effective_quantity=2,
+            device_type_extension=self.test_data['switch_ext']
         )
 
         # Create server connection

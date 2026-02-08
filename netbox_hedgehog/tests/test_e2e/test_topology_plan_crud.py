@@ -32,6 +32,8 @@ from django.contrib.auth import get_user_model
 from django.contrib.contenttypes.models import ContentType
 from users.models import ObjectPermission
 
+from .helpers import create_base_test_data, cleanup_base_test_data
+
 # Conditional import - allows module to load even when Playwright isn't installed
 try:
     from playwright.sync_api import sync_playwright, expect
@@ -86,6 +88,9 @@ class TopologyPlanCRUDE2ETestCase(StaticLiveServerTestCase):
             is_superuser=True
         )
 
+        # Create base test data (DeviceTypes, Extensions, etc.)
+        self.test_data = create_base_test_data()
+
         # Create new page for each test
         self.page = self.context.new_page()
 
@@ -94,6 +99,9 @@ class TopologyPlanCRUDE2ETestCase(StaticLiveServerTestCase):
 
     def tearDown(self):
         """Clean up after each test"""
+        # Clean up base test data
+        cleanup_base_test_data()
+
         if hasattr(self, 'page'):
             self.page.close()
         if hasattr(self, 'user'):
@@ -267,20 +275,12 @@ class TopologyPlanCRUDE2ETestCase(StaticLiveServerTestCase):
         Creates a plan first, then views its detail page.
         """
         from netbox_hedgehog.models.topology_planning import TopologyPlan
-        from dcim.models import Site
 
-        # Create a site for the plan
-        site, _ = Site.objects.get_or_create(
-            name='E2E Test Site',
-            slug='e2e-test-site'
-        )
-
-        # Create a test plan via ORM
+        # Create a test plan via ORM (no site field - doesn't exist in model)
         plan = TopologyPlan.objects.create(
             name='E2E Test Plan for Detail View',
             customer_name='E2E Customer',
-            description='Test plan for detail view testing',
-            site=site
+            description='Test plan for detail view testing'
         )
 
         try:
@@ -301,7 +301,6 @@ class TopologyPlanCRUDE2ETestCase(StaticLiveServerTestCase):
         finally:
             # Cleanup
             plan.delete()
-            site.delete()
 
     # =========================================================================
     # UPDATE Tests
@@ -320,21 +319,13 @@ class TopologyPlanCRUDE2ETestCase(StaticLiveServerTestCase):
         6. Verify changes persisted
         """
         from netbox_hedgehog.models.topology_planning import TopologyPlan
-        from dcim.models import Site
-
-        # Create a site
-        site, _ = Site.objects.get_or_create(
-            name='E2E Test Site',
-            slug='e2e-test-site'
-        )
 
         # Create a test plan
         original_name = f"Original Plan {int(time.time())}"
         plan = TopologyPlan.objects.create(
             name=original_name,
             customer_name='Original Customer',
-            description='Original description',
-            site=site
+            description='Original description'
         )
 
         try:
@@ -383,7 +374,6 @@ class TopologyPlanCRUDE2ETestCase(StaticLiveServerTestCase):
         finally:
             # Cleanup
             plan.delete()
-            site.delete()
 
     # =========================================================================
     # DELETE Tests
@@ -400,20 +390,12 @@ class TopologyPlanCRUDE2ETestCase(StaticLiveServerTestCase):
         4. Plan no longer appears in list
         """
         from netbox_hedgehog.models.topology_planning import TopologyPlan
-        from dcim.models import Site
-
-        # Create a site
-        site, _ = Site.objects.get_or_create(
-            name='E2E Test Site Delete',
-            slug='e2e-test-site-delete'
-        )
 
         # Create a test plan to delete
         plan_to_delete = TopologyPlan.objects.create(
             name=f"Plan to Delete {int(time.time())}",
             customer_name='Delete Test Customer',
-            description='This plan will be deleted',
-            site=site
+            description='This plan will be deleted'
         )
         plan_pk = plan_to_delete.pk
         plan_name = plan_to_delete.name
@@ -450,8 +432,8 @@ class TopologyPlanCRUDE2ETestCase(StaticLiveServerTestCase):
                            "Plan should be deleted from database")
 
         finally:
-            # Cleanup site (plan should already be deleted)
-            site.delete()
+            # Cleanup (plan should already be deleted)
+            pass
 
     # =========================================================================
     # LIST/FILTER/SEARCH Tests
@@ -464,21 +446,13 @@ class TopologyPlanCRUDE2ETestCase(StaticLiveServerTestCase):
         Creates multiple plans and verifies they all appear in the list.
         """
         from netbox_hedgehog.models.topology_planning import TopologyPlan
-        from dcim.models import Site
-
-        # Create a site
-        site, _ = Site.objects.get_or_create(
-            name='E2E Test Site List',
-            slug='e2e-test-site-list'
-        )
 
         # Create multiple test plans
         plans = []
         for i in range(3):
             plan = TopologyPlan.objects.create(
                 name=f"List Test Plan {i} {int(time.time())}",
-                customer_name=f'Customer {i}',
-                site=site
+                customer_name=f'Customer {i}'
             )
             plans.append(plan)
 
@@ -498,7 +472,6 @@ class TopologyPlanCRUDE2ETestCase(StaticLiveServerTestCase):
             # Cleanup
             for plan in plans:
                 plan.delete()
-            site.delete()
 
     # =========================================================================
     # PERMISSION Tests
