@@ -74,11 +74,9 @@ jobs:
             netbox-worker:
               volumes:
                 - ./plugin-source:/opt/netbox-plugin:ro
-            netbox-housekeeping:
-              volumes:
-                - ./plugin-source:/opt/netbox-plugin:ro
           EOF
-          echo "Docker override created"
+          echo "Docker override created:"
+          cat docker-compose.override.yml
 
       - name: Start NetBox container
         run: |
@@ -108,7 +106,7 @@ jobs:
           docker cp plugins.py netbox-docker-netbox-1:/etc/netbox/config/plugins.py
 
           # Restart NetBox to load the plugin
-          docker compose restart netbox netbox-worker netbox-housekeeping
+          docker compose restart netbox netbox-worker
 
           # Wait for NetBox to be ready
           echo "Waiting for NetBox to restart with plugin..."
