@@ -1,0 +1,173 @@
+name: E2E Browser Tests
+
+on:
+  schedule:
+    # Run nightly at 2:00 AM UTC
+    - cron: '0 2 * * *'
+  workflow_dispatch:  # Allow manual trigger
+  # Note: PRs validate E2E test code quality via unit tests (import/skip checks)
+  # Full browser-based execution runs nightly or on-demand to avoid CI infrastructure complexity
+
+env:
+  # NetBox configuration
+  NETBOX_VERSION: "4.3"
+  PYTHON_VERSION: "3.11"
+
+  # Test configuration
+  RUN_E2E_TESTS: "true"
+  PLAYWRIGHT_HEADLESS: "true"
+
+jobs:
+  e2e-tests:
+    name: E2E Tests (Playwright)
+    runs-on: ubuntu-latest
+
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # Full history for proper context
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: 'pip'
+
+      - name: Install Playwright dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install playwright pytest-playwright
+          playwright install --with-deps chromium
+
+      - name: Clone netbox-docker
+        run: |
+          git clone https://github.com/netbox-community/netbox-docker.git
+          cd netbox-docker
+          git checkout release
+
+      - name: Start NetBox container
+        run: |
+          cd netbox-docker
+
+          # Start NetBox with default configuration
+          docker compose up -d
+
+          # Wait for NetBox to be healthy
+          echo "Waiting for NetBox to be healthy..."
+          timeout 180 bash -c 'until docker compose ps netbox | grep -q "healthy"; do sleep 5; echo "Still waiting..."; done'
+
+          echo "NetBox is healthy!"
+
+      - name: Install and configure plugin
+        run: |
+          cd netbox-docker
+
+          # Copy plugin files into container
+          docker compose exec -T netbox mkdir -p /tmp/plugin
+          docker compose cp ../netbox_hedgehog netbox:/tmp/plugin/
+          docker compose cp ../setup.py netbox:/tmp/plugin/ 2>/dev/null || true
+          docker compose cp ../pyproject.toml netbox:/tmp/plugin/ 2>/dev/null || true
+
+          # Install plugin
+          docker compose exec -T netbox pip install /tmp/plugin/
+
+          # Enable plugin in configuration
+          docker compose exec -T netbox bash -c 'echo "PLUGINS = [\"netbox_hedgehog\"]" > /etc/netbox/config/plugins.py'
+
+          # Restart to load plugin
+          docker compose restart netbox
+
+          # Wait for NetBox to be healthy again
+          echo "Waiting for NetBox to restart with plugin..."
+          timeout 180 bash -c 'until docker compose ps netbox | grep -q "healthy"; do sleep 5; echo "Still waiting..."; done'
+
+          echo "NetBox restarted with plugin!"
+
+      - name: Install Playwright in container
+        run: |
+          cd netbox-docker
+          docker compose exec -T netbox pip install playwright
+          docker compose exec -T netbox playwright install --with-deps chromium
+
+      - name: Create NetBox superuser
+        run: |
+          cd netbox-docker
+          docker compose exec -T netbox python manage.py shell <<EOF
+          from django.contrib.auth import get_user_model
+          User = get_user_model()
+          if not User.objects.filter(username='admin').exists():
+              User.objects.create_superuser('admin', 'admin@example.com', 'admin')
+              print("Superuser created")
+          else:
+              admin = User.objects.get(username='admin')
+              admin.set_password('admin')
+              admin.is_superuser = True
+              admin.is_staff = True
+              admin.save()
+              print("Superuser updated")
+          EOF
+
+      - name: Run E2E Tests
+        env:
+          RUN_E2E_TESTS: "true"
+          PLAYWRIGHT_HEADLESS: "true"
+        run: |
+          cd netbox-docker
+
+          # Run E2E tests inside container
+          docker compose exec -T \
+            -e RUN_E2E_TESTS=true \
+            -e PLAYWRIGHT_HEADLESS=true \
+            netbox python manage.py test netbox_hedgehog.tests.test_e2e --keepdb -v 2
+
+      - name: Capture NetBox logs on failure
+        if: failure()
+        run: |
+          cd netbox-docker
+          docker compose logs netbox > netbox-logs.txt
+          cat netbox-logs.txt
+
+      - name: Upload NetBox logs
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: netbox-logs
+          path: netbox-docker/netbox-logs.txt
+          retention-days: 7
+
+      - name: Upload test screenshots on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-screenshots
+          path: |
+            **/test-screenshots/**/*.png
+            **/screenshots/**/*.png
+          retention-days: 7
+          if-no-files-found: ignore
+
+      - name: Stop NetBox container
+        if: always()
+        run: |
+          cd netbox-docker
+          docker compose down -v
+
+  test-summary:
+    name: E2E Test Summary
+    runs-on: ubuntu-latest
+    needs: e2e-tests
+    if: always()
+
+    steps:
+      - name: Check test results
+        run: |
+          if [ "${{ needs.e2e-tests.result }}" = "success" ]; then
+            echo "[PASS] All E2E tests passed!"
+            exit 0
+          else
+            echo "[FAIL] E2E tests failed. Check job logs for details."
+            exit 1
+          fi
