@@ -58,7 +58,10 @@ jobs:
       - name: Copy plugin source to netbox-docker
         run: |
           # Copy entire plugin directory (including setup.py) for installation
-          cp -r . netbox-docker/plugin-source/
+          mkdir -p netbox-docker/plugin-source
+          cp -r netbox_hedgehog setup.py pyproject.toml README.md LICENSE MANIFEST.in netbox-docker/plugin-source/ 2>/dev/null || true
+          # If some files don't exist, that's okay - copy what we have
+          ls -la netbox-docker/plugin-source/
 
       - name: Create docker-compose.override.yml
         run: |
