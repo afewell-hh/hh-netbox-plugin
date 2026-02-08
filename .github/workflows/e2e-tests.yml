@@ -92,12 +92,12 @@ jobs:
           docker compose exec -T netbox pip install -e /opt/netbox-plugin
 
           # Enable plugin in configuration
-          docker compose exec -T netbox sh -c 'cat > /etc/netbox/config/plugins.py <<EOF
+          docker compose exec -T netbox bash -c 'cat > /etc/netbox/config/plugins.py << "PLUGINEOF"
 PLUGINS = ["netbox_hedgehog"]
 PLUGINS_CONFIG = {
     "netbox_hedgehog": {}
 }
-EOF'
+PLUGINEOF'
 
           # Restart NetBox to load the plugin
           docker compose restart netbox netbox-worker netbox-housekeeping
