@@ -55,25 +55,27 @@ jobs:
           cd netbox-docker
           git checkout release
 
-      - name: Copy plugin to netbox-docker
+      - name: Copy plugin source to netbox-docker
         run: |
-          mkdir -p netbox-docker/configuration/plugins
-          cp -r netbox_hedgehog netbox-docker/configuration/plugins/
+          # Copy entire plugin directory (including setup.py) for installation
+          cp -r . netbox-docker/plugin-source/
 
-      - name: Enable plugin in NetBox configuration
+      - name: Create docker-compose.override.yml
         run: |
           cd netbox-docker
-          cat > configuration/plugins.py <<'EOF'
-          # Enable netbox_hedgehog plugin for E2E tests
-          PLUGINS = ["netbox_hedgehog"]
-
-          # Plugin configuration (if needed)
-          PLUGINS_CONFIG = {
-              "netbox_hedgehog": {}
-          }
+          cat > docker-compose.override.yml <<'EOF'
+          services:
+            netbox:
+              volumes:
+                - ./plugin-source:/opt/netbox-plugin:ro
+            netbox-worker:
+              volumes:
+                - ./plugin-source:/opt/netbox-plugin:ro
+            netbox-housekeeping:
+              volumes:
+                - ./plugin-source:/opt/netbox-plugin:ro
           EOF
-          echo "Plugin configuration created:"
-          cat configuration/plugins.py
+          echo "Docker override created"
 
       - name: Start NetBox container
         run: |
@@ -82,8 +84,26 @@ jobs:
           # Start NetBox with docker compose
           docker compose up -d
 
+      - name: Install plugin in NetBox container
+        run: |
+          cd netbox-docker
+
+          # Install the plugin in editable mode
+          docker compose exec -T netbox pip install -e /opt/netbox-plugin
+
+          # Enable plugin in configuration
+          docker compose exec -T netbox sh -c 'cat > /etc/netbox/config/plugins.py <<EOF
+PLUGINS = ["netbox_hedgehog"]
+PLUGINS_CONFIG = {
+    "netbox_hedgehog": {}
+}
+EOF'
+
+          # Restart NetBox to load the plugin
+          docker compose restart netbox netbox-worker netbox-housekeeping
+
           # Wait for NetBox to be ready
-          echo "Waiting for NetBox to start..."
+          echo "Waiting for NetBox to restart with plugin..."
           timeout 300 bash -c 'until curl -s http://localhost:8000/login/ > /dev/null; do sleep 5; echo "Still waiting..."; done'
 
           # Verify NetBox is accessible
