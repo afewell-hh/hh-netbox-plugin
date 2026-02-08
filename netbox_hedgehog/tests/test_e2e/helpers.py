@@ -3,15 +3,18 @@ Helper functions for E2E test data creation.
 
 Provides consistent test data setup across all E2E tests, ensuring
 model fields match actual database schema.
+
+IMPORTANT: These helpers create only REFERENCE DATA (Manufacturer, DeviceType,
+DeviceTypeExtension, BreakoutOption). They do NOT create plan-specific objects
+(TopologyPlan, PlanServerClass, PlanSwitchClass, SwitchPortZone) as those
+require a TopologyPlan which each test creates individually.
 """
 
 from dcim.models import DeviceType, Manufacturer
 from netbox_hedgehog.models.topology_planning import (
     DeviceTypeExtension,
     BreakoutOption,
-    SwitchPortZone,
 )
-from netbox_hedgehog.choices import PortZoneTypeChoices
 
 
 def create_test_manufacturer():
@@ -26,6 +29,9 @@ def create_test_manufacturer():
 def create_test_device_types(manufacturer):
     """
     Create test device types for servers and switches.
+
+    Args:
+        manufacturer: Manufacturer instance
 
     Returns:
         tuple: (server_type, switch_type)
@@ -84,50 +90,26 @@ def create_test_breakout_option():
     return breakout
 
 
-def create_test_switch_port_zone(device_type_extension, breakout):
-    """
-    Create a switch port zone for downlink connections.
-
-    Args:
-        device_type_extension: DeviceTypeExtension instance
-        breakout: BreakoutOption instance
-
-    Returns:
-        SwitchPortZone instance
-    """
-    port_zone, _ = SwitchPortZone.objects.get_or_create(
-        device_type_extension=device_type_extension,
-        zone_name='downlink',
-        defaults={
-            'zone_type': PortZoneTypeChoices.DOWNLINK,
-            'port_count': 32,
-            'native_speed': 800,
-            'supported_breakouts': [breakout.breakout_id],
-            'port_range': 'Ethernet1/1-32'
-        }
-    )
-    return port_zone
-
-
 def create_base_test_data():
     """
-    Create all base test data needed for E2E tests.
+    Create all base REFERENCE DATA needed for E2E tests.
 
-    This creates:
+    This creates only reference data that can be shared across tests:
     - Manufacturer
     - Server and Switch DeviceTypes
     - DeviceTypeExtension for switches
     - BreakoutOption
-    - SwitchPortZone
+
+    Does NOT create plan-specific objects (TopologyPlan, PlanServerClass,
+    PlanSwitchClass, SwitchPortZone) as those require a TopologyPlan instance.
 
     Returns:
-        dict: Dictionary with all created objects
+        dict: Dictionary with created reference data objects
     """
     manufacturer = create_test_manufacturer()
     server_type, switch_type = create_test_device_types(manufacturer)
     switch_ext = create_test_device_type_extension(switch_type)
     breakout = create_test_breakout_option()
-    port_zone = create_test_switch_port_zone(switch_ext, breakout)
 
     return {
         'manufacturer': manufacturer,
@@ -135,19 +117,17 @@ def create_base_test_data():
         'switch_type': switch_type,
         'switch_ext': switch_ext,
         'breakout': breakout,
-        'port_zone': port_zone,
     }
 
 
 def cleanup_base_test_data():
     """
-    Clean up base test data.
+    Clean up base reference data.
 
     Call this in tearDown or tearDownClass to remove test data.
+    Deletes in reverse order of dependencies.
     """
     # Delete in reverse order of dependencies
-    SwitchPortZone.objects.filter(zone_name='downlink',
-                                   device_type_extension__device_type__slug='e2e-test-switch').delete()
     BreakoutOption.objects.filter(breakout_id='e2e-test-4x200g').delete()
     DeviceTypeExtension.objects.filter(device_type__slug__startswith='e2e-test-').delete()
     DeviceType.objects.filter(slug__startswith='e2e-test-').delete()
