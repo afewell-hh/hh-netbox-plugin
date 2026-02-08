@@ -55,65 +55,43 @@ jobs:
           cd netbox-docker
           git checkout release
 
-      - name: Copy plugin source to netbox-docker
-        run: |
-          # Copy entire plugin directory (including setup.py) for installation
-          mkdir -p netbox-docker/plugin-source
-          cp -r netbox_hedgehog setup.py pyproject.toml README.md LICENSE MANIFEST.in netbox-docker/plugin-source/ 2>/dev/null || true
-          # If some files don't exist, that's okay - copy what we have
-          ls -la netbox-docker/plugin-source/
-
-      - name: Create docker-compose.override.yml
-        run: |
-          cd netbox-docker
-          cat > docker-compose.override.yml <<'EOF'
-          services:
-            netbox:
-              volumes:
-                - ./plugin-source:/opt/netbox-plugin:ro
-            netbox-worker:
-              volumes:
-                - ./plugin-source:/opt/netbox-plugin:ro
-          EOF
-          echo "Docker override created:"
-          cat docker-compose.override.yml
-
       - name: Start NetBox container
         run: |
           cd netbox-docker
 
-          # Start NetBox with docker compose
+          # Start NetBox with default configuration
           docker compose up -d
 
-      - name: Create plugins configuration
-        run: |
-          cd netbox-docker
-          cat > plugins.py <<'EOF'
-          PLUGINS = ["netbox_hedgehog"]
-          PLUGINS_CONFIG = {
-              "netbox_hedgehog": {}
-          }
-          EOF
+          # Wait for NetBox to be healthy
+          echo "Waiting for NetBox to be healthy..."
+          timeout 180 bash -c 'until docker compose ps netbox | grep -q "healthy"; do sleep 5; echo "Still waiting..."; done'
 
-      - name: Install plugin in NetBox container
+          echo "NetBox is healthy!"
+
+      - name: Install and configure plugin
         run: |
           cd netbox-docker
 
-          # Install the plugin in editable mode
-          docker compose exec -T netbox pip install -e /opt/netbox-plugin
+          # Copy plugin files into container
+          docker compose exec -T netbox mkdir -p /tmp/plugin
+          docker cp ../netbox_hedgehog netbox-docker-netbox-1:/tmp/plugin/
+          docker cp ../setup.py netbox-docker-netbox-1:/tmp/plugin/ 2>/dev/null || true
+          docker cp ../pyproject.toml netbox-docker-netbox-1:/tmp/plugin/ 2>/dev/null || true
 
-          # Copy plugin configuration into container
-          docker cp plugins.py netbox-docker-netbox-1:/etc/netbox/config/plugins.py
+          # Install plugin
+          docker compose exec -T netbox pip install /tmp/plugin/
 
-          # Restart NetBox to load the plugin
-          docker compose restart netbox netbox-worker
+          # Enable plugin in configuration
+          docker compose exec -T netbox bash -c 'echo "PLUGINS = [\"netbox_hedgehog\"]" > /etc/netbox/config/plugins.py'
 
-          # Wait for NetBox to be ready
+          # Restart to load plugin
+          docker compose restart netbox
+
+          # Wait for NetBox to be healthy again
           echo "Waiting for NetBox to restart with plugin..."
-          timeout 300 bash -c 'until curl -s http://localhost:8000/login/ > /dev/null; do sleep 5; echo "Still waiting..."; done'
+          timeout 180 bash -c 'until docker compose ps netbox | grep -q "healthy"; do sleep 5; echo "Still waiting..."; done'
 
-          # Verify NetBox is accessible
-          curl -I http://localhost:8000/login/
+          echo "NetBox restarted with plugin!"
 
       - name: Install Playwright in container
         run: |
