@@ -91,6 +91,8 @@ def validate_yaml(yaml_content: str, timeout: int = 60) -> Tuple[bool, str, str]
         )
 
         if init_result.returncode != 0:
+            # Clean up temp directory before returning
+            shutil.rmtree(workdir)
             return (
                 False,
                 init_result.stdout,
