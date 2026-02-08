@@ -60,6 +60,21 @@ jobs:
           mkdir -p netbox-docker/configuration/plugins
           cp -r netbox_hedgehog netbox-docker/configuration/plugins/
 
+      - name: Enable plugin in NetBox configuration
+        run: |
+          cd netbox-docker
+          cat > configuration/plugins.py <<'EOF'
+          # Enable netbox_hedgehog plugin for E2E tests
+          PLUGINS = ["netbox_hedgehog"]
+
+          # Plugin configuration (if needed)
+          PLUGINS_CONFIG = {
+              "netbox_hedgehog": {}
+          }
+          EOF
+          echo "Plugin configuration created:"
+          cat configuration/plugins.py
+
       - name: Start NetBox container
         run: |
           cd netbox-docker
