@@ -146,7 +146,6 @@ class GenerateDevicesE2ETestCase(StaticLiveServerTestCase):
             fabric='frontend',
             hedgehog_role='server-leaf',
             calculated_quantity=2,
-            effective_quantity=2,
             device_type_extension=self.test_data['switch_ext']
         )
 

@@ -67,9 +67,9 @@ jobs:
 
           # Copy plugin files into container
           docker compose exec -T netbox mkdir -p /tmp/plugin
-          docker cp ../netbox_hedgehog netbox-docker-netbox-1:/tmp/plugin/
-          docker cp ../setup.py netbox-docker-netbox-1:/tmp/plugin/ 2>/dev/null || true
-          docker cp ../pyproject.toml netbox-docker-netbox-1:/tmp/plugin/ 2>/dev/null || true
+          docker compose cp ../netbox_hedgehog netbox:/tmp/plugin/
+          docker compose cp ../setup.py netbox:/tmp/plugin/ 2>/dev/null || true
+          docker compose cp ../pyproject.toml netbox:/tmp/plugin/ 2>/dev/null || true
 
           # Install plugin
           docker compose exec -T netbox pip install /tmp/plugin/
@@ -165,9 +165,9 @@ jobs:
       - name: Check test results
         run: |
           if [ "${{ needs.e2e-tests.result }}" = "success" ]; then
-            echo "✅ All E2E tests passed!"
+            echo "[PASS] All E2E tests passed!"
             exit 0
           else
-            echo "❌ E2E tests failed. Check job logs for details."
+            echo "[FAIL] E2E tests failed. Check job logs for details."
             exit 1
           fi
