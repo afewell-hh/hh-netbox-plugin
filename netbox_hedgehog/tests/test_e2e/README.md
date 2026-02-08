@@ -2,23 +2,29 @@
 
 ## Overview
 
-E2E tests use **Playwright** to test the plugin in a real browser, including:
+E2E tests use **Playwright** with **Django StaticLiveServerTestCase** to test the plugin in a real browser, including:
 - Client-side JavaScript execution
 - CSS rendering and active states
 - Navigation highlighting behavior
 - Full user interaction flows
+- Form submissions and validation
+- File downloads (YAML exports)
+- Permission enforcement
+- Multi-step workflows (generate devices, CRUD operations)
 
 These tests complement Django integration tests by verifying browser-based behavior that cannot be tested with Django's test client.
 
 ## Why E2E Tests?
 
-NetBox uses client-side JavaScript for navigation highlighting. Backend integration tests cannot verify:
-- JavaScript execution
-- CSS active states
-- Client-side routing logic
-- Browser rendering
+NetBox uses client-side JavaScript and complex forms. Backend integration tests cannot verify:
+- JavaScript execution (dynamic forms, navigation highlighting)
+- CSS active states and visual feedback
+- Actual button clicks and form interactions
+- File downloads
+- Browser rendering and layout
+- Real user workflows end-to-end
 
-E2E tests fill this gap by running tests in an actual browser.
+E2E tests fill this gap by running tests in an actual browser with a real test server.
 
 ## Setup
 
@@ -133,6 +139,42 @@ If you need to run in the container:
 | `test_dashboard_not_highlighted_on_topology_plans_page` | Dashboard is NOT current page when viewing Topology Plans |
 | `test_navigation_between_pages_updates_state` | Navigation state changes when moving between pages |
 | `test_url_path_components_are_distinct` | URLs don't share ambiguous path components (empty string) |
+
+### Topology Plan CRUD (`test_topology_plan_crud.py`)
+
+| Test | What It Verifies |
+|------|------------------|
+| `test_create_topology_plan_via_add_button` | Users can create plans via Add button and form |
+| `test_create_topology_plan_form_validation` | Form validation works for required fields |
+| `test_topology_plan_list_page_loads` | List page loads correctly |
+| `test_topology_plan_detail_page_loads` | Detail page displays plan information |
+| `test_edit_topology_plan_via_edit_button` | Users can edit existing plans |
+| `test_delete_topology_plan_with_confirmation` | Delete workflow with confirmation works |
+| `test_topology_plan_list_shows_multiple_plans` | List view shows all plans |
+| `test_add_button_not_visible_without_permission` | Permission enforcement for add operations |
+
+### Generate Devices Workflow (`test_generate_devices.py`)
+
+| Test | What It Verifies |
+|------|------------------|
+| `test_generate_button_visible_on_plan_detail` | Generate button exists on detail page |
+| `test_generate_preview_page_loads_with_counts` | Preview page shows accurate device counts |
+| `test_generate_preview_shows_warnings_for_empty_plan` | Warnings appear for empty plans |
+| `test_generate_confirm_creates_devices` | Complete workflow creates devices in NetBox |
+| `test_regeneration_shows_warning` | Regeneration shows appropriate warnings |
+| `test_plan_scoped_regeneration_isolation` | Regenerating Plan A doesn't affect Plan B (multi-tenant safety) |
+| `test_permission_denied_without_change_permission` | Users without permissions see access denied |
+
+### Export YAML Workflow (`test_export_yaml.py`)
+
+| Test | What It Verifies |
+|------|------------------|
+| `test_export_yaml_button_exists` | Export button exists on plan detail page |
+| `test_export_yaml_triggers_download` | Clicking button triggers file download |
+| `test_exported_yaml_is_valid` | Downloaded file is valid parseable YAML |
+| `test_exported_yaml_contains_connection_crds` | YAML contains proper Hedgehog Connection CRDs |
+| `test_exported_yaml_filename_convention` | File naming follows conventions |
+| `test_export_yaml_permission_enforcement` | Permission enforcement for exports |
 
 ## Troubleshooting
 
