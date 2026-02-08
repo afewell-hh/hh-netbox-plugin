@@ -3,11 +3,26 @@ Hedgehog Fabric (hhfab) CLI integration for wiring validation (Issue #159).
 
 This module provides helpers to invoke `hhfab validate` for validating
 generated wiring YAML diagrams against Hedgehog's authoritative schema.
+
+Execution Model:
+    hhfab requires an initialized working directory with:
+    - fab.yaml (created by `hhfab init --dev`)
+    - include/ directory (for YAML files to validate)
+    - result/ directory (for validation outputs)
+
+    The validate_yaml function:
+    1. Creates a temporary working directory
+    2. Runs `hhfab init --dev` to initialize it
+    3. Writes YAML to <tmp>/include/<name>.yaml
+    4. Runs `hhfab validate` with cwd in that directory
+    5. Cleans up the temporary directory
 """
 
 import subprocess
 import tempfile
 import os
+import shutil
+from pathlib import Path
 from typing import Tuple
 
 
@@ -30,16 +45,16 @@ def is_hhfab_available() -> bool:
         return False
 
 
-def validate_yaml(yaml_content: str, timeout: int = 30) -> Tuple[bool, str, str]:
+def validate_yaml(yaml_content: str, timeout: int = 60) -> Tuple[bool, str, str]:
     """
     Validate Hedgehog wiring YAML using `hhfab validate`.
 
-    Writes YAML content to a temporary file and invokes hhfab validate.
-    Handles graceful degradation when hhfab is not installed.
+    Creates a temporary hhfab working directory, initializes it with
+    `hhfab init --dev`, writes YAML to include/, and runs validation.
 
     Args:
         yaml_content: YAML string to validate
-        timeout: Command timeout in seconds (default: 30)
+        timeout: Command timeout in seconds (default: 60 - includes init time)
 
     Returns:
         Tuple of (success, stdout, stderr):
@@ -57,44 +72,63 @@ def validate_yaml(yaml_content: str, timeout: int = 30) -> Tuple[bool, str, str]
         return (
             False,
             "",
-            "hhfab CLI not found in PATH. Install hhfab to enable wiring validation."
+            "hhfab CLI not found in PATH. Install with: curl -fsSL https://i.hhdev.io/hhfab | bash"
         )
 
-    # Create temporary file for YAML content
+    # Create temporary working directory
+    workdir = None
     try:
-        with tempfile.NamedTemporaryFile(
-            mode='w',
-            suffix='.yaml',
-            delete=False,
-            encoding='utf-8'
-        ) as tmp_file:
-            tmp_file.write(yaml_content)
-            tmp_path = tmp_file.name
+        workdir = tempfile.mkdtemp(prefix='hhfab_validate_')
+        workdir_path = Path(workdir)
 
-        # Run hhfab validate
-        result = subprocess.run(
-            ['hhfab', 'validate', tmp_path],
+        # Initialize hhfab working directory
+        init_result = subprocess.run(
+            ['hhfab', 'init', '--dev'],
+            cwd=workdir,
+            capture_output=True,
+            text=True,
+            timeout=30
+        )
+
+        if init_result.returncode != 0:
+            return (
+                False,
+                init_result.stdout,
+                f"hhfab init failed: {init_result.stderr}"
+            )
+
+        # Write YAML to include/ directory
+        include_dir = workdir_path / 'include'
+        include_dir.mkdir(exist_ok=True)
+
+        yaml_file = include_dir / 'wiring.yaml'
+        yaml_file.write_text(yaml_content, encoding='utf-8')
+
+        # Run hhfab validate from the working directory
+        validate_result = subprocess.run(
+            ['hhfab', 'validate'],
+            cwd=workdir,
             capture_output=True,
             text=True,
             timeout=timeout
         )
 
-        # Clean up temp file
-        os.unlink(tmp_path)
+        # Clean up temp directory
+        shutil.rmtree(workdir)
 
         # Return result
         return (
-            result.returncode == 0,
-            result.stdout,
-            result.stderr
+            validate_result.returncode == 0,
+            validate_result.stdout,
+            validate_result.stderr
         )
 
     except subprocess.TimeoutExpired:
-        # Clean up temp file on timeout
-        if 'tmp_path' in locals():
+        # Clean up temp directory on timeout
+        if workdir and os.path.exists(workdir):
             try:
-                os.unlink(tmp_path)
-            except FileNotFoundError:
+                shutil.rmtree(workdir)
+            except Exception:
                 pass
 
         return (
@@ -104,11 +138,11 @@ def validate_yaml(yaml_content: str, timeout: int = 30) -> Tuple[bool, str, str]
         )
 
     except Exception as e:
-        # Clean up temp file on error
-        if 'tmp_path' in locals():
+        # Clean up temp directory on error
+        if workdir and os.path.exists(workdir):
             try:
-                os.unlink(tmp_path)
-            except FileNotFoundError:
+                shutil.rmtree(workdir)
+            except Exception:
                 pass
 
         return (
