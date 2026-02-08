@@ -84,6 +84,16 @@ jobs:
           # Start NetBox with docker compose
           docker compose up -d
 
+      - name: Create plugins configuration
+        run: |
+          cd netbox-docker
+          cat > plugins.py <<'EOF'
+          PLUGINS = ["netbox_hedgehog"]
+          PLUGINS_CONFIG = {
+              "netbox_hedgehog": {}
+          }
+          EOF
+
       - name: Install plugin in NetBox container
         run: |
           cd netbox-docker
@@ -91,13 +101,8 @@ jobs:
           # Install the plugin in editable mode
           docker compose exec -T netbox pip install -e /opt/netbox-plugin
 
-          # Enable plugin in configuration
-          docker compose exec -T netbox bash -c 'cat > /etc/netbox/config/plugins.py << "PLUGINEOF"
-PLUGINS = ["netbox_hedgehog"]
-PLUGINS_CONFIG = {
-    "netbox_hedgehog": {}
-}
-PLUGINEOF'
+          # Copy plugin configuration into container
+          docker cp plugins.py netbox-docker-netbox-1:/etc/netbox/config/plugins.py
 
           # Restart NetBox to load the plugin
           docker compose restart netbox netbox-worker netbox-housekeeping
