@@ -51,7 +51,8 @@ class Command(BaseCommand):
                 self.style.WARNING(
                     "WARNING: hhfab CLI not found in PATH. Skipping validation.\n"
                     "         Install hhfab to enable wiring diagram validation.\n"
-                    "         curl -fsSL https://i.hhdev.io/hhfab | bash"
+                    "         curl -fsSL https://i.hhdev.io/hhfab | bash\n"
+                    "         Or run: scripts/install_hhfab_in_container.sh"
                 )
             )
             if verbosity >= 2:
