@@ -81,10 +81,15 @@ def validate_yaml(yaml_content: str, timeout: int = 60) -> Tuple[bool, str, str]
         workdir = tempfile.mkdtemp(prefix='hhfab_validate_')
         workdir_path = Path(workdir)
 
+        # Set up environment with writable HOME for hhfab cache
+        hhfab_env = os.environ.copy()
+        hhfab_env['HOME'] = workdir
+
         # Initialize hhfab working directory
         init_result = subprocess.run(
             ['hhfab', 'init', '--dev'],
             cwd=workdir,
+            env=hhfab_env,
             capture_output=True,
             text=True,
             timeout=30
@@ -110,6 +115,7 @@ def validate_yaml(yaml_content: str, timeout: int = 60) -> Tuple[bool, str, str]
         validate_result = subprocess.run(
             ['hhfab', 'validate'],
             cwd=workdir,
+            env=hhfab_env,
             capture_output=True,
             text=True,
             timeout=timeout
