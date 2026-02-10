@@ -38,8 +38,20 @@
               </a>
             </td>
           </tr>
+          {% if object.redundancy_type %}
           <tr>
-            <th scope="row">MCLAG Pair</th>
+            <th scope="row">Redundancy Type</th>
+            <td>{% badge object.redundancy_type bg_color="indigo" %}</td>
+          </tr>
+          {% endif %}
+          {% if object.redundancy_group %}
+          <tr>
+            <th scope="row">Redundancy Group</th>
+            <td>{{ object.redundancy_group }}</td>
+          </tr>
+          {% endif %}
+          <tr>
+            <th scope="row">MCLAG Pair <span class="badge badge-warning">DEPRECATED</span></th>
             <td>{% checkmark object.mclag_pair %}</td>
           </tr>
           <tr>

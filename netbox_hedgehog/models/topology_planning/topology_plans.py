@@ -296,8 +296,24 @@ class PlanSwitchClass(NetBoxModel):
     def get_absolute_url(self):
         return reverse('plugins:netbox_hedgehog:planswitchclass_detail', args=[self.pk])
 
+    def save(self, *args, **kwargs):
+        """
+        Auto-convert deprecated mclag_pair to redundancy_type (DIET-165 Phase 5).
+
+        Per Phase 3 spec addendum: mclag_pair=True auto-converts to redundancy_type='mclag'
+        and redundancy_group='mclag-<switch_class_id>' on save.
+        """
+        # Auto-conversion: mclag_pair → redundancy_type (only if redundancy_type not already set)
+        if self.mclag_pair and not self.redundancy_type:
+            self.redundancy_type = 'mclag'
+            # Auto-generate redundancy_group if not set
+            if not self.redundancy_group:
+                self.redundancy_group = f'mclag-{self.switch_class_id}'
+
+        super().save(*args, **kwargs)
+
     def clean(self):
-        """Validate redundancy configuration."""
+        """Validate redundancy configuration (DIET-165 Phase 5)."""
         super().clean()
 
         # If redundancy_type is set, redundancy_group is required
@@ -315,11 +331,42 @@ class PlanSwitchClass(NetBoxModel):
                     'groups': f'Redundancy group "{self.redundancy_group}" must be included in groups list.'
                 })
 
-        # MCLAG switch count validation (if calculated_quantity is set)
-        if self.mclag_pair and self.calculated_quantity and self.calculated_quantity % 2 != 0:
-            raise ValidationError({
-                'calculated_quantity': f'MCLAG switch class must have even switch count, got {self.calculated_quantity}.'
-            })
+        # Redundancy-specific switch count validation (DIET-165 Phase 5)
+        # Use override_quantity if set (user's explicit value), otherwise calculated_quantity
+        quantity_to_validate = self.override_quantity if self.override_quantity is not None else self.calculated_quantity
+
+        # Determine which field to assign errors to
+        # If override_quantity is set, user explicitly provided it → assign errors to override_quantity
+        # If override_quantity is None, user relies on calculated → use non-field error
+        error_field = 'override_quantity' if self.override_quantity is not None else '__all__'
+
+        if quantity_to_validate is not None:
+            if self.redundancy_type == 'mclag':
+                # MCLAG: Must have even quantity, minimum 2
+                if quantity_to_validate < 2:
+                    raise ValidationError({
+                        error_field: 'MCLAG requires at least 2 switches.'
+                    })
+                if quantity_to_validate % 2 != 0:
+                    raise ValidationError({
+                        error_field: f'MCLAG requires an even number of switches, got {quantity_to_validate}.'
+                    })
+            elif self.redundancy_type == 'eslag':
+                # ESLAG: 2-4 switches
+                if quantity_to_validate < 2:
+                    raise ValidationError({
+                        error_field: 'ESLAG requires at least 2 switches.'
+                    })
+                if quantity_to_validate > 4:
+                    raise ValidationError({
+                        error_field: f'ESLAG supports a maximum 4 switches per group, got {quantity_to_validate}.'
+                    })
+            # Deprecated mclag_pair field (backward compatibility)
+            elif self.mclag_pair and quantity_to_validate > 0 and quantity_to_validate % 2 != 0:
+                raise ValidationError({
+                    error_field: f'MCLAG pair requires even switch count, got {quantity_to_validate}. '
+                                 f'(Note: mclag_pair is deprecated, use redundancy_type="mclag" instead)'
+                })
 
     @property
     def effective_quantity(self):
