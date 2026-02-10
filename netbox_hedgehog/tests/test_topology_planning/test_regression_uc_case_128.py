@@ -11,11 +11,16 @@ The test validates that:
 4. hhfab validation still passes (if hhfab is available)
 
 This is the 1 regression test specified in the Phase 3 spec addendum.
+
+SLOW TEST: This test generates 164 devices + 1096 interfaces + 548 cables.
+Execution time: 10-15 minutes.
+
+Run separately with: python manage.py test --tag=slow --keepdb
 """
 
 from io import StringIO
 from django.core.management import call_command
-from django.test import TestCase
+from django.test import TestCase, tag
 
 from dcim.models import Device, Interface, Cable
 
@@ -34,12 +39,19 @@ from netbox_hedgehog.services.yaml_generator import generate_yaml_for_plan
 PLAN_NAME = "UX Case 128GPU Odd Ports"
 
 
+@tag('slow', 'regression')
 class UCCase128GPURegressionTestCase(TestCase):
     """
     Regression test to ensure UC Case 128 GPU plan continues to work
     after NIC modeling + multi-homing changes.
 
     This test serves as a backward compatibility guarantee.
+
+    SLOW TEST: Generates 164 devices, 1096 interfaces, 548 cables.
+    Execution time: 10-15 minutes.
+
+    Run with: python manage.py test --tag=slow --keepdb
+    Skip with: python manage.py test --exclude-tag=slow
     """
 
     @classmethod
