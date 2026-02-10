@@ -184,11 +184,13 @@ class PlanServerClassForm(NetBoxModelForm):
 
 class PlanSwitchClassForm(NetBoxModelForm):
     """
-    Form for creating and editing PlanSwitchClasses.
+    Form for creating and editing PlanSwitchClasses (DIET-165 Phase 5).
 
     Switch classes define groups of identical switches. Their quantities are
     automatically calculated based on server port demand, but can be manually
     overridden via the override_quantity field.
+
+    Redundancy fields (redundancy_type/redundancy_group) replace deprecated mclag_pair.
     """
 
     plan = forms.ModelChoiceField(
@@ -211,6 +213,8 @@ class PlanSwitchClassForm(NetBoxModelForm):
             'fabric',
             'hedgehog_role',
             'device_type_extension',
+            'redundancy_type',
+            'redundancy_group',
             'uplink_ports_per_switch',
             'mclag_pair',
             'override_quantity',
@@ -225,9 +229,11 @@ class PlanSwitchClassForm(NetBoxModelForm):
             'fabric': 'Fabric type (Frontend, Backend, OOB)',
             'hedgehog_role': 'Hedgehog role (Spine, Server Leaf, Border Leaf)',
             'device_type_extension': 'Switch model with Hedgehog-specific metadata',
-            'uplink_ports_per_switch': 'Number of uplink ports to reserve per switch',
-            'mclag_pair': 'Whether switches are deployed in MCLAG pairs (affects quantity rounding)',
-            'override_quantity': 'Manual override of calculated quantity (leave empty to use calculated value)',
+            'redundancy_type': 'Redundancy mode (MCLAG=even pairs with peer link, ESLAG=2-4 switches without peer link)',
+            'redundancy_group': 'Redundancy group name (must match a SwitchGroup). Required if redundancy_type is set.',
+            'uplink_ports_per_switch': '[DEPRECATED] Number of uplink ports per switch. Use SwitchPortZone with zone_type="uplink" instead. This field will be removed in v3.0.',
+            'mclag_pair': '[DEPRECATED] Use redundancy_type="mclag" instead. This field will be removed in v3.0.',
+            'override_quantity': 'Manual override of calculated quantity (leave empty to use calculated value). Must satisfy redundancy constraints (MCLAG=even, ESLAG=2-4).',
             'notes': 'Additional notes about this switch class',
         }
 
@@ -238,19 +244,24 @@ class PlanSwitchClassForm(NetBoxModelForm):
 
 class PlanServerConnectionForm(NetBoxModelForm):
     """
-    Form for creating and editing PlanServerConnections.
+    Form for creating and editing PlanServerConnections (DIET-165 Phase 5).
 
     Server connections define how servers connect to switches, including
     port counts, distribution strategies, and optional rail assignments
     for rail-optimized topologies.
+
+    NIC modeling fields (nic_module_type/server_interface_template) support
+    NetBox-native device modeling patterns. Legacy nic_slot mode is supported
+    for backward compatibility.
     """
 
     server_interface_template = DynamicModelChoiceField(
         queryset=InterfaceTemplate.objects.none(),
         required=False,
-        label='Server Interface',
-        help_text='Select the first server interface for this connection. '
-                  'If multiple ports are needed, subsequent interfaces will be used automatically.'
+        label='Server Interface Template',
+        help_text='Recommended: Select the first server interface template for this connection. '
+                  'If multiple ports are needed, subsequent interfaces will be used automatically. '
+                  'Mutually exclusive with nic_slot (legacy mode).'
     )
 
     class Meta:
@@ -259,6 +270,9 @@ class PlanServerConnectionForm(NetBoxModelForm):
         # Note: Using '__all__' to let NetBox handle standard fields automatically
         widgets = {
             'connection_name': forms.TextInput(attrs={'placeholder': 'frontend, backend-rail-0, etc.'}),
+        }
+        help_texts = {
+            'nic_slot': '[LEGACY] NIC slot identifier (e.g., "NIC1"). Only used when server_interface_template is not set. Use server_interface_template for NetBox-native interface modeling.'
         }
 
     def __init__(self, *args, **kwargs):
