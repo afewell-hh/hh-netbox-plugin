@@ -316,6 +316,21 @@ class PlanSwitchClass(NetBoxModel):
                 normalized_id = re.sub(r'[^a-z0-9-]', '-', normalized_id)
                 # Remove consecutive hyphens and strip leading/trailing hyphens
                 normalized_id = re.sub(r'-+', '-', normalized_id).strip('-')
+
+                # Fallback if normalization results in empty string (e.g., all symbols/underscores)
+                if not normalized_id:
+                    # Use pk-based fallback for unique, valid DNS-1123 label
+                    # If pk not set yet (new instance), use 'new' placeholder
+                    pk_suffix = str(self.pk) if self.pk else 'new'
+                    normalized_id = f'switch-{pk_suffix}'
+
+                # Enforce DNS-1123 length limit (max 63 chars total)
+                # Format is 'mclag-{normalized_id}', prefix is 6 chars, leaving 57 for normalized_id
+                max_id_length = 57
+                if len(normalized_id) > max_id_length:
+                    # Truncate and ensure it doesn't end with hyphen
+                    normalized_id = normalized_id[:max_id_length].rstrip('-')
+
                 self.redundancy_group = f'mclag-{normalized_id}'
 
             # Ensure groups includes the redundancy_group (critical for SwitchGroup membership)
