@@ -308,7 +308,15 @@ class PlanSwitchClass(NetBoxModel):
             self.redundancy_type = 'mclag'
             # Auto-generate redundancy_group if not set
             if not self.redundancy_group:
-                self.redundancy_group = f'mclag-{self.switch_class_id}'
+                # Normalize switch_class_id to DNS-1123 format for valid SwitchGroup names
+                # Replace underscores and other invalid chars with hyphens, convert to lowercase
+                normalized_id = self.switch_class_id.lower().replace('_', '-')
+                # Remove any characters not allowed in DNS-1123 labels (a-z, 0-9, -)
+                import re
+                normalized_id = re.sub(r'[^a-z0-9-]', '-', normalized_id)
+                # Remove consecutive hyphens and strip leading/trailing hyphens
+                normalized_id = re.sub(r'-+', '-', normalized_id).strip('-')
+                self.redundancy_group = f'mclag-{normalized_id}'
 
             # Ensure groups includes the redundancy_group (critical for SwitchGroup membership)
             if not self.groups:

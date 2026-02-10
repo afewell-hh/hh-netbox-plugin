@@ -517,7 +517,12 @@ def calculate_switch_quantity(switch_class) -> int:
         if switch_class.calculated_quantity and switch_class.calculated_quantity > 0:
             # Only round if redundancy_type is explicitly set (not for deprecated mclag_pair)
             if switch_class.redundancy_type:
-                return _apply_redundancy_rounding(switch_class, switch_class.calculated_quantity)
+                try:
+                    return _apply_redundancy_rounding(switch_class, switch_class.calculated_quantity)
+                except ValidationError as e:
+                    raise ValidationError(
+                        f"Redundancy constraint error for switch class '{switch_class.switch_class_id}': {e}"
+                    ) from e
         # No connections = no switches needed
         return 0
 
@@ -606,7 +611,12 @@ def calculate_switch_quantity(switch_class) -> int:
         switches_needed = 1
 
     # Step 8: Apply redundancy constraints (uses module-level helper)
-    return _apply_redundancy_rounding(switch_class, switches_needed)
+    try:
+        return _apply_redundancy_rounding(switch_class, switches_needed)
+    except ValidationError as e:
+        raise ValidationError(
+            f"Switch quantity calculation failed for '{switch_class.switch_class_id}': {e}"
+        ) from e
 
 
 def _calculate_rail_optimized_switches(switch_class, rail_connections) -> int:
@@ -704,7 +714,12 @@ def _calculate_rail_optimized_switches(switch_class, rail_connections) -> int:
         total_switches = 1
 
     # Apply redundancy constraints (uses module-level helper)
-    return _apply_redundancy_rounding(switch_class, total_switches)
+    try:
+        return _apply_redundancy_rounding(switch_class, total_switches)
+    except ValidationError as e:
+        raise ValidationError(
+            f"Rail-optimized calculation failed for '{switch_class.switch_class_id}': {e}"
+        ) from e
 
 
 def determine_leaf_uplink_breakout(
