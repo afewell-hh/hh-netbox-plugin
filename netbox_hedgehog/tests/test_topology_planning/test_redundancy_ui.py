@@ -479,11 +479,17 @@ class ServerConnectionUITestCase(TestCase):
             slug='test-server'
         )
 
-        # Interface template
-        cls.interface_template = InterfaceTemplate.objects.create(
+        # Interface templates (create 4 to support ports_per_connection=4 in edit test)
+        for i in range(4):
+            InterfaceTemplate.objects.create(
+                device_type=cls.server_device_type,
+                name=f'eth{i}',
+                type='1000base-t'
+            )
+        # Reference first interface for test usage
+        cls.interface_template = InterfaceTemplate.objects.get(
             device_type=cls.server_device_type,
-            name='eth0',
-            type='1000base-t'
+            name='eth0'
         )
 
         # Module type for NIC
