@@ -399,8 +399,11 @@ def _apply_redundancy_rounding(switch_class, switches_needed: int) -> int:
     Returns:
         int: Adjusted switch quantity after applying redundancy rules
             - MCLAG: Round up to nearest even number (minimum 2)
-            - ESLAG: Enforce minimum 2 switches
+            - ESLAG: Enforce minimum 2, maximum 4 switches
             - mclag_pair (deprecated): Round up to even if odd
+
+    Raises:
+        ValidationError: If ESLAG calculation exceeds maximum 4 switches
 
     Examples:
         >>> # MCLAG: 3 switches → 4 (nearest even)
@@ -414,7 +417,13 @@ def _apply_redundancy_rounding(switch_class, switches_needed: int) -> int:
         >>> # ESLAG: 1 switch → 2 (minimum 2)
         >>> _apply_redundancy_rounding(switch_class, 1)
         2
+
+        >>> # ESLAG: 5 switches → ValidationError (max 4)
+        >>> _apply_redundancy_rounding(switch_class, 5)
+        ValidationError: ESLAG supports a maximum 4 switches per group
     """
+    from django.core.exceptions import ValidationError
+
     if switch_class.redundancy_type == 'mclag':
         # MCLAG: Round up to nearest even number (minimum 2)
         if switches_needed < 2:
@@ -423,9 +432,15 @@ def _apply_redundancy_rounding(switch_class, switches_needed: int) -> int:
             return switches_needed + 1
         return switches_needed
     elif switch_class.redundancy_type == 'eslag':
-        # ESLAG: Enforce minimum 2 switches (2-4 range validated in model)
+        # ESLAG: Enforce minimum 2, maximum 4 switches
         if switches_needed < 2:
             return 2
+        elif switches_needed > 4:
+            raise ValidationError(
+                f"ESLAG redundancy constraint violation for switch class '{switch_class.switch_class_id}': "
+                f"calculated {switches_needed} switches, but ESLAG supports maximum 4 switches per group. "
+                f"Either reduce server count, increase switch capacity, or use MCLAG redundancy instead."
+            )
         return switches_needed
     elif switch_class.mclag_pair and switches_needed % 2 != 0:
         # Deprecated mclag_pair field (backward compatibility)

@@ -229,7 +229,7 @@ class PlanSwitchClassForm(NetBoxModelForm):
             'fabric': 'Fabric type (Frontend, Backend, OOB)',
             'hedgehog_role': 'Hedgehog role (Spine, Server Leaf, Border Leaf)',
             'device_type_extension': 'Switch model with Hedgehog-specific metadata',
-            'redundancy_type': 'Redundancy mode (MCLAG=even pairs, ESLAG=2-4 switches, Rail-Optimized=N switches for N rails)',
+            'redundancy_type': 'Redundancy mode (MCLAG=even pairs with peer link, ESLAG=2-4 switches without peer link)',
             'redundancy_group': 'Redundancy group name (must match a SwitchGroup). Required if redundancy_type is set.',
             'uplink_ports_per_switch': '[DEPRECATED] Number of uplink ports per switch. Use SwitchPortZone with zone_type="uplink" instead. This field will be removed in v3.0.',
             'mclag_pair': '[DEPRECATED] Use redundancy_type="mclag" instead. This field will be removed in v3.0.',

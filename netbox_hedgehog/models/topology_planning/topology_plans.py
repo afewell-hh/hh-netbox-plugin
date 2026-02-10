@@ -310,6 +310,12 @@ class PlanSwitchClass(NetBoxModel):
             if not self.redundancy_group:
                 self.redundancy_group = f'mclag-{self.switch_class_id}'
 
+            # Ensure groups includes the redundancy_group (critical for SwitchGroup membership)
+            if not self.groups:
+                self.groups = [self.redundancy_group]
+            elif self.redundancy_group not in self.groups:
+                self.groups.append(self.redundancy_group)
+
         super().save(*args, **kwargs)
 
     def clean(self):
