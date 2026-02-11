@@ -260,7 +260,7 @@ class Command(BaseCommand):
             hedgehog_role=HedgehogRoleChoices.SERVER_LEAF,
             device_type_extension=ds5000_ext,
             uplink_ports_per_switch=None,
-            mclag_pair=True,
+            mclag_pair=False,
         )
         fe_storage_leaf_a = PlanSwitchClass.objects.create(
             plan=plan,
@@ -395,6 +395,12 @@ class Command(BaseCommand):
         )
 
         def add_frontend_connection(server_class):
+            # Get eth1 interface template for frontend connections
+            eth1_template = InterfaceTemplate.objects.filter(
+                device_type=server_class.server_device_type,
+                name='eth1'
+            ).first()
+
             PlanServerConnection.objects.create(
                 server_class=server_class,
                 connection_id="fe",
@@ -405,12 +411,20 @@ class Command(BaseCommand):
                 target_switch_class=fe_gpu_leaf,
                 speed=200,
                 port_type=PortTypeChoices.DATA,
+                server_interface_template=eth1_template,
             )
 
         add_frontend_connection(gpu_fe_only)
         add_frontend_connection(gpu_with_be)
 
+        # Backend rail connections (cx7-1 through cx7-8)
         for rail in range(8):
+            # Get the corresponding cx7 interface template (cx7-1 for rail 0, cx7-2 for rail 1, etc.)
+            cx7_template = InterfaceTemplate.objects.filter(
+                device_type=gpu_with_be.server_device_type,
+                name=f'cx7-{rail + 1}'
+            ).first()
+
             PlanServerConnection.objects.create(
                 server_class=gpu_with_be,
                 connection_id=f"be-rail-{rail}",
@@ -422,7 +436,18 @@ class Command(BaseCommand):
                 speed=400,
                 rail=rail,
                 port_type=PortTypeChoices.DATA,
+                server_interface_template=cx7_template,
             )
+
+        # Storage frontend connections (eth1 for both storage classes)
+        storage_a_eth1 = InterfaceTemplate.objects.filter(
+            device_type=storage_a.server_device_type,
+            name='eth1'
+        ).first()
+        storage_b_eth1 = InterfaceTemplate.objects.filter(
+            device_type=storage_b.server_device_type,
+            name='eth1'
+        ).first()
 
         PlanServerConnection.objects.create(
             server_class=storage_a,
@@ -434,6 +459,7 @@ class Command(BaseCommand):
             target_switch_class=fe_storage_leaf_a,
             speed=200,
             port_type=PortTypeChoices.DATA,
+            server_interface_template=storage_a_eth1,
         )
         PlanServerConnection.objects.create(
             server_class=storage_b,
@@ -445,6 +471,7 @@ class Command(BaseCommand):
             target_switch_class=fe_storage_leaf_b,
             speed=200,
             port_type=PortTypeChoices.DATA,
+            server_interface_template=storage_b_eth1,
         )
 
         return plan
