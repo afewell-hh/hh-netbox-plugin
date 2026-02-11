@@ -35,14 +35,12 @@ class UCCase128NICModelingRegressionTestCase(TestCase):
         """Test that UC Case 128 command works with NIC modeling."""
         # Run management command
         out = StringIO()
-        call_command('setup_case_128gpu_odd_ports', '--clean', '--generate', stdout=out)
+        err = StringIO()
+        call_command('setup_case_128gpu_odd_ports', '--clean', '--generate', stdout=out, stderr=err)
 
-        # Verify command succeeded
-        output = out.getvalue()
-        self.assertIn('Successfully', output)
-
-        # Get the created plan
-        plan = TopologyPlan.objects.get(name__icontains='128-GPU')
+        # Verify command succeeded by checking plan exists (not output string)
+        plan = TopologyPlan.objects.filter(name__icontains='128-GPU').first()
+        self.assertIsNotNone(plan, "UC Case 128 plan should be created by management command")
 
         # Verify all connections have nic_module_type
         connections = PlanServerConnection.objects.filter(

@@ -91,10 +91,10 @@ class NICModelingUITestCase(TestCase):
                     'properties': {
                         'cage_type': {'type': 'string', 'enum': ['QSFP112', 'QSFP-DD']},
                         'medium': {'type': 'string', 'enum': ['MMF', 'SMF', 'DAC']},
-                        'connector': {'type': 'string', 'enum': ['LC', 'MPO-12']},
+                        'connector': {'type': 'string', 'enum': ['LC', 'MPO-12', 'Direct']},
                         'wavelength_nm': {'type': 'integer'},
                         'standard': {'type': 'string'},
-                        'reach_class': {'type': 'string', 'enum': ['SR', 'LR', 'DR']},
+                        'reach_class': {'type': 'string', 'enum': ['SR', 'LR', 'DR', 'DAC']},
                     }
                 }
             }
@@ -121,12 +121,12 @@ class NICModelingUITestCase(TestCase):
             InterfaceTemplate.objects.create(
                 module_type=cls.bf3_type,
                 name='p0',
-                type='200gbase-x-qsfp112'
+                type='other'  # Using 'other' type - actual type not critical for NIC modeling tests
             )
             InterfaceTemplate.objects.create(
                 module_type=cls.bf3_type,
                 name='p1',
-                type='200gbase-x-qsfp112'
+                type='other'
             )
 
         # ConnectX-7 (single-port) - may exist from migration
@@ -148,7 +148,7 @@ class NICModelingUITestCase(TestCase):
             InterfaceTemplate.objects.create(
                 module_type=cls.cx7_single,
                 name='port0',
-                type='200gbase-x-qsfp112'
+                type='other'  # Using 'other' type - actual type not critical for NIC modeling tests
             )
 
         # Server DeviceType
