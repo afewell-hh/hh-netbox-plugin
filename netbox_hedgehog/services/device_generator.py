@@ -824,6 +824,20 @@ class DeviceGenerator:
         }
         module.save()
 
+        # Rename auto-created interfaces to avoid conflicts (DIET-179 fix)
+        # NetBox auto-creates interfaces from ModuleType templates, but when multiple
+        # Modules exist on one Device, template names (p0, port0) conflict.
+        # Solution: Prefix interface names with connection_id for uniqueness
+        from dcim.models import Interface
+
+        module_interfaces = Interface.objects.filter(device=device, module=module)
+        for iface in module_interfaces:
+            # Rename: "port0" -> "be-rail-0-port0", "p0" -> "fe-p0", etc.
+            original_name = iface.name
+            unique_name = f"{connection_def.connection_id}-{original_name}"
+            iface.name = unique_name
+            iface.save()
+
         return module
 
     def _get_module_interface_by_port_index(
