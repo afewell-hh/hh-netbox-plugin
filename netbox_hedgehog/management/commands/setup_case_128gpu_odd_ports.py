@@ -13,7 +13,7 @@ from django.core.management.base import BaseCommand
 from django.db import transaction, models
 from django.core.exceptions import ValidationError
 
-from dcim.models import Manufacturer, DeviceType, InterfaceTemplate, Cable, Device, Interface
+from dcim.models import Manufacturer, DeviceType, InterfaceTemplate, Cable, Device, Interface, ModuleType
 from extras.models import Tag
 
 from netbox_hedgehog.models.topology_planning import (
@@ -395,8 +395,6 @@ class Command(BaseCommand):
         )
 
         # Get NIC ModuleTypes (DIET-173 Phase 5)
-        from dcim.models import ModuleType, Manufacturer
-
         nvidia = Manufacturer.objects.get(name='NVIDIA')
         bf3_type = ModuleType.objects.get(manufacturer=nvidia, model='BlueField-3 BF3220')
         cx7_single = ModuleType.objects.get(manufacturer=nvidia, model='ConnectX-7 (Single-Port)')
