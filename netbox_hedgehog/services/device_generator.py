@@ -866,12 +866,22 @@ class DeviceGenerator:
         """
         from dcim.models import Interface
 
-        # Get all interfaces for this Module, sorted by name (natural order)
-        module_interfaces = list(
+        # Get all interfaces for this Module, sorted by name with natural ordering
+        # Use Python sorting with natural key to handle multi-digit numbers correctly
+        # (e.g., port1, port2, ..., port10, not port1, port10, port2)
+        import re
+
+        def natural_sort_key(iface):
+            """Extract numeric parts for natural sorting (port1, port2, ..., port10)"""
+            parts = re.split(r'(\d+)', iface.name)
+            return [int(p) if p.isdigit() else p.lower() for p in parts]
+
+        module_interfaces = sorted(
             Interface.objects.filter(
                 device=device,
                 module=module
-            ).order_by('name')
+            ),
+            key=natural_sort_key
         )
 
         if not module_interfaces:
