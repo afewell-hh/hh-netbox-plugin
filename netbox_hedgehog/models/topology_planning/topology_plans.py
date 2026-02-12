@@ -515,6 +515,16 @@ class PlanServerConnection(NetBoxModel):
         """Validate NIC configuration (DIET-173 Phase 5)."""
         super().clean()
 
+        # Validate connection_id follows NetBox interface naming conventions
+        # (used as prefix for auto-created interface names)
+        if self.connection_id:
+            import re
+            if not re.match(r'^[a-zA-Z0-9_-]+$', self.connection_id):
+                raise ValidationError({
+                    'connection_id': 'Connection ID must contain only alphanumeric characters, '
+                                   'hyphens, and underscores (used as interface name prefix).'
+                })
+
         # Validate nic_module_type is set and has interface templates
         # Use nic_module_type_id to avoid RelatedObjectDoesNotExist when None
         if not self.nic_module_type_id:
