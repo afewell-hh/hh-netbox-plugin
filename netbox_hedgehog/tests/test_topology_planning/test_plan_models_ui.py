@@ -21,7 +21,7 @@ from django.contrib.auth import get_user_model
 from django.contrib.contenttypes.models import ContentType
 from users.models import ObjectPermission
 
-from dcim.models import DeviceType, Manufacturer, ModuleType
+from dcim.models import DeviceType, Manufacturer, ModuleType, InterfaceTemplate
 
 from netbox_hedgehog.models.topology_planning import (
     TopologyPlan,
@@ -1071,10 +1071,19 @@ class PlanServerConnectionUITestCase(TestCase):
             }
         )
 
-        cls.nic_module, _ = ModuleType.objects.get_or_create(
+        cls.nic_module, created = ModuleType.objects.get_or_create(
             manufacturer=cls.manufacturer,
             model='ConnectX-7',
         )
+        # Add InterfaceTemplates if newly created (DIET-173 Phase 5)
+        # Need 4 ports to support tests with ports_per_connection=4
+        if created:
+            for i in range(4):
+                InterfaceTemplate.objects.create(
+                    module_type=cls.nic_module,
+                    name=f'p{i}',
+                    type='other'
+                )
 
         cls.plan = TopologyPlan.objects.create(
             name='Connection Test Plan',
@@ -1199,7 +1208,6 @@ class PlanServerConnectionUITestCase(TestCase):
         }
 
         response = self.client.post(url, data, follow=False)
-
         self.assertEqual(response.status_code, 302)
         # Verify a second connection was created
         self.assertEqual(
@@ -1262,7 +1270,6 @@ class PlanServerConnectionUITestCase(TestCase):
         }
 
         response = self.client.post(url, data)
-
         self.assertEqual(response.status_code, 302)
         self.connection.refresh_from_db()
         self.assertEqual(self.connection.ports_per_connection, 4)
