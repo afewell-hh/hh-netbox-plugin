@@ -218,14 +218,14 @@ class ModuleInstantiationTestCase(TestCase):
         generator = DeviceGenerator(plan=plan, site=self.site)
         generator.generate_all()
 
-        # Verify Interfaces auto-created (p0, p1)
+        # Verify Interfaces auto-created (connection_id-prefixed names)
         server_device = Device.objects.get(name__contains='gpu-01')
         module = Module.objects.filter(device=server_device).first()
 
         interfaces = Interface.objects.filter(device=server_device, module=module)
-        self.assertEqual(interfaces.count(), 2)  # p0, p1
-        self.assertTrue(interfaces.filter(name='p0').exists())
-        self.assertTrue(interfaces.filter(name='p1').exists())
+        self.assertEqual(interfaces.count(), 2)  # fe-p0, fe-p1
+        self.assertTrue(interfaces.filter(name='fe-p0').exists())
+        self.assertTrue(interfaces.filter(name='fe-p1').exists())
 
     def test_port_index_selects_correct_interface(self):
         """Test that port_index correctly selects interface from Module."""
@@ -255,25 +255,25 @@ class ModuleInstantiationTestCase(TestCase):
         generator = DeviceGenerator(plan=plan, site=self.site)
         generator.generate_all()
 
-        # Verify cable connected to p1 (not p0)
+        # Verify cable connected to fe-p1 (not fe-p0)
         server_device = Device.objects.get(name__contains='gpu-01')
-        p0_interface = Interface.objects.get(device=server_device, name='p0')
-        p1_interface = Interface.objects.get(device=server_device, name='p1')
+        p0_interface = Interface.objects.get(device=server_device, name='fe-p0')
+        p1_interface = Interface.objects.get(device=server_device, name='fe-p1')
 
-        # Check that p1 has a cable, p0 does not (since port_index=1)
+        # Check that fe-p1 has a cable, fe-p0 does not (since port_index=1)
         from dcim.models import Cable, CableTermination
 
-        # Find cable terminations for p1
+        # Find cable terminations for fe-p1
         p1_terminations = CableTermination.objects.filter(
             termination_type__model='interface',
             termination_id=p1_interface.pk
         )
 
-        # Verify p1 is cabled (port_index=1 selects second port)
+        # Verify fe-p1 is cabled (port_index=1 selects second port)
         self.assertGreater(
             p1_terminations.count(),
             0,
-            "Cable should terminate on p1 when port_index=1"
+            "Cable should terminate on fe-p1 when port_index=1"
         )
 
     def test_multiple_connections_create_multiple_modules(self):
