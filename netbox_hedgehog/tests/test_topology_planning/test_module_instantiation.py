@@ -92,6 +92,33 @@ class ModuleInstantiationTestCase(TestCase):
         # Site
         cls.site = Site.objects.create(name='Test Site', slug='test-site')
 
+    def _create_switch_class_with_zone(self, plan, switch_class_id='fe-leaf'):
+        """Helper to create switch class with required port zone."""
+        from netbox_hedgehog.models.topology_planning import SwitchPortZone
+        from netbox_hedgehog.choices import PortZoneTypeChoices, AllocationStrategyChoices
+
+        switch_class = PlanSwitchClass.objects.create(
+            plan=plan,
+            switch_class_id=switch_class_id,
+            fabric=FabricTypeChoices.FRONTEND,
+            hedgehog_role=HedgehogRoleChoices.SERVER_LEAF,
+            device_type_extension=self.device_ext,
+            override_quantity=1
+        )
+
+        # Create port zone for port allocation
+        SwitchPortZone.objects.create(
+            switch_class=switch_class,
+            zone_name='server-ports',
+            zone_type=PortZoneTypeChoices.SERVER,
+            port_spec='1-32',
+            breakout_option=self.breakout,
+            allocation_strategy=AllocationStrategyChoices.SEQUENTIAL,
+            priority=10
+        )
+
+        return switch_class
+
     def test_module_bay_created_per_connection(self):
         """Test that DeviceGenerator creates ModuleBay for each connection."""
         plan = TopologyPlan.objects.create(name='Test Plan', status=TopologyPlanStatusChoices.DRAFT)
@@ -104,14 +131,7 @@ class ModuleInstantiationTestCase(TestCase):
             server_device_type=self.server_type
         )
 
-        switch_class = PlanSwitchClass.objects.create(
-            plan=plan,
-            switch_class_id='fe-leaf',
-            fabric=FabricTypeChoices.FRONTEND,
-            hedgehog_role=HedgehogRoleChoices.SERVER_LEAF,
-            device_type_extension=self.device_ext,
-            override_quantity=1
-        )
+        switch_class = self._create_switch_class_with_zone(plan, 'fe-leaf')
 
         # Create connection
         PlanServerConnection.objects.create(
@@ -148,14 +168,7 @@ class ModuleInstantiationTestCase(TestCase):
             server_device_type=self.server_type
         )
 
-        switch_class = PlanSwitchClass.objects.create(
-            plan=plan,
-            switch_class_id='fe-leaf',
-            fabric=FabricTypeChoices.FRONTEND,
-            hedgehog_role=HedgehogRoleChoices.SERVER_LEAF,
-            device_type_extension=self.device_ext,
-            override_quantity=1
-        )
+        switch_class = self._create_switch_class_with_zone(plan, 'fe-leaf')
 
         PlanServerConnection.objects.create(
             server_class=server_class,
@@ -190,14 +203,7 @@ class ModuleInstantiationTestCase(TestCase):
             server_device_type=self.server_type
         )
 
-        switch_class = PlanSwitchClass.objects.create(
-            plan=plan,
-            switch_class_id='fe-leaf',
-            fabric=FabricTypeChoices.FRONTEND,
-            hedgehog_role=HedgehogRoleChoices.SERVER_LEAF,
-            device_type_extension=self.device_ext,
-            override_quantity=1
-        )
+        switch_class = self._create_switch_class_with_zone(plan, 'fe-leaf')
 
         PlanServerConnection.objects.create(
             server_class=server_class,
@@ -233,14 +239,7 @@ class ModuleInstantiationTestCase(TestCase):
             server_device_type=self.server_type
         )
 
-        switch_class = PlanSwitchClass.objects.create(
-            plan=plan,
-            switch_class_id='fe-leaf',
-            fabric=FabricTypeChoices.FRONTEND,
-            hedgehog_role=HedgehogRoleChoices.SERVER_LEAF,
-            device_type_extension=self.device_ext,
-            override_quantity=1
-        )
+        switch_class = self._create_switch_class_with_zone(plan, 'fe-leaf')
 
         # Connection using port_index=1 (second port)
         PlanServerConnection.objects.create(
@@ -289,14 +288,7 @@ class ModuleInstantiationTestCase(TestCase):
             server_device_type=self.server_type
         )
 
-        switch_class = PlanSwitchClass.objects.create(
-            plan=plan,
-            switch_class_id='fe-leaf',
-            fabric=FabricTypeChoices.FRONTEND,
-            hedgehog_role=HedgehogRoleChoices.SERVER_LEAF,
-            device_type_extension=self.device_ext,
-            override_quantity=1
-        )
+        switch_class = self._create_switch_class_with_zone(plan, 'fe-leaf')
 
         # Create 2 connections (frontend + backend)
         PlanServerConnection.objects.create(
@@ -344,14 +336,7 @@ class ModuleInstantiationTestCase(TestCase):
             server_device_type=self.server_type
         )
 
-        switch_class = PlanSwitchClass.objects.create(
-            plan=plan,
-            switch_class_id='fe-leaf',
-            fabric=FabricTypeChoices.FRONTEND,
-            hedgehog_role=HedgehogRoleChoices.SERVER_LEAF,
-            device_type_extension=self.device_ext,
-            override_quantity=1
-        )
+        switch_class = self._create_switch_class_with_zone(plan, 'fe-leaf')
 
         # Create connection with invalid port_index
         conn = PlanServerConnection(
