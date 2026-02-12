@@ -45,8 +45,8 @@ class PlanSwitchClassSerializer(serializers.ModelSerializer):
 class PlanServerConnectionSerializer(serializers.ModelSerializer):
     class Meta:
         model = models.PlanServerConnection
-        fields = ['id', 'server_class', 'connection_id', 'nic_module_type', 'nic_slot',
-                  'server_interface_template', 'connection_name', 'ports_per_connection',
+        fields = ['id', 'server_class', 'connection_id', 'nic_module_type', 'port_index',
+                  'connection_name', 'ports_per_connection',
                   'hedgehog_conn_type', 'distribution', 'target_switch_class', 'speed',
                   'rail', 'port_type']
 
