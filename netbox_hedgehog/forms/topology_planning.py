@@ -5,7 +5,7 @@ Forms for BreakoutOption and DeviceTypeExtension models.
 
 from django import forms
 from netbox.forms import NetBoxModelForm
-from dcim.models import DeviceType, ModuleType, InterfaceTemplate
+from dcim.models import DeviceType, ModuleType
 from utilities.forms.fields import DynamicModelChoiceField
 
 from ..models.topology_planning import (
@@ -244,35 +244,41 @@ class PlanSwitchClassForm(NetBoxModelForm):
 
 class PlanServerConnectionForm(NetBoxModelForm):
     """
-    Form for creating and editing PlanServerConnections (DIET-165 Phase 5).
+    Form for creating and editing PlanServerConnections (DIET-173 Phase 5).
 
     Server connections define how servers connect to switches, including
-    port counts, distribution strategies, and optional rail assignments
-    for rail-optimized topologies.
+    NIC module type selection, port index specification, connection types,
+    and distribution strategies.
 
-    NIC modeling fields (nic_module_type/server_interface_template) support
-    NetBox-native device modeling patterns. Legacy nic_slot mode is supported
-    for backward compatibility.
+    Implements clean-break NIC modeling with required nic_module_type
+    and port_index fields following NetBox Module patterns.
     """
-
-    server_interface_template = DynamicModelChoiceField(
-        queryset=InterfaceTemplate.objects.none(),
-        required=False,
-        label='Server Interface Template',
-        help_text='Recommended: Select the first server interface template for this connection. '
-                  'If multiple ports are needed, subsequent interfaces will be used automatically. '
-                  'Mutually exclusive with nic_slot (legacy mode).'
-    )
 
     class Meta:
         model = PlanServerConnection
-        fields = '__all__'
-        # Note: Using '__all__' to let NetBox handle standard fields automatically
+        fields = [
+            'server_class',
+            'connection_id',
+            'connection_name',
+            'nic_module_type',
+            'port_index',
+            'ports_per_connection',
+            'hedgehog_conn_type',
+            'distribution',
+            'target_switch_class',
+            'speed',
+            'rail',
+            'port_type',
+            'tags',
+        ]
         widgets = {
             'connection_name': forms.TextInput(attrs={'placeholder': 'frontend, backend-rail-0, etc.'}),
         }
         help_texts = {
-            'nic_slot': '[LEGACY] NIC slot identifier (e.g., "NIC1"). Only used when server_interface_template is not set. Use server_interface_template for NetBox-native interface modeling.'
+            'nic_module_type': 'NIC module type (e.g., BlueField-3 BF3220, ConnectX-7). '
+                              'Defines the physical NIC hardware with port count and transceiver characteristics.',
+            'port_index': 'Zero-based port index on the NIC (0 for first port, 1 for second port). '
+                         'Used to select which physical port on the NIC to use for this connection.',
         }
 
     def __init__(self, *args, **kwargs):
@@ -298,27 +304,10 @@ class PlanServerConnectionForm(NetBoxModelForm):
             plan = server_class.plan
             self.fields['target_switch_class'].queryset = PlanSwitchClass.objects.filter(plan=plan)
             self.fields['target_switch_class'].help_text = f'Switch classes from plan: {plan.name}'
-
-            # Filter server_interface_template to device type interfaces
-            if server_class.server_device_type:
-                self.fields['server_interface_template'].queryset = InterfaceTemplate.objects.filter(
-                    device_type=server_class.server_device_type
-                ).order_by('name')
-
-                # Show available interface count
-                interface_count = self.fields['server_interface_template'].queryset.count()
-                self.fields['server_interface_template'].help_text = (
-                    f'Select first interface from {server_class.server_device_type} '
-                    f'({interface_count} interfaces available). '
-                    f'Subsequent interfaces will be used if ports_per_connection > 1.'
-                )
         else:
             # No server class selected yet - show help text
             self.fields['target_switch_class'].help_text = (
                 'Select a server class first. Target switch must be from the same plan as the server class.'
-            )
-            self.fields['server_interface_template'].help_text = (
-                'Select a server class first to see available interfaces.'
             )
 
     def clean(self):

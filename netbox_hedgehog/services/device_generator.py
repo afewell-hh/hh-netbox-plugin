@@ -282,6 +282,13 @@ class DeviceGenerator:
                             connection_def.target_switch_class,
                         )
 
+                    # Create Module for this connection (DIET-173 Phase 5)
+                    # This creates ModuleBay + Module + auto-generates Interfaces from ModuleType templates
+                    module = self._create_module_for_connection(
+                        device=server_device,
+                        connection_def=connection_def,
+                    )
+
                     for port_index in range(connection_def.ports_per_connection):
                         switch_device = self._select_switch_instance(
                             switch_instances,
@@ -310,12 +317,13 @@ class DeviceGenerator:
                             interface_type=self._speed_to_interface_type(connection_def.speed),
                         )
 
-                        # Use new interface assignment logic (Issue #138 fix)
-                        server_interface = self._get_or_assign_server_interface(
+                        # Get server interface from Module using port_index (DIET-173 Phase 5)
+                        # port_index from connection_def + current iteration port_index
+                        actual_port_index = connection_def.port_index + port_index
+                        server_interface = self._get_module_interface_by_port_index(
                             device=server_device,
-                            connection_def=connection_def,
-                            port_index=port_index,
-                            interfaces=interfaces,
+                            module=module,
+                            port_index=actual_port_index,
                         )
 
                         cable = Cable(
@@ -761,94 +769,110 @@ class DeviceGenerator:
             return PortZoneTypeChoices.OOB
         return PortZoneTypeChoices.SERVER
 
-    def _generate_server_port_name(self, connection_def: PlanServerConnection, port_idx: int) -> str:
-        if connection_def.nic_slot:
-            import re
-
-            # Preserve nic_slot uniqueness; only strip trailing f<digits> if present.
-            match = re.match(r'^(.*)f\\d+$', connection_def.nic_slot)
-            base = match.group(1) if match else connection_def.nic_slot
-            return f"{base}f{port_idx}"
-
-        conn_id = slugify(connection_def.connection_id)
-        return f"port-{conn_id}-{port_idx}"
-
-    def _get_or_assign_server_interface(
+    def _create_module_for_connection(
         self,
         device: Device,
         connection_def: PlanServerConnection,
-        port_index: int,
-        interfaces: list[Interface],
-    ) -> Interface:
+    ):
         """
-        Get or assign server interface for connection (Issue #138 fix).
+        Create ModuleBay and Module for server connection (DIET-173 Phase 5).
 
-        If connection has server_interface_template, tries to use existing
-        interfaces from device type. Otherwise falls back to creating new
-        with legacy naming.
+        Creates a ModuleBay and instantiates a Module with the NIC ModuleType
+        from the connection definition. NetBox automatically creates Interfaces
+        from the ModuleType's InterfaceTemplates.
 
         Args:
             device: Server Device instance
-            connection_def: PlanServerConnection configuration
-            port_index: Index of port in connection (0-based)
-            interfaces: List to append interface to if created
+            connection_def: PlanServerConnection with nic_module_type
 
         Returns:
-            Interface instance (existing or newly created)
+            Module instance (newly created)
+        """
+        from dcim.models import ModuleBay, Module
+
+        # Use connection_id for bay naming (e.g., 'fe', 'be-rail-0')
+        bay_name = f"{connection_def.connection_id}-nic"
+
+        # Check if ModuleBay already exists (avoid duplicates)
+        module_bay, bay_created = ModuleBay.objects.get_or_create(
+            device=device,
+            name=bay_name,
+            defaults={
+                'label': f'NIC for {connection_def.connection_id}',
+            }
+        )
+
+        # Check if Module already exists in this bay
+        existing_module = Module.objects.filter(
+            device=device,
+            module_bay=module_bay
+        ).first()
+
+        if existing_module:
+            return existing_module
+
+        # Create Module instance
+        module = Module(
+            device=device,
+            module_bay=module_bay,
+            module_type=connection_def.nic_module_type,
+            serial=f"{device.name}-{connection_def.connection_id}",  # Deterministic serial
+            status='active',
+        )
+        module.custom_field_data = {
+            'hedgehog_plan_id': str(self.plan.pk),
+        }
+        module.save()
+
+        return module
+
+    def _get_module_interface_by_port_index(
+        self,
+        device: Device,
+        module,
+        port_index: int,
+    ) -> 'Interface':
+        """
+        Get Module interface by port index (DIET-173 Phase 5).
+
+        Retrieves the interface at the specified port_index from the Module.
+        Interfaces are sorted by name (natural order) to ensure consistent
+        zero-based indexing (p0=index 0, p1=index 1, etc.).
+
+        Args:
+            device: Server Device instance
+            module: Module instance
+            port_index: Zero-based port index
+
+        Returns:
+            Interface instance at port_index
+
+        Raises:
+            ValidationError: If port_index exceeds available interfaces
         """
         from dcim.models import Interface
 
-        if connection_def.server_interface_template:
-            # Get interface sequence from template
-            interface_sequence = connection_def._get_available_interface_sequence()
-
-            if port_index < len(interface_sequence):
-                # Get the Nth interface template from sequence
-                target_template = interface_sequence[port_index]
-
-                # Look for existing interface with matching name
-                existing = Interface.objects.filter(
-                    device=device,
-                    name=target_template.name
-                ).first()
-
-                if existing:
-                    # Found inherited interface - return it
-                    # Cache it for future lookups
-                    cache_key = (device.pk, existing.name)
-                    self._interface_cache[cache_key] = existing
-                    return existing
-                else:
-                    # Template exists but device doesn't have it yet
-                    # This shouldn't happen if device properly inherits from DeviceType
-                    # Create interface matching template
-                    interface = Interface(
-                        device=device,
-                        name=target_template.name,
-                        type=target_template.type,
-                        enabled=True,
-                    )
-                    interface.custom_field_data = {
-                        'hedgehog_plan_id': str(self.plan.pk),
-                    }
-                    interface.save()
-                    interfaces.append(interface)
-                    self._interface_cache[(device.pk, interface.name)] = interface
-                    return interface
-
-        # Fallback to legacy behavior (generate new interface name)
-        server_port_name = self._generate_server_port_name(
-            connection_def,
-            port_index,
+        # Get all interfaces for this Module, sorted by name (natural order)
+        module_interfaces = list(
+            Interface.objects.filter(
+                device=device,
+                module=module
+            ).order_by('name')
         )
-        return self._get_or_create_interface(
-            device=device,
-            name=server_port_name,
-            interfaces=interfaces,
-            custom_fields={
-                'hedgehog_plan_id': str(self.plan.pk),
-            },
-        )
+
+        if not module_interfaces:
+            raise ValidationError(
+                f"No interfaces found for Module {module.module_type} on device {device.name}. "
+                f"Module may not have instantiated interfaces yet."
+            )
+
+        if port_index >= len(module_interfaces):
+            raise ValidationError(
+                f"Port index {port_index} exceeds available interfaces (0-{len(module_interfaces) - 1}) "
+                f"on Module {module.module_type}."
+            )
+
+        return module_interfaces[port_index]
 
     def _generate_boot_mac(self, device_name: str) -> str:
         """

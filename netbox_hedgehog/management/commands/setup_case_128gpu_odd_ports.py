@@ -394,41 +394,40 @@ class Command(BaseCommand):
             server_device_type=storage_type,
         )
 
-        def add_frontend_connection(server_class):
-            # Get eth1 interface template for frontend connections
-            eth1_template = InterfaceTemplate.objects.filter(
-                device_type=server_class.server_device_type,
-                name='eth1'
-            ).first()
+        # Get NIC ModuleTypes (DIET-173 Phase 5)
+        from dcim.models import ModuleType, Manufacturer
 
+        nvidia = Manufacturer.objects.get(name='NVIDIA')
+        bf3_type = ModuleType.objects.get(manufacturer=nvidia, model='BlueField-3 BF3220')
+        cx7_single = ModuleType.objects.get(manufacturer=nvidia, model='ConnectX-7 (Single-Port)')
+
+        def add_frontend_connection(server_class):
+            # Frontend connections use BlueField-3 BF3220 (dual-port)
             PlanServerConnection.objects.create(
                 server_class=server_class,
                 connection_id="fe",
                 connection_name="frontend",
+                nic_module_type=bf3_type,
+                port_index=0,  # Use first port (p0)
                 ports_per_connection=2,
                 hedgehog_conn_type=ConnectionTypeChoices.UNBUNDLED,
                 distribution=ConnectionDistributionChoices.ALTERNATING,
                 target_switch_class=fe_gpu_leaf,
                 speed=200,
                 port_type=PortTypeChoices.DATA,
-                server_interface_template=eth1_template,
             )
 
         add_frontend_connection(gpu_fe_only)
         add_frontend_connection(gpu_with_be)
 
-        # Backend rail connections (cx7-1 through cx7-8)
+        # Backend rail connections use ConnectX-7 (Single-Port)
         for rail in range(8):
-            # Get the corresponding cx7 interface template (cx7-1 for rail 0, cx7-2 for rail 1, etc.)
-            cx7_template = InterfaceTemplate.objects.filter(
-                device_type=gpu_with_be.server_device_type,
-                name=f'cx7-{rail + 1}'
-            ).first()
-
             PlanServerConnection.objects.create(
                 server_class=gpu_with_be,
                 connection_id=f"be-rail-{rail}",
                 connection_name=f"backend-rail-{rail}",
+                nic_module_type=cx7_single,
+                port_index=0,  # Single-port NIC, always use index 0
                 ports_per_connection=1,
                 hedgehog_conn_type=ConnectionTypeChoices.UNBUNDLED,
                 distribution=ConnectionDistributionChoices.RAIL_OPTIMIZED,
@@ -436,42 +435,34 @@ class Command(BaseCommand):
                 speed=400,
                 rail=rail,
                 port_type=PortTypeChoices.DATA,
-                server_interface_template=cx7_template,
             )
 
-        # Storage frontend connections (eth1 for both storage classes)
-        storage_a_eth1 = InterfaceTemplate.objects.filter(
-            device_type=storage_a.server_device_type,
-            name='eth1'
-        ).first()
-        storage_b_eth1 = InterfaceTemplate.objects.filter(
-            device_type=storage_b.server_device_type,
-            name='eth1'
-        ).first()
-
+        # Storage frontend connections use BlueField-3 BF3220 (dual-port)
         PlanServerConnection.objects.create(
             server_class=storage_a,
             connection_id="fe-storage",
             connection_name="storage-frontend",
+            nic_module_type=bf3_type,
+            port_index=0,  # Use first port
             ports_per_connection=2,
             hedgehog_conn_type=ConnectionTypeChoices.BUNDLED,
             distribution=ConnectionDistributionChoices.SAME_SWITCH,
             target_switch_class=fe_storage_leaf_a,
             speed=200,
             port_type=PortTypeChoices.DATA,
-            server_interface_template=storage_a_eth1,
         )
         PlanServerConnection.objects.create(
             server_class=storage_b,
             connection_id="fe-storage",
             connection_name="storage-frontend",
+            nic_module_type=bf3_type,
+            port_index=0,  # Use first port
             ports_per_connection=2,
             hedgehog_conn_type=ConnectionTypeChoices.BUNDLED,
             distribution=ConnectionDistributionChoices.SAME_SWITCH,
             target_switch_class=fe_storage_leaf_b,
             speed=200,
             port_type=PortTypeChoices.DATA,
-            server_interface_template=storage_b_eth1,
         )
 
         return plan
