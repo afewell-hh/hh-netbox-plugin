@@ -217,9 +217,9 @@ class UCCase128GPURegressionTestCase(TestCase):
         """
         Validate that server connections maintain their configuration.
 
-        After Phase 3 changes, connections should:
-        - Still reference correct interface templates (if used)
-        - Still support legacy nic_slot mode (if used)
+        After NIC modeling (Phase 5), connections should:
+        - Have nic_module_type set (required field)
+        - Have port_index set (required field)
         - Maintain correct ports_per_connection values
         """
         # GPU server class connections - use actual server class ID from command
@@ -231,18 +231,18 @@ class UCCase128GPURegressionTestCase(TestCase):
         connections = PlanServerConnection.objects.filter(server_class=gpu_server)
         self.assertGreater(connections.count(), 0, "GPU servers should have connections")
 
-        # Verify connections have valid configuration
+        # Verify connections have valid NIC modeling configuration
         for conn in connections:
             self.assertIsNotNone(conn.ports_per_connection)
             self.assertGreater(conn.ports_per_connection, 0)
             self.assertIsNotNone(conn.target_switch_class)
 
-            # Either server_interface_template or nic_slot should be set
-            # (depends on how the plan is configured)
-            has_template = conn.server_interface_template is not None
-            has_nic_slot = bool(conn.nic_slot)
-            self.assertTrue(
-                has_template or has_nic_slot,
-                f"Connection {conn.connection_id} should have either "
-                "server_interface_template or nic_slot configured"
+            # NIC modeling fields are required (DIET-173 Phase 5)
+            self.assertIsNotNone(
+                conn.nic_module_type,
+                f"Connection {conn.connection_id} should have nic_module_type"
+            )
+            self.assertIsNotNone(
+                conn.port_index,
+                f"Connection {conn.connection_id} should have port_index"
             )
