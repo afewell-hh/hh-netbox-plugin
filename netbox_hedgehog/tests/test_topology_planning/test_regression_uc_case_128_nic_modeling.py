@@ -39,7 +39,7 @@ class UCCase128NICModelingRegressionTestCase(TestCase):
         call_command('setup_case_128gpu_odd_ports', '--clean', '--generate', stdout=out, stderr=err)
 
         # Verify command succeeded by checking plan exists (not output string)
-        plan = TopologyPlan.objects.filter(name__icontains='128-GPU').first()
+        plan = TopologyPlan.objects.filter(name__icontains='128GPU').first()
         self.assertIsNotNone(plan, "UC Case 128 plan should be created by management command")
 
         # Verify all connections have nic_module_type

@@ -44,7 +44,7 @@
             <td>
               <dl class="row mb-0">
                 {% for key, value in object.nic_module_type.attribute_data.items %}
-                <dt class="col-sm-4">{{ key|title|replace:"_":" " }}</dt>
+                <dt class="col-sm-4">{{ key|title }}</dt>
                 <dd class="col-sm-8">{{ value }}</dd>
                 {% endfor %}
               </dl>
