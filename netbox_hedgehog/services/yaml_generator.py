@@ -701,21 +701,22 @@ class YAMLGenerator:
 
                 # Check if this is a "real" breakout or just native speed (1x)
                 if logical_ports == 1:
-                    # 1x<speed> means native speed - still add to portBreakouts
-                    # Many profiles (like OSFP-800G) only support breakout notation, not plain speeds
+                    # 1x<speed> means native speed - treat as regular port, NOT a breakout
+                    # Add to portSpeeds as native port
                     for port in ports:
-                        # Add to portBreakouts with full port name (e.g., "E1/1": "1x800G")
-                        port_breakouts[f"E1/{port}"] = breakout_id
-                        # Do NOT add to portSpeeds - breakout config handles it
+                        port_speeds[str(port)] = f"{logical_speed}g"
+                        port_auto_negs[str(port)] = False
                 else:
                     # Real breakout (2x, 4x, 8x, etc.)
                     for port in ports:
-                        # Add breakout config with full port name (e.g., "E1/1": "4X200G")
-                        port_breakouts[f"E1/{port}"] = breakout_id
+                        # Add breakout config with port number as key (e.g., "1": "4x200g")
+                        port_breakouts[str(port)] = breakout_id.lower()
 
-                        # DO NOT add breakout subports to portSpeeds/portAutoNegs
-                        # The breakout config itself defines speeds for subports
-                        # hhfab will infer E1/{port}/1, E1/{port}/2, etc. from the breakout
+                        # Add breakout subports to portSpeeds/portAutoNegs
+                        # Format: "1/1", "1/2", etc. for subports
+                        for subport in range(1, logical_ports + 1):
+                            port_speeds[f"{port}/{subport}"] = f"{logical_speed}g"
+                            port_auto_negs[f"{port}/{subport}"] = False
             else:
                 # No breakout - ports use native speed
                 native_speed = switch_class.device_type_extension.native_speed
