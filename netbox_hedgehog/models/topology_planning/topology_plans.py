@@ -516,7 +516,8 @@ class PlanServerConnection(NetBoxModel):
         super().clean()
 
         # Validate nic_module_type is set and has interface templates
-        if not self.nic_module_type:
+        # Use nic_module_type_id to avoid RelatedObjectDoesNotExist when None
+        if not self.nic_module_type_id:
             raise ValidationError({
                 'nic_module_type': 'NIC module type is required.'
             })
