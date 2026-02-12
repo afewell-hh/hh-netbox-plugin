@@ -165,12 +165,14 @@ class NICModelingUITestCase(TestCase):
             slug='test-switch'
         )
 
-        cls.breakout = BreakoutOption.objects.create(
+        cls.breakout, _ = BreakoutOption.objects.get_or_create(
             breakout_id='test-1x800g',
-            from_speed=800,
-            logical_ports=1,
-            logical_speed=800,
-            optic_type='QSFP-DD'
+            defaults={
+                'from_speed': 800,
+                'logical_ports': 1,
+                'logical_speed': 800,
+                'optic_type': 'QSFP-DD'
+            }
         )
 
         cls.device_ext = DeviceTypeExtension.objects.create(
