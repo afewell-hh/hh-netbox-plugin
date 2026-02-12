@@ -1103,7 +1103,7 @@ class PlanServerConnectionUITestCase(TestCase):
             connection_id='fe-001',
             target_switch_class=cls.switch_class,
             nic_module_type=cls.nic_module,
-            nic_slot='NIC1',
+            port_index=0,
             ports_per_connection=2,
             speed=200,
             hedgehog_conn_type='unbundled',
@@ -1190,10 +1190,11 @@ class PlanServerConnectionUITestCase(TestCase):
             'connection_id': 'fe-002',
             'target_switch_class': self.switch_class.pk,
             'nic_module_type': self.nic_module.pk,
-            'nic_slot': 'NIC1',
+            'port_index': 0,
             'ports_per_connection': 4,
             'speed': 200,
             'hedgehog_conn_type': 'bundled',
+            'distribution': 'same-switch',
             'port_type': 'data',
         }
 
@@ -1252,10 +1253,11 @@ class PlanServerConnectionUITestCase(TestCase):
             'connection_id': 'fe-001',
             'target_switch_class': self.switch_class.pk,
             'nic_module_type': self.nic_module.pk,
-            'nic_slot': 'NIC1',
+            'port_index': 0,
             'ports_per_connection': 4,  # Changed from 2
             'speed': 200,
             'hedgehog_conn_type': 'bundled',  # Changed
+            'distribution': 'same-switch',
             'port_type': 'data',
         }
 
