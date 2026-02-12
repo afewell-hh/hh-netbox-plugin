@@ -530,6 +530,25 @@ class PlanServerConnectionFormValidationTestCase(TestCase):
             uplink_ports_per_switch=4
         )
 
+        # Create NIC ModuleType for NIC modeling (DIET-173 Phase 5)
+        from dcim.models import ModuleType, InterfaceTemplate
+        nvidia, _ = Manufacturer.objects.get_or_create(name='NVIDIA', defaults={'slug': 'nvidia'})
+        cls.nic_module_type, created = ModuleType.objects.get_or_create(
+            manufacturer=nvidia,
+            model='BlueField-3 BF3220'
+        )
+        if created:
+            InterfaceTemplate.objects.create(
+                module_type=cls.nic_module_type,
+                name='p0',
+                type='other'
+            )
+            InterfaceTemplate.objects.create(
+                module_type=cls.nic_module_type,
+                name='p1',
+                type='other'
+            )
+
     def setUp(self):
         """Login before each test"""
         self.client = Client()
@@ -541,7 +560,8 @@ class PlanServerConnectionFormValidationTestCase(TestCase):
         data = {
             'server_class': self.server_class.pk,
             'connection_id': 'fe-001',
-            'nic_slot': 'eth1',  # Required per Issue #138: must have either nic_slot or server_interface_template
+            'nic_module_type': self.nic_module_type.pk,  # Required (DIET-173 Phase 5)
+            'port_index': 0,  # Required (DIET-173 Phase 5)
             'connection_name': 'frontend',
             'ports_per_connection': 2,
             'hedgehog_conn_type': ConnectionTypeChoices.UNBUNDLED,
@@ -630,7 +650,8 @@ class PlanServerConnectionFormValidationTestCase(TestCase):
         data_no_rail = {
             'server_class': self.server_class.pk,
             'connection_id': 'rail-test-fail',
-            'nic_slot': 'cx7-1',  # Required per Issue #138
+            'nic_module_type': self.nic_module_type.pk,  # Required (DIET-173 Phase 5)
+            'port_index': 0,  # Required (DIET-173 Phase 5)
             'connection_name': 'backend-rail',
             'ports_per_connection': 1,
             'hedgehog_conn_type': ConnectionTypeChoices.UNBUNDLED,
@@ -654,7 +675,8 @@ class PlanServerConnectionFormValidationTestCase(TestCase):
         data_with_rail = {
             'server_class': self.server_class.pk,
             'connection_id': 'rail-test-success',
-            'nic_slot': 'cx7-1',  # Required per Issue #138
+            'nic_module_type': self.nic_module_type.pk,  # Required (DIET-173 Phase 5)
+            'port_index': 0,  # Required (DIET-173 Phase 5)
             'connection_name': 'backend-rail-0',
             'ports_per_connection': 1,
             'hedgehog_conn_type': ConnectionTypeChoices.UNBUNDLED,
@@ -679,7 +701,8 @@ class PlanServerConnectionFormValidationTestCase(TestCase):
         data = {
             'server_class': self.server_class.pk,
             'connection_id': 'alt-test',
-            'nic_slot': 'eth1',  # Required per Issue #138
+            'nic_module_type': self.nic_module_type.pk,  # Required (DIET-173 Phase 5)
+            'port_index': 0,  # Required (DIET-173 Phase 5)
             'connection_name': 'frontend-alt',
             'ports_per_connection': 2,
             'hedgehog_conn_type': ConnectionTypeChoices.UNBUNDLED,
