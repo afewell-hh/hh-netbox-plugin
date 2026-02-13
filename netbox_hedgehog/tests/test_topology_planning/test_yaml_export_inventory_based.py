@@ -145,6 +145,25 @@ class YAMLExportTestBase(TestCase):
             defaults={'slug': 'test-site'}
         )
 
+        # Create NIC ModuleType for NIC modeling (DIET-173 Phase 5)
+        from dcim.models import ModuleType
+        nvidia, _ = Manufacturer.objects.get_or_create(name='NVIDIA', defaults={'slug': 'nvidia'})
+        cls.nic_module_type, created = ModuleType.objects.get_or_create(
+            manufacturer=nvidia,
+            model='BlueField-3 BF3220'
+        )
+        if created:
+            InterfaceTemplate.objects.create(
+                module_type=cls.nic_module_type,
+                name='p0',
+                type='other'
+            )
+            InterfaceTemplate.objects.create(
+                module_type=cls.nic_module_type,
+                name='p1',
+                type='other'
+            )
+
 
 class YAMLExportPreconditionTestCase(YAMLExportTestBase):
     """
@@ -503,12 +522,12 @@ class YAMLExportBreakoutNamingTestCase(YAMLExportTestBase):
             priority=200
         )
 
-        # Create server connection - use correct field names
+        # Create server connection - use NIC modeling fields (DIET-173 Phase 5)
         self.connection = PlanServerConnection.objects.create(
             server_class=self.server_class,
             connection_id='frontend',
-            server_interface_template=self.eth0_template,  # FK to InterfaceTemplate
-            nic_slot='',  # Empty for template mode
+            nic_module_type=self.nic_module_type,  # Required (DIET-173 Phase 5)
+            port_index=0,  # Required (DIET-173 Phase 5)
             ports_per_connection=2,  # Correct field name
             hedgehog_conn_type=ConnectionTypeChoices.UNBUNDLED,  # Correct field name
             distribution=ConnectionDistributionChoices.SAME_SWITCH,

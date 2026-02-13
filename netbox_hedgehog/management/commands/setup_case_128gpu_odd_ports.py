@@ -13,7 +13,7 @@ from django.core.management.base import BaseCommand
 from django.db import transaction, models
 from django.core.exceptions import ValidationError
 
-from dcim.models import Manufacturer, DeviceType, InterfaceTemplate, Cable, Device, Interface
+from dcim.models import Manufacturer, DeviceType, InterfaceTemplate, Cable, Device, Interface, ModuleType
 from extras.models import Tag
 
 from netbox_hedgehog.models.topology_planning import (
@@ -260,7 +260,7 @@ class Command(BaseCommand):
             hedgehog_role=HedgehogRoleChoices.SERVER_LEAF,
             device_type_extension=ds5000_ext,
             uplink_ports_per_switch=None,
-            mclag_pair=True,
+            mclag_pair=False,
         )
         fe_storage_leaf_a = PlanSwitchClass.objects.create(
             plan=plan,
@@ -394,11 +394,19 @@ class Command(BaseCommand):
             server_device_type=storage_type,
         )
 
+        # Get NIC ModuleTypes (DIET-173 Phase 5)
+        nvidia = Manufacturer.objects.get(name='NVIDIA')
+        bf3_type = ModuleType.objects.get(manufacturer=nvidia, model='BlueField-3 BF3220')
+        cx7_single = ModuleType.objects.get(manufacturer=nvidia, model='ConnectX-7 (Single-Port)')
+
         def add_frontend_connection(server_class):
+            # Frontend connections use BlueField-3 BF3220 (dual-port)
             PlanServerConnection.objects.create(
                 server_class=server_class,
                 connection_id="fe",
                 connection_name="frontend",
+                nic_module_type=bf3_type,
+                port_index=0,  # Use first port (p0)
                 ports_per_connection=2,
                 hedgehog_conn_type=ConnectionTypeChoices.UNBUNDLED,
                 distribution=ConnectionDistributionChoices.ALTERNATING,
@@ -410,11 +418,14 @@ class Command(BaseCommand):
         add_frontend_connection(gpu_fe_only)
         add_frontend_connection(gpu_with_be)
 
+        # Backend rail connections use ConnectX-7 (Single-Port)
         for rail in range(8):
             PlanServerConnection.objects.create(
                 server_class=gpu_with_be,
                 connection_id=f"be-rail-{rail}",
                 connection_name=f"backend-rail-{rail}",
+                nic_module_type=cx7_single,
+                port_index=0,  # Single-port NIC, always use index 0
                 ports_per_connection=1,
                 hedgehog_conn_type=ConnectionTypeChoices.UNBUNDLED,
                 distribution=ConnectionDistributionChoices.RAIL_OPTIMIZED,
@@ -424,10 +435,13 @@ class Command(BaseCommand):
                 port_type=PortTypeChoices.DATA,
             )
 
+        # Storage frontend connections use BlueField-3 BF3220 (dual-port)
         PlanServerConnection.objects.create(
             server_class=storage_a,
             connection_id="fe-storage",
             connection_name="storage-frontend",
+            nic_module_type=bf3_type,
+            port_index=0,  # Use first port
             ports_per_connection=2,
             hedgehog_conn_type=ConnectionTypeChoices.BUNDLED,
             distribution=ConnectionDistributionChoices.SAME_SWITCH,
@@ -439,6 +453,8 @@ class Command(BaseCommand):
             server_class=storage_b,
             connection_id="fe-storage",
             connection_name="storage-frontend",
+            nic_module_type=bf3_type,
+            port_index=0,  # Use first port
             ports_per_connection=2,
             hedgehog_conn_type=ConnectionTypeChoices.BUNDLED,
             distribution=ConnectionDistributionChoices.SAME_SWITCH,

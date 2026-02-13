@@ -30,20 +30,27 @@
               </a>
             </td>
           </tr>
-          {% if object.nic_module_type %}
           <tr>
             <th scope="row">NIC Module Type</th>
             <td>{{ object.nic_module_type.manufacturer }} {{ object.nic_module_type.model }}</td>
           </tr>
+          <tr>
+            <th scope="row">Port Index</th>
+            <td>{{ object.port_index }}</td>
+          </tr>
+          {% if object.nic_module_type.attribute_data %}
+          <tr>
+            <th scope="row">Transceiver Attributes</th>
+            <td>
+              <dl class="row mb-0">
+                {% for key, value in object.nic_module_type.attribute_data.items %}
+                <dt class="col-sm-4">{{ key|title }}</dt>
+                <dd class="col-sm-8">{{ value }}</dd>
+                {% endfor %}
+              </dl>
+            </td>
+          </tr>
           {% endif %}
-          <tr>
-            <th scope="row">Server Interface Template</th>
-            <td>{{ object.server_interface_template|placeholder }}</td>
-          </tr>
-          <tr>
-            <th scope="row">NIC Slot <span class="badge badge-warning">LEGACY</span></th>
-            <td>{{ object.nic_slot|placeholder }}</td>
-          </tr>
           <tr>
             <th scope="row">Ports per Connection</th>
             <td>{{ object.ports_per_connection }}</td>

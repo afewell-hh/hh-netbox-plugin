@@ -701,21 +701,22 @@ class YAMLGenerator:
 
                 # Check if this is a "real" breakout or just native speed (1x)
                 if logical_ports == 1:
-                    # 1x<speed> means native speed - still add to portBreakouts
-                    # Many profiles (like OSFP-800G) only support breakout notation, not plain speeds
+                    # 1x<speed> means native speed - treat as regular port, NOT a breakout
+                    # Add to portSpeeds as native port
                     for port in ports:
-                        # Add to portBreakouts with full port name (e.g., "E1/1": "1x800G")
-                        port_breakouts[f"E1/{port}"] = breakout_id
-                        # Do NOT add to portSpeeds - breakout config handles it
+                        port_speeds[str(port)] = f"{logical_speed}g"
+                        port_auto_negs[str(port)] = False
                 else:
                     # Real breakout (2x, 4x, 8x, etc.)
                     for port in ports:
-                        # Add breakout config with full port name (e.g., "E1/1": "4X200G")
-                        port_breakouts[f"E1/{port}"] = breakout_id
+                        # Add breakout config with port number as key (e.g., "1": "4x200g")
+                        port_breakouts[str(port)] = breakout_id.lower()
 
-                        # DO NOT add breakout subports to portSpeeds/portAutoNegs
-                        # The breakout config itself defines speeds for subports
-                        # hhfab will infer E1/{port}/1, E1/{port}/2, etc. from the breakout
+                        # Add breakout subports to portSpeeds/portAutoNegs
+                        # Format: "1/1", "1/2", etc. for subports
+                        for subport in range(1, logical_ports + 1):
+                            port_speeds[f"{port}/{subport}"] = f"{logical_speed}g"
+                            port_auto_negs[f"{port}/{subport}"] = False
             else:
                 # No breakout - ports use native speed
                 native_speed = switch_class.device_type_extension.native_speed
@@ -926,21 +927,28 @@ class YAMLGenerator:
 
     def _generate_servers(self) -> List[Dict[str, Any]]:
         """
-        Generate Server CRDs from NetBox Devices with server role.
+        Generate Server CRDs from NetBox Devices with server role (DIET-173 Phase 5).
 
-        NOTE: Per authoritative schema, Server CRD spec includes only:
+        Includes Module metadata (NIC ModuleTypes with transceiver attributes)
+        for visibility and documentation purposes.
+
+        NOTE: Server CRD spec includes:
         - description (optional)
         - profile (optional, not used in MVP)
+        - modules (optional, DIET-173 extension for NIC metadata)
 
         Server interfaces are NOT included in Server CRD spec.
         Interfaces are referenced via Connection CRDs (unbundled/bundled/mclag).
 
         Reads:
         - Device.name, Device.comments
+        - Module (NICs) with ModuleType and transceiver attributes
 
         Returns:
-            List of Server CRD dicts with spec: {description}
+            List of Server CRD dicts with spec: {description, modules}
         """
+        from dcim.models import Module
+
         server_crds = []
         existing_names = set()
 
@@ -953,10 +961,27 @@ class YAMLGenerator:
             # Get unique CRD name (collision-safe)
             crd_name = self._generate_unique_crd_name(server, existing_names)
 
-            # Build minimal spec (description only per schema)
+            # Build spec with description
             spec = {}
             if server.comments:
                 spec['description'] = server.comments
+
+            # Add Module metadata (DIET-173 Phase 5)
+            modules = Module.objects.filter(device=server).select_related('module_type', 'module_bay')
+            if modules.exists():
+                spec['modules'] = []
+                for module in modules:
+                    module_data = {
+                        'bay': module.module_bay.name if module.module_bay else 'unknown',
+                        'type': module.module_type.model,
+                        'manufacturer': module.module_type.manufacturer.name,
+                    }
+
+                    # Include transceiver attributes if available
+                    if module.module_type.attribute_data:
+                        module_data['transceiver'] = module.module_type.attribute_data
+
+                    spec['modules'].append(module_data)
 
             server_crds.append({
                 'apiVersion': 'wiring.githedgehog.com/v1beta1',

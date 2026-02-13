@@ -438,27 +438,14 @@ class PlanServerConnection(NetBoxModel):
     nic_module_type = models.ForeignKey(
         ModuleType,
         on_delete=models.PROTECT,
-        null=True,
-        blank=True,
         related_name='plan_server_connections',
-        help_text="NIC module type (optional for MVP)"
+        help_text="NIC module type (e.g., BlueField-3 BF3220, ConnectX-7)"
     )
 
-    nic_slot = models.CharField(
-        max_length=50,
-        blank=True,
-        help_text="NIC slot identifier (e.g., 'NIC1', 'enp1s0f0'). Used for legacy naming when server_interface_template is not set."
-    )
-
-    server_interface_template = models.ForeignKey(
-        'dcim.InterfaceTemplate',
-        on_delete=models.SET_NULL,
-        null=True,
-        blank=True,
-        related_name='plan_server_connections',
-        help_text="First server interface template for this connection. "
-                  "If ports_per_connection > 1, subsequent interfaces will be used in order. "
-                  "If not set and nic_slot is provided, uses legacy naming mode."
+    port_index = models.IntegerField(
+        default=0,
+        validators=[MinValueValidator(0)],
+        help_text="Zero-based port index on the NIC (e.g., 0 for first port, 1 for second port)"
     )
 
     connection_name = models.CharField(
@@ -525,95 +512,55 @@ class PlanServerConnection(NetBoxModel):
         return reverse('plugins:netbox_hedgehog:planserverconnection_detail', args=[self.pk])
 
     def clean(self):
-        """Validate server interface selection (Option 4: nic_slot as legacy indicator)."""
+        """Validate NIC configuration (DIET-173 Phase 5)."""
         super().clean()
-        from django.core.exceptions import ValidationError
 
-        # Option 4 validation: Check if either template or nic_slot is provided
-        if not self.server_interface_template and not self.nic_slot:
-            raise ValidationError({
-                'server_interface_template':
-                    'Either select an interface template or provide a NIC slot for legacy naming mode.'
-            })
-
-        # If template is selected, validate it belongs to server device type
-        if self.server_interface_template:
-            if not self.server_class or not self.server_class.server_device_type:
-                # Skip validation if server_class not set yet (form will handle this)
-                return
-
-            if self.server_interface_template.device_type != self.server_class.server_device_type:
+        # Validate connection_id follows NetBox interface naming conventions
+        # (used as prefix for auto-created interface names)
+        if self.connection_id:
+            import re
+            if not re.match(r'^[a-zA-Z0-9_-]+$', self.connection_id):
                 raise ValidationError({
-                    'server_interface_template':
-                        f'Interface template must belong to device type {self.server_class.server_device_type}'
+                    'connection_id': 'Connection ID must contain only alphanumeric characters, '
+                                   'hyphens, and underscores (used as interface name prefix).'
                 })
 
-            # Validate sufficient interfaces for ports_per_connection
-            if self.ports_per_connection and self.ports_per_connection > 1:
-                available_interfaces = self._get_available_interface_sequence()
-                if len(available_interfaces) < self.ports_per_connection:
-                    raise ValidationError({
-                        'ports_per_connection':
-                            f'Insufficient interfaces available. Selected {self.server_interface_template.name}, '
-                            f'need {self.ports_per_connection} total, only {len(available_interfaces)} available.'
-                    })
+        # Validate nic_module_type is set and has interface templates
+        # Use nic_module_type_id to avoid RelatedObjectDoesNotExist when None
+        if not self.nic_module_type_id:
+            raise ValidationError({
+                'nic_module_type': 'NIC module type is required.'
+            })
 
-    def _get_available_interface_sequence(self):
-        """
-        Get ordered sequence of interfaces starting from selected template.
-
-        Uses natural sorting and prefix scoping to ensure correct ordering
-        (e.g., cx7-2, cx7-3, ..., cx7-10, not cx7-10, cx7-2).
-
-        Only includes interfaces with same prefix as selected template to
-        avoid crossing into unrelated interface groups.
-
-        Returns list of InterfaceTemplate objects in natural order.
-        """
+        # Get interface templates for the NIC module type
         from dcim.models import InterfaceTemplate
-        import re
+        nic_interfaces = InterfaceTemplate.objects.filter(
+            module_type=self.nic_module_type
+        ).order_by('name')
 
-        if not self.server_interface_template:
-            return []
+        if not nic_interfaces.exists():
+            raise ValidationError({
+                'nic_module_type': f'NIC module type "{self.nic_module_type}" has no interface templates defined.'
+            })
 
-        if not self.server_class or not self.server_class.server_device_type:
-            return []
+        # Validate port_index doesn't exceed available ports
+        port_count = nic_interfaces.count()
+        if self.port_index >= port_count:
+            raise ValidationError({
+                'port_index': f'Port index {self.port_index} exceeds available ports (0-{port_count - 1}) '
+                             f'on NIC "{self.nic_module_type}".'
+            })
 
-        # Get all interfaces for device type
-        all_interfaces = list(
-            InterfaceTemplate.objects.filter(
-                device_type=self.server_class.server_device_type
-            )
-        )
+        # Validate sufficient ports for ports_per_connection
+        if self.ports_per_connection:
+            available_ports = port_count - self.port_index
+            if self.ports_per_connection > available_ports:
+                raise ValidationError({
+                    'ports_per_connection': f'Insufficient ports for this connection. '
+                                          f'Requested {self.ports_per_connection} ports starting from index {self.port_index}, '
+                                          f'but only {available_ports} ports available on "{self.nic_module_type}".'
+                })
 
-        # Extract prefix from selected interface (e.g., "cx7-1" → "cx7-")
-        selected_name = self.server_interface_template.name
-        prefix_match = re.match(r'^([a-zA-Z]+[-_]?)', selected_name)
-        if prefix_match:
-            prefix = prefix_match.group(1)
-            # Filter to same prefix only
-            all_interfaces = [
-                iface for iface in all_interfaces
-                if iface.name.startswith(prefix)
-            ]
-
-        # Natural sort helper
-        def natural_sort_key(iface):
-            """Convert interface name to sortable key with numeric awareness."""
-            parts = re.split(r'(\d+)', iface.name)
-            return [int(p) if p.isdigit() else p.lower() for p in parts]
-
-        # Sort naturally
-        all_interfaces.sort(key=natural_sort_key)
-
-        # Find starting position
-        try:
-            start_idx = all_interfaces.index(self.server_interface_template)
-        except ValueError:
-            return []
-
-        # Return sequence from starting position
-        return all_interfaces[start_idx:]
 
 
 class PlanMCLAGDomain(NetBoxModel):

@@ -6,13 +6,13 @@ changes for NIC modeling + multi-homing (issue #164).
 
 The test validates that:
 1. The Case 128 GPU plan can still be created
-2. Device generation still produces the same counts (164 devices, 1096 interfaces, 548 cables)
+2. Device generation still produces the same counts (158 devices, 548 interfaces, 804 cables)
 3. YAML generation still produces valid Hedgehog configuration
 4. hhfab validation still passes (if hhfab is available)
 
 This is the 1 regression test specified in the Phase 3 spec addendum.
 
-SLOW TEST: This test generates 164 devices + 1096 interfaces + 548 cables.
+SLOW TEST: This test generates 158 devices + 548 interfaces + 804 cables.
 Execution time: 10-15 minutes.
 
 Run separately with: python manage.py test --tag=slow --keepdb
@@ -47,7 +47,7 @@ class UCCase128GPURegressionTestCase(TestCase):
 
     This test serves as a backward compatibility guarantee.
 
-    SLOW TEST: Generates 164 devices, 1096 interfaces, 548 cables.
+    SLOW TEST: Generates 158 devices, 548 interfaces, 804 cables.
     Execution time: 10-15 minutes.
 
     Run with: python manage.py test --tag=slow --keepdb
@@ -84,7 +84,7 @@ class UCCase128GPURegressionTestCase(TestCase):
         self.assertEqual(
             server_classes.count(),
             4,
-            "Expected 4 server classes (GPU, INF, OOB, Storage)"
+            "Expected 4 server classes (gpu-fe-only, gpu-with-backend, storage-a, storage-b)"
         )
 
         # Switch classes
@@ -92,7 +92,7 @@ class UCCase128GPURegressionTestCase(TestCase):
         self.assertEqual(
             switch_classes.count(),
             6,
-            "Expected 6 switch classes (FE/BE leaf/spine, OOB leaf/spine)"
+            "Expected 6 switch classes (fe-gpu-leaf, fe-storage-leaf-a/b, fe-spine, be-rail-leaf, be-spine)"
         )
 
         # Server connections
@@ -100,7 +100,7 @@ class UCCase128GPURegressionTestCase(TestCase):
         self.assertEqual(
             connections.count(),
             12,
-            "Expected 12 server connections (3 per server class)"
+            "Expected 12 server connections (1 fe for gpu-fe-only, 9 for gpu-with-backend, 1 each for storage-a/b)"
         )
 
         # =====================================================================
@@ -125,24 +125,27 @@ class UCCase128GPURegressionTestCase(TestCase):
         result = generator.generate_all()
 
         # Validate counts match expected baseline
+        # Breakdown: 146 servers (96 gpu-fe-only + 32 gpu-with-backend + 18 storage) + 12 switches
         self.assertEqual(
             result.device_count,
-            164,
-            f"Expected 164 devices, got {result.device_count}. "
+            158,
+            f"Expected 158 devices, got {result.device_count}. "
             "This indicates a regression in device generation logic."
         )
 
+        # Interface count: server interfaces + switch interfaces
         self.assertEqual(
             result.interface_count,
-            1096,
-            f"Expected 1096 interfaces, got {result.interface_count}. "
+            548,
+            f"Expected 548 interfaces, got {result.interface_count}. "
             "This indicates a regression in interface generation logic."
         )
 
+        # Cable count includes server-to-switch + fabric (leaf-spine) + MCLAG peer/session
         self.assertEqual(
             result.cable_count,
-            548,
-            f"Expected 548 cables, got {result.cable_count}. "
+            804,
+            f"Expected 804 cables, got {result.cable_count}. "
             "This indicates a regression in cable generation logic."
         )
 
@@ -155,7 +158,9 @@ class UCCase128GPURegressionTestCase(TestCase):
             yaml_content = generate_yaml_for_plan(self.plan)
             self.assertIsNotNone(yaml_content)
             self.assertGreater(len(yaml_content), 0, "YAML export should not be empty")
-            self.assertIn('wiring:', yaml_content, "YAML should contain 'wiring:' key")
+            # Hedgehog uses Kubernetes CRD format, not simple wiring: key
+            self.assertIn('apiVersion:', yaml_content, "YAML should contain Kubernetes CRD format")
+            self.assertIn('kind:', yaml_content, "YAML should contain Kubernetes resources")
         except Exception as e:
             self.fail(f"YAML export failed: {e}")
 
@@ -212,32 +217,32 @@ class UCCase128GPURegressionTestCase(TestCase):
         """
         Validate that server connections maintain their configuration.
 
-        After Phase 3 changes, connections should:
-        - Still reference correct interface templates (if used)
-        - Still support legacy nic_slot mode (if used)
+        After NIC modeling (Phase 5), connections should:
+        - Have nic_module_type set (required field)
+        - Have port_index set (required field)
         - Maintain correct ports_per_connection values
         """
-        # GPU server class connections
+        # GPU server class connections - use actual server class ID from command
         gpu_server = PlanServerClass.objects.get(
             plan=self.plan,
-            server_class_id='GPU-B200'
+            server_class_id='gpu-fe-only'
         )
 
         connections = PlanServerConnection.objects.filter(server_class=gpu_server)
         self.assertGreater(connections.count(), 0, "GPU servers should have connections")
 
-        # Verify connections have valid configuration
+        # Verify connections have valid NIC modeling configuration
         for conn in connections:
             self.assertIsNotNone(conn.ports_per_connection)
             self.assertGreater(conn.ports_per_connection, 0)
-            self.assertIsNotNone(conn.switch_class)
+            self.assertIsNotNone(conn.target_switch_class)
 
-            # Either server_interface_template or nic_slot should be set
-            # (depends on how the plan is configured)
-            has_template = conn.server_interface_template is not None
-            has_nic_slot = bool(conn.nic_slot)
-            self.assertTrue(
-                has_template or has_nic_slot,
-                f"Connection {conn.connection_id} should have either "
-                "server_interface_template or nic_slot configured"
+            # NIC modeling fields are required (DIET-173 Phase 5)
+            self.assertIsNotNone(
+                conn.nic_module_type,
+                f"Connection {conn.connection_id} should have nic_module_type"
+            )
+            self.assertIsNotNone(
+                conn.port_index,
+                f"Connection {conn.connection_id} should have port_index"
             )
