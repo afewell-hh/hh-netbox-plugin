@@ -1,0 +1,138 @@
+meta:
+  case_id: ux_case_small_mclag
+  name: UX Case Small MCLAG
+  description: Small frontend MCLAG-style topology for regression coverage
+  version: 1
+  managed_by: yaml
+  tags: [regression, mclag]
+
+reference_data:
+  manufacturers:
+    - id: test_mfg
+      name: Test Mfg
+      slug: test-mfg
+    - id: nvidia
+      name: NVIDIA
+      slug: nvidia
+  device_types:
+    - id: test_server
+      manufacturer: test_mfg
+      model: Test Server 2x200G
+      slug: test-server-2x200g
+      interface_templates:
+        - name: eth1
+          type: 200gbase-x-qsfp56
+        - name: eth2
+          type: 200gbase-x-qsfp56
+    - id: test_switch
+      manufacturer: test_mfg
+      model: Test Switch 64x800G
+      slug: test-switch-64x800g
+      interface_templates:
+        - name: E1/1
+          type: 800gbase-x-qsfpdd
+        - name: E1/2
+          type: 800gbase-x-qsfpdd
+        - name: E1/3
+          type: 800gbase-x-qsfpdd
+        - name: E1/4
+          type: 800gbase-x-qsfpdd
+  device_type_extensions:
+    - id: test_switch_ext
+      device_type: test_switch
+      mclag_capable: true
+      hedgehog_roles: [spine, server-leaf]
+      supported_breakouts: [1x800g, 4x200g]
+      native_speed: 800
+      uplink_ports: 8
+  breakout_options:
+    - id: b_1x800
+      breakout_id: mclag-1x800g
+      from_speed: 800
+      logical_ports: 1
+      logical_speed: 800
+      optic_type: QSFP-DD
+    - id: b_4x200
+      breakout_id: mclag-4x200g
+      from_speed: 800
+      logical_ports: 4
+      logical_speed: 200
+      optic_type: QSFP-DD
+  module_types:
+    - id: nic_bf3
+      manufacturer: nvidia
+      model: BlueField-3 BF3220
+      interface_templates:
+        - name: p0
+          type: other
+        - name: p1
+          type: other
+
+plan:
+  name: UX Case Small MCLAG
+  status: draft
+  description: Small MCLAG-oriented YAML case
+
+switch_classes:
+  - switch_class_id: fe-leaf
+    fabric: frontend
+    hedgehog_role: server-leaf
+    device_type_extension: test_switch_ext
+    uplink_ports_per_switch: 8
+    mclag_pair: true
+  - switch_class_id: fe-spine
+    fabric: frontend
+    hedgehog_role: spine
+    device_type_extension: test_switch_ext
+    uplink_ports_per_switch: 0
+    mclag_pair: false
+
+switch_port_zones:
+  - switch_class: fe-leaf
+    zone_name: server-downlinks
+    zone_type: server
+    port_spec: 1-16
+    breakout_option: b_4x200
+    allocation_strategy: sequential
+    priority: 100
+  - switch_class: fe-leaf
+    zone_name: uplinks
+    zone_type: uplink
+    port_spec: 17-24
+    breakout_option: b_1x800
+    allocation_strategy: sequential
+    priority: 100
+  - switch_class: fe-spine
+    zone_name: leaf-downlinks
+    zone_type: fabric
+    port_spec: 1-24
+    breakout_option: b_1x800
+    allocation_strategy: sequential
+    priority: 100
+
+server_classes:
+  - server_class_id: gpu-small
+    description: Small GPU pool
+    category: gpu
+    quantity: 4
+    gpus_per_server: 8
+    server_device_type: test_server
+
+server_connections:
+  - server_class: gpu-small
+    connection_id: fe
+    connection_name: frontend
+    nic_module_type: nic_bf3
+    port_index: 0
+    ports_per_connection: 2
+    hedgehog_conn_type: unbundled
+    distribution: alternating
+    target_switch_class: fe-leaf
+    speed: 200
+    port_type: data
+
+expected:
+  counts:
+    server_classes: 1
+    switch_classes: 2
+    connections: 1

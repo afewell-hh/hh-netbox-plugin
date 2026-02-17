@@ -22,6 +22,7 @@ setup(
             'templates/netbox_hedgehog/*',
             'static/netbox_hedgehog/css/*',
             'static/netbox_hedgehog/js/*',
+            'fabric_profiles/*.go',
         ],
     },
     classifiers=[

@@ -191,6 +191,7 @@ class Command(BaseCommand):
         # Delete plan metadata
         self.stdout.write("  Deleting plan metadata...")
         PlanServerConnection.objects.filter(server_class__plan=plan).delete()
+        PlanServerConnection.objects.filter(target_switch_class__plan=plan).delete()
         SwitchPortZone.objects.filter(switch_class__plan=plan).delete()
         PlanSwitchClass.objects.filter(plan=plan).delete()
         PlanServerClass.objects.filter(plan=plan).delete()
@@ -199,6 +200,17 @@ class Command(BaseCommand):
         self.stdout.write("  ✓ Cleanup complete")
 
     def _create_case_data(self) -> TopologyPlan:
+        # Phase 5: delegate case definition to YAML ingestion engine.
+        from netbox_hedgehog.test_cases.runner import apply_case_id
+
+        return apply_case_id(
+            "ux_case_128gpu_odd_ports",
+            clean=False,
+            prune=True,
+            reference_mode="ensure",
+        )
+
+        # Legacy inline definition retained below for historical reference.
         manufacturer, _ = Manufacturer.objects.get_or_create(
             name="Generic",
             defaults={"slug": "generic"},

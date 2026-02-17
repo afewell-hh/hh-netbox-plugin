@@ -12,14 +12,26 @@ Reference:
     - PRD Issue #83: Breakout option specifications
 """
 
+from pathlib import Path
+
+from django.core.management import call_command
 from django.core.management.base import BaseCommand
 from django.db import transaction
+
+from dcim.models import DeviceType
 
 from netbox_hedgehog.models.topology_planning import BreakoutOption
 
 
 class Command(BaseCommand):
-    help = 'Load DIET reference data (BreakoutOption seed data)'
+    help = 'Load DIET reference data (BreakoutOptions + baseline switch profiles)'
+
+    def add_arguments(self, parser):
+        parser.add_argument(
+            "--skip-switch-profile-import",
+            action="store_true",
+            help="Skip bundled Hedgehog switch profile import",
+        )
 
     def handle(self, *args, **options):
         """Load seed data for DIET reference data models"""
@@ -28,12 +40,18 @@ class Command(BaseCommand):
 
         # Load BreakoutOption seed data
         breakout_count = self.load_breakout_options()
+        imported_switch_profiles = self.import_bundled_switch_profiles(
+            skip=options.get("skip_switch_profile_import", False)
+        )
 
         self.stdout.write(self.style.SUCCESS(
             f'\nSuccessfully loaded DIET reference data:'
         ))
         self.stdout.write(self.style.SUCCESS(
             f'  - BreakoutOption: {breakout_count} records created/updated'
+        ))
+        self.stdout.write(self.style.SUCCESS(
+            f'  - Switch profiles imported: {imported_switch_profiles}'
         ))
 
     @transaction.atomic
@@ -108,3 +126,40 @@ class Command(BaseCommand):
             ))
 
         return total_count
+
+    def import_bundled_switch_profiles(self, skip: bool = False) -> int:
+        """
+        Import baseline switch profiles from bundled profile files.
+
+        Uses local files so this remains deterministic and available without
+        external network access.
+        """
+        if skip:
+            self.stdout.write(self.style.WARNING(
+                'Skipping bundled switch profile import (--skip-switch-profile-import)'
+            ))
+            return 0
+
+        profile_dir = Path(__file__).resolve().parents[2] / "fabric_profiles"
+        if not profile_dir.exists():
+            self.stdout.write(self.style.WARNING(
+                f'Bundled profile directory missing: {profile_dir}'
+            ))
+            return 0
+
+        before_exists = DeviceType.objects.filter(model="celestica-ds5000").exists()
+
+        call_command(
+            "import_fabric_profiles",
+            source_dir=str(profile_dir),
+            profiles="celestica-ds5000",
+            stdout=self.stdout,
+            stderr=self.stderr,
+        )
+
+        after_exists = DeviceType.objects.filter(model="celestica-ds5000").exists()
+        if after_exists and not before_exists:
+            return 1
+        if after_exists:
+            return 1
+        return 0

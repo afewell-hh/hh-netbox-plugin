@@ -14,6 +14,8 @@ from django.test import TestCase
 from django.core.management import call_command
 from io import StringIO
 
+from dcim.models import DeviceType
+
 from netbox_hedgehog.models.topology_planning import BreakoutOption
 
 
@@ -117,6 +119,14 @@ class SeedDataCommandTestCase(TestCase):
         self.assertIn('created', output.lower(),
                      "Command output should mention creating records")
 
+    def test_command_imports_baseline_profile_backed_switch_model(self):
+        """load_diet_reference_data should ensure celestica-ds5000 exists."""
+        call_command('load_diet_reference_data', stdout=StringIO())
+        self.assertTrue(
+            DeviceType.objects.filter(model='celestica-ds5000').exists(),
+            "Expected profile-backed switch DeviceType 'celestica-ds5000' to be present",
+        )
+
 
 class SeedDataRecordTestCase(TestCase):
     """Test that seeded data records are correct"""
@@ -127,10 +137,10 @@ class SeedDataRecordTestCase(TestCase):
         call_command('load_diet_reference_data', stdout=StringIO())
 
     def test_seeded_data_count_matches_expected(self):
-        """Test that exactly 14 records were seeded with correct IDs and optic types"""
+        """Test that baseline records were seeded with correct IDs and optic types"""
         count = BreakoutOption.objects.count()
-        self.assertEqual(count, 14,
-                        "Should have exactly 14 BreakoutOption records")
+        self.assertGreaterEqual(count, 14,
+                                "Should have at least 14 BreakoutOption records")
 
         # Validate all 14 expected breakout IDs and their optic types
         expected_breakouts = [

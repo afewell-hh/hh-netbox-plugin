@@ -92,6 +92,11 @@ jobs:
           cd netbox-docker
           docker compose exec -T netbox python manage.py load_diet_reference_data
 
+      - name: Validate YAML test case discovery
+        run: |
+          cd netbox-docker
+          docker compose exec -T netbox python manage.py apply_diet_test_case --all --dry-run --verbose
+
       - name: Run Django tests
         run: |
           cd netbox-docker
