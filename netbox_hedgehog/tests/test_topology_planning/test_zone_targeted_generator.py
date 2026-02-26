@@ -247,12 +247,18 @@ class ZoneTargetedIngestTestCase(TestCase):
             },
             "plan": {"name": "ZT-Ingest-Plan", "status": "draft"},
             "reference_data": {
-                "manufacturers": [{"name": "ZT-Gen", "slug": "zt-gen"}],
+                "manufacturers": [
+                    {"id": "mfr_zt_ingest", "name": "ZT-Ingest-Mfr", "slug": "zt-ingest-mfr"},
+                ],
                 "device_types": [],
-                "module_types": [{"manufacturer": "NIC-Gen", "model": "CX7-GEN-TEST"}],
-                "breakout_options": [{"breakout_id": "1x100g-zt",
-                                      "from_speed": 100, "logical_ports": 1,
-                                      "logical_speed": 100}],
+                "module_types": [
+                    {"id": "nic_cx7_ingest", "manufacturer": "mfr_zt_ingest",
+                     "model": "CX7-INGEST-TEST"},
+                ],
+                "breakout_options": [
+                    {"id": "bo_1x100g_ingest", "breakout_id": "1x100g-zt-ingest",
+                     "from_speed": 100, "logical_ports": 1, "logical_speed": 100},
+                ],
                 "device_type_extensions": [],
             },
             "switch_classes": [{
@@ -264,7 +270,7 @@ class ZoneTargetedIngestTestCase(TestCase):
             "switch_port_zones": [{
                 "switch_class": "sw-ingest", "zone_name": "server-ingest",
                 "zone_type": "server", "port_spec": "1-4",
-                "breakout_option": "1x100g-zt",
+                "breakout_option": "bo_1x100g_ingest",  # ref id, not breakout_id
                 "allocation_strategy": "sequential", "priority": 100,
             }],
             "server_classes": [{
@@ -281,7 +287,7 @@ class ZoneTargetedIngestTestCase(TestCase):
         case = self._minimal_case([{
             "server_class": "srv-ingest",
             "connection_id": "ingest-01",
-            "nic_module_type": "CX7-GEN-TEST",
+            "nic_module_type": "nic_cx7_ingest",
             "port_index": 0,
             "ports_per_connection": 1,
             "hedgehog_conn_type": "unbundled",
@@ -290,7 +296,7 @@ class ZoneTargetedIngestTestCase(TestCase):
             "speed": 100,
         }])
         try:
-            plan = apply_case(case, clean=True, reference_mode="skip")
+            plan = apply_case(case, clean=True, reference_mode="ensure")
         except Exception as e:
             self.fail(f"FAILS RED (expected): ingest does not handle target_zone key. {e}")
         conn = PlanServerConnection.objects.filter(connection_id="ingest-01").first()
@@ -304,7 +310,7 @@ class ZoneTargetedIngestTestCase(TestCase):
         case = self._minimal_case([{
             "server_class": "srv-ingest",
             "connection_id": "ingest-02",
-            "nic_module_type": "CX7-GEN-TEST",
+            "nic_module_type": "nic_cx7_ingest",
             "port_index": 0,
             "ports_per_connection": 1,
             "hedgehog_conn_type": "unbundled",
@@ -313,7 +319,7 @@ class ZoneTargetedIngestTestCase(TestCase):
             "speed": 100,
         }])
         try:
-            apply_case(case, clean=True, reference_mode="skip")
+            apply_case(case, clean=True, reference_mode="ensure")
         except TestCaseValidationError as e:
             self.assertEqual(e.errors[0]["code"], "deprecated_key",
                 f"Expected code='deprecated_key', got '{e.errors[0]['code']}'")
@@ -328,7 +334,7 @@ class ZoneTargetedIngestTestCase(TestCase):
         case = self._minimal_case([{
             "server_class": "srv-ingest",
             "connection_id": "ingest-03",
-            "nic_module_type": "CX7-GEN-TEST",
+            "nic_module_type": "nic_cx7_ingest",
             "port_index": 0,
             "ports_per_connection": 1,
             "hedgehog_conn_type": "unbundled",
@@ -337,7 +343,7 @@ class ZoneTargetedIngestTestCase(TestCase):
             # Neither target_zone nor target_switch_class
         }])
         with self.assertRaises(TestCaseValidationError) as ctx:
-            apply_case(case, clean=True, reference_mode="skip")
+            apply_case(case, clean=True, reference_mode="ensure")
         # FAILS RED: current code raises 'unknown_reference', not 'missing_field'
         self.assertEqual(ctx.exception.errors[0]["code"], "missing_field")
 
@@ -347,7 +353,7 @@ class ZoneTargetedIngestTestCase(TestCase):
         case = self._minimal_case([{
             "server_class": "srv-ingest",
             "connection_id": "ingest-04",
-            "nic_module_type": "CX7-GEN-TEST",
+            "nic_module_type": "nic_cx7_ingest",
             "port_index": 0,
             "ports_per_connection": 1,
             "hedgehog_conn_type": "unbundled",
@@ -356,6 +362,6 @@ class ZoneTargetedIngestTestCase(TestCase):
             "speed": 100,
         }])
         with self.assertRaises(TestCaseValidationError) as ctx:
-            apply_case(case, clean=True, reference_mode="skip")
+            apply_case(case, clean=True, reference_mode="ensure")
         # FAILS RED: target_zone key not yet parsed
         self.assertEqual(ctx.exception.errors[0]["code"], "unknown_reference")
