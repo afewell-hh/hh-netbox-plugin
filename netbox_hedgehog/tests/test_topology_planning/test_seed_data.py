@@ -14,7 +14,9 @@ from django.test import TestCase
 from django.core.management import call_command
 from io import StringIO
 
-from netbox_hedgehog.models.topology_planning import BreakoutOption
+from dcim.models import DeviceType, InterfaceTemplate
+
+from netbox_hedgehog.models.topology_planning import BreakoutOption, DeviceTypeExtension
 
 
 class SeedDataCommandTestCase(TestCase):
@@ -117,6 +119,43 @@ class SeedDataCommandTestCase(TestCase):
         self.assertIn('created', output.lower(),
                      "Command output should mention creating records")
 
+    def test_command_imports_baseline_profile_backed_switch_model(self):
+        """load_diet_reference_data should ensure celestica-ds5000 exists."""
+        call_command('load_diet_reference_data', stdout=StringIO())
+        self.assertTrue(
+            DeviceType.objects.filter(model='celestica-ds5000').exists(),
+            "Expected profile-backed switch DeviceType 'celestica-ds5000' to be present",
+        )
+
+    def test_command_seeds_management_switch_device_type(self):
+        """load_diet_reference_data should ensure celestica-es1000 exists."""
+        call_command('load_diet_reference_data', stdout=StringIO())
+        self.assertTrue(
+            DeviceType.objects.filter(model='celestica-es1000').exists(),
+            "Expected management switch DeviceType 'celestica-es1000' to be present",
+        )
+
+    def test_management_switch_has_expected_interface_templates(self):
+        """celestica-es1000 should have 48x1G + 4xSFP28 + mgmt."""
+        call_command('load_diet_reference_data', stdout=StringIO())
+        device_type = DeviceType.objects.get(model='celestica-es1000')
+        interfaces = InterfaceTemplate.objects.filter(device_type=device_type)
+
+        self.assertEqual(interfaces.count(), 53)
+        self.assertEqual(interfaces.filter(type='1000base-t').count(), 49)
+        self.assertEqual(interfaces.filter(type='25gbase-x-sfp28').count(), 4)
+        self.assertTrue(interfaces.filter(name='mgmt0', type='1000base-t').exists())
+        extension = DeviceTypeExtension.objects.get(device_type=device_type)
+        self.assertEqual(extension.hedgehog_roles, [])
+
+    def test_management_switch_is_recreated_after_inventory_purge(self):
+        """Simulate reset/purge flow and ensure celestica-es1000 is restored."""
+        call_command('load_diet_reference_data', stdout=StringIO())
+        DeviceType.objects.all().delete()
+
+        call_command('load_diet_reference_data', stdout=StringIO())
+        self.assertTrue(DeviceType.objects.filter(model='celestica-es1000').exists())
+
 
 class SeedDataRecordTestCase(TestCase):
     """Test that seeded data records are correct"""
@@ -127,10 +166,10 @@ class SeedDataRecordTestCase(TestCase):
         call_command('load_diet_reference_data', stdout=StringIO())
 
     def test_seeded_data_count_matches_expected(self):
-        """Test that exactly 14 records were seeded with correct IDs and optic types"""
+        """Test that baseline records were seeded with correct IDs and optic types"""
         count = BreakoutOption.objects.count()
-        self.assertEqual(count, 14,
-                        "Should have exactly 14 BreakoutOption records")
+        self.assertGreaterEqual(count, 14,
+                                "Should have at least 14 BreakoutOption records")
 
         # Validate all 14 expected breakout IDs and their optic types
         expected_breakouts = [

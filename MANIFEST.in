@@ -2,5 +2,6 @@ include README.md
 include LICENSE
 recursive-include netbox_hedgehog/templates *
 recursive-include netbox_hedgehog/static *
+recursive-include netbox_hedgehog/fabric_profiles *.go
 recursive-exclude * __pycache__
 recursive-exclude * *.py[co]

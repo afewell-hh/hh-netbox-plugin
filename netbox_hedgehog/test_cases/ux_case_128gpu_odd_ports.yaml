@@ -1,0 +1,429 @@
+meta:
+  case_id: ux_case_128gpu_odd_ports
+  name: UX Case 128GPU Odd Ports
+  description: Canonical DIET regression case (full YAML definition)
+  version: 1
+  managed_by: yaml
+  tags:
+    - regression
+    - diet
+
+reference_data:
+  manufacturers:
+    - id: generic
+      name: Generic
+      slug: generic
+    - id: celestica
+      name: Celestica
+      slug: celestica
+    - id: nvidia
+      name: NVIDIA
+      slug: nvidia
+
+  device_types:
+    - id: gpu_server_fe
+      manufacturer: generic
+      model: GPU-Server-FE
+      slug: gpu-server-fe
+      u_height: 2
+      is_full_depth: true
+      interface_templates:
+        - name: eth1
+          type: 200gbase-x-qsfp56
+        - name: eth2
+          type: 200gbase-x-qsfp56
+    - id: gpu_server_fe_be
+      manufacturer: generic
+      model: GPU-Server-FE-BE
+      slug: gpu-server-fe-be
+      u_height: 2
+      is_full_depth: true
+      interface_templates:
+        - name: eth1
+          type: 200gbase-x-qsfp56
+        - name: eth2
+          type: 200gbase-x-qsfp56
+        - name: cx7-1
+          type: 400gbase-x-qsfpdd
+        - name: cx7-2
+          type: 400gbase-x-qsfpdd
+        - name: cx7-3
+          type: 400gbase-x-qsfpdd
+        - name: cx7-4
+          type: 400gbase-x-qsfpdd
+        - name: cx7-5
+          type: 400gbase-x-qsfpdd
+        - name: cx7-6
+          type: 400gbase-x-qsfpdd
+        - name: cx7-7
+          type: 400gbase-x-qsfpdd
+        - name: cx7-8
+          type: 400gbase-x-qsfpdd
+    - id: storage_server_200g
+      manufacturer: generic
+      model: Storage-Server-200G
+      slug: storage-server-200g
+      u_height: 2
+      is_full_depth: true
+      interface_templates:
+        - name: eth1
+          type: 200gbase-x-qsfp56
+        - name: eth2
+          type: 200gbase-x-qsfp56
+    - id: ds5000
+      manufacturer: celestica
+      model: celestica-ds5000
+      slug: celestica-ds5000
+      interface_templates:
+        - name: E1/1
+          type: 800gbase-x-osfp
+        - name: E1/2
+          type: 800gbase-x-osfp
+        - name: E1/3
+          type: 800gbase-x-osfp
+        - name: E1/4
+          type: 800gbase-x-osfp
+        - name: E1/5
+          type: 800gbase-x-osfp
+        - name: E1/6
+          type: 800gbase-x-osfp
+        - name: E1/7
+          type: 800gbase-x-osfp
+        - name: E1/8
+          type: 800gbase-x-osfp
+
+  device_type_extensions:
+    - id: ds5000_ext
+      device_type: ds5000
+      mclag_capable: false
+      hedgehog_roles: [spine, server-leaf]
+      supported_breakouts: [1x800g, 2x400g, 4x200g, 8x100g]
+      native_speed: 800
+      uplink_ports: 32
+      hedgehog_profile_name: celestica-ds5000
+      notes: Auto-created for 128-GPU odd-port case
+
+  breakout_options:
+    - id: b_1x800
+      breakout_id: 1x800g
+      from_speed: 800
+      logical_ports: 1
+      logical_speed: 800
+      optic_type: QSFP-DD
+    - id: b_2x400
+      breakout_id: 2x400g
+      from_speed: 800
+      logical_ports: 2
+      logical_speed: 400
+      optic_type: QSFP-DD
+    - id: b_4x200
+      breakout_id: 4x200g
+      from_speed: 800
+      logical_ports: 4
+      logical_speed: 200
+      optic_type: QSFP-DD
+
+  module_types:
+    - id: nic_bf3
+      manufacturer: nvidia
+      model: BlueField-3 BF3220
+      interface_templates:
+        - name: p0
+          type: other
+        - name: p1
+          type: other
+    - id: nic_cx7_single
+      manufacturer: nvidia
+      model: ConnectX-7 (Single-Port)
+      interface_templates:
+        - name: port0
+          type: other
+
+plan:
+  name: UX Case 128GPU Odd Ports
+  status: draft
+  description: 128 GPU servers with FE redundancy, BE rails, storage split, and odd-port 4x200G breakouts
+
+switch_classes:
+  - switch_class_id: fe-gpu-leaf
+    fabric: frontend
+    hedgehog_role: server-leaf
+    device_type_extension: ds5000_ext
+    uplink_ports_per_switch:
+    mclag_pair: false
+  - switch_class_id: fe-storage-leaf-a
+    fabric: frontend
+    hedgehog_role: server-leaf
+    device_type_extension: ds5000_ext
+    uplink_ports_per_switch:
+    mclag_pair: false
+  - switch_class_id: fe-storage-leaf-b
+    fabric: frontend
+    hedgehog_role: server-leaf
+    device_type_extension: ds5000_ext
+    uplink_ports_per_switch:
+    mclag_pair: false
+  - switch_class_id: fe-spine
+    fabric: frontend
+    hedgehog_role: spine
+    device_type_extension: ds5000_ext
+    uplink_ports_per_switch: 0
+    mclag_pair: false
+  - switch_class_id: be-rail-leaf
+    fabric: backend
+    hedgehog_role: server-leaf
+    device_type_extension: ds5000_ext
+    uplink_ports_per_switch:
+    mclag_pair: false
+  - switch_class_id: be-spine
+    fabric: backend
+    hedgehog_role: spine
+    device_type_extension: ds5000_ext
+    uplink_ports_per_switch: 0
+    mclag_pair: false
+
+switch_port_zones:
+  - switch_class: fe-gpu-leaf
+    zone_name: server-downlinks
+    zone_type: server
+    port_spec: 1-63:2
+    breakout_option: b_4x200
+    allocation_strategy: sequential
+    priority: 100
+  - switch_class: fe-storage-leaf-a
+    zone_name: server-downlinks
+    zone_type: server
+    port_spec: 1-63:2
+    breakout_option: b_4x200
+    allocation_strategy: sequential
+    priority: 100
+  - switch_class: fe-storage-leaf-b
+    zone_name: server-downlinks
+    zone_type: server
+    port_spec: 1-63:2
+    breakout_option: b_4x200
+    allocation_strategy: sequential
+    priority: 100
+  - switch_class: fe-gpu-leaf
+    zone_name: uplinks
+    zone_type: uplink
+    port_spec: 2-64:2
+    breakout_option: b_1x800
+    allocation_strategy: sequential
+    priority: 100
+  - switch_class: fe-storage-leaf-a
+    zone_name: uplinks
+    zone_type: uplink
+    port_spec: 2-64:2
+    breakout_option: b_1x800
+    allocation_strategy: sequential
+    priority: 100
+  - switch_class: fe-storage-leaf-b
+    zone_name: uplinks
+    zone_type: uplink
+    port_spec: 2-64:2
+    breakout_option: b_1x800
+    allocation_strategy: sequential
+    priority: 100
+  - switch_class: fe-spine
+    zone_name: leaf-downlinks
+    zone_type: fabric
+    port_spec: 1-64
+    breakout_option: b_1x800
+    allocation_strategy: sequential
+    priority: 100
+  - switch_class: be-rail-leaf
+    zone_name: server-downlinks
+    zone_type: server
+    port_spec: 1-63:2
+    breakout_option: b_2x400
+    allocation_strategy: sequential
+    priority: 100
+  - switch_class: be-rail-leaf
+    zone_name: backend-uplinks
+    zone_type: uplink
+    port_spec: 2-64:2
+    breakout_option: b_1x800
+    allocation_strategy: sequential
+    priority: 100
+  - switch_class: be-spine
+    zone_name: leaf-downlinks
+    zone_type: fabric
+    port_spec: 1-64
+    breakout_option: b_1x800
+    allocation_strategy: sequential
+    priority: 100
+
+server_classes:
+  - server_class_id: gpu-fe-only
+    description: 96 GPU servers with frontend only
+    category: gpu
+    quantity: 96
+    gpus_per_server: 8
+    server_device_type: gpu_server_fe
+  - server_class_id: gpu-with-backend
+    description: 32 GPU servers with backend rails
+    category: gpu
+    quantity: 32
+    gpus_per_server: 8
+    server_device_type: gpu_server_fe_be
+  - server_class_id: storage-a
+    description: Storage appliances 1-9
+    category: storage
+    quantity: 9
+    gpus_per_server: 0
+    server_device_type: storage_server_200g
+  - server_class_id: storage-b
+    description: Storage appliances 10-18
+    category: storage
+    quantity: 9
+    gpus_per_server: 0
+    server_device_type: storage_server_200g
+
+server_connections:
+  - server_class: gpu-fe-only
+    connection_id: fe
+    connection_name: frontend
+    nic_module_type: nic_bf3
+    port_index: 0
+    ports_per_connection: 2
+    hedgehog_conn_type: unbundled
+    distribution: alternating
+    target_switch_class: fe-gpu-leaf
+    speed: 200
+    port_type: data
+  - server_class: gpu-with-backend
+    connection_id: fe
+    connection_name: frontend
+    nic_module_type: nic_bf3
+    port_index: 0
+    ports_per_connection: 2
+    hedgehog_conn_type: unbundled
+    distribution: alternating
+    target_switch_class: fe-gpu-leaf
+    speed: 200
+    port_type: data
+  - server_class: gpu-with-backend
+    connection_id: be-rail-0
+    connection_name: backend-rail-0
+    nic_module_type: nic_cx7_single
+    port_index: 0
+    ports_per_connection: 1
+    hedgehog_conn_type: unbundled
+    distribution: rail-optimized
+    target_switch_class: be-rail-leaf
+    speed: 400
+    rail: 0
+    port_type: data
+  - server_class: gpu-with-backend
+    connection_id: be-rail-1
+    connection_name: backend-rail-1
+    nic_module_type: nic_cx7_single
+    port_index: 0
+    ports_per_connection: 1
+    hedgehog_conn_type: unbundled
+    distribution: rail-optimized
+    target_switch_class: be-rail-leaf
+    speed: 400
+    rail: 1
+    port_type: data
+  - server_class: gpu-with-backend
+    connection_id: be-rail-2
+    connection_name: backend-rail-2
+    nic_module_type: nic_cx7_single
+    port_index: 0
+    ports_per_connection: 1
+    hedgehog_conn_type: unbundled
+    distribution: rail-optimized
+    target_switch_class: be-rail-leaf
+    speed: 400
+    rail: 2
+    port_type: data
+  - server_class: gpu-with-backend
+    connection_id: be-rail-3
+    connection_name: backend-rail-3
+    nic_module_type: nic_cx7_single
+    port_index: 0
+    ports_per_connection: 1
+    hedgehog_conn_type: unbundled
+    distribution: rail-optimized
+    target_switch_class: be-rail-leaf
+    speed: 400
+    rail: 3
+    port_type: data
+  - server_class: gpu-with-backend
+    connection_id: be-rail-4
+    connection_name: backend-rail-4
+    nic_module_type: nic_cx7_single
+    port_index: 0
+    ports_per_connection: 1
+    hedgehog_conn_type: unbundled
+    distribution: rail-optimized
+    target_switch_class: be-rail-leaf
+    speed: 400
+    rail: 4
+    port_type: data
+  - server_class: gpu-with-backend
+    connection_id: be-rail-5
+    connection_name: backend-rail-5
+    nic_module_type: nic_cx7_single
+    port_index: 0
+    ports_per_connection: 1
+    hedgehog_conn_type: unbundled
+    distribution: rail-optimized
+    target_switch_class: be-rail-leaf
+    speed: 400
+    rail: 5
+    port_type: data
+  - server_class: gpu-with-backend
+    connection_id: be-rail-6
+    connection_name: backend-rail-6
+    nic_module_type: nic_cx7_single
+    port_index: 0
+    ports_per_connection: 1
+    hedgehog_conn_type: unbundled
+    distribution: rail-optimized
+    target_switch_class: be-rail-leaf
+    speed: 400
+    rail: 6
+    port_type: data
+  - server_class: gpu-with-backend
+    connection_id: be-rail-7
+    connection_name: backend-rail-7
+    nic_module_type: nic_cx7_single
+    port_index: 0
+    ports_per_connection: 1
+    hedgehog_conn_type: unbundled
+    distribution: rail-optimized
+    target_switch_class: be-rail-leaf
+    speed: 400
+    rail: 7
+    port_type: data
+  - server_class: storage-a
+    connection_id: fe-storage
+    connection_name: storage-frontend
+    nic_module_type: nic_bf3
+    port_index: 0
+    ports_per_connection: 2
+    hedgehog_conn_type: bundled
+    distribution: same-switch
+    target_switch_class: fe-storage-leaf-a
+    speed: 200
+    port_type: data
+  - server_class: storage-b
+    connection_id: fe-storage
+    connection_name: storage-frontend
+    nic_module_type: nic_bf3
+    port_index: 0
+    ports_per_connection: 2
+    hedgehog_conn_type: bundled
+    distribution: same-switch
+    target_switch_class: fe-storage-leaf-b
+    speed: 200
+    port_type: data
+
+expected:
+  counts:
+    server_classes: 4
+    switch_classes: 6
+    connections: 12

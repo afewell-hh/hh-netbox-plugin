@@ -246,3 +246,30 @@ class UCCase128GPURegressionTestCase(TestCase):
                 conn.port_index,
                 f"Connection {conn.connection_id} should have port_index"
             )
+
+
+class UCCase128WrapperCompatibilityRedTestCase(TestCase):
+    """
+    RED regression test: legacy wrapper command must remain compatible with
+    the new YAML-driven command path.
+    """
+
+    def test_wrapper_works_alongside_apply_diet_test_case(self):
+        # New generic command should apply the canonical 128-GPU case.
+        call_command(
+            "apply_diet_test_case",
+            "--case",
+            "ux_case_128gpu_odd_ports",
+            stdout=StringIO(),
+            stderr=StringIO(),
+        )
+
+        # Existing wrapper command should still run without behavioral breakage.
+        call_command(
+            "setup_case_128gpu_odd_ports",
+            "--clean",
+            stdout=StringIO(),
+            stderr=StringIO(),
+        )
+
+        self.assertTrue(TopologyPlan.objects.filter(name=PLAN_NAME).exists())
