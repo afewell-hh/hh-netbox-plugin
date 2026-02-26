@@ -101,7 +101,7 @@ class Command(BaseCommand):
             Device.objects.filter(tags=tag).delete()
             Interface.objects.filter(tags=tag).delete()
 
-        # Delete in dependency order due to PROTECT on target_switch_class
+        # Delete in dependency order due to PROTECT on target_zone
         plans = TopologyPlan.objects.filter(name__startswith='UX Test Plan')
         PlanServerConnection.objects.filter(server_class__plan__in=plans).delete()
         SwitchPortZone.objects.filter(switch_class__plan__in=plans).delete()
@@ -212,7 +212,7 @@ class Command(BaseCommand):
         )
 
         # Create port zone
-        SwitchPortZone.objects.create(
+        server_zone = SwitchPortZone.objects.create(
             switch_class=switch_class,
             zone_name='server-downlinks',
             zone_type=PortZoneTypeChoices.SERVER,
@@ -230,7 +230,7 @@ class Command(BaseCommand):
             ports_per_connection=2,
             hedgehog_conn_type=ConnectionTypeChoices.UNBUNDLED,
             distribution=ConnectionDistributionChoices.ALTERNATING,
-            target_switch_class=switch_class,
+            target_zone=server_zone,
             speed=200
         )
 
@@ -268,7 +268,7 @@ class Command(BaseCommand):
             calculated_quantity=1,
         )
 
-        SwitchPortZone.objects.create(
+        server_zone = SwitchPortZone.objects.create(
             switch_class=switch_class,
             zone_name='server-downlinks',
             zone_type=PortZoneTypeChoices.SERVER,
@@ -285,7 +285,7 @@ class Command(BaseCommand):
             ports_per_connection=1,
             hedgehog_conn_type=ConnectionTypeChoices.UNBUNDLED,
             distribution=ConnectionDistributionChoices.SAME_SWITCH,
-            target_switch_class=switch_class,
+            target_zone=server_zone,
             speed=200
         )
 

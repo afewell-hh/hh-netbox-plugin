@@ -531,7 +531,7 @@ class YAMLExportBreakoutNamingTestCase(YAMLExportTestBase):
             ports_per_connection=2,  # Correct field name
             hedgehog_conn_type=ConnectionTypeChoices.UNBUNDLED,  # Correct field name
             distribution=ConnectionDistributionChoices.SAME_SWITCH,
-            target_switch_class=self.switch_class,
+            target_zone=self.zone,
             speed=200,
         )
 

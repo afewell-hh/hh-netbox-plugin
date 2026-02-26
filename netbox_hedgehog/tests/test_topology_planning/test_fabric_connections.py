@@ -206,7 +206,7 @@ class FabricConnectionGenerationTestCase(TestCase):
         return counts
 
     def _create_minimal_server_connection(self, server_class, leaf_class):
-        self._create_zone(
+        zone = self._create_zone(
             leaf_class,
             zone_name='server-downlinks',
             zone_type=PortZoneTypeChoices.SERVER,
@@ -220,7 +220,7 @@ class FabricConnectionGenerationTestCase(TestCase):
             ports_per_connection=1,
             hedgehog_conn_type=ConnectionTypeChoices.UNBUNDLED,
             distribution=ConnectionDistributionChoices.SAME_SWITCH,
-            target_switch_class=leaf_class,
+            target_zone=zone,
             speed=200,
         )
 

@@ -398,6 +398,13 @@ class PlanServerConnectionTestCase(TestCase):
             device_type_extension=device_type_ext
         )
 
+        from netbox_hedgehog.models import SwitchPortZone
+        self.zone = SwitchPortZone.objects.create(
+            switch_class=self.switch_class,
+            zone_name='server-downlinks',
+            zone_type='server',
+        )
+
     def test_create_plan_server_connection(self):
         """Test basic PlanServerConnection creation"""
         from netbox_hedgehog.models.topology_planning import PlanServerConnection
@@ -409,7 +416,7 @@ class PlanServerConnectionTestCase(TestCase):
             ports_per_connection=2,
             hedgehog_conn_type='unbundled',
             distribution=ConnectionDistributionChoices.ALTERNATING,
-            target_switch_class=self.switch_class,
+            target_zone=self.zone,
             speed=200,
             port_type=PortTypeChoices.DATA
         )
@@ -428,7 +435,7 @@ class PlanServerConnectionTestCase(TestCase):
             connection_id='TEST',
             ports_per_connection=1,
             speed=100,
-            target_switch_class=self.switch_class,
+            target_zone=self.zone,
             nic_module_type=None  # Optional for MVP
         )
 
@@ -444,7 +451,7 @@ class PlanServerConnectionTestCase(TestCase):
             connection_name='frontend',
             ports_per_connection=2,
             speed=200,
-            target_switch_class=self.switch_class
+            target_zone=self.zone
         )
 
         self.assertIn('FE-001', str(connection))
@@ -458,7 +465,7 @@ class PlanServerConnectionTestCase(TestCase):
             connection_id='TEST',
             ports_per_connection=1,
             speed=100,
-            target_switch_class=self.switch_class
+            target_zone=self.zone
         )
 
         connection_id = connection.id
@@ -477,7 +484,7 @@ class PlanServerConnectionTestCase(TestCase):
             connection_id='TEST',
             ports_per_connection=1,
             speed=100,
-            target_switch_class=self.switch_class
+            target_zone=self.zone
         )
 
         # hedgehog_conn_type defaults to 'unbundled'
@@ -493,7 +500,7 @@ class PlanServerConnectionTestCase(TestCase):
                 server_class=self.server_class,
                 connection_id='TEST',
                 ports_per_connection=1,
-                target_switch_class=self.switch_class
+                target_zone=self.zone
                 # Missing speed
             )
             connection.full_clean()
@@ -505,7 +512,7 @@ class PlanServerConnectionTestCase(TestCase):
                 connection_id='TEST-2',
                 ports_per_connection=1,
                 speed=0,  # Invalid
-                target_switch_class=self.switch_class
+                target_zone=self.zone
             )
             connection.full_clean()
 

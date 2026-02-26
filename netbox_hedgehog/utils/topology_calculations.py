@@ -508,8 +508,9 @@ def calculate_switch_quantity(switch_class) -> int:
         >>> calculate_switch_quantity(switch_class)
         4
     """
-    # Get all connections targeting this switch class
-    connections = switch_class.incoming_connections.all()
+    # Get all connections targeting this switch class (via zones)
+    from netbox_hedgehog.models.topology_planning import PlanServerConnection
+    connections = PlanServerConnection.objects.filter(target_zone__switch_class=switch_class)
 
     if not connections.exists():
         # No connections - only apply rounding if testing redundancy in isolation

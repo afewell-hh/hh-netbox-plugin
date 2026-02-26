@@ -336,7 +336,6 @@ def _delete_plan_graph(plan: TopologyPlan) -> None:
     Delete a plan and dependent DIET planning objects in safe order.
     """
     PlanServerConnection.objects.filter(server_class__plan=plan).delete()
-    PlanServerConnection.objects.filter(target_switch_class__plan=plan).delete()
     SwitchPortZone.objects.filter(switch_class__plan=plan).delete()
     PlanSwitchClass.objects.filter(plan=plan).delete()
     PlanServerClass.objects.filter(plan=plan).delete()
@@ -470,6 +469,14 @@ def apply_case(
             },
         )
 
+    # Build zone_map: "switch_class_id/zone_name" -> SwitchPortZone
+    zone_map = {
+        f"{z.switch_class.switch_class_id}/{z.zone_name}": z
+        for z in SwitchPortZone.objects.filter(
+            switch_class__in=list(switch_map.values())
+        ).select_related('switch_class')
+    }
+
     # Upsert server classes.
     server_map = {}
     declared_server_ids = set()
@@ -508,17 +515,46 @@ def apply_case(
         server_id = item["server_class"]
         conn_id = item["connection_id"]
         declared_conn_keys.add((server_id, conn_id))
+
+        # Reject deprecated target_switch_class key (clean break)
+        if "target_switch_class" in item:
+            raise TestCaseValidationError(
+                [
+                    {
+                        "severity": "error",
+                        "code": "deprecated_key",
+                        "path": f"server_connections[{conn_id}].target_switch_class",
+                        "message": "target_switch_class is no longer supported. Use target_zone: 'switch_class_id/zone_name'.",
+                        "hint": "Replace with target_zone: 'sw_id/zone_name'",
+                    }
+                ]
+            )
+
         server = server_map.get(server_id)
-        target = switch_map.get(item.get("target_switch_class"))
         nic = refs["module_types"].get(item.get("nic_module_type"))
-        if not server or not target or not nic:
+
+        raw_zone = item.get("target_zone")
+        if not raw_zone:
+            raise TestCaseValidationError(
+                [
+                    {
+                        "severity": "error",
+                        "code": "missing_field",
+                        "path": f"server_connections[{conn_id}].target_zone",
+                        "message": "target_zone is required. Use format: 'switch_class_id/zone_name'.",
+                    }
+                ]
+            )
+
+        target_zone = zone_map.get(raw_zone)
+        if not server or not target_zone or not nic:
             raise TestCaseValidationError(
                 [
                     {
                         "severity": "error",
                         "code": "unknown_reference",
-                        "path": f"server_connections[{conn_id}]",
-                        "message": "Unknown server_class, target_switch_class, or nic_module_type reference",
+                        "path": f"server_connections[{conn_id}].target_zone",
+                        "message": f"Unknown server_class, target_zone, or nic_module_type reference (target_zone={raw_zone!r})",
                     }
                 ]
             )
@@ -532,7 +568,7 @@ def apply_case(
                 "ports_per_connection": item["ports_per_connection"],
                 "hedgehog_conn_type": item.get("hedgehog_conn_type", "unbundled"),
                 "distribution": item.get("distribution", ""),
-                "target_switch_class": target,
+                "target_zone": target_zone,
                 "speed": item["speed"],
                 "rail": item.get("rail"),
                 "port_type": item.get("port_type", ""),

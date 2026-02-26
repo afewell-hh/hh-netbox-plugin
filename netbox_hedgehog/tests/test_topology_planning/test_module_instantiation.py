@@ -93,7 +93,10 @@ class ModuleInstantiationTestCase(TestCase):
         cls.site = Site.objects.create(name='Test Site', slug='test-site')
 
     def _create_switch_class_with_zone(self, plan, switch_class_id='fe-leaf'):
-        """Helper to create switch class with required port zone."""
+        """Helper to create switch class with required port zone.
+
+        Returns a tuple of (switch_class, zone).
+        """
         from netbox_hedgehog.models.topology_planning import SwitchPortZone
         from netbox_hedgehog.choices import PortZoneTypeChoices, AllocationStrategyChoices
 
@@ -107,7 +110,7 @@ class ModuleInstantiationTestCase(TestCase):
         )
 
         # Create port zone for port allocation
-        SwitchPortZone.objects.create(
+        zone = SwitchPortZone.objects.create(
             switch_class=switch_class,
             zone_name='server-ports',
             zone_type=PortZoneTypeChoices.SERVER,
@@ -117,7 +120,7 @@ class ModuleInstantiationTestCase(TestCase):
             priority=10
         )
 
-        return switch_class
+        return switch_class, zone
 
     def test_module_bay_created_per_connection(self):
         """Test that DeviceGenerator creates ModuleBay for each connection."""
@@ -131,7 +134,7 @@ class ModuleInstantiationTestCase(TestCase):
             server_device_type=self.server_type
         )
 
-        switch_class = self._create_switch_class_with_zone(plan, 'fe-leaf')
+        switch_class, zone = self._create_switch_class_with_zone(plan, 'fe-leaf')
 
         # Create connection
         PlanServerConnection.objects.create(
@@ -140,7 +143,7 @@ class ModuleInstantiationTestCase(TestCase):
             nic_module_type=self.bf3_type,
             port_index=0,
             ports_per_connection=1,
-            target_switch_class=switch_class,
+            target_zone=zone,
             speed=200
         )
 
@@ -168,7 +171,7 @@ class ModuleInstantiationTestCase(TestCase):
             server_device_type=self.server_type
         )
 
-        switch_class = self._create_switch_class_with_zone(plan, 'fe-leaf')
+        switch_class, zone = self._create_switch_class_with_zone(plan, 'fe-leaf')
 
         PlanServerConnection.objects.create(
             server_class=server_class,
@@ -176,7 +179,7 @@ class ModuleInstantiationTestCase(TestCase):
             nic_module_type=self.bf3_type,
             port_index=0,
             ports_per_connection=1,
-            target_switch_class=switch_class,
+            target_zone=zone,
             speed=200
         )
 
@@ -203,7 +206,7 @@ class ModuleInstantiationTestCase(TestCase):
             server_device_type=self.server_type
         )
 
-        switch_class = self._create_switch_class_with_zone(plan, 'fe-leaf')
+        switch_class, zone = self._create_switch_class_with_zone(plan, 'fe-leaf')
 
         PlanServerConnection.objects.create(
             server_class=server_class,
@@ -211,7 +214,7 @@ class ModuleInstantiationTestCase(TestCase):
             nic_module_type=self.bf3_type,
             port_index=0,
             ports_per_connection=1,
-            target_switch_class=switch_class,
+            target_zone=zone,
             speed=200
         )
 
@@ -239,7 +242,7 @@ class ModuleInstantiationTestCase(TestCase):
             server_device_type=self.server_type
         )
 
-        switch_class = self._create_switch_class_with_zone(plan, 'fe-leaf')
+        switch_class, zone = self._create_switch_class_with_zone(plan, 'fe-leaf')
 
         # Connection using port_index=1 (second port)
         PlanServerConnection.objects.create(
@@ -248,7 +251,7 @@ class ModuleInstantiationTestCase(TestCase):
             nic_module_type=self.bf3_type,
             port_index=1,  # Use p1, not p0
             ports_per_connection=1,
-            target_switch_class=switch_class,
+            target_zone=zone,
             speed=200
         )
 
@@ -288,7 +291,7 @@ class ModuleInstantiationTestCase(TestCase):
             server_device_type=self.server_type
         )
 
-        switch_class = self._create_switch_class_with_zone(plan, 'fe-leaf')
+        switch_class, zone = self._create_switch_class_with_zone(plan, 'fe-leaf')
 
         # Create 2 connections (frontend + backend)
         PlanServerConnection.objects.create(
@@ -297,7 +300,7 @@ class ModuleInstantiationTestCase(TestCase):
             nic_module_type=self.bf3_type,
             port_index=0,
             ports_per_connection=1,
-            target_switch_class=switch_class,
+            target_zone=zone,
             speed=200
         )
 
@@ -307,7 +310,7 @@ class ModuleInstantiationTestCase(TestCase):
             nic_module_type=self.bf3_type,
             port_index=0,
             ports_per_connection=1,
-            target_switch_class=switch_class,
+            target_zone=zone,
             speed=200
         )
 
@@ -336,7 +339,7 @@ class ModuleInstantiationTestCase(TestCase):
             server_device_type=self.server_type
         )
 
-        switch_class = self._create_switch_class_with_zone(plan, 'fe-leaf')
+        switch_class, zone = self._create_switch_class_with_zone(plan, 'fe-leaf')
 
         # Create connection with invalid port_index
         conn = PlanServerConnection(
@@ -345,7 +348,7 @@ class ModuleInstantiationTestCase(TestCase):
             nic_module_type=self.bf3_type,
             port_index=2,  # INVALID: bf3 only has 2 ports (0, 1)
             ports_per_connection=1,
-            target_switch_class=switch_class,
+            target_zone=zone,
             speed=200
         )
 

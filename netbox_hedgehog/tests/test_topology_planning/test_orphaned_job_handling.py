@@ -124,7 +124,7 @@ class OrphanedJobHandlingTestCase(TestCase):
         )
 
         # Create port zone
-        SwitchPortZone.objects.create(
+        self.zone = SwitchPortZone.objects.create(
             switch_class=self.switch_class,
             zone_name='server-zone',
             zone_type=PortZoneTypeChoices.SERVER,
@@ -147,7 +147,7 @@ class OrphanedJobHandlingTestCase(TestCase):
         PlanServerConnection.objects.create(
             server_class=self.server_class,
             connection_id='TEST-CONN',
-            target_switch_class=self.switch_class,
+            target_zone=self.zone,
             ports_per_connection=2,
             hedgehog_conn_type=ConnectionTypeChoices.UNBUNDLED,
             distribution=ConnectionDistributionChoices.ALTERNATING,

@@ -263,23 +263,23 @@ class DeviceGenerator:
                 server_device = server_devices[server_name]
 
                 for connection_def in server_class.connections.all():
+                    zone = connection_def.target_zone
+                    switch_class = zone.switch_class
                     switch_instances = self._get_switch_instances(
-                        connection_def.target_switch_class,
+                        switch_class,
                         switch_devices,
                     )
                     if not switch_instances:
                         raise ValidationError(
-                            f"No switch instances available for {connection_def.target_switch_class.switch_class_id}."
+                            f"No switch instances available for {switch_class.switch_class_id}."
                         )
-
-                    zone = self._select_zone_for_connection(connection_def)
 
                     # Pre-calculate total_rails for rail-optimized connections
                     total_rails = None
                     if connection_def.distribution == ConnectionDistributionChoices.RAIL_OPTIMIZED:
                         total_rails = self._get_total_rails_for_target(
                             server_class,
-                            connection_def.target_switch_class,
+                            zone,
                         )
 
                     # Create Module for this connection (DIET-173 Phase 5)
@@ -675,39 +675,29 @@ class DeviceGenerator:
     def _get_total_rails_for_target(
         self,
         server_class: 'PlanServerClass',
-        target_switch_class: PlanSwitchClass,
+        target_zone,
     ) -> int:
         """
         Calculate total number of distinct rails for rail-optimized connections
-        targeting a specific switch class.
+        targeting a specific zone.
 
-        Results are cached by (server_class_id, switch_class_id) to avoid
+        Results are cached by (server_class_id, zone.pk) to avoid
         recomputation in loops.
-
-        Args:
-            server_class: Server class containing connections
-            target_switch_class: Target switch class to filter by
-
-        Returns:
-            Number of distinct non-null rails (e.g., 8 for 8-rail backend)
         """
-        cache_key = (server_class.server_class_id, target_switch_class.switch_class_id)
+        cache_key = (server_class.server_class_id, target_zone.pk)
 
         if cache_key in self._rail_count_cache:
             return self._rail_count_cache[cache_key]
 
-        # Get all rail-optimized connections for this target switch class
         rail_optimized_connections = server_class.connections.filter(
             distribution=ConnectionDistributionChoices.RAIL_OPTIMIZED,
-            target_switch_class=target_switch_class,
+            target_zone=target_zone,
             rail__isnull=False,
         )
 
-        # Get distinct rail values
         distinct_rails = rail_optimized_connections.values_list('rail', flat=True).distinct()
         total_rails = len(distinct_rails)
 
-        # Cache result
         self._rail_count_cache[cache_key] = total_rails
 
         return total_rails
@@ -748,26 +738,6 @@ class DeviceGenerator:
             return switch_instances[switch_index]
 
         return switch_instances[server_index % len(switch_instances)]
-
-    def _select_zone_for_connection(self, connection: PlanServerConnection):
-        zone_type = self._map_zone_type(connection)
-        zones = connection.target_switch_class.port_zones.filter(zone_type=zone_type).order_by('priority')
-
-        if zones.exists():
-            return zones.first()
-
-        fallback = connection.target_switch_class.port_zones.order_by('priority').first()
-        if fallback:
-            return fallback
-
-        raise ValidationError(
-            f"No port zones defined for switch class {connection.target_switch_class.switch_class_id}."
-        )
-
-    def _map_zone_type(self, connection: PlanServerConnection) -> str:
-        if connection.port_type == PortTypeChoices.IPMI:
-            return PortZoneTypeChoices.OOB
-        return PortZoneTypeChoices.SERVER
 
     def _create_module_for_connection(
         self,

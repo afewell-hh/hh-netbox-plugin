@@ -341,7 +341,7 @@
                                 <td><a href="{% url 'plugins:netbox_hedgehog:planserverclass_detail' pk=conn.server_class.pk %}">{{ conn.server_class.server_class_id }}</a></td>
                                 <td>{{ conn.get_hedgehog_conn_type_display }}</td>
                                 <td>{{ conn.get_distribution_display }}</td>
-                                <td><a href="{% url 'plugins:netbox_hedgehog:planswitchclass_detail' pk=conn.target_switch_class.pk %}">{{ conn.target_switch_class.switch_class_id }}</a></td>
+                                <td><a href="{% url 'plugins:netbox_hedgehog:planswitchclass_detail' pk=conn.target_zone.switch_class.pk %}">{{ conn.target_zone }}</a></td>
                                 <td>{{ conn.ports_per_connection }}</td>
                                 <td>{{ conn.speed }}G</td>
                                 <td>{{ conn.rail|placeholder }}</td>

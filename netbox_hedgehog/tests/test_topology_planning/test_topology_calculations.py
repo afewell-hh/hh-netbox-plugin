@@ -231,13 +231,18 @@ class CalculateSwitchQuantityTestCase(TestCase):
         )
 
         # Create connection: 2x200G ports per server
+        zone = SwitchPortZone.objects.create(
+            switch_class=switch_class,
+            zone_name='server-downlinks',
+            zone_type='server',
+        )
         PlanServerConnection.objects.create(
             server_class=server_class,
             connection_id='FE-001',
             ports_per_connection=2,
             hedgehog_conn_type='unbundled',
             distribution='alternating',
-            target_switch_class=switch_class,
+            target_zone=zone,
             speed=200
         )
 
@@ -274,13 +279,18 @@ class CalculateSwitchQuantityTestCase(TestCase):
         )
 
         # Create connection: 2x200G ports per server
+        zone = SwitchPortZone.objects.create(
+            switch_class=switch_class,
+            zone_name='server-downlinks',
+            zone_type='server',
+        )
         PlanServerConnection.objects.create(
             server_class=server_class,
             connection_id='FE-001',
             ports_per_connection=2,
             hedgehog_conn_type='unbundled',
             distribution='alternating',
-            target_switch_class=switch_class,
+            target_zone=zone,
             speed=200
         )
 
@@ -317,13 +327,18 @@ class CalculateSwitchQuantityTestCase(TestCase):
         )
 
         # Create connection: 2x200G ports per server
+        zone = SwitchPortZone.objects.create(
+            switch_class=switch_class,
+            zone_name='server-downlinks',
+            zone_type='server',
+        )
         PlanServerConnection.objects.create(
             server_class=server_class,
             connection_id='FE-001',
             ports_per_connection=2,
             hedgehog_conn_type='mclag',
             distribution='alternating',
-            target_switch_class=switch_class,
+            target_zone=zone,
             speed=200
         )
 
@@ -347,6 +362,12 @@ class CalculateSwitchQuantityTestCase(TestCase):
             mclag_pair=False
         )
 
+        zone = SwitchPortZone.objects.create(
+            switch_class=switch_class,
+            zone_name='server-downlinks',
+            zone_type='server',
+        )
+
         # Create GPU server class: 32 servers × 2 ports
         gpu_server_class = PlanServerClass.objects.create(
             plan=self.plan,
@@ -361,7 +382,7 @@ class CalculateSwitchQuantityTestCase(TestCase):
             ports_per_connection=2,
             hedgehog_conn_type='unbundled',
             distribution='same-switch',
-            target_switch_class=switch_class,
+            target_zone=zone,
             speed=200
         )
 
@@ -378,7 +399,7 @@ class CalculateSwitchQuantityTestCase(TestCase):
             ports_per_connection=2,
             hedgehog_conn_type='bundled',
             distribution='same-switch',
-            target_switch_class=switch_class,
+            target_zone=zone,
             speed=200
         )
 
@@ -434,13 +455,18 @@ class CalculateSwitchQuantityTestCase(TestCase):
         )
 
         # Create connection: 1 port
+        zone = SwitchPortZone.objects.create(
+            switch_class=switch_class,
+            zone_name='server-downlinks',
+            zone_type='server',
+        )
         PlanServerConnection.objects.create(
             server_class=server_class,
             connection_id='FE-001',
             ports_per_connection=1,
             hedgehog_conn_type='unbundled',
             distribution='same-switch',
-            target_switch_class=switch_class,
+            target_zone=zone,
             speed=200
         )
 
@@ -493,6 +519,10 @@ class CalculateSwitchQuantityTestCase(TestCase):
         )
 
         # Create 8 rail-optimized connections (1 port per server per rail)
+        rail_zone = SwitchPortZone.objects.filter(
+            switch_class=be_rail_leaf,
+            zone_type=PortZoneTypeChoices.SERVER
+        ).first()
         for rail in range(8):
             PlanServerConnection.objects.create(
                 server_class=server_class,
@@ -500,7 +530,7 @@ class CalculateSwitchQuantityTestCase(TestCase):
                 ports_per_connection=1,
                 hedgehog_conn_type='unbundled',
                 distribution='rail-optimized',
-                target_switch_class=be_rail_leaf,
+                target_zone=rail_zone,
                 speed=400,
                 rail=rail
             )
@@ -1276,6 +1306,11 @@ class EdgeCaseValidationTestCase(TestCase):
 
         # Create 3 rail-optimized connections (odd number of rails)
         # This is INCOMPATIBLE with MCLAG (can't split 3 rails into even pairs)
+        be_rail_zone = SwitchPortZone.objects.create(
+            switch_class=be_rail_leaf,
+            zone_name='server-downlinks',
+            zone_type='server',
+        )
         for rail in range(3):
             PlanServerConnection.objects.create(
                 server_class=server_class,
@@ -1283,7 +1318,7 @@ class EdgeCaseValidationTestCase(TestCase):
                 ports_per_connection=1,
                 hedgehog_conn_type='unbundled',
                 distribution='rail-optimized',
-                target_switch_class=be_rail_leaf,
+                target_zone=be_rail_zone,
                 speed=400,
                 rail=rail
             )
@@ -1310,7 +1345,7 @@ class EdgeCaseValidationTestCase(TestCase):
         )
 
         breakout_2x400 = BreakoutOption.objects.get(breakout_id='2x400g')
-        SwitchPortZone.objects.create(
+        even_server_zone = SwitchPortZone.objects.create(
             switch_class=be_rail_leaf,
             zone_name='server-ports',
             zone_type=PortZoneTypeChoices.SERVER,
@@ -1345,7 +1380,7 @@ class EdgeCaseValidationTestCase(TestCase):
                 ports_per_connection=1,
                 hedgehog_conn_type='unbundled',
                 distribution='rail-optimized',
-                target_switch_class=be_rail_leaf,
+                target_zone=even_server_zone,
                 speed=400,
                 rail=rail
             )
@@ -1555,6 +1590,11 @@ class UpdatePlanCalculationsErrorHandlingTestCase(TestCase):
         )
 
         # Create 3 rail connections (odd number + MCLAG = incompatible)
+        val_err_zone = SwitchPortZone.objects.create(
+            switch_class=be_rail_leaf,
+            zone_name='server-downlinks',
+            zone_type='server',
+        )
         for rail in range(3):
             PlanServerConnection.objects.create(
                 server_class=server_class,
@@ -1563,7 +1603,7 @@ class UpdatePlanCalculationsErrorHandlingTestCase(TestCase):
                 ports_per_connection=1,
                 hedgehog_conn_type='unbundled',
                 distribution='rail-optimized',
-                target_switch_class=be_rail_leaf,
+                target_zone=val_err_zone,
                 speed=400,
                 rail=rail,
                 port_type='data'
@@ -1609,6 +1649,11 @@ class UpdatePlanCalculationsErrorHandlingTestCase(TestCase):
         )
 
         # Create connection (2 ports = even, compatible with MCLAG)
+        fe_zone = SwitchPortZone.objects.create(
+            switch_class=fe_leaf,
+            zone_name='server-downlinks',
+            zone_type='server',
+        )
         PlanServerConnection.objects.create(
             server_class=server_class,
             connection_id='fe',
@@ -1616,7 +1661,7 @@ class UpdatePlanCalculationsErrorHandlingTestCase(TestCase):
             ports_per_connection=2,
             hedgehog_conn_type='unbundled',
             distribution='alternating',
-            target_switch_class=fe_leaf,
+            target_zone=fe_zone,
             speed=200,
             port_type='data'
         )
@@ -1630,6 +1675,12 @@ class UpdatePlanCalculationsErrorHandlingTestCase(TestCase):
             device_type_extension=self.switch_extension,
             uplink_ports_per_switch=32,
             mclag_pair=True  # MCLAG with odd rails = error
+        )
+
+        be_zone = SwitchPortZone.objects.create(
+            switch_class=be_rail_leaf,
+            zone_name='server-downlinks',
+            zone_type='server',
         )
 
         gpu_server = PlanServerClass.objects.create(
@@ -1651,7 +1702,7 @@ class UpdatePlanCalculationsErrorHandlingTestCase(TestCase):
                 ports_per_connection=1,
                 hedgehog_conn_type='unbundled',
                 distribution='rail-optimized',
-                target_switch_class=be_rail_leaf,
+                target_zone=be_zone,
                 speed=400,
                 rail=rail,
                 port_type='data'
@@ -1694,6 +1745,11 @@ class UpdatePlanCalculationsErrorHandlingTestCase(TestCase):
         )
 
         # Create connection
+        empty_err_zone = SwitchPortZone.objects.create(
+            switch_class=fe_leaf,
+            zone_name='server-downlinks',
+            zone_type='server',
+        )
         PlanServerConnection.objects.create(
             server_class=server_class,
             connection_id='fe',
@@ -1701,7 +1757,7 @@ class UpdatePlanCalculationsErrorHandlingTestCase(TestCase):
             ports_per_connection=2,
             hedgehog_conn_type='unbundled',
             distribution='alternating',
-            target_switch_class=fe_leaf,
+            target_zone=empty_err_zone,
             speed=200,
             port_type='data'
         )
@@ -1784,6 +1840,11 @@ class UpdatePlanCalculationsErrorHandlingTestCase(TestCase):
         )
 
         # Create 3 rail connections (odd number + MCLAG = error)
+        skipped_zone = SwitchPortZone.objects.create(
+            switch_class=be_rail_leaf,
+            zone_name='server-downlinks',
+            zone_type='server',
+        )
         for rail in range(3):
             PlanServerConnection.objects.create(
                 server_class=gpu_server,
@@ -1792,7 +1853,7 @@ class UpdatePlanCalculationsErrorHandlingTestCase(TestCase):
                 ports_per_connection=1,
                 hedgehog_conn_type='unbundled',
                 distribution='rail-optimized',
-                target_switch_class=be_rail_leaf,
+                target_zone=skipped_zone,
                 speed=400,
                 rail=rail,
                 port_type='data'
@@ -1850,6 +1911,11 @@ class UpdatePlanCalculationsErrorHandlingTestCase(TestCase):
         )
 
         # Create connection
+        proceed_zone = SwitchPortZone.objects.create(
+            switch_class=fe_leaf,
+            zone_name='server-downlinks',
+            zone_type='server',
+        )
         PlanServerConnection.objects.create(
             server_class=server_class,
             connection_id='fe',
@@ -1857,7 +1923,7 @@ class UpdatePlanCalculationsErrorHandlingTestCase(TestCase):
             ports_per_connection=2,
             hedgehog_conn_type='unbundled',
             distribution='alternating',
-            target_switch_class=fe_leaf,
+            target_zone=proceed_zone,
             speed=200,
             port_type='data'
         )
@@ -1936,6 +2002,11 @@ class ZoneBasedCapacityIntegrationTestCase(TestCase):
             gpus_per_server=0,
             server_device_type=server_type
         )
+        ds3000_zone = SwitchPortZone.objects.create(
+            switch_class=switch_class,
+            zone_name='server-downlinks',
+            zone_type='server',
+        )
         PlanServerConnection.objects.create(
             server_class=server_class,
             connection_id='fe',
@@ -1943,7 +2014,7 @@ class ZoneBasedCapacityIntegrationTestCase(TestCase):
             ports_per_connection=1,
             hedgehog_conn_type='unbundled',
             distribution='same-switch',
-            target_switch_class=switch_class,
+            target_zone=ds3000_zone,
             speed=100,
             port_type='data'
         )
@@ -1994,21 +2065,9 @@ class ZoneBasedCapacityIntegrationTestCase(TestCase):
             gpus_per_server=0,
             server_device_type=server_type
         )
-        PlanServerConnection.objects.create(
-            server_class=server_class,
-            connection_id='mgmt',
-            connection_name='mgmt',
-            ports_per_connection=1,
-            hedgehog_conn_type='unbundled',
-            distribution='same-switch',
-            target_switch_class=switch_class,
-            speed=1,
-            port_type='data'
-        )
-
         breakout_1g = BreakoutOption.objects.get(breakout_id='1x1g')
         breakout_25g = BreakoutOption.objects.get(breakout_id='1x25g')
-        SwitchPortZone.objects.create(
+        es1000_server_zone = SwitchPortZone.objects.create(
             switch_class=switch_class,
             zone_name='server-ports',
             zone_type=PortZoneTypeChoices.SERVER,
@@ -2023,6 +2082,18 @@ class ZoneBasedCapacityIntegrationTestCase(TestCase):
             port_spec='49-52',
             breakout_option=breakout_25g,
             priority=100
+        )
+
+        PlanServerConnection.objects.create(
+            server_class=server_class,
+            connection_id='mgmt',
+            connection_name='mgmt',
+            ports_per_connection=1,
+            hedgehog_conn_type='unbundled',
+            distribution='same-switch',
+            target_zone=es1000_server_zone,
+            speed=1,
+            port_type='data'
         )
 
         switches_needed = calculate_switch_quantity(switch_class)
@@ -2072,19 +2143,15 @@ class ZoneBasedCapacityIntegrationTestCase(TestCase):
             gpus_per_server=0,
             server_device_type=server_type
         )
-        PlanServerConnection.objects.create(
-            server_class=server_class,
-            connection_id='fe',
-            connection_name='frontend',
-            ports_per_connection=2,
-            hedgehog_conn_type='unbundled',
-            distribution='same-switch',
-            target_switch_class=switch_class,
-            speed=800,
-            port_type='data'
-        )
-
         breakout_800g = BreakoutOption.objects.get(breakout_id='1x800g')
+        uplink_server_zone = SwitchPortZone.objects.create(
+            switch_class=switch_class,
+            zone_name='server-downlinks',
+            zone_type=PortZoneTypeChoices.SERVER,
+            port_spec='1-60',
+            breakout_option=breakout_800g,
+            priority=100
+        )
         SwitchPortZone.objects.create(
             switch_class=switch_class,
             zone_name='spine-uplinks',
@@ -2092,6 +2159,18 @@ class ZoneBasedCapacityIntegrationTestCase(TestCase):
             port_spec='61-64',
             breakout_option=breakout_800g,
             priority=100
+        )
+
+        PlanServerConnection.objects.create(
+            server_class=server_class,
+            connection_id='fe',
+            connection_name='frontend',
+            ports_per_connection=2,
+            hedgehog_conn_type='unbundled',
+            distribution='same-switch',
+            target_zone=uplink_server_zone,
+            speed=800,
+            port_type='data'
         )
 
         switches_needed = calculate_switch_quantity(switch_class)

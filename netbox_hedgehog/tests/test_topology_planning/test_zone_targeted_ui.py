@@ -111,7 +111,7 @@ class ZoneTargetedCRUDTestCase(TestCase):
             server_class=self.sc, connection_id="zt-detail",
             nic_module_type=self.nic, port_index=0,
             ports_per_connection=1, hedgehog_conn_type="unbundled",
-            distribution="same-switch", target_switch_class=self.sw, speed=100)
+            distribution="same-switch", target_zone=self.zone, speed=100)
         url = reverse("plugins:netbox_hedgehog:planserverconnection_detail", args=[conn.pk])
         resp = self.client.get(url)
         self.assertEqual(resp.status_code, 200)
@@ -124,7 +124,7 @@ class ZoneTargetedCRUDTestCase(TestCase):
             server_class=self.sc, connection_id="zt-edit",
             nic_module_type=self.nic, port_index=0,
             ports_per_connection=1, hedgehog_conn_type="unbundled",
-            distribution="same-switch", target_switch_class=self.sw, speed=100)
+            distribution="same-switch", target_zone=self.zone, speed=100)
         url = reverse("plugins:netbox_hedgehog:planserverconnection_edit", args=[conn.pk])
         data = {
             "server_class": self.sc.pk, "connection_id": "zt-edit",
@@ -351,7 +351,7 @@ class OrmTargetZoneGuardrailTestCase(TestCase):
             server_class=self.sc, connection_id="orm-snap",
             nic_module_type=self.nic, port_index=0,
             ports_per_connection=1, hedgehog_conn_type="unbundled",
-            distribution="same-switch", target_switch_class=self.sw, speed=100)
+            distribution="same-switch", target_zone=self.zone, speed=100)
         snap = build_plan_snapshot(self.plan)
         self.assertTrue(len(snap["connections"]) > 0)
         keys = snap["connections"][0].keys()

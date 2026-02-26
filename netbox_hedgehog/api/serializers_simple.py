@@ -47,7 +47,7 @@ class PlanServerConnectionSerializer(serializers.ModelSerializer):
         model = models.PlanServerConnection
         fields = ['id', 'server_class', 'connection_id', 'nic_module_type', 'port_index',
                   'connection_name', 'ports_per_connection',
-                  'hedgehog_conn_type', 'distribution', 'target_switch_class', 'speed',
+                  'hedgehog_conn_type', 'distribution', 'target_zone', 'speed',
                   'rail', 'port_type']
 
     def validate(self, attrs):

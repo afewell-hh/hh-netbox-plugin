@@ -18,6 +18,7 @@ from netbox_hedgehog.models.topology_planning import (
     PlanSwitchClass,
     DeviceTypeExtension,
     PlanServerConnection,
+    SwitchPortZone,
 )
 from netbox_hedgehog.choices import (
     TopologyPlanStatusChoices,
@@ -550,6 +551,12 @@ class ServerConnectionIntegrationTestCase(TestCase):
             uplink_ports_per_switch=4
         )
 
+        cls.zone = SwitchPortZone.objects.create(
+            switch_class=cls.switch_class,
+            zone_name='server-downlinks',
+            zone_type='server',
+        )
+
     def setUp(self):
         """Login before each test"""
         self.client = Client()
@@ -581,7 +588,7 @@ class ServerConnectionIntegrationTestCase(TestCase):
             'ports_per_connection': 2,
             'hedgehog_conn_type': ConnectionTypeChoices.UNBUNDLED,
             'distribution': ConnectionDistributionChoices.ALTERNATING,
-            'target_switch_class': self.switch_class.pk,
+            'target_zone': self.zone.pk,
             'speed': 200,
             'port_type': PortTypeChoices.DATA,
         }
@@ -606,7 +613,7 @@ class ServerConnectionIntegrationTestCase(TestCase):
             ports_per_connection=2,
             hedgehog_conn_type=ConnectionTypeChoices.UNBUNDLED,
             distribution=ConnectionDistributionChoices.SAME_SWITCH,
-            target_switch_class=self.switch_class,
+            target_zone=self.zone,
             speed=200
         )
 
@@ -625,7 +632,7 @@ class ServerConnectionIntegrationTestCase(TestCase):
             ports_per_connection=2,
             hedgehog_conn_type=ConnectionTypeChoices.UNBUNDLED,
             distribution=ConnectionDistributionChoices.SAME_SWITCH,
-            target_switch_class=self.switch_class,
+            target_zone=self.zone,
             speed=200
         )
 
@@ -641,7 +648,7 @@ class ServerConnectionIntegrationTestCase(TestCase):
             'ports_per_connection': 4,  # Changed from 2
             'hedgehog_conn_type': ConnectionTypeChoices.UNBUNDLED,
             'distribution': ConnectionDistributionChoices.ALTERNATING,  # Changed
-            'target_switch_class': self.switch_class.pk,
+            'target_zone': self.zone.pk,
             'speed': 400,  # Changed from 200
         }
         post_response = self.client.post(edit_url, data, follow=True)
@@ -661,7 +668,7 @@ class ServerConnectionIntegrationTestCase(TestCase):
             ports_per_connection=2,
             hedgehog_conn_type=ConnectionTypeChoices.UNBUNDLED,
             distribution=ConnectionDistributionChoices.SAME_SWITCH,
-            target_switch_class=self.switch_class,
+            target_zone=self.zone,
             speed=200
         )
 
@@ -744,6 +751,12 @@ class ServerConnectionValidationTestCase(TestCase):
             uplink_ports_per_switch=4
         )
 
+        cls.zone = SwitchPortZone.objects.create(
+            switch_class=cls.switch_class,
+            zone_name='server-downlinks',
+            zone_type='server',
+        )
+
     def setUp(self):
         """Login before each test"""
         self.client = Client()
@@ -758,7 +771,7 @@ class ServerConnectionValidationTestCase(TestCase):
             'ports_per_connection': 1,
             'hedgehog_conn_type': ConnectionTypeChoices.UNBUNDLED,
             'distribution': ConnectionDistributionChoices.RAIL_OPTIMIZED,
-            'target_switch_class': self.switch_class.pk,
+            'target_zone': self.zone.pk,
             'speed': 400,
             # rail is NOT provided - should cause validation error
         }
@@ -784,7 +797,7 @@ class ServerConnectionValidationTestCase(TestCase):
             'ports_per_connection': 2,
             'hedgehog_conn_type': ConnectionTypeChoices.UNBUNDLED,
             'distribution': ConnectionDistributionChoices.ALTERNATING,
-            'target_switch_class': self.switch_class.pk,
+            'target_zone': self.zone.pk,
             'speed': 200,
             # rail is NOT provided - should be OK for alternating
         }
@@ -807,7 +820,7 @@ class ServerConnectionValidationTestCase(TestCase):
             'ports_per_connection': 1,
             'hedgehog_conn_type': ConnectionTypeChoices.UNBUNDLED,
             'distribution': ConnectionDistributionChoices.RAIL_OPTIMIZED,
-            'target_switch_class': self.switch_class.pk,
+            'target_zone': self.zone.pk,
             'speed': 400,
             'rail': 0,  # Provided - should work
         }
@@ -823,7 +836,7 @@ class ServerConnectionValidationTestCase(TestCase):
 
 
 class ServerConnectionFilteringTestCase(TestCase):
-    """Integration tests for target_switch_class filtering (same plan only)"""
+    """Integration tests for target_zone filtering (same plan only)"""
 
     @classmethod
     def setUpTestData(cls):
@@ -902,13 +915,25 @@ class ServerConnectionFilteringTestCase(TestCase):
             uplink_ports_per_switch=4
         )
 
+        cls.zone_plan1 = SwitchPortZone.objects.create(
+            switch_class=cls.switch_class_plan1,
+            zone_name='server-downlinks',
+            zone_type='server',
+        )
+
+        cls.zone_plan2 = SwitchPortZone.objects.create(
+            switch_class=cls.switch_class_plan2,
+            zone_name='server-downlinks',
+            zone_type='server',
+        )
+
     def setUp(self):
         """Login before each test"""
         self.client = Client()
         self.client.login(username='testuser', password='testpass123')
 
     def test_cannot_use_switch_from_different_plan(self):
-        """Test that you cannot select a switch class from a different plan"""
+        """Test that you cannot select a zone from a different plan"""
         url = reverse('plugins:netbox_hedgehog:planserverconnection_add')
         data = {
             'server_class': self.server_class_plan1.pk,  # From Plan 1
@@ -916,7 +941,7 @@ class ServerConnectionFilteringTestCase(TestCase):
             'ports_per_connection': 2,
             'hedgehog_conn_type': ConnectionTypeChoices.UNBUNDLED,
             'distribution': ConnectionDistributionChoices.SAME_SWITCH,
-            'target_switch_class': self.switch_class_plan2.pk,  # From Plan 2 - WRONG!
+            'target_zone': self.zone_plan2.pk,  # From Plan 2 - WRONG!
             'speed': 200,
         }
         response = self.client.post(url, data, follow=False)
@@ -933,7 +958,7 @@ class ServerConnectionFilteringTestCase(TestCase):
                         "Connection should not be created when switch is from different plan")
 
     def test_can_use_switch_from_same_plan(self):
-        """Test that you can select a switch class from the same plan"""
+        """Test that you can select a zone from the same plan"""
         url = reverse('plugins:netbox_hedgehog:planserverconnection_add')
         data = {
             'server_class': self.server_class_plan1.pk,  # From Plan 1
@@ -941,7 +966,7 @@ class ServerConnectionFilteringTestCase(TestCase):
             'ports_per_connection': 2,
             'hedgehog_conn_type': ConnectionTypeChoices.UNBUNDLED,
             'distribution': ConnectionDistributionChoices.SAME_SWITCH,
-            'target_switch_class': self.switch_class_plan1.pk,  # Also from Plan 1 - CORRECT
+            'target_zone': self.zone_plan1.pk,  # Also from Plan 1 - CORRECT
             'speed': 200,
         }
         response = self.client.post(url, data, follow=True)
@@ -1029,6 +1054,12 @@ class ServerConnectionPermissionTestCase(TestCase):
             uplink_ports_per_switch=4
         )
 
+        cls.zone = SwitchPortZone.objects.create(
+            switch_class=cls.switch_class,
+            zone_name='server-downlinks',
+            zone_type='server',
+        )
+
     def setUp(self):
         """Create fresh client for each test"""
         self.client = Client()
@@ -1045,7 +1076,7 @@ class ServerConnectionPermissionTestCase(TestCase):
             'ports_per_connection': 2,
             'hedgehog_conn_type': ConnectionTypeChoices.UNBUNDLED,
             'distribution': ConnectionDistributionChoices.ALTERNATING,
-            'target_switch_class': self.switch_class.pk,
+            'target_zone': self.zone.pk,
             'speed': 200,
         }
         response = self.client.post(url, data, follow=False)
@@ -1081,7 +1112,7 @@ class ServerConnectionPermissionTestCase(TestCase):
             'ports_per_connection': 2,
             'hedgehog_conn_type': ConnectionTypeChoices.UNBUNDLED,
             'distribution': ConnectionDistributionChoices.ALTERNATING,
-            'target_switch_class': self.switch_class.pk,
+            'target_zone': self.zone.pk,
             'speed': 200,
         }
         response = self.client.post(url, data, follow=False)
@@ -1164,6 +1195,12 @@ class YAMLExportIntegrationTestCase(TestCase):
             calculated_quantity=1
         )
 
+        cls.zone = SwitchPortZone.objects.create(
+            switch_class=cls.switch_class,
+            zone_name='server-downlinks',
+            zone_type='server',
+        )
+
         # Create server connection (2 ports per server, alternating distribution)
         cls.connection = PlanServerConnection.objects.create(
             server_class=cls.server_class,
@@ -1172,7 +1209,7 @@ class YAMLExportIntegrationTestCase(TestCase):
             ports_per_connection=2,
             hedgehog_conn_type=ConnectionTypeChoices.UNBUNDLED,
             distribution=ConnectionDistributionChoices.ALTERNATING,
-            target_switch_class=cls.switch_class,
+            target_zone=cls.zone,
             speed=200,
             port_type=PortTypeChoices.DATA
         )
@@ -1454,6 +1491,12 @@ class YAMLExportMCLAGTestCase(TestCase):
             calculated_quantity=2  # MCLAG pair
         )
 
+        cls.zone = SwitchPortZone.objects.create(
+            switch_class=cls.switch_class,
+            zone_name='server-downlinks',
+            zone_type='server',
+        )
+
         # Create MCLAG connection (2 ports, alternating between MCLAG pair)
         cls.connection = PlanServerConnection.objects.create(
             server_class=cls.server_class,
@@ -1462,7 +1505,7 @@ class YAMLExportMCLAGTestCase(TestCase):
             ports_per_connection=2,
             hedgehog_conn_type=ConnectionTypeChoices.MCLAG,
             distribution=ConnectionDistributionChoices.ALTERNATING,
-            target_switch_class=cls.switch_class,
+            target_zone=cls.zone,
             speed=200
         )
 
@@ -1572,6 +1615,12 @@ class YAMLExportEdgeCaseTestCase(TestCase):
             calculated_quantity=1
         )
 
+        zone = SwitchPortZone.objects.create(
+            switch_class=switch_class,
+            zone_name='server-downlinks',
+            zone_type='server',
+        )
+
         # Create connection with problematic name
         connection = PlanServerConnection.objects.create(
             server_class=server_class,
@@ -1580,7 +1629,7 @@ class YAMLExportEdgeCaseTestCase(TestCase):
             ports_per_connection=1,
             hedgehog_conn_type=ConnectionTypeChoices.UNBUNDLED,
             distribution=ConnectionDistributionChoices.SAME_SWITCH,
-            target_switch_class=switch_class,
+            target_zone=zone,
             speed=200
         )
 
@@ -1630,6 +1679,12 @@ class YAMLExportEdgeCaseTestCase(TestCase):
             override_quantity=None
         )
 
+        zone = SwitchPortZone.objects.create(
+            switch_class=switch_class,
+            zone_name='server-downlinks',
+            zone_type='server',
+        )
+
         # Create connection
         connection = PlanServerConnection.objects.create(
             server_class=server_class,
@@ -1638,7 +1693,7 @@ class YAMLExportEdgeCaseTestCase(TestCase):
             ports_per_connection=2,
             hedgehog_conn_type=ConnectionTypeChoices.UNBUNDLED,
             distribution=ConnectionDistributionChoices.ALTERNATING,
-            target_switch_class=switch_class,
+            target_zone=zone,
             speed=200
         )
 
@@ -1746,6 +1801,12 @@ class YAMLExportEdgeCaseTestCase(TestCase):
             calculated_quantity=1
         )
 
+        zone = SwitchPortZone.objects.create(
+            switch_class=switch_class,
+            zone_name='server-downlinks',
+            zone_type='server',
+        )
+
         connection = PlanServerConnection.objects.create(
             server_class=server_class,
             connection_id='very-long-connection-identifier-name',
@@ -1753,7 +1814,7 @@ class YAMLExportEdgeCaseTestCase(TestCase):
             ports_per_connection=1,
             hedgehog_conn_type=ConnectionTypeChoices.UNBUNDLED,
             distribution=ConnectionDistributionChoices.SAME_SWITCH,
-            target_switch_class=switch_class,
+            target_zone=zone,
             speed=200
         )
 
@@ -1893,6 +1954,12 @@ class SimplePlanE2ETestCase(TestCase):
             calculated_quantity=None  # Not yet calculated
         )
 
+        zone = SwitchPortZone.objects.create(
+            switch_class=switch_class,
+            zone_name='server-downlinks',
+            zone_type='server',
+        )
+
         # Step 4: Add connection: each server has 2x200G ports
         connection = PlanServerConnection.objects.create(
             server_class=server_class,
@@ -1901,7 +1968,7 @@ class SimplePlanE2ETestCase(TestCase):
             ports_per_connection=2,  # 2 ports per server
             hedgehog_conn_type=ConnectionTypeChoices.UNBUNDLED,
             distribution=ConnectionDistributionChoices.ALTERNATING,
-            target_switch_class=switch_class,
+            target_zone=zone,
             speed=200  # 200G ports
         )
 
@@ -2092,6 +2159,12 @@ class MCLAGEvenCountEnforcementTestCase(TestCase):
             calculated_quantity=None
         )
 
+        zone = SwitchPortZone.objects.create(
+            switch_class=switch_class,
+            zone_name='server-downlinks',
+            zone_type='server',
+        )
+
         # Add connection: 2x200G per server
         connection = PlanServerConnection.objects.create(
             server_class=server_class,
@@ -2100,7 +2173,7 @@ class MCLAGEvenCountEnforcementTestCase(TestCase):
             ports_per_connection=2,
             hedgehog_conn_type=ConnectionTypeChoices.MCLAG,
             distribution=ConnectionDistributionChoices.ALTERNATING,
-            target_switch_class=switch_class,
+            target_zone=zone,
             speed=200
         )
 
@@ -2163,6 +2236,12 @@ class MCLAGEvenCountEnforcementTestCase(TestCase):
             calculated_quantity=None
         )
 
+        zone = SwitchPortZone.objects.create(
+            switch_class=switch_class,
+            zone_name='server-downlinks',
+            zone_type='server',
+        )
+
         # Add connection: 2x200G per server
         connection = PlanServerConnection.objects.create(
             server_class=server_class,
@@ -2171,7 +2250,7 @@ class MCLAGEvenCountEnforcementTestCase(TestCase):
             ports_per_connection=2,
             hedgehog_conn_type=ConnectionTypeChoices.MCLAG,
             distribution=ConnectionDistributionChoices.ALTERNATING,
-            target_switch_class=switch_class,
+            target_zone=zone,
             speed=200
         )
 
@@ -2306,6 +2385,12 @@ class BreakoutSelectionCorrectnessTestCase(TestCase):
             calculated_quantity=None
         )
 
+        zone = SwitchPortZone.objects.create(
+            switch_class=switch_class,
+            zone_name='server-downlinks',
+            zone_type='server',
+        )
+
         # Add connection: 1x200G per server
         connection = PlanServerConnection.objects.create(
             server_class=server_class,
@@ -2314,7 +2399,7 @@ class BreakoutSelectionCorrectnessTestCase(TestCase):
             ports_per_connection=1,  # 1 port
             hedgehog_conn_type=ConnectionTypeChoices.UNBUNDLED,
             distribution=ConnectionDistributionChoices.SAME_SWITCH,
-            target_switch_class=switch_class,
+            target_zone=zone,
             speed=200  # 200G connection speed
         )
 
@@ -2387,6 +2472,12 @@ class BreakoutSelectionCorrectnessTestCase(TestCase):
             calculated_quantity=None
         )
 
+        zone = SwitchPortZone.objects.create(
+            switch_class=switch_class,
+            zone_name='server-downlinks',
+            zone_type='server',
+        )
+
         # Add connection: 1x400G per server
         connection = PlanServerConnection.objects.create(
             server_class=server_class,
@@ -2395,7 +2486,7 @@ class BreakoutSelectionCorrectnessTestCase(TestCase):
             ports_per_connection=1,
             hedgehog_conn_type=ConnectionTypeChoices.UNBUNDLED,
             distribution=ConnectionDistributionChoices.SAME_SWITCH,
-            target_switch_class=switch_class,
+            target_zone=zone,
             speed=400  # 400G connection speed
         )
 
@@ -2467,6 +2558,12 @@ class BreakoutSelectionCorrectnessTestCase(TestCase):
             calculated_quantity=None
         )
 
+        zone = SwitchPortZone.objects.create(
+            switch_class=switch_class,
+            zone_name='server-downlinks',
+            zone_type='server',
+        )
+
         # Add connection: 1x100G per server
         connection = PlanServerConnection.objects.create(
             server_class=server_class,
@@ -2475,7 +2572,7 @@ class BreakoutSelectionCorrectnessTestCase(TestCase):
             ports_per_connection=1,
             hedgehog_conn_type=ConnectionTypeChoices.UNBUNDLED,
             distribution=ConnectionDistributionChoices.SAME_SWITCH,
-            target_switch_class=switch_class,
+            target_zone=zone,
             speed=100  # 100G connection speed
         )
 

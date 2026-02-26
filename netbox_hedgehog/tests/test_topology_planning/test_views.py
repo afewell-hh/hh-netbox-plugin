@@ -545,7 +545,7 @@ class GenerateUpdateRailCalculationTestCase(TestCase):
         from netbox_hedgehog.models.topology_planning import SwitchPortZone
         from netbox_hedgehog.choices import PortZoneTypeChoices
 
-        SwitchPortZone.objects.create(
+        cls.zone_be_rail_server = SwitchPortZone.objects.create(
             switch_class=cls.be_rail_leaf,
             zone_name='server-ports',
             zone_type=PortZoneTypeChoices.SERVER,
@@ -580,7 +580,7 @@ class GenerateUpdateRailCalculationTestCase(TestCase):
             PlanServerConnection.objects.create(
                 connection_id=f'BE-RAIL-{rail_num}',
                 server_class=cls.server_class,
-                target_switch_class=cls.be_rail_leaf,
+                target_zone=cls.zone_be_rail_server,
                 ports_per_connection=1,
                 speed=400,
                 hedgehog_conn_type=ConnectionTypeChoices.UNBUNDLED,
