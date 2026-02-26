@@ -193,7 +193,7 @@ class Command(BaseCommand):
             device_type=es1000,
             defaults={
                 "mclag_capable": False,
-                "hedgehog_roles": ["server-leaf"],
+                "hedgehog_roles": [],
                 "native_speed": 1,
                 "supported_breakouts": ["1x1g", "1x10g"],
                 "notes": "Static management switch seed from load_diet_reference_data",

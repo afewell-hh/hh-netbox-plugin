@@ -16,7 +16,7 @@ from io import StringIO
 
 from dcim.models import DeviceType, InterfaceTemplate
 
-from netbox_hedgehog.models.topology_planning import BreakoutOption
+from netbox_hedgehog.models.topology_planning import BreakoutOption, DeviceTypeExtension
 
 
 class SeedDataCommandTestCase(TestCase):
@@ -145,6 +145,8 @@ class SeedDataCommandTestCase(TestCase):
         self.assertEqual(interfaces.filter(type='1000base-t').count(), 49)
         self.assertEqual(interfaces.filter(type='25gbase-x-sfp28').count(), 4)
         self.assertTrue(interfaces.filter(name='mgmt0', type='1000base-t').exists())
+        extension = DeviceTypeExtension.objects.get(device_type=device_type)
+        self.assertEqual(extension.hedgehog_roles, [])
 
     def test_management_switch_is_recreated_after_inventory_purge(self):
         """Simulate reset/purge flow and ensure celestica-es1000 is restored."""
