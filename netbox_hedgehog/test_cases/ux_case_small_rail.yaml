@@ -134,7 +134,7 @@ server_connections:
     ports_per_connection: 1
     hedgehog_conn_type: unbundled
     distribution: alternating
-    target_switch_class: fe-leaf
+    target_zone: fe-leaf/server-downlinks
     speed: 200
     port_type: data
   - server_class: gpu-with-backend-small
@@ -145,7 +145,7 @@ server_connections:
     ports_per_connection: 1
     hedgehog_conn_type: unbundled
     distribution: rail-optimized
-    target_switch_class: be-rail-leaf
+    target_zone: be-rail-leaf/server-downlinks
     speed: 400
     rail: 0
     port_type: data
@@ -157,7 +157,7 @@ server_connections:
     ports_per_connection: 1
     hedgehog_conn_type: unbundled
     distribution: rail-optimized
-    target_switch_class: be-rail-leaf
+    target_zone: be-rail-leaf/server-downlinks
     speed: 400
     rail: 1
     port_type: data

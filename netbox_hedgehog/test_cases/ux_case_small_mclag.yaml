@@ -127,7 +127,7 @@ server_connections:
     ports_per_connection: 2
     hedgehog_conn_type: unbundled
     distribution: alternating
-    target_switch_class: fe-leaf
+    target_zone: fe-leaf/server-downlinks
     speed: 200
     port_type: data
 
