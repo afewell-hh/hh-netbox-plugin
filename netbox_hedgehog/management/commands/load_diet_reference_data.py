@@ -18,9 +18,9 @@ from django.core.management import call_command
 from django.core.management.base import BaseCommand
 from django.db import transaction
 
-from dcim.models import DeviceType
+from dcim.models import DeviceType, InterfaceTemplate, Manufacturer
 
-from netbox_hedgehog.models.topology_planning import BreakoutOption
+from netbox_hedgehog.models.topology_planning import BreakoutOption, DeviceTypeExtension
 
 
 class Command(BaseCommand):
@@ -43,6 +43,7 @@ class Command(BaseCommand):
         imported_switch_profiles = self.import_bundled_switch_profiles(
             skip=options.get("skip_switch_profile_import", False)
         )
+        management_switch_count = self.seed_management_switch_device_types()
 
         self.stdout.write(self.style.SUCCESS(
             f'\nSuccessfully loaded DIET reference data:'
@@ -52,6 +53,9 @@ class Command(BaseCommand):
         ))
         self.stdout.write(self.style.SUCCESS(
             f'  - Switch profiles imported: {imported_switch_profiles}'
+        ))
+        self.stdout.write(self.style.SUCCESS(
+            f'  - Management switch types ensured: {management_switch_count}'
         ))
 
     @transaction.atomic
@@ -163,3 +167,57 @@ class Command(BaseCommand):
         if after_exists:
             return 1
         return 0
+
+    @transaction.atomic
+    def seed_management_switch_device_types(self) -> int:
+        """
+        Ensure static management switch DeviceTypes exist when no profile is available.
+
+        Issue #189 requires celestica-es1000 for management fabrics.
+        """
+        celestica, _ = Manufacturer.objects.get_or_create(
+            name="Celestica",
+            defaults={"slug": "celestica"},
+        )
+        es1000, _ = DeviceType.objects.get_or_create(
+            manufacturer=celestica,
+            model="celestica-es1000",
+            defaults={
+                "slug": "celestica-es1000",
+                "u_height": 1,
+                "is_full_depth": False,
+                "comments": "Management switch: 48x1G RJ45 + 4xSFP28 + mgmt0",
+            },
+        )
+        DeviceTypeExtension.objects.get_or_create(
+            device_type=es1000,
+            defaults={
+                "mclag_capable": False,
+                "hedgehog_roles": ["server-leaf"],
+                "native_speed": 1,
+                "supported_breakouts": ["1x1g", "1x10g"],
+                "notes": "Static management switch seed from load_diet_reference_data",
+            },
+        )
+
+        self._ensure_interfaces(es1000, [(f"eth{i}", "1000base-t") for i in range(1, 49)])
+        self._ensure_interfaces(es1000, [(f"uplink{i}", "25gbase-x-sfp28") for i in range(1, 5)])
+        self._ensure_interfaces(es1000, [("mgmt0", "1000base-t")])
+
+        return 1
+
+    def _ensure_interfaces(
+        self, device_type: DeviceType, interface_specs: list[tuple[str, str]]
+    ) -> None:
+        """Create missing interface templates for a DeviceType."""
+        existing = set(
+            InterfaceTemplate.objects.filter(device_type=device_type).values_list("name", flat=True)
+        )
+        for name, interface_type in interface_specs:
+            if name in existing:
+                continue
+            InterfaceTemplate.objects.create(
+                device_type=device_type,
+                name=name,
+                type=interface_type,
+            )

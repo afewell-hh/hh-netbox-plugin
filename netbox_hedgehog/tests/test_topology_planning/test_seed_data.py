@@ -14,7 +14,7 @@ from django.test import TestCase
 from django.core.management import call_command
 from io import StringIO
 
-from dcim.models import DeviceType
+from dcim.models import DeviceType, InterfaceTemplate
 
 from netbox_hedgehog.models.topology_planning import BreakoutOption
 
@@ -126,6 +126,33 @@ class SeedDataCommandTestCase(TestCase):
             DeviceType.objects.filter(model='celestica-ds5000').exists(),
             "Expected profile-backed switch DeviceType 'celestica-ds5000' to be present",
         )
+
+    def test_command_seeds_management_switch_device_type(self):
+        """load_diet_reference_data should ensure celestica-es1000 exists."""
+        call_command('load_diet_reference_data', stdout=StringIO())
+        self.assertTrue(
+            DeviceType.objects.filter(model='celestica-es1000').exists(),
+            "Expected management switch DeviceType 'celestica-es1000' to be present",
+        )
+
+    def test_management_switch_has_expected_interface_templates(self):
+        """celestica-es1000 should have 48x1G + 4xSFP28 + mgmt."""
+        call_command('load_diet_reference_data', stdout=StringIO())
+        device_type = DeviceType.objects.get(model='celestica-es1000')
+        interfaces = InterfaceTemplate.objects.filter(device_type=device_type)
+
+        self.assertEqual(interfaces.count(), 53)
+        self.assertEqual(interfaces.filter(type='1000base-t').count(), 49)
+        self.assertEqual(interfaces.filter(type='25gbase-x-sfp28').count(), 4)
+        self.assertTrue(interfaces.filter(name='mgmt0', type='1000base-t').exists())
+
+    def test_management_switch_is_recreated_after_inventory_purge(self):
+        """Simulate reset/purge flow and ensure celestica-es1000 is restored."""
+        call_command('load_diet_reference_data', stdout=StringIO())
+        DeviceType.objects.all().delete()
+
+        call_command('load_diet_reference_data', stdout=StringIO())
+        self.assertTrue(DeviceType.objects.filter(model='celestica-es1000').exists())
 
 
 class SeedDataRecordTestCase(TestCase):
