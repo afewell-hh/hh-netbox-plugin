@@ -1,7 +1,7 @@
 {% extends 'generic/object.html' %}
 {% load helpers %}
 
-{% block title %}{{ object.server_class.server_class_id }}/{{ object.connection_id }} → {{ object.target_switch_class.switch_class_id }}{% endblock %}
+{% block title %}{{ object.server_class.server_class_id }}/{{ object.connection_id }} → {{ object.target_zone }}{% endblock %}
 
 {% block content %}
 <div class="row">
@@ -23,10 +23,10 @@
             </td>
           </tr>
           <tr>
-            <th scope="row">Target Switch Class</th>
+            <th scope="row">Target Zone</th>
             <td>
-              <a href="{% url 'plugins:netbox_hedgehog:planswitchclass_detail' pk=object.target_switch_class.pk %}">
-                {{ object.target_switch_class.switch_class_id }}
+              <a href="{% url 'plugins:netbox_hedgehog:planswitchclass_detail' pk=object.target_zone.switch_class.pk %}">
+                {{ object.target_zone }}
               </a>
             </td>
           </tr>

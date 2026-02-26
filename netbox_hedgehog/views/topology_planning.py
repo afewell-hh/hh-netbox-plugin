@@ -120,7 +120,7 @@ class TopologyPlanView(generic.ObjectView):
         # Get all server connections for this plan (via server_class FK)
         server_connections = models.PlanServerConnection.objects.filter(
             server_class__plan=instance
-        ).select_related('server_class', 'target_switch_class')
+        ).select_related('server_class', 'target_zone', 'target_zone__switch_class')
 
         # Check if user can generate devices (object-level permission + DCIM perms)
         can_generate_devices = self._can_user_generate_devices(request, instance)
@@ -712,8 +712,9 @@ class PlanServerConnectionListView(generic.ObjectListView):
     queryset = models.PlanServerConnection.objects.select_related(
         'server_class',
         'server_class__plan',
-        'target_switch_class',
-        'target_switch_class__plan'
+        'target_zone',
+        'target_zone__switch_class',
+        'target_zone__switch_class__plan',
     )
     table = tables.PlanServerConnectionTable
 
@@ -723,8 +724,9 @@ class PlanServerConnectionView(generic.ObjectView):
     queryset = models.PlanServerConnection.objects.select_related(
         'server_class',
         'server_class__plan',
-        'target_switch_class',
-        'target_switch_class__plan',
+        'target_zone',
+        'target_zone__switch_class',
+        'target_zone__switch_class__plan',
         'nic_module_type'
     )
 

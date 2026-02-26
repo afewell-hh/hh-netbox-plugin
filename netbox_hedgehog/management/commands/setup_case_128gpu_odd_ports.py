@@ -191,7 +191,6 @@ class Command(BaseCommand):
         # Delete plan metadata
         self.stdout.write("  Deleting plan metadata...")
         PlanServerConnection.objects.filter(server_class__plan=plan).delete()
-        PlanServerConnection.objects.filter(target_switch_class__plan=plan).delete()
         SwitchPortZone.objects.filter(switch_class__plan=plan).delete()
         PlanSwitchClass.objects.filter(plan=plan).delete()
         PlanServerClass.objects.filter(plan=plan).delete()
@@ -590,7 +589,7 @@ class Command(BaseCommand):
                 for conn in connections:
                     self.stdout.write(
                         f"       → {conn.connection_id}: {conn.ports_per_connection}x{conn.speed}G "
-                        f"({conn.hedgehog_conn_type}, {conn.distribution}) to {conn.target_switch_class.switch_class_id}"
+                        f"({conn.hedgehog_conn_type}, {conn.distribution}) to {conn.target_zone}"
                     )
 
         # Switch classes

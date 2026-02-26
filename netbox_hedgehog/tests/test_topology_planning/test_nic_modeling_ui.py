@@ -35,6 +35,7 @@ from netbox_hedgehog.models.topology_planning import (
     PlanServerConnection,
     DeviceTypeExtension,
     BreakoutOption,
+    SwitchPortZone,
 )
 from netbox_hedgehog.choices import (
     TopologyPlanStatusChoices,
@@ -208,6 +209,12 @@ class NICModelingUITestCase(TestCase):
             override_quantity=2
         )
 
+        cls.zone = SwitchPortZone.objects.create(
+            switch_class=cls.switch_class,
+            zone_name='server-downlinks',
+            zone_type='server',
+        )
+
     def setUp(self):
         """Set up test client."""
         self.client = Client()
@@ -222,7 +229,7 @@ class NICModelingUITestCase(TestCase):
             nic_module_type=self.bf3_type,
             port_index=0,
             ports_per_connection=1,
-            target_switch_class=self.switch_class,
+            target_zone=self.zone,
             speed=200
         )
 
@@ -258,7 +265,7 @@ class NICModelingUITestCase(TestCase):
             'ports_per_connection': 1,
             'hedgehog_conn_type': ConnectionTypeChoices.UNBUNDLED,
             'distribution': ConnectionDistributionChoices.ALTERNATING,
-            'target_switch_class': self.switch_class.pk,
+            'target_zone': self.zone.pk,
             'speed': 200,
         }
 
@@ -280,7 +287,7 @@ class NICModelingUITestCase(TestCase):
             'connection_id': 'fe-missing-nic',
             'port_index': 0,
             'ports_per_connection': 1,
-            'target_switch_class': self.switch_class.pk,
+            'target_zone': self.zone.pk,
             'speed': 200,
         }
 
@@ -299,7 +306,7 @@ class NICModelingUITestCase(TestCase):
             'nic_module_type': self.cx7_single.pk,  # Single-port (only index 0 valid)
             'port_index': 1,  # INVALID: exceeds port count
             'ports_per_connection': 1,
-            'target_switch_class': self.switch_class.pk,
+            'target_zone': self.zone.pk,
             'speed': 200,
         }
 
@@ -317,7 +324,7 @@ class NICModelingUITestCase(TestCase):
             'nic_module_type': self.cx7_single.pk,  # Single-port
             'port_index': 0,
             'ports_per_connection': 2,  # INVALID: NIC only has 1 port
-            'target_switch_class': self.switch_class.pk,
+            'target_zone': self.zone.pk,
             'speed': 200,
         }
 
@@ -334,7 +341,7 @@ class NICModelingUITestCase(TestCase):
             nic_module_type=self.bf3_type,
             port_index=0,
             ports_per_connection=1,
-            target_switch_class=self.switch_class,
+            target_zone=self.zone,
             speed=200
         )
 
@@ -357,7 +364,7 @@ class NICModelingUITestCase(TestCase):
             nic_module_type=self.bf3_type,
             port_index=1,  # Second port
             ports_per_connection=1,
-            target_switch_class=self.switch_class,
+            target_zone=self.zone,
             speed=200
         )
 
@@ -376,7 +383,7 @@ class NICModelingUITestCase(TestCase):
             nic_module_type=self.bf3_type,
             port_index=0,
             ports_per_connection=1,
-            target_switch_class=self.switch_class,
+            target_zone=self.zone,
             speed=200
         )
 
@@ -388,7 +395,7 @@ class NICModelingUITestCase(TestCase):
             'port_index': 0,
             'ports_per_connection': 1,
             'hedgehog_conn_type': ConnectionTypeChoices.UNBUNDLED,
-            'target_switch_class': self.switch_class.pk,
+            'target_zone': self.zone.pk,
             'speed': 200,
         }
 
@@ -408,7 +415,7 @@ class NICModelingUITestCase(TestCase):
             nic_module_type=self.bf3_type,
             port_index=0,
             ports_per_connection=1,
-            target_switch_class=self.switch_class,
+            target_zone=self.zone,
             speed=200
         )
 
@@ -426,7 +433,7 @@ class NICModelingUITestCase(TestCase):
             nic_module_type=self.bf3_type,
             port_index=0,
             ports_per_connection=1,
-            target_switch_class=self.switch_class,
+            target_zone=self.zone,
             speed=200
         )
 

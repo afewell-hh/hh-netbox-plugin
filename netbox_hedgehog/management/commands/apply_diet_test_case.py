@@ -118,7 +118,6 @@ class Command(BaseCommand):
         )
         for plan in plans:
             PlanServerConnection.objects.filter(server_class__plan=plan).delete()
-            PlanServerConnection.objects.filter(target_switch_class__plan=plan).delete()
             SwitchPortZone.objects.filter(switch_class__plan=plan).delete()
             PlanSwitchClass.objects.filter(plan=plan).delete()
             PlanServerClass.objects.filter(plan=plan).delete()

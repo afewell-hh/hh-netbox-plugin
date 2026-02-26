@@ -150,10 +150,15 @@ class DeviceGenerationJobIntegrationTestCase(TestCase):
         )
 
         # Create server connection
+        self.server_zone = SwitchPortZone.objects.create(
+            switch_class=self.switch_class,
+            zone_name='server-downlinks',
+            zone_type=PortZoneTypeChoices.SERVER,
+        )
         PlanServerConnection.objects.create(
             connection_id='FE-001',
             server_class=self.server_class,
-            target_switch_class=self.switch_class,
+            target_zone=self.server_zone,
             ports_per_connection=2,
             speed=400,
             hedgehog_conn_type=ConnectionTypeChoices.UNBUNDLED,
@@ -905,7 +910,7 @@ class DeviceGenerationJobIntegrationTestCase(TestCase):
             override_quantity=2
         )
 
-        SwitchPortZone.objects.create(
+        reg_zone = SwitchPortZone.objects.create(
             switch_class=reg_switch,
             zone_name='server-zone',
             zone_type=PortZoneTypeChoices.SERVER,
@@ -926,7 +931,7 @@ class DeviceGenerationJobIntegrationTestCase(TestCase):
         PlanServerConnection.objects.create(
             connection_id='FE-001',
             server_class=reg_server,
-            target_switch_class=reg_switch,
+            target_zone=reg_zone,
             ports_per_connection=2,
             speed=400,
             hedgehog_conn_type=ConnectionTypeChoices.UNBUNDLED,

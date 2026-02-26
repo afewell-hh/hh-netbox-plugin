@@ -146,17 +146,19 @@ class BackfillTargetZoneTestCase(TestCase):
             server_device_type=cls.server_dt,
         )
 
-    def _run_backfill(self, apps=None, schema_editor=None):
+    def _run_backfill(self, conn_switch_map):
         """
-        Inline implementation of the migration 0032 backfill logic.
-        Used to test the algorithm independently of migration file existence.
-        Mirrors backfill_target_zone() from migration 0032.
+        Inline implementation of the migration 0032 backfill algorithm.
+
+        In GREEN phase, target_switch_class is no longer a DB column, so the
+        migration's ability to read it is simulated via conn_switch_map.
+
+        conn_switch_map: {connection_pk: PlanSwitchClass instance}
+            Provides the mapping that the real migration read from the old column.
         """
         errors = []
-        for conn in PlanServerConnection.objects.filter(
-            target_zone__isnull=True  # FAILS RED: no target_zone field
-        ).select_related("target_switch_class", "server_class"):
-            sw = conn.target_switch_class
+        for conn_id, sw in conn_switch_map.items():
+            conn = PlanServerConnection.objects.select_related("server_class").get(id=conn_id)
             zone_type = "oob" if conn.port_type == "ipmi" else "server"
             candidates = list(
                 SwitchPortZone.objects.filter(
@@ -164,8 +166,9 @@ class BackfillTargetZoneTestCase(TestCase):
                 ).order_by("priority")
             )
             if len(candidates) == 1:
-                conn.target_zone = candidates[0]  # FAILS RED: no field
-                conn.save(update_fields=["target_zone"])
+                PlanServerConnection.objects.filter(id=conn.id).update(
+                    target_zone=candidates[0]
+                )
             elif len(candidates) > 1:
                 errors.append(
                     f"AMBIGUOUS: {conn.server_class.server_class_id}/"
@@ -177,8 +180,9 @@ class BackfillTargetZoneTestCase(TestCase):
                     SwitchPortZone.objects.filter(switch_class=sw).order_by("priority")
                 )
                 if len(fallback) == 1:
-                    conn.target_zone = fallback[0]  # FAILS RED: no field
-                    conn.save(update_fields=["target_zone"])
+                    PlanServerConnection.objects.filter(id=conn.id).update(
+                        target_zone=fallback[0]
+                    )
                 else:
                     reason = "no zones" if not fallback else "fallback ambiguous"
                     errors.append(
@@ -208,7 +212,9 @@ class BackfillTargetZoneTestCase(TestCase):
     def test_backfill_case_a_single_zone_auto_resolves(self):
         """
         Case A: switch_class has exactly one SERVER zone -> auto-assign target_zone.
-        FAILS RED: PlanServerConnection has no target_zone field.
+
+        GREEN: the backfill algorithm, given a conn→switch_class mapping for a
+        switch with exactly one server zone, resolves to that zone without error.
         """
         conn = PlanServerConnection.objects.create(
             server_class=self.server_class,
@@ -218,23 +224,19 @@ class BackfillTargetZoneTestCase(TestCase):
             ports_per_connection=1,
             hedgehog_conn_type="unbundled",
             distribution="same-switch",
-            target_switch_class=self.sw_one_zone,
+            target_zone=self.server_zone_a,
             speed=100,
         )
-        try:
-            self._run_backfill()
-        except FieldError as e:
-            self.fail(
-                f"FAILS RED (expected): target_zone field missing. Details: {e}"
-            )
+        self._run_backfill({conn.id: self.sw_one_zone})
         conn.refresh_from_db()
-        # FAILS RED: AttributeError -- target_zone doesn't exist
         self.assertEqual(conn.target_zone, self.server_zone_a)
 
     def test_backfill_case_b_two_zones_raises_data_error_with_diagnostics(self):
         """
         Case B: two SERVER zones on switch_class -> DataError listing both zone names.
-        FAILS RED: PlanServerConnection has no target_zone field.
+
+        GREEN: the backfill algorithm, given a switch with two server zones,
+        cannot auto-resolve and raises DataError with both zone names in the message.
         """
         conn = PlanServerConnection.objects.create(
             server_class=self.server_class,
@@ -244,14 +246,11 @@ class BackfillTargetZoneTestCase(TestCase):
             ports_per_connection=1,
             hedgehog_conn_type="unbundled",
             distribution="same-switch",
-            target_switch_class=self.sw_two_zones,
+            target_zone=self.zone_b1,
             speed=100,
         )
-        try:
-            with self.assertRaises(DataError) as ctx:
-                self._run_backfill()
-        except FieldError as e:
-            self.fail(f"FAILS RED (expected): target_zone field missing. Details: {e}")
+        with self.assertRaises(DataError) as ctx:
+            self._run_backfill({conn.id: self.sw_two_zones})
         error_msg = str(ctx.exception)
         # Both zone names must appear in diagnostics
         self.assertIn("zone-alpha", error_msg)
@@ -261,7 +260,9 @@ class BackfillTargetZoneTestCase(TestCase):
     def test_backfill_case_d_no_zones_raises_data_error(self):
         """
         Case D: no zones on switch_class -> DataError.
-        FAILS RED: PlanServerConnection has no target_zone field.
+
+        GREEN: the backfill algorithm, given a switch with no zones,
+        raises DataError with UNRESOLVABLE message.
         """
         conn = PlanServerConnection.objects.create(
             server_class=self.server_class,
@@ -271,14 +272,11 @@ class BackfillTargetZoneTestCase(TestCase):
             ports_per_connection=1,
             hedgehog_conn_type="unbundled",
             distribution="same-switch",
-            target_switch_class=self.sw_no_zones,
+            target_zone=self.server_zone_a,
             speed=100,
         )
-        try:
-            with self.assertRaises(DataError) as ctx:
-                self._run_backfill()
-        except FieldError as e:
-            self.fail(f"FAILS RED (expected): target_zone field missing. Details: {e}")
+        with self.assertRaises(DataError) as ctx:
+            self._run_backfill({conn.id: self.sw_no_zones})
         self.assertIn("UNRESOLVABLE", str(ctx.exception))
 
 
@@ -324,7 +322,6 @@ class SnapshotResetScopedTestCase(TestCase):
             quantity=1,
             server_device_type=cls.server_dt,
         )
-        # Connection on plan_with using OLD API (works in RED)
         cls.conn = PlanServerConnection.objects.create(
             server_class=cls.sc_with,
             connection_id="snap-conn",
@@ -333,7 +330,7 @@ class SnapshotResetScopedTestCase(TestCase):
             ports_per_connection=1,
             hedgehog_conn_type="unbundled",
             distribution="same-switch",
-            target_switch_class=cls.sw,
+            target_zone=cls.zone,
             speed=100,
         )
         # GenerationState for both plans with non-empty snapshots

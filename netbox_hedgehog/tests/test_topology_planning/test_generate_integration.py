@@ -165,7 +165,7 @@ class TopologyPlanGenerateIntegrationTestCase(TestCase):
             ports_per_connection=2,
             hedgehog_conn_type=ConnectionTypeChoices.UNBUNDLED,
             distribution=ConnectionDistributionChoices.ALTERNATING,
-            target_switch_class=self.switch_class,
+            target_zone=self.port_zone,
             speed=200
         )
 
@@ -567,7 +567,12 @@ class TopologyPlanGenerateIntegrationTestCase(TestCase):
             mclag_pair=False,
             calculated_quantity=1
         )
-        # Connection without port zones configured
+        # Connection with port zone configured (but no allocation strategy set)
+        invalid_zone = SwitchPortZone.objects.create(
+            switch_class=switch_class,
+            zone_name='server-downlinks',
+            zone_type=PortZoneTypeChoices.SERVER,
+        )
         PlanServerConnection.objects.create(
             server_class=server_class,
             connection_id='fe-conn',
@@ -575,7 +580,7 @@ class TopologyPlanGenerateIntegrationTestCase(TestCase):
             ports_per_connection=2,
             hedgehog_conn_type=ConnectionTypeChoices.UNBUNDLED,
             distribution=ConnectionDistributionChoices.SAME_SWITCH,
-            target_switch_class=switch_class,
+            target_zone=invalid_zone,
             speed=200
         )
 
@@ -751,7 +756,7 @@ class TopologyPlanGenerateIntegrationTestCase(TestCase):
             ports_per_connection=1,
             hedgehog_conn_type=ConnectionTypeChoices.UNBUNDLED,
             distribution=ConnectionDistributionChoices.SAME_SWITCH,
-            target_switch_class=switch_class2,
+            target_zone=port_zone2,
             speed=200
         )
 

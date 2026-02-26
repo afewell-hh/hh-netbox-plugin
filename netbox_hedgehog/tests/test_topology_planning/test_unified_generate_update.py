@@ -204,10 +204,15 @@ class UnifiedGenerateUpdateIntegrationTestCase(TestCase):
         )
 
         # Create connection
+        zone = SwitchPortZone.objects.create(
+            switch_class=switch_class,
+            zone_name='server-downlinks',
+            zone_type='server',
+        )
         PlanServerConnection.objects.create(
             server_class=server_class,
             connection_id='FE-001',
-            target_switch_class=switch_class,
+            target_zone=zone,
             ports_per_connection=2,
             hedgehog_conn_type=ConnectionTypeChoices.UNBUNDLED,
             distribution=ConnectionDistributionChoices.ALTERNATING,
@@ -253,10 +258,15 @@ class UnifiedGenerateUpdateIntegrationTestCase(TestCase):
         )
 
         # Create connection but NO port zone (causes calc error)
+        invalid_zone = SwitchPortZone.objects.create(
+            switch_class=switch_class,
+            zone_name='server-downlinks',
+            zone_type='server',
+        )
         PlanServerConnection.objects.create(
             server_class=server_class,
             connection_id='FE-001',
-            target_switch_class=switch_class,
+            target_zone=invalid_zone,
             ports_per_connection=2,
             hedgehog_conn_type=ConnectionTypeChoices.UNBUNDLED,
             distribution=ConnectionDistributionChoices.ALTERNATING,
@@ -1170,7 +1180,7 @@ class ObjectPermissionRBACTestCase(TestCase):
             override_quantity=None
         )
 
-        SwitchPortZone.objects.create(
+        view_only_zone = SwitchPortZone.objects.create(
             switch_class=switch_class,
             zone_name='server-ports',
             zone_type=PortZoneTypeChoices.SERVER,
@@ -1183,7 +1193,7 @@ class ObjectPermissionRBACTestCase(TestCase):
         PlanServerConnection.objects.create(
             server_class=server_class,
             connection_id='FE-001',
-            target_switch_class=switch_class,
+            target_zone=view_only_zone,
             ports_per_connection=2,
             hedgehog_conn_type=ConnectionTypeChoices.UNBUNDLED,
             distribution=ConnectionDistributionChoices.ALTERNATING,

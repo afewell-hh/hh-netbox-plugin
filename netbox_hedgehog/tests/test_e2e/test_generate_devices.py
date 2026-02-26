@@ -119,7 +119,8 @@ class GenerateDevicesE2ETestCase(StaticLiveServerTestCase):
     def _create_test_plan_with_servers(self):
         """Create a topology plan with server classes for testing"""
         from netbox_hedgehog.models.topology_planning import (
-            TopologyPlan, PlanServerClass, PlanServerConnection, PlanSwitchClass
+            TopologyPlan, PlanServerClass, PlanServerConnection, PlanSwitchClass,
+            SwitchPortZone,
         )
 
         # Create plan
@@ -149,6 +150,13 @@ class GenerateDevicesE2ETestCase(StaticLiveServerTestCase):
             device_type_extension=self.test_data['switch_ext']
         )
 
+        # Create server zone
+        zone = SwitchPortZone.objects.create(
+            switch_class=switch_class,
+            zone_name='server-downlinks',
+            zone_type='server',
+        )
+
         # Create server connection (to frontend switches)
         PlanServerConnection.objects.create(
             server_class=server_class,
@@ -157,7 +165,7 @@ class GenerateDevicesE2ETestCase(StaticLiveServerTestCase):
             ports_per_connection=2,
             hedgehog_conn_type='unbundled',
             distribution='alternating',
-            target_switch_class=switch_class,
+            target_zone=zone,
             speed=200,
             port_type='data'
         )

@@ -473,12 +473,17 @@ class PlanServerConnection(NetBoxModel):
         help_text="Port distribution strategy (same-switch, alternating, rail-optimized)"
     )
 
-    target_switch_class = models.ForeignKey(
-        PlanSwitchClass,
+    target_zone = models.ForeignKey(
+        'netbox_hedgehog.SwitchPortZone',
         on_delete=models.PROTECT,
-        related_name='incoming_connections',
-        help_text="Switch class this connection targets"
+        related_name='server_connections',
+        help_text="Switch port zone this connection targets",
     )
+
+    @property
+    def target_switch_class(self):
+        """Derived from target_zone for backward compatibility."""
+        return self.target_zone.switch_class if self.target_zone_id else None
 
     speed = models.IntegerField(
         validators=[MinValueValidator(1)],
@@ -506,14 +511,44 @@ class PlanServerConnection(NetBoxModel):
         unique_together = [['server_class', 'connection_id']]
 
     def __str__(self):
-        return f"{self.server_class.server_class_id}/{self.connection_id} → {self.target_switch_class.switch_class_id}"
+        zone_label = str(self.target_zone) if self.target_zone_id else "no-zone"
+        return f"{self.server_class.server_class_id}/{self.connection_id} → {zone_label}"
 
     def get_absolute_url(self):
         return reverse('plugins:netbox_hedgehog:planserverconnection_detail', args=[self.pk])
 
     def clean(self):
-        """Validate NIC configuration (DIET-173 Phase 5)."""
+        """Validate NIC configuration and zone targeting."""
         super().clean()
+
+        # Validate target_zone is in the same plan as server_class
+        if self.target_zone_id and self.server_class_id:
+            zone_plan = self.target_zone.switch_class.plan_id
+            if zone_plan != self.server_class.plan_id:
+                raise ValidationError({
+                    'target_zone': 'Target zone must belong to the same plan as the server class.'
+                })
+
+        # Validate zone_type alignment: IPMI → OOB zone, other → SERVER zone
+        if self.target_zone_id:
+            expected_type = 'oob' if self.port_type == PortTypeChoices.IPMI else 'server'
+            if self.target_zone.zone_type not in (expected_type, 'server', 'oob'):
+                raise ValidationError({
+                    'target_zone': f'Zone type mismatch: port_type={self.port_type!r} requires zone_type={expected_type!r}.'
+                })
+            if self.port_type == PortTypeChoices.IPMI and self.target_zone.zone_type != 'oob':
+                raise ValidationError({
+                    'target_zone': 'IPMI connections must target an OOB zone.'
+                })
+            if self.port_type != PortTypeChoices.IPMI and self.target_zone.zone_type == 'oob':
+                raise ValidationError({
+                    'target_zone': 'Non-IPMI connections cannot target an OOB zone.'
+                })
+            if self.target_zone.zone_type not in ('server', 'oob'):
+                raise ValidationError({
+                    'target_zone': f'Connections cannot target zone_type={self.target_zone.zone_type!r}. '
+                                   'Must be server or oob.'
+                })
 
         # Validate connection_id follows NetBox interface naming conventions
         # (used as prefix for auto-created interface names)

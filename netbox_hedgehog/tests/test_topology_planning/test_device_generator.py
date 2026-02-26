@@ -89,22 +89,22 @@ class DeviceGeneratorTestCase(TestCase):
             quantity=2,
         )
 
-        cls.connection = PlanServerConnection.objects.create(
-            server_class=cls.server_class,
-            connection_id='FE-01',
-            ports_per_connection=1,
-            hedgehog_conn_type='unbundled',
-            distribution='same-switch',
-            target_switch_class=cls.switch_class,
-            speed=200,
-        )
-
         cls.zone = SwitchPortZone.objects.create(
             switch_class=cls.switch_class,
             zone_name='server-ports',
             zone_type='server',
             port_spec='1-2',
             allocation_strategy='sequential',
+        )
+
+        cls.connection = PlanServerConnection.objects.create(
+            server_class=cls.server_class,
+            connection_id='FE-01',
+            ports_per_connection=1,
+            hedgehog_conn_type='unbundled',
+            distribution='same-switch',
+            target_zone=cls.zone,
+            speed=200,
         )
 
     def test_generate_creates_devices_interfaces_cables_and_state(self):

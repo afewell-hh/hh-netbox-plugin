@@ -137,7 +137,7 @@ class Case128GpuCommandTestCase(TestCase):
                 "ports_per_connection": 1,
                 "hedgehog_conn_type": ConnectionTypeChoices.UNBUNDLED,
                 "distribution": ConnectionDistributionChoices.RAIL_OPTIMIZED,
-                "target_switch_class": connection.target_switch_class.pk,
+                "target_zone": connection.target_zone.pk,
                 "speed": 400,
             }
         )

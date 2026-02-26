@@ -317,10 +317,10 @@ class PlanServerConnectionTable(NetBoxTable):
         accessor='server_class'
     )
 
-    target_switch_class = tables.Column(
-        linkify=True,
-        verbose_name='Target Switch Class',
-        accessor='target_switch_class'
+    target_zone = tables.Column(
+        linkify=False,
+        verbose_name='Target Zone',
+        accessor='target_zone'
     )
 
     nic_module_type = tables.Column(
@@ -362,12 +362,12 @@ class PlanServerConnectionTable(NetBoxTable):
         fields = (
             'pk', 'id', 'connection_id', 'server_class', 'connection_name',
             'nic_module_type', 'port_index', 'ports_per_connection', 'hedgehog_conn_type',
-            'distribution', 'target_switch_class', 'speed', 'rail',
+            'distribution', 'target_zone', 'speed', 'rail',
             'port_type', 'tags', 'created', 'last_updated'
         )
         default_columns = (
             'connection_id', 'server_class', 'nic_module_type', 'port_index',
-            'hedgehog_conn_type', 'distribution', 'target_switch_class',
+            'hedgehog_conn_type', 'distribution', 'target_zone',
             'ports_per_connection', 'speed', 'rail'
         )
 

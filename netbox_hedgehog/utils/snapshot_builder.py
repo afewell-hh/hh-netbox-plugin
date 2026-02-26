@@ -80,11 +80,11 @@ def build_plan_snapshot(plan: 'TopologyPlan') -> dict:
     # Connection definitions (all parameters that affect cable generation)
     for conn in PlanServerConnection.objects.filter(
         server_class__plan=plan
-    ).select_related('server_class', 'target_switch_class'):
+    ).select_related('server_class', 'target_zone', 'target_zone__switch_class'):
         snapshot['connections'].append({
             'connection_id': conn.connection_id,
             'server_class_id': conn.server_class.server_class_id,
-            'target_switch_class_id': conn.target_switch_class.switch_class_id,
+            'target_zone_id': str(conn.target_zone),
             'ports_per_connection': conn.ports_per_connection,
             'hedgehog_conn_type': conn.hedgehog_conn_type,
             'distribution': conn.distribution or '',  # Normalize empty to ''

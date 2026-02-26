@@ -29,6 +29,7 @@ from netbox_hedgehog.models.topology_planning import (
     PlanSwitchClass,
     PlanServerConnection,
     DeviceTypeExtension,
+    SwitchPortZone,
 )
 
 User = get_user_model()
@@ -1107,10 +1108,16 @@ class PlanServerConnectionUITestCase(TestCase):
             uplink_ports_per_switch=4,
         )
 
+        cls.zone = SwitchPortZone.objects.create(
+            switch_class=cls.switch_class,
+            zone_name='server-downlinks',
+            zone_type='server',
+        )
+
         cls.connection = PlanServerConnection.objects.create(
             server_class=cls.server_class,
             connection_id='fe-001',
-            target_switch_class=cls.switch_class,
+            target_zone=cls.zone,
             nic_module_type=cls.nic_module,
             port_index=0,
             ports_per_connection=2,
@@ -1182,7 +1189,7 @@ class PlanServerConnectionUITestCase(TestCase):
         response = self.client.get(url)
 
         self.assertContains(response, 'name="server_class"')
-        self.assertContains(response, 'name="target_switch_class"')
+        self.assertContains(response, 'name="target_zone"')
         self.assertContains(response, 'name="ports_per_connection"')
 
     # =========================================================================
@@ -1197,7 +1204,7 @@ class PlanServerConnectionUITestCase(TestCase):
         data = {
             'server_class': self.server_class.pk,
             'connection_id': 'fe-002',
-            'target_switch_class': self.switch_class.pk,
+            'target_zone': self.zone.pk,
             'nic_module_type': self.nic_module.pk,
             'port_index': 0,
             'ports_per_connection': 4,
@@ -1223,7 +1230,7 @@ class PlanServerConnectionUITestCase(TestCase):
         data = {
             'server_class': self.server_class.pk,
             'connection_id': 'invalid-conn',
-            'target_switch_class': self.switch_class.pk,
+            'target_zone': self.zone.pk,
             'nic_module_type': self.nic_module.pk,
             'ports_per_connection': 0,  # Invalid
             'speed': 100,
@@ -1259,7 +1266,7 @@ class PlanServerConnectionUITestCase(TestCase):
         data = {
             'server_class': self.server_class.pk,
             'connection_id': 'fe-001',
-            'target_switch_class': self.switch_class.pk,
+            'target_zone': self.zone.pk,
             'nic_module_type': self.nic_module.pk,
             'port_index': 0,
             'ports_per_connection': 4,  # Changed from 2
@@ -1294,7 +1301,7 @@ class PlanServerConnectionUITestCase(TestCase):
         temp_connection = PlanServerConnection.objects.create(
             server_class=self.server_class,
             connection_id='temp-delete',
-            target_switch_class=self.switch_class,
+            target_zone=self.zone,
             nic_module_type=self.nic_module,
             ports_per_connection=1,
             speed=10,

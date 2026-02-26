@@ -24,6 +24,7 @@ from netbox_hedgehog.models.topology_planning import (
     PlanSwitchClass,
     PlanServerConnection,
     DeviceTypeExtension,
+    SwitchPortZone,
 )
 from netbox_hedgehog.choices import (
     TopologyPlanStatusChoices,
@@ -530,6 +531,12 @@ class PlanServerConnectionFormValidationTestCase(TestCase):
             uplink_ports_per_switch=4
         )
 
+        cls.zone = SwitchPortZone.objects.create(
+            switch_class=cls.switch_class,
+            zone_name='server-downlinks',
+            zone_type='server',
+        )
+
         # Create NIC ModuleType for NIC modeling (DIET-173 Phase 5)
         from dcim.models import ModuleType, InterfaceTemplate
         nvidia, _ = Manufacturer.objects.get_or_create(name='NVIDIA', defaults={'slug': 'nvidia'})
@@ -566,7 +573,7 @@ class PlanServerConnectionFormValidationTestCase(TestCase):
             'ports_per_connection': 2,
             'hedgehog_conn_type': ConnectionTypeChoices.UNBUNDLED,
             'distribution': ConnectionDistributionChoices.ALTERNATING,
-            'target_switch_class': self.switch_class.pk,
+            'target_zone': self.zone.pk,
             'speed': 200,
         }
 
@@ -591,7 +598,7 @@ class PlanServerConnectionFormValidationTestCase(TestCase):
             'server_class': self.server_class.pk,
             'connection_id': 'test-zero',
             'ports_per_connection': 0,
-            'target_switch_class': self.switch_class.pk,
+            'target_zone': self.zone.pk,
             'speed': 200,
         }
 
@@ -604,7 +611,7 @@ class PlanServerConnectionFormValidationTestCase(TestCase):
             'server_class': self.server_class.pk,
             'connection_id': 'test-neg',
             'ports_per_connection': -2,
-            'target_switch_class': self.switch_class.pk,
+            'target_zone': self.zone.pk,
             'speed': 200,
         }
 
@@ -621,7 +628,7 @@ class PlanServerConnectionFormValidationTestCase(TestCase):
             'server_class': self.server_class.pk,
             'connection_id': 'test-speed-zero',
             'ports_per_connection': 1,
-            'target_switch_class': self.switch_class.pk,
+            'target_zone': self.zone.pk,
             'speed': 0,
         }
 
@@ -634,7 +641,7 @@ class PlanServerConnectionFormValidationTestCase(TestCase):
             'server_class': self.server_class.pk,
             'connection_id': 'test-speed-neg',
             'ports_per_connection': 1,
-            'target_switch_class': self.switch_class.pk,
+            'target_zone': self.zone.pk,
             'speed': -100,
         }
 
@@ -656,7 +663,7 @@ class PlanServerConnectionFormValidationTestCase(TestCase):
             'ports_per_connection': 1,
             'hedgehog_conn_type': ConnectionTypeChoices.UNBUNDLED,
             'distribution': ConnectionDistributionChoices.RAIL_OPTIMIZED,
-            'target_switch_class': self.switch_class.pk,
+            'target_zone': self.zone.pk,
             'speed': 400,
             # rail is missing
         }
@@ -681,7 +688,7 @@ class PlanServerConnectionFormValidationTestCase(TestCase):
             'ports_per_connection': 1,
             'hedgehog_conn_type': ConnectionTypeChoices.UNBUNDLED,
             'distribution': ConnectionDistributionChoices.RAIL_OPTIMIZED,
-            'target_switch_class': self.switch_class.pk,
+            'target_zone': self.zone.pk,
             'speed': 400,
             'rail': 0,
         }
@@ -707,7 +714,7 @@ class PlanServerConnectionFormValidationTestCase(TestCase):
             'ports_per_connection': 2,
             'hedgehog_conn_type': ConnectionTypeChoices.UNBUNDLED,
             'distribution': ConnectionDistributionChoices.ALTERNATING,
-            'target_switch_class': self.switch_class.pk,
+            'target_zone': self.zone.pk,
             'speed': 200,
             # rail is omitted
         }
@@ -719,13 +726,13 @@ class PlanServerConnectionFormValidationTestCase(TestCase):
                         "Alternating distribution should not require rail")
 
     def test_connection_invalid_target_switch_class_fk(self):
-        """Test that invalid target_switch_class FK fails validation"""
+        """Test that invalid target_zone FK fails validation"""
         url = reverse('plugins:netbox_hedgehog:planserverconnection_add')
         data = {
             'server_class': self.server_class.pk,
             'connection_id': 'bad-fk-test',
             'ports_per_connection': 1,
-            'target_switch_class': 99999,  # Non-existent FK
+            'target_zone': 99999,  # Non-existent FK
             'speed': 200,
         }
 

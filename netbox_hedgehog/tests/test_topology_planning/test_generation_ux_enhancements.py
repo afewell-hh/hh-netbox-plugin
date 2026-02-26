@@ -134,7 +134,7 @@ class GenerationUXEnhancementsTestCase(TestCase):
         )
 
         # Create port zone
-        SwitchPortZone.objects.create(
+        self.zone = SwitchPortZone.objects.create(
             switch_class=self.switch_class,
             zone_name='server-zone',
             zone_type=PortZoneTypeChoices.SERVER,
@@ -157,7 +157,7 @@ class GenerationUXEnhancementsTestCase(TestCase):
         PlanServerConnection.objects.create(
             connection_id='TEST-CONN',
             server_class=self.server_class,
-            target_switch_class=self.switch_class,
+            target_zone=self.zone,
             ports_per_connection=2,
             speed=200,
             hedgehog_conn_type=ConnectionTypeChoices.UNBUNDLED,

@@ -265,7 +265,7 @@ class PlanServerConnectionForm(NetBoxModelForm):
             'ports_per_connection',
             'hedgehog_conn_type',
             'distribution',
-            'target_switch_class',
+            'target_zone',
             'speed',
             'rail',
             'port_type',
@@ -302,12 +302,13 @@ class PlanServerConnectionForm(NetBoxModelForm):
         # Apply filtering if we found a server_class
         if server_class:
             plan = server_class.plan
-            self.fields['target_switch_class'].queryset = PlanSwitchClass.objects.filter(plan=plan)
-            self.fields['target_switch_class'].help_text = f'Switch classes from plan: {plan.name}'
+            self.fields['target_zone'].queryset = SwitchPortZone.objects.filter(
+                switch_class__plan=plan, zone_type__in=['server', 'oob']
+            ).select_related('switch_class')
+            self.fields['target_zone'].help_text = f'Server/OOB zones from plan: {plan.name}'
         else:
-            # No server class selected yet - show help text
-            self.fields['target_switch_class'].help_text = (
-                'Select a server class first. Target switch must be from the same plan as the server class.'
+            self.fields['target_zone'].help_text = (
+                'Select a server class first. Target zone must be from the same plan.'
             )
 
     def clean(self):
@@ -321,7 +322,6 @@ class PlanServerConnectionForm(NetBoxModelForm):
         distribution = self.cleaned_data.get('distribution')
         rail = self.cleaned_data.get('rail')
         server_class = self.cleaned_data.get('server_class')
-        target_switch_class = self.cleaned_data.get('target_switch_class')
 
         # Rail validation: required only for rail-optimized distribution
         if distribution == ConnectionDistributionChoices.RAIL_OPTIMIZED:
