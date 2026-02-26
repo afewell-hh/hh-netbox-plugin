@@ -191,18 +191,18 @@ class BackfillTargetZoneTestCase(TestCase):
                 + "\n".join(errors)
             )
 
-    def test_migration_module_exists(self):
+    def test_target_zone_field_exists(self):
         """
-        Migration 0032_backfill_target_zone module must exist before GREEN phase.
-        FAILS RED: module does not exist yet.
+        target_zone field must exist on PlanServerConnection after the data migration runs.
+        FAILS RED: field does not exist yet.
         """
-        # FAILS RED: ImportError
+        from django.core.exceptions import FieldDoesNotExist
         try:
-            from netbox_hedgehog.migrations import _0032_backfill_target_zone  # noqa: F401
-        except ImportError:
+            PlanServerConnection._meta.get_field("target_zone")
+        except FieldDoesNotExist:
             self.fail(
-                "Migration _0032_backfill_target_zone does not exist. "
-                "Create migrations/0032_backfill_target_zone.py before GREEN phase."
+                "target_zone field missing on PlanServerConnection. "
+                "A migration must add target_zone before GREEN phase."
             )
 
     def test_backfill_case_a_single_zone_auto_resolves(self):

@@ -239,7 +239,12 @@ class ZoneTargetedIngestTestCase(TestCase):
     def _minimal_case(self, connections):
         """Build a minimal but valid case dict with the given connections list."""
         return {
-            "meta": {"case_id": "zt-ingest-test", "schema_version": 1},
+            "meta": {
+                "case_id": "zt_ingest_test",
+                "name": "Zone-Targeted Ingest Test",
+                "version": 1,
+                "managed_by": "yaml",
+            },
             "plan": {"name": "ZT-Ingest-Plan", "status": "draft"},
             "reference_data": {
                 "manufacturers": [{"name": "ZT-Gen", "slug": "zt-gen"}],
