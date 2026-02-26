@@ -128,6 +128,28 @@ class Case128GpuCommandTestCase(TestCase):
         response = self.client.get(url)
         self.assertEqual(response.status_code, 403)
 
+    def test_create_case_data_delegates_to_apply_case_id(self):
+        """_create_case_data() must delegate to apply_case_id, not inline construction."""
+        from unittest.mock import patch, MagicMock
+        from netbox_hedgehog.management.commands.setup_case_128gpu_odd_ports import Command
+
+        cmd = Command()
+        mock_plan = MagicMock()
+
+        with patch(
+            "netbox_hedgehog.test_cases.runner.apply_case_id",
+            return_value=mock_plan,
+        ) as mock_apply:
+            result = cmd._create_case_data()
+
+        mock_apply.assert_called_once_with(
+            "ux_case_128gpu_odd_ports",
+            clean=False,
+            prune=True,
+            reference_mode="ensure",
+        )
+        self.assertEqual(result, mock_plan)
+
     def test_rail_requires_value_for_rail_optimized(self):
         connection = PlanServerConnection.objects.filter(server_class__plan=self.plan).first()
         form = PlanServerConnectionForm(
