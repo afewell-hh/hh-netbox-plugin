@@ -250,7 +250,18 @@ class ZoneTargetedIngestTestCase(TestCase):
                 "manufacturers": [
                     {"id": "mfr_zt_ingest", "name": "ZT-Ingest-Mfr", "slug": "zt-ingest-mfr"},
                 ],
-                "device_types": [],
+                "device_types": [
+                    {"id": "dt_sw_ingest", "manufacturer": "mfr_zt_ingest",
+                     "model": "SW-Ingest-Model", "slug": "sw-ingest-model"},
+                    {"id": "dt_srv_ingest", "manufacturer": "mfr_zt_ingest",
+                     "model": "SRV-Ingest-Model", "slug": "srv-ingest-model"},
+                ],
+                "device_type_extensions": [
+                    {"id": "dte_sw_ingest", "device_type": "dt_sw_ingest",
+                     "hedgehog_roles": ["server-leaf"], "native_speed": 100,
+                     "uplink_ports": 2, "supported_breakouts": ["1x100g"],
+                     "mclag_capable": False},
+                ],
                 "module_types": [
                     {"id": "nic_cx7_ingest", "manufacturer": "mfr_zt_ingest",
                      "model": "CX7-INGEST-TEST"},
@@ -259,24 +270,23 @@ class ZoneTargetedIngestTestCase(TestCase):
                     {"id": "bo_1x100g_ingest", "breakout_id": "1x100g-zt-ingest",
                      "from_speed": 100, "logical_ports": 1, "logical_speed": 100},
                 ],
-                "device_type_extensions": [],
             },
             "switch_classes": [{
                 "switch_class_id": "sw-ingest", "fabric": "frontend",
                 "hedgehog_role": "server-leaf",
-                "device_type_extension": None,
+                "device_type_extension": "dte_sw_ingest",
                 "calculated_quantity": 1,
             }],
             "switch_port_zones": [{
                 "switch_class": "sw-ingest", "zone_name": "server-ingest",
                 "zone_type": "server", "port_spec": "1-4",
-                "breakout_option": "bo_1x100g_ingest",  # ref id, not breakout_id
+                "breakout_option": "bo_1x100g_ingest",
                 "allocation_strategy": "sequential", "priority": 100,
             }],
             "server_classes": [{
                 "server_class_id": "srv-ingest", "category": "gpu",
                 "quantity": 1, "gpus_per_server": 0,
-                "server_device_type": None,
+                "server_device_type": "dt_srv_ingest",
             }],
             "server_connections": connections,
         }
@@ -363,5 +373,6 @@ class ZoneTargetedIngestTestCase(TestCase):
         }])
         with self.assertRaises(TestCaseValidationError) as ctx:
             apply_case(case, clean=True, reference_mode="ensure")
-        # FAILS RED: target_zone key not yet parsed
         self.assertEqual(ctx.exception.errors[0]["code"], "unknown_reference")
+        # FAILS RED: error path doesn't mention target_zone (key not parsed yet)
+        self.assertIn("target_zone", ctx.exception.errors[0]["path"])
