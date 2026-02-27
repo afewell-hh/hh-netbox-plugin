@@ -13,7 +13,7 @@ from django.core.management.base import BaseCommand
 from django.db import transaction, models
 from django.core.exceptions import ValidationError
 
-from dcim.models import Manufacturer, DeviceType, InterfaceTemplate, Cable, Device, Interface, ModuleType
+from dcim.models import Cable, Device, Interface
 from extras.models import Tag
 
 from netbox_hedgehog.models.topology_planning import (
@@ -22,20 +22,7 @@ from netbox_hedgehog.models.topology_planning import (
     PlanSwitchClass,
     PlanServerConnection,
     SwitchPortZone,
-    DeviceTypeExtension,
-    BreakoutOption,
     GenerationState,
-)
-from netbox_hedgehog.choices import (
-    TopologyPlanStatusChoices,
-    ServerClassCategoryChoices,
-    FabricTypeChoices,
-    HedgehogRoleChoices,
-    ConnectionDistributionChoices,
-    ConnectionTypeChoices,
-    PortTypeChoices,
-    AllocationStrategyChoices,
-    PortZoneTypeChoices,
 )
 from netbox_hedgehog.services.device_generator import DeviceGenerator
 from netbox_hedgehog.utils.topology_calculations import update_plan_calculations
@@ -208,92 +195,6 @@ class Command(BaseCommand):
             prune=True,
             reference_mode="ensure",
         )
-
-    def _ensure_breakout(self, breakout_id: str, from_speed: int, logical_ports: int, logical_speed: int):
-        breakout, _ = BreakoutOption.objects.get_or_create(
-            breakout_id=breakout_id,
-            defaults={
-                "from_speed": from_speed,
-                "logical_ports": logical_ports,
-                "logical_speed": logical_speed,
-                "optic_type": "QSFP-DD",
-            },
-        )
-        return breakout
-
-    def _ensure_ds5000_extension(self) -> DeviceTypeExtension:
-        manufacturer, _ = Manufacturer.objects.get_or_create(
-            name="Celestica",
-            defaults={"slug": "celestica"},
-        )
-        device_type, _ = DeviceType.objects.get_or_create(
-            manufacturer=manufacturer,
-            model="DS5000",
-            defaults={"slug": "ds5000"},
-        )
-        if InterfaceTemplate.objects.filter(device_type=device_type).count() == 0:
-            for index in range(1, 65):
-                InterfaceTemplate.objects.get_or_create(
-                    device_type=device_type,
-                    name=f"E1/{index}",
-                    defaults={"type": "800gbase-x-qsfpdd"},
-                )
-        ext, created = DeviceTypeExtension.objects.get_or_create(
-            device_type=device_type,
-            defaults={
-                "mclag_capable": False,
-                "hedgehog_roles": ["spine", "server-leaf"],
-                "supported_breakouts": ["1x800g", "2x400g", "4x200g", "8x100g"],
-                "native_speed": 800,
-                "uplink_ports": 32,
-                "hedgehog_profile_name": "celestica-ds5000",
-                "notes": "Auto-created for 128-GPU odd-port case",
-            },
-        )
-        if not created:
-            updated_fields = []
-            if not ext.hedgehog_profile_name:
-                ext.hedgehog_profile_name = "celestica-ds5000"
-                updated_fields.append("hedgehog_profile_name")
-            if ext.native_speed is None:
-                ext.native_speed = 800
-                updated_fields.append("native_speed")
-            if not ext.supported_breakouts:
-                ext.supported_breakouts = ["1x800g", "2x400g", "4x200g", "8x100g"]
-                updated_fields.append("supported_breakouts")
-            if ext.uplink_ports is None:
-                ext.uplink_ports = 32
-                updated_fields.append("uplink_ports")
-            if not ext.hedgehog_roles:
-                ext.hedgehog_roles = ["spine", "server-leaf"]
-                updated_fields.append("hedgehog_roles")
-            if updated_fields:
-                ext.save(update_fields=updated_fields)
-        return ext
-
-    def _ensure_server_device_type(
-        self,
-        manufacturer: Manufacturer,
-        model: str,
-        slug: str,
-        interface_specs: list[tuple[str, str]],
-    ) -> DeviceType:
-        device_type, _ = DeviceType.objects.get_or_create(
-            manufacturer=manufacturer,
-            model=model,
-            defaults={
-                "slug": slug,
-                "u_height": 2,
-                "is_full_depth": True,
-            },
-        )
-        for name, interface_type in interface_specs:
-            InterfaceTemplate.objects.get_or_create(
-                device_type=device_type,
-                name=name,
-                defaults={"type": interface_type},
-            )
-        return device_type
 
     def _display_report(self, plan: TopologyPlan) -> None:
         """Display detailed report of plan and generated objects."""
