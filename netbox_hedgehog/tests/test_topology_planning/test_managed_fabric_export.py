@@ -136,9 +136,10 @@ class ManagedFabricTestBase(TestCase):
             },
         )
 
+        # Use slug='server' so _generate_servers() (which filters role__slug='server') finds them.
         cls.server_role, _ = DeviceRole.objects.get_or_create(
-            name='MF Server Role',
-            defaults={'slug': 'mf-server', 'color': '0000ff'},
+            slug='server',
+            defaults={'name': 'Server', 'color': '0000ff'},
         )
 
         cls.leaf_role, _ = DeviceRole.objects.get_or_create(
@@ -365,25 +366,30 @@ class TestCableCountFiltering(ManagedFabricTestBase):
         self.client.force_login(self.user)
 
     def test_connection_crd_count_excludes_management_cables(self):
-        """T3: Only the 2 managed cables produce Connection CRDs, not the 2 unmanaged ones."""
+        """T3: Only the 2 managed cables produce Connection CRDs, not the 2 unmanaged ones.
+
+        Uses 4 separate servers (1 cable each) so each cable produces its own unbundled
+        Connection CRD. The 2 unmanaged cables (server→oob_switch) are filtered out,
+        leaving exactly 2 Connection CRDs.
+        """
         plan = self._make_plan_with_generation_state('T3-Count')
         fe_switch = self._make_switch_device(plan, 'fe-leaf-020', 'frontend', 'server-leaf')
         oob_switch = self._make_switch_device(plan, 'oob-leaf-020', 'oob-mgmt', 'server-leaf')
-        server = self._make_server_device(plan, 'gpu-server-020')
 
-        fe_iface = self._make_interface(fe_switch, 'E1/1/1')
+        srv1 = self._make_server_device(plan, 'gpu-server-020a')
+        srv2 = self._make_server_device(plan, 'gpu-server-020b')
+        srv3 = self._make_server_device(plan, 'gpu-server-020c')
+        srv4 = self._make_server_device(plan, 'gpu-server-020d')
+
+        fe_iface1 = self._make_interface(fe_switch, 'E1/1/1')
         fe_iface2 = self._make_interface(fe_switch, 'E1/1/2')
-        oob_iface = self._make_interface(oob_switch, 'E1/1/1')
+        oob_iface1 = self._make_interface(oob_switch, 'E1/1/1')
         oob_iface2 = self._make_interface(oob_switch, 'E1/1/2')
-        srv_iface1 = self._make_interface(server, 'eth0')
-        srv_iface2 = self._make_interface(server, 'eth1')
-        srv_iface3 = self._make_interface(server, 'eth2')
-        srv_iface4 = self._make_interface(server, 'eth3')
 
-        self._make_cable(plan, srv_iface1, fe_iface)    # managed cable 1
-        self._make_cable(plan, srv_iface2, fe_iface2)   # managed cable 2
-        self._make_cable(plan, srv_iface3, oob_iface)   # unmanaged cable 1
-        self._make_cable(plan, srv_iface4, oob_iface2)  # unmanaged cable 2
+        self._make_cable(plan, self._make_interface(srv1, 'eth0'), fe_iface1)    # managed cable 1
+        self._make_cable(plan, self._make_interface(srv2, 'eth0'), fe_iface2)    # managed cable 2
+        self._make_cable(plan, self._make_interface(srv3, 'eth0'), oob_iface1)   # unmanaged cable 1
+        self._make_cable(plan, self._make_interface(srv4, 'eth0'), oob_iface2)   # unmanaged cable 2
 
         docs = self._get_export_docs(plan)
         conn_count = len([d for d in docs if d and d.get('kind') == 'Connection'])

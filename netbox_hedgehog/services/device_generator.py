@@ -357,11 +357,7 @@ class DeviceGenerator:
             for switch_class in self.plan.switch_classes.all()
         }
 
-        for fabric in (
-            FabricTypeChoices.FRONTEND,
-            FabricTypeChoices.BACKEND,
-            FabricTypeChoices.OOB,
-        ):
+        for fabric in sorted(FabricTypeChoices.HEDGEHOG_MANAGED_SET):
             leaves = [
                 device
                 for device in switch_devices.values()

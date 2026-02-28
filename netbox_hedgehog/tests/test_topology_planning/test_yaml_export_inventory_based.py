@@ -1040,7 +1040,8 @@ class YAMLExportRedundancyCRDsTestCase(YAMLExportTestBase):
             snapshot={}
         )
 
-    def _create_switch_device(self, plan, name, hedgehog_class, hedgehog_role='server-leaf'):
+    def _create_switch_device(self, plan, name, hedgehog_class, hedgehog_role='server-leaf',
+                              hedgehog_fabric='frontend'):
         digits = ''.join([ch for ch in name if ch.isdigit()])
         mac_suffix = int(digits) if digits else 0
         return Device.objects.create(
@@ -1052,6 +1053,7 @@ class YAMLExportRedundancyCRDsTestCase(YAMLExportTestBase):
                 'hedgehog_plan_id': str(plan.pk),
                 'hedgehog_class': hedgehog_class,
                 'hedgehog_role': hedgehog_role,
+                'hedgehog_fabric': hedgehog_fabric,
                 'boot_mac': f"0c:20:12:ff:00:{mac_suffix:02x}",
             }
         )

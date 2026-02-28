@@ -226,7 +226,12 @@ class PlanSwitchClassForm(NetBoxModelForm):
         }
         help_texts = {
             'switch_class_id': "Unique identifier (e.g., 'fe-gpu-leaf', 'be-spine')",
-            'fabric': 'Fabric type (Frontend, Backend, OOB)',
+            'fabric': (
+                'Fabric type. Frontend and Backend are Hedgehog-managed and appear in wiring YAML export. '
+                'Management types (OOB Management, In-Band Management, Network Management) are tracked '
+                'for inventory but excluded from wiring export. Out-of-Band (oob) is deprecated; use '
+                'OOB Management instead.'
+            ),
             'hedgehog_role': 'Hedgehog role (Spine, Server Leaf, Border Leaf)',
             'device_type_extension': 'Switch model with Hedgehog-specific metadata',
             'redundancy_type': 'Redundancy mode (MCLAG=even pairs with peer link, ESLAG=2-4 switches without peer link)',
