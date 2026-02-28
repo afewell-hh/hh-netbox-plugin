@@ -162,13 +162,27 @@ class FabricTypeChoices(ChoiceSet):
 
     FRONTEND = 'frontend'
     BACKEND = 'backend'
-    OOB = 'oob'
+    OOB = 'oob'  # Legacy - not Hedgehog-managed
+    OOB_MGMT = 'oob-mgmt'
+    IN_BAND_MGMT = 'in-band-mgmt'
+    NETWORK_MGMT = 'network-mgmt'
+
+    # Fabrics that appear in Hedgehog wiring YAML export
+    HEDGEHOG_MANAGED_SET = frozenset([FRONTEND, BACKEND])
 
     CHOICES = [
         (FRONTEND, 'Frontend'),
         (BACKEND, 'Backend'),
-        (OOB, 'Out-of-Band'),
+        (OOB, 'Out-of-Band (DEPRECATED)'),
+        (OOB_MGMT, 'OOB Management'),
+        (IN_BAND_MGMT, 'In-Band Management'),
+        (NETWORK_MGMT, 'Network Management'),
     ]
+
+    @classmethod
+    def is_hedgehog_managed(cls, fabric: str) -> bool:
+        """Return True if fabric is exported in Hedgehog wiring YAML."""
+        return fabric in cls.HEDGEHOG_MANAGED_SET
 
 
 class HedgehogRoleChoices(ChoiceSet):

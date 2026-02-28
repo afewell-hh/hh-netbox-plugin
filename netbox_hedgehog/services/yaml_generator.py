@@ -16,6 +16,7 @@ from django.core.exceptions import ValidationError
 from dcim.models import Cable, Interface, Device
 
 from ..models.topology_planning import TopologyPlan, DeviceTypeExtension
+from ..choices import FabricTypeChoices
 
 
 class YAMLGenerator:
@@ -819,10 +820,13 @@ class YAMLGenerator:
         switch_crds = []
         existing_names = set()
 
-        # Filter by plan ID and presence of hedgehog_role
-        # Don't rely on NetBox role slugs - they may vary by installation
+        # Filter by plan ID, presence of hedgehog_role, and Hedgehog-managed fabric only.
+        # Management fabrics (oob-mgmt, in-band-mgmt, network-mgmt, legacy oob) are
+        # tracked in NetBox for inventory purposes but excluded from wiring YAML export.
+        managed_fabrics = sorted(FabricTypeChoices.HEDGEHOG_MANAGED_SET)
         switches = Device.objects.filter(
             custom_field_data__hedgehog_plan_id=str(self.plan.pk),
+            custom_field_data__hedgehog_fabric__in=managed_fabrics,
             custom_field_data__hedgehog_role__isnull=False
         ).exclude(
             custom_field_data__hedgehog_role=''
@@ -1013,6 +1017,28 @@ class YAMLGenerator:
             custom_field_data__hedgehog_plan_id=str(self.plan.pk)
         ).order_by('id')
 
+        # Build set of switch device IDs that are Hedgehog-managed (frontend/backend).
+        # Cables that touch an unmanaged switch endpoint are excluded from Connection CRDs.
+        managed_fabrics = sorted(FabricTypeChoices.HEDGEHOG_MANAGED_SET)
+        _managed_switch_ids = set(
+            Device.objects.filter(
+                custom_field_data__hedgehog_plan_id=str(self.plan.pk),
+                custom_field_data__hedgehog_fabric__in=managed_fabrics,
+            ).values_list('id', flat=True)
+        )
+
+        def _endpoint_is_allowed(device: Device) -> bool:
+            """Return True if device may appear in a Connection CRD endpoint.
+
+            Switches always have hedgehog_fabric set in custom_field_data (populated
+            by DeviceGenerator). Servers and non-switch devices have no hedgehog_fabric,
+            so they are always allowed. Switches must be in the managed-fabric set.
+            """
+            fabric = device.custom_field_data.get('hedgehog_fabric', '')
+            if not fabric:
+                return True  # Server or non-switch device — always allowed
+            return device.id in _managed_switch_ids
+
         # Classify cables by zone and topology
         mclag_domain_links = defaultdict(lambda: {'peer': [], 'session': []})  # (sw1, sw2) -> {peer: [...], session: [...]}
         server_links = defaultdict(list)  # server_device -> [link_data]
@@ -1032,6 +1058,12 @@ class YAMLGenerator:
                 iface_b = b_terminations[0]
                 device_a = iface_a.device
                 device_b = iface_b.device
+
+                # Skip cables that touch an unmanaged switch endpoint.
+                # Servers are always allowed; peer/session/fabric-only cables between
+                # managed switches are allowed; management-fabric cables are excluded.
+                if not _endpoint_is_allowed(device_a) or not _endpoint_is_allowed(device_b):
+                    continue
 
                 # Get hedgehog_zone classification
                 zone = cable.custom_field_data.get('hedgehog_zone', '').lower()

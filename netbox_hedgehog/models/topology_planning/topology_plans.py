@@ -208,7 +208,11 @@ class PlanSwitchClass(NetBoxModel):
         max_length=50,
         choices=FabricTypeChoices,
         blank=True,
-        help_text="Fabric type (Frontend, Backend, OOB)"
+        help_text=(
+            'Fabric type. Frontend and Backend are Hedgehog-managed (appear in wiring YAML). '
+            'Management types are tracked for inventory but excluded from wiring export. '
+            'Out-of-Band (oob) is deprecated; use oob-mgmt instead.'
+        ),
     )
 
     hedgehog_role = models.CharField(
@@ -295,6 +299,11 @@ class PlanSwitchClass(NetBoxModel):
 
     def get_absolute_url(self):
         return reverse('plugins:netbox_hedgehog:planswitchclass_detail', args=[self.pk])
+
+    @property
+    def is_hedgehog_managed(self) -> bool:
+        """Return True if this switch class is exported in Hedgehog wiring YAML."""
+        return FabricTypeChoices.is_hedgehog_managed(self.fabric)
 
     def save(self, *args, **kwargs):
         """

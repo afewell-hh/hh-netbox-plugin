@@ -27,6 +27,16 @@
             <td>{% badge object.get_fabric_display %}</td>
           </tr>
           <tr>
+            <th scope="row">Wiring Diagram</th>
+            <td>
+              {% if object.is_hedgehog_managed %}
+                <span class="badge bg-success">Included</span>
+              {% else %}
+                <span class="badge bg-secondary">Excluded</span>
+              {% endif %}
+            </td>
+          </tr>
+          <tr>
             <th scope="row">Hedgehog Role</th>
             <td>{% badge object.get_hedgehog_role_display bg_color="blue" %}</td>
           </tr>
