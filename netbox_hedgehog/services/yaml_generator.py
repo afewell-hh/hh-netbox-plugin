@@ -939,20 +939,15 @@ class YAMLGenerator:
         NOTE: Server CRD spec includes:
         - description (optional)
         - profile (optional, not used in MVP)
-        - modules (optional, DIET-173 extension for NIC metadata)
-
         Server interfaces are NOT included in Server CRD spec.
         Interfaces are referenced via Connection CRDs (unbundled/bundled/mclag).
 
         Reads:
         - Device.name, Device.comments
-        - Module (NICs) with ModuleType and transceiver attributes
 
         Returns:
-            List of Server CRD dicts with spec: {description, modules}
+            List of Server CRD dicts with spec: {description}
         """
-        from dcim.models import Module
-
         server_crds = []
         existing_names = set()
 
@@ -969,23 +964,6 @@ class YAMLGenerator:
             spec = {}
             if server.comments:
                 spec['description'] = server.comments
-
-            # Add Module metadata (DIET-173 Phase 5)
-            modules = Module.objects.filter(device=server).select_related('module_type', 'module_bay')
-            if modules.exists():
-                spec['modules'] = []
-                for module in modules:
-                    module_data = {
-                        'bay': module.module_bay.name if module.module_bay else 'unknown',
-                        'type': module.module_type.model,
-                        'manufacturer': module.module_type.manufacturer.name,
-                    }
-
-                    # Include transceiver attributes if available
-                    if module.module_type.attribute_data:
-                        module_data['transceiver'] = module.module_type.attribute_data
-
-                    spec['modules'].append(module_data)
 
             server_crds.append({
                 'apiVersion': 'wiring.githedgehog.com/v1beta1',

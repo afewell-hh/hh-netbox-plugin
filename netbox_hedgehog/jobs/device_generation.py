@@ -88,6 +88,8 @@ class DeviceGenerationJob(JobRunner):
             )
 
         except Exception as exc:
+            import traceback as tb
+            full_traceback = tb.format_exc()
             # Failure: Update state to FAILED
             # Re-fetch state in case it was recreated during partial execution
             plan.refresh_from_db()
@@ -98,5 +100,6 @@ class DeviceGenerationJob(JobRunner):
                 state.save()
 
             self.logger.error(f"Generation failed: {exc}")
+            self.logger.error(f"Full traceback:\n{full_traceback}")
             # Re-raise exception so NetBox marks job as failed
             raise
