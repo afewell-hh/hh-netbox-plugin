@@ -536,6 +536,7 @@ class DeviceGenerator:
                 **custom_fields,
             }
             existing.save()
+            interfaces.append(existing)
             self._interface_cache[cache_key] = existing
             return existing
 
