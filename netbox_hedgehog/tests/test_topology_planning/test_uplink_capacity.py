@@ -51,7 +51,7 @@ class GetUplinkPortCountTestCase(TestCase):
         )
 
     def test_override_takes_precedence(self):
-        """Explicit override wins (Priority 1)."""
+        """Deprecated field used as fallback when no uplink zones exist (DIET-165 Priority 2)."""
         switch_class = PlanSwitchClass.objects.create(
             plan=self.plan,
             device_type_extension=self.extension,
@@ -85,8 +85,18 @@ class GetUplinkPortCountTestCase(TestCase):
 
         self.assertEqual(uplink_count, 4)
 
-    def test_override_takes_precedence_over_zones(self):
-        """Override wins even when uplink zones exist."""
+    def test_override_ignored_when_uplink_zones_exist(self):
+        """Zones take precedence over uplink_ports_per_switch when both are set (DIET-165).
+
+        Approved priority order:
+          Priority 1: SwitchPortZone with zone_type='uplink' (zones win)
+          Priority 2: uplink_ports_per_switch (deprecated fallback, only used when no zones)
+
+        Proof sources:
+          - DIET-164 technical spec: "PRIORITY 1: Zones (SINGLE SOURCE OF TRUTH)"
+          - test_calculation_priority.py::test_get_uplink_port_count_zones_take_precedence
+          - topology_calculations.get_uplink_port_count() checks uplink_zones.exists() first
+        """
         switch_class = PlanSwitchClass.objects.create(
             plan=self.plan,
             device_type_extension=self.extension,
@@ -105,7 +115,7 @@ class GetUplinkPortCountTestCase(TestCase):
 
         uplink_count = get_uplink_port_count(switch_class)
 
-        self.assertEqual(uplink_count, 6)
+        self.assertEqual(uplink_count, 4)  # zones win: 4 ports in spec '61-64', not override=6
 
     def test_multiple_uplink_zones_are_summed(self):
         """Multiple uplink zones are aggregated."""
