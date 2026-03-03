@@ -1,6 +1,6 @@
 """
-RED phase tests -- zone-targeted connections: generator, ingest, regression (#201).
-All tests FAIL with current code. Passes after GREEN phase implementation.
+Regression tests -- zone-targeted connections: generator, ingest, regression (#201, #202).
+GREEN phase implementation merged in DIET-202; all tests pass.
 """
 from django.test import TestCase, tag
 
@@ -49,7 +49,7 @@ def _gen_fixtures(cls):
 
 
 class ZoneTargetedGeneratorTestCase(TestCase):
-    """T16-T19: generator uses target_zone directly. FAILS RED."""
+    """T16-T19: generator uses target_zone directly. PASSES GREEN: DIET-202 implemented."""
 
     @classmethod
     def setUpTestData(cls):
@@ -68,7 +68,7 @@ class ZoneTargetedGeneratorTestCase(TestCase):
             plan=cls.plan, server_class_id="srv-gen",
             category=ServerClassCategoryChoices.GPU, quantity=1,
             server_device_type=cls.server_dt)
-        # Attempt to create connection using NEW API. Fails in RED (no field).
+        # Create connection using target_zone API. GREEN: field exists.
         cls.setup_error = None
         try:
             cls.conn = PlanServerConnection.objects.create(
@@ -76,7 +76,7 @@ class ZoneTargetedGeneratorTestCase(TestCase):
                 nic_module_type=cls.nic, port_index=0,
                 ports_per_connection=1, hedgehog_conn_type="unbundled",
                 distribution="same-switch",
-                target_zone=cls.server_zone,  # FAILS RED
+                target_zone=cls.server_zone,
                 speed=100)
         except Exception as e:
             cls.setup_error = e
@@ -84,27 +84,27 @@ class ZoneTargetedGeneratorTestCase(TestCase):
     def _require_setup(self):
         if self.setup_error:
             self.fail(
-                f"Setup failed (expected in RED phase -- target_zone field absent): "
+                f"Setup failed (unexpected -- target_zone field should exist after DIET-202): "
                 f"{self.setup_error}")
 
     def test_generator_select_zone_method_absent(self):
-        """T17: _select_zone_for_connection must not exist after GREEN. FAILS RED: it exists."""
+        """T17: _select_zone_for_connection must not exist (deleted in DIET-202 GREEN). PASSES GREEN."""
         gen = DeviceGenerator(self.plan)
-        # FAILS RED: method exists today
+        # PASSES GREEN: method was deleted in DIET-202
         self.assertFalse(
             hasattr(gen, "_select_zone_for_connection"),
             "_select_zone_for_connection still exists; must be deleted in GREEN phase.")
 
     def test_generator_map_zone_type_method_absent(self):
-        """_map_zone_type must not exist after GREEN. FAILS RED: it exists."""
+        """_map_zone_type must not exist (deleted in DIET-202 GREEN). PASSES GREEN."""
         gen = DeviceGenerator(self.plan)
-        # FAILS RED: method exists today
+        # PASSES GREEN: method was deleted in DIET-202
         self.assertFalse(
             hasattr(gen, "_map_zone_type"),
             "_map_zone_type still exists; must be deleted in GREEN phase.")
 
     def test_generator_uses_target_zone_directly(self):
-        """T16: generation routes cables to target_zone port range. FAILS RED: setup fails."""
+        """T16: generation routes cables to target_zone port range. PASSES GREEN: setup succeeds."""
         self._require_setup()
         gen = DeviceGenerator(self.plan)
         gen.generate_all()
@@ -115,7 +115,7 @@ class ZoneTargetedGeneratorTestCase(TestCase):
             "No switch-side interfaces tagged with zone 'server-gen'.")
 
     def test_rail_cache_key_is_per_zone(self):
-        """T18: _get_total_rails_for_target cache key is (server_id, zone.pk). FAILS RED."""
+        """T18: _get_total_rails_for_target cache key is (server_id, zone.pk). PASSES GREEN."""
         self._require_setup()
         # Create second zone on same switch class for a second rail-optimized connection
         zone2 = SwitchPortZone.objects.create(
@@ -128,11 +128,11 @@ class ZoneTargetedGeneratorTestCase(TestCase):
                 nic_module_type=self.nic, port_index=0,
                 ports_per_connection=1, hedgehog_conn_type="unbundled",
                 distribution="rail-optimized",
-                target_zone=zone2, speed=100, rail=0)  # FAILS RED
+                target_zone=zone2, speed=100, rail=0)
         except Exception as e:
-            self.fail(f"FAILS RED (expected): {e}")
+            self.fail(f"Setup failed (unexpected): {e}")
         gen = DeviceGenerator(self.plan)
-        # FAILS RED: _get_total_rails_for_target still takes switch_class not zone
+        # PASSES GREEN: _get_total_rails_for_target takes zone (not switch_class)
         count_z1 = gen._get_total_rails_for_target(self.sc, self.server_zone)
         count_z2 = gen._get_total_rails_for_target(self.sc, zone2)
         key_z1 = (self.sc.server_class_id, self.server_zone.pk)
@@ -144,7 +144,7 @@ class ZoneTargetedGeneratorTestCase(TestCase):
 
 @tag("regression", "zone-targeted")
 class DS3000ZoneRegressionTestCase(TestCase):
-    """T20: admin-node routes to 10g-sfp zone; hh-controller routes to server-downlinks. FAILS RED."""
+    """T20: admin-node routes to 10g-sfp zone; hh-controller routes to server-downlinks. PASSES GREEN."""
 
     @classmethod
     def setUpTestData(cls):
@@ -178,22 +178,22 @@ class DS3000ZoneRegressionTestCase(TestCase):
                 nic_module_type=cls.nic, port_index=0,
                 ports_per_connection=1, hedgehog_conn_type="unbundled",
                 distribution="same-switch",
-                target_zone=cls.zone_100g, speed=100)  # FAILS RED
+                target_zone=cls.zone_100g, speed=100)
             PlanServerConnection.objects.create(
                 server_class=cls.sc_admin, connection_id="fe-border",
                 nic_module_type=cls.nic, port_index=0,
                 ports_per_connection=1, hedgehog_conn_type="unbundled",
                 distribution="same-switch",
-                target_zone=cls.zone_10g, speed=100)  # FAILS RED
+                target_zone=cls.zone_10g, speed=100)
         except Exception as e:
             cls.setup_error = e
 
     def _require_setup(self):
         if self.setup_error:
-            self.fail(f"FAILS RED (expected): {self.setup_error}")
+            self.fail(f"Setup failed (unexpected): {self.setup_error}")
 
     def test_admin_node_routes_to_10g_zone(self):
-        """admin-node cables land on zone '10g-sfp' (port 33). FAILS RED: setup fails."""
+        """admin-node cables land on zone '10g-sfp' (port 33). PASSES GREEN: setup succeeds."""
         self._require_setup()
         gen = DeviceGenerator(self.plan)
         gen.generate_all()
@@ -204,7 +204,7 @@ class DS3000ZoneRegressionTestCase(TestCase):
             "admin-node cable must land on '10g-sfp' zone interface.")
 
     def test_hh_controller_routes_to_server_downlinks(self):
-        """hh-controller cables land on 'server-downlinks'. FAILS RED: setup fails."""
+        """hh-controller cables land on 'server-downlinks'. PASSES GREEN: setup succeeds."""
         self._require_setup()
         gen = DeviceGenerator(self.plan)
         gen.generate_all()
@@ -215,7 +215,7 @@ class DS3000ZoneRegressionTestCase(TestCase):
             "hh-controller cable must land on 'server-downlinks' zone.")
 
     def test_zones_do_not_collide(self):
-        """No cable from admin-node lands on ports 1-16; none from ctrl lands on port 33. FAILS RED."""
+        """No cable from admin-node lands on ports 1-16; none from ctrl lands on port 33. PASSES GREEN."""
         self._require_setup()
         gen = DeviceGenerator(self.plan)
         gen.generate_all()
@@ -230,7 +230,7 @@ class DS3000ZoneRegressionTestCase(TestCase):
 
 
 class ZoneTargetedIngestTestCase(TestCase):
-    """T22-T25: YAML ingest clean break. FAILS RED: old key still accepted."""
+    """T22-T25: YAML ingest clean break. PASSES GREEN: old key rejected, new key accepted."""
 
     @classmethod
     def setUpTestData(cls):
@@ -292,7 +292,7 @@ class ZoneTargetedIngestTestCase(TestCase):
         }
 
     def test_ingest_target_zone_key_resolves(self):
-        """T22: target_zone key resolves correctly. FAILS RED: ingest doesn't handle key."""
+        """T22: target_zone key resolves correctly. PASSES GREEN: ingest handles key correctly."""
         from netbox_hedgehog.test_cases.ingest import apply_case
         case = self._minimal_case([{
             "server_class": "srv-ingest",
@@ -308,14 +308,14 @@ class ZoneTargetedIngestTestCase(TestCase):
         try:
             plan = apply_case(case, clean=True, reference_mode="ensure")
         except Exception as e:
-            self.fail(f"FAILS RED (expected): ingest does not handle target_zone key. {e}")
+            self.fail(f"Ingest failed (unexpected): {e}")
         conn = PlanServerConnection.objects.filter(connection_id="ingest-01").first()
         self.assertIsNotNone(conn)
-        # FAILS RED: target_zone field absent
+        # PASSES GREEN: target_zone field exists
         self.assertEqual(conn.target_zone.zone_name, "server-ingest")
 
     def test_ingest_target_switch_class_key_rejected(self):
-        """T23: old key raises deprecated_key error. FAILS RED: old key still accepted."""
+        """T23: old key raises deprecated_key error. PASSES GREEN: old key correctly rejected."""
         from netbox_hedgehog.test_cases.ingest import apply_case
         case = self._minimal_case([{
             "server_class": "srv-ingest",
@@ -334,12 +334,10 @@ class ZoneTargetedIngestTestCase(TestCase):
             self.assertEqual(e.errors[0]["code"], "deprecated_key",
                 f"Expected code='deprecated_key', got '{e.errors[0]['code']}'")
             return
-        # FAILS RED: no exception raised (old key still silently accepted)
-        self.fail("Expected TestCaseValidationError(deprecated_key) but no error raised. "
-                  "FAILS RED: ingest still accepts target_switch_class key.")
+        self.fail("Expected TestCaseValidationError(deprecated_key) but no error raised.")
 
     def test_ingest_missing_zone_key_raises_missing_field(self):
-        """T24: missing both keys raises missing_field. Partially fails RED."""
+        """T24: missing both keys raises missing_field. PASSES GREEN."""
         from netbox_hedgehog.test_cases.ingest import apply_case
         case = self._minimal_case([{
             "server_class": "srv-ingest",
@@ -354,11 +352,11 @@ class ZoneTargetedIngestTestCase(TestCase):
         }])
         with self.assertRaises(TestCaseValidationError) as ctx:
             apply_case(case, clean=True, reference_mode="ensure")
-        # FAILS RED: current code raises 'unknown_reference', not 'missing_field'
+        # PASSES GREEN: code correctly raises 'missing_field'
         self.assertEqual(ctx.exception.errors[0]["code"], "missing_field")
 
     def test_ingest_unknown_zone_reference_raises_error(self):
-        """T25: unknown target_zone raises unknown_reference. FAILS RED: key not handled."""
+        """T25: unknown target_zone raises unknown_reference. PASSES GREEN: key handled correctly."""
         from netbox_hedgehog.test_cases.ingest import apply_case
         case = self._minimal_case([{
             "server_class": "srv-ingest",
@@ -374,5 +372,5 @@ class ZoneTargetedIngestTestCase(TestCase):
         with self.assertRaises(TestCaseValidationError) as ctx:
             apply_case(case, clean=True, reference_mode="ensure")
         self.assertEqual(ctx.exception.errors[0]["code"], "unknown_reference")
-        # FAILS RED: error path doesn't mention target_zone (key not parsed yet)
+        # PASSES GREEN: error path correctly mentions target_zone
         self.assertIn("target_zone", ctx.exception.errors[0]["path"])

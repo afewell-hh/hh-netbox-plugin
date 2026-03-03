@@ -931,25 +931,25 @@ class YAMLGenerator:
 
     def _generate_servers(self) -> List[Dict[str, Any]]:
         """
-        Generate Server CRDs from NetBox Devices with server role (DIET-173 Phase 5).
+        Generate Server CRDs from NetBox Devices with server role.
 
-        Includes Module metadata (NIC ModuleTypes with transceiver attributes)
-        for visibility and documentation purposes.
+        NOTE: spec.modules emission (DIET-173 Phase 5) is present in code but
+        conditionally skipped when no Module objects exist. In practice modules
+        are never emitted because DeviceGenerator does not create Module objects.
+        Removal of the spec.modules code path is tracked separately pending
+        hhfab schema alignment.
 
-        NOTE: Server CRD spec includes:
-        - description (optional)
-        - profile (optional, not used in MVP)
-        - modules (optional, DIET-173 extension for NIC metadata)
+        Server CRD spec includes:
+        - description (optional, from device.comments)
 
         Server interfaces are NOT included in Server CRD spec.
         Interfaces are referenced via Connection CRDs (unbundled/bundled/mclag).
 
         Reads:
         - Device.name, Device.comments
-        - Module (NICs) with ModuleType and transceiver attributes
 
         Returns:
-            List of Server CRD dicts with spec: {description, modules}
+            List of Server CRD dicts with spec: {description}
         """
         from dcim.models import Module
 
