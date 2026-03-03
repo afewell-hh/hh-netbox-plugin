@@ -10,7 +10,8 @@ Expected behavior:
 - Frontend connections use BlueField-3 BF3220
 - Backend rail connections use ConnectX-7 (Single-Port)
 - Device generation succeeds
-- YAML export includes Module metadata
+- YAML export does NOT include Module metadata (DIET-internal, not Hedgehog API contract)
+- NetBox inventory (Device/Module) does contain Module metadata
 """
 
 from django.test import TestCase
@@ -98,10 +99,25 @@ class UCCase128NICModelingRegressionTestCase(TestCase):
                     f"No interfaces for module {module.module_type.model}"
                 )
 
-        # Verify YAML export includes module metadata
+        # Verify YAML export does NOT include module metadata (DIET/Hedgehog API boundary).
+        # spec.modules is DIET-internal: NIC metadata lives in NetBox inventory (Device/Module),
+        # not in Hedgehog CRD output (DIET-209 / #211 architecture decision).
         yaml_gen = YAMLGenerator(plan)
         yaml_output = yaml_gen.generate()
 
-        self.assertIn('modules:', yaml_output)
-        self.assertIn('BlueField-3 BF3220', yaml_output)
-        self.assertIn('cage_type:', yaml_output)
+        self.assertNotIn(
+            'modules:',
+            yaml_output,
+            "spec.modules must not appear in Server CRDs: NIC metadata is DIET-internal "
+            "and is not part of the Hedgehog wiring API contract (DIET-209 / #211).",
+        )
+        self.assertNotIn(
+            'BlueField-3 BF3220',
+            yaml_output,
+            "NIC model names must not appear in YAML output: belongs in inventory, not CRDs.",
+        )
+        self.assertNotIn(
+            'cage_type:',
+            yaml_output,
+            "Transceiver attributes must not appear in YAML: DIET-internal only.",
+        )
