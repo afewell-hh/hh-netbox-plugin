@@ -19,6 +19,8 @@ from dcim.models import DeviceType, Manufacturer, Site, Device, Interface
 from extras.models import Tag
 from dcim.choices import InterfaceTypeChoices
 
+from netbox_hedgehog.tests.test_topology_planning import get_test_nic_module_type
+
 from netbox_hedgehog.models.topology_planning import (
     TopologyPlan,
     PlanServerClass,
@@ -161,6 +163,8 @@ class TopologyPlanGenerateIntegrationTestCase(TestCase):
         self.connection = PlanServerConnection.objects.create(
             server_class=self.server_class,
             connection_id='fe-conn',
+            nic_module_type=get_test_nic_module_type(),
+            port_index=0,
             connection_name='frontend',
             ports_per_connection=2,
             hedgehog_conn_type=ConnectionTypeChoices.UNBUNDLED,
@@ -576,6 +580,8 @@ class TopologyPlanGenerateIntegrationTestCase(TestCase):
         PlanServerConnection.objects.create(
             server_class=server_class,
             connection_id='fe-conn',
+            nic_module_type=get_test_nic_module_type(),
+            port_index=0,
             connection_name='frontend',
             ports_per_connection=2,
             hedgehog_conn_type=ConnectionTypeChoices.UNBUNDLED,
@@ -752,6 +758,8 @@ class TopologyPlanGenerateIntegrationTestCase(TestCase):
         connection2 = PlanServerConnection.objects.create(
             server_class=server_class2,
             connection_id='other-conn',
+            nic_module_type=get_test_nic_module_type(),
+            port_index=0,
             connection_name='other',
             ports_per_connection=1,
             hedgehog_conn_type=ConnectionTypeChoices.UNBUNDLED,
