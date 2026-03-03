@@ -10,7 +10,7 @@ from django.urls import reverse
 from django.contrib.auth import get_user_model
 from django.contrib.contenttypes.models import ContentType
 
-from dcim.models import DeviceType, Manufacturer
+from dcim.models import DeviceType, Manufacturer, ModuleType
 
 from netbox_hedgehog.tests.test_topology_planning import get_test_nic_module_type
 from netbox_hedgehog.models.topology_planning import (
@@ -592,6 +592,8 @@ class ServerConnectionIntegrationTestCase(TestCase):
             'target_zone': self.zone.pk,
             'speed': 200,
             'port_type': PortTypeChoices.DATA,
+            'nic_module_type': get_test_nic_module_type().pk,
+            'port_index': 0,
         }
         response = self.client.post(url, data, follow=True)
 
@@ -646,22 +648,24 @@ class ServerConnectionIntegrationTestCase(TestCase):
         get_response = self.client.get(edit_url)
         self.assertEqual(get_response.status_code, 200)
 
-        # Submit changes
+        # Submit changes (ports_per_connection=1: valid for BF3220 which has 2 ports, changed from 2)
         data = {
             'server_class': self.server_class.pk,
             'connection_id': 'FE-001',
-            'ports_per_connection': 4,  # Changed from 2
+            'ports_per_connection': 1,  # Changed from 2 (must be ≤ NIC port count)
             'hedgehog_conn_type': ConnectionTypeChoices.UNBUNDLED,
             'distribution': ConnectionDistributionChoices.ALTERNATING,  # Changed
             'target_zone': self.zone.pk,
             'speed': 400,  # Changed from 200
+            'nic_module_type': get_test_nic_module_type().pk,
+            'port_index': 0,
         }
         post_response = self.client.post(edit_url, data, follow=True)
         self.assertEqual(post_response.status_code, 200)
 
         # Verify changes
         connection.refresh_from_db()
-        self.assertEqual(connection.ports_per_connection, 4)
+        self.assertEqual(connection.ports_per_connection, 1)
         self.assertEqual(connection.speed, 400)
         self.assertEqual(connection.distribution, ConnectionDistributionChoices.ALTERNATING)
 
@@ -780,6 +784,8 @@ class ServerConnectionValidationTestCase(TestCase):
             'distribution': ConnectionDistributionChoices.RAIL_OPTIMIZED,
             'target_zone': self.zone.pk,
             'speed': 400,
+            'nic_module_type': get_test_nic_module_type().pk,
+            'port_index': 0,
             # rail is NOT provided - should cause validation error
         }
 
@@ -806,6 +812,8 @@ class ServerConnectionValidationTestCase(TestCase):
             'distribution': ConnectionDistributionChoices.ALTERNATING,
             'target_zone': self.zone.pk,
             'speed': 200,
+            'nic_module_type': get_test_nic_module_type().pk,
+            'port_index': 0,
             # rail is NOT provided - should be OK for alternating
         }
         response = self.client.post(url, data, follow=True)
@@ -830,6 +838,8 @@ class ServerConnectionValidationTestCase(TestCase):
             'target_zone': self.zone.pk,
             'speed': 400,
             'rail': 0,  # Provided - should work
+            'nic_module_type': get_test_nic_module_type().pk,
+            'port_index': 0,
         }
         response = self.client.post(url, data, follow=True)
 
@@ -950,6 +960,8 @@ class ServerConnectionFilteringTestCase(TestCase):
             'distribution': ConnectionDistributionChoices.SAME_SWITCH,
             'target_zone': self.zone_plan2.pk,  # From Plan 2 - WRONG!
             'speed': 200,
+            'nic_module_type': get_test_nic_module_type().pk,
+            'port_index': 0,
         }
         response = self.client.post(url, data, follow=False)
 
@@ -975,6 +987,8 @@ class ServerConnectionFilteringTestCase(TestCase):
             'distribution': ConnectionDistributionChoices.SAME_SWITCH,
             'target_zone': self.zone_plan1.pk,  # Also from Plan 1 - CORRECT
             'speed': 200,
+            'nic_module_type': get_test_nic_module_type().pk,
+            'port_index': 0,
         }
         response = self.client.post(url, data, follow=True)
 
@@ -1096,8 +1110,9 @@ class ServerConnectionPermissionTestCase(TestCase):
         """Test that non-superuser with add permission can create"""
         from users.models import ObjectPermission
 
-        # Create NetBox object-level permissions for regular user
-        # Need permissions for PlanServerConnection, PlanServerClass, and PlanSwitchClass
+        # Create NetBox object-level permissions for regular user.
+        # Must include view on FK targets (SwitchPortZone, ModuleType) so the form's
+        # FK field querysets are non-empty when NetBox applies ObjectPermission filtering.
         obj_perm = ObjectPermission.objects.create(
             name='Test add planserverconnection permission',
             actions=['add', 'view']
@@ -1106,6 +1121,8 @@ class ServerConnectionPermissionTestCase(TestCase):
             ContentType.objects.get_for_model(PlanServerConnection),
             ContentType.objects.get_for_model(PlanServerClass),
             ContentType.objects.get_for_model(PlanSwitchClass),
+            ContentType.objects.get_for_model(SwitchPortZone),
+            ContentType.objects.get_for_model(ModuleType),
         )
         obj_perm.users.add(self.regular_user)
 
@@ -1121,6 +1138,8 @@ class ServerConnectionPermissionTestCase(TestCase):
             'distribution': ConnectionDistributionChoices.ALTERNATING,
             'target_zone': self.zone.pk,
             'speed': 200,
+            'nic_module_type': get_test_nic_module_type().pk,
+            'port_index': 0,
         }
         response = self.client.post(url, data, follow=False)
 
