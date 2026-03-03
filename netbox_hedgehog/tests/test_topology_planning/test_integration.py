@@ -12,6 +12,7 @@ from django.contrib.contenttypes.models import ContentType
 
 from dcim.models import DeviceType, Manufacturer
 
+from netbox_hedgehog.tests.test_topology_planning import get_test_nic_module_type
 from netbox_hedgehog.models.topology_planning import (
     TopologyPlan,
     PlanServerClass,
@@ -610,6 +611,8 @@ class ServerConnectionIntegrationTestCase(TestCase):
         connection = PlanServerConnection.objects.create(
             server_class=self.server_class,
             connection_id='FE-001',
+            nic_module_type=get_test_nic_module_type(),
+            port_index=0,
             ports_per_connection=2,
             hedgehog_conn_type=ConnectionTypeChoices.UNBUNDLED,
             distribution=ConnectionDistributionChoices.SAME_SWITCH,
@@ -629,6 +632,8 @@ class ServerConnectionIntegrationTestCase(TestCase):
         connection = PlanServerConnection.objects.create(
             server_class=self.server_class,
             connection_id='FE-001',
+            nic_module_type=get_test_nic_module_type(),
+            port_index=0,
             ports_per_connection=2,
             hedgehog_conn_type=ConnectionTypeChoices.UNBUNDLED,
             distribution=ConnectionDistributionChoices.SAME_SWITCH,
@@ -665,6 +670,8 @@ class ServerConnectionIntegrationTestCase(TestCase):
         connection = PlanServerConnection.objects.create(
             server_class=self.server_class,
             connection_id='FE-DELETE',
+            nic_module_type=get_test_nic_module_type(),
+            port_index=0,
             ports_per_connection=2,
             hedgehog_conn_type=ConnectionTypeChoices.UNBUNDLED,
             distribution=ConnectionDistributionChoices.SAME_SWITCH,
@@ -1205,6 +1212,8 @@ class YAMLExportIntegrationTestCase(TestCase):
         cls.connection = PlanServerConnection.objects.create(
             server_class=cls.server_class,
             connection_id='FE-001',
+            nic_module_type=get_test_nic_module_type(),
+            port_index=0,
             connection_name='frontend',
             ports_per_connection=2,
             hedgehog_conn_type=ConnectionTypeChoices.UNBUNDLED,
@@ -1501,6 +1510,8 @@ class YAMLExportMCLAGTestCase(TestCase):
         cls.connection = PlanServerConnection.objects.create(
             server_class=cls.server_class,
             connection_id='FE-MCLAG',
+            nic_module_type=get_test_nic_module_type(),
+            port_index=0,
             connection_name='frontend-mclag',
             ports_per_connection=2,
             hedgehog_conn_type=ConnectionTypeChoices.MCLAG,
@@ -1625,6 +1636,8 @@ class YAMLExportEdgeCaseTestCase(TestCase):
         connection = PlanServerConnection.objects.create(
             server_class=server_class,
             connection_id='FE_CONN 01',  # Uppercase, underscore, space
+            nic_module_type=get_test_nic_module_type(),
+            port_index=0,
             connection_name='Frontend Connection',  # Uppercase, space
             ports_per_connection=1,
             hedgehog_conn_type=ConnectionTypeChoices.UNBUNDLED,
@@ -1689,6 +1702,8 @@ class YAMLExportEdgeCaseTestCase(TestCase):
         connection = PlanServerConnection.objects.create(
             server_class=server_class,
             connection_id='fe-001',
+            nic_module_type=get_test_nic_module_type(),
+            port_index=0,
             connection_name='frontend',
             ports_per_connection=2,
             hedgehog_conn_type=ConnectionTypeChoices.UNBUNDLED,
@@ -1810,6 +1825,8 @@ class YAMLExportEdgeCaseTestCase(TestCase):
         connection = PlanServerConnection.objects.create(
             server_class=server_class,
             connection_id='very-long-connection-identifier-name',
+            nic_module_type=get_test_nic_module_type(),
+            port_index=0,
             connection_name='super-long-connection-descriptive-name',
             ports_per_connection=1,
             hedgehog_conn_type=ConnectionTypeChoices.UNBUNDLED,
@@ -1969,7 +1986,9 @@ class SimplePlanE2ETestCase(TestCase):
             hedgehog_conn_type=ConnectionTypeChoices.UNBUNDLED,
             distribution=ConnectionDistributionChoices.ALTERNATING,
             target_zone=zone,
-            speed=200  # 200G ports
+            speed=200,  # 200G ports
+            nic_module_type=get_test_nic_module_type(),
+            port_index=0,
         )
 
         # Verify initial state: calculated_quantity is None
@@ -2174,7 +2193,9 @@ class MCLAGEvenCountEnforcementTestCase(TestCase):
             hedgehog_conn_type=ConnectionTypeChoices.MCLAG,
             distribution=ConnectionDistributionChoices.ALTERNATING,
             target_zone=zone,
-            speed=200
+            speed=200,
+            nic_module_type=get_test_nic_module_type(),
+            port_index=0,
         )
 
         # Trigger recalculation
@@ -2251,7 +2272,9 @@ class MCLAGEvenCountEnforcementTestCase(TestCase):
             hedgehog_conn_type=ConnectionTypeChoices.MCLAG,
             distribution=ConnectionDistributionChoices.ALTERNATING,
             target_zone=zone,
-            speed=200
+            speed=200,
+            nic_module_type=get_test_nic_module_type(),
+            port_index=0,
         )
 
         # Trigger recalculation
@@ -2400,7 +2423,9 @@ class BreakoutSelectionCorrectnessTestCase(TestCase):
             hedgehog_conn_type=ConnectionTypeChoices.UNBUNDLED,
             distribution=ConnectionDistributionChoices.SAME_SWITCH,
             target_zone=zone,
-            speed=200  # 200G connection speed
+            speed=200,  # 200G connection speed
+            nic_module_type=get_test_nic_module_type(),
+            port_index=0,
         )
 
         # Trigger recalculation via HTTP endpoint (UX-accurate path)
@@ -2487,7 +2512,9 @@ class BreakoutSelectionCorrectnessTestCase(TestCase):
             hedgehog_conn_type=ConnectionTypeChoices.UNBUNDLED,
             distribution=ConnectionDistributionChoices.SAME_SWITCH,
             target_zone=zone,
-            speed=400  # 400G connection speed
+            speed=400,  # 400G connection speed
+            nic_module_type=get_test_nic_module_type(),
+            port_index=0,
         )
 
         # Trigger recalculation via HTTP endpoint (UX-accurate path)
@@ -2573,7 +2600,9 @@ class BreakoutSelectionCorrectnessTestCase(TestCase):
             hedgehog_conn_type=ConnectionTypeChoices.UNBUNDLED,
             distribution=ConnectionDistributionChoices.SAME_SWITCH,
             target_zone=zone,
-            speed=100  # 100G connection speed
+            speed=100,  # 100G connection speed
+            nic_module_type=get_test_nic_module_type(),
+            port_index=0,
         )
 
         # Trigger recalculation via HTTP endpoint (UX-accurate path)
