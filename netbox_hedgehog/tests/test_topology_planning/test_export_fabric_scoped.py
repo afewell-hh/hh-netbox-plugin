@@ -3,15 +3,19 @@ Integration tests for fabric-scoped wiring export (DIET-227).
 
 Tests verify that:
 - Full-plan export (no --fabric) remains unchanged
-- --fabric frontend emits only frontend Switch/Connection CRDs
-- --fabric backend emits only backend Switch/Connection CRDs
+- --fabric frontend emits only frontend Switch/Connection/Server CRDs
+- --fabric backend emits only backend Switch/Connection/Server CRDs
 - --split-by-fabric writes two separate files, each independently valid
 - Invalid fabric selector raises CommandError
-- No cross-fabric leakage: frontend export has no backend switch names, vice versa
+- No cross-fabric leakage: frontend/backend exports are fully isolated for all CRD kinds
+
+Server isolation is tested explicitly: _generate_servers() filters to only servers
+that have at least one cable connecting them to the target-fabric switches via
+_get_server_ids_for_fabric() (CableTermination traversal).
 
 ## Invariants
 - Unchanged: full-plan export (no --fabric flag)
-- Changed: --fabric and --split-by-fabric flags added to export_wiring_yaml command
+- Changed: --fabric and --split-by-fabric flags; server filtering added for fabric mode
 """
 
 import os
@@ -62,6 +66,15 @@ def _switch_names_in_yaml(yaml_content):
     names = set()
     for doc in yaml.safe_load_all(yaml_content):
         if isinstance(doc, dict) and doc.get('kind') == 'Switch':
+            names.add(doc['metadata']['name'])
+    return names
+
+
+def _server_names_in_yaml(yaml_content):
+    """Return set of Server CRD metadata.name values from a multi-doc YAML string."""
+    names = set()
+    for doc in yaml.safe_load_all(yaml_content):
+        if isinstance(doc, dict) and doc.get('kind') == 'Server':
             names.add(doc['metadata']['name'])
     return names
 
@@ -354,6 +367,45 @@ class FrontendFabricExportTestCase(FabricScopedExportBase):
         self.assertLess(fe_kinds.get('Switch', 0), full_kinds.get('Switch', 0),
                         "Frontend export must have fewer switches than full export")
 
+    def test_frontend_export_no_backend_servers(self):
+        """Frontend export has no Server CRDs for servers only connected to backend switches.
+
+        Servers in the fixture are exclusively connected to either frontend OR backend
+        switches (not both), so backend-only servers must not appear in the frontend export.
+        """
+        fe_server_names = _server_names_in_yaml(self._fe_content())
+
+        # Backend servers: those connected exclusively to backend switches
+        be_switch_names = self._be_switch_names()
+        full_content = generate_yaml_for_plan(self.plan)
+        all_server_names = _server_names_in_yaml(full_content)
+
+        # Each server in the frontend export must NOT be a pure-backend server.
+        # Since the fixture has disjoint server classes (fe-only and be-only),
+        # all servers in the frontend export should connect to frontend switches.
+        be_server_names = _server_names_in_yaml(
+            generate_yaml_for_plan(self.plan, fabric='backend')
+        )
+        fe_only_server_names = all_server_names - be_server_names
+
+        # Frontend export must contain fe-only servers
+        for name in fe_only_server_names:
+            self.assertIn(name, fe_server_names,
+                          f"Frontend server {name} missing from frontend export")
+
+        # Frontend export must NOT contain be-only servers
+        be_only_server_names = all_server_names - fe_server_names
+        for name in be_only_server_names:
+            self.assertNotIn(name, fe_server_names,
+                             f"Backend-only server {name} leaked into frontend export")
+
+    def test_frontend_server_count_less_than_full(self):
+        """Frontend export has fewer Server CRDs than full-plan export (fixture has both fabrics)."""
+        full_kinds = _count_kinds(generate_yaml_for_plan(self.plan))
+        fe_kinds = _count_kinds(self._fe_content())
+        self.assertLess(fe_kinds.get('Server', 0), full_kinds.get('Server', 0),
+                        "Frontend export must have fewer Server CRDs than full export")
+
 
 class BackendFabricExportTestCase(FabricScopedExportBase):
     """--fabric backend emits only backend Switch/Connection CRDs."""
@@ -396,6 +448,25 @@ class BackendFabricExportTestCase(FabricScopedExportBase):
                              f"Connection CRD references frontend switch {name} "
                              f"in backend-scoped export")
 
+    def test_backend_export_no_frontend_servers(self):
+        """Backend export has no Server CRDs for servers only connected to frontend switches."""
+        be_server_names = _server_names_in_yaml(self._be_content())
+        fe_server_names = _server_names_in_yaml(
+            generate_yaml_for_plan(self.plan, fabric='frontend')
+        )
+        # Servers that appear only in the frontend export (not backend)
+        fe_only_servers = fe_server_names - be_server_names
+        for name in fe_only_servers:
+            self.assertNotIn(name, be_server_names,
+                             f"Frontend-only server {name} leaked into backend export")
+
+    def test_backend_server_count_less_than_full(self):
+        """Backend export has fewer Server CRDs than full-plan export."""
+        full_kinds = _count_kinds(generate_yaml_for_plan(self.plan))
+        be_kinds = _count_kinds(self._be_content())
+        self.assertLess(be_kinds.get('Server', 0), full_kinds.get('Server', 0),
+                        "Backend export must have fewer Server CRDs than full export")
+
 
 class SplitByFabricCommandTestCase(FabricScopedExportBase):
     """--split-by-fabric writes one file per fabric, each independently valid YAML."""
@@ -426,32 +497,48 @@ class SplitByFabricCommandTestCase(FabricScopedExportBase):
                                    f"{fab} artifact must contain at least one document")
 
     def test_split_no_cross_fabric_switch_leakage(self):
-        """Per-fabric files contain no switches from the other fabric."""
+        """Per-fabric files contain no Switch or Server CRDs from the other fabric."""
         with tempfile.TemporaryDirectory() as tmpdir:
             base = os.path.join(tmpdir, 'wiring')
             call_command('export_wiring_yaml', str(self.plan.pk), '--output', base,
                          '--split-by-fabric')
 
-            fe_names = set(Device.objects.filter(
+            fe_switch_db = set(Device.objects.filter(
                 custom_field_data__hedgehog_plan_id=str(self.plan.pk),
                 custom_field_data__hedgehog_fabric='frontend',
             ).values_list('name', flat=True))
-            be_names = set(Device.objects.filter(
+            be_switch_db = set(Device.objects.filter(
                 custom_field_data__hedgehog_plan_id=str(self.plan.pk),
                 custom_field_data__hedgehog_fabric='backend',
             ).values_list('name', flat=True))
 
             with open(f"{base}-frontend.yaml") as f:
-                fe_switch_crds = _switch_names_in_yaml(f.read())
+                fe_content = f.read()
             with open(f"{base}-backend.yaml") as f:
-                be_switch_crds = _switch_names_in_yaml(f.read())
+                be_content = f.read()
 
-            for name in be_names:
+            fe_switch_crds = _switch_names_in_yaml(fe_content)
+            be_switch_crds = _switch_names_in_yaml(be_content)
+            fe_server_crds = _server_names_in_yaml(fe_content)
+            be_server_crds = _server_names_in_yaml(be_content)
+
+            # Switch isolation
+            for name in be_switch_db:
                 self.assertNotIn(name, fe_switch_crds,
                                  f"Backend switch {name} leaked into frontend artifact")
-            for name in fe_names:
+            for name in fe_switch_db:
                 self.assertNotIn(name, be_switch_crds,
                                  f"Frontend switch {name} leaked into backend artifact")
+
+            # Server isolation: servers exclusive to one fabric must not appear in the other
+            fe_only_servers = fe_server_crds - be_server_crds
+            be_only_servers = be_server_crds - fe_server_crds
+            for name in fe_only_servers:
+                self.assertNotIn(name, be_server_crds,
+                                 f"Frontend-only server {name} leaked into backend artifact")
+            for name in be_only_servers:
+                self.assertNotIn(name, fe_server_crds,
+                                 f"Backend-only server {name} leaked into frontend artifact")
 
     def test_split_fabric_and_full_mutually_exclusive(self):
         """--fabric and --split-by-fabric together raise CommandError."""

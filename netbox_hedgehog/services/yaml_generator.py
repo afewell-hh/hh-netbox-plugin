@@ -77,7 +77,22 @@ class YAMLGenerator:
 
         # Step 3: Generate device CRDs
         switch_crds = self._generate_switches()
-        server_crds = self._generate_servers()
+
+        # When a specific fabric is requested, restrict Server CRDs to servers
+        # that have at least one cable connecting them to the target-fabric switches.
+        # For full-plan export (no fabric filter), all plan servers are included.
+        if self.fabric:
+            effective_fabrics = [self.fabric]
+            managed_switch_ids = set(
+                Device.objects.filter(
+                    custom_field_data__hedgehog_plan_id=str(self.plan.pk),
+                    custom_field_data__hedgehog_fabric__in=effective_fabrics,
+                ).values_list('id', flat=True)
+            )
+            server_filter_ids = self._get_server_ids_for_fabric(managed_switch_ids)
+            server_crds = self._generate_servers(filter_ids=server_filter_ids)
+        else:
+            server_crds = self._generate_servers()
 
         # Step 4: Generate connection CRDs (existing logic, refactored)
         connection_crds = self._generate_connection_crds()
@@ -922,7 +937,62 @@ class YAMLGenerator:
 
         return switch_crds
 
-    def _generate_servers(self) -> List[Dict[str, Any]]:
+    def _get_server_ids_for_fabric(self, managed_switch_ids: set) -> set:
+        """Return the set of server device IDs connected to the given switch IDs via cables.
+
+        Uses CableTermination to traverse cable endpoints without loading full Cable objects.
+        A server is included if it has at least one cable whose opposite endpoint lands on
+        one of the managed switches.
+
+        Args:
+            managed_switch_ids: set of Device PKs for the target-fabric switches
+
+        Returns:
+            set of Device PKs for servers with at least one connection to those switches
+        """
+        from django.contrib.contenttypes.models import ContentType
+        from dcim.models import CableTermination
+
+        interface_ct = ContentType.objects.get_for_model(Interface)
+
+        # Interface IDs on the target-fabric switches
+        switch_iface_ids = set(
+            Interface.objects.filter(
+                device_id__in=managed_switch_ids
+            ).values_list('id', flat=True)
+        )
+        if not switch_iface_ids:
+            return set()
+
+        # Cable IDs where at least one end lands on a target-fabric switch interface
+        cable_ids = set(
+            CableTermination.objects.filter(
+                termination_type=interface_ct,
+                termination_id__in=switch_iface_ids,
+            ).values_list('cable_id', flat=True)
+        )
+        if not cable_ids:
+            return set()
+
+        # Interface IDs on the OTHER ends of those cables (excluding the switch side)
+        server_side_iface_ids = (
+            CableTermination.objects.filter(
+                cable_id__in=cable_ids,
+                termination_type=interface_ct,
+            ).exclude(
+                termination_id__in=switch_iface_ids,
+            ).values_list('termination_id', flat=True)
+        )
+
+        # Device IDs where role is 'server'
+        return set(
+            Interface.objects.filter(
+                id__in=server_side_iface_ids,
+                device__role__slug='server',
+            ).values_list('device_id', flat=True)
+        )
+
+    def _generate_servers(self, filter_ids=None) -> List[Dict[str, Any]]:
         """
         Generate Server CRDs from NetBox Devices with server role (DIET-173 Phase 5).
 
@@ -947,7 +1017,10 @@ class YAMLGenerator:
         servers = Device.objects.filter(
             role__slug='server',
             custom_field_data__hedgehog_plan_id=str(self.plan.pk)
-        ).order_by('id')
+        )
+        if filter_ids is not None:
+            servers = servers.filter(id__in=filter_ids)
+        servers = servers.order_by('id')
 
         for server in servers:
             # Get unique CRD name (collision-safe)
