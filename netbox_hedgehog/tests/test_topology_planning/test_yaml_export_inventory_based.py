@@ -630,7 +630,12 @@ class YAMLExportBreakoutNamingTestCase(YAMLExportTestBase):
                          f"YAML should read from inventory, not regenerate names.")
 
     def test_switch_crd_includes_port_configuration(self):
-        """Switch CRD includes portBreakouts, portSpeeds, and portAutoNegs."""
+        """Switch CRD portBreakouts uses E1/<port> keys for all ports (DIET-226).
+
+        hhfab schema requires 'E1/<port>' keys in portBreakouts for all ports
+        (both multi-lane breakouts and native 1x). portSpeeds and portAutoNegs
+        are not emitted; hhfab derives speeds from portBreakouts.
+        """
         url = reverse('plugins:netbox_hedgehog:topologyplan_export', args=[self.plan.pk])
         response = self.client.get(url)
 
@@ -646,19 +651,26 @@ class YAMLExportBreakoutNamingTestCase(YAMLExportTestBase):
 
         spec = switch_docs[0].get('spec', {})
         port_breakouts = spec.get('portBreakouts', {})
-        port_speeds = spec.get('portSpeeds', {})
-        port_auto_negs = spec.get('portAutoNegs', {})
 
-        # Breakout ports should be represented in portBreakouts
-        self.assertEqual(port_breakouts.get('1'), '4x200g')
-        self.assertEqual(port_speeds.get('1/1'), '200g')
-        self.assertEqual(port_speeds.get('1/4'), '200g')
-        self.assertFalse(port_auto_negs.get('1/1'))
+        # Breakout ports use 'E1/<port>' key format with uppercase 'G' (DIET-226)
+        self.assertEqual(port_breakouts.get('E1/1'), '4x200G',
+                         "4x200G breakout port must use E1/<port> key with uppercase G")
 
-        # 1x breakouts are treated as native ports (no portBreakouts entry)
-        self.assertNotIn('49', port_breakouts)
-        self.assertEqual(port_speeds.get('49'), '800g')
-        self.assertFalse(port_auto_negs.get('49'))
+        # 1x native-speed ports also use 'E1/<port>' key in portBreakouts
+        self.assertEqual(port_breakouts.get('E1/49'), '1x800G',
+                         "1x native port must appear in portBreakouts with E1/<port> key and uppercase G")
+
+        # Bare-number keys must not be present
+        self.assertNotIn('1', port_breakouts,
+                         "portBreakouts must not use bare port numbers as keys")
+        self.assertNotIn('49', port_breakouts,
+                         "portBreakouts must not use bare port numbers as keys")
+
+        # portSpeeds and portAutoNegs are not emitted (hhfab does not use them)
+        self.assertNotIn('portSpeeds', spec,
+                         "portSpeeds must not be emitted; hhfab derives speeds from portBreakouts")
+        self.assertNotIn('portAutoNegs', spec,
+                         "portAutoNegs must not be emitted; hhfab derives auto-neg from portBreakouts")
 
     def test_yaml_export_does_not_mutate_plan(self):
         """

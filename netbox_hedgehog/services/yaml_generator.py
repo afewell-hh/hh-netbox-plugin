@@ -659,31 +659,31 @@ class YAMLGenerator:
 
     def _generate_port_configuration(self, switch_class: 'PlanSwitchClass') -> Dict[str, Dict[str, Any]]:
         """
-        Generate portBreakouts, portSpeeds, and portAutoNegs for a switch class.
+        Generate portBreakouts for a switch class using hhfab-compatible key format.
 
-        Reads SwitchPortZone data to determine which ports have breakouts and their speeds.
+        All ports (breakout and native) are represented in portBreakouts with
+        'E1/<port>' keys, matching the hhfab wiring schema. portSpeeds and
+        portAutoNegs are not emitted; hhfab derives speeds from portBreakouts.
 
         Args:
             switch_class: PlanSwitchClass instance
 
         Returns:
             Dict with keys: portBreakouts, portSpeeds, portAutoNegs
+            (portSpeeds and portAutoNegs are always empty; retained for
+            compatibility with the existing emit check in _generate_switches)
 
-        Example output for fe-gpu-leaf (odd ports = 4x200g, even ports = 1x800g):
+        Example output for fe-gpu-leaf (odd ports = 4x200G, even ports = 1x800G):
             {
-                'portBreakouts': {'1': '4x200g', '3': '4x200g', ...},
-                'portSpeeds': {'E1/2': '800g', 'E1/4': '800g', ...},
-                'portAutoNegs': {'E1/2': False, 'E1/4': False, ...}
+                'portBreakouts': {'E1/1': '4x200g', 'E1/3': '4x200g', ...,
+                                  'E1/2': '1x800G', 'E1/4': '1x800G', ...},
+                'portSpeeds': {},
+                'portAutoNegs': {}
             }
-
-        Note: Breakout subports are NOT included in portSpeeds/portAutoNegs.
-              The breakout config itself defines speeds for subports.
         """
         from ..models.topology_planning import SwitchPortZone
 
         port_breakouts = {}
-        port_speeds = {}
-        port_auto_negs = {}
 
         # Query all port zones for this switch class
         zones = SwitchPortZone.objects.filter(switch_class=switch_class).order_by('priority')
@@ -694,42 +694,25 @@ class YAMLGenerator:
             ports = self._parse_port_spec(zone.port_spec)
 
             if zone.breakout_option:
-                # Ports have breakout configured
-                # Fix breakout_id format: lowercase 'x', uppercase 'G' (e.g., 1x800G not 1x800g or 1X800G)
+                # Normalise breakout_id to hhfab-canonical form: lowercase 'x', uppercase 'G'
+                # e.g. "2x400g" → "2x400G", "4x200g" → "4x200G", "1x800g" → "1x800G"
+                # hhfab profile matching is case-sensitive on the trailing 'G'.
                 breakout_id = zone.breakout_option.breakout_id.replace('g', 'G')
-                logical_ports = zone.breakout_option.logical_ports
-                logical_speed = zone.breakout_option.logical_speed
 
-                # Check if this is a "real" breakout or just native speed (1x)
-                if logical_ports == 1:
-                    # 1x<speed> means native speed - treat as regular port, NOT a breakout
-                    # Add to portSpeeds as native port
-                    for port in ports:
-                        port_speeds[str(port)] = f"{logical_speed}g"
-                        port_auto_negs[str(port)] = False
-                else:
-                    # Real breakout (2x, 4x, 8x, etc.)
-                    for port in ports:
-                        # Add breakout config with port number as key (e.g., "1": "4x200g")
-                        port_breakouts[str(port)] = breakout_id.lower()
-
-                        # Add breakout subports to portSpeeds/portAutoNegs
-                        # Format: "1/1", "1/2", etc. for subports
-                        for subport in range(1, logical_ports + 1):
-                            port_speeds[f"{port}/{subport}"] = f"{logical_speed}g"
-                            port_auto_negs[f"{port}/{subport}"] = False
+                # All ports go into portBreakouts with 'E1/<port>' key.
+                # 1x entries (native speed) use the same format as multi-lane breakouts.
+                for port in ports:
+                    port_breakouts[f"E1/{port}"] = breakout_id
             else:
-                # No breakout - ports use native speed
+                # No breakout_option configured: emit native speed as 1x<N>G.
                 native_speed = switch_class.device_type_extension.native_speed
                 for port in ports:
-                    # Use E1/{port} naming to match NetBox Interface names
-                    port_speeds[f"E1/{port}"] = f"{native_speed}g"
-                    port_auto_negs[f"E1/{port}"] = False
+                    port_breakouts[f"E1/{port}"] = f"1x{native_speed}G"
 
         return {
             'portBreakouts': port_breakouts,
-            'portSpeeds': port_speeds,
-            'portAutoNegs': port_auto_negs
+            'portSpeeds': {},
+            'portAutoNegs': {}
         }
 
     def _parse_port_spec(self, port_spec: str) -> List[int]:
