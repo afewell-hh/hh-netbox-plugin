@@ -7,116 +7,9 @@ on:
     - cron: '0 2 * * *'
 
 jobs:
-  # Job A: Fast unit/integration tests using Django test database
+  # Job A: Unit/integration tests + export completeness + hhfab gate (DIET-228)
   django-tests:
-    name: Django Unit & Integration Tests
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
-
-    steps:
-      - name: Checkout plugin code
-        uses: actions/checkout@v4
-        with:
-          path: hh-netbox-plugin
-
-      - name: Checkout netbox-docker
-        uses: actions/checkout@v4
-        with:
-          repository: netbox-community/netbox-docker
-          path: netbox-docker
-
-      - name: Configure NetBox Docker
-        run: |
-          cd netbox-docker
-
-          # Mount plugin code
-          cat > docker-compose.override.yml << 'EOF'
-          services:
-            netbox:
-              volumes:
-                - ../hh-netbox-plugin/netbox_hedgehog:/opt/netbox/netbox/netbox_hedgehog:ro
-          EOF
-
-          # Create Dockerfile-Plugins
-          cat > Dockerfile-Plugins << 'EOF'
-          FROM netboxcommunity/netbox:latest
-
-          # Install plugin dependencies
-          RUN /usr/local/bin/uv pip install --no-cache \
-              kubernetes>=24.0.0 \
-              pyyaml>=6.0 \
-              jsonschema>=4.0.0
-
-          # Note: Plugin code is mounted as a volume at runtime
-          # and auto-discovered by NetBox's plugin system
-          EOF
-
-          # Create plugin configuration
-          mkdir -p configuration
-          cat > configuration/plugins.py << 'EOF'
-          PLUGINS = ['netbox_hedgehog']
-          PLUGINS_CONFIG = {
-              'netbox_hedgehog': {
-                  'kubernetes_config_file': None,
-                  'sync_interval': 300,
-                  'enable_webhooks': True,
-                  'max_concurrent_syncs': 5,
-              }
-          }
-          EOF
-
-      - name: Start NetBox
-        run: |
-          cd netbox-docker
-          docker compose pull
-          docker compose up -d
-
-          # Wait for NetBox to be ready
-          echo "Waiting for NetBox to start..."
-          for i in {1..60}; do
-            if docker compose exec -T netbox python manage.py showmigrations > /dev/null 2>&1; then
-              echo "NetBox is ready!"
-              break
-            fi
-            echo "Waiting... ($i/60)"
-            sleep 5
-          done
-
-      - name: Run NetBox migrations
-        run: |
-          cd netbox-docker
-          docker compose exec -T netbox python manage.py migrate
-
-      - name: Load DIET reference data
-        run: |
-          cd netbox-docker
-          docker compose exec -T netbox python manage.py load_diet_reference_data
-
-      - name: Validate YAML test case discovery
-        run: |
-          cd netbox-docker
-          docker compose exec -T netbox python manage.py apply_diet_test_case --all --dry-run --verbose
-
-      - name: Run Django tests
-        run: |
-          cd netbox-docker
-          docker compose exec -T netbox python manage.py test netbox_hedgehog.tests.test_topology_planning --verbosity=2
-
-      - name: Show NetBox logs on failure
-        if: failure()
-        run: |
-          cd netbox-docker
-          docker compose logs netbox | tail -200
-
-      - name: Clean up
-        if: always()
-        run: |
-          cd netbox-docker
-          docker compose down -v
-
-  # Job B: Fresh-install smoke test
-  fresh-install-smoke:
-    name: Fresh Install Smoke Test (128-GPU Case)
+    name: Django Unit & Integration Tests (incl. hhfab gate)
     runs-on: ubuntu-latest
     timeout-minutes: 20
 
@@ -172,6 +65,135 @@ jobs:
           }
           EOF
 
+      - name: Install hhfab (runner)
+        run: |
+          # Install hhfab on the runner so it can be copied into the container.
+          # hhfab is required for ExportHHFabValidationGateTestCase (DIET-228).
+          curl -fsSL https://i.hhdev.io/hhfab | bash
+          echo "$HOME/.hedgehog/bin" >> "$GITHUB_PATH"
+
+      - name: Start NetBox
+        run: |
+          cd netbox-docker
+          docker compose pull
+          docker compose up -d
+
+          # Wait for NetBox to be ready
+          echo "Waiting for NetBox to start..."
+          for i in {1..60}; do
+            if docker compose exec -T netbox python manage.py showmigrations > /dev/null 2>&1; then
+              echo "NetBox is ready!"
+              break
+            fi
+            echo "Waiting... ($i/60)"
+            sleep 5
+          done
+
+      - name: Copy hhfab into NetBox container
+        run: |
+          cd netbox-docker
+          HHFAB_PATH=$(which hhfab)
+          CONTAINER=$(docker compose ps -q netbox)
+          docker cp "$HHFAB_PATH" "${CONTAINER}:/usr/local/bin/hhfab"
+          docker compose exec -T netbox hhfab --version
+
+      - name: Run NetBox migrations
+        run: |
+          cd netbox-docker
+          docker compose exec -T netbox python manage.py migrate
+
+      - name: Load DIET reference data
+        run: |
+          cd netbox-docker
+          docker compose exec -T netbox python manage.py load_diet_reference_data
+
+      - name: Validate YAML test case discovery
+        run: |
+          cd netbox-docker
+          docker compose exec -T netbox python manage.py apply_diet_test_case --all --dry-run --verbose
+
+      - name: Run Django tests (includes completeness + hhfab gate)
+        run: |
+          # ExportCompletenessRegressionTestCase enforces completeness contracts (no hhfab required).
+          # ExportHHFabValidationGateTestCase enforces hhfab validation (hhfab now in container).
+          cd netbox-docker
+          docker compose exec -T netbox python manage.py test netbox_hedgehog.tests.test_topology_planning --verbosity=2
+
+      - name: Show NetBox logs on failure
+        if: failure()
+        run: |
+          cd netbox-docker
+          docker compose logs netbox | tail -200
+
+      - name: Clean up
+        if: always()
+        run: |
+          cd netbox-docker
+          docker compose down -v
+
+  # Job B: Fresh-install smoke test + hhfab validation gate (DIET-228)
+  fresh-install-smoke:
+    name: Fresh Install Smoke Test + hhfab Validation Gate (128-GPU Case)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout plugin code
+        uses: actions/checkout@v4
+        with:
+          path: hh-netbox-plugin
+
+      - name: Checkout netbox-docker
+        uses: actions/checkout@v4
+        with:
+          repository: netbox-community/netbox-docker
+          path: netbox-docker
+
+      - name: Configure NetBox Docker
+        run: |
+          cd netbox-docker
+
+          # Mount plugin code
+          cat > docker-compose.override.yml << 'EOF'
+          services:
+            netbox:
+              volumes:
+                - ../hh-netbox-plugin/netbox_hedgehog:/opt/netbox/netbox/netbox_hedgehog:ro
+          EOF
+
+          # Create Dockerfile-Plugins
+          cat > Dockerfile-Plugins << 'EOF'
+          FROM netboxcommunity/netbox:latest
+
+          # Install plugin dependencies
+          RUN /usr/local/bin/uv pip install --no-cache \
+              kubernetes>=24.0.0 \
+              pyyaml>=6.0 \
+              jsonschema>=4.0.0
+
+          # Note: Plugin code is mounted as a volume at runtime
+          # and auto-discovered by NetBox's plugin system
+          EOF
+
+          # Create plugin configuration
+          mkdir -p configuration
+          cat > configuration/plugins.py << 'EOF'
+          PLUGINS = ['netbox_hedgehog']
+          PLUGINS_CONFIG = {
+              'netbox_hedgehog': {
+                  'kubernetes_config_file': None,
+                  'sync_interval': 300,
+                  'enable_webhooks': True,
+                  'max_concurrent_syncs': 5,
+              }
+          }
+          EOF
+
+      - name: Install hhfab (runner)
+        run: |
+          curl -fsSL https://i.hhdev.io/hhfab | bash
+          echo "$HOME/.hedgehog/bin" >> "$GITHUB_PATH"
+
       - name: Start NetBox (Fresh Install)
         run: |
           cd netbox-docker
@@ -188,6 +210,14 @@ jobs:
             echo "Waiting... ($i/60)"
             sleep 5
           done
+
+      - name: Copy hhfab into NetBox container
+        run: |
+          cd netbox-docker
+          HHFAB_PATH=$(which hhfab)
+          CONTAINER=$(docker compose ps -q netbox)
+          docker cp "$HHFAB_PATH" "${CONTAINER}:/usr/local/bin/hhfab"
+          docker compose exec -T netbox hhfab --version
 
       - name: Run NetBox migrations
         run: |
@@ -286,40 +316,38 @@ jobs:
           print("\n✅ Device generation verified!")
           EOF
 
-      - name: Test YAML export
+      - name: Export wiring artifact (128-GPU case)
         run: |
           cd netbox-docker
-          echo "Testing YAML export..."
-          docker compose exec -T netbox python manage.py shell << 'EOF'
-          from netbox_hedgehog.models.topology_planning import TopologyPlan
-          from netbox_hedgehog.services.yaml_generator import YAMLGenerator
+          echo "Exporting wiring YAML artifact for 128-GPU case..."
+          PLAN_ID=$(docker compose exec -T netbox python manage.py shell -c \
+            "from netbox_hedgehog.models.topology_planning import TopologyPlan; \
+             print(TopologyPlan.objects.get(name='UX Case 128GPU Odd Ports').pk)" \
+            | tail -1)
+          echo "Plan ID: $PLAN_ID"
 
-          plan = TopologyPlan.objects.get(name="UX Case 128GPU Odd Ports")
-          generator = YAMLGenerator(plan)
-          yaml_output = generator.generate()
+          # export_wiring_yaml: writes artifact with integrity metadata (DIET-224).
+          # Fails if YAML is incomplete or unparseable - enforces completeness contract (DIET-228).
+          docker compose exec -T netbox python manage.py export_wiring_yaml "$PLAN_ID" \
+            --output /tmp/128gpu-wiring.yaml
 
-          # Basic validation
-          if not yaml_output:
-              print("ERROR: YAML output is empty!")
-              exit(1)
+          echo "[OK] Wiring artifact written to /tmp/128gpu-wiring.yaml"
 
-          if "apiVersion: wiring.githedgehog.com/v1beta1" not in yaml_output:
-              print("ERROR: YAML missing expected apiVersion!")
-              exit(1)
+      - name: hhfab validation gate (128-GPU case)
+        run: |
+          cd netbox-docker
+          echo "Running hhfab validation gate for 128-GPU case..."
+          PLAN_ID=$(docker compose exec -T netbox python manage.py shell -c \
+            "from netbox_hedgehog.models.topology_planning import TopologyPlan; \
+             print(TopologyPlan.objects.get(name='UX Case 128GPU Odd Ports').pk)" \
+            | tail -1)
 
-          if "kind: Connection" not in yaml_output:
-              print("ERROR: YAML missing Connection resources!")
-              exit(1)
+          # validate_wiring_yaml: generates YAML and runs hhfab validate (DIET-228 gate).
+          # Exits non-zero if hhfab reports any validation errors.
+          docker compose exec -T netbox python manage.py validate_wiring_yaml "$PLAN_ID" \
+            --verbosity=2
 
-          # Count connections (rough estimate)
-          connection_count = yaml_output.count("kind: Connection")
-          print(f"✓ Generated {connection_count} Connection CRDs")
-
-          if connection_count < 100:
-              print(f"WARNING: Expected more connections for 128 servers (got {connection_count})")
-
-          print("\n✅ YAML export verified!")
-          EOF
+          echo "[OK] hhfab validation gate passed"
 
       - name: Show NetBox logs on failure
         if: failure()
