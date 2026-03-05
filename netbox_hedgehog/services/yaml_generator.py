@@ -31,14 +31,23 @@ class YAMLGenerator:
     All created by DeviceGenerator and tagged with hedgehog_plan_id.
     """
 
-    def __init__(self, plan: TopologyPlan):
+    def __init__(self, plan: TopologyPlan, fabric: str = None):
         """
         Initialize the YAML generator for a specific plan.
 
         Args:
             plan: TopologyPlan instance to generate YAML for
+            fabric: Optional fabric scope ('frontend' or 'backend'). When set,
+                only CRDs for that fabric are emitted. When None, all managed
+                fabrics (HEDGEHOG_MANAGED_SET) are included.
         """
+        if fabric is not None and fabric not in FabricTypeChoices.HEDGEHOG_MANAGED_SET:
+            raise ValueError(
+                f"Invalid fabric '{fabric}'. Must be one of: "
+                f"{sorted(FabricTypeChoices.HEDGEHOG_MANAGED_SET)}"
+            )
         self.plan = plan
+        self.fabric = fabric
 
     def generate(self) -> str:
         """
@@ -806,10 +815,11 @@ class YAMLGenerator:
         # Filter by plan ID, presence of hedgehog_role, and Hedgehog-managed fabric only.
         # Management fabrics (oob-mgmt, in-band-mgmt, network-mgmt, legacy oob) are
         # tracked in NetBox for inventory purposes but excluded from wiring YAML export.
-        managed_fabrics = sorted(FabricTypeChoices.HEDGEHOG_MANAGED_SET)
+        # When self.fabric is set, restrict to that single fabric.
+        effective_fabrics = [self.fabric] if self.fabric else sorted(FabricTypeChoices.HEDGEHOG_MANAGED_SET)
         switches = Device.objects.filter(
             custom_field_data__hedgehog_plan_id=str(self.plan.pk),
-            custom_field_data__hedgehog_fabric__in=managed_fabrics,
+            custom_field_data__hedgehog_fabric__in=effective_fabrics,
             custom_field_data__hedgehog_role__isnull=False
         ).exclude(
             custom_field_data__hedgehog_role=''
@@ -980,11 +990,12 @@ class YAMLGenerator:
 
         # Build set of switch device IDs that are Hedgehog-managed (frontend/backend).
         # Cables that touch an unmanaged switch endpoint are excluded from Connection CRDs.
-        managed_fabrics = sorted(FabricTypeChoices.HEDGEHOG_MANAGED_SET)
+        # When self.fabric is set, restrict to that single fabric.
+        effective_fabrics = [self.fabric] if self.fabric else sorted(FabricTypeChoices.HEDGEHOG_MANAGED_SET)
         _managed_switch_ids = set(
             Device.objects.filter(
                 custom_field_data__hedgehog_plan_id=str(self.plan.pk),
-                custom_field_data__hedgehog_fabric__in=managed_fabrics,
+                custom_field_data__hedgehog_fabric__in=effective_fabrics,
             ).values_list('id', flat=True)
         )
 
@@ -1233,7 +1244,7 @@ class YAMLGenerator:
         return switchgroup_crds
 
 
-def generate_yaml_for_plan(plan: TopologyPlan) -> str:
+def generate_yaml_for_plan(plan: TopologyPlan, fabric: str = None) -> str:
     """
     Convenience function to generate YAML for a topology plan (DIET-139).
 
@@ -1242,12 +1253,16 @@ def generate_yaml_for_plan(plan: TopologyPlan) -> str:
 
     Args:
         plan: TopologyPlan instance
+        fabric: Optional fabric scope ('frontend' or 'backend'). When set, only
+            CRDs for that fabric are emitted. When None, all managed fabrics
+            (HEDGEHOG_MANAGED_SET) are included.
 
     Returns:
-        YAML string containing Connection CRDs from NetBox inventory
+        YAML string containing CRDs from NetBox inventory
 
     Raises:
         ValidationError: If cable topology is invalid
+        ValueError: If fabric is not a valid managed fabric name
     """
-    generator = YAMLGenerator(plan)
+    generator = YAMLGenerator(plan, fabric=fabric)
     return generator.generate()

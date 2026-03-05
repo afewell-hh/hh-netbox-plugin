@@ -1,12 +1,19 @@
 """
-Export wiring YAML for a topology plan to a deterministic file path (DIET-224).
+Export wiring YAML for a topology plan to a deterministic file path (DIET-224/227).
 
 Writes the complete Hedgehog wiring artifact, validates it parses as a complete
 YAML document stream, and emits integrity metadata (sha256, byte size, line count).
 
+Fabric-scoped export (DIET-227):
+  --fabric frontend|backend  Export only that fabric's CRDs
+  --split-by-fabric          Write one file per fabric (--output becomes the base path)
+                             Output files: <base>-frontend.yaml, <base>-backend.yaml
+
 Usage:
     docker compose exec netbox python manage.py export_wiring_yaml <plan_id> --output /path/to/wiring.yaml
     docker compose exec netbox python manage.py export_wiring_yaml 1 --output /tmp/plan-1.yaml
+    docker compose exec netbox python manage.py export_wiring_yaml 1 --output /tmp/plan-1.yaml --fabric frontend
+    docker compose exec netbox python manage.py export_wiring_yaml 1 --output /tmp/plan-1 --split-by-fabric
 
 Exit codes:
     0 - Success
@@ -21,9 +28,11 @@ from datetime import datetime, timezone
 import yaml
 from django.core.management.base import BaseCommand, CommandError
 
-from netbox_hedgehog.choices import GenerationStatusChoices
+from netbox_hedgehog.choices import FabricTypeChoices, GenerationStatusChoices
 from netbox_hedgehog.models.topology_planning import TopologyPlan
 from netbox_hedgehog.services.yaml_generator import generate_yaml_for_plan
+
+_VALID_FABRICS = sorted(FabricTypeChoices.HEDGEHOG_MANAGED_SET)
 
 
 class Command(BaseCommand):
@@ -39,12 +48,33 @@ class Command(BaseCommand):
             '--output',
             required=True,
             metavar='PATH',
-            help='Destination file path for the exported YAML',
+            help='Destination file path (or base path when --split-by-fabric is used)',
+        )
+        parser.add_argument(
+            '--fabric',
+            choices=_VALID_FABRICS,
+            default=None,
+            metavar='FABRIC',
+            help=f'Limit export to one fabric ({", ".join(_VALID_FABRICS)}). '
+                 f'Mutually exclusive with --split-by-fabric.',
+        )
+        parser.add_argument(
+            '--split-by-fabric',
+            action='store_true',
+            default=False,
+            help='Write one file per fabric. --output is treated as a base path: '
+                 '<base>-frontend.yaml and <base>-backend.yaml are written. '
+                 'Mutually exclusive with --fabric.',
         )
 
     def handle(self, *args, **options):
         plan_id = options['plan_id']
         output_path = os.path.abspath(options['output'])
+        fabric = options['fabric']
+        split = options['split_by_fabric']
+
+        if fabric and split:
+            raise CommandError("--fabric and --split-by-fabric are mutually exclusive.")
 
         # --- Fetch plan ---
         try:
@@ -69,24 +99,39 @@ class Command(BaseCommand):
                 f"Device generation must complete (status=generated) before export."
             )
 
+        # --- Dispatch based on mode ---
+        if split:
+            # Strip .yaml suffix from base path if present, then add per-fabric suffix
+            base = output_path[:-5] if output_path.endswith('.yaml') else output_path
+            for fab in _VALID_FABRICS:
+                self._export_single(plan, fabric=fab, output_path=f"{base}-{fab}.yaml")
+        else:
+            self._export_single(plan, fabric=fabric, output_path=output_path)
+
+    def _export_single(self, plan, fabric, output_path):
+        """Generate, validate, write atomically, and emit metadata for one artifact."""
+        fabric_label = f" [{fabric}]" if fabric else ""
+
         # --- Generate YAML content ---
         try:
-            yaml_content = generate_yaml_for_plan(plan)
+            yaml_content = generate_yaml_for_plan(plan, fabric=fabric)
+        except ValueError as e:
+            raise CommandError(f"Invalid fabric argument: {e}")
         except Exception as e:
-            raise CommandError(f"YAML generation failed: {e}")
+            raise CommandError(f"YAML generation failed{fabric_label}: {e}")
 
-        # --- Validate completeness: must parse as a full document stream ---
+        # --- Validate completeness ---
         try:
             documents = list(yaml.safe_load_all(yaml_content))
             doc_count = len([d for d in documents if d is not None])
         except yaml.YAMLError as e:
             raise CommandError(
-                f"Generated YAML is not parseable as a complete document stream: {e}"
+                f"Generated YAML{fabric_label} is not parseable as a complete document stream: {e}"
             )
 
         if doc_count == 0:
             raise CommandError(
-                "Generated YAML contains no documents. "
+                f"Generated YAML{fabric_label} contains no documents. "
                 "Export aborted to prevent empty artifact."
             )
 
@@ -97,7 +142,7 @@ class Command(BaseCommand):
         line_count = yaml_content.count('\n') + (1 if yaml_content else 0)
         timestamp = datetime.now(tz=timezone.utc).isoformat()
 
-        # --- Write atomically: temp file in same dir + rename (prevents partial writes) ---
+        # --- Write atomically ---
         output_dir = os.path.dirname(output_path)
         if not os.path.isdir(output_dir):
             raise CommandError(f"Output directory does not exist: {output_dir}")
@@ -119,7 +164,7 @@ class Command(BaseCommand):
         except OSError as e:
             raise CommandError(f"Failed to write export file to {output_path}: {e}")
 
-        # --- Verify written file re-reads and re-parses correctly ---
+        # --- Verify written file re-parses correctly ---
         try:
             with open(output_path, 'r', encoding='utf-8') as f:
                 written_content = f.read()
@@ -138,6 +183,8 @@ class Command(BaseCommand):
         self.stdout.write("")
         self.stdout.write(f"[OK] Export complete: {output_path}")
         self.stdout.write(f"  plan_id:    {plan.pk}")
+        if fabric:
+            self.stdout.write(f"  fabric:     {fabric}")
         self.stdout.write(f"  timestamp:  {timestamp}")
         self.stdout.write(f"  sha256:     {sha256}")
         self.stdout.write(f"  bytes:      {byte_size}")
