@@ -583,8 +583,8 @@ server_connections:
     nic_module_type: nic_bf3
     port_index: 0
     ports_per_connection: 2
-    hedgehog_conn_type: bundled
-    distribution: same-switch
+    hedgehog_conn_type: unbundled
+    distribution: alternating
     target_zone: fe-storage-leaf/fe-storage-leaf-downlinks
     speed: 200
     port_type: data
@@ -649,3 +649,42 @@ expected:
     server_classes: 8
     switch_classes: 6
     connections: 16
+
+contract:
+  storage:
+    consolidated: true
+    switch_class_id: fe-storage-leaf
+    server_class_id: storage
+    server_quantity: 18
+    connection_count: 1
+    required_zones:
+      - fe-storage-leaf-downlinks
+      - fe-storage-leaf-uplinks
+  zones:
+    required:
+      - switch_class: be-rail-leaf
+        zone_name: be-leaf-downlinks
+        zone_type: server
+        port_spec: "1-33"
+      - switch_class: be-rail-leaf
+        zone_name: backend-uplinks
+        zone_type: uplink
+        port_spec: "33-64"
+      - switch_class: fe-gpu-leaf
+        zone_name: fe-gpu-leaf-downlinks
+        zone_type: server
+      - switch_class: fe-gpu-leaf
+        zone_name: fe-gpu-leaf-uplinks
+        zone_type: uplink
+      - switch_class: fe-spine
+        zone_name: fe-spine-downlinks
+        zone_type: fabric
+      - switch_class: be-spine
+        zone_name: be-spine-downlinks
+        zone_type: fabric
+      - switch_class: fe-storage-leaf
+        zone_name: fe-storage-leaf-downlinks
+        zone_type: server
+      - switch_class: fe-storage-leaf
+        zone_name: fe-storage-leaf-uplinks
+        zone_type: uplink

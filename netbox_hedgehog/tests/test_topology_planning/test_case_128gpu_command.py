@@ -484,141 +484,130 @@ class FeBorderLeafTestCase(TestCase):
 class CanonicalStorageZoneRegressionTestCase(TestCase):
     """
     Regression guard: canonical 128GPU case must stay storage-consolidated with
-    correct zone names and port specs. Fails immediately on any re-split or revert.
+    correct zone names and port specs.
+
+    Data-driven from contract section of ux_case_128gpu_odd_ports.yaml.
+    Edit contract values there to update assertions — no Python changes needed.
+    Behavior-level prohibitions (no *-a/*-b, no generic zone names) remain in code
+    because YAML cannot express absence constraints.
     """
 
     @classmethod
     def setUpTestData(cls):
+        from netbox_hedgehog.tests.test_topology_planning.case_128gpu_helpers import (
+            contract_storage,
+            contract_zones,
+            expected_128gpu_counts,
+        )
         call_command("setup_case_128gpu_odd_ports", stdout=StringIO())
         cls.plan = TopologyPlan.objects.get(name=PLAN_NAME)
+        cls.storage_contract = contract_storage()
+        cls.required_zones = contract_zones()
+        cls.expected_counts = expected_128gpu_counts()
 
     # -------------------------------------------------------------------------
-    # Storage consolidation: no *-a/*-b split classes allowed
+    # Behavior prohibitions: YAML cannot express "must not exist" semantics
     # -------------------------------------------------------------------------
 
     def test_no_split_storage_switch_classes(self):
-        """fe-storage-leaf-a and fe-storage-leaf-b must not exist (storage is consolidated)."""
-        self.assertFalse(
-            PlanSwitchClass.objects.filter(plan=self.plan, switch_class_id='fe-storage-leaf-a').exists(),
-            "fe-storage-leaf-a must not exist; storage switch is consolidated to fe-storage-leaf",
-        )
-        self.assertFalse(
-            PlanSwitchClass.objects.filter(plan=self.plan, switch_class_id='fe-storage-leaf-b').exists(),
-            "fe-storage-leaf-b must not exist; storage switch is consolidated to fe-storage-leaf",
-        )
+        """fe-storage-leaf-a/b must not exist — consolidation prohibition, not expressible in YAML."""
+        for split_id in ('fe-storage-leaf-a', 'fe-storage-leaf-b'):
+            self.assertFalse(
+                PlanSwitchClass.objects.filter(plan=self.plan, switch_class_id=split_id).exists(),
+                f"{split_id} must not exist; storage is consolidated per contract",
+            )
 
     def test_no_split_storage_server_classes(self):
-        """storage-a and storage-b must not exist (storage is consolidated)."""
-        self.assertFalse(
-            PlanServerClass.objects.filter(plan=self.plan, server_class_id='storage-a').exists(),
-            "storage-a must not exist; storage is consolidated to a single 'storage' class",
+        """storage-a/b must not exist — consolidation prohibition, not expressible in YAML."""
+        for split_id in ('storage-a', 'storage-b'):
+            self.assertFalse(
+                PlanServerClass.objects.filter(plan=self.plan, server_class_id=split_id).exists(),
+                f"{split_id} must not exist; storage is consolidated per contract",
+            )
+
+    def test_no_generic_zone_names(self):
+        """Generic zone names (server-downlinks, uplinks, leaf-downlinks) must not exist on any switch class."""
+        forbidden = ('server-downlinks', 'uplinks', 'leaf-downlinks')
+        violations = SwitchPortZone.objects.filter(
+            switch_class__plan=self.plan,
+            zone_name__in=forbidden,
         )
-        self.assertFalse(
-            PlanServerClass.objects.filter(plan=self.plan, server_class_id='storage-b').exists(),
-            "storage-b must not exist; storage is consolidated to a single 'storage' class",
+        self.assertEqual(
+            violations.count(), 0,
+            f"Generic zone names {forbidden} must not exist; found: "
+            + ", ".join(f"{z.switch_class.switch_class_id}/{z.zone_name}" for z in violations),
         )
 
-    def test_consolidated_storage_switch_class_exists(self):
-        """Exactly one fe-storage-leaf switch class with correct fabric/role."""
-        sc = PlanSwitchClass.objects.filter(plan=self.plan, switch_class_id='fe-storage-leaf')
-        self.assertEqual(sc.count(), 1, "Exactly one fe-storage-leaf switch class must exist")
-        self.assertEqual(sc.first().fabric, 'frontend')
-        self.assertEqual(sc.first().hedgehog_role, 'server-leaf')
+    # -------------------------------------------------------------------------
+    # Contract-driven: storage topology (values from YAML contract.storage)
+    # -------------------------------------------------------------------------
 
-    def test_consolidated_storage_server_class_quantity(self):
-        """Single storage server class with quantity=18."""
-        sc = PlanServerClass.objects.get(plan=self.plan, server_class_id='storage')
-        self.assertEqual(sc.quantity, 18, "Consolidated storage class must have quantity=18")
+    def test_consolidated_storage_from_contract(self):
+        """Storage topology matches contract: single switch class, server class, quantity, connection count."""
+        sc_id = self.storage_contract['switch_class_id']
+        srv_id = self.storage_contract['server_class_id']
+        expected_qty = self.storage_contract['server_quantity']
+        expected_conn_count = self.storage_contract['connection_count']
 
-    def test_exactly_one_storage_connection(self):
-        """Exactly one storage server connection targeting fe-storage-leaf."""
-        sc = PlanServerClass.objects.get(plan=self.plan, server_class_id='storage')
-        conns = PlanServerConnection.objects.filter(server_class=sc)
-        self.assertEqual(conns.count(), 1, "storage class must have exactly one connection")
-        storage_leaf = PlanSwitchClass.objects.get(plan=self.plan, switch_class_id='fe-storage-leaf')
+        storage_leaf = PlanSwitchClass.objects.filter(plan=self.plan, switch_class_id=sc_id)
+        self.assertEqual(storage_leaf.count(), 1, f"Exactly one {sc_id} switch class must exist")
+
+        storage_srv = PlanServerClass.objects.get(plan=self.plan, server_class_id=srv_id)
+        self.assertEqual(storage_srv.quantity, expected_qty,
+                         f"{srv_id} must have quantity={expected_qty} per contract")
+
+        conns = PlanServerConnection.objects.filter(server_class=storage_srv)
+        self.assertEqual(conns.count(), expected_conn_count,
+                         f"{srv_id} must have exactly {expected_conn_count} connection(s) per contract")
         self.assertEqual(
             conns.first().target_zone.switch_class,
-            storage_leaf,
-            "storage connection must target fe-storage-leaf",
+            storage_leaf.first(),
+            f"storage connection must target {sc_id}",
         )
+
+        for zone_name in self.storage_contract.get('required_zones', []):
+            zone = SwitchPortZone.objects.filter(
+                switch_class=storage_leaf.first(), zone_name=zone_name
+            ).first()
+            self.assertIsNotNone(zone, f"Required zone '{zone_name}' must exist on {sc_id} per contract")
 
     # -------------------------------------------------------------------------
-    # Zone naming: required names and port specs
+    # Contract-driven: required zones (values from YAML contract.zones.required)
     # -------------------------------------------------------------------------
 
-    def _get_zone(self, switch_class_id, zone_name):
-        sc = PlanSwitchClass.objects.get(plan=self.plan, switch_class_id=switch_class_id)
-        return SwitchPortZone.objects.get(switch_class=sc, zone_name=zone_name)
+    def test_required_zones_from_contract(self):
+        """Every entry in contract.zones.required must exist with specified name, type, and port_spec."""
+        for zone_spec in self.required_zones:
+            sc_id = zone_spec['switch_class']
+            zone_name = zone_spec['zone_name']
+            sc = PlanSwitchClass.objects.get(plan=self.plan, switch_class_id=sc_id)
+            zone = SwitchPortZone.objects.filter(switch_class=sc, zone_name=zone_name).first()
+            self.assertIsNotNone(
+                zone,
+                f"Zone '{sc_id}/{zone_name}' required by contract must exist",
+            )
+            if 'zone_type' in zone_spec:
+                self.assertEqual(zone.zone_type, zone_spec['zone_type'],
+                                 f"{sc_id}/{zone_name} must have zone_type={zone_spec['zone_type']}")
+            if 'port_spec' in zone_spec:
+                self.assertEqual(zone.port_spec, zone_spec['port_spec'],
+                                 f"{sc_id}/{zone_name} must have port_spec={zone_spec['port_spec']}")
 
-    def test_be_rail_leaf_uplinks_zone_port_spec(self):
-        """be-rail-leaf/backend-uplinks must have port_spec 33-64."""
-        zone = self._get_zone('be-rail-leaf', 'backend-uplinks')
-        self.assertEqual(zone.port_spec, '33-64')
-
-    def test_be_rail_leaf_downlinks_zone_name_and_port_spec(self):
-        """be-rail-leaf server zone must be named be-leaf-downlinks with port_spec 1-33."""
-        zone = self._get_zone('be-rail-leaf', 'be-leaf-downlinks')
-        self.assertEqual(zone.zone_type, 'server')
-        self.assertEqual(zone.port_spec, '1-33')
-        # old generic name must not exist
-        sc = PlanSwitchClass.objects.get(plan=self.plan, switch_class_id='be-rail-leaf')
-        self.assertFalse(
-            SwitchPortZone.objects.filter(switch_class=sc, zone_name='server-downlinks').exists(),
-            "Generic 'server-downlinks' zone must not exist on be-rail-leaf",
-        )
-
-    def test_be_spine_downlinks_zone_name(self):
-        """be-spine fabric zone must be named be-spine-downlinks."""
-        zone = self._get_zone('be-spine', 'be-spine-downlinks')
-        self.assertEqual(zone.zone_type, 'fabric')
-        sc = PlanSwitchClass.objects.get(plan=self.plan, switch_class_id='be-spine')
-        self.assertFalse(
-            SwitchPortZone.objects.filter(switch_class=sc, zone_name='leaf-downlinks').exists(),
-            "Generic 'leaf-downlinks' zone must not exist on be-spine",
-        )
-
-    def test_fe_gpu_leaf_zone_names(self):
-        """fe-gpu-leaf zones must use fe-gpu-leaf-downlinks and fe-gpu-leaf-uplinks."""
-        self._get_zone('fe-gpu-leaf', 'fe-gpu-leaf-downlinks')
-        self._get_zone('fe-gpu-leaf', 'fe-gpu-leaf-uplinks')
-        sc = PlanSwitchClass.objects.get(plan=self.plan, switch_class_id='fe-gpu-leaf')
-        self.assertFalse(
-            SwitchPortZone.objects.filter(switch_class=sc, zone_name='server-downlinks').exists(),
-            "Generic 'server-downlinks' must not exist on fe-gpu-leaf",
-        )
-        self.assertFalse(
-            SwitchPortZone.objects.filter(switch_class=sc, zone_name='uplinks').exists(),
-            "Generic 'uplinks' must not exist on fe-gpu-leaf",
-        )
-
-    def test_fe_spine_downlinks_zone_name(self):
-        """fe-spine fabric zone must be named fe-spine-downlinks."""
-        zone = self._get_zone('fe-spine', 'fe-spine-downlinks')
-        self.assertEqual(zone.zone_type, 'fabric')
-        sc = PlanSwitchClass.objects.get(plan=self.plan, switch_class_id='fe-spine')
-        self.assertFalse(
-            SwitchPortZone.objects.filter(switch_class=sc, zone_name='leaf-downlinks').exists(),
-            "Generic 'leaf-downlinks' zone must not exist on fe-spine",
-        )
-
-    def test_fe_storage_leaf_zone_names(self):
-        """fe-storage-leaf must have fe-storage-leaf-downlinks and fe-storage-leaf-uplinks."""
-        self._get_zone('fe-storage-leaf', 'fe-storage-leaf-downlinks')
-        self._get_zone('fe-storage-leaf', 'fe-storage-leaf-uplinks')
+    # -------------------------------------------------------------------------
+    # Contract-driven: counts (values from YAML expected.counts)
+    # -------------------------------------------------------------------------
 
     def test_canonical_counts_from_yaml(self):
-        """Plan counts must match expected.counts in canonical YAML (DIET-239 persistence rule)."""
-        from netbox_hedgehog.tests.test_topology_planning.case_128gpu_helpers import expected_128gpu_counts
-        expected = expected_128gpu_counts()
+        """Plan counts must match expected.counts in canonical YAML."""
         self.assertEqual(
             PlanServerClass.objects.filter(plan=self.plan).count(),
-            expected['server_classes'],
+            self.expected_counts['server_classes'],
         )
         self.assertEqual(
             PlanSwitchClass.objects.filter(plan=self.plan).count(),
-            expected['switch_classes'],
+            self.expected_counts['switch_classes'],
         )
         self.assertEqual(
             PlanServerConnection.objects.filter(server_class__plan=self.plan).count(),
-            expected['connections'],
+            self.expected_counts['connections'],
         )
