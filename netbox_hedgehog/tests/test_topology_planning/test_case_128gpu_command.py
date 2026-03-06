@@ -453,3 +453,29 @@ class FeBorderLeafTestCase(TestCase):
                 'fe-border-100g-downlinks',
                 f"{sc_id} must connect to 100G zone",
             )
+
+    def test_fe_border_leaf_has_uplink_zone(self):
+        """fe-border-leaf must have an uplink zone (ports 17-32) for capacity documentation."""
+        border = PlanSwitchClass.objects.get(plan=self.plan, switch_class_id='fe-border-leaf')
+        uplink_zone = SwitchPortZone.objects.filter(
+            switch_class=border,
+            zone_name='fe-border-uplinks',
+        ).first()
+        self.assertIsNotNone(uplink_zone, "fe-border-uplinks uplink zone must exist")
+        self.assertEqual(uplink_zone.zone_type, 'uplink')
+        self.assertEqual(uplink_zone.port_spec, '17-32')
+
+    def test_fe_border_leaf_standalone_no_spine_demand(self):
+        """uplink_ports_per_switch=0 on fe-border-leaf must yield 0 uplink port count.
+
+        Even though an uplink zone exists (documenting physical capacity), the explicit
+        uplink_ports_per_switch=0 signals this is a standalone leaf - no spine connections
+        required. get_uplink_port_count() must return 0 in this case.
+        """
+        from netbox_hedgehog.utils.topology_calculations import get_uplink_port_count
+
+        border = PlanSwitchClass.objects.get(plan=self.plan, switch_class_id='fe-border-leaf')
+        self.assertEqual(border.uplink_ports_per_switch, 0)
+        # Despite having an uplink zone, the explicit 0 overrides zone-derived count
+        count = get_uplink_port_count(border)
+        self.assertEqual(count, 0, "Standalone leaf (uplink_ports_per_switch=0) must contribute 0 spine demand")

@@ -420,6 +420,13 @@ switch_port_zones:
     breakout_option: b_1x100
     allocation_strategy: sequential
     priority: 100
+  - switch_class: fe-border-leaf
+    zone_name: fe-border-uplinks
+    zone_type: uplink
+    port_spec: 17-32
+    breakout_option: b_1x100
+    allocation_strategy: sequential
+    priority: 200
 
 server_classes:
   - server_class_id: gpu-fe-only

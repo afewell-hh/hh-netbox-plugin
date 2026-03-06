@@ -250,6 +250,12 @@ def get_uplink_port_count(switch_class: 'PlanSwitchClass') -> int:
     )
 
     if uplink_zones.exists():
+        # Explicit standalone override: uplink_ports_per_switch=0 means this leaf
+        # has uplink-capable ports documented but intentionally contributes no spine
+        # demand (e.g. a border/gateway leaf). Return 0 regardless of zone capacity.
+        if switch_class.uplink_ports_per_switch == 0:
+            return 0
+
         # Sum port counts across all uplink zones
         total_uplink_ports = 0
         for zone in uplink_zones:
