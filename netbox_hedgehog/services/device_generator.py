@@ -380,6 +380,13 @@ class DeviceGenerator:
 
             for leaf in leaves:
                 leaf_class = self._get_switch_class_for_device(leaf, switch_classes)
+
+                # Explicit standalone signal: uplink_ports_per_switch=0 means this leaf
+                # has uplink-capable ports but intentionally has no spine connections
+                # in the DIET model (e.g. a border/gateway leaf). Skip fabric wiring.
+                if leaf_class.uplink_ports_per_switch == 0:
+                    continue
+
                 uplink_zones = leaf_class.port_zones.filter(
                     zone_type=PortZoneTypeChoices.UPLINK
                 ).order_by('priority', 'zone_name')
