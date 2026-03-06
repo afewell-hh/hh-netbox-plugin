@@ -657,6 +657,11 @@ contract:
     server_class_id: storage
     server_quantity: 18
     connection_count: 1
+    connection_id: fe-storage
+    hedgehog_conn_type: unbundled
+    distribution: alternating
+    ports_per_connection: 2
+    speed: 200
     required_zones:
       - fe-storage-leaf-downlinks
       - fe-storage-leaf-uplinks

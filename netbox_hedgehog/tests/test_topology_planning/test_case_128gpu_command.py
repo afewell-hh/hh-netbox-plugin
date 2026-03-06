@@ -543,29 +543,36 @@ class CanonicalStorageZoneRegressionTestCase(TestCase):
     # -------------------------------------------------------------------------
 
     def test_consolidated_storage_from_contract(self):
-        """Storage topology matches contract: single switch class, server class, quantity, connection count."""
-        sc_id = self.storage_contract['switch_class_id']
-        srv_id = self.storage_contract['server_class_id']
-        expected_qty = self.storage_contract['server_quantity']
-        expected_conn_count = self.storage_contract['connection_count']
+        """Storage topology matches contract: switch class, server class, quantity, connection semantics."""
+        c = self.storage_contract
+        sc_id = c['switch_class_id']
+        srv_id = c['server_class_id']
 
         storage_leaf = PlanSwitchClass.objects.filter(plan=self.plan, switch_class_id=sc_id)
         self.assertEqual(storage_leaf.count(), 1, f"Exactly one {sc_id} switch class must exist")
 
         storage_srv = PlanServerClass.objects.get(plan=self.plan, server_class_id=srv_id)
-        self.assertEqual(storage_srv.quantity, expected_qty,
-                         f"{srv_id} must have quantity={expected_qty} per contract")
+        self.assertEqual(storage_srv.quantity, c['server_quantity'],
+                         f"{srv_id} must have quantity={c['server_quantity']} per contract")
 
         conns = PlanServerConnection.objects.filter(server_class=storage_srv)
-        self.assertEqual(conns.count(), expected_conn_count,
-                         f"{srv_id} must have exactly {expected_conn_count} connection(s) per contract")
-        self.assertEqual(
-            conns.first().target_zone.switch_class,
-            storage_leaf.first(),
-            f"storage connection must target {sc_id}",
-        )
+        self.assertEqual(conns.count(), c['connection_count'],
+                         f"{srv_id} must have exactly {c['connection_count']} connection(s) per contract")
+        conn = conns.first()
+        self.assertEqual(conn.target_zone.switch_class, storage_leaf.first(),
+                         f"storage connection must target {sc_id}")
+        self.assertEqual(conn.connection_id, c['connection_id'],
+                         f"storage connection_id must be '{c['connection_id']}' per contract")
+        self.assertEqual(conn.hedgehog_conn_type, c['hedgehog_conn_type'],
+                         f"storage hedgehog_conn_type must be '{c['hedgehog_conn_type']}' per contract")
+        self.assertEqual(conn.distribution, c['distribution'],
+                         f"storage distribution must be '{c['distribution']}' per contract")
+        self.assertEqual(conn.ports_per_connection, c['ports_per_connection'],
+                         f"storage ports_per_connection must be {c['ports_per_connection']} per contract")
+        self.assertEqual(conn.speed, c['speed'],
+                         f"storage speed must be {c['speed']} per contract")
 
-        for zone_name in self.storage_contract.get('required_zones', []):
+        for zone_name in c.get('required_zones', []):
             zone = SwitchPortZone.objects.filter(
                 switch_class=storage_leaf.first(), zone_name=zone_name
             ).first()
