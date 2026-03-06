@@ -29,6 +29,9 @@ from netbox_hedgehog.choices import (
     GenerationStatusChoices,
 )
 from netbox_hedgehog.services.device_generator import GenerationResult
+from netbox_hedgehog.tests.test_topology_planning.case_128gpu_helpers import (
+    expected_128gpu_counts,
+)
 
 
 PLAN_NAME = "UX Case 128GPU Odd Ports"
@@ -59,15 +62,16 @@ class Case128GpuCommandTestCase(TestCase):
         )
 
     def test_plan_counts_match_expected(self):
+        expected = expected_128gpu_counts()
         server_count = PlanServerClass.objects.filter(plan=self.plan).count()
         switch_count = PlanSwitchClass.objects.filter(plan=self.plan).count()
         connection_count = PlanServerConnection.objects.filter(
             server_class__plan=self.plan
         ).count()
 
-        self.assertEqual(server_count, 4)
-        self.assertEqual(switch_count, 6)
-        self.assertEqual(connection_count, 12)
+        self.assertEqual(server_count, expected.get("server_classes"))
+        self.assertEqual(switch_count, expected.get("switch_classes"))
+        self.assertEqual(connection_count, expected.get("connections"))
 
     def test_generate_preview_page_loads(self):
         self.client.force_login(self.superuser)

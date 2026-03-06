@@ -34,6 +34,9 @@ from netbox_hedgehog.models.topology_planning import (
 from netbox_hedgehog.services.device_generator import DeviceGenerator
 from netbox_hedgehog.services.hhfab import is_hhfab_available, validate_yaml
 from netbox_hedgehog.services.yaml_generator import generate_yaml_for_plan
+from netbox_hedgehog.tests.test_topology_planning.case_128gpu_helpers import (
+    expected_128gpu_counts,
+)
 
 
 PLAN_NAME = "UX Case 128GPU Odd Ports"
@@ -78,29 +81,30 @@ class UCCase128GPURegressionTestCase(TestCase):
         # =====================================================================
         # Part 1: Validate Planning Objects
         # =====================================================================
+        expected = expected_128gpu_counts()
 
         # Server classes
         server_classes = PlanServerClass.objects.filter(plan=self.plan)
         self.assertEqual(
             server_classes.count(),
-            4,
-            "Expected 4 server classes (gpu-fe-only, gpu-with-backend, storage-a, storage-b)"
+            expected.get("server_classes"),
+            "Server class count should match canonical case YAML expected.counts.server_classes"
         )
 
         # Switch classes
         switch_classes = PlanSwitchClass.objects.filter(plan=self.plan)
         self.assertEqual(
             switch_classes.count(),
-            6,
-            "Expected 6 switch classes (fe-gpu-leaf, fe-storage-leaf-a/b, fe-spine, be-rail-leaf, be-spine)"
+            expected.get("switch_classes"),
+            "Switch class count should match canonical case YAML expected.counts.switch_classes"
         )
 
         # Server connections
         connections = PlanServerConnection.objects.filter(server_class__plan=self.plan)
         self.assertEqual(
             connections.count(),
-            12,
-            "Expected 12 server connections (1 fe for gpu-fe-only, 9 for gpu-with-backend, 1 each for storage-a/b)"
+            expected.get("connections"),
+            "Server connection count should match canonical case YAML expected.counts.connections"
         )
 
         # =====================================================================
