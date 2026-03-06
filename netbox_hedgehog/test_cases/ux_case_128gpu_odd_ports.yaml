@@ -289,7 +289,7 @@ reference_data:
 plan:
   name: UX Case 128GPU Odd Ports
   status: draft
-  description: 128 GPU servers with FE redundancy, BE rails, storage split, and odd-port 4x200G breakouts
+  description: 128 GPU servers with FE redundancy, BE rails, consolidated storage, and odd-port 4x200G breakouts
 
 switch_classes:
   - switch_class_id: fe-gpu-leaf
@@ -298,13 +298,7 @@ switch_classes:
     device_type_extension: ds5000_ext
     uplink_ports_per_switch:
     mclag_pair: false
-  - switch_class_id: fe-storage-leaf-a
-    fabric: frontend
-    hedgehog_role: server-leaf
-    device_type_extension: ds5000_ext
-    uplink_ports_per_switch:
-    mclag_pair: false
-  - switch_class_id: fe-storage-leaf-b
+  - switch_class_id: fe-storage-leaf
     fabric: frontend
     hedgehog_role: server-leaf
     device_type_extension: ds5000_ext
@@ -337,70 +331,56 @@ switch_classes:
 
 switch_port_zones:
   - switch_class: fe-gpu-leaf
-    zone_name: server-downlinks
-    zone_type: server
-    port_spec: 1-63:2
-    breakout_option: b_4x200
-    allocation_strategy: sequential
-    priority: 100
-  - switch_class: fe-storage-leaf-a
-    zone_name: server-downlinks
-    zone_type: server
-    port_spec: 1-63:2
-    breakout_option: b_4x200
-    allocation_strategy: sequential
-    priority: 100
-  - switch_class: fe-storage-leaf-b
-    zone_name: server-downlinks
+    zone_name: fe-gpu-leaf-downlinks
     zone_type: server
     port_spec: 1-63:2
     breakout_option: b_4x200
     allocation_strategy: sequential
     priority: 100
   - switch_class: fe-gpu-leaf
-    zone_name: uplinks
+    zone_name: fe-gpu-leaf-uplinks
     zone_type: uplink
     port_spec: 2-64:2
     breakout_option: b_1x800
     allocation_strategy: sequential
     priority: 100
-  - switch_class: fe-storage-leaf-a
-    zone_name: uplinks
-    zone_type: uplink
-    port_spec: 2-64:2
-    breakout_option: b_1x800
+  - switch_class: fe-storage-leaf
+    zone_name: fe-storage-leaf-downlinks
+    zone_type: server
+    port_spec: 1-63:2
+    breakout_option: b_4x200
     allocation_strategy: sequential
     priority: 100
-  - switch_class: fe-storage-leaf-b
-    zone_name: uplinks
+  - switch_class: fe-storage-leaf
+    zone_name: fe-storage-leaf-uplinks
     zone_type: uplink
     port_spec: 2-64:2
     breakout_option: b_1x800
     allocation_strategy: sequential
     priority: 100
   - switch_class: fe-spine
-    zone_name: leaf-downlinks
+    zone_name: fe-spine-downlinks
     zone_type: fabric
     port_spec: 1-64
     breakout_option: b_1x800
     allocation_strategy: sequential
     priority: 100
   - switch_class: be-rail-leaf
-    zone_name: server-downlinks
+    zone_name: be-leaf-downlinks
     zone_type: server
-    port_spec: 1-63:2
+    port_spec: 1-33
     breakout_option: b_2x400
     allocation_strategy: sequential
     priority: 100
   - switch_class: be-rail-leaf
     zone_name: backend-uplinks
     zone_type: uplink
-    port_spec: 2-64:2
+    port_spec: 33-64
     breakout_option: b_1x800
     allocation_strategy: sequential
     priority: 100
   - switch_class: be-spine
-    zone_name: leaf-downlinks
+    zone_name: be-spine-downlinks
     zone_type: fabric
     port_spec: 1-64
     breakout_option: b_1x800
@@ -441,16 +421,10 @@ server_classes:
     quantity: 32
     gpus_per_server: 8
     server_device_type: gpu_server_fe_be
-  - server_class_id: storage-a
-    description: Storage appliances 1-9
+  - server_class_id: storage
+    description: Storage appliances (18 total)
     category: storage
-    quantity: 9
-    gpus_per_server: 0
-    server_device_type: storage_server_200g
-  - server_class_id: storage-b
-    description: Storage appliances 10-18
-    category: storage
-    quantity: 9
+    quantity: 18
     gpus_per_server: 0
     server_device_type: storage_server_200g
   - server_class_id: admin-node
@@ -493,7 +467,7 @@ server_connections:
     ports_per_connection: 2
     hedgehog_conn_type: unbundled
     distribution: alternating
-    target_zone: fe-gpu-leaf/server-downlinks
+    target_zone: fe-gpu-leaf/fe-gpu-leaf-downlinks
     speed: 200
     port_type: data
   - server_class: gpu-with-backend
@@ -504,7 +478,7 @@ server_connections:
     ports_per_connection: 2
     hedgehog_conn_type: unbundled
     distribution: alternating
-    target_zone: fe-gpu-leaf/server-downlinks
+    target_zone: fe-gpu-leaf/fe-gpu-leaf-downlinks
     speed: 200
     port_type: data
   - server_class: gpu-with-backend
@@ -515,7 +489,7 @@ server_connections:
     ports_per_connection: 1
     hedgehog_conn_type: unbundled
     distribution: rail-optimized
-    target_zone: be-rail-leaf/server-downlinks
+    target_zone: be-rail-leaf/be-leaf-downlinks
     speed: 400
     rail: 0
     port_type: data
@@ -527,7 +501,7 @@ server_connections:
     ports_per_connection: 1
     hedgehog_conn_type: unbundled
     distribution: rail-optimized
-    target_zone: be-rail-leaf/server-downlinks
+    target_zone: be-rail-leaf/be-leaf-downlinks
     speed: 400
     rail: 1
     port_type: data
@@ -539,7 +513,7 @@ server_connections:
     ports_per_connection: 1
     hedgehog_conn_type: unbundled
     distribution: rail-optimized
-    target_zone: be-rail-leaf/server-downlinks
+    target_zone: be-rail-leaf/be-leaf-downlinks
     speed: 400
     rail: 2
     port_type: data
@@ -551,7 +525,7 @@ server_connections:
     ports_per_connection: 1
     hedgehog_conn_type: unbundled
     distribution: rail-optimized
-    target_zone: be-rail-leaf/server-downlinks
+    target_zone: be-rail-leaf/be-leaf-downlinks
     speed: 400
     rail: 3
     port_type: data
@@ -563,7 +537,7 @@ server_connections:
     ports_per_connection: 1
     hedgehog_conn_type: unbundled
     distribution: rail-optimized
-    target_zone: be-rail-leaf/server-downlinks
+    target_zone: be-rail-leaf/be-leaf-downlinks
     speed: 400
     rail: 4
     port_type: data
@@ -575,7 +549,7 @@ server_connections:
     ports_per_connection: 1
     hedgehog_conn_type: unbundled
     distribution: rail-optimized
-    target_zone: be-rail-leaf/server-downlinks
+    target_zone: be-rail-leaf/be-leaf-downlinks
     speed: 400
     rail: 5
     port_type: data
@@ -587,7 +561,7 @@ server_connections:
     ports_per_connection: 1
     hedgehog_conn_type: unbundled
     distribution: rail-optimized
-    target_zone: be-rail-leaf/server-downlinks
+    target_zone: be-rail-leaf/be-leaf-downlinks
     speed: 400
     rail: 6
     port_type: data
@@ -599,11 +573,11 @@ server_connections:
     ports_per_connection: 1
     hedgehog_conn_type: unbundled
     distribution: rail-optimized
-    target_zone: be-rail-leaf/server-downlinks
+    target_zone: be-rail-leaf/be-leaf-downlinks
     speed: 400
     rail: 7
     port_type: data
-  - server_class: storage-a
+  - server_class: storage
     connection_id: fe-storage
     connection_name: storage-frontend
     nic_module_type: nic_bf3
@@ -611,18 +585,7 @@ server_connections:
     ports_per_connection: 2
     hedgehog_conn_type: bundled
     distribution: same-switch
-    target_zone: fe-storage-leaf-a/server-downlinks
-    speed: 200
-    port_type: data
-  - server_class: storage-b
-    connection_id: fe-storage
-    connection_name: storage-frontend
-    nic_module_type: nic_bf3
-    port_index: 0
-    ports_per_connection: 2
-    hedgehog_conn_type: bundled
-    distribution: same-switch
-    target_zone: fe-storage-leaf-b/server-downlinks
+    target_zone: fe-storage-leaf/fe-storage-leaf-downlinks
     speed: 200
     port_type: data
   - server_class: admin-node
@@ -683,6 +646,6 @@ server_connections:
 
 expected:
   counts:
-    server_classes: 9
-    switch_classes: 7
-    connections: 17
+    server_classes: 8
+    switch_classes: 6
+    connections: 16

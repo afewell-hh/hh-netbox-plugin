@@ -66,9 +66,9 @@ class Case128GpuCommandTestCase(TestCase):
             server_class__plan=self.plan
         ).count()
 
-        self.assertEqual(server_count, 9)
-        self.assertEqual(switch_count, 7)
-        self.assertEqual(connection_count, 17)
+        self.assertEqual(server_count, 8)
+        self.assertEqual(switch_count, 6)
+        self.assertEqual(connection_count, 16)
 
     def test_generate_preview_page_loads(self):
         self.client.force_login(self.superuser)
@@ -479,3 +479,146 @@ class FeBorderLeafTestCase(TestCase):
         # Despite having an uplink zone, the explicit 0 overrides zone-derived count
         count = get_uplink_port_count(border)
         self.assertEqual(count, 0, "Standalone leaf (uplink_ports_per_switch=0) must contribute 0 spine demand")
+
+
+class CanonicalStorageZoneRegressionTestCase(TestCase):
+    """
+    Regression guard: canonical 128GPU case must stay storage-consolidated with
+    correct zone names and port specs. Fails immediately on any re-split or revert.
+    """
+
+    @classmethod
+    def setUpTestData(cls):
+        call_command("setup_case_128gpu_odd_ports", stdout=StringIO())
+        cls.plan = TopologyPlan.objects.get(name=PLAN_NAME)
+
+    # -------------------------------------------------------------------------
+    # Storage consolidation: no *-a/*-b split classes allowed
+    # -------------------------------------------------------------------------
+
+    def test_no_split_storage_switch_classes(self):
+        """fe-storage-leaf-a and fe-storage-leaf-b must not exist (storage is consolidated)."""
+        self.assertFalse(
+            PlanSwitchClass.objects.filter(plan=self.plan, switch_class_id='fe-storage-leaf-a').exists(),
+            "fe-storage-leaf-a must not exist; storage switch is consolidated to fe-storage-leaf",
+        )
+        self.assertFalse(
+            PlanSwitchClass.objects.filter(plan=self.plan, switch_class_id='fe-storage-leaf-b').exists(),
+            "fe-storage-leaf-b must not exist; storage switch is consolidated to fe-storage-leaf",
+        )
+
+    def test_no_split_storage_server_classes(self):
+        """storage-a and storage-b must not exist (storage is consolidated)."""
+        self.assertFalse(
+            PlanServerClass.objects.filter(plan=self.plan, server_class_id='storage-a').exists(),
+            "storage-a must not exist; storage is consolidated to a single 'storage' class",
+        )
+        self.assertFalse(
+            PlanServerClass.objects.filter(plan=self.plan, server_class_id='storage-b').exists(),
+            "storage-b must not exist; storage is consolidated to a single 'storage' class",
+        )
+
+    def test_consolidated_storage_switch_class_exists(self):
+        """Exactly one fe-storage-leaf switch class with correct fabric/role."""
+        sc = PlanSwitchClass.objects.filter(plan=self.plan, switch_class_id='fe-storage-leaf')
+        self.assertEqual(sc.count(), 1, "Exactly one fe-storage-leaf switch class must exist")
+        self.assertEqual(sc.first().fabric, 'frontend')
+        self.assertEqual(sc.first().hedgehog_role, 'server-leaf')
+
+    def test_consolidated_storage_server_class_quantity(self):
+        """Single storage server class with quantity=18."""
+        sc = PlanServerClass.objects.get(plan=self.plan, server_class_id='storage')
+        self.assertEqual(sc.quantity, 18, "Consolidated storage class must have quantity=18")
+
+    def test_exactly_one_storage_connection(self):
+        """Exactly one storage server connection targeting fe-storage-leaf."""
+        sc = PlanServerClass.objects.get(plan=self.plan, server_class_id='storage')
+        conns = PlanServerConnection.objects.filter(server_class=sc)
+        self.assertEqual(conns.count(), 1, "storage class must have exactly one connection")
+        storage_leaf = PlanSwitchClass.objects.get(plan=self.plan, switch_class_id='fe-storage-leaf')
+        self.assertEqual(
+            conns.first().target_zone.switch_class,
+            storage_leaf,
+            "storage connection must target fe-storage-leaf",
+        )
+
+    # -------------------------------------------------------------------------
+    # Zone naming: required names and port specs
+    # -------------------------------------------------------------------------
+
+    def _get_zone(self, switch_class_id, zone_name):
+        sc = PlanSwitchClass.objects.get(plan=self.plan, switch_class_id=switch_class_id)
+        return SwitchPortZone.objects.get(switch_class=sc, zone_name=zone_name)
+
+    def test_be_rail_leaf_uplinks_zone_port_spec(self):
+        """be-rail-leaf/backend-uplinks must have port_spec 33-64."""
+        zone = self._get_zone('be-rail-leaf', 'backend-uplinks')
+        self.assertEqual(zone.port_spec, '33-64')
+
+    def test_be_rail_leaf_downlinks_zone_name_and_port_spec(self):
+        """be-rail-leaf server zone must be named be-leaf-downlinks with port_spec 1-33."""
+        zone = self._get_zone('be-rail-leaf', 'be-leaf-downlinks')
+        self.assertEqual(zone.zone_type, 'server')
+        self.assertEqual(zone.port_spec, '1-33')
+        # old generic name must not exist
+        sc = PlanSwitchClass.objects.get(plan=self.plan, switch_class_id='be-rail-leaf')
+        self.assertFalse(
+            SwitchPortZone.objects.filter(switch_class=sc, zone_name='server-downlinks').exists(),
+            "Generic 'server-downlinks' zone must not exist on be-rail-leaf",
+        )
+
+    def test_be_spine_downlinks_zone_name(self):
+        """be-spine fabric zone must be named be-spine-downlinks."""
+        zone = self._get_zone('be-spine', 'be-spine-downlinks')
+        self.assertEqual(zone.zone_type, 'fabric')
+        sc = PlanSwitchClass.objects.get(plan=self.plan, switch_class_id='be-spine')
+        self.assertFalse(
+            SwitchPortZone.objects.filter(switch_class=sc, zone_name='leaf-downlinks').exists(),
+            "Generic 'leaf-downlinks' zone must not exist on be-spine",
+        )
+
+    def test_fe_gpu_leaf_zone_names(self):
+        """fe-gpu-leaf zones must use fe-gpu-leaf-downlinks and fe-gpu-leaf-uplinks."""
+        self._get_zone('fe-gpu-leaf', 'fe-gpu-leaf-downlinks')
+        self._get_zone('fe-gpu-leaf', 'fe-gpu-leaf-uplinks')
+        sc = PlanSwitchClass.objects.get(plan=self.plan, switch_class_id='fe-gpu-leaf')
+        self.assertFalse(
+            SwitchPortZone.objects.filter(switch_class=sc, zone_name='server-downlinks').exists(),
+            "Generic 'server-downlinks' must not exist on fe-gpu-leaf",
+        )
+        self.assertFalse(
+            SwitchPortZone.objects.filter(switch_class=sc, zone_name='uplinks').exists(),
+            "Generic 'uplinks' must not exist on fe-gpu-leaf",
+        )
+
+    def test_fe_spine_downlinks_zone_name(self):
+        """fe-spine fabric zone must be named fe-spine-downlinks."""
+        zone = self._get_zone('fe-spine', 'fe-spine-downlinks')
+        self.assertEqual(zone.zone_type, 'fabric')
+        sc = PlanSwitchClass.objects.get(plan=self.plan, switch_class_id='fe-spine')
+        self.assertFalse(
+            SwitchPortZone.objects.filter(switch_class=sc, zone_name='leaf-downlinks').exists(),
+            "Generic 'leaf-downlinks' zone must not exist on fe-spine",
+        )
+
+    def test_fe_storage_leaf_zone_names(self):
+        """fe-storage-leaf must have fe-storage-leaf-downlinks and fe-storage-leaf-uplinks."""
+        self._get_zone('fe-storage-leaf', 'fe-storage-leaf-downlinks')
+        self._get_zone('fe-storage-leaf', 'fe-storage-leaf-uplinks')
+
+    def test_canonical_counts_from_yaml(self):
+        """Plan counts must match expected.counts in canonical YAML (DIET-239 persistence rule)."""
+        from netbox_hedgehog.tests.test_topology_planning.case_128gpu_helpers import expected_128gpu_counts
+        expected = expected_128gpu_counts()
+        self.assertEqual(
+            PlanServerClass.objects.filter(plan=self.plan).count(),
+            expected['server_classes'],
+        )
+        self.assertEqual(
+            PlanSwitchClass.objects.filter(plan=self.plan).count(),
+            expected['switch_classes'],
+        )
+        self.assertEqual(
+            PlanServerConnection.objects.filter(server_class__plan=self.plan).count(),
+            expected['connections'],
+        )
