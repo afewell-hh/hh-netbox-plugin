@@ -70,6 +70,108 @@ reference_data:
           type: 200gbase-x-qsfp56
         - name: eth2
           type: 200gbase-x-qsfp56
+    - id: ds3000
+      manufacturer: celestica
+      model: celestica-ds3000
+      slug: celestica-ds3000
+      interface_templates:
+        - name: E1/1
+          type: 100gbase-x-qsfp28
+        - name: E1/2
+          type: 100gbase-x-qsfp28
+        - name: E1/3
+          type: 100gbase-x-qsfp28
+        - name: E1/4
+          type: 100gbase-x-qsfp28
+        - name: E1/5
+          type: 100gbase-x-qsfp28
+        - name: E1/6
+          type: 100gbase-x-qsfp28
+        - name: E1/7
+          type: 100gbase-x-qsfp28
+        - name: E1/8
+          type: 100gbase-x-qsfp28
+        - name: E1/9
+          type: 100gbase-x-qsfp28
+        - name: E1/10
+          type: 100gbase-x-qsfp28
+        - name: E1/11
+          type: 100gbase-x-qsfp28
+        - name: E1/12
+          type: 100gbase-x-qsfp28
+        - name: E1/13
+          type: 100gbase-x-qsfp28
+        - name: E1/14
+          type: 100gbase-x-qsfp28
+        - name: E1/15
+          type: 100gbase-x-qsfp28
+        - name: E1/16
+          type: 100gbase-x-qsfp28
+        - name: E1/17
+          type: 100gbase-x-qsfp28
+        - name: E1/18
+          type: 100gbase-x-qsfp28
+        - name: E1/19
+          type: 100gbase-x-qsfp28
+        - name: E1/20
+          type: 100gbase-x-qsfp28
+        - name: E1/21
+          type: 100gbase-x-qsfp28
+        - name: E1/22
+          type: 100gbase-x-qsfp28
+        - name: E1/23
+          type: 100gbase-x-qsfp28
+        - name: E1/24
+          type: 100gbase-x-qsfp28
+        - name: E1/25
+          type: 100gbase-x-qsfp28
+        - name: E1/26
+          type: 100gbase-x-qsfp28
+        - name: E1/27
+          type: 100gbase-x-qsfp28
+        - name: E1/28
+          type: 100gbase-x-qsfp28
+        - name: E1/29
+          type: 100gbase-x-qsfp28
+        - name: E1/30
+          type: 100gbase-x-qsfp28
+        - name: E1/31
+          type: 100gbase-x-qsfp28
+        - name: E1/32
+          type: 100gbase-x-qsfp28
+    - id: admin_node_dt
+      manufacturer: generic
+      model: Admin-Node
+      slug: admin-node
+      u_height: 1
+      is_full_depth: false
+      interface_templates:
+        - name: eth1
+          type: 25gbase-x-sfp28
+        - name: eth2
+          type: 25gbase-x-sfp28
+    - id: ctrl_server_dt
+      manufacturer: generic
+      model: Controller-Server-100G
+      slug: controller-server-100g
+      u_height: 1
+      is_full_depth: false
+      interface_templates:
+        - name: eth1
+          type: 100gbase-x-qsfp28
+        - name: eth2
+          type: 100gbase-x-qsfp28
+    - id: exo_kube_dt
+      manufacturer: generic
+      model: Exo-Kube-Server-100G
+      slug: exo-kube-server-100g
+      u_height: 1
+      is_full_depth: false
+      interface_templates:
+        - name: eth1
+          type: 100gbase-x-qsfp28
+        - name: eth2
+          type: 100gbase-x-qsfp28
     - id: ds5000
       manufacturer: celestica
       model: celestica-ds5000
@@ -93,6 +195,15 @@ reference_data:
           type: 800gbase-x-osfp
 
   device_type_extensions:
+    - id: ds3000_ext
+      device_type: ds3000
+      mclag_capable: false
+      hedgehog_roles: [server-leaf, border-leaf]
+      supported_breakouts: [1x100g, 4x25g]
+      native_speed: 100
+      uplink_ports: 32
+      hedgehog_profile_name: celestica-ds3000
+      notes: Auto-created for 128-GPU border leaf
     - id: ds5000_ext
       device_type: ds5000
       mclag_capable: false
@@ -104,6 +215,18 @@ reference_data:
       notes: Auto-created for 128-GPU odd-port case
 
   breakout_options:
+    - id: b_1x100
+      breakout_id: 1x100g
+      from_speed: 100
+      logical_ports: 1
+      logical_speed: 100
+      optic_type: QSFP28
+    - id: b_4x25
+      breakout_id: 4x25g
+      from_speed: 100
+      logical_ports: 4
+      logical_speed: 25
+      optic_type: SFP28
     - id: b_1x800
       breakout_id: 1x800g
       from_speed: 800
@@ -124,6 +247,30 @@ reference_data:
       optic_type: QSFP-DD
 
   module_types:
+    - id: nic_aiom_2x25g
+      manufacturer: generic
+      model: AIOM Dual-Port 25G
+      interface_templates:
+        - name: port0
+          type: other
+        - name: port1
+          type: other
+    - id: nic_cx7_dual_100g
+      manufacturer: nvidia
+      model: ConnectX-7 Dual-Port 100G
+      interface_templates:
+        - name: port0
+          type: other
+        - name: port1
+          type: other
+    - id: nic_dual_100g
+      manufacturer: generic
+      model: Dual-Port 100G NIC
+      interface_templates:
+        - name: port0
+          type: other
+        - name: port1
+          type: other
     - id: nic_bf3
       manufacturer: nvidia
       model: BlueField-3 BF3220
@@ -179,6 +326,12 @@ switch_classes:
     fabric: backend
     hedgehog_role: spine
     device_type_extension: ds5000_ext
+    uplink_ports_per_switch: 0
+    mclag_pair: false
+  - switch_class_id: fe-border-leaf
+    fabric: frontend
+    hedgehog_role: server-leaf
+    device_type_extension: ds3000_ext
     uplink_ports_per_switch: 0
     mclag_pair: false
 
@@ -253,6 +406,20 @@ switch_port_zones:
     breakout_option: b_1x800
     allocation_strategy: sequential
     priority: 100
+  - switch_class: fe-border-leaf
+    zone_name: fe-border-25g-downlinks
+    zone_type: server
+    port_spec: 1-4
+    breakout_option: b_4x25
+    allocation_strategy: sequential
+    priority: 100
+  - switch_class: fe-border-leaf
+    zone_name: fe-border-100g-downlinks
+    zone_type: server
+    port_spec: 5-16
+    breakout_option: b_1x100
+    allocation_strategy: sequential
+    priority: 100
 
 server_classes:
   - server_class_id: gpu-fe-only
@@ -279,6 +446,36 @@ server_classes:
     quantity: 9
     gpus_per_server: 0
     server_device_type: storage_server_200g
+  - server_class_id: admin-node
+    description: Admin node (AIOM 2x25G, connects to fe-border-leaf via 4x25G breakout)
+    category: compute
+    quantity: 1
+    gpus_per_server: 0
+    server_device_type: admin_node_dt
+  - server_class_id: host-lfm-ctrl
+    description: Host LFM controller (CX7 dual-port 100G effective, connects to fe-border-leaf)
+    category: compute
+    quantity: 1
+    gpus_per_server: 0
+    server_device_type: ctrl_server_dt
+  - server_class_id: hh-fe-ctrl
+    description: Hedgehog frontend controller (CX7 dual-port 100G effective, connects to fe-border-leaf)
+    category: compute
+    quantity: 1
+    gpus_per_server: 0
+    server_device_type: ctrl_server_dt
+  - server_class_id: hh-be-ctrl
+    description: Hedgehog backend controller (CX7 dual-port 100G effective, connects to fe-border-leaf)
+    category: compute
+    quantity: 1
+    gpus_per_server: 0
+    server_device_type: ctrl_server_dt
+  - server_class_id: exo-kube
+    description: Exo kube nodes (dual-port 100G NIC, connects to fe-border-leaf)
+    category: compute
+    quantity: 3
+    gpus_per_server: 0
+    server_device_type: exo_kube_dt
 
 server_connections:
   - server_class: gpu-fe-only
@@ -421,9 +618,64 @@ server_connections:
     target_zone: fe-storage-leaf-b/server-downlinks
     speed: 200
     port_type: data
+  - server_class: admin-node
+    connection_id: fe-border
+    connection_name: border-frontend
+    nic_module_type: nic_aiom_2x25g
+    port_index: 0
+    ports_per_connection: 2
+    hedgehog_conn_type: unbundled
+    distribution: alternating
+    target_zone: fe-border-leaf/fe-border-25g-downlinks
+    speed: 25
+    port_type: data
+  - server_class: host-lfm-ctrl
+    connection_id: fe-border
+    connection_name: border-frontend
+    nic_module_type: nic_cx7_dual_100g
+    port_index: 0
+    ports_per_connection: 2
+    hedgehog_conn_type: unbundled
+    distribution: alternating
+    target_zone: fe-border-leaf/fe-border-100g-downlinks
+    speed: 100
+    port_type: data
+  - server_class: hh-fe-ctrl
+    connection_id: fe-border
+    connection_name: border-frontend
+    nic_module_type: nic_cx7_dual_100g
+    port_index: 0
+    ports_per_connection: 2
+    hedgehog_conn_type: unbundled
+    distribution: alternating
+    target_zone: fe-border-leaf/fe-border-100g-downlinks
+    speed: 100
+    port_type: data
+  - server_class: hh-be-ctrl
+    connection_id: fe-border
+    connection_name: border-frontend
+    nic_module_type: nic_cx7_dual_100g
+    port_index: 0
+    ports_per_connection: 2
+    hedgehog_conn_type: unbundled
+    distribution: alternating
+    target_zone: fe-border-leaf/fe-border-100g-downlinks
+    speed: 100
+    port_type: data
+  - server_class: exo-kube
+    connection_id: fe-border
+    connection_name: border-frontend
+    nic_module_type: nic_dual_100g
+    port_index: 0
+    ports_per_connection: 2
+    hedgehog_conn_type: unbundled
+    distribution: alternating
+    target_zone: fe-border-leaf/fe-border-100g-downlinks
+    speed: 100
+    port_type: data
 
 expected:
   counts:
-    server_classes: 4
-    switch_classes: 6
-    connections: 12
+    server_classes: 9
+    switch_classes: 7
+    connections: 17

@@ -385,9 +385,9 @@ class DeviceGenerator:
                 ).order_by('priority', 'zone_name')
 
                 if not uplink_zones.exists():
-                    raise ValidationError(
-                        f"Leaf switch class '{leaf_class.switch_class_id}' has no uplink zones defined."
-                    )
+                    # Border/standalone leaves (e.g. fe-border-leaf) may have no spine
+                    # connections in the DIET model. Skip fabric wiring for those.
+                    continue
 
                 leaf_ports = self._allocate_ports_for_zones(leaf.name, uplink_zones)
                 total_uplinks = len(leaf_ports)

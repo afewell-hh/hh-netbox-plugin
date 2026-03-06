@@ -34,6 +34,9 @@ from netbox_hedgehog.models.topology_planning import (
 from netbox_hedgehog.services.device_generator import DeviceGenerator
 from netbox_hedgehog.services.hhfab import is_hhfab_available, validate_yaml
 from netbox_hedgehog.services.yaml_generator import generate_yaml_for_plan
+from netbox_hedgehog.tests.test_topology_planning.case_128gpu_helpers import (
+    expected_128gpu_counts,
+)
 
 
 PLAN_NAME = "UX Case 128GPU Odd Ports"
@@ -78,29 +81,30 @@ class UCCase128GPURegressionTestCase(TestCase):
         # =====================================================================
         # Part 1: Validate Planning Objects
         # =====================================================================
+        expected = expected_128gpu_counts()
 
         # Server classes
         server_classes = PlanServerClass.objects.filter(plan=self.plan)
         self.assertEqual(
             server_classes.count(),
-            4,
-            "Expected 4 server classes (gpu-fe-only, gpu-with-backend, storage-a, storage-b)"
+            expected.get("server_classes"),
+            f"Expected {expected.get('server_classes')} server classes per canonical YAML"
         )
 
         # Switch classes
         switch_classes = PlanSwitchClass.objects.filter(plan=self.plan)
         self.assertEqual(
             switch_classes.count(),
-            6,
-            "Expected 6 switch classes (fe-gpu-leaf, fe-storage-leaf-a/b, fe-spine, be-rail-leaf, be-spine)"
+            expected.get("switch_classes"),
+            f"Expected {expected.get('switch_classes')} switch classes per canonical YAML"
         )
 
         # Server connections
         connections = PlanServerConnection.objects.filter(server_class__plan=self.plan)
         self.assertEqual(
             connections.count(),
-            12,
-            "Expected 12 server connections (1 fe for gpu-fe-only, 9 for gpu-with-backend, 1 each for storage-a/b)"
+            expected.get("connections"),
+            f"Expected {expected.get('connections')} server connections per canonical YAML"
         )
 
         # =====================================================================
@@ -125,28 +129,28 @@ class UCCase128GPURegressionTestCase(TestCase):
         result = generator.generate_all()
 
         # Validate counts match expected baseline
-        # Breakdown: 146 servers (96 gpu-fe-only + 32 gpu-with-backend + 18 storage) + 12 switches
+        # Breakdown: 153 servers (96 gpu-fe-only + 32 gpu-with-backend + 18 storage + 7 border)
+        #            + 13 switches (12 DS5000 + 1 DS3000 fe-border-leaf)
         self.assertEqual(
             result.device_count,
-            158,
-            f"Expected 158 devices, got {result.device_count}. "
+            166,
+            f"Expected 166 devices, got {result.device_count}. "
             "This indicates a regression in device generation logic."
         )
 
-        # Interface count: all switch interfaces (server downlinks + fabric uplinks/downlinks)
-        # 548 server-side switch downlinks + 256 leaf fabric uplinks + 256 spine fabric downlinks
+        # Interface count: switch downlinks + fabric uplinks/downlinks + border server interfaces
         self.assertEqual(
             result.interface_count,
-            1060,
-            f"Expected 1060 interfaces, got {result.interface_count}. "
+            1074,
+            f"Expected 1074 interfaces, got {result.interface_count}. "
             "This indicates a regression in interface generation logic."
         )
 
-        # Cable count includes server-to-switch + fabric (leaf-spine) + MCLAG peer/session
+        # Cable count: server-to-switch + fabric (leaf-spine) + MCLAG + border server cables
         self.assertEqual(
             result.cable_count,
-            804,
-            f"Expected 804 cables, got {result.cable_count}. "
+            818,
+            f"Expected 818 cables, got {result.cable_count}. "
             "This indicates a regression in cable generation logic."
         )
 
