@@ -172,10 +172,13 @@ class YAMLGenerator:
         # Determine connection type and validate roles
         conn_type = self._determine_connection_type(device_a, device_b, cable.id)
 
+        if conn_type == 'excluded':
+            return ('excluded', {})
+
         if conn_type == 'unbundled':
             # Server-switch connection
-            # Determine which device is server vs switch
-            if device_a.role.slug == 'server':
+            # Determine which device is server vs switch via endpoint kind
+            if self._endpoint_kind(device_a) == 'server':
                 server_device, server_iface = device_a, iface_a
                 switch_device, switch_iface = device_b, iface_b
             else:
@@ -563,49 +566,53 @@ class YAMLGenerator:
             }
         }
 
+    def _endpoint_kind(self, device: Device) -> str:
+        """Classify a device endpoint for CRD routing (DIET-250).
+
+        Returns:
+            'managed_switch' - frontend/backend switch, appears in Switch CRDs
+            'server'         - role='server' with no fabric, appears in Server CRDs
+            'surrogate'      - oob-mgmt switch, appears as Server CRD surrogate
+            'excluded'       - in-band-mgmt, network-mgmt, legacy-oob, or unrecognized
+        """
+        fabric = device.custom_field_data.get('hedgehog_fabric', '')
+        if fabric in FabricTypeChoices.HEDGEHOG_MANAGED_SET:
+            return 'managed_switch'
+        if fabric in FabricTypeChoices.SURROGATE_ENDPOINT_SET:
+            return 'surrogate'
+        if not fabric and device.role.slug == 'server':
+            return 'server'
+        return 'excluded'
+
     def _determine_connection_type(self, device_a: Device, device_b: Device, cable_id: int) -> str:
         """
-        Determine Hedgehog connection type from device roles (DIET-139).
+        Determine Hedgehog connection type from endpoint kinds (DIET-139, DIET-250).
 
         Args:
             device_a: First device
             device_b: Second device
-            cable_id: Cable ID for error messages
+            cable_id: Cable ID for logging
 
         Returns:
-            'unbundled' for server↔switch, 'fabric' for switch↔switch
-
-        Raises:
-            ValidationError: If role combination is invalid
+            'unbundled' for server↔managed_switch
+            'fabric'    for managed_switch↔managed_switch
+            'excluded'  for all other combinations (silent skip — no ValidationError)
         """
-        role_a = device_a.role.slug
-        role_b = device_b.role.slug
+        kind_a = self._endpoint_kind(device_a)
+        kind_b = self._endpoint_kind(device_b)
 
-        # Define switch roles
-        switch_roles = {'leaf', 'spine', 'border', 'oob'}
-
-        # Server↔server is not supported
-        if role_a == 'server' and role_b == 'server':
-            raise ValidationError(
-                "Server-to-server connections are not supported. "
-                "Expected server↔switch or switch↔switch."
-            )
-
-        # Server↔switch → unbundled
-        if role_a == 'server' and role_b in switch_roles:
+        # Server↔managed_switch → unbundled
+        if kind_a == 'server' and kind_b == 'managed_switch':
             return 'unbundled'
-        if role_b == 'server' and role_a in switch_roles:
+        if kind_b == 'server' and kind_a == 'managed_switch':
             return 'unbundled'
 
-        # Switch↔switch → fabric
-        if role_a in switch_roles and role_b in switch_roles:
+        # managed_switch↔managed_switch → fabric
+        if kind_a == 'managed_switch' and kind_b == 'managed_switch':
             return 'fabric'
 
-        # Invalid combination
-        raise ValidationError(
-            f"Invalid device role combination: {role_a} ↔ {role_b}. "
-            f"Expected server↔switch or switch↔switch."
-        )
+        # Everything else (surrogate combos, excluded, server↔server, etc.) — silent skip
+        return 'excluded'
 
     def _sanitize_name(self, name: str) -> str:
         """
@@ -984,11 +991,14 @@ class YAMLGenerator:
             ).values_list('termination_id', flat=True)
         )
 
-        # Device IDs where role is 'server'
+        # Device IDs where endpoint is a regular server or an oob-mgmt surrogate
+        from django.db.models import Q
         return set(
             Interface.objects.filter(
                 id__in=server_side_iface_ids,
-                device__role__slug='server',
+            ).filter(
+                Q(device__role__slug='server') |
+                Q(device__custom_field_data__hedgehog_fabric__in=list(FabricTypeChoices.SURROGATE_ENDPOINT_SET))
             ).values_list('device_id', flat=True)
         )
 
@@ -1014,9 +1024,12 @@ class YAMLGenerator:
         server_crds = []
         existing_names = set()
 
+        from django.db.models import Q
         servers = Device.objects.filter(
-            role__slug='server',
-            custom_field_data__hedgehog_plan_id=str(self.plan.pk)
+            custom_field_data__hedgehog_plan_id=str(self.plan.pk),
+        ).filter(
+            Q(role__slug='server') |
+            Q(custom_field_data__hedgehog_fabric__in=list(FabricTypeChoices.SURROGATE_ENDPOINT_SET))
         )
         if filter_ids is not None:
             servers = servers.filter(id__in=filter_ids)
@@ -1075,14 +1088,16 @@ class YAMLGenerator:
         def _endpoint_is_allowed(device: Device) -> bool:
             """Return True if device may appear in a Connection CRD endpoint.
 
-            Switches always have hedgehog_fabric set in custom_field_data (populated
-            by DeviceGenerator). Servers and non-switch devices have no hedgehog_fabric,
-            so they are always allowed. Switches must be in the managed-fabric set.
+            Uses _endpoint_kind() as the single classification authority (DIET-250).
+            - managed_switch: allowed only if in the scoped _managed_switch_ids set
+            - server: always allowed
+            - surrogate: always allowed (oob-mgmt devices emit as Server CRD surrogates)
+            - excluded: never allowed
             """
-            fabric = device.custom_field_data.get('hedgehog_fabric', '')
-            if not fabric:
-                return True  # Server or non-switch device — always allowed
-            return device.id in _managed_switch_ids
+            kind = self._endpoint_kind(device)
+            if kind == 'managed_switch':
+                return device.id in _managed_switch_ids
+            return kind in ('server', 'surrogate')
 
         # Classify cables by zone and topology
         mclag_domain_links = defaultdict(lambda: {'peer': [], 'session': []})  # (sw1, sw2) -> {peer: [...], session: [...]}
@@ -1136,16 +1151,17 @@ class YAMLGenerator:
 
                 elif zone == 'server':
                     # Server connection (mclag/eslag/bundled - determine later by grouping)
-                    if device_a.role.slug == 'server':
-                        server_device = device_a
-                        server_iface = iface_a
-                        switch_device = device_b
-                        switch_iface = iface_b
+                    # Only handle regular server↔managed_switch; surrogate on zone='server' is excluded
+                    kind_a = self._endpoint_kind(device_a)
+                    kind_b = self._endpoint_kind(device_b)
+                    if kind_a == 'server' and kind_b == 'managed_switch':
+                        server_device, server_iface = device_a, iface_a
+                        switch_device, switch_iface = device_b, iface_b
+                    elif kind_b == 'server' and kind_a == 'managed_switch':
+                        server_device, server_iface = device_b, iface_b
+                        switch_device, switch_iface = device_a, iface_a
                     else:
-                        server_device = device_b
-                        server_iface = iface_b
-                        switch_device = device_a
-                        switch_iface = iface_a
+                        continue  # surrogate on wrong zone, server↔surrogate, etc.
 
                     server_links[server_device].append({
                         'server_iface': server_iface,
@@ -1153,11 +1169,32 @@ class YAMLGenerator:
                         'switch_iface': switch_iface
                     })
 
+                elif zone == 'oob':
+                    # OOB management connection: managed_switch↔surrogate → unbundled CRD
+                    # surrogate↔surrogate and server↔surrogate are silently excluded
+                    kind_a = self._endpoint_kind(device_a)
+                    kind_b = self._endpoint_kind(device_b)
+                    if kind_a == 'managed_switch' and kind_b == 'surrogate':
+                        link_data = {
+                            'server_device': device_b, 'server_iface': iface_b,
+                            'switch_device': device_a, 'switch_iface': iface_a,
+                        }
+                    elif kind_b == 'managed_switch' and kind_a == 'surrogate':
+                        link_data = {
+                            'server_device': device_a, 'server_iface': iface_a,
+                            'switch_device': device_b, 'switch_iface': iface_b,
+                        }
+                    else:
+                        continue  # surrogate↔surrogate, server↔surrogate, etc.
+                    unbundled_crds.append(self._create_unbundled_crd(link_data))
+
                 else:
-                    # No zone classification - use legacy role-based detection
+                    # No zone classification - use endpoint-kind-based detection
                     conn_type, link_data = self._cable_to_link_data(cable)
 
-                    if conn_type == 'unbundled':
+                    if conn_type == 'excluded':
+                        continue
+                    elif conn_type == 'unbundled':
                         unbundled_crds.append(self._create_unbundled_crd(link_data))
                     elif conn_type == 'fabric':
                         device_pair = (link_data['leaf_device'], link_data['spine_device'])
