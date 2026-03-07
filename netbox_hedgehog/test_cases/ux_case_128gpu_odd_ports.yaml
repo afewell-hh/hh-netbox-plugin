@@ -328,6 +328,8 @@ switch_classes:
     device_type_extension: ds3000_ext
     uplink_ports_per_switch: 0
     mclag_pair: false
+    redundancy_type: eslag
+    redundancy_group: fe-border-eslag
 
 switch_port_zones:
   - switch_class: fe-gpu-leaf

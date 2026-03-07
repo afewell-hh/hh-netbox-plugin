@@ -434,6 +434,8 @@ def apply_case(
                 "uplink_ports_per_switch": item.get("uplink_ports_per_switch"),
                 "mclag_pair": item.get("mclag_pair", False),
                 "override_quantity": item.get("override_quantity"),
+                "redundancy_type": item.get("redundancy_type", ""),
+                "redundancy_group": item.get("redundancy_group", ""),
             },
         )
         switch_map[switch_id] = sw

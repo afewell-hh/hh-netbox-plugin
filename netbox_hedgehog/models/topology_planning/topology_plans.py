@@ -569,6 +569,21 @@ class PlanServerConnection(NetBoxModel):
                                    'hyphens, and underscores (used as interface name prefix).'
                 })
 
+        # Validate that distribution=alternating has explicit redundancy_type on target switch class.
+        # Alternating requires >=2 switches for HA; without a declared redundancy_type the intent
+        # is implicit and fragile. Option A (calculate_switch_quantity min-2) remains as fallback.
+        if (self.distribution == 'alternating'
+                and self.target_zone_id
+                and not self.target_zone.switch_class.redundancy_type):
+            switch_class_id = self.target_zone.switch_class.switch_class_id
+            raise ValidationError({
+                'distribution': (
+                    f"distribution=alternating requires the target switch class "
+                    f"'{switch_class_id}' to have redundancy_type set (e.g. 'eslag' or 'mclag'). "
+                    f"Set redundancy_type on the switch class before creating this connection."
+                )
+            })
+
         # Validate nic_module_type is set and has interface templates
         # Use nic_module_type_id to avoid RelatedObjectDoesNotExist when None
         if not self.nic_module_type_id:
