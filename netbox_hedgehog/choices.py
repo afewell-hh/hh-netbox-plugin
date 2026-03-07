@@ -179,10 +179,18 @@ class FabricTypeChoices(ChoiceSet):
         (NETWORK_MGMT, 'Network Management'),
     ]
 
+    # Fabrics where an unmanaged switch acts as a Server CRD surrogate in YAML export
+    SURROGATE_ENDPOINT_SET = frozenset([OOB_MGMT])
+
     @classmethod
     def is_hedgehog_managed(cls, fabric: str) -> bool:
         """Return True if fabric is exported in Hedgehog wiring YAML."""
         return fabric in cls.HEDGEHOG_MANAGED_SET
+
+    @classmethod
+    def is_surrogate_endpoint(cls, fabric: str) -> bool:
+        """Return True if fabric device appears as a Server CRD surrogate in YAML export."""
+        return fabric in cls.SURROGATE_ENDPOINT_SET
 
 
 class HedgehogRoleChoices(ChoiceSet):

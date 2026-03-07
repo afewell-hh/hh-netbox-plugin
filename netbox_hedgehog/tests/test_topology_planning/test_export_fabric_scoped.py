@@ -565,3 +565,171 @@ class InvalidFabricSelectorTestCase(FabricScopedExportBase):
         """generate_yaml_for_plan() with invalid fabric raises ValueError."""
         with self.assertRaises(ValueError):
             generate_yaml_for_plan(self.plan, fabric='not-a-fabric')
+
+
+# ---------------------------------------------------------------------------
+# Phase 3 RED: surrogate endpoint behavior in fabric-scoped export
+# ---------------------------------------------------------------------------
+
+class SurrogateFabricScopedExportTestCase(TestCase):
+    """Surrogate endpoints follow fabric-scoped include/exclude rules.
+
+    RED: _get_server_ids_for_fabric() currently filters role__slug='server' only.
+    oob-mgmt devices (role='leaf' etc.) are not found, so they don't appear
+    in fabric-scoped exports even when connected to the target fabric's switches.
+    """
+
+    @classmethod
+    def setUpTestData(cls):
+        from dcim.models import Cable, Interface
+        from netbox_hedgehog.models.topology_planning import GenerationState
+        from netbox_hedgehog.choices import GenerationStatusChoices, FabricTypeChoices
+
+        manufacturer, _ = Manufacturer.objects.get_or_create(
+            name='Test Mfg FabricScopeSurr',
+            defaults={'slug': 'test-mfg-fabric-scope-surr'},
+        )
+        switch_type, _ = DeviceType.objects.get_or_create(
+            manufacturer=manufacturer,
+            model='FabricScopeSurr Switch',
+            defaults={'slug': 'fabricscopesurr-switch'},
+        )
+        for name in ('E1/1', 'E1/2', 'E1/3'):
+            InterfaceTemplate.objects.get_or_create(
+                device_type=switch_type, name=name,
+                defaults={'type': '100gbase-x-qsfp28'},
+            )
+
+        from netbox_hedgehog.models.topology_planning import DeviceTypeExtension
+        device_ext, _ = DeviceTypeExtension.objects.get_or_create(
+            device_type=switch_type,
+            defaults={
+                'mclag_capable': False,
+                'hedgehog_roles': ['server-leaf'],
+                'native_speed': 100,
+                'supported_breakouts': ['1x100g'],
+                'uplink_ports': 0,
+                'hedgehog_profile_name': 'fabric-scope-surr-test',
+            },
+        )
+
+        server_role, _ = DeviceRole.objects.get_or_create(
+            slug='server', defaults={'name': 'Server', 'color': '0000ff'},
+        )
+        leaf_role, _ = DeviceRole.objects.get_or_create(
+            name='FabricScopeSurr Leaf',
+            defaults={'slug': 'fabricscopesurr-leaf', 'color': '008000'},
+        )
+        site, _ = Site.objects.get_or_create(
+            name='FabricScopeSurr Site',
+            defaults={'slug': 'fabricscopesurr-site'},
+        )
+
+        cls.plan = TopologyPlan.objects.create(name='Fabric Scope Surrogate Test Plan')
+        GenerationState.objects.create(
+            plan=cls.plan,
+            device_count=0, interface_count=0, cable_count=0,
+            snapshot={}, status=GenerationStatusChoices.GENERATED,
+        )
+
+        def _make_switch(name, fabric, role='server-leaf'):
+            mac = abs(hash(name)) % 256
+            return Device.objects.create(
+                name=name, device_type=switch_type, role=leaf_role, site=site,
+                custom_field_data={
+                    'hedgehog_plan_id': str(cls.plan.pk),
+                    'hedgehog_class': name,
+                    'hedgehog_fabric': fabric,
+                    'hedgehog_role': role,
+                    'boot_mac': f'0c:aa:12:ff:04:{mac:02x}',
+                },
+            )
+
+        def _make_server(name):
+            return Device.objects.create(
+                name=name, device_type=switch_type, role=server_role, site=site,
+                custom_field_data={'hedgehog_plan_id': str(cls.plan.pk)},
+            )
+
+        def _iface(device, name):
+            iface, _ = Interface.objects.get_or_create(
+                device=device, name=name, defaults={'type': '100gbase-x-qsfp28'},
+            )
+            return iface
+
+        def _cable(iface_a, iface_b, zone='oob'):
+            c = Cable(a_terminations=[iface_a], b_terminations=[iface_b])
+            c.custom_field_data = {
+                'hedgehog_plan_id': str(cls.plan.pk),
+                'hedgehog_zone': zone,
+            }
+            c.save()
+            return c
+
+        cls.fe_switch = _make_switch('fe-scope-surr-01', 'frontend')
+        cls.be_switch = _make_switch('be-scope-surr-01', 'backend')
+        cls.oob_on_fe = _make_switch('oob-scope-fe-01', 'oob-mgmt')  # connected to frontend
+        cls.oob_on_be = _make_switch('oob-scope-be-01', 'oob-mgmt')  # connected to backend
+        cls.server = _make_server('scope-surr-server-01')
+
+        # managed<->surrogate cable: fe-switch -> oob_on_fe (zone='oob')
+        _cable(_iface(cls.fe_switch, 'E1/1'), _iface(cls.oob_on_fe, 'E1/1'))
+        # managed<->surrogate cable: be-switch -> oob_on_be (zone='oob')
+        _cable(_iface(cls.be_switch, 'E1/1'), _iface(cls.oob_on_be, 'E1/1'))
+        # anchor: server -> fe-switch (zone='server')
+        _cable(_iface(cls.server, 'E1/2'), _iface(cls.fe_switch, 'E1/2'), zone='server')
+
+    def test_surrogate_connected_to_target_fabric_appears_in_scoped_export(self):
+        """Surrogate connected to frontend switch appears in --fabric frontend export.
+
+        RED: _get_server_ids_for_fabric() doesn't find oob-mgmt devices (wrong role filter).
+        oob-scope-fe-01 will be absent from the frontend fabric-scoped export.
+        """
+        yaml_content = generate_yaml_for_plan(self.plan, fabric='frontend')
+        server_names = _server_names_in_yaml(yaml_content)
+
+        # RED: oob-scope-fe-01 not yet returned by _get_server_ids_for_fabric()
+        self.assertIn(
+            'oob-scope-fe-01', server_names,
+            "Surrogate connected to frontend switch must appear as Server CRD in frontend export",
+        )
+
+    def test_surrogate_not_connected_to_target_fabric_excluded_from_scoped_export(self):
+        """Surrogate connected only to backend switch is absent from --fabric frontend export.
+
+        This test may PASS in RED phase (backend surrogate is already excluded because
+        _get_server_ids_for_fabric() can't find it). It must continue to pass in GREEN.
+        """
+        yaml_content = generate_yaml_for_plan(self.plan, fabric='frontend')
+        server_names = _server_names_in_yaml(yaml_content)
+
+        self.assertNotIn(
+            'oob-scope-be-01', server_names,
+            "Surrogate connected only to backend switch must NOT appear in frontend export",
+        )
+
+    def test_surrogate_no_dangling_refs_in_scoped_export(self):
+        """Connection CRDs in scoped export reference only Switch/Server CRDs in same export.
+
+        RED: If fe->oob_on_fe Connection CRD appears but oob-scope-fe-01 Server CRD is absent,
+        this test will detect the dangling reference.
+        """
+        yaml_content = generate_yaml_for_plan(self.plan, fabric='frontend')
+        docs = [d for d in yaml.safe_load_all(yaml_content) if d]
+        switch_names = {d['metadata']['name'] for d in docs if d.get('kind') == 'Switch'}
+        server_names = {d['metadata']['name'] for d in docs if d.get('kind') == 'Server'}
+        known = switch_names | server_names
+
+        for conn in (d for d in docs if d.get('kind') == 'Connection'):
+            spec = conn.get('spec', {})
+            unbundled = spec.get('unbundled', {})
+            link = unbundled.get('link', {})
+            for side in ('switch', 'server'):
+                port = link.get(side, {}).get('port', '')
+                if port:
+                    device_name = port.split('/')[0]
+                    self.assertIn(
+                        device_name, known,
+                        f"Connection endpoint '{device_name}' in frontend export has no "
+                        f"corresponding Switch/Server CRD (dangling reference)",
+                    )

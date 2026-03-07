@@ -568,3 +568,202 @@ class UC128GPUExportCompletenessTestCase(TestCase):
         content2 = self._yaml_content()
         self.assertEqual(content1, content2,
                          "128GPU export must be reproducible (deterministic YAML)")
+
+
+# ---------------------------------------------------------------------------
+# Phase 3 RED: Server CRD count includes surrogate endpoints
+# ---------------------------------------------------------------------------
+
+class SurrogateServerCrdCountTestCase(TestCase):
+    """Server CRD count == regular servers + oob-mgmt surrogate switch instances.
+
+    RED: _generate_servers() currently filters role__slug='server' only.
+    oob-mgmt devices have role 'leaf' (or similar non-server slug) so they
+    are excluded. After GREEN implementation the count must include them.
+    """
+
+    @classmethod
+    def setUpTestData(cls):
+        from dcim.models import Cable, Interface, ModuleType
+        from django.db.models import Q
+        from netbox_hedgehog.models.topology_planning import GenerationState
+        from netbox_hedgehog.choices import GenerationStatusChoices
+
+        manufacturer, _ = Manufacturer.objects.get_or_create(
+            name='Test Mfg Surrogate Count',
+            defaults={'slug': 'test-mfg-surrogate-count'},
+        )
+        switch_type, _ = DeviceType.objects.get_or_create(
+            manufacturer=manufacturer,
+            model='SurrCount Switch',
+            defaults={'slug': 'surrcount-switch'},
+        )
+        InterfaceTemplate.objects.get_or_create(
+            device_type=switch_type, name='E1/1',
+            defaults={'type': '100gbase-x-qsfp28'},
+        )
+        server_type, _ = DeviceType.objects.get_or_create(
+            manufacturer=manufacturer,
+            model='SurrCount Server',
+            defaults={'slug': 'surrcount-server'},
+        )
+        InterfaceTemplate.objects.get_or_create(
+            device_type=server_type, name='eth0',
+            defaults={'type': '100gbase-x-qsfp28'},
+        )
+        from netbox_hedgehog.models.topology_planning import DeviceTypeExtension
+        device_ext, _ = DeviceTypeExtension.objects.get_or_create(
+            device_type=switch_type,
+            defaults={
+                'mclag_capable': False,
+                'hedgehog_roles': ['server-leaf'],
+                'native_speed': 100,
+                'supported_breakouts': ['1x100g'],
+                'uplink_ports': 0,
+                'hedgehog_profile_name': 'surrcount-test',
+            },
+        )
+
+        server_role, _ = DeviceRole.objects.get_or_create(
+            slug='server', defaults={'name': 'Server', 'color': '0000ff'},
+        )
+        leaf_role, _ = DeviceRole.objects.get_or_create(
+            name='SurrCount Leaf', defaults={'slug': 'surrcount-leaf', 'color': '008000'},
+        )
+        site, _ = Site.objects.get_or_create(
+            name='SurrCount Site', defaults={'slug': 'surrcount-site'},
+        )
+
+        cls.plan = TopologyPlan.objects.create(name='Surrogate Count Test Plan')
+        GenerationState.objects.create(
+            plan=cls.plan,
+            device_count=0,
+            interface_count=0,
+            cable_count=0,
+            snapshot={},
+            status=GenerationStatusChoices.GENERATED,
+        )
+
+        # 1 managed (frontend) switch
+        mac = abs(hash('fe-surrcount-001')) % 256
+        cls.fe_switch = Device.objects.create(
+            name='fe-surrcount-001',
+            device_type=switch_type,
+            role=leaf_role,
+            site=site,
+            custom_field_data={
+                'hedgehog_plan_id': str(cls.plan.pk),
+                'hedgehog_class': 'fe-leaf',
+                'hedgehog_fabric': 'frontend',
+                'hedgehog_role': 'server-leaf',
+                'boot_mac': f'0c:20:12:ff:02:{mac:02x}',
+            },
+        )
+
+        # 2 oob-mgmt surrogate switches
+        for i, name in enumerate(['oob-surrcount-001', 'oob-surrcount-002']):
+            mac = abs(hash(name)) % 256
+            Device.objects.create(
+                name=name,
+                device_type=switch_type,
+                role=leaf_role,
+                site=site,
+                custom_field_data={
+                    'hedgehog_plan_id': str(cls.plan.pk),
+                    'hedgehog_class': 'oob-mgmt',
+                    'hedgehog_fabric': 'oob-mgmt',
+                    'hedgehog_role': 'server-leaf',
+                    'boot_mac': f'0c:20:12:ff:03:{mac:02x}',
+                },
+            )
+
+        # 2 regular servers
+        for i, name in enumerate(['gpu-surrcount-001', 'gpu-surrcount-002']):
+            Device.objects.create(
+                name=name,
+                device_type=server_type,
+                role=server_role,
+                site=site,
+                custom_field_data={'hedgehog_plan_id': str(cls.plan.pk)},
+            )
+
+        # Cables: each server -> managed switch (needed for export precondition)
+        fe_iface1, _ = Interface.objects.get_or_create(
+            device=cls.fe_switch, name='E1/1',
+            defaults={'type': '100gbase-x-qsfp28'},
+        )
+        fe_iface2, _ = Interface.objects.get_or_create(
+            device=cls.fe_switch, name='E1/2',
+            defaults={'type': '100gbase-x-qsfp28'},
+        )
+        gpu1 = Device.objects.get(name='gpu-surrcount-001',
+                                  custom_field_data__hedgehog_plan_id=str(cls.plan.pk))
+        gpu2 = Device.objects.get(name='gpu-surrcount-002',
+                                  custom_field_data__hedgehog_plan_id=str(cls.plan.pk))
+        srv_iface1, _ = Interface.objects.get_or_create(
+            device=gpu1, name='eth0', defaults={'type': '100gbase-x-qsfp28'},
+        )
+        srv_iface2, _ = Interface.objects.get_or_create(
+            device=gpu2, name='eth0', defaults={'type': '100gbase-x-qsfp28'},
+        )
+
+        for srv_iface, fe_iface in [(srv_iface1, fe_iface1), (srv_iface2, fe_iface2)]:
+            cable = Cable(a_terminations=[srv_iface], b_terminations=[fe_iface])
+            cable.custom_field_data = {
+                'hedgehog_plan_id': str(cls.plan.pk),
+                'hedgehog_zone': 'server',
+            }
+            cable.save()
+
+    def _yaml_content(self):
+        from netbox_hedgehog.services.yaml_generator import generate_yaml_for_plan
+        return generate_yaml_for_plan(self.plan)
+
+    def _kinds(self):
+        return _count_kinds(self._yaml_content())
+
+    def test_server_crd_count_includes_surrogate_endpoints(self):
+        """Server CRD count = regular servers (2) + oob-mgmt surrogates (2) = 4.
+
+        RED: Current code returns 2 (only role='server' devices).
+        GREEN: Must return 4 (2 servers + 2 oob-mgmt surrogates).
+        """
+        from django.db.models import Q
+        from netbox_hedgehog.choices import FabricTypeChoices
+
+        expected_servers = Device.objects.filter(
+            custom_field_data__hedgehog_plan_id=str(self.plan.pk),
+            role__slug='server',
+        ).count()
+        expected_surrogates = Device.objects.filter(
+            custom_field_data__hedgehog_plan_id=str(self.plan.pk),
+            custom_field_data__hedgehog_fabric__in=list(FabricTypeChoices.SURROGATE_ENDPOINT_SET),
+        ).count()
+        expected_total = expected_servers + expected_surrogates
+
+        self.assertEqual(expected_servers, 2, "Fixture must have 2 regular servers")
+        self.assertEqual(expected_surrogates, 2, "Fixture must have 2 oob-mgmt surrogate devices")
+
+        kinds = self._kinds()
+        # RED: kinds.get('Server', 0) == 2 currently; expected_total == 4
+        self.assertEqual(
+            kinds.get('Server', 0), expected_total,
+            f"Server CRD count must include regular servers AND surrogate endpoints "
+            f"(expected {expected_total}, got {kinds.get('Server', 0)})",
+        )
+
+    def test_switch_crd_count_unchanged_by_surrogates(self):
+        """Switch CRD count is still only the managed (frontend) switches; surrogates excluded."""
+        from netbox_hedgehog.choices import FabricTypeChoices
+        managed_fabrics = list(FabricTypeChoices.HEDGEHOG_MANAGED_SET)
+        expected = Device.objects.filter(
+            custom_field_data__hedgehog_plan_id=str(self.plan.pk),
+            custom_field_data__hedgehog_fabric__in=managed_fabrics,
+        ).count()
+        self.assertEqual(expected, 1, "Fixture must have exactly 1 managed switch")
+
+        kinds = self._kinds()
+        self.assertEqual(
+            kinds.get('Switch', 0), expected,
+            f"Switch CRD count must be {expected} (managed switches only, not surrogates)",
+        )

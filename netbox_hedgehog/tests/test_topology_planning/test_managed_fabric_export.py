@@ -281,8 +281,8 @@ class TestMixedPlanExport(ManagedFabricTestBase):
         self.assertIn('fe-leaf-001', switch_names)
         self.assertNotIn('oob-leaf-001', switch_names)
 
-    def test_unmanaged_switch_absent_from_yaml(self):
-        """T1b: oob-mgmt switch is absent from the YAML export entirely."""
+    def test_unmanaged_switch_appears_as_server_crd_surrogate(self):
+        """T1b (revised DIET-250): oob-mgmt switch appears as Server CRD surrogate, not Switch CRD."""
         plan = self._make_plan_with_generation_state('T1-Mixed-Absent')
         fe = self._make_switch_device(plan, 'fe-leaf-002', 'frontend', 'server-leaf')
         self._make_switch_device(plan, 'oob-leaf-002', 'oob-mgmt', 'server-leaf')
@@ -290,7 +290,19 @@ class TestMixedPlanExport(ManagedFabricTestBase):
 
         response = self.client.get(self._export_url(plan))
         self.assertEqual(response.status_code, 200)
-        self.assertNotIn('oob-leaf-002', response.content.decode())
+        yaml_str = response.content.decode()
+
+        import yaml as yaml_lib
+        docs = [d for d in yaml_lib.safe_load_all(yaml_str) if d]
+        switch_names = [d['metadata']['name'] for d in docs if d.get('kind') == 'Switch']
+        server_names = [d['metadata']['name'] for d in docs if d.get('kind') == 'Server']
+
+        # oob-mgmt device must NOT appear as a Switch CRD
+        self.assertNotIn('oob-leaf-002', switch_names,
+                         "oob-mgmt device must not appear in Switch CRDs")
+        # oob-mgmt device MUST appear as a Server CRD surrogate
+        self.assertIn('oob-leaf-002', server_names,
+                      "oob-mgmt device must appear as a Server CRD surrogate")
 
 
 # =============================================================================
@@ -308,27 +320,61 @@ class TestServerConnectionFiltering(ManagedFabricTestBase):
         self.client.force_login(self.user)
 
     def test_server_to_managed_switch_connection_exported(self):
-        """T2a: Cable to managed switch appears; cable to unmanaged switch does not."""
+        """T2a: server->managed cable exports Connection CRD; server->surrogate does not.
+
+        RED: After Phase 4 GREEN implementation:
+        - managed-switch->oob-mgmt cable (zone='oob') must produce a Connection CRD.
+        - server->oob-mgmt cable (zone='server') must NOT produce a Connection CRD
+          (server<->surrogate is out of scope per #249/#252).
+        - oob-mgmt device must appear as a Server CRD (surrogate).
+        """
         plan = self._make_plan_with_generation_state('T2-Filter')
         fe_switch = self._make_switch_device(plan, 'fe-leaf-010', 'frontend', 'server-leaf')
         oob_switch = self._make_switch_device(plan, 'oob-leaf-010', 'oob-mgmt', 'server-leaf')
         server = self._make_server_device(plan, 'gpu-server-010')
 
         fe_iface = self._make_interface(fe_switch, 'E1/1/1')
-        oob_iface = self._make_interface(oob_switch, 'E1/1/1')
+        fe_iface2 = self._make_interface(fe_switch, 'E1/1/2')
+        oob_server_iface = self._make_interface(oob_switch, 'E1/1/1')
+        oob_fe_iface = self._make_interface(oob_switch, 'E1/1/2')
         srv_iface1 = self._make_interface(server, 'eth0')
         srv_iface2 = self._make_interface(server, 'eth1')
 
-        self._make_cable(plan, srv_iface1, fe_iface)
-        self._make_cable(plan, srv_iface2, oob_iface)
+        self._make_cable(plan, srv_iface1, fe_iface)           # server -> managed (zone='server')
+        self._make_cable(plan, srv_iface2, oob_server_iface)   # server -> surrogate (zone='server') — excluded
+        self._make_cable(plan, fe_iface2, oob_fe_iface, zone='oob')  # managed -> surrogate (zone='oob') — included
 
         docs = self._get_export_docs(plan)
         conn_docs = [d for d in docs if d and d.get('kind') == 'Connection']
         all_conn_yaml = str(conn_docs)
+        server_docs = [d for d in docs if d and d.get('kind') == 'Server']
+        server_names = {d['metadata']['name'] for d in server_docs}
 
+        # Server->managed cable: Connection CRD expected
         self.assertIn('gpu-server-010', all_conn_yaml)
         self.assertIn('fe-leaf-010', all_conn_yaml)
-        self.assertNotIn('oob-leaf-010', all_conn_yaml)
+
+        # Managed->surrogate cable: Connection CRD expected (RED: currently fails)
+        self.assertTrue(
+            any('oob-leaf-010' in str(d) for d in conn_docs),
+            "managed-switch->oob-mgmt cable must produce a Connection CRD",
+        )
+
+        # Server->surrogate cable: NO Connection CRD (server<->surrogate excluded)
+        srv_to_oob_conns = [
+            d for d in conn_docs
+            if 'gpu-server-010' in str(d) and 'oob-leaf-010' in str(d)
+        ]
+        self.assertEqual(
+            len(srv_to_oob_conns), 0,
+            "server->oob-mgmt cable must NOT produce a Connection CRD (server<->surrogate excluded)",
+        )
+
+        # oob-mgmt device must appear as a Server CRD (surrogate) (RED: currently fails)
+        self.assertIn(
+            'oob-leaf-010', server_names,
+            "oob-mgmt switch must appear as a Server CRD surrogate",
+        )
 
     def test_server_appears_regardless_of_mgmt_connections(self):
         """T2b: Server CRD is generated even when all its cables go to unmanaged switches."""
@@ -366,15 +412,20 @@ class TestCableCountFiltering(ManagedFabricTestBase):
         self.client.force_login(self.user)
 
     def test_connection_crd_count_excludes_management_cables(self):
-        """T3: Only the 2 managed cables produce Connection CRDs, not the 2 unmanaged ones.
+        """T3: Only managed cables produce Connection CRDs; non-surrogate mgmt cables excluded.
 
-        Uses 4 separate servers (1 cable each) so each cable produces its own unbundled
-        Connection CRD. The 2 unmanaged cables (server→oob_switch) are filtered out,
-        leaving exactly 2 Connection CRDs.
+        Uses 4 cables:
+        - 2 server->managed cables (zone='server'): produce Connection CRDs
+        - 2 server->in-band-mgmt cables: excluded entirely (in-band-mgmt not in SURROGATE_SET)
+        Leaves exactly 2 Connection CRDs.
+
+        Note: oob-mgmt is NOT used here because managed->oob-mgmt cables now produce
+        Connection CRDs (per #249/#252). in-band-mgmt remains fully excluded.
         """
         plan = self._make_plan_with_generation_state('T3-Count')
         fe_switch = self._make_switch_device(plan, 'fe-leaf-020', 'frontend', 'server-leaf')
-        oob_switch = self._make_switch_device(plan, 'oob-leaf-020', 'oob-mgmt', 'server-leaf')
+        # in-band-mgmt is excluded entirely (not a surrogate, not managed)
+        inband_switch = self._make_switch_device(plan, 'inband-leaf-020', 'in-band-mgmt', 'server-leaf')
 
         srv1 = self._make_server_device(plan, 'gpu-server-020a')
         srv2 = self._make_server_device(plan, 'gpu-server-020b')
@@ -383,18 +434,18 @@ class TestCableCountFiltering(ManagedFabricTestBase):
 
         fe_iface1 = self._make_interface(fe_switch, 'E1/1/1')
         fe_iface2 = self._make_interface(fe_switch, 'E1/1/2')
-        oob_iface1 = self._make_interface(oob_switch, 'E1/1/1')
-        oob_iface2 = self._make_interface(oob_switch, 'E1/1/2')
+        inband_iface1 = self._make_interface(inband_switch, 'E1/1/1')
+        inband_iface2 = self._make_interface(inband_switch, 'E1/1/2')
 
-        self._make_cable(plan, self._make_interface(srv1, 'eth0'), fe_iface1)    # managed cable 1
-        self._make_cable(plan, self._make_interface(srv2, 'eth0'), fe_iface2)    # managed cable 2
-        self._make_cable(plan, self._make_interface(srv3, 'eth0'), oob_iface1)   # unmanaged cable 1
-        self._make_cable(plan, self._make_interface(srv4, 'eth0'), oob_iface2)   # unmanaged cable 2
+        self._make_cable(plan, self._make_interface(srv1, 'eth0'), fe_iface1)        # managed cable 1
+        self._make_cable(plan, self._make_interface(srv2, 'eth0'), fe_iface2)        # managed cable 2
+        self._make_cable(plan, self._make_interface(srv3, 'eth0'), inband_iface1)    # excluded cable 1
+        self._make_cable(plan, self._make_interface(srv4, 'eth0'), inband_iface2)    # excluded cable 2
 
         docs = self._get_export_docs(plan)
         conn_count = len([d for d in docs if d and d.get('kind') == 'Connection'])
         self.assertEqual(conn_count, 2,
-            f"Expected 2 Connection CRDs (managed cables only), got {conn_count}.")
+            f"Expected 2 Connection CRDs (managed cables only, in-band-mgmt excluded), got {conn_count}.")
 
 
 # =============================================================================
@@ -667,8 +718,17 @@ class TestLegacyOobFormAndExport(ManagedFabricTestBase):
         # Currently the label is just 'Out-of-Band' so this assertion fails (RED).
         self.assertContains(response, 'Out-of-Band (DEPRECATED')
 
-    def test_oob_mgmt_export_no_dangling_references(self):
-        """T9b: Cables to oob-mgmt switches do not appear as Connection CRDs."""
+    def test_oob_mgmt_export_surrogate_semantics(self):
+        """T9b (revised): oob-mgmt switch exports as Server CRD surrogate; no Switch CRD.
+
+        RED: Current code emits NO CRD for oob-mgmt-050. After GREEN implementation:
+        - oob-mgmt device appears as a Server CRD (surrogate).
+        - No Switch CRD for oob-mgmt device.
+        - server->oob-mgmt cable (zone='server'): NO Connection CRD (server<->surrogate excluded).
+        - A separate managed->oob-mgmt cable (zone='oob') would produce a Connection CRD,
+          but this test focuses on the surrogate Server CRD emission and exclusion of
+          server<->surrogate Connection CRDs.
+        """
         plan = self._make_plan_with_generation_state('T9-OobMgmt')
         fe_switch = self._make_switch_device(plan, 'fe-leaf-050', 'frontend', 'server-leaf')
         oob_switch = self._make_switch_device(plan, 'oob-mgmt-050', 'oob-mgmt', 'server-leaf')
@@ -679,10 +739,408 @@ class TestLegacyOobFormAndExport(ManagedFabricTestBase):
         srv_iface1 = self._make_interface(server, 'eth0')
         srv_iface2 = self._make_interface(server, 'eth1')
 
-        self._make_cable(plan, srv_iface1, fe_iface)
-        self._make_cable(plan, srv_iface2, oob_iface)
+        self._make_cable(plan, srv_iface1, fe_iface)          # server -> managed (zone='server')
+        self._make_cable(plan, srv_iface2, oob_iface)         # server -> surrogate (zone='server') — excluded
 
         response = self.client.get(self._export_url(plan))
         self.assertEqual(response.status_code, 200)
-        yaml_str = response.content.decode()
-        self.assertNotIn('oob-mgmt-050', yaml_str)
+        docs = [d for d in yaml.safe_load_all(response.content.decode()) if d]
+
+        switch_names = {d['metadata']['name'] for d in docs if d.get('kind') == 'Switch'}
+        server_names = {d['metadata']['name'] for d in docs if d.get('kind') == 'Server'}
+        conn_docs = [d for d in docs if d.get('kind') == 'Connection']
+
+        # oob-mgmt must appear as Server CRD surrogate (RED: currently fails)
+        self.assertIn(
+            'oob-mgmt-050', server_names,
+            "oob-mgmt switch must appear as a Server CRD surrogate",
+        )
+
+        # oob-mgmt must NOT appear as Switch CRD
+        self.assertNotIn(
+            'oob-mgmt-050', switch_names,
+            "oob-mgmt switch must never appear as a Switch CRD",
+        )
+
+        # server->oob-mgmt cable must NOT produce a Connection CRD (server<->surrogate excluded)
+        srv_oob_conns = [
+            d for d in conn_docs
+            if 'oob-mgmt-050' in str(d) and 'gpu-server-050' in str(d)
+        ]
+        self.assertEqual(
+            len(srv_oob_conns), 0,
+            "server->oob-mgmt cable must NOT produce a Connection CRD (server<->surrogate out of scope)",
+        )
+
+
+# =============================================================================
+# Phase 3 RED: New predicate unit tests
+# =============================================================================
+
+class TestSurrogateEndpointPredicate(TestCase):
+    """Unit tests for FabricTypeChoices.is_surrogate_endpoint() and SURROGATE_ENDPOINT_SET.
+
+    These tests have no DB access.
+    RED: is_surrogate_endpoint() and SURROGATE_ENDPOINT_SET do not exist yet.
+    """
+
+    def test_oob_mgmt_is_surrogate(self):
+        self.assertTrue(FabricTypeChoices.is_surrogate_endpoint('oob-mgmt'))
+
+    def test_frontend_is_not_surrogate(self):
+        self.assertFalse(FabricTypeChoices.is_surrogate_endpoint('frontend'))
+
+    def test_backend_is_not_surrogate(self):
+        self.assertFalse(FabricTypeChoices.is_surrogate_endpoint('backend'))
+
+    def test_in_band_mgmt_is_not_surrogate(self):
+        self.assertFalse(FabricTypeChoices.is_surrogate_endpoint('in-band-mgmt'))
+
+    def test_network_mgmt_is_not_surrogate(self):
+        self.assertFalse(FabricTypeChoices.is_surrogate_endpoint('network-mgmt'))
+
+    def test_legacy_oob_is_not_surrogate(self):
+        self.assertFalse(FabricTypeChoices.is_surrogate_endpoint('oob'))
+
+    def test_empty_string_is_not_surrogate(self):
+        self.assertFalse(FabricTypeChoices.is_surrogate_endpoint(''))
+
+    def test_unknown_value_is_not_surrogate(self):
+        self.assertFalse(FabricTypeChoices.is_surrogate_endpoint('something-else'))
+
+    def test_surrogate_set_disjoint_from_managed_set(self):
+        """SURROGATE_ENDPOINT_SET and HEDGEHOG_MANAGED_SET must be disjoint."""
+        overlap = FabricTypeChoices.SURROGATE_ENDPOINT_SET & FabricTypeChoices.HEDGEHOG_MANAGED_SET
+        self.assertEqual(overlap, set(), f"Sets must be disjoint but share: {overlap}")
+
+    def test_in_band_mgmt_not_in_surrogate_set(self):
+        """in-band-mgmt must not be auto-included in SURROGATE_ENDPOINT_SET."""
+        self.assertNotIn('in-band-mgmt', FabricTypeChoices.SURROGATE_ENDPOINT_SET)
+
+    def test_network_mgmt_not_in_surrogate_set(self):
+        """network-mgmt must not be auto-included in SURROGATE_ENDPOINT_SET."""
+        self.assertNotIn('network-mgmt', FabricTypeChoices.SURROGATE_ENDPOINT_SET)
+
+
+# =============================================================================
+# Phase 3 RED: Surrogate Server CRD emission (T10)
+# =============================================================================
+
+class TestSurrogateServerCrdEmission(ManagedFabricTestBase):
+    """T10: oob-mgmt switch instances export as Server CRDs, never Switch CRDs.
+
+    RED: _generate_servers() currently filters role__slug='server' only.
+    oob-mgmt devices have role='leaf' (mf-leaf) so they are not found.
+    """
+
+    def setUp(self):
+        self.client = Client()
+        self.client.force_login(self.user)
+
+    def test_oob_mgmt_switch_emits_server_crd(self):
+        """T10a: oob-mgmt device appears as Server CRD; absent from Switch CRDs."""
+        plan = self._make_plan_with_generation_state('T10a-Surrogate')
+        fe = self._make_switch_device(plan, 'fe-leaf-100', 'frontend', 'server-leaf')
+        oob = self._make_switch_device(plan, 'oob-mgmt-100', 'oob-mgmt', 'server-leaf')
+        self._anchor_cable(plan, fe)
+
+        docs = self._get_export_docs(plan)
+        switch_names = {d['metadata']['name'] for d in docs if d.get('kind') == 'Switch'}
+        server_names = {d['metadata']['name'] for d in docs if d.get('kind') == 'Server'}
+
+        # RED: oob-mgmt-100 not yet in server_names (no surrogate logic)
+        self.assertIn('oob-mgmt-100', server_names,
+                      "oob-mgmt switch must appear as a Server CRD surrogate")
+        self.assertNotIn('oob-mgmt-100', switch_names,
+                         "oob-mgmt switch must never appear as a Switch CRD")
+
+    def test_oob_mgmt_server_crd_has_minimal_spec(self):
+        """T10b: Surrogate Server CRD spec contains only allowed fields (no Switch-specific fields)."""
+        plan = self._make_plan_with_generation_state('T10b-Surrogate')
+        fe = self._make_switch_device(plan, 'fe-leaf-101', 'frontend', 'server-leaf')
+        self._make_switch_device(plan, 'oob-mgmt-101', 'oob-mgmt', 'server-leaf')
+        self._anchor_cable(plan, fe)
+
+        docs = self._get_export_docs(plan)
+        surrogate_docs = [
+            d for d in docs
+            if d.get('kind') == 'Server' and d.get('metadata', {}).get('name') == 'oob-mgmt-101'
+        ]
+        # RED: surrogate_docs will be empty until GREEN implementation
+        self.assertEqual(len(surrogate_docs), 1,
+                         "Exactly one Server CRD for oob-mgmt-101 expected")
+        spec = surrogate_docs[0].get('spec', {})
+        forbidden_switch_fields = {'profile', 'boot', 'portBreakouts', 'redundancy', 'ecmp'}
+        present_forbidden = forbidden_switch_fields & set(spec.keys())
+        self.assertEqual(present_forbidden, set(),
+                         f"Surrogate Server CRD must not contain switch-only fields: {present_forbidden}")
+
+    def test_oob_mgmt_server_crd_name_is_dns_safe(self):
+        """T10c: Surrogate Server CRD metadata.name is DNS-1123 compliant."""
+        import re
+        plan = self._make_plan_with_generation_state('T10c-Surrogate')
+        fe = self._make_switch_device(plan, 'fe-leaf-102', 'frontend', 'server-leaf')
+        self._make_switch_device(plan, 'oob-mgmt-102', 'oob-mgmt', 'server-leaf')
+        self._anchor_cable(plan, fe)
+
+        docs = self._get_export_docs(plan)
+        surrogate_docs = [d for d in docs if d.get('kind') == 'Server'
+                          and 'oob-mgmt-102' in d.get('metadata', {}).get('name', '')]
+        # RED: will be empty until GREEN
+        self.assertGreater(len(surrogate_docs), 0,
+                           "Surrogate Server CRD for oob-mgmt-102 must exist")
+        name = surrogate_docs[0]['metadata']['name']
+        self.assertRegex(name, r'^[a-z0-9][a-z0-9-]*[a-z0-9]$',
+                         f"Surrogate CRD name '{name}' must be DNS-1123 compliant")
+
+
+# =============================================================================
+# Phase 3 RED: managed-switch <-> surrogate Connection CRDs (T11)
+# =============================================================================
+
+class TestManagedSurrogateConnectionCrd(ManagedFabricTestBase):
+    """T11: managed-switch <-> oob-mgmt cables produce Connection CRDs (unbundled).
+
+    RED: _endpoint_is_allowed() blocks oob-mgmt devices entirely.
+    All assertions about Connection CRDs containing oob-mgmt names will fail.
+    """
+
+    def setUp(self):
+        self.client = Client()
+        self.client.force_login(self.user)
+
+    def test_managed_to_oob_mgmt_cable_produces_connection_crd(self):
+        """T11a: One managed->oob-mgmt cable (zone='oob') produces one Connection CRD."""
+        plan = self._make_plan_with_generation_state('T11a-MgdSurr')
+        fe = self._make_switch_device(plan, 'fe-leaf-110', 'frontend', 'server-leaf')
+        oob = self._make_switch_device(plan, 'oob-mgmt-110', 'oob-mgmt', 'server-leaf')
+
+        fe_iface = self._make_interface(fe, 'E1/1/1')
+        oob_iface = self._make_interface(oob, 'E1/1/1')
+        self._make_cable(plan, fe_iface, oob_iface, zone='oob')
+        # anchor: need at least one cable for export precondition
+        server = self._make_server_device(plan, 'anchor-srv-110')
+        self._make_cable(plan, self._make_interface(server, 'eth0'),
+                         self._make_interface(fe, 'E1/1/2'))
+
+        docs = self._get_export_docs(plan)
+        conn_docs = [d for d in docs if d.get('kind') == 'Connection']
+
+        # RED: oob-mgmt-110 currently filtered out; no Connection CRD for it
+        oob_conns = [d for d in conn_docs if 'oob-mgmt-110' in str(d)]
+        self.assertGreater(len(oob_conns), 0,
+                           "managed->oob-mgmt cable must produce at least one Connection CRD")
+
+    def test_connection_crd_names_both_endpoints(self):
+        """T11b: Connection CRD for managed->surrogate cable names both endpoints correctly."""
+        plan = self._make_plan_with_generation_state('T11b-MgdSurr')
+        fe = self._make_switch_device(plan, 'fe-leaf-111', 'frontend', 'server-leaf')
+        oob = self._make_switch_device(plan, 'oob-mgmt-111', 'oob-mgmt', 'server-leaf')
+
+        fe_iface = self._make_interface(fe, 'E1/1/1')
+        oob_iface = self._make_interface(oob, 'E1/1/1')
+        self._make_cable(plan, fe_iface, oob_iface, zone='oob')
+        server = self._make_server_device(plan, 'anchor-srv-111')
+        self._make_cable(plan, self._make_interface(server, 'eth0'),
+                         self._make_interface(fe, 'E1/1/2'))
+
+        docs = self._get_export_docs(plan)
+        conn_docs = [d for d in docs if d.get('kind') == 'Connection']
+        oob_conns = [d for d in conn_docs if 'oob-mgmt-111' in str(d)]
+
+        # RED: will be empty until GREEN
+        self.assertGreater(len(oob_conns), 0,
+                           "Connection CRD for managed->surrogate cable must exist")
+        conn = oob_conns[0]
+        conn_str = str(conn)
+        self.assertIn('fe-leaf-111', conn_str,
+                      "Connection CRD must name the managed switch endpoint")
+        self.assertIn('oob-mgmt-111', conn_str,
+                      "Connection CRD must name the surrogate endpoint")
+
+    def test_no_dangling_refs_for_managed_surrogate_connection(self):
+        """T11c: Every endpoint named in Connection CRDs resolves to a Switch or Server CRD."""
+        plan = self._make_plan_with_generation_state('T11c-NoDangle')
+        fe = self._make_switch_device(plan, 'fe-leaf-112', 'frontend', 'server-leaf')
+        oob = self._make_switch_device(plan, 'oob-mgmt-112', 'oob-mgmt', 'server-leaf')
+
+        fe_iface = self._make_interface(fe, 'E1/1/1')
+        oob_iface = self._make_interface(oob, 'E1/1/1')
+        self._make_cable(plan, fe_iface, oob_iface, zone='oob')
+        server = self._make_server_device(plan, 'anchor-srv-112')
+        self._make_cable(plan, self._make_interface(server, 'eth0'),
+                         self._make_interface(fe, 'E1/1/2'))
+
+        docs = self._get_export_docs(plan)
+        switch_names = {d['metadata']['name'] for d in docs if d.get('kind') == 'Switch'}
+        server_names = {d['metadata']['name'] for d in docs if d.get('kind') == 'Server'}
+        known_endpoints = switch_names | server_names
+
+        for conn in (d for d in docs if d.get('kind') == 'Connection'):
+            spec = conn.get('spec', {})
+            # unbundled: check switch and server port fields
+            unbundled = spec.get('unbundled', {})
+            link = unbundled.get('link', {})
+            for side in ('switch', 'server'):
+                port = link.get(side, {}).get('port', '')
+                if port:
+                    device_name = port.split('/')[0]
+                    self.assertIn(
+                        device_name, known_endpoints,
+                        f"Connection endpoint '{device_name}' has no corresponding Switch/Server CRD",
+                    )
+
+
+# =============================================================================
+# Phase 3 RED: surrogate<->surrogate exclusion (T12) — explicit per Dev C
+# =============================================================================
+
+class TestSurrogateSurrogateExclusion(ManagedFabricTestBase):
+    """T12: surrogate<->surrogate cables never produce Connection CRDs (silent skip).
+
+    RED: _endpoint_is_allowed() would let both surrogates through (both have non-empty
+    hedgehog_fabric in SURROGATE_SET → is_surrogate → True after GREEN). But even after
+    GREEN, _determine_connection_type must return 'excluded' for surrogate<->surrogate.
+    Tests are RED now because surrogate Server CRDs don't yet emit.
+    """
+
+    def setUp(self):
+        self.client = Client()
+        self.client.force_login(self.user)
+
+    def test_surrogate_to_surrogate_cable_no_connection_crd(self):
+        """T12a: Cable between two oob-mgmt switches produces NO Connection CRD."""
+        plan = self._make_plan_with_generation_state('T12a-SurrSurr')
+        fe = self._make_switch_device(plan, 'fe-leaf-120', 'frontend', 'server-leaf')
+        oob1 = self._make_switch_device(plan, 'oob-mgmt-120a', 'oob-mgmt', 'server-leaf')
+        oob2 = self._make_switch_device(plan, 'oob-mgmt-120b', 'oob-mgmt', 'server-leaf')
+
+        # Cable between the two surrogates (zone='oob')
+        self._make_cable(plan,
+                         self._make_interface(oob1, 'E1/1/1'),
+                         self._make_interface(oob2, 'E1/1/1'),
+                         zone='oob')
+        # Anchor cable so export precondition (cables exist) passes
+        self._anchor_cable(plan, fe)
+
+        docs = self._get_export_docs(plan)
+        conn_docs = [d for d in docs if d.get('kind') == 'Connection']
+        surrogate_conns = [
+            d for d in conn_docs
+            if 'oob-mgmt-120a' in str(d) and 'oob-mgmt-120b' in str(d)
+        ]
+        self.assertEqual(len(surrogate_conns), 0,
+                         "surrogate<->surrogate cable must produce NO Connection CRD")
+
+    def test_surrogate_to_surrogate_both_appear_as_server_crds(self):
+        """T12b: Both oob-mgmt devices still appear as Server CRDs even with no Connection CRD.
+
+        RED: oob-mgmt devices not yet emitted as Server CRDs.
+        """
+        plan = self._make_plan_with_generation_state('T12b-SurrSurr')
+        fe = self._make_switch_device(plan, 'fe-leaf-121', 'frontend', 'server-leaf')
+        oob1 = self._make_switch_device(plan, 'oob-mgmt-121a', 'oob-mgmt', 'server-leaf')
+        oob2 = self._make_switch_device(plan, 'oob-mgmt-121b', 'oob-mgmt', 'server-leaf')
+
+        self._make_cable(plan,
+                         self._make_interface(oob1, 'E1/1/1'),
+                         self._make_interface(oob2, 'E1/1/1'),
+                         zone='oob')
+        self._anchor_cable(plan, fe)
+
+        docs = self._get_export_docs(plan)
+        server_names = {d['metadata']['name'] for d in docs if d.get('kind') == 'Server'}
+
+        self.assertIn('oob-mgmt-121a', server_names,
+                      "First oob-mgmt switch must appear as Server CRD even with no Connection CRD")
+        self.assertIn('oob-mgmt-121b', server_names,
+                      "Second oob-mgmt switch must appear as Server CRD even with no Connection CRD")
+
+
+# =============================================================================
+# Phase 3 RED: server<->surrogate exclusion (T13) — explicit per Dev C
+# =============================================================================
+
+class TestServerSurrogateExclusion(ManagedFabricTestBase):
+    """T13: server<->surrogate (e.g. BMC->oob-mgmt) cables never produce Connection CRDs.
+
+    Per #249/#252: server<->surrogate links are out of scope for this epic.
+    Only managed-switch<->surrogate links produce Connection CRDs.
+    """
+
+    def setUp(self):
+        self.client = Client()
+        self.client.force_login(self.user)
+
+    def test_server_to_surrogate_cable_no_connection_crd(self):
+        """T13a: server->oob-mgmt cable (zone='oob') produces NO Connection CRD."""
+        plan = self._make_plan_with_generation_state('T13a-SrvSurr')
+        fe = self._make_switch_device(plan, 'fe-leaf-130', 'frontend', 'server-leaf')
+        oob = self._make_switch_device(plan, 'oob-mgmt-130', 'oob-mgmt', 'server-leaf')
+        server = self._make_server_device(plan, 'gpu-server-130')
+
+        # server -> oob-mgmt cable (zone='oob')
+        self._make_cable(plan,
+                         self._make_interface(server, 'eth-bmc'),
+                         self._make_interface(oob, 'E1/1/1'),
+                         zone='oob')
+        # anchor cable on managed switch so export precondition passes
+        self._make_cable(plan,
+                         self._make_interface(server, 'eth0'),
+                         self._make_interface(fe, 'E1/1/1'))
+
+        docs = self._get_export_docs(plan)
+        conn_docs = [d for d in docs if d.get('kind') == 'Connection']
+        srv_oob_conns = [
+            d for d in conn_docs
+            if 'oob-mgmt-130' in str(d) and 'gpu-server-130' in str(d)
+        ]
+        self.assertEqual(len(srv_oob_conns), 0,
+                         "server->oob-mgmt cable must NOT produce a Connection CRD "
+                         "(server<->surrogate out of scope per #249/#252)")
+
+    def test_server_to_surrogate_zone_server_no_connection_crd(self):
+        """T13b: server->oob-mgmt cable with zone='server' also produces NO Connection CRD."""
+        plan = self._make_plan_with_generation_state('T13b-SrvSurr')
+        fe = self._make_switch_device(plan, 'fe-leaf-131', 'frontend', 'server-leaf')
+        oob = self._make_switch_device(plan, 'oob-mgmt-131', 'oob-mgmt', 'server-leaf')
+        server = self._make_server_device(plan, 'gpu-server-131')
+
+        # server -> oob-mgmt cable (zone='server' — wrong zone but still must be excluded)
+        self._make_cable(plan,
+                         self._make_interface(server, 'eth-bmc'),
+                         self._make_interface(oob, 'E1/1/1'),
+                         zone='server')
+        self._make_cable(plan,
+                         self._make_interface(server, 'eth0'),
+                         self._make_interface(fe, 'E1/1/1'))
+
+        docs = self._get_export_docs(plan)
+        conn_docs = [d for d in docs if d.get('kind') == 'Connection']
+        srv_oob_conns = [
+            d for d in conn_docs
+            if 'oob-mgmt-131' in str(d) and 'gpu-server-131' in str(d)
+        ]
+        self.assertEqual(len(srv_oob_conns), 0,
+                         "server->oob-mgmt cable must NOT produce a Connection CRD "
+                         "regardless of zone tag (server<->surrogate out of scope)")
+
+    def test_non_surrogate_unmanaged_excluded_entirely(self):
+        """T13c: in-band-mgmt device produces no Server CRD, no Switch CRD, no Connection CRD."""
+        plan = self._make_plan_with_generation_state('T13c-Excluded')
+        fe = self._make_switch_device(plan, 'fe-leaf-132', 'frontend', 'server-leaf')
+        inband = self._make_switch_device(plan, 'inband-leaf-132', 'in-band-mgmt', 'server-leaf')
+        server = self._make_server_device(plan, 'gpu-server-132')
+
+        self._make_cable(plan,
+                         self._make_interface(server, 'eth0'),
+                         self._make_interface(fe, 'E1/1/1'))
+        self._make_cable(plan,
+                         self._make_interface(server, 'eth1'),
+                         self._make_interface(inband, 'E1/1/1'))
+
+        docs = self._get_export_docs(plan)
+        all_names = {d.get('metadata', {}).get('name', '') for d in docs if d}
+
+        self.assertNotIn('inband-leaf-132', all_names,
+                         "in-band-mgmt device must not appear in any CRD")

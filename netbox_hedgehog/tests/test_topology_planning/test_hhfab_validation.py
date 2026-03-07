@@ -220,3 +220,96 @@ class ValidateWiringYAMLCommandTestCase(TestCase):
 
         # Verbose output should be longer
         self.assertGreater(len(output), 0)
+
+
+# =============================================================================
+# Phase 3 RED: hhfab accepts managed-switch + surrogate Server CRD output
+# =============================================================================
+
+class HHFabSurrogateValidationTestCase(TestCase):
+    """hhfab validate accepts YAML containing a managed Switch CRD + surrogate Server CRD
+    + Connection CRD referencing both.
+
+    Skipped when hhfab is not installed (same pattern as existing live hhfab tests above).
+    This test validates that the surrogate Server CRD schema is hhfab-compatible before
+    GREEN implementation begins.
+
+    The minimal YAML is constructed directly (no DB) to isolate the schema question
+    from any generator bugs.
+    """
+
+    MINIMAL_SURROGATE_YAML = """\
+---
+apiVersion: wiring.githedgehog.com/v1beta1
+kind: VLANNamespace
+metadata:
+  name: default
+  namespace: default
+spec:
+  ranges:
+    - from: 1000
+      to: 2999
+---
+apiVersion: vpc.githedgehog.com/v1beta1
+kind: IPv4Namespace
+metadata:
+  name: default
+  namespace: default
+spec:
+  subnets:
+    - 10.0.0.0/16
+---
+apiVersion: wiring.githedgehog.com/v1beta1
+kind: Switch
+metadata:
+  name: fe-border-leaf-01
+  namespace: default
+spec:
+  role: border-leaf
+  profile: celestica-ds3000
+  boot:
+    mac: 0c:20:12:aa:00:01
+  ecmp: {}
+---
+apiVersion: wiring.githedgehog.com/v1beta1
+kind: Server
+metadata:
+  name: oob-mgmt-001
+  namespace: default
+spec: {}
+---
+apiVersion: wiring.githedgehog.com/v1beta1
+kind: Connection
+metadata:
+  name: oob-mgmt-001-e1-1--unbundled--fe-border-leaf-01
+  namespace: default
+spec:
+  unbundled:
+    link:
+      server:
+        port: oob-mgmt-001/E1/1
+      switch:
+        port: fe-border-leaf-01/E1/32
+"""
+
+    @unittest.skipUnless(hhfab.is_hhfab_available(), "hhfab not installed")
+    def test_hhfab_validates_managed_switch_plus_surrogate_server_output(self):
+        """hhfab validate accepts YAML with managed Switch CRD + surrogate Server CRD + Connection.
+
+        This confirms the surrogate Server CRD schema (spec: {}) is hhfab-compatible,
+        so GREEN implementation can use the same minimal spec as regular Server CRDs.
+        """
+        success, stdout, stderr = hhfab.validate_yaml(self.MINIMAL_SURROGATE_YAML)
+        self.assertTrue(
+            success,
+            f"hhfab must accept YAML with surrogate Server CRD. "
+            f"stderr: {stderr.strip()}\nstdout: {stdout.strip()}",
+        )
+
+    def test_surrogate_yaml_is_parseable(self):
+        """Minimal surrogate YAML is valid YAML (parse-only, no hhfab needed)."""
+        import yaml
+        docs = list(yaml.safe_load_all(self.MINIMAL_SURROGATE_YAML))
+        non_null = [d for d in docs if d]
+        self.assertEqual(len(non_null), 5,
+                         "MINIMAL_SURROGATE_YAML must parse to 5 documents")
