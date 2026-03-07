@@ -176,9 +176,8 @@ class YAMLGenerator:
             return ('excluded', {})
 
         if conn_type == 'unbundled':
-            # Server-switch connection
-            # Determine which device is server vs switch via endpoint kind
-            if self._endpoint_kind(device_a) == 'server':
+            # Server-switch connection (server side is 'server' or 'surrogate' kind)
+            if self._endpoint_kind(device_a) in ('server', 'surrogate'):
                 server_device, server_iface = device_a, iface_a
                 switch_device, switch_iface = device_b, iface_b
             else:
@@ -601,17 +600,17 @@ class YAMLGenerator:
         kind_a = self._endpoint_kind(device_a)
         kind_b = self._endpoint_kind(device_b)
 
-        # Server↔managed_switch → unbundled
-        if kind_a == 'server' and kind_b == 'managed_switch':
+        # server/surrogate↔managed_switch → unbundled
+        if kind_a in ('server', 'surrogate') and kind_b == 'managed_switch':
             return 'unbundled'
-        if kind_b == 'server' and kind_a == 'managed_switch':
+        if kind_b in ('server', 'surrogate') and kind_a == 'managed_switch':
             return 'unbundled'
 
         # managed_switch↔managed_switch → fabric
         if kind_a == 'managed_switch' and kind_b == 'managed_switch':
             return 'fabric'
 
-        # Everything else (surrogate combos, excluded, server↔server, etc.) — silent skip
+        # Everything else (surrogate↔surrogate, server↔surrogate, server↔server, excluded) — silent skip
         return 'excluded'
 
     def _sanitize_name(self, name: str) -> str:
