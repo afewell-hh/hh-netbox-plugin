@@ -617,6 +617,13 @@ def calculate_switch_quantity(switch_class) -> int:
     if total_ports_needed > 0 and switches_needed == 0:
         switches_needed = 1
 
+    # Enforce minimum 2 switches when any connection uses distribution=alternating.
+    # Alternating semantics (port 0 → switch A, port 1 → switch B) require at least
+    # two switch instances; with only 1, DeviceGenerator fast-exits and the HA intent
+    # is silently dropped (device_generator.py _select_switch_instance line 718).
+    if connections.filter(distribution='alternating').exists() and switches_needed < 2:
+        switches_needed = 2
+
     # Step 8: Apply redundancy constraints (uses module-level helper)
     try:
         return _apply_redundancy_rounding(switch_class, switches_needed)
