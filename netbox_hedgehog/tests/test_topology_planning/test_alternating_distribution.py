@@ -163,6 +163,31 @@ class AlternatingDistributionMinTwoTestCase(TestCase):
         ))
 
     # =========================================================================
+    # Test 1b: zero-demand alternating does NOT over-allocate to 2
+    # =========================================================================
+
+    def test_alternating_zero_demand_returns_zero(self):
+        """
+        When server class quantity=0, total_ports_needed=0, and no switches
+        should be allocated even if distribution=alternating.
+
+        Regression guard for the blocking finding on PR #245: the alternating
+        minimum-2 rule must be conditioned on total_ports_needed > 0.
+        """
+        switch_class = self._make_switch_class(switch_class_id='border-leaf-zero')
+        zone = self._make_server_zone(switch_class, zone_name='downlinks-zero')
+        server_class = self._make_server_class(server_class_id='zero-qty', quantity=0)
+        self._make_connection(server_class, zone, distribution='alternating',
+                              ports_per_connection=2, connection_id='conn-zero')
+
+        result = calculate_switch_quantity(switch_class)
+
+        self.assertEqual(result, 0, (
+            "Zero-quantity server class produces no port demand; "
+            "alternating minimum-2 must not fire when total_ports_needed == 0"
+        ))
+
+    # =========================================================================
     # Test 2: alternating does NOT reduce capacity-driven count above 2
     # =========================================================================
 
