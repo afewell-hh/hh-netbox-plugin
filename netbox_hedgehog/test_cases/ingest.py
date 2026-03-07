@@ -560,22 +560,46 @@ def apply_case(
                     }
                 ]
             )
-        PlanServerConnection.objects.update_or_create(
-            server_class=server,
-            connection_id=conn_id,
-            defaults={
-                "connection_name": item.get("connection_name", ""),
-                "nic_module_type": nic,
-                "port_index": item.get("port_index", 0),
-                "ports_per_connection": item["ports_per_connection"],
-                "hedgehog_conn_type": item.get("hedgehog_conn_type", "unbundled"),
-                "distribution": item.get("distribution", ""),
-                "target_zone": target_zone,
-                "speed": item["speed"],
-                "rail": item.get("rail"),
-                "port_type": item.get("port_type", ""),
-            },
-        )
+        # Build-validate-save pattern: run full_clean() before persisting so that
+        # model-level constraints (e.g. alternating requires redundancy_type) are
+        # enforced on the ingest path, not just through forms/API.
+        conn_defaults = {
+            "connection_name": item.get("connection_name", ""),
+            "nic_module_type": nic,
+            "port_index": item.get("port_index", 0),
+            "ports_per_connection": item["ports_per_connection"],
+            "hedgehog_conn_type": item.get("hedgehog_conn_type", "unbundled"),
+            "distribution": item.get("distribution", ""),
+            "target_zone": target_zone,
+            "speed": item["speed"],
+            "rail": item.get("rail"),
+            "port_type": item.get("port_type", ""),
+        }
+        try:
+            conn = PlanServerConnection.objects.get(
+                server_class=server, connection_id=conn_id
+            )
+            for k, v in conn_defaults.items():
+                setattr(conn, k, v)
+        except PlanServerConnection.DoesNotExist:
+            conn = PlanServerConnection(
+                server_class=server, connection_id=conn_id, **conn_defaults
+            )
+        from django.core.exceptions import ValidationError as DjangoValidationError
+        try:
+            conn.full_clean()
+        except DjangoValidationError as exc:
+            raise TestCaseValidationError(
+                [
+                    {
+                        "severity": "error",
+                        "code": "validation_error",
+                        "path": f"server_connections[{conn_id}]",
+                        "message": str(exc),
+                    }
+                ]
+            )
+        conn.save()
 
     # Prune extra owned plans (if duplicates ever existed).
     if prune and len(owned_plans) > 1:

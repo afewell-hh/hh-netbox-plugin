@@ -194,6 +194,126 @@ class AlternatingRedundancyValidationTestCase(TestCase):
             self.assertEqual(relevant, {}, f"Unexpected redundancy validation error: {e}")
 
 
+class AlternatingRedundancyIngestTestCase(TestCase):
+    """
+    Tests that the YAML ingest path enforces the alternating-requires-redundancy_type
+    rule via full_clean() before saving PlanServerConnection records.
+
+    Regression guard for the blocking finding on PR #247: ORM create paths previously
+    bypassed clean(), so the constraint was only enforced through forms/API.
+    """
+
+    @classmethod
+    def setUpTestData(cls):
+        manufacturer, _ = Manufacturer.objects.get_or_create(
+            name='Test-Ingest-Mfg', defaults={'slug': 'test-ingest-mfg'}
+        )
+        cls.device_type, _ = DeviceType.objects.get_or_create(
+            manufacturer=manufacturer,
+            model='Test-Ingest-Switch',
+            defaults={'slug': 'test-ingest-switch'},
+        )
+        cls.breakout_1x100g, _ = BreakoutOption.objects.get_or_create(
+            breakout_id='test-ingest-1x100g',
+            defaults={'from_speed': 100, 'logical_ports': 1, 'logical_speed': 100},
+        )
+        cls.device_ext, _ = DeviceTypeExtension.objects.get_or_create(
+            device_type=cls.device_type,
+            defaults={
+                'mclag_capable': False,
+                'supported_breakouts': ['test-ingest-1x100g'],
+                'native_speed': 100,
+            },
+        )
+        cls.server_device_type, _ = DeviceType.objects.get_or_create(
+            manufacturer=manufacturer,
+            model='Test-Ingest-Server',
+            defaults={'slug': 'test-ingest-server'},
+        )
+
+    def setUp(self):
+        self.plan = TopologyPlan.objects.create(
+            name=f'Ingest-Test-Plan-{self._testMethodName}',
+            customer_name='Test Customer',
+        )
+
+    def _make_switch_class(self, switch_class_id='border-leaf', redundancy_type=None,
+                           redundancy_group=None):
+        return PlanSwitchClass.objects.create(
+            plan=self.plan,
+            switch_class_id=switch_class_id,
+            fabric=FabricTypeChoices.FRONTEND,
+            hedgehog_role=HedgehogRoleChoices.SERVER_LEAF,
+            device_type_extension=self.device_ext,
+            uplink_ports_per_switch=0,
+            redundancy_type=redundancy_type or '',
+            redundancy_group=redundancy_group or '',
+        )
+
+    def _make_server_zone(self, switch_class, zone_name='downlinks'):
+        return SwitchPortZone.objects.create(
+            switch_class=switch_class,
+            zone_name=zone_name,
+            zone_type=PortZoneTypeChoices.SERVER,
+            port_spec='1-12',
+            breakout_option=self.breakout_1x100g,
+        )
+
+    def _make_server_class(self, server_class_id='ctrl', quantity=1):
+        return PlanServerClass.objects.create(
+            plan=self.plan,
+            server_class_id=server_class_id,
+            server_device_type=self.server_device_type,
+            quantity=quantity,
+        )
+
+    def test_ingest_rejects_alternating_without_redundancy_type(self):
+        """
+        The ingest build-validate-save path must reject alternating connections
+        whose target switch class has no redundancy_type — even on the ORM path.
+
+        This is the negative ingest test required by the blocking finding on PR #247.
+        """
+        from netbox_hedgehog.test_cases.ingest import TestCaseValidationError
+
+        switch_class = self._make_switch_class(switch_class_id='no-redund-leaf')
+        zone = self._make_server_zone(switch_class)
+        server_class = self._make_server_class()
+
+        # Simulate what ingest does: build-validate-save pattern
+        conn_defaults = {
+            "connection_name": "test-conn",
+            "nic_module_type": get_test_nic_module_type(),
+            "port_index": 0,
+            "ports_per_connection": 2,
+            "hedgehog_conn_type": "unbundled",
+            "distribution": "alternating",
+            "target_zone": zone,
+            "speed": 100,
+            "rail": None,
+            "port_type": "",
+        }
+        conn = PlanServerConnection(
+            server_class=server_class,
+            connection_id='test-conn',
+            **conn_defaults,
+        )
+
+        from django.core.exceptions import ValidationError as DjangoValidationError
+        with self.assertRaises(DjangoValidationError) as ctx:
+            conn.full_clean()
+
+        self.assertIn('no-redund-leaf', str(ctx.exception))
+
+        # Also assert the record was NOT persisted
+        self.assertFalse(
+            PlanServerConnection.objects.filter(
+                server_class=server_class, connection_id='test-conn'
+            ).exists(),
+            "Alternating connection without redundancy_type must not be saved to DB"
+        )
+
+
 class AlternatingRedundancy128GpuRegressionTestCase(TestCase):
     """
     Regression guard: after updating the canonical 128GPU YAML to add
