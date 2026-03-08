@@ -114,24 +114,35 @@ class OobMgmtSwitchClassStructureTestCase(TestCase):
         )
 
     # -------------------------------------------------------------------------
-    # T5-A-5: fe-border-leaf has an oob-type zone for managed<->surrogate uplinks
-    # Expected failure: YAML fe-border-leaf has no oob zone.
+    # T5-A-5: fe-border-leaf has a zone that serves as peer_zone target for oob-mgmt uplinks.
+    # Approved design (#258 interim fix): a shared 25G breakout zone (fe-border-25g-shared,
+    # ports 14-16) is used for both admin-node downlinks and oob-mgmt surrogate uplinks.
+    # No dedicated OOB-type zone on fe-border-leaf is required.
     # -------------------------------------------------------------------------
 
     def test_fe_border_leaf_has_oob_zone(self):
-        """fe-border-leaf must have an OOB-type zone for oob-mgmt uplink ports."""
+        """fe-border-leaf must have the shared 25G zone that serves as oob-mgmt peer_zone target.
+
+        Approved design: fe-border-25g-shared (ports 14-16, 4x25G) is shared between
+        admin-node data connections and oob-mgmt surrogate uplinks. No separate OOB-type
+        zone on fe-border-leaf is needed — the peer_zone FK on oob-mgmt-uplinks provides
+        the explicit target reference.
+        """
         border = PlanSwitchClass.objects.filter(
             plan=self.plan, switch_class_id='fe-border-leaf'
         ).first()
         self.assertIsNotNone(border, "fe-border-leaf must exist")
-        oob_zone = SwitchPortZone.objects.filter(
+        shared_zone = SwitchPortZone.objects.filter(
             switch_class=border,
-            zone_type=PortZoneTypeChoices.OOB,
+            zone_name='fe-border-25g-shared',
         ).first()
         self.assertIsNotNone(
-            oob_zone,
-            "fe-border-leaf must have at least one OOB-type zone for managed<->surrogate uplinks",
+            shared_zone,
+            "fe-border-leaf must have fe-border-25g-shared zone (shared 4x25G, ports 14-16) "
+            "for admin-node downlinks and oob-mgmt surrogate uplinks",
         )
+        self.assertEqual(shared_zone.port_spec, '14-16',
+                         "Shared 25G zone must use ports 14-16 (non-overlapping with uplinks 17-32)")
 
     # -------------------------------------------------------------------------
     # T5-A-6: oob-mgmt-leaf has an oob-type downlink zone (for server IPMI connections)

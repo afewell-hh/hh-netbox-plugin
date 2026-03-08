@@ -378,21 +378,28 @@ class FeBorderLeafTestCase(TestCase):
         )
 
     def test_fe_border_leaf_port_zones(self):
-        """fe-border-leaf must have 25G and 100G downlink zones with correct breakout options."""
+        """fe-border-leaf must have shared 25G and 100G downlink zones (non-overlapping layout).
+
+        Approved layout (DS3000): E1/1-13=100G downlinks, E1/14-16=shared 4x25G, E1/17-32=uplinks.
+        """
         border = PlanSwitchClass.objects.get(plan=self.plan, switch_class_id='fe-border-leaf')
         zones = {z.zone_name: z for z in SwitchPortZone.objects.filter(switch_class=border)}
 
-        self.assertIn('fe-border-25g-downlinks', zones, "25G downlink zone must exist")
+        self.assertIn('fe-border-25g-shared', zones, "Shared 25G zone must exist")
         self.assertIn('fe-border-100g-downlinks', zones, "100G downlink zone must exist")
+        self.assertNotIn('fe-border-oob-downlinks', zones,
+                         "Dedicated OOB zone must not exist (overlap removed)")
 
-        z25 = zones['fe-border-25g-downlinks']
+        z25 = zones['fe-border-25g-shared']
         self.assertEqual(z25.zone_type, 'server')
+        self.assertEqual(z25.port_spec, '14-16', "Shared 25G zone must use ports 14-16")
         self.assertIsNotNone(z25.breakout_option)
         self.assertEqual(z25.breakout_option.breakout_id, '4x25g',
-                         "25G zone must use 4x25G breakout for admin node connections")
+                         "Shared 25G zone must use 4x25G breakout")
 
         z100 = zones['fe-border-100g-downlinks']
         self.assertEqual(z100.zone_type, 'server')
+        self.assertEqual(z100.port_spec, '1-13', "100G downlink zone must use ports 1-13")
         self.assertIsNotNone(z100.breakout_option)
         self.assertEqual(z100.breakout_option.breakout_id, '1x100g',
                          "100G zone must use native 1x100G for controller/exo connections")
@@ -438,7 +445,7 @@ class FeBorderLeafTestCase(TestCase):
         self.assertEqual(conn.speed, 25, "admin-node connection must be 25G")
         self.assertEqual(
             conn.target_zone.zone_name,
-            'fe-border-25g-downlinks',
+            'fe-border-25g-shared',
             "admin-node must connect to 25G breakout zone",
         )
 

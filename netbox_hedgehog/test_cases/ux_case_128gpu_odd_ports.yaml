@@ -535,17 +535,17 @@ switch_port_zones:
     allocation_strategy: sequential
     priority: 100
   - switch_class: fe-border-leaf
-    zone_name: fe-border-25g-downlinks
+    zone_name: fe-border-100g-downlinks
     zone_type: server
-    port_spec: 1-4
-    breakout_option: b_4x25
+    port_spec: 1-13
+    breakout_option: b_1x100
     allocation_strategy: sequential
     priority: 100
   - switch_class: fe-border-leaf
-    zone_name: fe-border-100g-downlinks
+    zone_name: fe-border-25g-shared
     zone_type: server
-    port_spec: 5-16
-    breakout_option: b_1x100
+    port_spec: 14-16
+    breakout_option: b_4x25
     allocation_strategy: sequential
     priority: 100
   - switch_class: fe-border-leaf
@@ -555,13 +555,6 @@ switch_port_zones:
     breakout_option: b_1x100
     allocation_strategy: sequential
     priority: 200
-  - switch_class: fe-border-leaf
-    zone_name: fe-border-oob-downlinks
-    zone_type: oob
-    port_spec: 17-20
-    breakout_option: b_1x100
-    allocation_strategy: sequential
-    priority: 300
   - switch_class: oob-mgmt-leaf
     zone_name: oob-mgmt-downlinks
     zone_type: oob
@@ -576,7 +569,7 @@ switch_port_zones:
     breakout_option: b_1x25
     allocation_strategy: sequential
     priority: 100
-    peer_zone: fe-border-leaf/fe-border-oob-downlinks
+    peer_zone: fe-border-leaf/fe-border-25g-shared
 
 server_classes:
   - server_class_id: gpu-fe-only
@@ -766,7 +759,7 @@ server_connections:
     ports_per_connection: 2
     hedgehog_conn_type: unbundled
     distribution: alternating
-    target_zone: fe-border-leaf/fe-border-25g-downlinks
+    target_zone: fe-border-leaf/fe-border-25g-shared
     speed: 25
     port_type: data
   - server_class: host-lfm-ctrl
