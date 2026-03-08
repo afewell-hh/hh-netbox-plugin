@@ -479,6 +479,33 @@ def apply_case(
         ).select_related('switch_class')
     }
 
+    # Second pass: resolve peer_zone references (Option A — explicit surrogate uplink target).
+    # Done after zone_map is built so forward references within the same case resolve correctly.
+    for item in case.get("switch_port_zones", []):
+        raw_peer = item.get("peer_zone")
+        if not raw_peer:
+            continue
+        switch_id = item["switch_class"]
+        zone_name = item["zone_name"]
+        this_zone = zone_map.get(f"{switch_id}/{zone_name}")
+        target_zone = zone_map.get(raw_peer)
+        if not this_zone:
+            continue
+        if not target_zone:
+            raise TestCaseValidationError(
+                [
+                    {
+                        "severity": "error",
+                        "code": "unknown_reference",
+                        "path": f"switch_port_zones[{zone_name}].peer_zone",
+                        "message": f"Unknown peer_zone reference '{raw_peer}' (expected 'switch_class_id/zone_name')",
+                    }
+                ]
+            )
+        if this_zone.peer_zone_id != target_zone.pk:
+            this_zone.peer_zone = target_zone
+            this_zone.save(update_fields=['peer_zone', 'last_updated'])
+
     # Upsert server classes.
     server_map = {}
     declared_server_ids = set()

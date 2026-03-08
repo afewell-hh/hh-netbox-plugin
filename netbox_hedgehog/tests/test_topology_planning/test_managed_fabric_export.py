@@ -376,8 +376,12 @@ class TestServerConnectionFiltering(ManagedFabricTestBase):
             "oob-mgmt switch must appear as a Server CRD surrogate",
         )
 
-    def test_server_appears_regardless_of_mgmt_connections(self):
-        """T2b: Server CRD is generated even when all its cables go to unmanaged switches."""
+    def test_server_excluded_when_only_surrogate_connections(self):
+        """T2b (updated DIET-254): Server with only surrogate connections excluded from Server CRDs.
+
+        Constraint #3: a server must NOT appear in wiring export solely due to
+        surrogate-only (oob-mgmt) connectivity.
+        """
         plan = self._make_plan_with_generation_state('T2-Server-Only')
         oob_switch = self._make_switch_device(plan, 'oob-leaf-011', 'oob-mgmt', 'server-leaf')
         server = self._make_server_device(plan, 'gpu-server-011')
@@ -391,9 +395,9 @@ class TestServerConnectionFiltering(ManagedFabricTestBase):
 
         docs = [d for d in yaml.safe_load_all(response.content.decode()) if d]
         server_docs = [d for d in docs if d and d.get('kind') == 'Server']
-        self.assertTrue(
+        self.assertFalse(
             any('gpu-server-011' in str(d) for d in server_docs),
-            "Server CRD should appear even when connected only to unmanaged switches.",
+            "Server CRD must NOT appear when connected only to surrogate (oob-mgmt) switches (constraint #3).",
         )
 
 
@@ -1144,3 +1148,146 @@ class TestServerSurrogateExclusion(ManagedFabricTestBase):
 
         self.assertNotIn('inband-leaf-132', all_names,
                          "in-band-mgmt device must not appear in any CRD")
+
+
+# =============================================================================
+# T14: Constraint #3 — server excluded from export if ONLY surrogate connections
+# (DIET-254 Phase 5)
+# =============================================================================
+
+class TestServerExportScopeConstraint3(ManagedFabricTestBase):
+    """
+    T14: A server must NOT appear in Server CRDs solely because it has surrogate
+    (oob-mgmt) connections. Servers appear in full-plan export only if they have
+    at least one export-eligible (managed-switch) connection.
+
+    Source: DIET-254 kickoff, Dev C constraint #3.
+
+    Expected failure reasons (RED state):
+      - T14a: _generate_servers() with no filter_ids includes ALL plan servers
+        regardless of connections. A server with only oob-mgmt connections is
+        incorrectly included in the full-plan Server CRD list.
+      - T14b: passes trivially (server with managed conn always included) — used
+        as sanity anchor alongside T14a.
+      - T14c: variant of T14a with multiple servers, confirms filtering is correct
+        when mixed-connectivity servers exist in the same plan.
+    """
+
+    def setUp(self):
+        super().setUp()
+        self.client.force_login(self.user)
+
+    # -------------------------------------------------------------------------
+    # T14a: server with ONLY oob-mgmt connections excluded from full-plan export
+    # Expected failure: _generate_servers() includes all plan servers; server
+    # with only surrogate connections is incorrectly included.
+    # -------------------------------------------------------------------------
+
+    def test_server_with_only_surrogate_connection_excluded_from_export(self):
+        """
+        T14a: A server whose only cable goes to an oob-mgmt (surrogate) switch
+        must NOT appear in Server CRDs in full-plan export.
+        """
+        plan = self._make_plan_with_generation_state('T14a-SurrogateOnly')
+        fe = self._make_switch_device(plan, 'fe-leaf-200', 'frontend', 'server-leaf')
+        oob = self._make_switch_device(plan, 'oob-mgmt-200', 'oob-mgmt', 'server-leaf')
+
+        # Server A: connects to BOTH managed and oob-mgmt (should appear)
+        server_a = self._make_server_device(plan, 'server-200a')
+        self._make_cable(plan, self._make_interface(server_a, 'eth0'),
+                         self._make_interface(fe, 'E1/1/1'))
+        self._make_cable(plan, self._make_interface(server_a, 'bmc'),
+                         self._make_interface(oob, 'E1/1/1'))
+
+        # Server B: connects ONLY to oob-mgmt (must NOT appear)
+        server_b = self._make_server_device(plan, 'server-200b')
+        self._make_cable(plan, self._make_interface(server_b, 'bmc'),
+                         self._make_interface(oob, 'E1/1/2'))
+
+        docs = self._get_export_docs(plan)
+        server_names = {d['metadata']['name'] for d in docs if d and d.get('kind') == 'Server'}
+
+        # Server A must appear (has managed switch connection)
+        self.assertIn(
+            'server-200a', server_names,
+            "server-200a has a managed switch connection and must appear in Server CRDs",
+        )
+
+        # Server B must NOT appear (only oob-mgmt connection — surrogate only)
+        self.assertNotIn(
+            'server-200b', server_names,
+            "server-200b has ONLY a surrogate (oob-mgmt) connection and must NOT appear "
+            "in Server CRDs per DIET-254 constraint #3",
+        )
+
+    # -------------------------------------------------------------------------
+    # T14b: server with managed + surrogate connections IS included (sanity check)
+    # Expected to PASS even before GREEN — existing behavior is correct here.
+    # Included to anchor T14a; if T14a is fixed, T14b must remain green.
+    # -------------------------------------------------------------------------
+
+    def test_server_with_managed_and_surrogate_connections_included(self):
+        """
+        T14b: A server with both managed-switch and oob-mgmt connections must
+        appear in Server CRDs (managed connection qualifies it for export scope).
+        """
+        plan = self._make_plan_with_generation_state('T14b-Mixed')
+        fe = self._make_switch_device(plan, 'fe-leaf-201', 'frontend', 'server-leaf')
+        oob = self._make_switch_device(plan, 'oob-mgmt-201', 'oob-mgmt', 'server-leaf')
+        server = self._make_server_device(plan, 'server-201')
+
+        self._make_cable(plan, self._make_interface(server, 'eth0'),
+                         self._make_interface(fe, 'E1/1/1'))
+        self._make_cable(plan, self._make_interface(server, 'bmc'),
+                         self._make_interface(oob, 'E1/1/1'))
+
+        docs = self._get_export_docs(plan)
+        server_names = {d['metadata']['name'] for d in docs if d and d.get('kind') == 'Server'}
+
+        self.assertIn(
+            'server-201', server_names,
+            "server-201 has a managed switch connection and must appear in Server CRDs",
+        )
+
+    # -------------------------------------------------------------------------
+    # T14c: multiple servers with mixed connectivity — only export-eligible appear
+    # Expected failure: same as T14a — full-plan export does not filter servers.
+    # -------------------------------------------------------------------------
+
+    def test_mixed_plan_only_export_eligible_servers_appear(self):
+        """
+        T14c: In a plan with 3 servers:
+          - server-A: connected to managed switch only → must appear
+          - server-B: connected to managed switch + oob-mgmt → must appear
+          - server-C: connected to oob-mgmt only → must NOT appear
+        """
+        plan = self._make_plan_with_generation_state('T14c-MixedPlan')
+        fe = self._make_switch_device(plan, 'fe-leaf-202', 'frontend', 'server-leaf')
+        oob = self._make_switch_device(plan, 'oob-mgmt-202', 'oob-mgmt', 'server-leaf')
+
+        server_a = self._make_server_device(plan, 'server-202a')
+        self._make_cable(plan, self._make_interface(server_a, 'eth0'),
+                         self._make_interface(fe, 'E1/1/1'))
+
+        server_b = self._make_server_device(plan, 'server-202b')
+        self._make_cable(plan, self._make_interface(server_b, 'eth0'),
+                         self._make_interface(fe, 'E1/1/2'))
+        self._make_cable(plan, self._make_interface(server_b, 'bmc'),
+                         self._make_interface(oob, 'E1/1/1'))
+
+        server_c = self._make_server_device(plan, 'server-202c')
+        self._make_cable(plan, self._make_interface(server_c, 'bmc'),
+                         self._make_interface(oob, 'E1/1/2'))
+
+        docs = self._get_export_docs(plan)
+        server_names = {d['metadata']['name'] for d in docs if d and d.get('kind') == 'Server'}
+
+        self.assertIn('server-202a', server_names,
+                      "server-202a (managed only) must appear in Server CRDs")
+        self.assertIn('server-202b', server_names,
+                      "server-202b (managed + surrogate) must appear in Server CRDs")
+        self.assertNotIn(
+            'server-202c', server_names,
+            "server-202c (surrogate only) must NOT appear in Server CRDs "
+            "per DIET-254 constraint #3",
+        )

@@ -67,8 +67,8 @@ class Case128GpuCommandTestCase(TestCase):
         ).count()
 
         self.assertEqual(server_count, 8)
-        self.assertEqual(switch_count, 6)
-        self.assertEqual(connection_count, 16)
+        self.assertEqual(switch_count, 7)   # Phase 5 adds oob-mgmt-leaf
+        self.assertEqual(connection_count, 24)  # Phase 5 adds 8 IPMI connections
 
     def test_generate_preview_page_loads(self):
         self.client.force_login(self.superuser)
@@ -420,19 +420,20 @@ class FeBorderLeafTestCase(TestCase):
         )
         for sc_id in ['admin-node', 'host-lfm-ctrl', 'hh-fe-ctrl', 'hh-be-ctrl', 'exo-kube']:
             sc = PlanServerClass.objects.get(plan=self.plan, server_class_id=sc_id)
-            conns = PlanServerConnection.objects.filter(server_class=sc)
-            self.assertGreater(conns.count(), 0, f"{sc_id} must have at least one connection")
+            # Exclude IPMI/oob management connections; check data connections only
+            conns = PlanServerConnection.objects.filter(server_class=sc).exclude(port_type='ipmi')
+            self.assertGreater(conns.count(), 0, f"{sc_id} must have at least one data connection")
             for conn in conns:
                 self.assertIn(
                     conn.target_zone_id,
                     border_zone_ids,
-                    f"{sc_id} connection must target fe-border-leaf zone",
+                    f"{sc_id} data connection must target fe-border-leaf zone",
                 )
 
     def test_admin_node_uses_25g_breakout_zone(self):
-        """admin-node connection must target the 4x25G breakout zone specifically."""
+        """admin-node data connection must target the 4x25G breakout zone specifically."""
         sc = PlanServerClass.objects.get(plan=self.plan, server_class_id='admin-node')
-        conn = PlanServerConnection.objects.filter(server_class=sc).first()
+        conn = PlanServerConnection.objects.filter(server_class=sc).exclude(port_type='ipmi').first()
         self.assertIsNotNone(conn)
         self.assertEqual(conn.speed, 25, "admin-node connection must be 25G")
         self.assertEqual(
@@ -442,11 +443,11 @@ class FeBorderLeafTestCase(TestCase):
         )
 
     def test_controller_connections_use_100g_zone(self):
-        """Controller server connections must target 100G zone at 100G speed."""
+        """Controller server data connections must target 100G zone at 100G speed."""
         for sc_id in ['host-lfm-ctrl', 'hh-fe-ctrl', 'hh-be-ctrl']:
             sc = PlanServerClass.objects.get(plan=self.plan, server_class_id=sc_id)
-            conn = PlanServerConnection.objects.filter(server_class=sc).first()
-            self.assertIsNotNone(conn, f"{sc_id} must have a connection")
+            conn = PlanServerConnection.objects.filter(server_class=sc).exclude(port_type='ipmi').first()
+            self.assertIsNotNone(conn, f"{sc_id} must have a data connection")
             self.assertEqual(conn.speed, 100, f"{sc_id} connection must be 100G")
             self.assertEqual(
                 conn.target_zone.zone_name,
@@ -555,9 +556,10 @@ class CanonicalStorageZoneRegressionTestCase(TestCase):
         self.assertEqual(storage_srv.quantity, c['server_quantity'],
                          f"{srv_id} must have quantity={c['server_quantity']} per contract")
 
-        conns = PlanServerConnection.objects.filter(server_class=storage_srv)
+        # Check data connection count only (contract documents data plane, not oob/IPMI)
+        conns = PlanServerConnection.objects.filter(server_class=storage_srv).exclude(port_type='ipmi')
         self.assertEqual(conns.count(), c['connection_count'],
-                         f"{srv_id} must have exactly {c['connection_count']} connection(s) per contract")
+                         f"{srv_id} must have exactly {c['connection_count']} data connection(s) per contract")
         conn = conns.first()
         self.assertEqual(conn.target_zone.switch_class, storage_leaf.first(),
                          f"storage connection must target {sc_id}")

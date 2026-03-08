@@ -340,6 +340,10 @@ class DeviceGenerator:
         interfaces.extend(fabric_interfaces)
         cables.extend(fabric_cables)
 
+        surr_interfaces, surr_cables = self._create_surrogate_uplink_connections(switch_devices)
+        interfaces.extend(surr_interfaces)
+        cables.extend(surr_cables)
+
         return interfaces, cables
 
     def _create_fabric_connections(
@@ -463,6 +467,125 @@ class DeviceGenerator:
                         )
                         cable.custom_field_data = {
                             'hedgehog_plan_id': str(self.plan.pk),
+                        }
+                        cable.save()
+                        cables.append(cable)
+
+        return interfaces, cables
+
+    def _create_surrogate_uplink_connections(
+        self,
+        switch_devices: dict[str, Device],
+    ) -> tuple[list[Interface], list[Cable]]:
+        """
+        Generate oob-zone cables between surrogate (oob-mgmt) switch instances
+        and their target managed switch instances (DIET-254 Phase 5, Option A).
+
+        For each surrogate switch class that has an oob-type zone with peer_zone set:
+          - Each surrogate instance allocates all ports from the uplink zone.
+          - Ports are connected to the peer managed switch instances in alternating order.
+          - Cables are tagged hedgehog_zone='oob' so yaml_generator routes them as
+            managed_switch<->surrogate unbundled Connection CRDs.
+
+        This method is deterministic: surrogate and managed switch instances are
+        sorted by name before connection assignment.
+        """
+        interfaces: list[Interface] = []
+        cables: list[Cable] = []
+
+        for switch_class in self.plan.switch_classes.all():
+            if not FabricTypeChoices.is_surrogate_endpoint(switch_class.fabric):
+                continue
+
+            # Find oob-type uplink zones with an explicit peer_zone target (Option A)
+            uplink_zones = list(
+                switch_class.port_zones.filter(
+                    zone_type=PortZoneTypeChoices.OOB,
+                ).exclude(peer_zone=None).select_related('peer_zone__switch_class')
+            )
+            if not uplink_zones:
+                continue
+
+            # Sorted surrogate instances for determinism
+            surrogate_devices = sorted(
+                [
+                    d for d in switch_devices.values()
+                    if d.custom_field_data.get('hedgehog_class') == switch_class.switch_class_id
+                ],
+                key=lambda d: d.name,
+            )
+            if not surrogate_devices:
+                continue
+
+            for uplink_zone in uplink_zones:
+                peer_zone = uplink_zone.peer_zone
+                managed_class_id = peer_zone.switch_class.switch_class_id
+
+                # Sorted managed switch instances for determinism
+                managed_devices = sorted(
+                    [
+                        d for d in switch_devices.values()
+                        if d.custom_field_data.get('hedgehog_class') == managed_class_id
+                    ],
+                    key=lambda d: d.name,
+                )
+                if not managed_devices:
+                    raise ValidationError(
+                        f"No managed switch instances found for '{managed_class_id}' "
+                        f"(peer of surrogate '{switch_class.switch_class_id}')."
+                    )
+
+                num_managed = len(managed_devices)
+                uplink_port_count = self._get_zone_logical_port_count(uplink_zone)
+
+                for surrogate_device in surrogate_devices:
+                    for port_idx in range(uplink_port_count):
+                        # Alternate across managed switch instances
+                        managed_device = managed_devices[port_idx % num_managed]
+
+                        # Allocate one port from the surrogate's uplink zone
+                        surr_port = self.port_allocator.allocate(
+                            surrogate_device.name, uplink_zone, 1
+                        )[0]
+
+                        # Allocate one port from the managed switch's peer zone
+                        mgmt_port = self.port_allocator.allocate(
+                            managed_device.name, peer_zone, 1
+                        )[0]
+
+                        surr_iface = self._get_or_create_interface(
+                            device=surrogate_device,
+                            name=surr_port.name,
+                            interfaces=interfaces,
+                            custom_fields={
+                                'hedgehog_plan_id': str(self.plan.pk),
+                                'hedgehog_zone': uplink_zone.zone_name,
+                                'hedgehog_physical_port': surr_port.physical_port,
+                                'hedgehog_breakout_index': surr_port.breakout_index,
+                            },
+                            interface_type=self._interface_type_for_zone(uplink_zone),
+                        )
+
+                        mgmt_iface = self._get_or_create_interface(
+                            device=managed_device,
+                            name=mgmt_port.name,
+                            interfaces=interfaces,
+                            custom_fields={
+                                'hedgehog_plan_id': str(self.plan.pk),
+                                'hedgehog_zone': peer_zone.zone_name,
+                                'hedgehog_physical_port': mgmt_port.physical_port,
+                                'hedgehog_breakout_index': mgmt_port.breakout_index,
+                            },
+                            interface_type=self._interface_type_for_zone(peer_zone),
+                        )
+
+                        cable = Cable(
+                            a_terminations=[surr_iface],
+                            b_terminations=[mgmt_iface],
+                        )
+                        cable.custom_field_data = {
+                            'hedgehog_plan_id': str(self.plan.pk),
+                            'hedgehog_zone': 'oob',
                         }
                         cable.save()
                         cables.append(cable)
