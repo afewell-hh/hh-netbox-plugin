@@ -105,11 +105,17 @@ class YAMLGenerator:
                 custom_field_data__hedgehog_fabric__in=effective_fabrics,
             ).values_list('id', flat=True)
         )
-        # Regular servers with at least one managed-switch connection
+        # Regular servers with at least one managed-switch connection.
+        # _get_server_ids_for_fabric() also picks up surrogates cabled to those switches.
         connected_server_ids = self._get_server_ids_for_fabric(managed_switch_ids)
-        # Exclude surrogate IDs from connected_server_ids to avoid double-counting;
-        # union surrogates (always included) with qualifying regular servers
-        server_filter_ids = surrogate_ids | (connected_server_ids - surrogate_ids)
+        if self.fabric:
+            # Fabric-scoped: include only servers/surrogates connected to this fabric's switches.
+            # Do NOT union global surrogate_ids — surrogates on other fabrics must be excluded.
+            server_filter_ids = connected_server_ids
+        else:
+            # Full-plan: surrogates always included (constraint #3 / DIET-254);
+            # regular servers need at least one managed-switch connection.
+            server_filter_ids = surrogate_ids | (connected_server_ids - surrogate_ids)
         server_crds = self._generate_servers(filter_ids=server_filter_ids)
 
         # Step 4: Generate connection CRDs (existing logic, refactored)
