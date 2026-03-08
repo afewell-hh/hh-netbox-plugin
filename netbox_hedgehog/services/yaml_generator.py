@@ -78,21 +78,39 @@ class YAMLGenerator:
         # Step 3: Generate device CRDs
         switch_crds = self._generate_switches()
 
-        # When a specific fabric is requested, restrict Server CRDs to servers
-        # that have at least one cable connecting them to the target-fabric switches.
-        # For full-plan export (no fabric filter), all plan servers are included.
+        # Restrict Server CRDs: apply two-part filter.
+        #
+        # Surrogates (oob-mgmt fabric): always included — they appear as Server CRDs
+        # by definition and don't require managed-switch connections to qualify.
+        #
+        # Regular servers (role='server'): constraint #3 — excluded from export if their
+        # only connections are to surrogate/nonmanaged endpoints (DIET-254).
+        # For fabric-scoped export: must connect to the target fabric.
+        # For full-plan export: must connect to ANY managed fabric.
+        surrogate_ids = set(
+            Device.objects.filter(
+                custom_field_data__hedgehog_plan_id=str(self.plan.pk),
+                custom_field_data__hedgehog_fabric__in=list(FabricTypeChoices.SURROGATE_ENDPOINT_SET),
+            ).values_list('id', flat=True)
+        )
+
         if self.fabric:
             effective_fabrics = [self.fabric]
-            managed_switch_ids = set(
-                Device.objects.filter(
-                    custom_field_data__hedgehog_plan_id=str(self.plan.pk),
-                    custom_field_data__hedgehog_fabric__in=effective_fabrics,
-                ).values_list('id', flat=True)
-            )
-            server_filter_ids = self._get_server_ids_for_fabric(managed_switch_ids)
-            server_crds = self._generate_servers(filter_ids=server_filter_ids)
         else:
-            server_crds = self._generate_servers()
+            effective_fabrics = sorted(FabricTypeChoices.HEDGEHOG_MANAGED_SET)
+
+        managed_switch_ids = set(
+            Device.objects.filter(
+                custom_field_data__hedgehog_plan_id=str(self.plan.pk),
+                custom_field_data__hedgehog_fabric__in=effective_fabrics,
+            ).values_list('id', flat=True)
+        )
+        # Regular servers with at least one managed-switch connection
+        connected_server_ids = self._get_server_ids_for_fabric(managed_switch_ids)
+        # Exclude surrogate IDs from connected_server_ids to avoid double-counting;
+        # union surrogates (always included) with qualifying regular servers
+        server_filter_ids = surrogate_ids | (connected_server_ids - surrogate_ids)
+        server_crds = self._generate_servers(filter_ids=server_filter_ids)
 
         # Step 4: Generate connection CRDs (existing logic, refactored)
         connection_crds = self._generate_connection_crds()

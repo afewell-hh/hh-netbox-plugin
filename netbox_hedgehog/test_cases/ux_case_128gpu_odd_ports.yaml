@@ -193,6 +193,117 @@ reference_data:
           type: 800gbase-x-osfp
         - name: E1/8
           type: 800gbase-x-osfp
+    - id: es1000
+      manufacturer: celestica
+      model: ES1000-48
+      slug: es1000-48
+      u_height: 1
+      is_full_depth: false
+      interface_templates:
+        - name: E1/1
+          type: 1000base-t
+        - name: E1/2
+          type: 1000base-t
+        - name: E1/3
+          type: 1000base-t
+        - name: E1/4
+          type: 1000base-t
+        - name: E1/5
+          type: 1000base-t
+        - name: E1/6
+          type: 1000base-t
+        - name: E1/7
+          type: 1000base-t
+        - name: E1/8
+          type: 1000base-t
+        - name: E1/9
+          type: 1000base-t
+        - name: E1/10
+          type: 1000base-t
+        - name: E1/11
+          type: 1000base-t
+        - name: E1/12
+          type: 1000base-t
+        - name: E1/13
+          type: 1000base-t
+        - name: E1/14
+          type: 1000base-t
+        - name: E1/15
+          type: 1000base-t
+        - name: E1/16
+          type: 1000base-t
+        - name: E1/17
+          type: 1000base-t
+        - name: E1/18
+          type: 1000base-t
+        - name: E1/19
+          type: 1000base-t
+        - name: E1/20
+          type: 1000base-t
+        - name: E1/21
+          type: 1000base-t
+        - name: E1/22
+          type: 1000base-t
+        - name: E1/23
+          type: 1000base-t
+        - name: E1/24
+          type: 1000base-t
+        - name: E1/25
+          type: 1000base-t
+        - name: E1/26
+          type: 1000base-t
+        - name: E1/27
+          type: 1000base-t
+        - name: E1/28
+          type: 1000base-t
+        - name: E1/29
+          type: 1000base-t
+        - name: E1/30
+          type: 1000base-t
+        - name: E1/31
+          type: 1000base-t
+        - name: E1/32
+          type: 1000base-t
+        - name: E1/33
+          type: 1000base-t
+        - name: E1/34
+          type: 1000base-t
+        - name: E1/35
+          type: 1000base-t
+        - name: E1/36
+          type: 1000base-t
+        - name: E1/37
+          type: 1000base-t
+        - name: E1/38
+          type: 1000base-t
+        - name: E1/39
+          type: 1000base-t
+        - name: E1/40
+          type: 1000base-t
+        - name: E1/41
+          type: 1000base-t
+        - name: E1/42
+          type: 1000base-t
+        - name: E1/43
+          type: 1000base-t
+        - name: E1/44
+          type: 1000base-t
+        - name: E1/45
+          type: 1000base-t
+        - name: E1/46
+          type: 1000base-t
+        - name: E1/47
+          type: 1000base-t
+        - name: E1/48
+          type: 1000base-t
+        - name: E1/49
+          type: 25gbase-x-sfp28
+        - name: E1/50
+          type: 25gbase-x-sfp28
+        - name: E1/51
+          type: 25gbase-x-sfp28
+        - name: E1/52
+          type: 25gbase-x-sfp28
 
   device_type_extensions:
     - id: ds3000_ext
@@ -213,8 +324,21 @@ reference_data:
       uplink_ports: 32
       hedgehog_profile_name: celestica-ds5000
       notes: Auto-created for 128-GPU odd-port case
+    - id: es1000_ext
+      device_type: es1000
+      mclag_capable: false
+      hedgehog_roles: []
+      supported_breakouts: [1x1g, 1x25g]
+      native_speed: 1
+      notes: Management switch for oob-mgmt fabric (ES1000-48)
 
   breakout_options:
+    - id: b_1x1g
+      breakout_id: 1x1g
+      from_speed: 1
+      logical_ports: 1
+      logical_speed: 1
+      optic_type: RJ45
     - id: b_1x100
       breakout_id: 1x100g
       from_speed: 100
@@ -245,6 +369,12 @@ reference_data:
       logical_ports: 4
       logical_speed: 200
       optic_type: QSFP-DD
+    - id: b_1x25
+      breakout_id: 1x25g
+      from_speed: 25
+      logical_ports: 1
+      logical_speed: 25
+      optic_type: SFP28
 
   module_types:
     - id: nic_aiom_2x25g
@@ -284,6 +414,12 @@ reference_data:
       model: ConnectX-7 (Single-Port)
       interface_templates:
         - name: port0
+          type: other
+    - id: bmc_module
+      manufacturer: generic
+      model: BMC Management Port
+      interface_templates:
+        - name: bmc0
           type: other
 
 plan:
@@ -334,6 +470,12 @@ switch_classes:
     mclag_pair: false
     redundancy_type: eslag
     redundancy_group: fe-border-eslag
+  - switch_class_id: oob-mgmt-leaf
+    fabric: oob-mgmt
+    hedgehog_role: server-leaf
+    device_type_extension: es1000_ext
+    uplink_ports_per_switch: 2
+    mclag_pair: false
 
 switch_port_zones:
   - switch_class: fe-gpu-leaf
@@ -413,6 +555,28 @@ switch_port_zones:
     breakout_option: b_1x100
     allocation_strategy: sequential
     priority: 200
+  - switch_class: fe-border-leaf
+    zone_name: fe-border-oob-downlinks
+    zone_type: oob
+    port_spec: 17-20
+    breakout_option: b_1x100
+    allocation_strategy: sequential
+    priority: 300
+  - switch_class: oob-mgmt-leaf
+    zone_name: oob-mgmt-downlinks
+    zone_type: oob
+    port_spec: 1-48
+    breakout_option: b_1x1g
+    allocation_strategy: sequential
+    priority: 100
+  - switch_class: oob-mgmt-leaf
+    zone_name: oob-mgmt-uplinks
+    zone_type: oob
+    port_spec: 49-50
+    breakout_option: b_1x25
+    allocation_strategy: sequential
+    priority: 100
+    peer_zone: fe-border-leaf/fe-border-oob-downlinks
 
 server_classes:
   - server_class_id: gpu-fe-only
@@ -649,12 +813,100 @@ server_connections:
     target_zone: fe-border-leaf/fe-border-100g-downlinks
     speed: 100
     port_type: data
+  - server_class: gpu-fe-only
+    connection_id: bmc
+    connection_name: bmc-oob
+    nic_module_type: bmc_module
+    port_index: 0
+    ports_per_connection: 1
+    hedgehog_conn_type: unbundled
+    distribution: same-switch
+    target_zone: oob-mgmt-leaf/oob-mgmt-downlinks
+    speed: 1
+    port_type: ipmi
+  - server_class: gpu-with-backend
+    connection_id: bmc
+    connection_name: bmc-oob
+    nic_module_type: bmc_module
+    port_index: 0
+    ports_per_connection: 1
+    hedgehog_conn_type: unbundled
+    distribution: same-switch
+    target_zone: oob-mgmt-leaf/oob-mgmt-downlinks
+    speed: 1
+    port_type: ipmi
+  - server_class: storage
+    connection_id: bmc
+    connection_name: bmc-oob
+    nic_module_type: bmc_module
+    port_index: 0
+    ports_per_connection: 1
+    hedgehog_conn_type: unbundled
+    distribution: same-switch
+    target_zone: oob-mgmt-leaf/oob-mgmt-downlinks
+    speed: 1
+    port_type: ipmi
+  - server_class: admin-node
+    connection_id: bmc
+    connection_name: bmc-oob
+    nic_module_type: bmc_module
+    port_index: 0
+    ports_per_connection: 1
+    hedgehog_conn_type: unbundled
+    distribution: same-switch
+    target_zone: oob-mgmt-leaf/oob-mgmt-downlinks
+    speed: 1
+    port_type: ipmi
+  - server_class: host-lfm-ctrl
+    connection_id: bmc
+    connection_name: bmc-oob
+    nic_module_type: bmc_module
+    port_index: 0
+    ports_per_connection: 1
+    hedgehog_conn_type: unbundled
+    distribution: same-switch
+    target_zone: oob-mgmt-leaf/oob-mgmt-downlinks
+    speed: 1
+    port_type: ipmi
+  - server_class: hh-fe-ctrl
+    connection_id: bmc
+    connection_name: bmc-oob
+    nic_module_type: bmc_module
+    port_index: 0
+    ports_per_connection: 1
+    hedgehog_conn_type: unbundled
+    distribution: same-switch
+    target_zone: oob-mgmt-leaf/oob-mgmt-downlinks
+    speed: 1
+    port_type: ipmi
+  - server_class: hh-be-ctrl
+    connection_id: bmc
+    connection_name: bmc-oob
+    nic_module_type: bmc_module
+    port_index: 0
+    ports_per_connection: 1
+    hedgehog_conn_type: unbundled
+    distribution: same-switch
+    target_zone: oob-mgmt-leaf/oob-mgmt-downlinks
+    speed: 1
+    port_type: ipmi
+  - server_class: exo-kube
+    connection_id: bmc
+    connection_name: bmc-oob
+    nic_module_type: bmc_module
+    port_index: 0
+    ports_per_connection: 1
+    hedgehog_conn_type: unbundled
+    distribution: same-switch
+    target_zone: oob-mgmt-leaf/oob-mgmt-downlinks
+    speed: 1
+    port_type: ipmi
 
 expected:
   counts:
     server_classes: 8
-    switch_classes: 6
-    connections: 16
+    switch_classes: 7
+    connections: 24
 
 contract:
   storage:

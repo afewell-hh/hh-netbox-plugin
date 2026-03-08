@@ -71,6 +71,19 @@ class SwitchPortZone(NetBoxModel):
         help_text="Lower numbers allocate earlier",
     )
 
+    peer_zone = models.ForeignKey(
+        'self',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='peer_zones',
+        help_text=(
+            "Target zone on the managed switch that this zone uplinks to. "
+            "Used for surrogate-switch uplink generation (Option A explicit target). "
+            "Set on the oob-mgmt uplink zone to point at the fe-border-leaf oob zone."
+        ),
+    )
+
     class Meta:
         ordering = ['switch_class', 'priority', 'zone_name']
         unique_together = [['switch_class', 'zone_name']]

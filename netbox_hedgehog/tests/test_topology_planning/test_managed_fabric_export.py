@@ -376,8 +376,12 @@ class TestServerConnectionFiltering(ManagedFabricTestBase):
             "oob-mgmt switch must appear as a Server CRD surrogate",
         )
 
-    def test_server_appears_regardless_of_mgmt_connections(self):
-        """T2b: Server CRD is generated even when all its cables go to unmanaged switches."""
+    def test_server_excluded_when_only_surrogate_connections(self):
+        """T2b (updated DIET-254): Server with only surrogate connections excluded from Server CRDs.
+
+        Constraint #3: a server must NOT appear in wiring export solely due to
+        surrogate-only (oob-mgmt) connectivity.
+        """
         plan = self._make_plan_with_generation_state('T2-Server-Only')
         oob_switch = self._make_switch_device(plan, 'oob-leaf-011', 'oob-mgmt', 'server-leaf')
         server = self._make_server_device(plan, 'gpu-server-011')
@@ -391,9 +395,9 @@ class TestServerConnectionFiltering(ManagedFabricTestBase):
 
         docs = [d for d in yaml.safe_load_all(response.content.decode()) if d]
         server_docs = [d for d in docs if d and d.get('kind') == 'Server']
-        self.assertTrue(
+        self.assertFalse(
             any('gpu-server-011' in str(d) for d in server_docs),
-            "Server CRD should appear even when connected only to unmanaged switches.",
+            "Server CRD must NOT appear when connected only to surrogate (oob-mgmt) switches (constraint #3).",
         )
 
 
