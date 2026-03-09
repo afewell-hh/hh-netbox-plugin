@@ -227,13 +227,13 @@ class OobMgmtServerConnectionStructureTestCase(TestCase):
 
     def test_connection_count_includes_ipmi(self):
         """
-        Total PlanServerConnection count must be 24:
-        16 existing data connections + 8 IPMI connections (one per server class).
+        Total PlanServerConnection count must be 26:
+        18 existing data connections + 9 IPMI connections (one per server class, including hhg).
         """
         count = PlanServerConnection.objects.filter(server_class__plan=self.plan).count()
         self.assertEqual(
-            count, 24,
-            f"Expected 24 connections (16 data + 8 IPMI), got {count}",
+            count, 26,
+            f"Expected 26 connections (18 data + 9 IPMI), got {count}",
         )
 
     # -------------------------------------------------------------------------

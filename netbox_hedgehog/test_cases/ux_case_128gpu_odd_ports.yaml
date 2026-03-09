@@ -172,6 +172,17 @@ reference_data:
           type: 100gbase-x-qsfp28
         - name: eth2
           type: 100gbase-x-qsfp28
+    - id: hhg_server_dt
+      manufacturer: generic
+      model: HHG-Server-200G
+      slug: hhg-server-200g
+      u_height: 1
+      is_full_depth: false
+      interface_templates:
+        - name: eth1
+          type: 200gbase-x-qsfp56
+        - name: eth2
+          type: 200gbase-x-qsfp56
     - id: ds5000
       manufacturer: celestica
       model: celestica-ds5000
@@ -375,6 +386,12 @@ reference_data:
       logical_ports: 1
       logical_speed: 25
       optic_type: SFP28
+    - id: b_8x100
+      breakout_id: 8x100g
+      from_speed: 800
+      logical_ports: 8
+      logical_speed: 100
+      optic_type: QSFP28
 
   module_types:
     - id: nic_aiom_2x25g
@@ -388,6 +405,14 @@ reference_data:
     - id: nic_cx7_dual_100g
       manufacturer: nvidia
       model: ConnectX-7 Dual-Port 100G
+      interface_templates:
+        - name: port0
+          type: other
+        - name: port1
+          type: other
+    - id: nic_cx7_dual_200g
+      manufacturer: nvidia
+      model: ConnectX-7 Dual-Port 200G
       interface_templates:
         - name: port0
           type: other
@@ -450,6 +475,8 @@ switch_classes:
     device_type_extension: ds5000_ext
     uplink_ports_per_switch: 0
     mclag_pair: false
+    redundancy_type: eslag
+    redundancy_group: fe-spine-eslag
   - switch_class_id: be-rail-leaf
     fabric: backend
     hedgehog_role: server-leaf
@@ -511,6 +538,20 @@ switch_port_zones:
     zone_type: fabric
     port_spec: 1-64
     breakout_option: b_1x800
+    allocation_strategy: sequential
+    priority: 100
+  - switch_class: fe-spine
+    zone_name: fe-spine-200G-downlinks
+    zone_type: server
+    port_spec: 1
+    breakout_option: b_4x200
+    allocation_strategy: sequential
+    priority: 100
+  - switch_class: fe-spine
+    zone_name: fe-spine-100G-downlinks
+    zone_type: server
+    port_spec: 64
+    breakout_option: b_8x100
     allocation_strategy: sequential
     priority: 100
   - switch_class: be-rail-leaf
@@ -614,6 +655,12 @@ server_classes:
     quantity: 1
     gpus_per_server: 0
     server_device_type: ctrl_server_dt
+  - server_class_id: hhg
+    description: Hedgehog Gateway — 2x200G primary to FE spine, IPMI to oob-mgmt
+    category: compute
+    quantity: 2
+    gpus_per_server: 0
+    server_device_type: hhg_server_dt
   - server_class_id: exo-kube
     description: Exo kube nodes (dual-port 100G NIC, connects to fe-border-leaf)
     category: compute
@@ -883,6 +930,28 @@ server_connections:
     target_zone: oob-mgmt-leaf/oob-mgmt-downlinks
     speed: 1
     port_type: ipmi
+  - server_class: hhg
+    connection_id: fe-spine
+    connection_name: spine-frontend
+    nic_module_type: nic_cx7_dual_200g
+    port_index: 0
+    ports_per_connection: 2
+    hedgehog_conn_type: unbundled
+    distribution: alternating
+    target_zone: fe-spine/fe-spine-200G-downlinks
+    speed: 200
+    port_type: data
+  - server_class: hhg
+    connection_id: bmc
+    connection_name: bmc-oob
+    nic_module_type: bmc_module
+    port_index: 0
+    ports_per_connection: 1
+    hedgehog_conn_type: unbundled
+    distribution: same-switch
+    target_zone: oob-mgmt-leaf/oob-mgmt-downlinks
+    speed: 1
+    port_type: ipmi
   - server_class: exo-kube
     connection_id: bmc
     connection_name: bmc-oob
@@ -897,9 +966,9 @@ server_connections:
 
 expected:
   counts:
-    server_classes: 8
+    server_classes: 9
     switch_classes: 7
-    connections: 24
+    connections: 26
 
 contract:
   storage:
@@ -935,6 +1004,15 @@ contract:
       - switch_class: fe-spine
         zone_name: fe-spine-downlinks
         zone_type: fabric
+        port_spec: "1-64"
+      - switch_class: fe-spine
+        zone_name: fe-spine-200G-downlinks
+        zone_type: server
+        port_spec: "1"
+      - switch_class: fe-spine
+        zone_name: fe-spine-100G-downlinks
+        zone_type: server
+        port_spec: "64"
       - switch_class: be-spine
         zone_name: be-spine-downlinks
         zone_type: fabric

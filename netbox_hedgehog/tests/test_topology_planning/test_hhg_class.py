@@ -194,8 +194,13 @@ class HhgYamlDefinitionTestCase(TestCase):
     # T-HHG-9: fe-spine-downlinks port_spec changed from 1-64 to 2-63
     # -------------------------------------------------------------------------
 
-    def test_fe_spine_downlinks_port_spec_is_2_63(self):
-        """fe-spine-downlinks port_spec must be 2-63 (not 1-64) to leave room for HHG zones."""
+    def test_fe_spine_downlinks_port_spec_is_1_64(self):
+        """fe-spine-downlinks port_spec must remain 1-64.
+        Port 1 (200G server zone) and port 64 (100G server zone) are allocated by higher-priority
+        server zones using breakout sub-ports (E1/1/1, E1/1/2 etc.), which have distinct names
+        from the fabric zone's E1/1 interface. The port allocator tracks state per (switch, zone),
+        so zones don't conflict. The fabric zone must retain full 64-port capacity for 2-spine
+        topology (ceil(128 leaf uplinks / 64) = 2)."""
         qs = SwitchPortZone.objects.filter(
             switch_class__plan=self.plan,
             zone_name='fe-spine-downlinks',
@@ -206,8 +211,8 @@ class HhgYamlDefinitionTestCase(TestCase):
         )
         zone = qs.first()
         self.assertEqual(
-            zone.port_spec, '2-63',
-            "fe-spine-downlinks port_spec must be 2-63 (not 1-64)",
+            zone.port_spec, '1-64',
+            "fe-spine-downlinks port_spec must be 1-64 (full capacity required for 2-spine topology)",
         )
 
     # -------------------------------------------------------------------------
@@ -452,15 +457,18 @@ class HhgGenerationTestCase(TestCase):
     # T-HHG-19: total interface count is 1259
     # -------------------------------------------------------------------------
 
-    def test_interface_count_is_1259(self):
-        """Total interface count must be 1259 after HHG addition."""
+    def test_interface_count_is_1249(self):
+        """Total tracked interface count must be 1249 after HHG addition.
+        GenerationState.interface_count tracks switch-side interfaces only (not server
+        module interfaces auto-created by NetBox). Delta: +4 spine HHG (E1/1/1-2 × 2
+        spines) + 2 oob-mgmt new = +6 from base 1243."""
         try:
             state = self.plan.generation_state
         except Exception:
             self.skipTest("No GenerationState found - generation may not have run")
         self.assertEqual(
-            state.interface_count, 1259,
-            f"Expected 1259 interfaces, got {state.interface_count}",
+            state.interface_count, 1249,
+            f"Expected 1249 interfaces (1243 base + 6 new switch-side), got {state.interface_count}",
         )
 
     # -------------------------------------------------------------------------
