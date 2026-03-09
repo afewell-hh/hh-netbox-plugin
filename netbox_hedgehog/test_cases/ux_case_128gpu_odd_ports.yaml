@@ -536,7 +536,7 @@ switch_port_zones:
   - switch_class: fe-spine
     zone_name: fe-spine-downlinks
     zone_type: fabric
-    port_spec: 1-64
+    port_spec: 2-63
     breakout_option: b_1x800
     allocation_strategy: sequential
     priority: 100
@@ -1004,7 +1004,7 @@ contract:
       - switch_class: fe-spine
         zone_name: fe-spine-downlinks
         zone_type: fabric
-        port_spec: "1-64"
+        port_spec: "2-63"
       - switch_class: fe-spine
         zone_name: fe-spine-200G-downlinks
         zone_type: server

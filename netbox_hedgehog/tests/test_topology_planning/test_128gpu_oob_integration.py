@@ -458,17 +458,19 @@ class OobMgmtDeviceGenerationTestCase(TestCase):
 
     def test_device_count_includes_oob_mgmt(self):
         """
-        Total device count must be 173: 169 existing + 4 oob-mgmt-leaf instances (computed).
-        Base: 14 switches (be-rail×4, be-spine×2, fe-border×2, fe-gpu×2, fe-spine×2,
-              fe-storage×2) + 155 servers (153 original + 2 HHG) = 169.
+        Total device count must be 174: 170 managed switches + 4 oob-mgmt-leaf + 2 HHG.
+        Managed switches: be-rail×4, be-spine×2, fe-border×2, fe-gpu×2, fe-spine×3,
+        fe-storage×2 = 17. Plus 153 original servers + 2 HHG = 155. Plus 4 oob-mgmt = 174.
+        Note: fe-spine has 3 instances (not 2) because port_spec: 2-63 leaves 62 fabric
+        ports per spine and ceil(128 leaf uplinks / 62) = 3.
         """
         try:
             state = self.plan.generation_state
         except Exception:
             self.skipTest("No GenerationState found - generation may not have run")
         self.assertEqual(
-            state.device_count, 173,
-            f"Expected 173 devices (169 base + 4 oob-mgmt + 2 HHG), got {state.device_count}",
+            state.device_count, 174,
+            f"Expected 174 devices (17 managed + 4 oob-mgmt + 153 servers + 2 HHG), got {state.device_count}",
         )
 
 

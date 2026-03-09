@@ -194,13 +194,10 @@ class HhgYamlDefinitionTestCase(TestCase):
     # T-HHG-9: fe-spine-downlinks port_spec changed from 1-64 to 2-63
     # -------------------------------------------------------------------------
 
-    def test_fe_spine_downlinks_port_spec_is_1_64(self):
-        """fe-spine-downlinks port_spec must remain 1-64.
-        Port 1 (200G server zone) and port 64 (100G server zone) are allocated by higher-priority
-        server zones using breakout sub-ports (E1/1/1, E1/1/2 etc.), which have distinct names
-        from the fabric zone's E1/1 interface. The port allocator tracks state per (switch, zone),
-        so zones don't conflict. The fabric zone must retain full 64-port capacity for 2-spine
-        topology (ceil(128 leaf uplinks / 64) = 2)."""
+    def test_fe_spine_downlinks_port_spec_is_2_63(self):
+        """fe-spine-downlinks port_spec must be 2-63.
+        Ports 1 and 64 are dedicated to server zones (200G and 100G respectively) and must not
+        be shared with the fabric zone to avoid dual allocation of the same physical port."""
         qs = SwitchPortZone.objects.filter(
             switch_class__plan=self.plan,
             zone_name='fe-spine-downlinks',
@@ -211,8 +208,8 @@ class HhgYamlDefinitionTestCase(TestCase):
         )
         zone = qs.first()
         self.assertEqual(
-            zone.port_spec, '1-64',
-            "fe-spine-downlinks port_spec must be 1-64 (full capacity required for 2-spine topology)",
+            zone.port_spec, '2-63',
+            "fe-spine-downlinks port_spec must be 2-63 (ports 1 and 64 reserved for server zones)",
         )
 
     # -------------------------------------------------------------------------
@@ -373,7 +370,13 @@ class HhgGenerationTestCase(TestCase):
     # -------------------------------------------------------------------------
 
     def test_hhg_alternating_distribution(self):
-        """Each fe-spine must have exactly 2 HHG primary connections (alternating distribution)."""
+        """HHG connections use alternating distribution across fe-spine instances.
+        With 2 HHG servers and 3 spine switches (ceil(128 leaf uplinks / 62 fabric ports) = 3),
+        alternating distributes by server_index % num_spines:
+        - hhg-001 (index 0) → spine-01: 2 connections
+        - hhg-002 (index 1) → spine-02: 2 connections
+        - spine-03: 0 HHG connections (no server at index 2)
+        Assertion: exactly 2 spines receive HHG connections, each with exactly 2."""
         hhg_ids = set(Device.objects.filter(
             custom_field_data__hedgehog_plan_id=str(self.plan.pk),
             role__slug='server',
@@ -386,6 +389,7 @@ class HhgGenerationTestCase(TestCase):
             custom_field_data__hedgehog_role='spine',
         ))
 
+        spine_hhg_counts = {}
         for spine in spine_devices:
             count = 0
             for cable in self.all_cables:
@@ -398,10 +402,19 @@ class HhgGenerationTestCase(TestCase):
                 if (a_dev_id == spine.id and b_dev_id in hhg_ids) or \
                    (b_dev_id == spine.id and a_dev_id in hhg_ids):
                     count += 1
+            spine_hhg_counts[spine.name] = count
+
+        spines_with_hhg = {name: count for name, count in spine_hhg_counts.items() if count > 0}
+        self.assertEqual(
+            len(spines_with_hhg), 2,
+            f"Exactly 2 fe-spines must receive HHG connections (alternating across 2 servers), "
+            f"got: {spine_hhg_counts}",
+        )
+        for name, count in spines_with_hhg.items():
             self.assertEqual(
                 count, 2,
-                f"Each fe-spine must have exactly 2 HHG primary connections (alternating distribution); "
-                f"{spine.name} has {count}",
+                f"Each HHG-connected fe-spine must have exactly 2 HHG connections; "
+                f"{name} has {count}",
             )
 
     # -------------------------------------------------------------------------
@@ -442,15 +455,20 @@ class HhgGenerationTestCase(TestCase):
     # T-HHG-18: total device count is 173
     # -------------------------------------------------------------------------
 
-    def test_device_count_is_173(self):
-        """Total device count must be 173 (171 base + 2 HHG)."""
+    def test_device_count_is_174(self):
+        """Total device count must be 174.
+        Base 171 + 2 HHG servers + 1 extra fe-spine.
+        The extra spine arises because port_spec: 2-63 gives 62 fabric ports per spine,
+        and ceil(128 leaf uplinks / 62) = 3 spines (vs 2 with full 64-port zone).
+        This is the architecturally correct result: ports 1 and 64 are dedicated to server
+        zones, leaving 62 ports for leaf fabric."""
         try:
             state = self.plan.generation_state
         except Exception:
             self.skipTest("No GenerationState found - generation may not have run")
         self.assertEqual(
-            state.device_count, 173,
-            f"Expected 173 devices (171 base + 2 HHG), got {state.device_count}",
+            state.device_count, 174,
+            f"Expected 174 devices (171 base + 2 HHG + 1 extra fe-spine), got {state.device_count}",
         )
 
     # -------------------------------------------------------------------------
