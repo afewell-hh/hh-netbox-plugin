@@ -295,7 +295,8 @@ class OobMgmtServerConnectionStructureTestCase(TestCase):
         """
         ux_case_128gpu_odd_ports.yaml expected.counts must reflect oob-mgmt additions:
           switch_classes: 7 (was 6)
-          connections: 24 (was 16)
+          connections: 26 (was 24)
+          server_classes: 9 (was 8)
         """
         from netbox_hedgehog.tests.test_topology_planning.case_128gpu_helpers import expected_128gpu_counts
         counts = expected_128gpu_counts()
@@ -304,8 +305,12 @@ class OobMgmtServerConnectionStructureTestCase(TestCase):
             f"expected.counts.switch_classes must be 7, got {counts.get('switch_classes')}",
         )
         self.assertEqual(
-            counts.get('connections'), 24,
-            f"expected.counts.connections must be 24, got {counts.get('connections')}",
+            counts.get('connections'), 26,
+            f"expected.counts.connections must be 26, got {counts.get('connections')}",
+        )
+        self.assertEqual(
+            counts.get('server_classes'), 9,
+            f"expected.counts.server_classes must be 9, got {counts.get('server_classes')}",
         )
 
 
@@ -402,8 +407,8 @@ class OobMgmtDeviceGenerationTestCase(TestCase):
     def test_ipmi_cables_exist_for_all_server_instances(self):
         """
         Each server instance must have exactly one IPMI cable to an oob-mgmt switch.
-        153 servers total (96 gpu-fe-only + 32 gpu-with-backend + 18 storage +
-        1 admin-node + 1 host-lfm-ctrl + 1 hh-fe-ctrl + 1 hh-be-ctrl + 3 exo-kube).
+        155 servers total (96 gpu-fe-only + 32 gpu-with-backend + 18 storage +
+        1 admin-node + 1 host-lfm-ctrl + 1 hh-fe-ctrl + 1 hh-be-ctrl + 3 exo-kube + 2 hhg).
         """
         from dcim.models import DeviceRole
         server_role = DeviceRole.objects.filter(slug='server').first()
@@ -414,7 +419,7 @@ class OobMgmtDeviceGenerationTestCase(TestCase):
             custom_field_data__hedgehog_plan_id=str(self.plan.pk),
             role=server_role,
         )
-        expected_server_count = 153
+        expected_server_count = 155
 
         self.assertEqual(
             server_instances.count(), expected_server_count,
@@ -453,17 +458,17 @@ class OobMgmtDeviceGenerationTestCase(TestCase):
 
     def test_device_count_includes_oob_mgmt(self):
         """
-        Total device count must be 171: 167 existing + 4 oob-mgmt-leaf instances (computed).
+        Total device count must be 173: 169 existing + 4 oob-mgmt-leaf instances (computed).
         Base: 14 switches (be-rail×4, be-spine×2, fe-border×2, fe-gpu×2, fe-spine×2,
-              fe-storage×2) + 153 servers = 167.
+              fe-storage×2) + 155 servers (153 original + 2 HHG) = 169.
         """
         try:
             state = self.plan.generation_state
         except Exception:
             self.skipTest("No GenerationState found - generation may not have run")
         self.assertEqual(
-            state.device_count, 171,
-            f"Expected 171 devices (167 base + 4 oob-mgmt), got {state.device_count}",
+            state.device_count, 173,
+            f"Expected 173 devices (169 base + 4 oob-mgmt + 2 HHG), got {state.device_count}",
         )
 
 
