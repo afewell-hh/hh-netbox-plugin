@@ -371,11 +371,11 @@ class HhgGenerationTestCase(TestCase):
 
     def test_hhg_alternating_distribution(self):
         """HHG connections use alternating distribution across fe-spine instances.
-        With 2 HHG servers and 3 spine switches (ceil(128 leaf uplinks / 62 fabric ports) = 3),
+        With 2 HHG servers and 4 spine switches (override_quantity=4),
         alternating distributes by server_index % num_spines:
         - hhg-001 (index 0) → spine-01: 2 connections
         - hhg-002 (index 1) → spine-02: 2 connections
-        - spine-03: 0 HHG connections (no server at index 2)
+        - spine-03, spine-04: 0 HHG connections (no server at index 2 or 3)
         Assertion: exactly 2 spines receive HHG connections, each with exactly 2."""
         hhg_ids = set(Device.objects.filter(
             custom_field_data__hedgehog_plan_id=str(self.plan.pk),
@@ -455,53 +455,53 @@ class HhgGenerationTestCase(TestCase):
     # T-HHG-18: total device count is 173
     # -------------------------------------------------------------------------
 
-    def test_device_count_is_174(self):
-        """Total device count must be 174.
-        Base 171 + 2 HHG servers + 1 extra fe-spine.
-        The extra spine arises because port_spec: 2-63 gives 62 fabric ports per spine,
-        and ceil(128 leaf uplinks / 62) = 3 spines (vs 2 with full 64-port zone).
-        This is the architecturally correct result: ports 1 and 64 are dedicated to server
-        zones, leaving 62 ports for leaf fabric."""
+    def test_device_count_is_175(self):
+        """Total device count must be 175.
+        Base 171 + 2 HHG servers + 2 extra fe-spine (override_quantity=4 → 4 spines, was 3).
+        With 4 fe-spine instances and border uplinks, the canonical 128GPU topology adds
+        1 spine vs the 3-spine baseline (174 devices)."""
         try:
             state = self.plan.generation_state
         except Exception:
             self.skipTest("No GenerationState found - generation may not have run")
         self.assertEqual(
-            state.device_count, 174,
-            f"Expected 174 devices (171 base + 2 HHG + 1 extra fe-spine), got {state.device_count}",
+            state.device_count, 175,
+            f"Expected 175 devices (171 base + 2 HHG + 2 extra fe-spine with override_quantity=4), "
+            f"got {state.device_count}",
         )
 
     # -------------------------------------------------------------------------
     # T-HHG-19: total interface count is 1259
     # -------------------------------------------------------------------------
 
-    def test_interface_count_is_1249(self):
-        """Total tracked interface count must be 1249 after HHG addition.
-        GenerationState.interface_count tracks switch-side interfaces only (not server
-        module interfaces auto-created by NetBox). Delta: +4 spine HHG (E1/1/1-2 × 2
-        spines) + 2 oob-mgmt new = +6 from base 1243."""
+    def test_interface_count_is_1313(self):
+        """Total tracked interface count must be 1313 after HHG addition + border uplinks.
+        GenerationState.interface_count tracks switch-side interfaces only.
+        Delta from 1249 baseline: +64 (32 border-leaf-side + 32 spine-side from 32 new cables)."""
         try:
             state = self.plan.generation_state
         except Exception:
             self.skipTest("No GenerationState found - generation may not have run")
         self.assertEqual(
-            state.interface_count, 1249,
-            f"Expected 1249 interfaces (1243 base + 6 new switch-side), got {state.interface_count}",
+            state.interface_count, 1313,
+            f"Expected 1313 interfaces (1249 baseline + 64 from border uplinks), "
+            f"got {state.interface_count}",
         )
 
     # -------------------------------------------------------------------------
     # T-HHG-20: total cable count is 985
     # -------------------------------------------------------------------------
 
-    def test_cable_count_is_985(self):
-        """Total cable count must be 985 (979 base + 6 HHG)."""
+    def test_cable_count_is_1017(self):
+        """Total cable count must be 1017 (985 baseline + 32 border uplinks).
+        32 new cables: 2 border leaves × 4 spines × 4 links each = 32."""
         try:
             state = self.plan.generation_state
         except Exception:
             self.skipTest("No GenerationState found - generation may not have run")
         self.assertEqual(
-            state.cable_count, 985,
-            f"Expected 985 cables (979 base + 6 HHG), got {state.cable_count}",
+            state.cable_count, 1017,
+            f"Expected 1017 cables (985 baseline + 32 border uplinks), got {state.cable_count}",
         )
 
 

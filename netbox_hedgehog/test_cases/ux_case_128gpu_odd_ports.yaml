@@ -473,6 +473,7 @@ switch_classes:
     fabric: frontend
     hedgehog_role: spine
     device_type_extension: ds5000_ext
+    override_quantity: 4
     uplink_ports_per_switch: 0
     mclag_pair: false
     redundancy_type: eslag
@@ -596,6 +597,7 @@ switch_port_zones:
     breakout_option: b_1x100
     allocation_strategy: sequential
     priority: 200
+    peer_zone: fe-spine/fe-spine-100G-downlinks
   - switch_class: oob-mgmt-leaf
     zone_name: oob-mgmt-downlinks
     zone_type: oob
