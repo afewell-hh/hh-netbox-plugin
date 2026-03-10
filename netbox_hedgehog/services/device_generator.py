@@ -344,6 +344,10 @@ class DeviceGenerator:
         interfaces.extend(surr_interfaces)
         cables.extend(surr_cables)
 
+        peer_interfaces, peer_cables = self._create_peer_zone_uplink_connections(switch_devices)
+        interfaces.extend(peer_interfaces)
+        cables.extend(peer_cables)
+
         return interfaces, cables
 
     def _create_fabric_connections(
@@ -589,6 +593,143 @@ class DeviceGenerator:
                         }
                         cable.save()
                         cables.append(cable)
+
+        return interfaces, cables
+
+    def _create_peer_zone_uplink_connections(
+        self,
+        switch_devices: dict[str, Device],
+    ) -> tuple[list[Interface], list[Cable]]:
+        """
+        Wire managed-fabric leaves to spine-tier devices via explicit peer_zone
+        uplink targeting (DIET-271).
+
+        Scope guard: only uplink-type zones (zone_type=UPLINK) on managed-fabric
+        (frontend/backend) leaves that have peer_zone set. OOB zones are handled
+        exclusively in _create_surrogate_uplink_connections() and are never
+        touched here.
+
+        uplink_ports_per_switch=0 guard: that guard lives in
+        _create_fabric_connections() and controls the standard fabric wiring path
+        only. This method runs independently — a leaf with
+        uplink_ports_per_switch=0 and a peer_zone uplink zone receives no
+        standard fabric cables and does receive peer_zone cables. This is the
+        deterministic rule for fe-border-leaf.
+
+        Distribution: same load-balanced base/remainder algorithm as
+        _create_fabric_connections().
+        """
+        interfaces: list[Interface] = []
+        cables: list[Cable] = []
+
+        if not switch_devices:
+            return interfaces, cables
+
+        switch_classes = {
+            sc.switch_class_id: sc
+            for sc in self.plan.switch_classes.all()
+        }
+
+        for fabric in sorted(FabricTypeChoices.HEDGEHOG_MANAGED_SET):
+            leaves = sorted(
+                [
+                    d for d in switch_devices.values()
+                    if d.custom_field_data.get('hedgehog_fabric') == fabric
+                    and d.custom_field_data.get('hedgehog_role')
+                    in (HedgehogRoleChoices.SERVER_LEAF, HedgehogRoleChoices.BORDER_LEAF)
+                ],
+                key=lambda d: d.name,
+            )
+
+            for leaf in leaves:
+                leaf_class = self._get_switch_class_for_device(leaf, switch_classes)
+
+                # Only UPLINK zones with peer_zone set — never OOB zones
+                peer_uplink_zones = list(
+                    leaf_class.port_zones.filter(
+                        zone_type=PortZoneTypeChoices.UPLINK,
+                        peer_zone__isnull=False,
+                    ).select_related('peer_zone__switch_class')
+                    .order_by('priority', 'zone_name')
+                )
+
+                if not peer_uplink_zones:
+                    continue
+
+                for uplink_zone in peer_uplink_zones:
+                    peer_zone = uplink_zone.peer_zone
+                    target_class_id = peer_zone.switch_class.switch_class_id
+
+                    target_devices = sorted(
+                        [
+                            d for d in switch_devices.values()
+                            if d.custom_field_data.get('hedgehog_class') == target_class_id
+                        ],
+                        key=lambda d: d.name,
+                    )
+
+                    if not target_devices:
+                        raise ValidationError(
+                            f"No '{target_class_id}' devices found for peer_zone"
+                            f" on zone '{uplink_zone.zone_name}' (leaf '{leaf.name}')."
+                        )
+
+                    leaf_ports = self._allocate_ports_for_zones(leaf.name, [uplink_zone])
+                    total_uplinks = len(leaf_ports)
+
+                    if total_uplinks == 0:
+                        continue
+
+                    base = total_uplinks // len(target_devices)
+                    remainder = total_uplinks % len(target_devices)
+                    cursor = 0
+
+                    for t_idx, target_device in enumerate(target_devices):
+                        link_count = base + (1 if t_idx < remainder else 0)
+                        if link_count == 0:
+                            continue
+
+                        spine_ports = self.port_allocator.allocate(
+                            target_device.name, peer_zone, link_count
+                        )
+
+                        leaf_slice = leaf_ports[cursor:cursor + link_count]
+                        cursor += link_count
+
+                        for (leaf_zone, leaf_port), spine_port in zip(leaf_slice, spine_ports):
+                            leaf_iface = self._get_or_create_interface(
+                                device=leaf,
+                                name=leaf_port.name,
+                                interfaces=interfaces,
+                                custom_fields={
+                                    'hedgehog_plan_id': str(self.plan.pk),
+                                    'hedgehog_zone': leaf_zone.zone_name,
+                                    'hedgehog_physical_port': leaf_port.physical_port,
+                                    'hedgehog_breakout_index': leaf_port.breakout_index,
+                                },
+                                interface_type=self._interface_type_for_zone(leaf_zone),
+                            )
+                            spine_iface = self._get_or_create_interface(
+                                device=target_device,
+                                name=spine_port.name,
+                                interfaces=interfaces,
+                                custom_fields={
+                                    'hedgehog_plan_id': str(self.plan.pk),
+                                    'hedgehog_zone': peer_zone.zone_name,
+                                    'hedgehog_physical_port': spine_port.physical_port,
+                                    'hedgehog_breakout_index': spine_port.breakout_index,
+                                },
+                                interface_type=self._interface_type_for_zone(peer_zone),
+                            )
+                            cable = Cable(
+                                a_terminations=[leaf_iface],
+                                b_terminations=[spine_iface],
+                            )
+                            cable.custom_field_data = {
+                                'hedgehog_plan_id': str(self.plan.pk),
+                            }
+                            cable.save()
+                            cables.append(cable)
 
         return interfaces, cables
 

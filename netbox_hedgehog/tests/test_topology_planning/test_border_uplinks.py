@@ -132,7 +132,7 @@ class BorderUplinksGenerationTestCase(TestCase):
         cls.border_leaf_ids = set(
             Device.objects.filter(
                 custom_field_data__hedgehog_plan_id=str(cls.plan.pk),
-                custom_field_data__hedgehog_role=HedgehogRoleChoices.BORDER_LEAF,
+                custom_field_data__hedgehog_class='fe-border-leaf',
             ).values_list('id', flat=True)
         )
         cls.spine_ids = set(
@@ -277,15 +277,9 @@ class BorderUplinksGenerationTestCase(TestCase):
     def test_border_uplinks_use_spine_100g_zone_port_64(self):
         """Spine-side interfaces from border uplinks must have hedgehog_zone=
         'fe-spine-100G-downlinks' and interface name starting with 'E1/64/'."""
-        border_ids = set(
-            Device.objects.filter(
-                custom_field_data__hedgehog_plan_id=str(self.plan.pk),
-                custom_field_data__hedgehog_role=HedgehogRoleChoices.BORDER_LEAF,
-            ).values_list('id', flat=True)
-        )
-
-        # Find all cables between border-leaf and fe-spine
-        border_spine_cables = self._cables_between(border_ids, self.spine_ids)
+        # Find all cables between border-leaf and fe-spine using the class-level ID set
+        # (fe-border-leaf devices have hedgehog_class='fe-border-leaf', not role='border-leaf')
+        border_spine_cables = self._cables_between(self.border_leaf_ids, self.spine_ids)
 
         if not border_spine_cables:
             self.fail(
