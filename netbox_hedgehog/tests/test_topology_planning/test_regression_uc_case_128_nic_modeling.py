@@ -14,7 +14,7 @@ Expected behavior:
 - NetBox inventory (Device/Module) does contain Module metadata
 """
 
-from django.test import TestCase
+from django.test import TestCase, tag
 from django.core.management import call_command
 from io import StringIO
 
@@ -29,8 +29,9 @@ from netbox_hedgehog.services.device_generator import DeviceGenerator
 from netbox_hedgehog.services.yaml_generator import YAMLGenerator
 
 
+@tag('slow', 'regression')
 class UCCase128NICModelingRegressionTestCase(TestCase):
-    """Regression test for UC Case 128 GPU (1 test)."""
+    """Regression test for UC Case 128 GPU (1 test). SLOW: does full device generation."""
 
     def test_uc_case_128_with_nic_modeling(self):
         """Test that UC Case 128 command works with NIC modeling."""
