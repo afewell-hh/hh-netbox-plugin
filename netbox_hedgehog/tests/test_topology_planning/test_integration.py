@@ -542,14 +542,16 @@ class ServerConnectionIntegrationTestCase(TestCase):
             server_device_type=cls.server_type
         )
 
-        # Create switch class
+        # Create switch class — eslag so tests that POST distribution=alternating pass validation
         cls.switch_class = PlanSwitchClass.objects.create(
             plan=cls.plan,
             switch_class_id='fe-leaf',
             fabric=FabricTypeChoices.FRONTEND,
             hedgehog_role=HedgehogRoleChoices.SERVER_LEAF,
             device_type_extension=cls.device_ext,
-            uplink_ports_per_switch=4
+            uplink_ports_per_switch=4,
+            redundancy_type='eslag',
+            redundancy_group='fe-leaf-eslag',
         )
 
         cls.zone = SwitchPortZone.objects.create(
@@ -809,12 +811,12 @@ class ServerConnectionValidationTestCase(TestCase):
             'connection_id': 'FE-001',
             'ports_per_connection': 2,
             'hedgehog_conn_type': ConnectionTypeChoices.UNBUNDLED,
-            'distribution': ConnectionDistributionChoices.ALTERNATING,
+            'distribution': ConnectionDistributionChoices.SAME_SWITCH,
             'target_zone': self.zone.pk,
             'speed': 200,
             'nic_module_type': get_test_nic_module_type().pk,
             'port_index': 0,
-            # rail is NOT provided - should be OK for alternating
+            # rail is NOT provided - should be OK for same-switch
         }
         response = self.client.post(url, data, follow=True)
 
@@ -823,8 +825,8 @@ class ServerConnectionValidationTestCase(TestCase):
 
         # Verify connection was created
         connection = PlanServerConnection.objects.filter(connection_id='FE-001').first()
-        self.assertIsNotNone(connection, "Connection should be created without rail for alternating distribution")
-        self.assertIsNone(connection.rail, "Rail should be None for alternating distribution")
+        self.assertIsNotNone(connection, "Connection should be created without rail for same-switch distribution")
+        self.assertIsNone(connection.rail, "Rail should be None for same-switch distribution")
 
     def test_rail_accepted_for_rail_optimized(self):
         """Test that providing rail for rail-optimized distribution works"""
@@ -1072,7 +1074,9 @@ class ServerConnectionPermissionTestCase(TestCase):
             fabric=FabricTypeChoices.FRONTEND,
             hedgehog_role=HedgehogRoleChoices.SERVER_LEAF,
             device_type_extension=cls.device_ext,
-            uplink_ports_per_switch=4
+            uplink_ports_per_switch=4,
+            redundancy_type='eslag',
+            redundancy_group='fe-leaf-eslag',
         )
 
         cls.zone = SwitchPortZone.objects.create(
