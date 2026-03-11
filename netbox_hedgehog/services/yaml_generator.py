@@ -9,14 +9,20 @@ NOT a plan-based generator. Port names come from Interface.name (authoritative).
 """
 
 import re
+import hashlib
 from typing import Dict, Any, List
 from collections import defaultdict
 from django.core.exceptions import ValidationError
-
 from dcim.models import Cable, Interface, Device
 
 from ..models.topology_planning import TopologyPlan, DeviceTypeExtension
-from ..choices import FabricTypeChoices
+from ..choices import FabricClassChoices
+from ._fabric_utils import (
+    _device_fabric_class,
+    _is_legacy_managed_switch_without_fabric,
+    _is_managed_device,
+    _is_surrogate_device,
+)
 
 
 class YAMLGenerator:
@@ -37,17 +43,17 @@ class YAMLGenerator:
 
         Args:
             plan: TopologyPlan instance to generate YAML for
-            fabric: Optional fabric scope ('frontend' or 'backend'). When set,
-                only CRDs for that fabric are emitted. When None, all managed
-                fabrics (HEDGEHOG_MANAGED_SET) are included.
+            fabric: Optional managed fabric name. When set, only CRDs for that
+                fabric are emitted. When None, all discovered managed fabrics
+                are included.
         """
-        if fabric is not None and fabric not in FabricTypeChoices.HEDGEHOG_MANAGED_SET:
-            raise ValueError(
-                f"Invalid fabric '{fabric}'. Must be one of: "
-                f"{sorted(FabricTypeChoices.HEDGEHOG_MANAGED_SET)}"
-            )
         self.plan = plan
         self.fabric = fabric
+        valid_fabrics = self._managed_fabric_names_from_inventory() or self._managed_fabric_names_from_plan()
+        if fabric is not None and fabric not in valid_fabrics:
+            raise ValueError(
+                f"Invalid fabric '{fabric}'. Must be one of: {valid_fabrics}"
+            )
 
     def generate(self) -> str:
         """
@@ -78,33 +84,17 @@ class YAMLGenerator:
         # Step 3: Generate device CRDs
         switch_crds = self._generate_switches()
 
-        # Restrict Server CRDs: apply two-part filter.
-        #
-        # Surrogates (oob-mgmt fabric): always included — they appear as Server CRDs
-        # by definition and don't require managed-switch connections to qualify.
-        #
-        # Regular servers (role='server'): constraint #3 — excluded from export if their
-        # only connections are to surrogate/nonmanaged endpoints (DIET-254).
-        # For fabric-scoped export: must connect to the target fabric.
-        # For full-plan export: must connect to ANY managed fabric.
-        surrogate_ids = set(
-            Device.objects.filter(
-                custom_field_data__hedgehog_plan_id=str(self.plan.pk),
-                custom_field_data__hedgehog_fabric__in=list(FabricTypeChoices.SURROGATE_ENDPOINT_SET),
-            ).values_list('id', flat=True)
-        )
-
-        if self.fabric:
-            effective_fabrics = [self.fabric]
-        else:
-            effective_fabrics = sorted(FabricTypeChoices.HEDGEHOG_MANAGED_SET)
-
-        managed_switch_ids = set(
-            Device.objects.filter(
-                custom_field_data__hedgehog_plan_id=str(self.plan.pk),
-                custom_field_data__hedgehog_fabric__in=effective_fabrics,
-            ).values_list('id', flat=True)
-        )
+        effective_fabrics = self._effective_managed_fabrics(allow_empty=True)
+        managed_switch_ids = self._managed_switch_ids_for_fabrics(effective_fabrics)
+        if not managed_switch_ids and self.fabric is None:
+            managed_switch_ids = {
+                device.id
+                for device in self._plan_devices()
+                if _is_legacy_managed_switch_without_fabric(device)
+            }
+        if not managed_switch_ids and not self._regular_server_ids_from_inventory():
+            raise ValueError("No managed fabrics found for plan; cannot generate managed wiring export.")
+        surrogate_ids = self._surrogate_device_ids_from_inventory()
         # Regular servers with at least one managed-switch connection.
         # _get_server_ids_for_fabric() also picks up surrogates cabled to those switches.
         connected_server_ids = self._get_server_ids_for_fabric(managed_switch_ids)
@@ -153,6 +143,63 @@ class YAMLGenerator:
 
         # Return documents without header comment (hhfab doesn't accept comments before CRDs)
         return "".join(yaml_parts)
+
+    def _plan_devices(self):
+        return Device.objects.filter(
+            custom_field_data__hedgehog_plan_id=str(self.plan.pk)
+        ).select_related('device_type', 'role')
+
+    def _managed_fabric_names_from_plan(self) -> list[str]:
+        return list(
+            self.plan.switch_classes.filter(
+                fabric_class=FabricClassChoices.MANAGED,
+            ).exclude(
+                fabric_name='',
+            ).order_by(
+                'fabric_name'
+            ).values_list(
+                'fabric_name',
+                flat=True,
+            ).distinct()
+        )
+
+    def _managed_fabric_names_from_inventory(self) -> list[str]:
+        names = {
+            (device.custom_field_data or {}).get('hedgehog_fabric')
+            for device in self._plan_devices()
+            if _is_managed_device(device) and (device.custom_field_data or {}).get('hedgehog_fabric')
+        }
+        return sorted(names)
+
+    def _effective_managed_fabrics(self, allow_empty: bool = False) -> list[str]:
+        effective_fabrics = [self.fabric] if self.fabric else (
+            self._managed_fabric_names_from_inventory() or self._managed_fabric_names_from_plan()
+        )
+        if not effective_fabrics and not allow_empty:
+            raise ValueError("No managed fabrics found for plan; cannot generate managed wiring export.")
+        return effective_fabrics
+
+    def _managed_switch_ids_for_fabrics(self, fabric_names: list[str]) -> set[int]:
+        return {
+            device.id
+            for device in self._plan_devices()
+            if _is_managed_device(device)
+            and (device.custom_field_data or {}).get('hedgehog_fabric') in fabric_names
+        }
+
+    def _surrogate_device_ids_from_inventory(self) -> set[int]:
+        return {
+            device.id
+            for device in self._plan_devices()
+            if _is_surrogate_device(device)
+        }
+
+    def _regular_server_ids_from_inventory(self) -> set[int]:
+        return {
+            device.id
+            for device in self._plan_devices()
+            if device.role.slug == 'server'
+        }
 
     def _cable_to_link_data(self, cable: Cable) -> tuple:
         """
@@ -598,11 +645,12 @@ class YAMLGenerator:
             'surrogate'      - oob-mgmt switch, appears as Server CRD surrogate
             'excluded'       - in-band-mgmt, network-mgmt, legacy-oob, or unrecognized
         """
-        fabric = device.custom_field_data.get('hedgehog_fabric', '')
-        if fabric in FabricTypeChoices.HEDGEHOG_MANAGED_SET:
+        fabric_class = _device_fabric_class(device)
+        if fabric_class == FabricClassChoices.MANAGED or _is_legacy_managed_switch_without_fabric(device):
             return 'managed_switch'
-        if fabric in FabricTypeChoices.SURROGATE_ENDPOINT_SET:
+        if _is_surrogate_device(device):
             return 'surrogate'
+        fabric = device.custom_field_data.get('hedgehog_fabric', '')
         if not fabric and device.role.slug == 'server':
             return 'server'
         return 'excluded'
@@ -629,6 +677,9 @@ class YAMLGenerator:
             return 'unbundled'
         if kind_b in ('server', 'surrogate') and kind_a == 'managed_switch':
             return 'unbundled'
+
+        if kind_a == 'server' and kind_b == 'server':
+            raise ValidationError("Server-to-server connections are not supported. Expected server↔switch or switch↔switch.")
 
         # managed_switch↔managed_switch → fabric
         if kind_a == 'managed_switch' and kind_b == 'managed_switch':
@@ -710,6 +761,12 @@ class YAMLGenerator:
 
         existing_names.add(unique_name)
         return unique_name
+
+    def _fallback_boot_mac(self, device_name: str) -> str:
+        """Generate a deterministic boot MAC for legacy inventory lacking the custom field."""
+        hash_bytes = hashlib.sha256(device_name.encode()).digest()
+        mac_bytes = bytes([0x02]) + hash_bytes[1:6]
+        return ':'.join(f'{b:02x}' for b in mac_bytes)
 
     def _generate_port_configuration(self, switch_class: 'PlanSwitchClass') -> Dict[str, Dict[str, Any]]:
         """
@@ -857,18 +914,21 @@ class YAMLGenerator:
         switch_crds = []
         existing_names = set()
 
-        # Filter by plan ID, presence of hedgehog_role, and Hedgehog-managed fabric only.
-        # Management fabrics (oob-mgmt, in-band-mgmt, network-mgmt, legacy oob) are
-        # tracked in NetBox for inventory purposes but excluded from wiring YAML export.
-        # When self.fabric is set, restrict to that single fabric.
-        effective_fabrics = [self.fabric] if self.fabric else sorted(FabricTypeChoices.HEDGEHOG_MANAGED_SET)
-        switches = Device.objects.filter(
-            custom_field_data__hedgehog_plan_id=str(self.plan.pk),
-            custom_field_data__hedgehog_fabric__in=effective_fabrics,
-            custom_field_data__hedgehog_role__isnull=False
-        ).exclude(
-            custom_field_data__hedgehog_role=''
-        ).select_related('device_type', 'role').order_by('id')
+        effective_fabrics = set(self._effective_managed_fabrics(allow_empty=True))
+        switches = [
+            switch for switch in self._plan_devices().order_by('id')
+            if (
+                (
+                    _is_managed_device(switch)
+                    and (
+                        not effective_fabrics
+                        or (switch.custom_field_data or {}).get('hedgehog_fabric') in effective_fabrics
+                    )
+                )
+                or (_is_legacy_managed_switch_without_fabric(switch) and self.fabric is None)
+            )
+            and (switch.custom_field_data or {}).get('hedgehog_role', self._map_netbox_role_to_hedgehog(switch))
+        ]
 
         for switch in switches:
             # Get unique CRD name (collision-safe)
@@ -892,9 +952,7 @@ class YAMLGenerator:
             # Get boot MAC from custom field
             boot_mac = switch.custom_field_data.get('boot_mac')
             if not boot_mac:
-                raise ValidationError(
-                    f"Switch {switch.name} missing boot_mac in custom_field_data"
-                )
+                boot_mac = self._fallback_boot_mac(switch.name)
 
             # Build base spec
             spec = {
@@ -1015,14 +1073,12 @@ class YAMLGenerator:
         )
 
         # Device IDs where endpoint is a regular server or an oob-mgmt surrogate
-        from django.db.models import Q
         return set(
-            Interface.objects.filter(
-                id__in=server_side_iface_ids,
-            ).filter(
-                Q(device__role__slug='server') |
-                Q(device__custom_field_data__hedgehog_fabric__in=list(FabricTypeChoices.SURROGATE_ENDPOINT_SET))
-            ).values_list('device_id', flat=True)
+            device.id
+            for device in Device.objects.filter(
+                interfaces__id__in=server_side_iface_ids,
+            ).distinct().select_related('role')
+            if device.role.slug == 'server' or _is_surrogate_device(device)
         )
 
     def _generate_servers(self, filter_ids=None) -> List[Dict[str, Any]]:
@@ -1047,16 +1103,12 @@ class YAMLGenerator:
         server_crds = []
         existing_names = set()
 
-        from django.db.models import Q
-        servers = Device.objects.filter(
-            custom_field_data__hedgehog_plan_id=str(self.plan.pk),
-        ).filter(
-            Q(role__slug='server') |
-            Q(custom_field_data__hedgehog_fabric__in=list(FabricTypeChoices.SURROGATE_ENDPOINT_SET))
-        )
+        servers = [
+            device for device in self._plan_devices().order_by('id')
+            if device.role.slug == 'server' or _is_surrogate_device(device)
+        ]
         if filter_ids is not None:
-            servers = servers.filter(id__in=filter_ids)
-        servers = servers.order_by('id')
+            servers = [device for device in servers if device.id in filter_ids]
 
         for server in servers:
             # Get unique CRD name (collision-safe)
@@ -1097,16 +1149,16 @@ class YAMLGenerator:
             custom_field_data__hedgehog_plan_id=str(self.plan.pk)
         ).order_by('id')
 
-        # Build set of switch device IDs that are Hedgehog-managed (frontend/backend).
-        # Cables that touch an unmanaged switch endpoint are excluded from Connection CRDs.
-        # When self.fabric is set, restrict to that single fabric.
-        effective_fabrics = [self.fabric] if self.fabric else sorted(FabricTypeChoices.HEDGEHOG_MANAGED_SET)
-        _managed_switch_ids = set(
-            Device.objects.filter(
-                custom_field_data__hedgehog_plan_id=str(self.plan.pk),
-                custom_field_data__hedgehog_fabric__in=effective_fabrics,
-            ).values_list('id', flat=True)
-        )
+        effective_fabrics = self._effective_managed_fabrics(allow_empty=True)
+        _managed_switch_ids = self._managed_switch_ids_for_fabrics(effective_fabrics)
+        if not _managed_switch_ids:
+            _managed_switch_ids = {
+                device.id
+                for device in self._plan_devices()
+                if _is_legacy_managed_switch_without_fabric(device) and self.fabric is None
+            }
+        if not _managed_switch_ids:
+            return []
 
         def _endpoint_is_allowed(device: Device) -> bool:
             """Return True if device may appear in a Connection CRD endpoint.
@@ -1130,17 +1182,22 @@ class YAMLGenerator:
 
         for cable in cables:
             try:
-                # Get cable terminations
-                a_terminations = cable.a_terminations if isinstance(cable.a_terminations, list) else list(cable.a_terminations.all())
-                b_terminations = cable.b_terminations if isinstance(cable.b_terminations, list) else list(cable.b_terminations.all())
+                # Validate termination shape through the shared parser first.
+                conn_type, link_data = self._cable_to_link_data(cable)
 
-                if not a_terminations or not b_terminations:
+                if conn_type == 'excluded':
                     continue
 
-                iface_a = a_terminations[0]
-                iface_b = b_terminations[0]
-                device_a = iface_a.device
-                device_b = iface_b.device
+                if conn_type == 'unbundled':
+                    device_a = link_data['server_device']
+                    iface_a = link_data['server_iface']
+                    device_b = link_data['switch_device']
+                    iface_b = link_data['switch_iface']
+                else:
+                    device_a = link_data['leaf_device']
+                    iface_a = link_data['leaf_iface']
+                    device_b = link_data['spine_device']
+                    iface_b = link_data['spine_iface']
 
                 # Skip cables that touch an unmanaged switch endpoint.
                 # Servers are always allowed; peer/session/fabric-only cables between
@@ -1212,12 +1269,8 @@ class YAMLGenerator:
                     unbundled_crds.append(self._create_unbundled_crd(link_data))
 
                 else:
-                    # No zone classification - use endpoint-kind-based detection
-                    conn_type, link_data = self._cable_to_link_data(cable)
-
-                    if conn_type == 'excluded':
-                        continue
-                    elif conn_type == 'unbundled':
+                    # No explicit zone classification - use endpoint-kind-based detection
+                    if conn_type == 'unbundled':
                         unbundled_crds.append(self._create_unbundled_crd(link_data))
                     elif conn_type == 'fabric':
                         device_pair = (link_data['leaf_device'], link_data['spine_device'])
@@ -1244,22 +1297,12 @@ class YAMLGenerator:
             if len(links) == 1:
                 # Single link → unbundled (should be rare with zone='server')
                 link_data = links[0]
-                crd_name = self._sanitize_name(
-                    f"{server_device.name}--unbundled--{link_data['switch_device'].name}"
-                )
-                server_conn_crds.append({
-                    'apiVersion': 'wiring.githedgehog.com/v1beta1',
-                    'kind': 'Connection',
-                    'metadata': {'name': crd_name, 'namespace': 'default'},
-                    'spec': {
-                        'unbundled': {
-                            'link': {
-                                'server': {'port': f"{server_device.name}/{link_data['server_iface'].name}"},
-                                'switch': {'port': f"{link_data['switch_device'].name}/{link_data['switch_iface'].name}"}
-                            }
-                        }
-                    }
-                })
+                server_conn_crds.append(self._create_unbundled_crd({
+                    'server_device': server_device,
+                    'server_iface': link_data['server_iface'],
+                    'switch_device': link_data['switch_device'],
+                    'switch_iface': link_data['switch_iface'],
+                }))
 
             elif len(links) == 2:
                 # 2 links → check if same switch (bundled) or different switches (mclag)
@@ -1386,9 +1429,9 @@ def generate_yaml_for_plan(plan: TopologyPlan, fabric: str = None) -> str:
 
     Args:
         plan: TopologyPlan instance
-        fabric: Optional fabric scope ('frontend' or 'backend'). When set, only
-            CRDs for that fabric are emitted. When None, all managed fabrics
-            (HEDGEHOG_MANAGED_SET) are included.
+        fabric: Optional managed fabric-name scope. When set, only CRDs for
+            that fabric are emitted. When None, all discovered managed fabrics
+            are included.
 
     Returns:
         YAML string containing CRDs from NetBox inventory

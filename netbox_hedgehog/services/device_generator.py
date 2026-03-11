@@ -17,9 +17,9 @@ from dcim.models import Cable, Device, DeviceRole, Interface, Site
 from extras.models import Tag
 
 from netbox_hedgehog.choices import (
+    FabricClassChoices,
     ConnectionDistributionChoices,
     DeviceCategoryChoices,
-    FabricTypeChoices,
     HedgehogRoleChoices,
     PortTypeChoices,
     PortZoneTypeChoices,
@@ -34,6 +34,7 @@ from netbox_hedgehog.models.topology_planning import (
 )
 from netbox_hedgehog.services.port_allocator import PortAllocatorV2
 from netbox_hedgehog.services.port_specification import PortSpecification
+from netbox_hedgehog.services._fabric_utils import _is_managed_device
 from netbox_hedgehog.utils.snapshot_builder import build_plan_snapshot
 
 
@@ -190,7 +191,7 @@ class DeviceGenerator:
                     category=switch_role,
                     class_id=switch_class.switch_class_id,
                     index=index + 1,
-                    fabric=switch_class.fabric or "",
+                    fabric=switch_class.fabric_name or "",
                     role=switch_class.hedgehog_role or "",
                 )
                 device = Device(
@@ -203,7 +204,8 @@ class DeviceGenerator:
                 device.custom_field_data = {
                     'hedgehog_plan_id': str(self.plan.pk),
                     'hedgehog_class': switch_class.switch_class_id,
-                    'hedgehog_fabric': switch_class.fabric or "",
+                    'hedgehog_fabric': switch_class.fabric_name or "",
+                    'hedgehog_fabric_class': switch_class.fabric_class or "",
                     'hedgehog_role': switch_class.hedgehog_role or "",
                     'boot_mac': self._generate_boot_mac(name),
                 }
@@ -365,11 +367,12 @@ class DeviceGenerator:
             for switch_class in self.plan.switch_classes.all()
         }
 
-        for fabric in sorted(FabricTypeChoices.HEDGEHOG_MANAGED_SET):
+        for fabric in self._managed_fabric_names_from_plan():
             leaves = [
                 device
                 for device in switch_devices.values()
                 if device.custom_field_data.get('hedgehog_fabric') == fabric
+                and _is_managed_device(device)
                 and device.custom_field_data.get('hedgehog_role')
                 in (HedgehogRoleChoices.SERVER_LEAF, HedgehogRoleChoices.BORDER_LEAF)
             ]
@@ -377,6 +380,7 @@ class DeviceGenerator:
                 device
                 for device in switch_devices.values()
                 if device.custom_field_data.get('hedgehog_fabric') == fabric
+                and _is_managed_device(device)
                 and device.custom_field_data.get('hedgehog_role') == HedgehogRoleChoices.SPINE
             ]
 
@@ -498,7 +502,7 @@ class DeviceGenerator:
         cables: list[Cable] = []
 
         for switch_class in self.plan.switch_classes.all():
-            if not FabricTypeChoices.is_surrogate_endpoint(switch_class.fabric):
+            if switch_class.fabric_class != FabricClassChoices.UNMANAGED:
                 continue
 
             # Find oob-type uplink zones with an explicit peer_zone target (Option A)
@@ -630,11 +634,12 @@ class DeviceGenerator:
             for sc in self.plan.switch_classes.all()
         }
 
-        for fabric in sorted(FabricTypeChoices.HEDGEHOG_MANAGED_SET):
+        for fabric in self._managed_fabric_names_from_plan():
             leaves = sorted(
                 [
                     d for d in switch_devices.values()
                     if d.custom_field_data.get('hedgehog_fabric') == fabric
+                    and _is_managed_device(d)
                     and d.custom_field_data.get('hedgehog_role')
                     in (HedgehogRoleChoices.SERVER_LEAF, HedgehogRoleChoices.BORDER_LEAF)
                 ],
@@ -933,12 +938,26 @@ class DeviceGenerator:
                 category=self._resolve_switch_category(switch_class.hedgehog_role),
                 class_id=switch_class.switch_class_id,
                 index=index + 1,
-                fabric=switch_class.fabric or "",
+                fabric=switch_class.fabric_name or "",
                 role=switch_class.hedgehog_role or "",
             )
             if name in switch_devices:
                 devices.append(switch_devices[name])
         return devices
+
+    def _managed_fabric_names_from_plan(self) -> list[str]:
+        return list(
+            self.plan.switch_classes.filter(
+                fabric_class=FabricClassChoices.MANAGED,
+            ).exclude(
+                fabric_name='',
+            ).order_by(
+                'fabric_name'
+            ).values_list(
+                'fabric_name',
+                flat=True,
+            ).distinct()
+        )
 
     def _get_total_rails_for_target(
         self,

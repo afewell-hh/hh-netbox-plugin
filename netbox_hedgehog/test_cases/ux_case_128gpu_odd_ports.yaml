@@ -454,7 +454,8 @@ plan:
 
 switch_classes:
   - switch_class_id: fe-gpu-leaf
-    fabric: frontend
+    fabric_name: frontend
+    fabric_class: managed
     hedgehog_role: server-leaf
     device_type_extension: ds5000_ext
     uplink_ports_per_switch:
@@ -462,7 +463,8 @@ switch_classes:
     redundancy_type: eslag
     redundancy_group: fe-gpu-eslag
   - switch_class_id: fe-storage-leaf
-    fabric: frontend
+    fabric_name: frontend
+    fabric_class: managed
     hedgehog_role: server-leaf
     device_type_extension: ds5000_ext
     uplink_ports_per_switch:
@@ -470,7 +472,8 @@ switch_classes:
     redundancy_type: eslag
     redundancy_group: fe-storage-eslag
   - switch_class_id: fe-spine
-    fabric: frontend
+    fabric_name: frontend
+    fabric_class: managed
     hedgehog_role: spine
     device_type_extension: ds5000_ext
     override_quantity: 4
@@ -479,19 +482,22 @@ switch_classes:
     redundancy_type: eslag
     redundancy_group: fe-spine-eslag
   - switch_class_id: be-rail-leaf
-    fabric: backend
+    fabric_name: backend
+    fabric_class: managed
     hedgehog_role: server-leaf
     device_type_extension: ds5000_ext
     uplink_ports_per_switch:
     mclag_pair: false
   - switch_class_id: be-spine
-    fabric: backend
+    fabric_name: backend
+    fabric_class: managed
     hedgehog_role: spine
     device_type_extension: ds5000_ext
     uplink_ports_per_switch: 0
     mclag_pair: false
   - switch_class_id: fe-border-leaf
-    fabric: frontend
+    fabric_name: frontend
+    fabric_class: managed
     hedgehog_role: server-leaf
     device_type_extension: ds3000_ext
     uplink_ports_per_switch: 0
@@ -499,7 +505,8 @@ switch_classes:
     redundancy_type: eslag
     redundancy_group: fe-border-eslag
   - switch_class_id: oob-mgmt-leaf
-    fabric: oob-mgmt
+    fabric_name: oob-mgmt
+    fabric_class: unmanaged
     hedgehog_role: server-leaf
     device_type_extension: es1000_ext
     uplink_ports_per_switch: 2

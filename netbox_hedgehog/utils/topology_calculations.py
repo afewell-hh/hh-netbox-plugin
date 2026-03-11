@@ -912,12 +912,12 @@ def calculate_spine_quantity(spine_switch_class) -> int:
     """
     # Get all switch classes in the same plan and fabric
     plan = spine_switch_class.plan
-    fabric = spine_switch_class.fabric
+    fabric = spine_switch_class.fabric_name
 
     # Find all leaf switches (server-leaf, border-leaf) in the same fabric
     # Exclude spine switches themselves
     leaf_switches = plan.switch_classes.filter(
-        fabric=fabric,
+        fabric_name=fabric,
         hedgehog_role__in=['server-leaf', 'border-leaf']
     ).exclude(
         pk=spine_switch_class.pk

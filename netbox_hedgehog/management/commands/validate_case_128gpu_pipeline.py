@@ -3,11 +3,10 @@ Single-command 128GPU validation golden path pipeline (DIET-235).
 
 Runs the full end-to-end golden path for the 128GPU regression case:
   1. setup_case_128gpu_odd_ports --clean --generate
-  2. export_wiring_yaml <plan_id> --output <base>.yaml            (full artifact)
-  3. export_wiring_yaml <plan_id> --output <base> --split-by-fabric  (frontend + backend)
+  2. export_wiring_yaml <plan_id> --output <base>.yaml
+  3. export_wiring_yaml <plan_id> --output <base> --split-by-fabric
   4. hhfab validate full artifact
-  5. hhfab validate frontend artifact
-  6. hhfab validate backend artifact
+  5. hhfab validate each discovered managed-fabric artifact
 
 Prints a structured summary block and exits non-zero on any failure.
 
@@ -25,17 +24,17 @@ Exit codes:
 
 import hashlib
 import os
-import sys
 import tempfile
 
 from django.core.management import call_command
 from django.core.management.base import BaseCommand, CommandError
 
+from netbox_hedgehog.choices import FabricClassChoices
 from netbox_hedgehog.models.topology_planning import TopologyPlan
 from netbox_hedgehog.services import hhfab
+from netbox_hedgehog.services.yaml_generator import YAMLGenerator
 
 PLAN_NAME = "UX Case 128GPU Odd Ports"
-_FABRICS = ('frontend', 'backend')
 
 
 class Command(BaseCommand):
@@ -95,7 +94,8 @@ class Command(BaseCommand):
 
         full_path = os.path.join(output_dir, '128gpu-full.yaml')
         split_base = os.path.join(output_dir, '128gpu')
-        split_paths = {fab: f"{split_base}-{fab}.yaml" for fab in _FABRICS}
+        managed_fabrics = self._managed_fabric_names(plan)
+        split_paths = {fab: f"{split_base}-{fab}.yaml" for fab in managed_fabrics}
 
         # --- Step 2: Export full artifact ---
         self.stdout.write(f"[2/6] Exporting full artifact -> {full_path}")
@@ -111,7 +111,9 @@ class Command(BaseCommand):
             raise CommandError(f"Full export failed: {e}")
 
         # --- Step 3: Export split artifacts ---
-        self.stdout.write(f"[3/6] Exporting split artifacts -> {split_base}-{{frontend,backend}}.yaml")
+        self.stdout.write(
+            f"[3/*] Exporting split artifacts for managed fabrics -> {split_base}-<fabric>.yaml"
+        )
         try:
             call_command(
                 'export_wiring_yaml',
@@ -124,20 +126,21 @@ class Command(BaseCommand):
         except CommandError as e:
             raise CommandError(f"Split export failed: {e}")
 
-        # --- Steps 4-6: hhfab validation ---
+        # --- Remaining steps: hhfab validation ---
         hhfab_available = hhfab.is_hhfab_available()
         if not hhfab_available:
             self.stdout.write(self.style.WARNING(
-                "[4-6/6] hhfab not found in PATH - validation skipped.\n"
+                "[4/*] hhfab not found in PATH - validation skipped.\n"
                 "        Install hhfab to enable: curl -fsSL https://i.hhdev.io/hhfab | bash"
             ))
 
         validation_results = {}  # label -> (success, sha256, path)
 
-        artifacts = [('full', full_path)] + [(fab, split_paths[fab]) for fab in _FABRICS]
+        artifacts = [('full', full_path)] + [(fab, split_paths[fab]) for fab in managed_fabrics]
         step = 4
+        total_steps = 3 + len(artifacts)
         for label, path in artifacts:
-            self.stdout.write(f"[{step}/6] hhfab validate [{label}] -> {path}")
+            self.stdout.write(f"[{step}/{total_steps}] hhfab validate [{label}] -> {path}")
             step += 1
 
             sha256 = _sha256_of_file(path)
@@ -166,6 +169,23 @@ class Command(BaseCommand):
             )
 
         self.stdout.write(self.style.SUCCESS("\n[PASS] Pipeline complete - all steps passed."))
+
+    def _managed_fabric_names(self, plan):
+        names = list(
+            plan.switch_classes.filter(
+                fabric_class=FabricClassChoices.MANAGED,
+            ).exclude(
+                fabric_name='',
+            ).order_by(
+                'fabric_name',
+            ).values_list(
+                'fabric_name',
+                flat=True,
+            ).distinct()
+        )
+        if names:
+            return names
+        return YAMLGenerator(plan)._managed_fabric_names_from_inventory()
 
     def _print_summary(self, plan, results, hhfab_available):
         self.stdout.write("\n" + "=" * 60)

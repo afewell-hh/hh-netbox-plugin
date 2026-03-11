@@ -193,6 +193,18 @@ class FabricTypeChoices(ChoiceSet):
         return fabric in cls.SURROGATE_ENDPOINT_SET
 
 
+class FabricClassChoices(ChoiceSet):
+    """Behavioral class for DIET switch fabrics."""
+
+    MANAGED = 'managed'
+    UNMANAGED = 'unmanaged'
+
+    CHOICES = [
+        (MANAGED, 'Managed'),
+        (UNMANAGED, 'Unmanaged'),
+    ]
+
+
 class HedgehogRoleChoices(ChoiceSet):
     """Hedgehog role choices for PlanSwitchClass"""
 

@@ -705,22 +705,19 @@ class TestLegacyOobFormAndExport(ManagedFabricTestBase):
         self.client = Client()
         self.client.force_login(self.user)
 
-    def test_oob_choice_present_in_form_with_deprecated_label(self):
-        """T9a: The PlanSwitchClass add form renders 'oob' choice with DEPRECATED label.
+    def test_legacy_oob_choice_removed_from_form(self):
+        """T9a: Legacy `oob` fabric choice is removed from the switch-class form.
 
-        RED: current OOB label is 'Out-of-Band' without any DEPRECATED marker.
-        GREEN: label should contain 'DEPRECATED' as part of the Out-of-Band entry.
-        The assertion checks for the OOB label text including DEPRECATED, not just
-        any occurrence of DEPRECATED on the page.
+        Fabric Class architecture replaces enum-backed fabric selection with
+        explicit `fabric_name` and `fabric_class` fields. Legacy names survive
+        only in stored data / fallback logic, not as selectable form choices.
         """
         url = reverse('plugins:netbox_hedgehog:planswitchclass_add')
         response = self.client.get(url)
         self.assertEqual(response.status_code, 200)
-        self.assertContains(response, 'value="oob"')
-        # Must assert the OOB *label* (rendered as option text) contains DEPRECATED.
-        # 'Out-of-Band (DEPRECATED' will appear only after the GREEN implementation.
-        # Currently the label is just 'Out-of-Band' so this assertion fails (RED).
-        self.assertContains(response, 'Out-of-Band (DEPRECATED')
+        self.assertNotContains(response, 'value="oob"')
+        self.assertContains(response, 'name="fabric_name"')
+        self.assertContains(response, 'name="fabric_class"')
 
     def test_oob_mgmt_export_surrogate_semantics(self):
         """T9b (revised): oob-mgmt switch exports as Server CRD surrogate; no Switch CRD.

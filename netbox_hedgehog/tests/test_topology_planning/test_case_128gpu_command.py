@@ -66,9 +66,9 @@ class Case128GpuCommandTestCase(TestCase):
             server_class__plan=self.plan
         ).count()
 
-        self.assertEqual(server_count, 8)
-        self.assertEqual(switch_count, 7)   # Phase 5 adds oob-mgmt-leaf
-        self.assertEqual(connection_count, 24)  # Phase 5 adds 8 IPMI connections
+        self.assertEqual(server_count, 9)
+        self.assertEqual(switch_count, 7)   # Includes oob-mgmt-leaf
+        self.assertEqual(connection_count, 26)  # Includes 9 IPMI connections
 
     def test_generate_preview_page_loads(self):
         self.client.force_login(self.superuser)

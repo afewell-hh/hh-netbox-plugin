@@ -4,19 +4,19 @@ Regression test for UC Case 128 GPU Odd Ports (canonical DIET case)
 The test validates that:
 1. The Case 128 GPU plan can still be created
 2. Device generation produces the verified canonical counts:
-   171 devices, 1243 interfaces, 979 cables
-   (verified via setup_case_128gpu_odd_ports --clean --generate --report, DIET-254)
+   175 devices, 1313 interfaces, 1017 cables
+   (verified via setup_case_128gpu_odd_ports --clean --generate --report, DIET-272)
 3. YAML generation still produces valid Hedgehog configuration
 4. hhfab validation still passes (if hhfab is available)
 
-Canonical topology (Phase 5 / DIET-254):
+Canonical topology (DIET-272, 2026-03-10):
   153 servers (96 gpu-fe-only + 32 gpu-with-backend + 18 storage + 7 border/ctrl)
   + 14 managed switches (4 be-rail-leaf + 2 be-spine + 2 fe-border-leaf +
-    2 fe-gpu-leaf + 2 fe-spine + 2 fe-storage-leaf)
-  + 4 oob-mgmt-leaf (ES1000-48, computed: ceil(153/48)=4)
-  = 171 devices total
+    2 fe-gpu-leaf + 4 fe-spine (override_quantity=4) + 2 fe-storage-leaf)
+  + 4 oob-mgmt-leaf (ES1000-48) + 2 HHG servers
+  = 175 devices total
 
-SLOW TEST: Generates 171 devices, 1243 interfaces, 979 cables.
+SLOW TEST: Generates 175 devices, 1313 interfaces, 1017 cables.
 Execution time: 10-15 minutes.
 
 Run separately with: python manage.py test --tag=slow --keepdb
@@ -132,31 +132,32 @@ class UCCase128GPURegressionTestCase(TestCase):
         generator = DeviceGenerator(self.plan)
         result = generator.generate_all()
 
-        # Validate counts match expected baseline (Phase 5 / DIET-254)
-        # Breakdown: 153 servers + 14 managed switches + 4 oob-mgmt-leaf = 171
+        # Validate counts match current canonical baseline (DIET-272, 2026-03-10)
+        # Breakdown: 167 base (14 managed switches + 153 servers) + 4 oob-mgmt-leaf
+        #            + 2 HHG + 4 fe-spine (override_quantity=4) + 2 fe-border-leaf = 175
         # Verified via: setup_case_128gpu_odd_ports --clean --generate --report
         self.assertEqual(
             result.device_count,
-            171,
-            f"Expected 171 devices, got {result.device_count}. "
+            175,
+            f"Expected 175 devices, got {result.device_count}. "
             "This indicates a regression in device generation logic."
         )
 
-        # Interface count: switch downlinks + fabric + IPMI + oob-mgmt interfaces
+        # Interface count: switch-side only (server module interfaces not counted)
         # Verified via: setup_case_128gpu_odd_ports --clean --generate --report
         self.assertEqual(
             result.interface_count,
-            1243,
-            f"Expected 1243 interfaces, got {result.interface_count}. "
+            1313,
+            f"Expected 1313 interfaces, got {result.interface_count}. "
             "This indicates a regression in interface generation logic."
         )
 
-        # Cable count: server-to-switch + fabric + 153 IPMI + 8 oob-uplinks
+        # Cable count includes +32 border uplink cables (DIET-272)
         # Verified via: setup_case_128gpu_odd_ports --clean --generate --report
         self.assertEqual(
             result.cable_count,
-            979,
-            f"Expected 979 cables, got {result.cable_count}. "
+            1017,
+            f"Expected 1017 cables, got {result.cable_count}. "
             "This indicates a regression in cable generation logic."
         )
 

@@ -228,12 +228,12 @@ class Command(BaseCommand):
 
         # Switch classes
         self.stdout.write("\n🔀 Switch Classes:")
-        switch_classes = PlanSwitchClass.objects.filter(plan=plan).order_by("fabric", "hedgehog_role")
+        switch_classes = PlanSwitchClass.objects.filter(plan=plan).order_by("fabric_name", "hedgehog_role")
         for swc in switch_classes:
             calc_qty = swc.calculated_quantity if swc.calculated_quantity is not None else "N/A"
             override_qty = swc.override_quantity if swc.override_quantity is not None else "-"
             self.stdout.write(
-                f"   • {swc.switch_class_id} ({swc.fabric}, {swc.hedgehog_role})"
+                f"   • {swc.switch_class_id} ({swc.fabric_name}, {swc.hedgehog_role})"
             )
             self.stdout.write(
                 f"     - Quantity: {swc.effective_quantity} (calculated: {calc_qty}, override: {override_qty})"

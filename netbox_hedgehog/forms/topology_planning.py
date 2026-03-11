@@ -17,7 +17,8 @@ from ..models.topology_planning import (
     PlanServerConnection,
     SwitchPortZone,
 )
-from ..choices import ConnectionDistributionChoices
+from ..choices import ConnectionDistributionChoices, FabricClassChoices
+from ..services._fabric_utils import _legacy_fabric_name_to_class
 
 
 class BreakoutOptionForm(NetBoxModelForm):
@@ -205,12 +206,38 @@ class PlanSwitchClassForm(NetBoxModelForm):
         help_text='Select the switch DeviceType with Hedgehog metadata'
     )
 
+    fabric_name = forms.CharField(
+        label='Fabric Name',
+        required=True,
+        help_text='User-defined fabric name used to partition switch-to-switch and scoped exports.',
+    )
+
+    fabric_class = forms.ChoiceField(
+        label='Fabric Class',
+        choices=[('', '---------')] + list(FabricClassChoices.CHOICES),
+        required=True,
+        initial='',
+        help_text='Required explicit selection. Managed exports as Switch CRDs; unmanaged exports as Server surrogates.',
+    )
+
+    def __init__(self, *args, **kwargs):
+        data = kwargs.get('data')
+        if data is not None and hasattr(data, 'copy'):
+            mutable_data = data.copy()
+            if not mutable_data.get('fabric_name') and mutable_data.get('fabric'):
+                mutable_data['fabric_name'] = mutable_data['fabric']
+            if not mutable_data.get('fabric_class') and mutable_data.get('fabric'):
+                mutable_data['fabric_class'] = _legacy_fabric_name_to_class(mutable_data['fabric'])
+            kwargs['data'] = mutable_data
+        super().__init__(*args, **kwargs)
+
     class Meta:
         model = PlanSwitchClass
         fields = [
             'plan',
             'switch_class_id',
-            'fabric',
+            'fabric_name',
+            'fabric_class',
             'hedgehog_role',
             'device_type_extension',
             'redundancy_type',
@@ -226,12 +253,8 @@ class PlanSwitchClassForm(NetBoxModelForm):
         }
         help_texts = {
             'switch_class_id': "Unique identifier (e.g., 'fe-gpu-leaf', 'be-spine')",
-            'fabric': (
-                'Fabric type. Frontend and Backend are Hedgehog-managed and appear in wiring YAML export. '
-                'Management types (OOB Management, In-Band Management, Network Management) are tracked '
-                'for inventory but excluded from wiring export. Out-of-Band (oob) is deprecated; use '
-                'OOB Management instead.'
-            ),
+            'fabric_name': 'User-defined fabric name used for partitioning and scoped export discovery.',
+            'fabric_class': 'Behavioral class that controls whether switches export as managed switches or unmanaged surrogates.',
             'hedgehog_role': 'Hedgehog role (Spine, Server Leaf, Border Leaf)',
             'device_type_extension': 'Switch model with Hedgehog-specific metadata',
             'redundancy_type': 'Redundancy mode (MCLAG=even pairs with peer link, ESLAG=2-4 switches without peer link)',

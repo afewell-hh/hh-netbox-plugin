@@ -55,9 +55,9 @@ from dcim.models import DeviceRole, DeviceType, InterfaceTemplate, Manufacturer,
 
 from netbox_hedgehog.choices import (
     AllocationStrategyChoices,
+    FabricClassChoices,
     ConnectionDistributionChoices,
     ConnectionTypeChoices,
-    FabricTypeChoices,
     GenerationStatusChoices,
     HedgehogRoleChoices,
     PortZoneTypeChoices,
@@ -179,7 +179,8 @@ class _PipelineBase(TestCase):
         switch_class = PlanSwitchClass.objects.create(
             plan=cls.plan,
             switch_class_id='pl-fe-leaf',
-            fabric=FabricTypeChoices.FRONTEND,
+            fabric_name='frontend',
+            fabric_class=FabricClassChoices.MANAGED,
             hedgehog_role=HedgehogRoleChoices.SERVER_LEAF,
             device_type_extension=device_ext,
             uplink_ports_per_switch=0,
@@ -219,6 +220,21 @@ class _PipelineBase(TestCase):
 
         generator = DeviceGenerator(plan=cls.plan, site=site)
         generator.generate_all()
+
+    @classmethod
+    def managed_fabric_names(cls):
+        return list(
+            cls.plan.switch_classes.filter(
+                fabric_class=FabricClassChoices.MANAGED,
+            ).exclude(
+                fabric_name='',
+            ).order_by(
+                'fabric_name',
+            ).values_list(
+                'fabric_name',
+                flat=True,
+            ).distinct()
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -266,17 +282,17 @@ class PipelineHappyPathTestCase(_PipelineBase):
             self.assertGreater(os.path.getsize(full_path), 0)
 
     def test_pipeline_writes_split_artifacts(self):
-        """Pipeline writes 128gpu-frontend.yaml and 128gpu-backend.yaml."""
+        """Pipeline writes one split artifact per discovered managed fabric."""
         with tempfile.TemporaryDirectory() as tmpdir:
             call_command(
                 'validate_case_128gpu_pipeline',
                 '--skip-setup', '--output-dir', tmpdir,
                 stdout=StringIO(),
             )
-            for fabric in ('frontend', 'backend'):
+            fabrics = self.managed_fabric_names()
+            self.assertGreaterEqual(len(fabrics), 1)
+            for fabric in fabrics:
                 path = os.path.join(tmpdir, f'128gpu-{fabric}.yaml')
-                # frontend artifact expected; backend may be empty for a fe-only plan
-                # Both paths must exist (export_wiring_yaml always writes them)
                 self.assertTrue(
                     os.path.exists(path),
                     f"128gpu-{fabric}.yaml must be written by --split-by-fabric"
@@ -295,7 +311,7 @@ class PipelineHappyPathTestCase(_PipelineBase):
         self.assertIn(str(self.plan.pk), output, "Summary must include plan_id")
 
     def test_pipeline_summary_includes_sha256(self):
-        """Summary block includes sha256 for each artifact."""
+        """Summary block includes sha256 for the full artifact and each split artifact."""
         with tempfile.TemporaryDirectory() as tmpdir:
             out = StringIO()
             call_command(
@@ -306,12 +322,12 @@ class PipelineHappyPathTestCase(_PipelineBase):
         output = out.getvalue()
         sha256_lines = [ln for ln in output.splitlines() if 'sha256' in ln]
         self.assertGreaterEqual(
-            len(sha256_lines), 3,
-            "Summary must include sha256 for full + frontend + backend artifacts"
+            len(sha256_lines), 1 + len(self.managed_fabric_names()),
+            "Summary must include sha256 for the full artifact and all split artifacts"
         )
 
     def test_pipeline_summary_includes_artifact_labels(self):
-        """Summary block includes [full], [frontend], [backend] labels."""
+        """Summary block includes [full] and one label per discovered managed fabric."""
         with tempfile.TemporaryDirectory() as tmpdir:
             out = StringIO()
             call_command(
@@ -320,7 +336,7 @@ class PipelineHappyPathTestCase(_PipelineBase):
                 stdout=out,
             )
         output = out.getvalue()
-        for label in ('[full]', '[frontend]', '[backend]'):
+        for label in ['[full]'] + [f'[{fabric}]' for fabric in self.managed_fabric_names()]:
             self.assertIn(label, output, f"Summary must include {label} label")
 
     @unittest.skipUnless(hhfab.is_hhfab_available(), "hhfab not installed")
@@ -427,8 +443,8 @@ class PipelineHHFabUnavailableTestCase(_PipelineBase):
         output = out.getvalue()
         skipped_lines = [ln for ln in output.splitlines() if 'SKIPPED' in ln]
         self.assertGreaterEqual(
-            len(skipped_lines), 3,
-            "Summary must show SKIPPED for each of the 3 artifacts"
+            len(skipped_lines), 1 + len(self.managed_fabric_names()),
+            "Summary must show SKIPPED for the full artifact and all split artifacts"
         )
 
     def test_hhfab_unavailable_artifacts_still_written(self):

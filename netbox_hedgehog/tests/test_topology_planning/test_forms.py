@@ -287,6 +287,8 @@ class PlanSwitchClassFormTestCase(TestCase):
         form_data = {
             'plan': self.plan.pk,
             'switch_class_id': 'test-switch',
+            'fabric_name': 'frontend',
+            'fabric_class': 'managed',
             'device_type_extension': self.device_ext.pk,
             'uplink_ports_per_switch': 0,
             'override_quantity': '',  # Empty string should be treated as None

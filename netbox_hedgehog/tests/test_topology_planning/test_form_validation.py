@@ -416,6 +416,8 @@ class PlanSwitchClassFormValidationTestCase(TestCase):
         data_true = {
             'plan': self.plan.pk,
             'switch_class_id': 'mclag-test',
+            'fabric_name': 'frontend',
+            'fabric_class': 'managed',
             'device_type_extension': self.device_ext.pk,
             'uplink_ports_per_switch': 0,
             'mclag_pair': True,
@@ -431,6 +433,8 @@ class PlanSwitchClassFormValidationTestCase(TestCase):
         data_false = {
             'plan': self.plan.pk,
             'switch_class_id': 'no-mclag-test',
+            'fabric_name': 'frontend',
+            'fabric_class': 'managed',
             'device_type_extension': self.device_ext.pk,
             'uplink_ports_per_switch': 0,
             'mclag_pair': False,
@@ -448,6 +452,8 @@ class PlanSwitchClassFormValidationTestCase(TestCase):
         data = {
             'plan': self.plan.pk,
             'switch_class_id': 'override-test',
+            'fabric_name': 'frontend',
+            'fabric_class': 'managed',
             'device_type_extension': self.device_ext.pk,
             'uplink_ports_per_switch': 0,
             'override_quantity': '',  # Empty should be treated as None
