@@ -1,13 +1,15 @@
 """
-Tests for alternating distribution and redundancy_type interaction.
+Tests for Option B: explicit redundancy_type required when distribution=alternating.
 
-History:
-- Issue #246 originally required redundancy_type on the switch class when
-  distribution=alternating (Option B).
-- That validation was removed in Epic #276 / #283 to support L3MH topologies,
-  where alternating distribution is correct without MLAG/ESLAG.
-- Alternating without redundancy_type is now valid (L3MH mode).
-- Redundancy semantics will move to the connection level in Epic #283.
+Issue: #246 — Model validation: distribution=alternating requires redundancy_type on
+the target switch class.
+
+Background:
+- Option A (#244): calculate_switch_quantity() enforces min 2 at runtime (safety net).
+- Option B (this issue): clean() rejects connections at authoring time if the switch
+  class lacks redundancy_type, making the HA intent explicit in the model.
+
+Option A remains in place as defense-in-depth fallback.
 """
 
 from io import StringIO
@@ -122,30 +124,26 @@ class AlternatingRedundancyValidationTestCase(TestCase):
         )
 
     # =========================================================================
-    # Test 1: alternating without redundancy_type is now allowed (L3MH mode)
+    # Test 1: alternating without redundancy_type raises ValidationError
     # =========================================================================
 
-    def test_alternating_without_redundancy_type_is_allowed(self):
+    def test_alternating_requires_redundancy_type(self):
         """
-        distribution=alternating targeting a switch class with no redundancy_type
-        must now pass validation. This supports L3MH topologies where alternating
-        is required but no MLAG/ESLAG is used.
-
-        The old validation (Option B, issue #246) was removed in Epic #276 to
-        unblock L3MH. See #283 for the full redundancy redesign.
+        Creating a connection with distribution=alternating targeting a switch
+        class with no redundancy_type must raise ValidationError naming the
+        switch class and stating the fix.
         """
         switch_class = self._make_switch_class(switch_class_id='border-no-redund')
         zone = self._make_server_zone(switch_class)
         server_class = self._make_server_class()
         conn = self._build_connection(server_class, zone, distribution='alternating')
 
-        # Should not raise a redundancy_type-related ValidationError
-        try:
+        with self.assertRaises(ValidationError) as ctx:
             conn.full_clean()
-        except ValidationError as e:
-            errors = e.message_dict if hasattr(e, 'message_dict') else {}
-            relevant = {k: v for k, v in errors.items() if 'redundancy' in str(v).lower()}
-            self.assertEqual(relevant, {}, f"Unexpected redundancy validation error: {e}")
+
+        error_text = str(ctx.exception)
+        self.assertIn('redundancy_type', error_text.lower())
+        self.assertIn('border-no-redund', error_text)
 
     # =========================================================================
     # Test 2: alternating WITH redundancy_type passes validation
@@ -269,38 +267,51 @@ class AlternatingRedundancyIngestTestCase(TestCase):
             quantity=quantity,
         )
 
-    def test_ingest_allows_alternating_without_redundancy_type(self):
+    def test_ingest_rejects_alternating_without_redundancy_type(self):
         """
-        The ingest build-validate-save path must now allow alternating connections
-        whose target switch class has no redundancy_type. This supports L3MH.
+        The ingest build-validate-save path must reject alternating connections
+        whose target switch class has no redundancy_type — even on the ORM path.
 
-        Previously rejected by Option B validation (issue #246); now allowed
-        after removal in Epic #276 / #283.
+        This is the negative ingest test required by the blocking finding on PR #247.
         """
+        from netbox_hedgehog.test_cases.ingest import TestCaseValidationError
+
         switch_class = self._make_switch_class(switch_class_id='no-redund-leaf')
         zone = self._make_server_zone(switch_class)
         server_class = self._make_server_class()
 
+        # Simulate what ingest does: build-validate-save pattern
+        conn_defaults = {
+            "connection_name": "test-conn",
+            "nic_module_type": get_test_nic_module_type(),
+            "port_index": 0,
+            "ports_per_connection": 2,
+            "hedgehog_conn_type": "unbundled",
+            "distribution": "alternating",
+            "target_zone": zone,
+            "speed": 100,
+            "rail": None,
+            "port_type": "",
+        }
         conn = PlanServerConnection(
             server_class=server_class,
             connection_id='test-conn',
-            connection_name="test-conn",
-            nic_module_type=get_test_nic_module_type(),
-            port_index=0,
-            ports_per_connection=2,
-            hedgehog_conn_type="unbundled",
-            distribution="alternating",
-            target_zone=zone,
-            speed=100,
+            **conn_defaults,
         )
 
-        # Should not raise a redundancy-related error
-        try:
+        from django.core.exceptions import ValidationError as DjangoValidationError
+        with self.assertRaises(DjangoValidationError) as ctx:
             conn.full_clean()
-        except ValidationError as e:
-            errors = e.message_dict if hasattr(e, 'message_dict') else {}
-            relevant = {k: v for k, v in errors.items() if 'redundancy' in str(v).lower()}
-            self.assertEqual(relevant, {}, f"Unexpected redundancy validation error: {e}")
+
+        self.assertIn('no-redund-leaf', str(ctx.exception))
+
+        # Also assert the record was NOT persisted
+        self.assertFalse(
+            PlanServerConnection.objects.filter(
+                server_class=server_class, connection_id='test-conn'
+            ).exists(),
+            "Alternating connection without redundancy_type must not be saved to DB"
+        )
 
 
 class AlternatingRedundancy128GpuRegressionTestCase(TestCase):

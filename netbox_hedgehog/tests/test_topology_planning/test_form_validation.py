@@ -578,7 +578,7 @@ class PlanServerConnectionFormValidationTestCase(TestCase):
             'connection_name': 'frontend',
             'ports_per_connection': 2,
             'hedgehog_conn_type': ConnectionTypeChoices.UNBUNDLED,
-            'distribution': ConnectionDistributionChoices.ALTERNATING,
+            'distribution': ConnectionDistributionChoices.SAME_SWITCH,
             'target_zone': self.zone.pk,
             'speed': 200,
         }
@@ -710,7 +710,7 @@ class PlanServerConnectionFormValidationTestCase(TestCase):
         """Test that rail is NOT required for non-rail-optimized distributions"""
         url = reverse('plugins:netbox_hedgehog:planserverconnection_add')
 
-        # Alternating distribution WITHOUT rail should succeed
+        # Same-switch distribution WITHOUT rail should succeed
         data = {
             'server_class': self.server_class.pk,
             'connection_id': 'alt-test',
@@ -719,7 +719,7 @@ class PlanServerConnectionFormValidationTestCase(TestCase):
             'connection_name': 'frontend-alt',
             'ports_per_connection': 2,
             'hedgehog_conn_type': ConnectionTypeChoices.UNBUNDLED,
-            'distribution': ConnectionDistributionChoices.ALTERNATING,
+            'distribution': ConnectionDistributionChoices.SAME_SWITCH,
             'target_zone': self.zone.pk,
             'speed': 200,
             # rail is omitted
@@ -729,7 +729,7 @@ class PlanServerConnectionFormValidationTestCase(TestCase):
 
         # Should succeed
         self.assertEqual(response.status_code, 302,
-                        "Alternating distribution should not require rail")
+                        "Same-switch distribution should not require rail")
 
     def test_connection_invalid_target_switch_class_fk(self):
         """Test that invalid target_zone FK fails validation"""
