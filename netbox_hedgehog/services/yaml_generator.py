@@ -78,11 +78,13 @@ class YAMLGenerator:
         vlannamespace_crds = self._generate_vlannamespaces()
         ipv4namespace_crds = self._generate_ipv4namespaces()
 
-        # Step 2: Generate SwitchGroup CRDs (conditional)
-        switchgroup_crds = self._generate_switchgroups()
-
-        # Step 3: Generate device CRDs
+        # Step 2: Generate Switch CRDs first (SwitchGroup CRDs depend on which switches are included)
         switch_crds = self._generate_switches()
+
+        # Step 3: Generate SwitchGroup CRDs scoped to groups referenced by included switches.
+        # Scoping is derived from PlanMCLAGDomain.switch_class.fabric_name so it works correctly
+        # whether or not spec.groups is populated on the Switch CRD.
+        switchgroup_crds = self._generate_switchgroups()
 
         effective_fabrics = self._effective_managed_fabrics(allow_empty=True)
         managed_switch_ids = self._managed_switch_ids_for_fabrics(effective_fabrics)
@@ -92,7 +94,7 @@ class YAMLGenerator:
                 for device in self._plan_devices()
                 if _is_legacy_managed_switch_without_fabric(device)
             }
-        if not managed_switch_ids and not self._regular_server_ids_from_inventory():
+        if not managed_switch_ids and not self._regular_server_ids_from_inventory() and self.fabric is None:
             raise ValueError("No managed fabrics found for plan; cannot generate managed wiring export.")
         surrogate_ids = self._surrogate_device_ids_from_inventory()
         # Regular servers with at least one managed-switch connection.
@@ -1390,6 +1392,10 @@ class YAMLGenerator:
         Returns:
             List of SwitchGroup CRD dicts with empty spec: {}
 
+        When self.fabric is set, only groups whose PlanMCLAGDomain.switch_class belongs to
+        that fabric are emitted. This scopes SwitchGroup CRDs to the groups actually
+        referenced by the Switch CRDs included in the current export artifact.
+
         NOTE: Per authoritative Hedgehog schema, SwitchGroup has EMPTY spec (marker object only).
         Switch membership is tracked via Switch CRD spec.groups field, NOT in SwitchGroup.
         """
@@ -1397,8 +1403,15 @@ class YAMLGenerator:
 
         switchgroup_crds = []
 
-        # Query MCLAG domains for this plan
-        domains = PlanMCLAGDomain.objects.filter(plan=self.plan).order_by('switch_group_name')
+        # Query MCLAG domains for this plan, scoped to the effective managed fabrics.
+        # Filtering via switch_class__fabric_name ensures correctness even when
+        # PlanSwitchClass.groups is not populated (e.g. created via objects.create()
+        # without calling full_clean()).
+        effective_fabrics = set(self._effective_managed_fabrics(allow_empty=True))
+        domains_qs = PlanMCLAGDomain.objects.filter(plan=self.plan).order_by('switch_group_name')
+        if effective_fabrics:
+            domains_qs = domains_qs.filter(switch_class__fabric_name__in=effective_fabrics)
+        domains = domains_qs
 
         for domain in domains:
             # Validate DNS-1123 compliance (should already be validated by model.clean())
