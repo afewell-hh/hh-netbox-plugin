@@ -1,14 +1,35 @@
 """RED tests: per-managed-fabric independent wiring artifacts (Epic #287 Phase 3)."""
+import glob
 import os
 import tempfile
+import unittest
 import yaml
 from django.core.management import call_command
 from django.test import TestCase
 from dcim.models import Cable, Device, DeviceRole, DeviceType, Interface, InterfaceTemplate, Manufacturer, Site
-from netbox_hedgehog.choices import FabricClassChoices, GenerationStatusChoices
-from netbox_hedgehog.models.topology_planning import (
-    DeviceTypeExtension, GenerationState, PlanMCLAGDomain, PlanSwitchClass, TopologyPlan,
+from netbox_hedgehog.choices import (
+    AllocationStrategyChoices,
+    ConnectionDistributionChoices,
+    ConnectionTypeChoices,
+    FabricClassChoices,
+    GenerationStatusChoices,
+    HedgehogRoleChoices,
+    PortZoneTypeChoices,
+    ServerClassCategoryChoices,
 )
+from netbox_hedgehog.models.topology_planning import (
+    BreakoutOption,
+    DeviceTypeExtension,
+    GenerationState,
+    PlanMCLAGDomain,
+    PlanServerClass,
+    PlanServerConnection,
+    PlanSwitchClass,
+    SwitchPortZone,
+    TopologyPlan,
+)
+from netbox_hedgehog.services import hhfab
+from netbox_hedgehog.services.device_generator import DeviceGenerator
 from netbox_hedgehog.services.yaml_generator import generate_yaml_for_plan
 
 
@@ -437,3 +458,176 @@ class DiscoveryOrderTestCase(_SharedInfra, TestCase):
         """gamma is plan-only; generate_yaml_for_plan must reject it (not in inventory)."""
         with self.assertRaises(ValueError):
             generate_yaml_for_plan(self.plan, fabric='fabric-gamma')
+
+
+@unittest.skipUnless(hhfab.is_hhfab_available(), "hhfab not installed — skipping split-artifact validation tests")
+class SplitArtifactHHFabValidationTestCase(TestCase):
+    """
+    Per #290 and #292: --split-by-fabric must produce hhfab-valid artifacts for every fabric.
+
+    When a topology plan produces multiple wiring files via --split-by-fabric, hhfab validate
+    must be run against each generated file individually. One validated file is not representative
+    of the whole split export set.
+
+    Fixture: two managed fabrics (fabric-alpha, fabric-beta), each with 1 server-leaf switch
+    and 1 GPU server, generated via DeviceGenerator so that Connection CRDs are fully populated.
+    """
+
+    @classmethod
+    def setUpTestData(cls):
+        from dcim.models import ModuleType
+
+        mfg, _ = Manufacturer.objects.get_or_create(
+            name='HHFabSplit-Mfg', defaults={'slug': 'hhfab-split-mfg'},
+        )
+        nvidia_mfg, _ = Manufacturer.objects.get_or_create(
+            name='NVIDIA-HHFabSplit', defaults={'slug': 'nvidia-hhfab-split'},
+        )
+
+        server_type, _ = DeviceType.objects.get_or_create(
+            manufacturer=mfg, model='HHFabSplit-Server', defaults={'slug': 'hhfab-split-server'},
+        )
+        for tpl in ('g0', 'g1'):
+            InterfaceTemplate.objects.get_or_create(
+                device_type=server_type, name=tpl, defaults={'type': '200gbase-x-qsfp56'},
+            )
+
+        switch_type, _ = DeviceType.objects.get_or_create(
+            manufacturer=mfg, model='HHFabSplit-Switch', defaults={'slug': 'hhfab-split-switch'},
+        )
+        DeviceTypeExtension.objects.update_or_create(
+            device_type=switch_type,
+            defaults={
+                'mclag_capable': False,
+                'hedgehog_roles': ['server-leaf'],
+                'native_speed': 800,
+                'supported_breakouts': ['1x800g', '2x400g', '4x200g'],
+                'uplink_ports': 0,
+                'hedgehog_profile_name': 'celestica-ds5000',
+            },
+        )
+
+        breakout_4x200, _ = BreakoutOption.objects.get_or_create(
+            breakout_id='4x200g',
+            defaults={'from_speed': 800, 'logical_ports': 4, 'logical_speed': 200, 'optic_type': 'QSFP-DD'},
+        )
+        breakout_1x800, _ = BreakoutOption.objects.get_or_create(
+            breakout_id='1x800g',
+            defaults={'from_speed': 800, 'logical_ports': 1, 'logical_speed': 800, 'optic_type': 'QSFP-DD'},
+        )
+
+        nic_module_type, created = ModuleType.objects.get_or_create(
+            manufacturer=nvidia_mfg, model='BlueField-3-HHFabSplit',
+        )
+        if created:
+            for n in ('p0', 'p1'):
+                InterfaceTemplate.objects.create(module_type=nic_module_type, name=n, type='other')
+
+        site, _ = Site.objects.get_or_create(
+            name='HHFabSplit-Site', defaults={'slug': 'hhfab-split-site'},
+        )
+
+        cls.plan = TopologyPlan.objects.create(
+            name='HHFabSplit 2-Fabric Plan',
+            customer_name='HHFabSplit Test',
+        )
+
+        for fabric_name, sc_id, srv_id in [
+            ('fabric-alpha', 'hhsplit-alpha-leaf', 'hhsplit-alpha-gpu'),
+            ('fabric-beta', 'hhsplit-beta-leaf', 'hhsplit-beta-gpu'),
+        ]:
+            switch_class = PlanSwitchClass.objects.create(
+                plan=cls.plan,
+                switch_class_id=sc_id,
+                fabric_name=fabric_name,
+                fabric_class=FabricClassChoices.MANAGED,
+                hedgehog_role=HedgehogRoleChoices.SERVER_LEAF,
+                device_type_extension=DeviceTypeExtension.objects.get(device_type=switch_type),
+                uplink_ports_per_switch=0,
+                mclag_pair=False,
+                calculated_quantity=1,
+                override_quantity=1,
+            )
+            server_zone = SwitchPortZone.objects.create(
+                switch_class=switch_class,
+                zone_name='server',
+                zone_type=PortZoneTypeChoices.SERVER,
+                port_spec='1-48',
+                breakout_option=breakout_4x200,
+                allocation_strategy=AllocationStrategyChoices.SEQUENTIAL,
+                priority=100,
+            )
+            SwitchPortZone.objects.create(
+                switch_class=switch_class,
+                zone_name='uplink',
+                zone_type=PortZoneTypeChoices.UPLINK,
+                port_spec='49-50',
+                breakout_option=breakout_1x800,
+                allocation_strategy=AllocationStrategyChoices.SEQUENTIAL,
+                priority=200,
+            )
+            server_class = PlanServerClass.objects.create(
+                plan=cls.plan,
+                server_class_id=srv_id,
+                server_device_type=server_type,
+                category=ServerClassCategoryChoices.GPU,
+                quantity=1,
+                gpus_per_server=8,
+            )
+            PlanServerConnection.objects.create(
+                server_class=server_class,
+                connection_id=f'{fabric_name}-conn',
+                nic_module_type=nic_module_type,
+                port_index=0,
+                ports_per_connection=2,
+                hedgehog_conn_type=ConnectionTypeChoices.UNBUNDLED,
+                distribution=ConnectionDistributionChoices.SAME_SWITCH,
+                target_zone=server_zone,
+                speed=200,
+            )
+
+        generator = DeviceGenerator(plan=cls.plan, site=site)
+        generator.generate_all()
+
+    def _assert_hhfab_valid(self, content, label):
+        success, stdout, stderr = hhfab.validate_yaml(content)
+        if not success:
+            self.fail(
+                f"hhfab validate failed for {label}:\n"
+                f"stdout:\n{stdout}\nstderr:\n{stderr}"
+            )
+
+    def test_each_split_artifact_passes_hhfab_validate(self):
+        """Every file produced by --split-by-fabric must independently pass hhfab validate."""
+        with tempfile.TemporaryDirectory() as d:
+            base = os.path.join(d, 'split-wiring')
+            call_command(
+                'export_wiring_yaml', str(self.plan.pk),
+                '--output', base, '--split-by-fabric',
+            )
+            split_files = sorted(glob.glob(f"{base}-*.yaml"))
+            self.assertGreaterEqual(
+                len(split_files), 2,
+                f"Expected at least 2 split artifacts (one per managed fabric); got: {split_files}",
+            )
+            for filepath in split_files:
+                with open(filepath) as f:
+                    content = f.read()
+                self._assert_hhfab_valid(content, os.path.basename(filepath))
+
+    def test_split_produces_one_file_per_managed_fabric(self):
+        """--split-by-fabric writes exactly one file per managed fabric."""
+        with tempfile.TemporaryDirectory() as d:
+            base = os.path.join(d, 'split-wiring')
+            call_command(
+                'export_wiring_yaml', str(self.plan.pk),
+                '--output', base, '--split-by-fabric',
+            )
+            split_files = sorted(glob.glob(f"{base}-*.yaml"))
+            self.assertEqual(
+                len(split_files), 2,
+                f"Expected exactly 2 split files (fabric-alpha, fabric-beta); got: {split_files}",
+            )
+            basenames = {os.path.basename(p) for p in split_files}
+            self.assertIn('split-wiring-fabric-alpha.yaml', basenames)
+            self.assertIn('split-wiring-fabric-beta.yaml', basenames)
