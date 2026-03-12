@@ -194,8 +194,8 @@ class UnifiedGenerateUpdateIntegrationTestCase(TestCase):
             override_quantity=None
         )
 
-        # Create port zone
-        SwitchPortZone.objects.create(
+        # Create port zone (used for both capacity calculation and connection target)
+        zone = SwitchPortZone.objects.create(
             switch_class=switch_class,
             zone_name='server-ports',
             zone_type=PortZoneTypeChoices.SERVER,
@@ -205,12 +205,7 @@ class UnifiedGenerateUpdateIntegrationTestCase(TestCase):
             priority=100
         )
 
-        # Create connection
-        zone = SwitchPortZone.objects.create(
-            switch_class=switch_class,
-            zone_name='server-downlinks',
-            zone_type='server',
-        )
+        # Create connection targeting the properly configured zone
         PlanServerConnection.objects.create(
             server_class=server_class,
             connection_id='FE-001',
@@ -287,12 +282,33 @@ class UnifiedGenerateUpdateIntegrationTestCase(TestCase):
         Helper to generate devices for a plan via unified endpoint.
 
         Returns response from POST request.
+        Note: Generation is async (background job). Devices are NOT created
+        synchronously. Use _generate_devices_directly() when tests need actual
+        device objects or GENERATED state.
         """
         url = reverse(
             'plugins:netbox_hedgehog:topologyplan_generate_update',
             kwargs={'pk': plan.pk}
         )
         return self.client.post(url, follow=True)
+
+    def _generate_devices_directly(self, plan):
+        """
+        Helper to synchronously generate devices via DeviceGenerator.
+
+        Bypasses the async view/job path. Use this when a test needs:
+        - Actual Device objects in the DB
+        - GenerationState.status == GENERATED
+        - Sync indicator checks (In Sync / Out of Sync)
+
+        Auto-recalculates switch quantities first (mirrors the view's pre-flight step),
+        then calls DeviceGenerator.generate_all() which creates GenerationState(GENERATED).
+        """
+        from netbox_hedgehog.services.device_generator import DeviceGenerator
+        from netbox_hedgehog.utils.topology_calculations import update_plan_calculations
+        update_plan_calculations(plan)
+        generator = DeviceGenerator(plan)
+        return generator.generate_all()
 
     def _create_plan_user(self, username, actions):
         """
@@ -355,13 +371,15 @@ class UnifiedGenerateUpdateIntegrationTestCase(TestCase):
         """
         Test #1: First-time generation creates all devices and GenerationState.
 
-        Given: Plan with server/switch classes, no prior generation
-        When: POST to unified generate/update endpoint
-        Then: Devices created, GenerationState created, plan in sync
+        Generation is async (background job). The view enqueues the job and
+        redirects to the job detail page. The GenerationState is created with
+        QUEUED status immediately.
+
+        This test verifies the view layer. Device creation is tested in
+        test_device_generator.py and regression tests.
         """
         # Given: Plan with server/switch classes, no prior generation
         plan = self._create_valid_plan_with_classes()
-        self.assertIsNone(plan.last_generated_at)
 
         # When: POST to unified generate/update endpoint
         url = reverse(
@@ -370,34 +388,27 @@ class UnifiedGenerateUpdateIntegrationTestCase(TestCase):
         )
         response = self.client.post(url)
 
-        # Then: Redirects to detail page
+        # Then: Redirects (to job detail URL — generation is async)
         self.assertEqual(response.status_code, 302)
-        self.assertIn(f'/topology-plans/{plan.pk}/', response['Location'])
 
-        # Then: Devices created
+        # Then: GenerationState created with QUEUED status (synchronous pre-flight)
+        self.assertTrue(
+            GenerationState.objects.filter(plan=plan).exists(),
+            "GenerationState should be created (QUEUED)"
+        )
+
+        # Then: Direct generation via service layer creates devices
+        self._generate_devices_directly(plan)
         devices = Device.objects.filter(
             tags__slug='hedgehog-generated',
             custom_field_data__hedgehog_plan_id=str(plan.pk)
         )
         self.assertGreater(devices.count(), 0, "Should create at least one device")
 
-        # Then: GenerationState created
-        self.assertTrue(
-            GenerationState.objects.filter(plan=plan).exists(),
-            "GenerationState should be created"
-        )
-
-        # Then: Plan is in sync
+        # Then: Plan is in sync after direct generation
         plan.refresh_from_db()
         self.assertIsNotNone(plan.last_generated_at, "Should have generation timestamp")
         self.assertFalse(plan.needs_regeneration, "Plan should be in sync after generation")
-
-        # Then: Success message shown
-        messages = list(response.wsgi_request._messages)
-        self.assertTrue(
-            any('Devices updated successfully' in str(m) for m in messages),
-            "Should show success message"
-        )
 
     # ========================================================================
     # Test: Update After Plan Change
@@ -408,12 +419,12 @@ class UnifiedGenerateUpdateIntegrationTestCase(TestCase):
         Test #2: Regeneration after plan modification updates devices.
 
         Given: Plan with generated devices, then modify server quantity
-        When: POST to generate/update
+        When: Re-generate via service layer
         Then: Old devices deleted, new devices created, GenerationState updated
         """
-        # Given: Plan with generated devices
+        # Given: Plan with generated devices (direct path — bypasses async)
         plan = self._create_valid_plan_with_classes()
-        self._generate_devices(plan)
+        self._generate_devices_directly(plan)
 
         original_device_count = Device.objects.filter(
             custom_field_data__hedgehog_plan_id=str(plan.pk)
@@ -432,8 +443,8 @@ class UnifiedGenerateUpdateIntegrationTestCase(TestCase):
             "Plan should be out of sync after quantity change"
         )
 
-        # When: Regenerate devices
-        response = self._generate_devices(plan)
+        # When: Regenerate devices (direct path)
+        self._generate_devices_directly(plan)
 
         # Then: Device count updated (more servers)
         new_device_count = Device.objects.filter(
@@ -464,16 +475,16 @@ class UnifiedGenerateUpdateIntegrationTestCase(TestCase):
         When: Regenerate again
         Then: Device count unchanged, plan still in sync
         """
-        # Given: Plan with generated devices, no modifications
+        # Given: Plan with generated devices, no modifications (direct path)
         plan = self._create_valid_plan_with_classes()
-        self._generate_devices(plan)
+        self._generate_devices_directly(plan)
 
         device_count_before = Device.objects.filter(
             custom_field_data__hedgehog_plan_id=str(plan.pk)
         ).count()
 
-        # When: Regenerate again without plan changes
-        self._generate_devices(plan)
+        # When: Regenerate again without plan changes (direct path)
+        self._generate_devices_directly(plan)
 
         # Then: Device count unchanged
         device_count_after = Device.objects.filter(
@@ -501,8 +512,8 @@ class UnifiedGenerateUpdateIntegrationTestCase(TestCase):
         Test #4: Generation automatically recalculates switch quantities.
 
         Given: Plan with calculated_quantity=None
-        When: Generate devices
-        Then: calculated_quantity populated, devices created based on calculations
+        When: POST to generate endpoint (view layer handles auto-recalc)
+        Then: calculated_quantity populated, then devices created via service layer
         """
         # Given: Plan with calculated_quantity=None
         plan = self._create_valid_plan_with_classes()
@@ -510,10 +521,10 @@ class UnifiedGenerateUpdateIntegrationTestCase(TestCase):
         switch_class.calculated_quantity = None
         switch_class.save()
 
-        # When: Generate devices (should auto-recalculate)
+        # When: POST to generate endpoint — view auto-recalculates before enqueuing job
         self._generate_devices(plan)
 
-        # Then: calculated_quantity populated
+        # Then: calculated_quantity populated (by view's auto-recalc step)
         switch_class.refresh_from_db()
         self.assertIsNotNone(
             switch_class.calculated_quantity,
@@ -525,7 +536,8 @@ class UnifiedGenerateUpdateIntegrationTestCase(TestCase):
             "Calculated quantity should be positive"
         )
 
-        # Then: Devices created based on calculated quantities
+        # Then: Devices created based on calculated quantities (via direct generation)
+        self._generate_devices_directly(plan)
         switch_devices = Device.objects.filter(
             custom_field_data__hedgehog_plan_id=str(plan.pk),
             custom_field_data__hedgehog_class=switch_class.switch_class_id
@@ -626,9 +638,9 @@ class UnifiedGenerateUpdateIntegrationTestCase(TestCase):
         When: Load detail page
         Then: Shows "In Sync" badge
         """
-        # Given: Plan with generated devices, no changes
+        # Given: Plan with generated devices, no changes (direct path for GENERATED state)
         plan = self._create_valid_plan_with_classes()
-        self._generate_devices(plan)
+        self._generate_devices_directly(plan)
 
         # When: Load detail page
         url = reverse(
@@ -654,9 +666,9 @@ class UnifiedGenerateUpdateIntegrationTestCase(TestCase):
         When: Load detail page
         Then: Shows "Out of Sync" badge
         """
-        # Given: Plan with generated devices
+        # Given: Plan with generated devices (direct path for GENERATED state)
         plan = self._create_valid_plan_with_classes()
-        self._generate_devices(plan)
+        self._generate_devices_directly(plan)
 
         # Given: Modify plan
         server_class = plan.server_classes.first()
@@ -688,9 +700,9 @@ class UnifiedGenerateUpdateIntegrationTestCase(TestCase):
         When: Change plan metadata (not generation-relevant)
         Then: Plan STILL in sync (metadata excluded from snapshot)
         """
-        # Given: Plan with generated devices
+        # Given: Plan with generated devices (direct path for GENERATED state)
         plan = self._create_valid_plan_with_classes()
-        self._generate_devices(plan)
+        self._generate_devices_directly(plan)
 
         # When: Change plan metadata (not generation-relevant)
         plan.name = "New Plan Name"
@@ -986,8 +998,8 @@ class UnifiedGenerateUpdateIntegrationTestCase(TestCase):
         response = self.client.get(url)
         self.assertContains(response, 'Generate Devices')
 
-        # When: Generate devices
-        self._generate_devices(plan)
+        # When: Generate devices (direct path for GENERATED state)
+        self._generate_devices_directly(plan)
 
         # Then: Shows "Regenerate Devices" (in sync)
         response = self.client.get(url)
@@ -1355,17 +1367,16 @@ class ObjectPermissionRBACTestCase(TestCase):
         # When: POST to generate/update
         response = client.post(generate_url)
 
-        # Then: Redirects to detail (success)
+        # Then: Redirects (success — to job detail URL since generation is async)
         self.assertEqual(response.status_code, 302)
 
-        # Then: Devices created
-        devices = Device.objects.filter(
-            custom_field_data__hedgehog_plan_id=str(plan.pk)
-        )
-        self.assertGreater(
-            devices.count(),
-            0,
-            "User with ObjectPermission should be able to generate devices"
+        # Then: GenerationState created with QUEUED status, confirming generation was initiated.
+        # Device creation is async (background job), so we check for job queuing here.
+        # Actual device counts are validated in test_device_generator.py and regression tests.
+        from netbox_hedgehog.choices import GenerationStatusChoices
+        self.assertTrue(
+            GenerationState.objects.filter(plan=plan).exists(),
+            "User with ObjectPermission should trigger generation (GenerationState must exist)"
         )
 
     def test_object_permission_without_dcim_perms_fails(self):

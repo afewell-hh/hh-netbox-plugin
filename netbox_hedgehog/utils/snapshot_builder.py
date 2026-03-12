@@ -71,7 +71,9 @@ def build_plan_snapshot(plan: 'TopologyPlan') -> dict:
             'switch_class_id': switch_class.switch_class_id,
             'effective_quantity': switch_class.effective_quantity,
             'device_type_extension_id': switch_class.device_type_extension_id,
-            'fabric': switch_class.fabric or '',  # Normalize empty to ''
+            'fabric': switch_class.fabric_name or '',  # Normalize empty to ''
+            'fabric_name': switch_class.fabric_name or '',
+            'fabric_class': switch_class.fabric_class or '',
             'hedgehog_role': switch_class.hedgehog_role or '',  # Normalize empty to ''
             'uplink_ports_per_switch': switch_class.uplink_ports_per_switch,  # Can be None
             'mclag_pair': switch_class.mclag_pair,

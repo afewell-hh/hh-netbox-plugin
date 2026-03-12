@@ -117,16 +117,16 @@ class DeviceGeneratorTestCase(TestCase):
         result = generator.generate_all()
 
         self.assertEqual(result.device_count, 3)
-        self.assertEqual(result.interface_count, 4)
+        self.assertEqual(result.interface_count, 2)  # switch-side only
         self.assertEqual(result.cable_count, 2)
 
         self.assertEqual(Device.objects.filter(tags__slug='hedgehog-generated').count(), 3)
-        self.assertEqual(Interface.objects.filter(tags__slug='hedgehog-generated').count(), 4)
+        self.assertEqual(Interface.objects.filter(tags__slug='hedgehog-generated').count(), 2)  # switch-side only
         self.assertEqual(Cable.objects.filter(tags__slug='hedgehog-generated').count(), 2)
 
         state = GenerationState.objects.get(plan=self.plan)
         self.assertEqual(state.device_count, 3)
-        self.assertEqual(state.interface_count, 4)
+        self.assertEqual(state.interface_count, 2)  # switch-side only
         self.assertEqual(state.cable_count, 2)
 
     def test_generate_applies_naming_template(self):

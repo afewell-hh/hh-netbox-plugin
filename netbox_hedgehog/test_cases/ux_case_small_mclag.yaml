@@ -75,13 +75,16 @@ plan:
 
 switch_classes:
   - switch_class_id: fe-leaf
-    fabric: frontend
+    fabric_name: frontend
+    fabric_class: managed
     hedgehog_role: server-leaf
     device_type_extension: test_switch_ext
+    redundancy_type: mclag
     uplink_ports_per_switch: 8
     mclag_pair: true
   - switch_class_id: fe-spine
-    fabric: frontend
+    fabric_name: frontend
+    fabric_class: managed
     hedgehog_role: spine
     device_type_extension: test_switch_ext
     uplink_ports_per_switch: 0

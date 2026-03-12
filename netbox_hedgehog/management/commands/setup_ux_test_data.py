@@ -30,7 +30,7 @@ from netbox_hedgehog.models.topology_planning import (
 from netbox_hedgehog.choices import (
     TopologyPlanStatusChoices,
     ServerClassCategoryChoices,
-    FabricTypeChoices,
+    FabricClassChoices,
     HedgehogRoleChoices,
     ConnectionDistributionChoices,
     ConnectionTypeChoices,
@@ -202,7 +202,8 @@ class Command(BaseCommand):
         switch_class = PlanSwitchClass.objects.create(
             plan=plan,
             switch_class_id='ux-test-frontend-leaf',
-            fabric=FabricTypeChoices.FRONTEND,
+            fabric_name='frontend',
+            fabric_class=FabricClassChoices.MANAGED,
             hedgehog_role=HedgehogRoleChoices.SERVER_LEAF,
             device_type_extension=device_ext,
             uplink_ports_per_switch=4,
@@ -260,7 +261,8 @@ class Command(BaseCommand):
         switch_class = PlanSwitchClass.objects.create(
             plan=plan,
             switch_class_id='ux-test-leaf-plan2',
-            fabric=FabricTypeChoices.FRONTEND,
+            fabric_name='frontend',
+            fabric_class=FabricClassChoices.MANAGED,
             hedgehog_role=HedgehogRoleChoices.SERVER_LEAF,
             device_type_extension=device_ext,
             uplink_ports_per_switch=4,

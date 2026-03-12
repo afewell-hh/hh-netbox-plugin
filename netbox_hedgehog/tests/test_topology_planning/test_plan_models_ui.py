@@ -866,7 +866,8 @@ class PlanSwitchClassUITestCase(TestCase):
 
         self.assertContains(response, 'name="plan"')
         self.assertContains(response, 'name="switch_class_id"')
-        self.assertContains(response, 'name="fabric"')
+        self.assertContains(response, 'name="fabric_name"')
+        self.assertContains(response, 'name="fabric_class"')
         self.assertContains(response, 'name="hedgehog_role"')
 
     # =========================================================================
@@ -881,7 +882,8 @@ class PlanSwitchClassUITestCase(TestCase):
         data = {
             'plan': self.plan.pk,
             'switch_class_id': 'fe-leaf',
-            'fabric': 'frontend',
+            'fabric_name': 'frontend',
+            'fabric_class': 'managed',
             'hedgehog_role': 'server-leaf',
             'device_type_extension': self.device_type_extension.pk,
             'uplink_ports_per_switch': 4,
@@ -900,7 +902,8 @@ class PlanSwitchClassUITestCase(TestCase):
         data = {
             'plan': self.plan.pk,
             'switch_class_id': 'invalid-switch',
-            'fabric': 'frontend',
+            'fabric_name': 'frontend',
+            'fabric_class': 'managed',
             'hedgehog_role': 'spine',
             'device_type_extension': self.device_type_extension.pk,
             'uplink_ports_per_switch': -1,  # Invalid: negative
@@ -935,7 +938,8 @@ class PlanSwitchClassUITestCase(TestCase):
         data = {
             'plan': self.plan.pk,
             'switch_class_id': 'fe-spine',
-            'fabric': 'frontend',
+            'fabric_name': 'frontend',
+            'fabric_class': 'managed',
             'hedgehog_role': 'spine',
             'device_type_extension': self.device_type_extension.pk,
             'uplink_ports_per_switch': 8,  # Changed from 4

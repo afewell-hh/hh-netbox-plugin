@@ -274,7 +274,8 @@
                         <thead>
                             <tr>
                                 <th>ID</th>
-                                <th>Fabric</th>
+                                <th>Fabric Name</th>
+                                <th>Fabric Class</th>
                                 <th>Role</th>
                                 <th>Calculated</th>
                                 <th>Override</th>
@@ -285,7 +286,8 @@
                             {% for sw in switch_classes %}
                             <tr>
                                 <td><a href="{% url 'plugins:netbox_hedgehog:planswitchclass_detail' pk=sw.pk %}">{{ sw.switch_class_id }}</a></td>
-                                <td>{{ sw.get_fabric_display }}</td>
+                                <td>{{ sw.fabric_name }}</td>
+                                <td>{{ sw.get_fabric_class_display }}</td>
                                 <td>{{ sw.get_hedgehog_role_display }}</td>
                                 <td>{{ sw.calculated_quantity|placeholder }}</td>
                                 <td>{{ sw.override_quantity|placeholder }}</td>

@@ -15,6 +15,7 @@ from netbox_hedgehog.models.topology_planning import (
     SwitchPortZone,
     TopologyPlan,
 )
+from netbox_hedgehog.services._fabric_utils import _legacy_fabric_name_to_class
 
 from .assertions import planning_counts
 from .exceptions import TestCaseValidationError
@@ -411,6 +412,37 @@ def apply_case(
     for item in case.get("switch_classes", []):
         switch_id = item["switch_class_id"]
         declared_switch_ids.add(switch_id)
+        fabric_name = item.get("fabric_name")
+        legacy_fabric = item.get("fabric")
+        fabric_class = item.get("fabric_class")
+        if fabric_name is None and legacy_fabric is not None:
+            fabric_name = legacy_fabric
+        if fabric_name is None:
+            fabric_name = ""
+        if not fabric_name:
+            raise TestCaseValidationError(
+                [
+                    {
+                        "severity": "error",
+                        "code": "invalid_value",
+                        "path": f"switch_classes[{switch_id}].fabric_name",
+                        "message": "fabric_name must be a non-blank string",
+                    }
+                ]
+            )
+        if legacy_fabric is not None and fabric_name != legacy_fabric:
+            raise TestCaseValidationError(
+                [
+                    {
+                        "severity": "error",
+                        "code": "invalid_value",
+                        "path": f"switch_classes[{switch_id}]",
+                        "message": "fabric and fabric_name must match when both are provided",
+                    }
+                ]
+            )
+        if not fabric_class:
+            fabric_class = _legacy_fabric_name_to_class(fabric_name)
         dte_ref = item.get("device_type_extension")
         dte = refs["device_type_extensions"].get(dte_ref) if dte_ref else None
         if not dte:
@@ -428,7 +460,8 @@ def apply_case(
             plan=plan,
             switch_class_id=switch_id,
             defaults={
-                "fabric": item.get("fabric", ""),
+                "fabric_name": fabric_name,
+                "fabric_class": fabric_class,
                 "hedgehog_role": item.get("hedgehog_role", ""),
                 "device_type_extension": dte,
                 "uplink_ports_per_switch": item.get("uplink_ports_per_switch"),

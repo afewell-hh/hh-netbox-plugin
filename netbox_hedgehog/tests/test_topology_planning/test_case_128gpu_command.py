@@ -10,7 +10,7 @@ from unittest.mock import patch
 from django.contrib.auth import get_user_model
 from django.contrib.contenttypes.models import ContentType
 from django.core.management import call_command
-from django.test import TestCase
+from django.test import TestCase, tag
 from django.urls import reverse
 
 from users.models import ObjectPermission
@@ -66,9 +66,9 @@ class Case128GpuCommandTestCase(TestCase):
             server_class__plan=self.plan
         ).count()
 
-        self.assertEqual(server_count, 8)
-        self.assertEqual(switch_count, 7)   # Phase 5 adds oob-mgmt-leaf
-        self.assertEqual(connection_count, 24)  # Phase 5 adds 8 IPMI connections
+        self.assertEqual(server_count, 9)
+        self.assertEqual(switch_count, 7)   # Includes oob-mgmt-leaf
+        self.assertEqual(connection_count, 26)  # Includes 9 IPMI connections
 
     def test_generate_preview_page_loads(self):
         self.client.force_login(self.superuser)
@@ -168,8 +168,9 @@ class Case128GpuCommandTestCase(TestCase):
         self.assertIn("rail", form.errors)
 
 
+@tag('slow', 'regression')
 class Case128GpuRailDistributionTestCase(TestCase):
-    """Validate rail-optimized backend allocation distributes correctly across switches."""
+    """Validate rail-optimized backend allocation distributes correctly across switches. SLOW: full generation."""
 
     @classmethod
     def setUpTestData(cls):
@@ -314,8 +315,9 @@ class Case128GpuRailDistributionTestCase(TestCase):
             )
 
 
+@tag('slow', 'regression')
 class Case128GpuYamlExportTestCase(TestCase):
-    """Validate YAML export works for the 128-GPU case data."""
+    """Validate YAML export works for the 128-GPU case data. SLOW: full generation."""
 
     @classmethod
     def setUpTestData(cls):

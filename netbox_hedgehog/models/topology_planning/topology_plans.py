@@ -18,12 +18,13 @@ from .reference_data import DeviceTypeExtension
 from netbox_hedgehog.choices import (
     TopologyPlanStatusChoices,
     ServerClassCategoryChoices,
-    FabricTypeChoices,
+    FabricClassChoices,
     HedgehogRoleChoices,
     ConnectionDistributionChoices,
     ConnectionTypeChoices,
     PortTypeChoices,
 )
+from netbox_hedgehog.services._fabric_utils import _legacy_fabric_name_to_class
 
 User = get_user_model()
 
@@ -204,14 +205,22 @@ class PlanSwitchClass(NetBoxModel):
         help_text="Unique identifier for this switch class (e.g., 'fe-gpu-leaf')"
     )
 
-    fabric = models.CharField(
+    fabric_name = models.CharField(
         max_length=50,
-        choices=FabricTypeChoices,
-        blank=True,
+        blank=False,
         help_text=(
-            'Fabric type. Frontend and Backend are Hedgehog-managed (appear in wiring YAML). '
-            'Management types are tracked for inventory but excluded from wiring export. '
-            'Out-of-Band (oob) is deprecated; use oob-mgmt instead.'
+            'User-defined fabric name used for managed-fabric partitioning '
+            "(for example: frontend, backend, converged, storage-rail, my-oob)."
+        ),
+    )
+
+    fabric_class = models.CharField(
+        max_length=16,
+        choices=FabricClassChoices,
+        default=FabricClassChoices.MANAGED,
+        help_text=(
+            'Behavioral class for this fabric. Managed fabrics export as Switch CRDs; '
+            'unmanaged fabrics export as Server surrogates.'
         ),
     )
 
@@ -289,7 +298,7 @@ class PlanSwitchClass(NetBoxModel):
     )
 
     class Meta:
-        ordering = ['plan', 'fabric', 'switch_class_id']
+        ordering = ['plan', 'fabric_name', 'switch_class_id']
         verbose_name = "Switch Class"
         verbose_name_plural = "Switch Classes"
         unique_together = [['plan', 'switch_class_id']]
@@ -300,10 +309,32 @@ class PlanSwitchClass(NetBoxModel):
     def get_absolute_url(self):
         return reverse('plugins:netbox_hedgehog:planswitchclass_detail', args=[self.pk])
 
+    def __init__(self, *args, **kwargs):
+        legacy_fabric = kwargs.pop('fabric', None)
+        if legacy_fabric is not None and 'fabric_name' not in kwargs:
+            kwargs['fabric_name'] = legacy_fabric
+        if 'fabric_class' not in kwargs and kwargs.get('fabric_name'):
+            kwargs['fabric_class'] = _legacy_fabric_name_to_class(kwargs['fabric_name'])
+        super().__init__(*args, **kwargs)
+
+    @property
+    def fabric(self) -> str:
+        """Compatibility alias for older DIET code paths and tests."""
+        return self.fabric_name
+
+    @fabric.setter
+    def fabric(self, value: str) -> None:
+        self.fabric_name = value
+        if value and not getattr(self, 'fabric_class', None):
+            self.fabric_class = _legacy_fabric_name_to_class(value)
+
+    def get_fabric_display(self) -> str:
+        return self.fabric_name
+
     @property
     def is_hedgehog_managed(self) -> bool:
         """Return True if this switch class is exported in Hedgehog wiring YAML."""
-        return FabricTypeChoices.is_hedgehog_managed(self.fabric)
+        return self.fabric_class == FabricClassChoices.MANAGED
 
     def save(self, *args, **kwargs):
         """
@@ -312,6 +343,12 @@ class PlanSwitchClass(NetBoxModel):
         Per Phase 3 spec addendum: mclag_pair=True auto-converts to redundancy_type='mclag'
         and redundancy_group='mclag-<switch_class_id>' on save.
         """
+        if self.fabric_name and self.fabric_class not in {
+            FabricClassChoices.MANAGED,
+            FabricClassChoices.UNMANAGED,
+        }:
+            self.fabric_class = _legacy_fabric_name_to_class(self.fabric_name)
+
         # Auto-conversion: mclag_pair → redundancy_type (only if redundancy_type not already set)
         if self.mclag_pair and not self.redundancy_type:
             self.redundancy_type = 'mclag'

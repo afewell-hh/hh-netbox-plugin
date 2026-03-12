@@ -242,8 +242,12 @@ class PlanSwitchClassTable(NetBoxTable):
         verbose_name='Plan'
     )
 
-    fabric = tables.Column(
-        verbose_name='Fabric'
+    fabric_name = tables.Column(
+        verbose_name='Fabric Name'
+    )
+
+    fabric_class = tables.Column(
+        verbose_name='Fabric Class'
     )
 
     hedgehog_role = tables.Column(
@@ -283,13 +287,13 @@ class PlanSwitchClassTable(NetBoxTable):
     class Meta(NetBoxTable.Meta):
         model = PlanSwitchClass
         fields = (
-            'pk', 'id', 'switch_class_id', 'plan', 'fabric', 'hedgehog_role',
+            'pk', 'id', 'switch_class_id', 'plan', 'fabric_name', 'fabric_class', 'hedgehog_role',
             'device_type_extension', 'calculated_quantity', 'override_quantity',
             'effective_quantity', 'mclag_pair', 'uplink_ports_per_switch',
             'tags', 'created', 'last_updated'
         )
         default_columns = (
-            'switch_class_id', 'plan', 'fabric', 'hedgehog_role',
+            'switch_class_id', 'plan', 'fabric_name', 'fabric_class', 'hedgehog_role',
             'calculated_quantity', 'override_quantity', 'effective_quantity'
         )
 

@@ -264,7 +264,7 @@ class NICModelingUITestCase(TestCase):
             'port_index': 0,
             'ports_per_connection': 1,
             'hedgehog_conn_type': ConnectionTypeChoices.UNBUNDLED,
-            'distribution': ConnectionDistributionChoices.ALTERNATING,
+            'distribution': ConnectionDistributionChoices.SAME_SWITCH,
             'target_zone': self.zone.pk,
             'speed': 200,
         }

@@ -28,11 +28,9 @@ from datetime import datetime, timezone
 import yaml
 from django.core.management.base import BaseCommand, CommandError
 
-from netbox_hedgehog.choices import FabricTypeChoices, GenerationStatusChoices
+from netbox_hedgehog.choices import FabricClassChoices, GenerationStatusChoices
 from netbox_hedgehog.models.topology_planning import TopologyPlan
-from netbox_hedgehog.services.yaml_generator import generate_yaml_for_plan
-
-_VALID_FABRICS = sorted(FabricTypeChoices.HEDGEHOG_MANAGED_SET)
+from netbox_hedgehog.services.yaml_generator import YAMLGenerator, generate_yaml_for_plan
 
 
 class Command(BaseCommand):
@@ -52,18 +50,16 @@ class Command(BaseCommand):
         )
         parser.add_argument(
             '--fabric',
-            choices=_VALID_FABRICS,
             default=None,
             metavar='FABRIC',
-            help=f'Limit export to one fabric ({", ".join(_VALID_FABRICS)}). '
-                 f'Mutually exclusive with --split-by-fabric.',
+            help='Limit export to one discovered managed fabric. Mutually exclusive with --split-by-fabric.',
         )
         parser.add_argument(
             '--split-by-fabric',
             action='store_true',
             default=False,
             help='Write one file per fabric. --output is treated as a base path: '
-                 '<base>-frontend.yaml and <base>-backend.yaml are written. '
+                 '<base>-<fabric-name>.yaml files are written for all discovered managed fabrics. '
                  'Mutually exclusive with --fabric.',
         )
 
@@ -99,14 +95,39 @@ class Command(BaseCommand):
                 f"Device generation must complete (status=generated) before export."
             )
 
+        valid_fabrics = self._managed_fabric_names(plan)
+        if fabric and fabric not in valid_fabrics:
+            raise CommandError(
+                f"Unknown managed fabric '{fabric}'. Valid choices: {valid_fabrics}"
+            )
+        if split and not valid_fabrics:
+            raise CommandError("No managed fabrics found for plan; cannot split export by fabric.")
+
         # --- Dispatch based on mode ---
         if split:
             # Strip .yaml suffix from base path if present, then add per-fabric suffix
             base = output_path[:-5] if output_path.endswith('.yaml') else output_path
-            for fab in _VALID_FABRICS:
+            for fab in valid_fabrics:
                 self._export_single(plan, fabric=fab, output_path=f"{base}-{fab}.yaml")
         else:
             self._export_single(plan, fabric=fabric, output_path=output_path)
+
+    def _managed_fabric_names(self, plan):
+        names = list(
+            plan.switch_classes.filter(
+                fabric_class=FabricClassChoices.MANAGED,
+            ).exclude(
+                fabric_name='',
+            ).order_by(
+                'fabric_name',
+            ).values_list(
+                'fabric_name',
+                flat=True,
+            ).distinct()
+        )
+        if names:
+            return names
+        return YAMLGenerator(plan)._managed_fabric_names_from_inventory()
 
     def _export_single(self, plan, fabric, output_path):
         """Generate, validate, write atomically, and emit metadata for one artifact."""
