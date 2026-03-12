@@ -28,7 +28,7 @@ from datetime import datetime, timezone
 import yaml
 from django.core.management.base import BaseCommand, CommandError
 
-from netbox_hedgehog.choices import FabricClassChoices, GenerationStatusChoices
+from netbox_hedgehog.choices import GenerationStatusChoices
 from netbox_hedgehog.models.topology_planning import TopologyPlan
 from netbox_hedgehog.services.yaml_generator import YAMLGenerator, generate_yaml_for_plan
 
@@ -113,21 +113,12 @@ class Command(BaseCommand):
             self._export_single(plan, fabric=fabric, output_path=output_path)
 
     def _managed_fabric_names(self, plan):
-        names = list(
-            plan.switch_classes.filter(
-                fabric_class=FabricClassChoices.MANAGED,
-            ).exclude(
-                fabric_name='',
-            ).order_by(
-                'fabric_name',
-            ).values_list(
-                'fabric_name',
-                flat=True,
-            ).distinct()
-        )
-        if names:
-            return names
-        return YAMLGenerator(plan)._managed_fabric_names_from_inventory()
+        # Inventory-first: only fabrics that have actual devices are valid split targets.
+        # Falls back to plan switch-class definitions when inventory is not yet generated.
+        # Matches the generator's own _effective_managed_fabrics() discovery order so that
+        # split-by-fabric and direct --fabric exports are always equivalent.
+        gen = YAMLGenerator(plan)
+        return gen._managed_fabric_names_from_inventory() or gen._managed_fabric_names_from_plan()
 
     def _export_single(self, plan, fabric, output_path):
         """Generate, validate, write atomically, and emit metadata for one artifact."""

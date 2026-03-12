@@ -78,11 +78,20 @@ class YAMLGenerator:
         vlannamespace_crds = self._generate_vlannamespaces()
         ipv4namespace_crds = self._generate_ipv4namespaces()
 
-        # Step 2: Generate SwitchGroup CRDs (conditional)
-        switchgroup_crds = self._generate_switchgroups()
-
-        # Step 3: Generate device CRDs
+        # Step 2: Generate Switch CRDs first so we know which SwitchGroups are referenced.
         switch_crds = self._generate_switches()
+
+        # Collect the group names referenced by the included Switch CRDs.
+        # This is the canonical source of truth per the Phase 2 spec (#290):
+        # only emit SwitchGroup CRDs for groups that appear in Switch.spec.groups.
+        referenced_groups = {
+            g
+            for crd in switch_crds
+            for g in crd.get('spec', {}).get('groups', [])
+        }
+
+        # Step 3: Generate SwitchGroup CRDs scoped to referenced groups only.
+        switchgroup_crds = self._generate_switchgroups(referenced_groups)
 
         effective_fabrics = self._effective_managed_fabrics(allow_empty=True)
         managed_switch_ids = self._managed_switch_ids_for_fabrics(effective_fabrics)
@@ -92,7 +101,7 @@ class YAMLGenerator:
                 for device in self._plan_devices()
                 if _is_legacy_managed_switch_without_fabric(device)
             }
-        if not managed_switch_ids and not self._regular_server_ids_from_inventory():
+        if not managed_switch_ids and not self._regular_server_ids_from_inventory() and self.fabric is None:
             raise ValueError("No managed fabrics found for plan; cannot generate managed wiring export.")
         surrogate_ids = self._surrogate_device_ids_from_inventory()
         # Regular servers with at least one managed-switch connection.
@@ -973,9 +982,17 @@ class YAMLGenerator:
                         switch_class_id=hedgehog_class_id
                     )
 
-                    # Add groups field (if set)
-                    if switch_class.groups:
-                        spec['groups'] = switch_class.groups
+                    # Add groups field.
+                    # Prefer switch_class.groups (persisted); fall back to [redundancy_group]
+                    # when groups is empty but redundancy_group is set. This covers the case
+                    # where PlanSwitchClass was created without calling full_clean() (e.g.
+                    # objects.create() with redundancy_type set directly), which bypasses the
+                    # clean()-side auto-population of groups from redundancy_group.
+                    effective_groups = switch_class.groups or (
+                        [switch_class.redundancy_group] if switch_class.redundancy_group else []
+                    )
+                    if effective_groups:
+                        spec['groups'] = effective_groups
 
                     # Add redundancy field (if redundancy_type is set)
                     if switch_class.redundancy_type:
@@ -1380,12 +1397,15 @@ class YAMLGenerator:
             }
         }]
 
-    def _generate_switchgroups(self) -> List[Dict[str, Any]]:
+    def _generate_switchgroups(self, referenced_group_names: set) -> List[Dict[str, Any]]:
         """
         Generate SwitchGroup CRDs for MCLAG/ESLAG redundancy groups (Issue #151).
 
-        Reads:
-        - PlanMCLAGDomain.switch_group_name
+        Args:
+            referenced_group_names: The set of group names that appear in spec.groups of
+                the Switch CRDs included in this export artifact. Only groups in this set
+                are emitted. A ValidationError is raised if a referenced group has no
+                corresponding PlanMCLAGDomain (dangling Switch.spec.groups reference).
 
         Returns:
             List of SwitchGroup CRD dicts with empty spec: {}
@@ -1395,18 +1415,24 @@ class YAMLGenerator:
         """
         from ..models.topology_planning import PlanMCLAGDomain
 
+        if not referenced_group_names:
+            return []
+
+        # Build a lookup of all PlanMCLAGDomain entries for this plan.
+        domain_map = {
+            d.switch_group_name: d
+            for d in PlanMCLAGDomain.objects.filter(plan=self.plan)
+        }
+
         switchgroup_crds = []
 
-        # Query MCLAG domains for this plan
-        domains = PlanMCLAGDomain.objects.filter(plan=self.plan).order_by('switch_group_name')
-
-        for domain in domains:
-            # Validate DNS-1123 compliance (should already be validated by model.clean())
-            if not domain.switch_group_name:
+        for group_name in sorted(referenced_group_names):
+            if group_name not in domain_map:
                 raise ValidationError(
-                    f"PlanMCLAGDomain {domain.domain_id} missing switch_group_name"
+                    f"Switch references group '{group_name}' but no PlanMCLAGDomain "
+                    f"exists with that switch_group_name for this plan."
                 )
-
+            domain = domain_map[group_name]
             switchgroup_crds.append({
                 'apiVersion': 'wiring.githedgehog.com/v1beta1',
                 'kind': 'SwitchGroup',
