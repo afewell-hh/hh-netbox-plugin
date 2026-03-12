@@ -100,6 +100,28 @@ Regression guardrails:
 - For interactive inspection of the 128-GPU case, use:
   - `docker compose exec netbox python manage.py setup_case_128gpu_odd_ports --clean --generate --report`
 
+### Test Speed: Use --parallel for development cycles
+
+The full topology-planning suite (~870 tests) takes ~55 min sequentially. Use `--parallel` to
+speed up targeted runs during development. Parallel mode creates isolated per-worker test databases
+so there is no cross-worker contention.
+
+```bash
+# Targeted dev-cycle run (fast): use --parallel N where N <= number of CPUs / 2
+docker compose exec -T netbox python manage.py test \
+  netbox_hedgehog.tests.test_topology_planning.test_unified_generate_update \
+  netbox_hedgehog.tests.test_topology_planning.test_form_validation \
+  --keepdb --parallel 4
+
+# Full regression sweep (for waivers/PRs): always sequential
+# --parallel fails with pickling errors when pre-existing failures exist
+docker compose exec -T netbox python manage.py test \
+  netbox_hedgehog.tests.test_topology_planning --keepdb --exclude-tag=slow
+```
+
+**Rule:** `--parallel` is for green targeted runs only. The full regression sweep must stay
+sequential so failure tracebacks can be captured reliably.
+
 ## Reporting Requirements
 In your final update, include:
 - UX flows verified by integration tests.
