@@ -25,7 +25,7 @@ from dcim.models import DeviceType, Manufacturer, Site, Device, Cable
 from extras.models import Tag
 from users.models import ObjectPermission
 
-from netbox_hedgehog.tests.test_topology_planning import get_test_nic_module_type
+from netbox_hedgehog.tests.test_topology_planning import get_test_server_nic
 
 from netbox_hedgehog.models.topology_planning import (
     TopologyPlan,
@@ -209,7 +209,7 @@ class UnifiedGenerateUpdateIntegrationTestCase(TestCase):
         PlanServerConnection.objects.create(
             server_class=server_class,
             connection_id='FE-001',
-            nic_module_type=get_test_nic_module_type(),
+            nic=get_test_server_nic(server_class),
             port_index=0,
             target_zone=zone,
             ports_per_connection=2,
@@ -265,7 +265,7 @@ class UnifiedGenerateUpdateIntegrationTestCase(TestCase):
         PlanServerConnection.objects.create(
             server_class=server_class,
             connection_id='FE-001',
-            nic_module_type=get_test_nic_module_type(),
+            nic=get_test_server_nic(server_class),
             port_index=0,
             target_zone=invalid_zone,
             ports_per_connection=2,
@@ -1211,7 +1211,7 @@ class ObjectPermissionRBACTestCase(TestCase):
         PlanServerConnection.objects.create(
             server_class=server_class,
             connection_id='FE-001',
-            nic_module_type=get_test_nic_module_type(),
+            nic=get_test_server_nic(server_class),
             port_index=0,
             target_zone=view_only_zone,
             ports_per_connection=2,

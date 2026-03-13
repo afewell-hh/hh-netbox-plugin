@@ -29,6 +29,7 @@ from netbox_hedgehog.models.topology_planning import (
     GenerationState,
     NamingTemplate,
     PlanServerConnection,
+    PlanServerNIC,
     PlanSwitchClass,
     TopologyPlan,
 )
@@ -264,7 +265,24 @@ class DeviceGenerator:
                 )
                 server_device = server_devices[server_name]
 
-                for connection_def in server_class.connections.all():
+                # Two-pass NIC-first generation (DIET-294):
+                # Pass 1: create one Module per PlanServerNIC that has at least one connection.
+                # NICs with no connections are skipped (no physical module installed).
+                used_nic_pks = set(
+                    server_class.connections.values_list('nic_id', flat=True).distinct()
+                )
+                nic_to_module: dict[int, object] = {}  # nic.pk → Module
+                for nic_def in server_class.nics.select_related('module_type').filter(pk__in=used_nic_pks):
+                    module = self._create_module_for_nic(
+                        device=server_device,
+                        nic_def=nic_def,
+                    )
+                    nic_to_module[nic_def.pk] = module
+
+                # Pass 2: wire connections using the already-created modules.
+                for connection_def in server_class.connections.select_related(
+                    'nic', 'target_zone', 'target_zone__switch_class'
+                ).all():
                     zone = connection_def.target_zone
                     switch_class = zone.switch_class
                     switch_instances = self._get_switch_instances(
@@ -284,12 +302,22 @@ class DeviceGenerator:
                             zone,
                         )
 
-                    # Create Module for this connection (DIET-173 Phase 5)
-                    # This creates ModuleBay + Module + auto-generates Interfaces from ModuleType templates
-                    module = self._create_module_for_connection(
-                        device=server_device,
-                        connection_def=connection_def,
-                    )
+                    module = nic_to_module.get(connection_def.nic_id)
+                    if module is None:
+                        raise ValidationError(
+                            f"No Module found for NIC pk={connection_def.nic_id} "
+                            f"on server device {server_device.name}. "
+                            "Ensure Pass 1 created the module correctly."
+                        )
+
+                    # Build transceiver spec string for server-side interface custom field.
+                    _xcvr_parts = [
+                        connection_def.cage_type,
+                        connection_def.medium,
+                        connection_def.connector,
+                        connection_def.standard,
+                    ]
+                    transceiver_spec = ' | '.join(p for p in _xcvr_parts if p)
 
                     for port_index in range(connection_def.ports_per_connection):
                         switch_device = self._select_switch_instance(
@@ -319,14 +347,24 @@ class DeviceGenerator:
                             interface_type=self._speed_to_interface_type(connection_def.speed),
                         )
 
-                        # Get server interface from Module using port_index (DIET-173 Phase 5)
-                        # port_index from connection_def + current iteration port_index
+                        # Get server interface from Module using port_index (DIET-294 NIC-first)
                         actual_port_index = connection_def.port_index + port_index
                         server_interface = self._get_module_interface_by_port_index(
                             device=server_device,
                             module=module,
                             port_index=actual_port_index,
                         )
+
+                        # Write transceiver spec to server-side interface (DIET-294).
+                        # Only set on server-side; switch-side must not have this field.
+                        if transceiver_spec:
+                            server_interface.custom_field_data = dict(
+                                server_interface.custom_field_data or {}
+                            )
+                            server_interface.custom_field_data['hedgehog_transceiver_spec'] = transceiver_spec
+                            server_interface.save(update_fields=['custom_field_data'])
+                        # NOTE: server-side interfaces are NOT added to `interfaces` list.
+                        # interface_count and hedgehog-generated tag are switch-side only.
 
                         cable = Cable(
                             a_terminations=[server_interface],
@@ -1026,54 +1064,51 @@ class DeviceGenerator:
 
         return switch_instances[server_index % len(switch_instances)]
 
-    def _create_module_for_connection(
+    def _create_module_for_nic(
         self,
         device: Device,
-        connection_def: PlanServerConnection,
+        nic_def,
     ):
         """
-        Create ModuleBay and Module for server connection (DIET-173 Phase 5).
+        Create ModuleBay and Module for a PlanServerNIC (DIET-294 NIC-first).
 
-        Creates a ModuleBay and instantiates a Module with the NIC ModuleType
-        from the connection definition. NetBox automatically creates Interfaces
-        from the ModuleType's InterfaceTemplates.
+        Creates a ModuleBay named after nic_def.nic_id and instantiates a Module
+        with nic_def.module_type.  NetBox automatically creates Interfaces from
+        the ModuleType's InterfaceTemplates.  Interfaces are prefixed with
+        nic_id so names are globally unique on the device.
 
         Args:
             device: Server Device instance
-            connection_def: PlanServerConnection with nic_module_type
+            nic_def: PlanServerNIC instance
 
         Returns:
-            Module instance (newly created)
+            Module instance (newly created or existing)
         """
-        from dcim.models import ModuleBay, Module
+        from dcim.models import ModuleBay, Module, Interface
 
-        # Use connection_id for bay naming (e.g., 'fe', 'be-rail-0')
-        bay_name = f"{connection_def.connection_id}-nic"
+        bay_name = nic_def.nic_id  # ModuleBay.name = nic_id (DIET-294)
 
-        # Check if ModuleBay already exists (avoid duplicates)
-        module_bay, bay_created = ModuleBay.objects.get_or_create(
+        # get_or_create to be idempotent on regeneration
+        module_bay, _ = ModuleBay.objects.get_or_create(
             device=device,
             name=bay_name,
             defaults={
-                'label': f'NIC for {connection_def.connection_id}',
-            }
+                'label': f'NIC slot {nic_def.nic_id}',
+            },
         )
 
-        # Check if Module already exists in this bay
         existing_module = Module.objects.filter(
             device=device,
-            module_bay=module_bay
+            module_bay=module_bay,
         ).first()
-
         if existing_module:
             return existing_module
 
-        # Create Module instance
         module = Module(
             device=device,
             module_bay=module_bay,
-            module_type=connection_def.nic_module_type,
-            serial=f"{device.name}-{connection_def.connection_id}",  # Deterministic serial
+            module_type=nic_def.module_type,
+            serial=f"{device.name}-{nic_def.nic_id}",  # deterministic
             status='active',
         )
         module.custom_field_data = {
@@ -1081,24 +1116,12 @@ class DeviceGenerator:
         }
         module.save()
 
-        # Rename auto-created interfaces to avoid conflicts (DIET-179 fix)
-        # NetBox auto-creates interfaces from ModuleType templates, but when multiple
-        # Modules exist on one Device, template names (p0, port0) conflict.
-        # Solution: Prefix interface names with connection_id for uniqueness
-        #
-        # IMPORTANT: connection_id should follow NetBox interface naming conventions:
-        # - Alphanumeric characters, hyphens, underscores
-        # - Avoid spaces and special characters for consistent interface names
-        # - Examples: "fe", "be-rail-0", "mgmt-oob"
-        from dcim.models import Interface
-
-        module_interfaces = Interface.objects.filter(device=device, module=module)
-        for iface in module_interfaces:
-            # Rename: "port0" -> "be-rail-0-port0", "p0" -> "fe-p0", etc.
-            # connection_id used as-is; ensure it follows naming conventions
-            original_name = iface.name
-            unique_name = f"{connection_def.connection_id}-{original_name}"
-            iface.name = unique_name
+        # Rename auto-created interfaces: prefix with nic_id for uniqueness.
+        # "p0" → "nic-fe-p0", "port0" → "nic-be-rail-0-port0"
+        for iface in Interface.objects.filter(device=device, module=module):
+            iface.name = f"{nic_def.nic_id}-{iface.name}"
+            iface.custom_field_data = dict(iface.custom_field_data or {})
+            iface.custom_field_data.setdefault('hedgehog_transceiver_spec', '')
             iface.save()
 
         return module

@@ -33,7 +33,7 @@ from netbox_hedgehog.models.topology_planning import (
     SwitchPortZone,
     TopologyPlan,
 )
-from netbox_hedgehog.tests.test_topology_planning import get_test_nic_module_type
+from netbox_hedgehog.tests.test_topology_planning import get_test_server_nic
 
 
 PLAN_NAME_128GPU = "UX Case 128GPU Odd Ports"
@@ -114,7 +114,7 @@ class AlternatingRedundancyValidationTestCase(TestCase):
         return PlanServerConnection(
             server_class=server_class,
             connection_id=connection_id,
-            nic_module_type=get_test_nic_module_type(),
+            nic=get_test_server_nic(server_class),
             port_index=0,
             ports_per_connection=2,
             hedgehog_conn_type='unbundled',
@@ -283,7 +283,7 @@ class AlternatingRedundancyIngestTestCase(TestCase):
         # Simulate what ingest does: build-validate-save pattern
         conn_defaults = {
             "connection_name": "test-conn",
-            "nic_module_type": get_test_nic_module_type(),
+            "nic": get_test_server_nic(server_class),
             "port_index": 0,
             "ports_per_connection": 2,
             "hedgehog_conn_type": "unbundled",

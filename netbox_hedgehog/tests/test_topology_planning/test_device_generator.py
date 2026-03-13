@@ -7,7 +7,7 @@ from django.test import TestCase
 from dcim.models import Device, DeviceRole, DeviceType, Interface, Manufacturer, Site
 from dcim.models import Cable
 
-from netbox_hedgehog.tests.test_topology_planning import get_test_nic_module_type
+from netbox_hedgehog.tests.test_topology_planning import get_test_server_nic
 
 from netbox_hedgehog.models.topology_planning import (
     BreakoutOption,
@@ -102,7 +102,7 @@ class DeviceGeneratorTestCase(TestCase):
         cls.connection = PlanServerConnection.objects.create(
             server_class=cls.server_class,
             connection_id='FE-01',
-            nic_module_type=get_test_nic_module_type(),
+            nic=get_test_server_nic(cls.server_class),
             port_index=0,
             ports_per_connection=1,
             hedgehog_conn_type='unbundled',

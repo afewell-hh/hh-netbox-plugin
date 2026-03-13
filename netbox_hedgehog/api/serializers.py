@@ -97,6 +97,7 @@ from .serializers_simple import (
     DeviceTypeExtensionSerializer,
     TopologyPlanSerializer,
     PlanServerClassSerializer,
+    PlanServerNICSerializer,
     PlanSwitchClassSerializer,
     PlanServerConnectionSerializer,
     PlanMCLAGDomainSerializer,

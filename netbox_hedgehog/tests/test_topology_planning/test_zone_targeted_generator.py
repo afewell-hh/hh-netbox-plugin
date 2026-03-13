@@ -11,7 +11,7 @@ from dcim.models import (
 
 from netbox_hedgehog.models.topology_planning import (
     BreakoutOption, DeviceTypeExtension, PlanServerClass,
-    PlanServerConnection, PlanSwitchClass, SwitchPortZone, TopologyPlan,
+    PlanServerConnection, PlanServerNIC, PlanSwitchClass, SwitchPortZone, TopologyPlan,
 )
 from netbox_hedgehog.services.device_generator import DeviceGenerator
 from netbox_hedgehog.test_cases.exceptions import TestCaseValidationError
@@ -68,12 +68,15 @@ class ZoneTargetedGeneratorTestCase(TestCase):
             plan=cls.plan, server_class_id="srv-gen",
             category=ServerClassCategoryChoices.GPU, quantity=1,
             server_device_type=cls.server_dt)
+        cls.plan_nic, _ = PlanServerNIC.objects.get_or_create(
+            server_class=cls.sc, nic_id='nic-gen-test',
+            defaults={'module_type': cls.nic})
         # Create connection using target_zone API. GREEN: field exists.
         cls.setup_error = None
         try:
             cls.conn = PlanServerConnection.objects.create(
                 server_class=cls.sc, connection_id="gen-01",
-                nic_module_type=cls.nic, port_index=0,
+                nic=cls.plan_nic, port_index=0,
                 ports_per_connection=1, hedgehog_conn_type="unbundled",
                 distribution="same-switch",
                 target_zone=cls.server_zone,
@@ -125,7 +128,7 @@ class ZoneTargetedGeneratorTestCase(TestCase):
         try:
             conn2 = PlanServerConnection.objects.create(
                 server_class=self.sc, connection_id="gen-rail-02",
-                nic_module_type=self.nic, port_index=0,
+                nic=self.plan_nic, port_index=0,
                 ports_per_connection=1, hedgehog_conn_type="unbundled",
                 distribution="rail-optimized",
                 target_zone=zone2, speed=100, rail=0)
@@ -171,17 +174,23 @@ class DS3000ZoneRegressionTestCase(TestCase):
             plan=cls.plan, server_class_id="admin-node",
             category=ServerClassCategoryChoices.GPU, quantity=1,
             server_device_type=cls.server_dt)
+        cls.nic_ctrl, _ = PlanServerNIC.objects.get_or_create(
+            server_class=cls.sc_ctrl, nic_id='nic-ctrl-test',
+            defaults={'module_type': cls.nic})
+        cls.nic_admin, _ = PlanServerNIC.objects.get_or_create(
+            server_class=cls.sc_admin, nic_id='nic-admin-test',
+            defaults={'module_type': cls.nic})
         cls.setup_error = None
         try:
             PlanServerConnection.objects.create(
                 server_class=cls.sc_ctrl, connection_id="fe-border",
-                nic_module_type=cls.nic, port_index=0,
+                nic=cls.nic_ctrl, port_index=0,
                 ports_per_connection=1, hedgehog_conn_type="unbundled",
                 distribution="same-switch",
                 target_zone=cls.zone_100g, speed=100)
             PlanServerConnection.objects.create(
                 server_class=cls.sc_admin, connection_id="fe-border",
-                nic_module_type=cls.nic, port_index=0,
+                nic=cls.nic_admin, port_index=0,
                 ports_per_connection=1, hedgehog_conn_type="unbundled",
                 distribution="same-switch",
                 target_zone=cls.zone_10g, speed=100)

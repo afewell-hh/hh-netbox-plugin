@@ -148,6 +148,20 @@ def get_test_nic_module_type():
     return module_type
 
 
+def get_test_server_nic(server_class, nic_id='nic-test'):
+    """
+    Return (or create) a PlanServerNIC for use in e2e tests (DIET-294).
+    """
+    from netbox_hedgehog.models.topology_planning import PlanServerNIC
+    module_type = get_test_nic_module_type()
+    nic, _ = PlanServerNIC.objects.get_or_create(
+        server_class=server_class,
+        nic_id=nic_id,
+        defaults={'module_type': module_type},
+    )
+    return nic
+
+
 def cleanup_base_test_data():
     """
     Clean up base reference data.

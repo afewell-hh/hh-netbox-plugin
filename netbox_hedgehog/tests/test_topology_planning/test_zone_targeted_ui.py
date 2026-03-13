@@ -11,7 +11,7 @@ from dcim.models import DeviceType, InterfaceTemplate, Manufacturer, ModuleType
 
 from netbox_hedgehog.models.topology_planning import (
     DeviceTypeExtension, GenerationState, PlanServerClass,
-    PlanServerConnection, PlanSwitchClass, SwitchPortZone, TopologyPlan,
+    PlanServerConnection, PlanServerNIC, PlanSwitchClass, SwitchPortZone, TopologyPlan,
 )
 from netbox_hedgehog.choices import (
     FabricTypeChoices, HedgehogRoleChoices, ServerClassCategoryChoices,
@@ -65,6 +65,9 @@ class ZoneTargetedCRUDTestCase(TestCase):
         cls.oob_zone = SwitchPortZone.objects.create(
             switch_class=cls.sw, zone_name="oob-ports",
             zone_type="oob", port_spec="5-6", allocation_strategy="sequential")
+        cls.plan_nic, _ = PlanServerNIC.objects.get_or_create(
+            server_class=cls.sc, nic_id='nic-crud-test',
+            defaults={'module_type': cls.nic})
 
     def setUp(self):
         self.client = Client()
@@ -93,7 +96,7 @@ class ZoneTargetedCRUDTestCase(TestCase):
         url = reverse("plugins:netbox_hedgehog:planserverconnection_add")
         data = {
             "server_class": self.sc.pk, "connection_id": "zt-crud-01",
-            "nic_module_type": self.nic.pk, "port_index": 0,
+            "nic": self.plan_nic.pk, "port_index": 0,
             "ports_per_connection": 1, "hedgehog_conn_type": "unbundled",
             "distribution": "same-switch",
             "target_zone": self.zone.pk,  # FAILS RED: form field doesn't exist
@@ -109,7 +112,7 @@ class ZoneTargetedCRUDTestCase(TestCase):
         """T04: detail view shows zone_name. FAILS RED: template uses target_switch_class."""
         conn = PlanServerConnection.objects.create(
             server_class=self.sc, connection_id="zt-detail",
-            nic_module_type=self.nic, port_index=0,
+            nic=self.plan_nic, port_index=0,
             ports_per_connection=1, hedgehog_conn_type="unbundled",
             distribution="same-switch", target_zone=self.zone, speed=100)
         url = reverse("plugins:netbox_hedgehog:planserverconnection_detail", args=[conn.pk])
@@ -122,13 +125,13 @@ class ZoneTargetedCRUDTestCase(TestCase):
         """T05: edit form accepts target_zone. FAILS RED: field absent."""
         conn = PlanServerConnection.objects.create(
             server_class=self.sc, connection_id="zt-edit",
-            nic_module_type=self.nic, port_index=0,
+            nic=self.plan_nic, port_index=0,
             ports_per_connection=1, hedgehog_conn_type="unbundled",
             distribution="same-switch", target_zone=self.zone, speed=100)
         url = reverse("plugins:netbox_hedgehog:planserverconnection_edit", args=[conn.pk])
         data = {
             "server_class": self.sc.pk, "connection_id": "zt-edit",
-            "nic_module_type": self.nic.pk, "port_index": 0,
+            "nic": self.plan_nic.pk, "port_index": 0,
             "ports_per_connection": 2, "hedgehog_conn_type": "unbundled",
             "distribution": "same-switch",
             "target_zone": self.zone.pk,  # FAILS RED: form field absent
@@ -171,6 +174,9 @@ class ZonePickerFilterTestCase(TestCase):
         cls.uplink_zone = SwitchPortZone.objects.create(
             switch_class=cls.sw1, zone_name="uplinks",
             zone_type="uplink", port_spec="5-8", allocation_strategy="sequential")
+        cls.plan_nic, _ = PlanServerNIC.objects.get_or_create(
+            server_class=cls.sc1, nic_id='nic-zp-test',
+            defaults={'module_type': cls.nic})
 
     def setUp(self):
         self.client = Client()
@@ -198,7 +204,7 @@ class ZonePickerFilterTestCase(TestCase):
         url = reverse("plugins:netbox_hedgehog:planserverconnection_add")
         data = {
             "server_class": self.sc1.pk, "connection_id": "xplan-01",
-            "nic_module_type": self.nic.pk, "port_index": 0,
+            "nic": self.plan_nic.pk, "port_index": 0,
             "ports_per_connection": 1, "hedgehog_conn_type": "unbundled",
             "distribution": "same-switch",
             "target_zone": self.zone2.pk,  # wrong plan zone -- FAILS RED: field absent
@@ -244,10 +250,13 @@ class ZoneTargetedModelValidationTestCase(TestCase):
         cls.cross_plan_zone = SwitchPortZone.objects.create(
             switch_class=cls.sw2, zone_name="server-mv2",
             zone_type="server", port_spec="1-4", allocation_strategy="sequential")
+        cls.plan_nic, _ = PlanServerNIC.objects.get_or_create(
+            server_class=cls.sc, nic_id='nic-mv-test',
+            defaults={'module_type': cls.nic})
 
     def _make_conn(self, **kwargs):
         base = dict(server_class=self.sc, connection_id="mv-tmp",
-                    nic_module_type=self.nic, port_index=0,
+                    nic=self.plan_nic, port_index=0,
                     ports_per_connection=1, hedgehog_conn_type="unbundled",
                     distribution="same-switch", speed=100)
         base.update(kwargs)
@@ -316,6 +325,9 @@ class OrmTargetZoneGuardrailTestCase(TestCase):
         cls.zone = SwitchPortZone.objects.create(
             switch_class=cls.sw, zone_name="server-orm",
             zone_type="server", port_spec="1-4", allocation_strategy="sequential")
+        cls.plan_nic, _ = PlanServerNIC.objects.get_or_create(
+            server_class=cls.sc, nic_id='nic-orm-test',
+            defaults={'module_type': cls.nic})
 
     def test_orm_filter_by_target_zone_works(self):
         """ORM filter(target_zone=zone) must not raise FieldError. FAILS RED: no DB column."""
@@ -349,7 +361,7 @@ class OrmTargetZoneGuardrailTestCase(TestCase):
         """snapshot builder must emit 'target_zone_id', not 'target_switch_class_id'. FAILS RED."""
         conn = PlanServerConnection.objects.create(
             server_class=self.sc, connection_id="orm-snap",
-            nic_module_type=self.nic, port_index=0,
+            nic=self.plan_nic, port_index=0,
             ports_per_connection=1, hedgehog_conn_type="unbundled",
             distribution="same-switch", target_zone=self.zone, speed=100)
         snap = build_plan_snapshot(self.plan)

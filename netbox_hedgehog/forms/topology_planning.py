@@ -13,11 +13,12 @@ from ..models.topology_planning import (
     DeviceTypeExtension,
     TopologyPlan,
     PlanServerClass,
+    PlanServerNIC,
     PlanSwitchClass,
     PlanServerConnection,
     SwitchPortZone,
 )
-from ..choices import ConnectionDistributionChoices, FabricClassChoices
+from ..choices import ConnectionDistributionChoices, FabricClassChoices, CageTypeChoices, MediumChoices, ConnectorChoices
 from ..services._fabric_utils import _legacy_fabric_name_to_class
 
 
@@ -267,6 +268,53 @@ class PlanSwitchClassForm(NetBoxModelForm):
 
 
 # =============================================================================
+# =============================================================================
+# PlanServerNIC Form (DIET-294)
+# =============================================================================
+
+class PlanServerNICForm(NetBoxModelForm):
+    """
+    Form for creating and editing PlanServerNICs (DIET-294).
+
+    One PlanServerNIC represents one physical NIC/DPU card slot.
+    The generator creates exactly one NetBox Module per PlanServerNIC.
+    """
+
+    server_class = forms.ModelChoiceField(
+        queryset=PlanServerClass.objects.all(),
+        label='Server Class',
+        help_text='Server class this NIC belongs to',
+    )
+
+    module_type = DynamicModelChoiceField(
+        queryset=ModuleType.objects.all(),
+        label='Module Type',
+        help_text='NetBox ModuleType for this NIC (must have InterfaceTemplates defined)',
+    )
+
+    class Meta:
+        model = PlanServerNIC
+        fields = [
+            'server_class',
+            'nic_id',
+            'module_type',
+            'description',
+            'tags',
+        ]
+        widgets = {
+            'description': forms.Textarea(attrs={'rows': 3}),
+        }
+        help_texts = {
+            'nic_id': (
+                "Unique NIC slot identifier within this server class "
+                "(e.g., 'nic-fe', 'nic-be-rail-0'). "
+                "Used as ModuleBay name and interface name prefix. "
+                "Alphanumeric, hyphens, underscores only; must start with alphanumeric."
+            ),
+        }
+
+
+# =============================================================================
 # PlanServerConnection Form (DIET-005)
 # =============================================================================
 
@@ -288,7 +336,7 @@ class PlanServerConnectionForm(NetBoxModelForm):
             'server_class',
             'connection_id',
             'connection_name',
-            'nic_module_type',
+            'nic',
             'port_index',
             'ports_per_connection',
             'hedgehog_conn_type',
@@ -297,29 +345,42 @@ class PlanServerConnectionForm(NetBoxModelForm):
             'speed',
             'rail',
             'port_type',
+            'cage_type',
+            'medium',
+            'connector',
+            'standard',
             'tags',
         ]
         widgets = {
             'connection_name': forms.TextInput(attrs={'placeholder': 'frontend, backend-rail-0, etc.'}),
         }
         help_texts = {
-            'nic_module_type': 'NIC module type (e.g., BlueField-3 BF3220, ConnectX-7). '
-                              'Defines the physical NIC hardware with port count and transceiver characteristics.',
-            'port_index': 'Zero-based port index on the NIC (0 for first port, 1 for second port). '
-                         'Used to select which physical port on the NIC to use for this connection.',
+            'nic': (
+                'Physical NIC card this connection uses. '
+                'The NIC must belong to the same server class.'
+            ),
+            'port_index': (
+                'Zero-based port index on the NIC (0 for first port, 1 for second port). '
+                'Used to select which physical port on the NIC to use for this connection.'
+            ),
+            'cage_type': 'Transceiver cage/port form factor (leave blank if not specified).',
+            'medium': 'Physical transmission medium (leave blank if not specified).',
+            'connector': 'Fiber connector type (leave blank for DAC or if not specified).',
+            'standard': 'Optical/electrical standard (e.g., 200GBASE-SR4). Optional.',
         }
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
 
-        # Filter target_switch_class based on server_class selection
+        # Resolve server_class from instance or submitted data
         server_class = None
 
-        # Check if editing existing connection
-        if self.instance and self.instance.pk and self.instance.server_class:
-            server_class = self.instance.server_class
+        if self.instance and self.instance.pk and self.instance.server_class_id:
+            try:
+                server_class = self.instance.server_class
+            except Exception:
+                pass
         else:
-            # For add mode, check if server_class is in form data or initial data
             server_class_id = self.data.get('server_class') or self.initial.get('server_class')
             if server_class_id:
                 try:
@@ -327,16 +388,24 @@ class PlanServerConnectionForm(NetBoxModelForm):
                 except (PlanServerClass.DoesNotExist, ValueError):
                     pass
 
-        # Apply filtering if we found a server_class
         if server_class:
             plan = server_class.plan
+            # Filter target_zone to the same plan
             self.fields['target_zone'].queryset = SwitchPortZone.objects.filter(
                 switch_class__plan=plan, zone_type__in=['server', 'oob']
             ).select_related('switch_class')
             self.fields['target_zone'].help_text = f'Server/OOB zones from plan: {plan.name}'
+            # Filter nic to the same server_class
+            self.fields['nic'].queryset = PlanServerNIC.objects.filter(
+                server_class=server_class
+            )
+            self.fields['nic'].help_text = f'NICs for server class: {server_class.server_class_id}'
         else:
             self.fields['target_zone'].help_text = (
                 'Select a server class first. Target zone must be from the same plan.'
+            )
+            self.fields['nic'].help_text = (
+                'Select a server class first. NIC must belong to the same server class.'
             )
 
     def clean(self):

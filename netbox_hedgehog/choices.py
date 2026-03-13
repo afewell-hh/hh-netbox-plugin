@@ -287,6 +287,60 @@ class PortTypeChoices(ChoiceSet):
     ]
 
 
+class CageTypeChoices(ChoiceSet):
+    """Transceiver cage/port form factor for PlanServerConnection."""
+
+    QSFP112 = 'QSFP112'
+    OSFP = 'OSFP'
+    QSFP_DD = 'QSFP-DD'
+    QSFP28 = 'QSFP28'
+    SFP28 = 'SFP28'
+    SFP_PLUS = 'SFP+'
+    RJ45 = 'RJ45'
+
+    CHOICES = [
+        (QSFP112, 'QSFP112'),
+        (OSFP, 'OSFP'),
+        (QSFP_DD, 'QSFP-DD'),
+        (QSFP28, 'QSFP28'),
+        (SFP28, 'SFP28'),
+        (SFP_PLUS, 'SFP+'),
+        (RJ45, 'RJ45'),
+    ]
+
+
+class MediumChoices(ChoiceSet):
+    """Physical transmission medium for PlanServerConnection."""
+
+    MMF = 'MMF'
+    SMF = 'SMF'
+    DAC = 'DAC'
+    ACC = 'ACC'
+
+    CHOICES = [
+        (MMF, 'Multimode Fiber (MMF)'),
+        (SMF, 'Single-mode Fiber (SMF)'),
+        (DAC, 'Direct-Attach Copper (DAC)'),
+        (ACC, 'Active Copper Cable (ACC)'),
+    ]
+
+
+class ConnectorChoices(ChoiceSet):
+    """Fiber connector type for PlanServerConnection."""
+
+    LC = 'LC'
+    MPO_12 = 'MPO-12'
+    MPO_16 = 'MPO-16'
+    DIRECT = 'Direct'
+
+    CHOICES = [
+        (LC, 'LC Duplex'),
+        (MPO_12, 'MPO-12'),
+        (MPO_16, 'MPO-16'),
+        (DIRECT, 'Direct Attach (no connector)'),
+    ]
+
+
 class DeviceCategoryChoices(ChoiceSet):
     """Device category choices for NamingTemplate"""
 

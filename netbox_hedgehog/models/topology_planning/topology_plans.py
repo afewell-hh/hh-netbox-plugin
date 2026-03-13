@@ -23,6 +23,9 @@ from netbox_hedgehog.choices import (
     ConnectionDistributionChoices,
     ConnectionTypeChoices,
     PortTypeChoices,
+    CageTypeChoices,
+    MediumChoices,
+    ConnectorChoices,
 )
 from netbox_hedgehog.services._fabric_utils import _legacy_fabric_name_to_class
 
@@ -182,6 +185,82 @@ class PlanServerClass(NetBoxModel):
 
     def get_absolute_url(self):
         return reverse('plugins:netbox_hedgehog:planserverclass_detail', args=[self.pk])
+
+
+class PlanServerNIC(NetBoxModel):
+    """
+    One physical NIC/DPU card slot within a PlanServerClass (DIET-294).
+
+    Represents a single installed NIC card.  All connections from this server
+    class that physically use the same card must reference the same
+    PlanServerNIC.  The generator creates exactly one NetBox Module per
+    PlanServerNIC per generated server device.
+    """
+
+    server_class = models.ForeignKey(
+        PlanServerClass,
+        on_delete=models.CASCADE,
+        related_name='nics',
+        help_text="Server class this NIC belongs to",
+    )
+
+    nic_id = models.CharField(
+        max_length=100,
+        help_text=(
+            "Unique NIC identifier within this server class "
+            "(e.g., 'nic-fe', 'nic-be-rail-0'). "
+            "Used as ModuleBay name and interface name prefix."
+        ),
+    )
+
+    module_type = models.ForeignKey(
+        ModuleType,
+        on_delete=models.PROTECT,
+        related_name='plan_server_nics',
+        help_text="NetBox ModuleType for this NIC (must have InterfaceTemplates)",
+    )
+
+    description = models.TextField(
+        blank=True,
+        help_text="Optional description for this NIC slot",
+    )
+
+    class Meta:
+        ordering = ['server_class', 'nic_id']
+        verbose_name = "Server NIC"
+        verbose_name_plural = "Server NICs"
+        unique_together = [['server_class', 'nic_id']]
+
+    def __str__(self):
+        return f"{self.server_class.server_class_id}/{self.nic_id}"
+
+    def get_absolute_url(self):
+        return reverse('plugins:netbox_hedgehog:planservernic_detail', args=[self.pk])
+
+    def clean(self):
+        super().clean()
+
+        # Validate nic_id follows interface naming conventions
+        if self.nic_id:
+            import re
+            if not re.match(r'^[a-zA-Z0-9][a-zA-Z0-9_-]*$', self.nic_id):
+                raise ValidationError({
+                    'nic_id': (
+                        'NIC ID must start with alphanumeric and contain only '
+                        'alphanumeric characters, hyphens, and underscores.'
+                    )
+                })
+
+        # Validate module_type has interface templates
+        if self.module_type_id:
+            from dcim.models import InterfaceTemplate
+            if not InterfaceTemplate.objects.filter(module_type_id=self.module_type_id).exists():
+                raise ValidationError({
+                    'module_type': (
+                        f'Module type "{self.module_type}" has no interface templates defined. '
+                        'Add interface templates to this module type before using it as a NIC.'
+                    )
+                })
 
 
 class PlanSwitchClass(NetBoxModel):
@@ -481,11 +560,11 @@ class PlanServerConnection(NetBoxModel):
         help_text="Unique connection identifier (e.g., 'FE-001', 'BE-RAIL-0')"
     )
 
-    nic_module_type = models.ForeignKey(
-        ModuleType,
+    nic = models.ForeignKey(
+        PlanServerNIC,
         on_delete=models.PROTECT,
-        related_name='plan_server_connections',
-        help_text="NIC module type (e.g., BlueField-3 BF3220, ConnectX-7)"
+        related_name='connections',
+        help_text="Physical NIC card this connection uses (DIET-294 NIC-first model)",
     )
 
     port_index = models.IntegerField(
@@ -548,6 +627,38 @@ class PlanServerConnection(NetBoxModel):
         choices=PortTypeChoices,
         blank=True,
         help_text="Port type (data, ipmi, pxe)"
+    )
+
+    # Transceiver review fields (DIET-294) – flat attributes for engineer review.
+    # Written to hedgehog_transceiver_spec custom field on generated server-side
+    # interfaces.  A future first-class transceiver model (issue #194) may replace
+    # these flat fields.
+
+    cage_type = models.CharField(
+        max_length=20,
+        choices=CageTypeChoices,
+        blank=True,
+        help_text="Transceiver cage/port form factor (e.g., QSFP112, OSFP)",
+    )
+
+    medium = models.CharField(
+        max_length=10,
+        choices=MediumChoices,
+        blank=True,
+        help_text="Physical transmission medium (e.g., MMF, DAC)",
+    )
+
+    connector = models.CharField(
+        max_length=10,
+        choices=ConnectorChoices,
+        blank=True,
+        help_text="Fiber connector type (e.g., LC, MPO-12); blank for DAC/direct-attach",
+    )
+
+    standard = models.CharField(
+        max_length=50,
+        blank=True,
+        help_text="Optical/electrical standard (e.g., 200GBASE-SR4, 400GAUI-8 C2M)",
     )
 
     class Meta:
@@ -621,22 +732,32 @@ class PlanServerConnection(NetBoxModel):
                 )
             })
 
-        # Validate nic_module_type is set and has interface templates
-        # Use nic_module_type_id to avoid RelatedObjectDoesNotExist when None
-        if not self.nic_module_type_id:
+        # Validate nic is set (NOT NULL enforced by migration 0038)
+        if not self.nic_id:
             raise ValidationError({
-                'nic_module_type': 'NIC module type is required.'
+                'nic': 'NIC is required.'
             })
 
-        # Get interface templates for the NIC module type
+        # Validate nic belongs to the same server_class (not cross-plan, not cross-server-class)
+        if self.nic_id and self.server_class_id:
+            if self.nic.server_class_id != self.server_class_id:
+                raise ValidationError({
+                    'nic': (
+                        'NIC must belong to the same server class as this connection. '
+                        f'NIC belongs to "{self.nic.server_class.server_class_id}", '
+                        f'connection belongs to server class pk={self.server_class_id}.'
+                    )
+                })
+
+        # Get interface templates for the NIC's module_type
         from dcim.models import InterfaceTemplate
         nic_interfaces = InterfaceTemplate.objects.filter(
-            module_type=self.nic_module_type
+            module_type=self.nic.module_type
         ).order_by('name')
 
         if not nic_interfaces.exists():
             raise ValidationError({
-                'nic_module_type': f'NIC module type "{self.nic_module_type}" has no interface templates defined.'
+                'nic': f'NIC module type "{self.nic.module_type}" has no interface templates defined.'
             })
 
         # Validate port_index doesn't exceed available ports
@@ -644,7 +765,7 @@ class PlanServerConnection(NetBoxModel):
         if self.port_index >= port_count:
             raise ValidationError({
                 'port_index': f'Port index {self.port_index} exceeds available ports (0-{port_count - 1}) '
-                             f'on NIC "{self.nic_module_type}".'
+                             f'on NIC "{self.nic.module_type}".'
             })
 
         # Validate sufficient ports for ports_per_connection
@@ -654,7 +775,7 @@ class PlanServerConnection(NetBoxModel):
                 raise ValidationError({
                     'ports_per_connection': f'Insufficient ports for this connection. '
                                           f'Requested {self.ports_per_connection} ports starting from index {self.port_index}, '
-                                          f'but only {available_ports} ports available on "{self.nic_module_type}".'
+                                          f'but only {available_ports} ports available on "{self.nic.module_type}".'
                 })
 
 

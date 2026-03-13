@@ -401,7 +401,7 @@ class PlanServerNICMigrationTestCase(TestCase):
         # we verify the function is callable and raises the right type.
         from unittest.mock import patch, MagicMock
         mock_qs = MagicMock()
-        mock_qs.filter.return_value.count.return_value = 3  # simulate 3 NULLs
+        mock_qs.objects.filter.return_value.count.return_value = 3  # simulate 3 NULLs
         mock_apps = MagicMock()
         mock_apps.get_model.return_value = mock_qs
         with self.assertRaises(Exception) as ctx:
@@ -423,7 +423,7 @@ class DualPlaneNICTestCase(TestCase):
         # Second zone for plane B
         cls.zone_b = SwitchPortZone.objects.create(
             switch_class=cls.switch_class, zone_name='server-downlinks-b',
-            zone_type=PortZoneTypeChoices.SERVER, port_spec='1-64',
+            zone_type=PortZoneTypeChoices.SERVER, port_spec='33-64',
             breakout_option=cls.breakout,
             allocation_strategy=AllocationStrategyChoices.SEQUENTIAL, priority=200,
         )
@@ -514,7 +514,7 @@ class DualPlaneNICTestCase(TestCase):
                 switch_class=self.switch_class,
                 zone_name=f'be-rail-{i}-downlinks',
                 defaults={
-                    'zone_type': PortZoneTypeChoices.SERVER, 'port_spec': '1-64',
+                    'zone_type': PortZoneTypeChoices.SERVER, 'port_spec': str(i + 1),
                     'breakout_option': self.breakout,
                     'allocation_strategy': AllocationStrategyChoices.SEQUENTIAL,
                     'priority': 300 + i,

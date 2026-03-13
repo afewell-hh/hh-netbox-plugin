@@ -24,6 +24,7 @@ from .reference_data import (
 from .topology_plans import (
     TopologyPlan,
     PlanServerClass,
+    PlanServerNIC,
     PlanSwitchClass,
     PlanServerConnection,
     PlanMCLAGDomain,
@@ -45,6 +46,7 @@ __all__ = [
     # Planning Models
     'TopologyPlan',
     'PlanServerClass',
+    'PlanServerNIC',
     'PlanSwitchClass',
     'PlanServerConnection',
     'PlanMCLAGDomain',

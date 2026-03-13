@@ -27,7 +27,7 @@ from dcim.models import DeviceType, Manufacturer, Device
 from users.models import ObjectPermission
 from core.models import Job
 
-from netbox_hedgehog.tests.test_topology_planning import get_test_nic_module_type
+from netbox_hedgehog.tests.test_topology_planning import get_test_server_nic
 
 from netbox_hedgehog.models.topology_planning import (
     TopologyPlan,
@@ -159,7 +159,7 @@ class GenerationUXEnhancementsTestCase(TestCase):
         PlanServerConnection.objects.create(
             connection_id='TEST-CONN',
             server_class=self.server_class,
-            nic_module_type=get_test_nic_module_type(),
+            nic=get_test_server_nic(self.server_class),
             port_index=0,
             target_zone=self.zone,
             ports_per_connection=2,

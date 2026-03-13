@@ -32,7 +32,7 @@ from django.contrib.staticfiles.testing import StaticLiveServerTestCase
 from django.contrib.auth import get_user_model
 from dcim.models import Device
 
-from .helpers import create_base_test_data, cleanup_base_test_data, get_test_nic_module_type
+from .helpers import create_base_test_data, cleanup_base_test_data, get_test_server_nic
 
 # Conditional import - allows module to load even when Playwright isn't installed
 try:
@@ -168,7 +168,7 @@ class GenerateDevicesE2ETestCase(StaticLiveServerTestCase):
             target_zone=zone,
             speed=200,
             port_type='data',
-            nic_module_type=get_test_nic_module_type(),
+            nic=get_test_server_nic(server_class),
             port_index=0,
         )
 

@@ -43,6 +43,7 @@ from netbox_hedgehog.models.topology_planning import (
     DeviceTypeExtension,
     PlanServerClass,
     PlanServerConnection,
+    PlanServerNIC,
     PlanSwitchClass,
     SwitchPortZone,
     TopologyPlan,
@@ -219,10 +220,16 @@ class FabricScopedExportBase(TestCase):
             allocation_strategy=AllocationStrategyChoices.SEQUENTIAL,
             priority=200,
         )
+        cls.fe_nic, _ = PlanServerNIC.objects.get_or_create(
+            server_class=cls.fe_server_class,
+            nic_id='nic-test',
+            defaults={'module_type': cls.nic_module_type},
+        )
+
         PlanServerConnection.objects.create(
             server_class=cls.fe_server_class,
             connection_id='frontend',
-            nic_module_type=cls.nic_module_type,
+            nic=cls.fe_nic,
             port_index=0,
             ports_per_connection=2,
             hedgehog_conn_type=ConnectionTypeChoices.UNBUNDLED,
@@ -269,10 +276,16 @@ class FabricScopedExportBase(TestCase):
             allocation_strategy=AllocationStrategyChoices.SEQUENTIAL,
             priority=200,
         )
+        cls.be_nic, _ = PlanServerNIC.objects.get_or_create(
+            server_class=cls.be_server_class,
+            nic_id='nic-test',
+            defaults={'module_type': cls.nic_module_type},
+        )
+
         PlanServerConnection.objects.create(
             server_class=cls.be_server_class,
             connection_id='backend',
-            nic_module_type=cls.nic_module_type,
+            nic=cls.be_nic,
             port_index=0,
             ports_per_connection=2,
             hedgehog_conn_type=ConnectionTypeChoices.UNBUNDLED,

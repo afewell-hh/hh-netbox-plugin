@@ -23,6 +23,7 @@ from netbox_hedgehog.models.topology_planning import (
     PlanServerClass,
     PlanSwitchClass,
     PlanServerConnection,
+    PlanServerNIC,
     DeviceTypeExtension,
     SwitchPortZone,
 )
@@ -562,6 +563,12 @@ class PlanServerConnectionFormValidationTestCase(TestCase):
                 type='other'
             )
 
+        cls.nic, _ = PlanServerNIC.objects.get_or_create(
+            server_class=cls.server_class,
+            nic_id='nic-test',
+            defaults={'module_type': cls.nic_module_type},
+        )
+
     def setUp(self):
         """Login before each test"""
         self.client = Client()
@@ -573,7 +580,7 @@ class PlanServerConnectionFormValidationTestCase(TestCase):
         data = {
             'server_class': self.server_class.pk,
             'connection_id': 'fe-001',
-            'nic_module_type': self.nic_module_type.pk,  # Required (DIET-173 Phase 5)
+            'nic': self.nic.pk,  # Required (DIET-294 NIC FK)
             'port_index': 0,  # Required (DIET-173 Phase 5)
             'connection_name': 'frontend',
             'ports_per_connection': 2,
@@ -663,7 +670,7 @@ class PlanServerConnectionFormValidationTestCase(TestCase):
         data_no_rail = {
             'server_class': self.server_class.pk,
             'connection_id': 'rail-test-fail',
-            'nic_module_type': self.nic_module_type.pk,  # Required (DIET-173 Phase 5)
+            'nic': self.nic.pk,  # Required (DIET-294 NIC FK)
             'port_index': 0,  # Required (DIET-173 Phase 5)
             'connection_name': 'backend-rail',
             'ports_per_connection': 1,
@@ -688,7 +695,7 @@ class PlanServerConnectionFormValidationTestCase(TestCase):
         data_with_rail = {
             'server_class': self.server_class.pk,
             'connection_id': 'rail-test-success',
-            'nic_module_type': self.nic_module_type.pk,  # Required (DIET-173 Phase 5)
+            'nic': self.nic.pk,  # Required (DIET-294 NIC FK)
             'port_index': 0,  # Required (DIET-173 Phase 5)
             'connection_name': 'backend-rail-0',
             'ports_per_connection': 1,
@@ -714,7 +721,7 @@ class PlanServerConnectionFormValidationTestCase(TestCase):
         data = {
             'server_class': self.server_class.pk,
             'connection_id': 'alt-test',
-            'nic_module_type': self.nic_module_type.pk,  # Required (DIET-173 Phase 5)
+            'nic': self.nic.pk,  # Required (DIET-294 NIC FK)
             'port_index': 0,  # Required (DIET-173 Phase 5)
             'connection_name': 'frontend-alt',
             'ports_per_connection': 2,

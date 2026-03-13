@@ -12,10 +12,11 @@ from django.contrib.contenttypes.models import ContentType
 
 from dcim.models import DeviceType, Manufacturer, ModuleType
 
-from netbox_hedgehog.tests.test_topology_planning import get_test_nic_module_type
+from netbox_hedgehog.tests.test_topology_planning import get_test_server_nic
 from netbox_hedgehog.models.topology_planning import (
     TopologyPlan,
     PlanServerClass,
+    PlanServerNIC,
     PlanSwitchClass,
     DeviceTypeExtension,
     PlanServerConnection,
@@ -594,7 +595,7 @@ class ServerConnectionIntegrationTestCase(TestCase):
             'target_zone': self.zone.pk,
             'speed': 200,
             'port_type': PortTypeChoices.DATA,
-            'nic_module_type': get_test_nic_module_type().pk,
+            'nic': get_test_server_nic(self.server_class).pk,
             'port_index': 0,
         }
         response = self.client.post(url, data, follow=True)
@@ -615,7 +616,7 @@ class ServerConnectionIntegrationTestCase(TestCase):
         connection = PlanServerConnection.objects.create(
             server_class=self.server_class,
             connection_id='FE-001',
-            nic_module_type=get_test_nic_module_type(),
+            nic=get_test_server_nic(self.server_class),
             port_index=0,
             ports_per_connection=2,
             hedgehog_conn_type=ConnectionTypeChoices.UNBUNDLED,
@@ -636,7 +637,7 @@ class ServerConnectionIntegrationTestCase(TestCase):
         connection = PlanServerConnection.objects.create(
             server_class=self.server_class,
             connection_id='FE-001',
-            nic_module_type=get_test_nic_module_type(),
+            nic=get_test_server_nic(self.server_class),
             port_index=0,
             ports_per_connection=2,
             hedgehog_conn_type=ConnectionTypeChoices.UNBUNDLED,
@@ -659,7 +660,7 @@ class ServerConnectionIntegrationTestCase(TestCase):
             'distribution': ConnectionDistributionChoices.ALTERNATING,  # Changed
             'target_zone': self.zone.pk,
             'speed': 400,  # Changed from 200
-            'nic_module_type': get_test_nic_module_type().pk,
+            'nic': get_test_server_nic(self.server_class).pk,
             'port_index': 0,
         }
         post_response = self.client.post(edit_url, data, follow=True)
@@ -676,7 +677,7 @@ class ServerConnectionIntegrationTestCase(TestCase):
         connection = PlanServerConnection.objects.create(
             server_class=self.server_class,
             connection_id='FE-DELETE',
-            nic_module_type=get_test_nic_module_type(),
+            nic=get_test_server_nic(self.server_class),
             port_index=0,
             ports_per_connection=2,
             hedgehog_conn_type=ConnectionTypeChoices.UNBUNDLED,
@@ -786,7 +787,7 @@ class ServerConnectionValidationTestCase(TestCase):
             'distribution': ConnectionDistributionChoices.RAIL_OPTIMIZED,
             'target_zone': self.zone.pk,
             'speed': 400,
-            'nic_module_type': get_test_nic_module_type().pk,
+            'nic': get_test_server_nic(self.server_class).pk,
             'port_index': 0,
             # rail is NOT provided - should cause validation error
         }
@@ -814,7 +815,7 @@ class ServerConnectionValidationTestCase(TestCase):
             'distribution': ConnectionDistributionChoices.SAME_SWITCH,
             'target_zone': self.zone.pk,
             'speed': 200,
-            'nic_module_type': get_test_nic_module_type().pk,
+            'nic': get_test_server_nic(self.server_class).pk,
             'port_index': 0,
             # rail is NOT provided - should be OK for same-switch
         }
@@ -840,7 +841,7 @@ class ServerConnectionValidationTestCase(TestCase):
             'target_zone': self.zone.pk,
             'speed': 400,
             'rail': 0,  # Provided - should work
-            'nic_module_type': get_test_nic_module_type().pk,
+            'nic': get_test_server_nic(self.server_class).pk,
             'port_index': 0,
         }
         response = self.client.post(url, data, follow=True)
@@ -962,7 +963,7 @@ class ServerConnectionFilteringTestCase(TestCase):
             'distribution': ConnectionDistributionChoices.SAME_SWITCH,
             'target_zone': self.zone_plan2.pk,  # From Plan 2 - WRONG!
             'speed': 200,
-            'nic_module_type': get_test_nic_module_type().pk,
+            'nic': get_test_server_nic(self.server_class_plan1).pk,
             'port_index': 0,
         }
         response = self.client.post(url, data, follow=False)
@@ -989,7 +990,7 @@ class ServerConnectionFilteringTestCase(TestCase):
             'distribution': ConnectionDistributionChoices.SAME_SWITCH,
             'target_zone': self.zone_plan1.pk,  # Also from Plan 1 - CORRECT
             'speed': 200,
-            'nic_module_type': get_test_nic_module_type().pk,
+            'nic': get_test_server_nic(self.server_class_plan1).pk,
             'port_index': 0,
         }
         response = self.client.post(url, data, follow=True)
@@ -1124,6 +1125,7 @@ class ServerConnectionPermissionTestCase(TestCase):
         obj_perm.object_types.add(
             ContentType.objects.get_for_model(PlanServerConnection),
             ContentType.objects.get_for_model(PlanServerClass),
+            ContentType.objects.get_for_model(PlanServerNIC),
             ContentType.objects.get_for_model(PlanSwitchClass),
             ContentType.objects.get_for_model(SwitchPortZone),
             ContentType.objects.get_for_model(ModuleType),
@@ -1142,7 +1144,7 @@ class ServerConnectionPermissionTestCase(TestCase):
             'distribution': ConnectionDistributionChoices.ALTERNATING,
             'target_zone': self.zone.pk,
             'speed': 200,
-            'nic_module_type': get_test_nic_module_type().pk,
+            'nic': get_test_server_nic(self.server_class).pk,
             'port_index': 0,
         }
         response = self.client.post(url, data, follow=False)
@@ -1235,7 +1237,7 @@ class YAMLExportIntegrationTestCase(TestCase):
         cls.connection = PlanServerConnection.objects.create(
             server_class=cls.server_class,
             connection_id='FE-001',
-            nic_module_type=get_test_nic_module_type(),
+            nic=get_test_server_nic(cls.server_class),
             port_index=0,
             connection_name='frontend',
             ports_per_connection=2,
@@ -1533,7 +1535,7 @@ class YAMLExportMCLAGTestCase(TestCase):
         cls.connection = PlanServerConnection.objects.create(
             server_class=cls.server_class,
             connection_id='FE-MCLAG',
-            nic_module_type=get_test_nic_module_type(),
+            nic=get_test_server_nic(cls.server_class),
             port_index=0,
             connection_name='frontend-mclag',
             ports_per_connection=2,
@@ -1659,7 +1661,7 @@ class YAMLExportEdgeCaseTestCase(TestCase):
         connection = PlanServerConnection.objects.create(
             server_class=server_class,
             connection_id='FE_CONN 01',  # Uppercase, underscore, space
-            nic_module_type=get_test_nic_module_type(),
+            nic=get_test_server_nic(server_class),
             port_index=0,
             connection_name='Frontend Connection',  # Uppercase, space
             ports_per_connection=1,
@@ -1725,7 +1727,7 @@ class YAMLExportEdgeCaseTestCase(TestCase):
         connection = PlanServerConnection.objects.create(
             server_class=server_class,
             connection_id='fe-001',
-            nic_module_type=get_test_nic_module_type(),
+            nic=get_test_server_nic(server_class),
             port_index=0,
             connection_name='frontend',
             ports_per_connection=2,
@@ -1848,7 +1850,7 @@ class YAMLExportEdgeCaseTestCase(TestCase):
         connection = PlanServerConnection.objects.create(
             server_class=server_class,
             connection_id='very-long-connection-identifier-name',
-            nic_module_type=get_test_nic_module_type(),
+            nic=get_test_server_nic(server_class),
             port_index=0,
             connection_name='super-long-connection-descriptive-name',
             ports_per_connection=1,
@@ -2010,7 +2012,7 @@ class SimplePlanE2ETestCase(TestCase):
             distribution=ConnectionDistributionChoices.ALTERNATING,
             target_zone=zone,
             speed=200,  # 200G ports
-            nic_module_type=get_test_nic_module_type(),
+            nic=get_test_server_nic(server_class),
             port_index=0,
         )
 
@@ -2217,7 +2219,7 @@ class MCLAGEvenCountEnforcementTestCase(TestCase):
             distribution=ConnectionDistributionChoices.ALTERNATING,
             target_zone=zone,
             speed=200,
-            nic_module_type=get_test_nic_module_type(),
+            nic=get_test_server_nic(server_class),
             port_index=0,
         )
 
@@ -2296,7 +2298,7 @@ class MCLAGEvenCountEnforcementTestCase(TestCase):
             distribution=ConnectionDistributionChoices.ALTERNATING,
             target_zone=zone,
             speed=200,
-            nic_module_type=get_test_nic_module_type(),
+            nic=get_test_server_nic(server_class),
             port_index=0,
         )
 
@@ -2447,7 +2449,7 @@ class BreakoutSelectionCorrectnessTestCase(TestCase):
             distribution=ConnectionDistributionChoices.SAME_SWITCH,
             target_zone=zone,
             speed=200,  # 200G connection speed
-            nic_module_type=get_test_nic_module_type(),
+            nic=get_test_server_nic(server_class),
             port_index=0,
         )
 
@@ -2536,7 +2538,7 @@ class BreakoutSelectionCorrectnessTestCase(TestCase):
             distribution=ConnectionDistributionChoices.SAME_SWITCH,
             target_zone=zone,
             speed=400,  # 400G connection speed
-            nic_module_type=get_test_nic_module_type(),
+            nic=get_test_server_nic(server_class),
             port_index=0,
         )
 
@@ -2624,7 +2626,7 @@ class BreakoutSelectionCorrectnessTestCase(TestCase):
             distribution=ConnectionDistributionChoices.SAME_SWITCH,
             target_zone=zone,
             speed=100,  # 100G connection speed
-            nic_module_type=get_test_nic_module_type(),
+            nic=get_test_server_nic(server_class),
             port_index=0,
         )
 

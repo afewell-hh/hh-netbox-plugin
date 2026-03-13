@@ -707,6 +707,37 @@ class PlanSwitchClassDeleteView(generic.ObjectDeleteView):
 # PlanServerConnection Views (DIET-005)
 # =============================================================================
 
+# =============================================================================
+# PlanServerNIC Views (DIET-294)
+# =============================================================================
+
+class PlanServerNICListView(generic.ObjectListView):
+    """List view for PlanServerNICs."""
+    queryset = models.PlanServerNIC.objects.select_related('server_class', 'module_type')
+    table = tables.PlanServerNICTable
+
+
+class PlanServerNICView(generic.ObjectView):
+    """Detail view for a single PlanServerNIC."""
+    queryset = models.PlanServerNIC.objects.select_related('server_class', 'module_type')
+    template_name = 'netbox_hedgehog/topology_planning/planservernic.html'
+
+
+class PlanServerNICEditView(generic.ObjectEditView):
+    """Create/Edit view for PlanServerNICs."""
+    queryset = models.PlanServerNIC.objects.all()
+    form = forms.PlanServerNICForm
+
+
+class PlanServerNICDeleteView(generic.ObjectDeleteView):
+    """Delete view for PlanServerNICs."""
+    queryset = models.PlanServerNIC.objects.all()
+
+
+# =============================================================================
+# PlanServerConnection Views (DIET-005)
+# =============================================================================
+
 class PlanServerConnectionListView(generic.ObjectListView):
     """List view for PlanServerConnections"""
     queryset = models.PlanServerConnection.objects.select_related(
@@ -727,7 +758,8 @@ class PlanServerConnectionView(generic.ObjectView):
         'target_zone',
         'target_zone__switch_class',
         'target_zone__switch_class__plan',
-        'nic_module_type'
+        'nic',
+        'nic__module_type',
     )
 
 

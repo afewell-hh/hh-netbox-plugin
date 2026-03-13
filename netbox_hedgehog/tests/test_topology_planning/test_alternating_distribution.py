@@ -35,7 +35,7 @@ from netbox_hedgehog.models.topology_planning import (
     TopologyPlan,
 )
 from netbox_hedgehog.utils.topology_calculations import calculate_switch_quantity
-from netbox_hedgehog.tests.test_topology_planning import get_test_nic_module_type
+from netbox_hedgehog.tests.test_topology_planning import get_test_server_nic
 
 
 PLAN_NAME_128GPU = "UX Case 128GPU Odd Ports"
@@ -129,7 +129,7 @@ class AlternatingDistributionMinTwoTestCase(TestCase):
         return PlanServerConnection.objects.create(
             server_class=server_class,
             connection_id=connection_id,
-            nic_module_type=get_test_nic_module_type(),
+            nic=get_test_server_nic(server_class),
             port_index=0,
             ports_per_connection=ports_per_connection,
             hedgehog_conn_type='unbundled',
