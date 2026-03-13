@@ -21,8 +21,6 @@ def get_test_nic_module_type():
         model='BlueField-3 BF3220',
     )
     if created:
-        # Ensure InterfaceTemplates exist so DeviceGenerator can auto-create
-        # interfaces when this ModuleType is instantiated on a server.
         InterfaceTemplate.objects.get_or_create(
             module_type=module_type, name='p0',
             defaults={'type': '200gbase-x-qsfp112'}
@@ -32,3 +30,21 @@ def get_test_nic_module_type():
             defaults={'type': '200gbase-x-qsfp112'}
         )
     return module_type
+
+
+def get_test_server_nic(server_class, nic_id='nic-test'):
+    """
+    Return (or create) a PlanServerNIC for use in tests (DIET-294).
+
+    Creates the ModuleType with InterfaceTemplates if needed via
+    get_test_nic_module_type(). Use this for any test that creates a
+    PlanServerConnection under the new NIC-first schema.
+    """
+    from netbox_hedgehog.models.topology_planning import PlanServerNIC
+    module_type = get_test_nic_module_type()
+    nic, _ = PlanServerNIC.objects.get_or_create(
+        server_class=server_class,
+        nic_id=nic_id,
+        defaults={'module_type': module_type},
+    )
+    return nic
