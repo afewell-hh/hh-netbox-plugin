@@ -665,14 +665,31 @@ def apply_case(
                 ]
             )
 
-        # Resolve NIC: new format uses `nic` (nic_id reference); old format uses
-        # `nic_module_type` (backward compat — auto-creates one NIC per connection).
+        # Reject deprecated nic_module_type key (clean break — same policy as target_switch_class).
+        if "nic_module_type" in item:
+            raise TestCaseValidationError(
+                [
+                    {
+                        "severity": "error",
+                        "code": "deprecated_key",
+                        "path": f"server_connections[{conn_id}].nic_module_type",
+                        "message": (
+                            "nic_module_type is no longer supported (DIET-294). "
+                            "Add a server_nics: section and reference it with nic: '<nic_id>'."
+                        ),
+                        "hint": (
+                            "Add server_nics: [{server_class: ..., nic_id: ..., module_type: ...}] "
+                            "and set nic: '<nic_id>' on each connection."
+                        ),
+                    }
+                ]
+            )
+
+        # Resolve NIC: `nic` field references a nic_id declared in server_nics.
         nic_obj = None
         raw_nic_ref = item.get("nic")
-        raw_nic_mt = item.get("nic_module_type")
 
         if raw_nic_ref:
-            # New NIC-first format: `nic` references a nic_id in server_nics section.
             nic_obj = nic_map.get((server_id, raw_nic_ref))
             if not nic_obj:
                 raise TestCaseValidationError(
@@ -688,30 +705,6 @@ def apply_case(
                         }
                     ]
                 )
-        elif raw_nic_mt:
-            # Old backward-compat format: `nic_module_type` → auto-create one NIC per connection.
-            module_type_obj = refs["module_types"].get(raw_nic_mt)
-            if not module_type_obj:
-                raise TestCaseValidationError(
-                    [
-                        {
-                            "severity": "error",
-                            "code": "unknown_reference",
-                            "path": f"server_connections[{conn_id}].nic_module_type",
-                            "message": f"Unknown nic_module_type ref '{raw_nic_mt}'",
-                        }
-                    ]
-                )
-            if server:
-                nic_obj, _ = PlanServerNIC.objects.get_or_create(
-                    server_class=server,
-                    nic_id=conn_id,  # one NIC per connection (backfill semantics)
-                    defaults={
-                        "module_type": module_type_obj,
-                        "description": f"Auto-created from connection {conn_id}",
-                    },
-                )
-                nic_map[(server_id, conn_id)] = nic_obj
 
         if not server or not target_zone or not nic_obj:
             raise TestCaseValidationError(
@@ -722,8 +715,7 @@ def apply_case(
                         "path": f"server_connections[{conn_id}]",
                         "message": (
                             f"Could not resolve server_class, target_zone, or NIC for connection "
-                            f"(server={server_id!r}, target_zone={raw_zone!r}, "
-                            f"nic={raw_nic_ref!r}, nic_module_type={raw_nic_mt!r})"
+                            f"(server={server_id!r}, target_zone={raw_zone!r}, nic={raw_nic_ref!r})"
                         ),
                     }
                 ]

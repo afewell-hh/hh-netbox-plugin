@@ -2,7 +2,8 @@
 Migration 0037: Add PlanServerNIC model and nullable nic FK to PlanServerConnection.
 
 Phase 1 of 2 (DIET-294):
-- Creates the PlanServerNIC table.
+- Creates the PlanServerNIC table with the standard NetBoxModel pattern
+  (tags, custom_field_data with CustomFieldJSONEncoder, DeleteMixin base).
 - Adds a nullable `nic` FK to PlanServerConnection.
 - Runs backfill: one PlanServerNIC per existing PlanServerConnection,
   using connection_id as nic_id and nic_module_type as module_type.
@@ -11,6 +12,9 @@ Migration 0038 enforces NOT NULL and drops nic_module_type.
 """
 
 import django.db.models.deletion
+import netbox.models.deletion
+import taggit.managers
+import utilities.json
 from django.db import migrations, models
 
 
@@ -60,19 +64,24 @@ def remove_backfilled_nics(apps, schema_editor):
 class Migration(migrations.Migration):
 
     dependencies = [
-        ('netbox_hedgehog', '0036_fabric_class_abstraction'),
         ('dcim', '0001_initial'),
+        ('extras', '0133_make_cf_minmax_decimal'),
+        ('netbox_hedgehog', '0036_fabric_class_abstraction'),
     ]
 
     operations = [
-        # 1. Create PlanServerNIC table.
+        # 1. Create PlanServerNIC table with full NetBoxModel pattern.
         migrations.CreateModel(
             name='PlanServerNIC',
             fields=[
                 ('id', models.BigAutoField(auto_created=True, primary_key=True, serialize=False)),
                 ('created', models.DateTimeField(auto_now_add=True, null=True)),
                 ('last_updated', models.DateTimeField(auto_now=True, null=True)),
-                ('custom_field_data', models.JSONField(blank=True, default=dict)),
+                ('custom_field_data', models.JSONField(
+                    blank=True,
+                    default=dict,
+                    encoder=utilities.json.CustomFieldJSONEncoder,
+                )),
                 ('nic_id', models.CharField(
                     max_length=100,
                     help_text=(
@@ -94,6 +103,10 @@ class Migration(migrations.Migration):
                     to='dcim.moduletype',
                     help_text='NetBox ModuleType for this NIC',
                 )),
+                ('tags', taggit.managers.TaggableManager(
+                    through='extras.TaggedItem',
+                    to='extras.Tag',
+                )),
             ],
             options={
                 'verbose_name': 'Server NIC',
@@ -101,6 +114,7 @@ class Migration(migrations.Migration):
                 'ordering': ['server_class', 'nic_id'],
                 'unique_together': {('server_class', 'nic_id')},
             },
+            bases=(netbox.models.deletion.DeleteMixin, models.Model),
         ),
 
         # 2. Add nullable nic FK to PlanServerConnection.

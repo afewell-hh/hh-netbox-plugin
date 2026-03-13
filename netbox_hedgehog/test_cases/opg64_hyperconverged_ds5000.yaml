@@ -289,11 +289,46 @@ server_classes:
     gpus_per_server: 0
     server_device_type: srv_hh_controller_dt
 
+server_nics:
+  - server_class: compute_xpu
+    nic_id: be
+    module_type: nic_xpu_be_8x400
+  - server_class: compute_xpu
+    nic_id: fe
+    module_type: nic_xpu_fe_2x200
+  - server_class: compute_xpu
+    nic_id: bmc
+    module_type: bmc_module
+  - server_class: storage_srv
+    nic_id: fe
+    module_type: nic_dual_200g
+  - server_class: storage_srv
+    nic_id: bmc
+    module_type: bmc_module
+  - server_class: metadata_srv
+    nic_id: fe
+    module_type: nic_dual_200g
+  - server_class: metadata_srv
+    nic_id: bmc
+    module_type: bmc_module
+  - server_class: hh_gateway
+    nic_id: fe
+    module_type: nic_dual_200g
+  - server_class: hh_gateway
+    nic_id: bmc
+    module_type: bmc_module
+  - server_class: hh_controller
+    nic_id: fe
+    module_type: nic_dual_200g
+  - server_class: hh_controller
+    nic_id: bmc
+    module_type: bmc_module
+
 server_connections:
   - server_class: compute_xpu
     connection_id: be
     connection_name: converged-backend
-    nic_module_type: nic_xpu_be_8x400
+    nic: be
     port_index: 0
     ports_per_connection: 8
     hedgehog_conn_type: unbundled
@@ -304,7 +339,7 @@ server_connections:
   - server_class: compute_xpu
     connection_id: fe
     connection_name: converged-frontend
-    nic_module_type: nic_xpu_fe_2x200
+    nic: fe
     port_index: 0
     ports_per_connection: 2
     hedgehog_conn_type: unbundled
@@ -315,7 +350,7 @@ server_connections:
   - server_class: compute_xpu
     connection_id: bmc
     connection_name: bmc-oob
-    nic_module_type: bmc_module
+    nic: bmc
     port_index: 0
     ports_per_connection: 1
     hedgehog_conn_type: unbundled
@@ -326,7 +361,7 @@ server_connections:
   - server_class: storage_srv
     connection_id: fe
     connection_name: converged-storage
-    nic_module_type: nic_dual_200g
+    nic: fe
     port_index: 0
     ports_per_connection: 2
     hedgehog_conn_type: unbundled
@@ -337,7 +372,7 @@ server_connections:
   - server_class: storage_srv
     connection_id: bmc
     connection_name: bmc-oob
-    nic_module_type: bmc_module
+    nic: bmc
     port_index: 0
     ports_per_connection: 1
     hedgehog_conn_type: unbundled
@@ -348,7 +383,7 @@ server_connections:
   - server_class: metadata_srv
     connection_id: fe
     connection_name: converged-metadata
-    nic_module_type: nic_dual_200g
+    nic: fe
     port_index: 0
     ports_per_connection: 2
     hedgehog_conn_type: unbundled
@@ -359,7 +394,7 @@ server_connections:
   - server_class: metadata_srv
     connection_id: bmc
     connection_name: bmc-oob
-    nic_module_type: bmc_module
+    nic: bmc
     port_index: 0
     ports_per_connection: 1
     hedgehog_conn_type: unbundled
@@ -370,7 +405,7 @@ server_connections:
   - server_class: hh_gateway
     connection_id: fe
     connection_name: converged-gateway
-    nic_module_type: nic_dual_200g
+    nic: fe
     port_index: 0
     ports_per_connection: 2
     hedgehog_conn_type: unbundled
@@ -381,7 +416,7 @@ server_connections:
   - server_class: hh_gateway
     connection_id: bmc
     connection_name: bmc-oob
-    nic_module_type: bmc_module
+    nic: bmc
     port_index: 0
     ports_per_connection: 1
     hedgehog_conn_type: unbundled
@@ -392,7 +427,7 @@ server_connections:
   - server_class: hh_controller
     connection_id: fe
     connection_name: converged-controller
-    nic_module_type: nic_dual_200g
+    nic: fe
     port_index: 0
     ports_per_connection: 2
     hedgehog_conn_type: unbundled
@@ -403,7 +438,7 @@ server_connections:
   - server_class: hh_controller
     connection_id: bmc
     connection_name: bmc-oob
-    nic_module_type: bmc_module
+    nic: bmc
     port_index: 0
     ports_per_connection: 1
     hedgehog_conn_type: unbundled
