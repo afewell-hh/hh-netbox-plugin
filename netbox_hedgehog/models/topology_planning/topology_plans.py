@@ -717,16 +717,27 @@ class PlanServerConnection(NetBoxModel):
                                    'hyphens, and underscores (used as interface name prefix).'
                 })
 
-        # Validate that distribution=alternating has explicit redundancy_type on target switch class.
-        # Alternating requires >=2 switches for HA; without a declared redundancy_type the intent
-        # is implicit and fragile. Option A (calculate_switch_quantity min-2) remains as fallback.
+        # Validate that distribution=alternating + bundled connection type has explicit
+        # redundancy_type on the target switch class.  Bundled types (mclag, eslag, bundled)
+        # create bonded link groups and require an explicit HA shim.  Unbundled alternating
+        # is a valid multi-homed placement without bonding and does NOT require redundancy_type
+        # — forcing mclag/eslag on unbundled topologies is incorrect (issue #303).
+        # Option A (calculate_switch_quantity min-2) remains as a defence-in-depth fallback.
+        from netbox_hedgehog.choices import ConnectionTypeChoices
+        _bundled_conn_types = {
+            ConnectionTypeChoices.BUNDLED,
+            ConnectionTypeChoices.MCLAG,
+            ConnectionTypeChoices.ESLAG,
+        }
         if (self.distribution == 'alternating'
+                and self.hedgehog_conn_type in _bundled_conn_types
                 and self.target_zone_id
                 and not self.target_zone.switch_class.redundancy_type):
             switch_class_id = self.target_zone.switch_class.switch_class_id
             raise ValidationError({
                 'distribution': (
-                    f"distribution=alternating requires the target switch class "
+                    f"distribution=alternating with a bundled connection type "
+                    f"({self.hedgehog_conn_type}) requires the target switch class "
                     f"'{switch_class_id}' to have redundancy_type set (e.g. 'eslag' or 'mclag'). "
                     f"Set redundancy_type on the switch class before creating this connection."
                 )

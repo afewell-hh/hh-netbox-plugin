@@ -916,7 +916,7 @@ class YAMLGenerator:
         - PlanSwitchClass.groups, redundancy_type, redundancy_group
 
         Returns:
-            List of Switch CRD dicts with spec: {role, profile, boot, groups, redundancy, ecmp}
+            List of Switch CRD dicts with spec: {role, profile, boot, groups, redundancy}
         """
         from ..models.topology_planning import PlanSwitchClass
 
@@ -1025,10 +1025,8 @@ class YAMLGenerator:
                 except PlanSwitchClass.DoesNotExist:
                     pass
 
-            # Add ecmp field (always empty dict per schema)
-            spec['ecmp'] = {}
-
             # MVP: Omit VTEPIP (Phase 2: VPC integration)
+            # ecmp: omitted when empty (hhfab validate rejects empty ecmp: {} — issue #302)
 
             switch_crds.append({
                 'apiVersion': 'wiring.githedgehog.com/v1beta1',

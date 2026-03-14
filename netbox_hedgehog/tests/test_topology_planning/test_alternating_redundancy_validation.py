@@ -20,6 +20,7 @@ from django.test import TestCase
 from dcim.models import DeviceType, Manufacturer
 
 from netbox_hedgehog.choices import (
+    ConnectionTypeChoices,
     FabricTypeChoices,
     HedgehogRoleChoices,
     PortZoneTypeChoices,
@@ -109,7 +110,8 @@ class AlternatingRedundancyValidationTestCase(TestCase):
             quantity=quantity,
         )
 
-    def _build_connection(self, server_class, zone, distribution, connection_id='conn'):
+    def _build_connection(self, server_class, zone, distribution, connection_id='conn',
+                          conn_type=ConnectionTypeChoices.UNBUNDLED):
         """Build (but do not save) a PlanServerConnection for full_clean() testing."""
         return PlanServerConnection(
             server_class=server_class,
@@ -117,26 +119,30 @@ class AlternatingRedundancyValidationTestCase(TestCase):
             nic=get_test_server_nic(server_class),
             port_index=0,
             ports_per_connection=2,
-            hedgehog_conn_type='unbundled',
+            hedgehog_conn_type=conn_type,
             distribution=distribution,
             target_zone=zone,
             speed=100,
         )
 
     # =========================================================================
-    # Test 1: alternating without redundancy_type raises ValidationError
+    # Test 1: alternating + bundled without redundancy_type raises ValidationError
+    # Issue #303: unbundled alternating is exempt; bundled types still require it.
     # =========================================================================
 
-    def test_alternating_requires_redundancy_type(self):
+    def test_alternating_bundled_requires_redundancy_type(self):
         """
-        Creating a connection with distribution=alternating targeting a switch
-        class with no redundancy_type must raise ValidationError naming the
+        distribution=alternating with a bundled connection type (e.g. mclag) targeting
+        a switch class with no redundancy_type must raise ValidationError naming the
         switch class and stating the fix.
         """
         switch_class = self._make_switch_class(switch_class_id='border-no-redund')
         zone = self._make_server_zone(switch_class)
         server_class = self._make_server_class()
-        conn = self._build_connection(server_class, zone, distribution='alternating')
+        conn = self._build_connection(
+            server_class, zone, distribution='alternating',
+            conn_type=ConnectionTypeChoices.MCLAG,
+        )
 
         with self.assertRaises(ValidationError) as ctx:
             conn.full_clean()
@@ -146,7 +152,33 @@ class AlternatingRedundancyValidationTestCase(TestCase):
         self.assertIn('border-no-redund', error_text)
 
     # =========================================================================
-    # Test 2: alternating WITH redundancy_type passes validation
+    # Test 2: alternating unbundled WITHOUT redundancy_type passes (issue #303)
+    # =========================================================================
+
+    def test_alternating_unbundled_no_redundancy_type_passes(self):
+        """
+        distribution=alternating with hedgehog_conn_type=unbundled must pass
+        validation even when the target switch class has no redundancy_type.
+        Unbundled alternating is multi-homed placement without bonding — no HA
+        shim is required (issue #303).
+        """
+        switch_class = self._make_switch_class(switch_class_id='leaf-unbundled-alt')
+        zone = self._make_server_zone(switch_class)
+        server_class = self._make_server_class()
+        conn = self._build_connection(
+            server_class, zone, distribution='alternating',
+            conn_type=ConnectionTypeChoices.UNBUNDLED,
+        )
+
+        try:
+            conn.full_clean()
+        except ValidationError as e:
+            errors = e.message_dict if hasattr(e, 'message_dict') else {}
+            relevant = {k: v for k, v in errors.items() if 'redundancy' in str(v).lower()}
+            self.assertEqual(relevant, {}, f"Unexpected redundancy validation error: {e}")
+
+    # =========================================================================
+    # Test 3: alternating WITH redundancy_type passes validation (unbundled)
     # =========================================================================
 
     def test_alternating_with_redundancy_type_passes(self):
@@ -173,7 +205,7 @@ class AlternatingRedundancyValidationTestCase(TestCase):
             self.assertEqual(relevant, {}, f"Unexpected redundancy validation error: {e}")
 
     # =========================================================================
-    # Test 3: non-alternating distribution with no redundancy_type passes
+    # Test 4: non-alternating distribution with no redundancy_type passes
     # =========================================================================
 
     def test_non_alternating_no_redundancy_type_passes(self):
@@ -196,11 +228,13 @@ class AlternatingRedundancyValidationTestCase(TestCase):
 
 class AlternatingRedundancyIngestTestCase(TestCase):
     """
-    Tests that the YAML ingest path enforces the alternating-requires-redundancy_type
+    Tests that the YAML ingest path enforces the alternating+bundled-requires-redundancy_type
     rule via full_clean() before saving PlanServerConnection records.
 
     Regression guard for the blocking finding on PR #247: ORM create paths previously
     bypassed clean(), so the constraint was only enforced through forms/API.
+
+    Issue #303: unbundled alternating is exempt from this constraint.
     """
 
     @classmethod
@@ -267,36 +301,29 @@ class AlternatingRedundancyIngestTestCase(TestCase):
             quantity=quantity,
         )
 
-    def test_ingest_rejects_alternating_without_redundancy_type(self):
+    def test_ingest_rejects_bundled_alternating_without_redundancy_type(self):
         """
-        The ingest build-validate-save path must reject alternating connections
-        whose target switch class has no redundancy_type — even on the ORM path.
+        The ingest build-validate-save path must reject bundled alternating connections
+        (e.g. mclag) whose target switch class has no redundancy_type — even on the ORM path.
 
         This is the negative ingest test required by the blocking finding on PR #247.
+        Issue #303: the check now scopes to bundled conn types only.
         """
-        from netbox_hedgehog.test_cases.ingest import TestCaseValidationError
-
         switch_class = self._make_switch_class(switch_class_id='no-redund-leaf')
         zone = self._make_server_zone(switch_class)
         server_class = self._make_server_class()
 
-        # Simulate what ingest does: build-validate-save pattern
-        conn_defaults = {
-            "connection_name": "test-conn",
-            "nic": get_test_server_nic(server_class),
-            "port_index": 0,
-            "ports_per_connection": 2,
-            "hedgehog_conn_type": "unbundled",
-            "distribution": "alternating",
-            "target_zone": zone,
-            "speed": 100,
-            "rail": None,
-            "port_type": "",
-        }
+        # Simulate what ingest does: build-validate-save pattern (mclag = bundled)
         conn = PlanServerConnection(
             server_class=server_class,
             connection_id='test-conn',
-            **conn_defaults,
+            nic=get_test_server_nic(server_class),
+            port_index=0,
+            ports_per_connection=2,
+            hedgehog_conn_type='mclag',
+            distribution='alternating',
+            target_zone=zone,
+            speed=100,
         )
 
         from django.core.exceptions import ValidationError as DjangoValidationError
@@ -310,7 +337,51 @@ class AlternatingRedundancyIngestTestCase(TestCase):
             PlanServerConnection.objects.filter(
                 server_class=server_class, connection_id='test-conn'
             ).exists(),
-            "Alternating connection without redundancy_type must not be saved to DB"
+            "Bundled alternating connection without redundancy_type must not be saved to DB"
+        )
+
+    def test_ingest_accepts_unbundled_alternating_without_redundancy_type(self):
+        """
+        Unbundled alternating connections must pass full_clean() AND be persistable even
+        when the target switch class has no redundancy_type (issue #303).
+
+        This mirrors the ingest build-validate-save pattern: construct → full_clean() → save().
+        The record must exist in the DB after the call, proving the ORM path accepts it.
+        """
+        switch_class = self._make_switch_class(switch_class_id='no-redund-leaf-ub')
+        zone = self._make_server_zone(switch_class)
+        server_class = self._make_server_class(server_class_id='ctrl-ub')
+
+        conn = PlanServerConnection(
+            server_class=server_class,
+            connection_id='test-conn-ub',
+            nic=get_test_server_nic(server_class),
+            port_index=0,
+            ports_per_connection=2,
+            hedgehog_conn_type='unbundled',
+            distribution='alternating',
+            target_zone=zone,
+            speed=100,
+        )
+
+        from django.core.exceptions import ValidationError as DjangoValidationError
+        try:
+            conn.full_clean()
+        except DjangoValidationError as e:
+            errors = e.message_dict if hasattr(e, 'message_dict') else {}
+            redundancy_errors = {k: v for k, v in errors.items()
+                                 if 'redundancy' in str(v).lower()}
+            self.assertEqual(redundancy_errors, {},
+                             f"Unbundled alternating must not trigger redundancy validation: {e}")
+
+        conn.save()
+
+        self.assertTrue(
+            PlanServerConnection.objects.filter(
+                server_class=server_class, connection_id='test-conn-ub'
+            ).exists(),
+            "Unbundled alternating connection without redundancy_type must be saved to DB "
+            "(issue #303: no HA shim required for unbundled multi-homed placement)"
         )
 
 
