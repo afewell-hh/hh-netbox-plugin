@@ -2,11 +2,11 @@
 Regression test for UC Case 128 GPU with NIC modeling (DIET-173).
 
 Validates that the setup_case_128gpu_odd_ports management command works
-correctly with required nic_module_type and port_index fields.
+correctly with required nic FK and port_index fields.
 
 Expected behavior:
 - Command runs without errors
-- All PlanServerConnection objects have nic_module_type set
+- All PlanServerConnection objects have nic set
 - Frontend connections use BlueField-3 BF3220
 - Backend rail connections use ConnectX-7 (Single-Port)
 - Device generation succeeds
@@ -44,7 +44,7 @@ class UCCase128NICModelingRegressionTestCase(TestCase):
         plan = TopologyPlan.objects.filter(name__icontains='128GPU').first()
         self.assertIsNotNone(plan, "UC Case 128 plan should be created by management command")
 
-        # Verify all connections have nic_module_type
+        # Verify all connections have nic
         connections = PlanServerConnection.objects.filter(
             server_class__plan=plan
         )
@@ -53,8 +53,8 @@ class UCCase128NICModelingRegressionTestCase(TestCase):
 
         for conn in connections:
             self.assertIsNotNone(
-                conn.nic_module_type,
-                f"Connection {conn.connection_id} missing nic_module_type"
+                conn.nic,
+                f"Connection {conn.connection_id} missing nic"
             )
             self.assertIsNotNone(
                 conn.port_index,
@@ -67,11 +67,11 @@ class UCCase128NICModelingRegressionTestCase(TestCase):
 
         # Frontend should use BlueField-3
         for conn in fe_conns:
-            self.assertEqual(conn.nic_module_type.model, 'BlueField-3 BF3220')
+            self.assertEqual(conn.nic.module_type.model, 'BlueField-3 BF3220')
 
         # Backend should use ConnectX-7
         for conn in be_conns:
-            self.assertIn('ConnectX-7', conn.nic_module_type.model)
+            self.assertIn('ConnectX-7', conn.nic.module_type.model)
 
         # Verify device generation works
         devices = Device.objects.filter(

@@ -1,16 +1,18 @@
 """
-Device Generation Job for NetBox Background Execution.
+Device Generation Job for NetBox background execution.
 
 Issue: https://github.com/afewell-hh/hh-netbox-plugin/issues/132
 
-This job wraps the DeviceGenerator service to run device generation
-as a NetBox background job, providing progress tracking and avoiding
-browser timeouts for long-running operations.
+This module must remain light at import time. RQ deserializes queued jobs by
+importing the job module before executing ``run()``, so importing the full DIET
+service/model stack here can fail if Django app loading is not complete yet.
 """
 
 from netbox.jobs import JobRunner
-from netbox_hedgehog.services.device_generator import DeviceGenerator
-from netbox_hedgehog.choices import GenerationStatusChoices
+
+# Keep patchable module-level names for tests, but populate them lazily in run().
+DeviceGenerator = None
+GenerationStatusChoices = None
 
 
 class DeviceGenerationJob(JobRunner):
@@ -39,7 +41,17 @@ class DeviceGenerationJob(JobRunner):
 
         Progress is logged via self.logger (visible in NetBox Jobs UI).
         """
-        from netbox_hedgehog.models import TopologyPlan
+        global DeviceGenerator, GenerationStatusChoices
+
+        if DeviceGenerator is None:
+            from netbox_hedgehog.services.device_generator import DeviceGenerator as _DeviceGenerator
+            DeviceGenerator = _DeviceGenerator
+
+        if GenerationStatusChoices is None:
+            from netbox_hedgehog.choices import GenerationStatusChoices as _GenerationStatusChoices
+            GenerationStatusChoices = _GenerationStatusChoices
+
+        from netbox_hedgehog.models.topology_planning import GenerationState, TopologyPlan
 
         # Get the TopologyPlan instance from plan_id
         plan = TopologyPlan.objects.get(pk=plan_id)
@@ -47,7 +59,6 @@ class DeviceGenerationJob(JobRunner):
         self.logger.info(f"Starting device generation for plan: {plan.name} (ID: {plan.pk})")
 
         # Get or create GenerationState and update to IN_PROGRESS
-        from netbox_hedgehog.models import GenerationState
         state, created = GenerationState.objects.get_or_create(
             plan=plan,
             defaults={

@@ -11,6 +11,7 @@ from ..models.topology_planning import (
     DeviceTypeExtension,
     TopologyPlan,
     PlanServerClass,
+    PlanServerNIC,
     PlanSwitchClass,
     PlanServerConnection,
     SwitchPortZone,
@@ -299,6 +300,41 @@ class PlanSwitchClassTable(NetBoxTable):
 
 
 # =============================================================================
+# =============================================================================
+# PlanServerNIC Table (DIET-294)
+# =============================================================================
+
+class PlanServerNICTable(NetBoxTable):
+    """Table for displaying PlanServerNICs."""
+
+    nic_id = tables.Column(
+        linkify=True,
+        verbose_name='NIC ID',
+    )
+
+    server_class = tables.Column(
+        linkify=True,
+        verbose_name='Server Class',
+    )
+
+    module_type = tables.Column(
+        linkify=False,
+        verbose_name='Module Type',
+        accessor='module_type__model',
+    )
+
+    class Meta(NetBoxTable.Meta):
+        model = PlanServerNIC
+        fields = (
+            'pk', 'id', 'nic_id', 'server_class', 'module_type', 'description',
+            'tags', 'created', 'last_updated',
+        )
+        default_columns = (
+            'nic_id', 'server_class', 'module_type', 'description',
+        )
+
+
+# =============================================================================
 # PlanServerConnection Table (DIET-005)
 # =============================================================================
 
@@ -327,10 +363,10 @@ class PlanServerConnectionTable(NetBoxTable):
         accessor='target_zone'
     )
 
-    nic_module_type = tables.Column(
+    nic = tables.Column(
         linkify=False,
-        verbose_name='NIC Module Type',
-        accessor='nic_module_type__model'
+        verbose_name='NIC Slot',
+        accessor='nic__nic_id',
     )
 
     port_index = tables.Column(
@@ -365,14 +401,15 @@ class PlanServerConnectionTable(NetBoxTable):
         model = PlanServerConnection
         fields = (
             'pk', 'id', 'connection_id', 'server_class', 'connection_name',
-            'nic_module_type', 'port_index', 'ports_per_connection', 'hedgehog_conn_type',
+            'nic', 'port_index', 'ports_per_connection', 'hedgehog_conn_type',
             'distribution', 'target_zone', 'speed', 'rail',
-            'port_type', 'tags', 'created', 'last_updated'
+            'port_type', 'cage_type', 'medium', 'connector', 'standard',
+            'tags', 'created', 'last_updated',
         )
         default_columns = (
-            'connection_id', 'server_class', 'nic_module_type', 'port_index',
+            'connection_id', 'server_class', 'nic', 'port_index',
             'hedgehog_conn_type', 'distribution', 'target_zone',
-            'ports_per_connection', 'speed', 'rail'
+            'ports_per_connection', 'speed', 'rail',
         )
 
 

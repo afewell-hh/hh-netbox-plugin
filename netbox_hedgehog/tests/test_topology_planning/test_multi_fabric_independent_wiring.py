@@ -24,6 +24,7 @@ from netbox_hedgehog.models.topology_planning import (
     PlanMCLAGDomain,
     PlanServerClass,
     PlanServerConnection,
+    PlanServerNIC,
     PlanSwitchClass,
     SwitchPortZone,
     TopologyPlan,
@@ -574,10 +575,15 @@ class SplitArtifactHHFabValidationTestCase(TestCase):
                 quantity=1,
                 gpus_per_server=8,
             )
+            nic, _ = PlanServerNIC.objects.get_or_create(
+                server_class=server_class,
+                nic_id='nic-test',
+                defaults={'module_type': nic_module_type},
+            )
             PlanServerConnection.objects.create(
                 server_class=server_class,
                 connection_id=f'{fabric_name}-conn',
-                nic_module_type=nic_module_type,
+                nic=nic,
                 port_index=0,
                 ports_per_connection=2,
                 hedgehog_conn_type=ConnectionTypeChoices.UNBUNDLED,

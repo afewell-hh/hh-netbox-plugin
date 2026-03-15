@@ -20,7 +20,7 @@ from django.contrib.auth import get_user_model
 
 from dcim.models import DeviceType, Manufacturer
 
-from netbox_hedgehog.tests.test_topology_planning import get_test_nic_module_type
+from netbox_hedgehog.tests.test_topology_planning import get_test_server_nic
 from core.models import Job
 
 from netbox_hedgehog.models.topology_planning import (
@@ -149,7 +149,7 @@ class OrphanedJobHandlingTestCase(TestCase):
         PlanServerConnection.objects.create(
             server_class=self.server_class,
             connection_id='TEST-CONN',
-            nic_module_type=get_test_nic_module_type(),
+            nic=get_test_server_nic(self.server_class),
             port_index=0,
             target_zone=self.zone,
             ports_per_connection=2,

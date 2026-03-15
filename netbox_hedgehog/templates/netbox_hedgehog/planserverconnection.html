@@ -31,22 +31,29 @@
             </td>
           </tr>
           <tr>
-            <th scope="row">NIC Module Type</th>
-            <td>{{ object.nic_module_type.manufacturer }} {{ object.nic_module_type.model }}</td>
+            <th scope="row">NIC</th>
+            <td>
+              {% if object.nic %}
+              <a href="{% url 'plugins:netbox_hedgehog:planservernic_detail' pk=object.nic.pk %}">
+                {{ object.nic.nic_id }}
+              </a>
+              ({{ object.nic.module_type.manufacturer }} {{ object.nic.module_type.model }})
+              {% else %}&mdash;{% endif %}
+            </td>
           </tr>
           <tr>
             <th scope="row">Port Index</th>
             <td>{{ object.port_index }}</td>
           </tr>
-          {% if object.nic_module_type.attribute_data %}
+          {% if object.cage_type or object.medium or object.connector or object.standard %}
           <tr>
-            <th scope="row">Transceiver Attributes</th>
+            <th scope="row">Transceiver</th>
             <td>
               <dl class="row mb-0">
-                {% for key, value in object.nic_module_type.attribute_data.items %}
-                <dt class="col-sm-4">{{ key|title }}</dt>
-                <dd class="col-sm-8">{{ value }}</dd>
-                {% endfor %}
+                {% if object.cage_type %}<dt class="col-sm-4">Cage Type</dt><dd class="col-sm-8">{{ object.cage_type }}</dd>{% endif %}
+                {% if object.medium %}<dt class="col-sm-4">Medium</dt><dd class="col-sm-8">{{ object.medium }}</dd>{% endif %}
+                {% if object.connector %}<dt class="col-sm-4">Connector</dt><dd class="col-sm-8">{{ object.connector }}</dd>{% endif %}
+                {% if object.standard %}<dt class="col-sm-4">Standard</dt><dd class="col-sm-8">{{ object.standard }}</dd>{% endif %}
               </dl>
             </td>
           </tr>

@@ -42,13 +42,19 @@ class PlanSwitchClassSerializer(serializers.ModelSerializer):
                   'calculated_quantity', 'override_quantity']
 
 
+class PlanServerNICSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = models.PlanServerNIC
+        fields = ['id', 'server_class', 'nic_id', 'module_type', 'description']
+
+
 class PlanServerConnectionSerializer(serializers.ModelSerializer):
     class Meta:
         model = models.PlanServerConnection
-        fields = ['id', 'server_class', 'connection_id', 'nic_module_type', 'port_index',
+        fields = ['id', 'server_class', 'connection_id', 'nic', 'port_index',
                   'connection_name', 'ports_per_connection',
                   'hedgehog_conn_type', 'distribution', 'target_zone', 'speed',
-                  'rail', 'port_type']
+                  'rail', 'port_type', 'cage_type', 'medium', 'connector', 'standard']
 
     def validate(self, attrs):
         """

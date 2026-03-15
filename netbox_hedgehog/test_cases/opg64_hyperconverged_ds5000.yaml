@@ -1,0 +1,454 @@
+meta:
+  case_id: opg64_hyperconverged_ds5000
+  name: OPG-64 Hyperconverged DS5000
+  description: Reference-architecture intake case for OPG-64 hyperconverged training topology
+  version: 1
+  managed_by: yaml
+  tags:
+    - reference-architecture
+    - opg64
+    - hyperconverged
+    - training
+
+reference_data:
+  manufacturers:
+    - id: generic
+      name: Generic
+      slug: generic
+    - id: celestica
+      name: Celestica
+      slug: celestica
+    - id: nvidia
+      name: NVIDIA
+      slug: nvidia
+
+  device_types:
+    - id: sw_ds5000_leaf_dt
+      manufacturer: celestica
+      model: Celestica DS5000 Leaf
+      slug: celestica-ds5000-leaf
+    - id: sw_ds5000_spine_dt
+      manufacturer: celestica
+      model: Celestica DS5000 Spine
+      slug: celestica-ds5000-spine
+    - id: sw_ds1000_oob_dt
+      manufacturer: celestica
+      model: Celestica DS1000
+      slug: celestica-ds1000
+    - id: srv_xpu_generic_dt
+      manufacturer: generic
+      model: OCP-Compliant xPU Server
+      slug: ocp-compliant-xpu-server
+      u_height: 2
+      is_full_depth: true
+    - id: srv_storage_generic_dt
+      manufacturer: generic
+      model: OCP-Compliant Storage Server
+      slug: ocp-compliant-storage-server
+      u_height: 2
+      is_full_depth: true
+    - id: srv_metadata_generic_dt
+      manufacturer: generic
+      model: OCP-Compliant Metadata Server
+      slug: ocp-compliant-metadata-server
+      u_height: 1
+      is_full_depth: false
+    - id: srv_hh_gateway_dt
+      manufacturer: generic
+      model: Hedgehog Gateway x86
+      slug: hedgehog-gateway-x86
+      u_height: 1
+      is_full_depth: false
+    - id: srv_hh_controller_dt
+      manufacturer: generic
+      model: Hedgehog Controller x86
+      slug: hedgehog-controller-x86
+      u_height: 1
+      is_full_depth: false
+
+  device_type_extensions:
+    - id: sw_ds5000_leaf_ext
+      device_type: sw_ds5000_leaf_dt
+      mclag_capable: false
+      hedgehog_roles: [server-leaf]
+      supported_breakouts: [1x800g, 2x400g, 4x200g, 8x100g]
+      native_speed: 800
+      uplink_ports: 32
+      hedgehog_profile_name: celestica-ds5000
+      notes: Converged collapsed leaf pair. redundancy_type is an HNP validation shim only; RA intent is L3MH.
+    - id: sw_ds5000_spine_ext
+      device_type: sw_ds5000_spine_dt
+      mclag_capable: false
+      hedgehog_roles: [spine]
+      supported_breakouts: [1x800g, 1x10g]
+      native_speed: 800
+      uplink_ports: 0
+      hedgehog_profile_name: celestica-ds5000
+      notes: Placeholder growth-path spine pair retained in plan for manual post-generation handling.
+    - id: sw_ds1000_oob_ext
+      device_type: sw_ds1000_oob_dt
+      mclag_capable: false
+      hedgehog_roles: [server-leaf]
+      supported_breakouts: [1x1g, 1x10g]
+      native_speed: 1
+      uplink_ports: 2
+      hedgehog_profile_name: celestica-ds1000
+      notes: Unmanaged OOB management switch pair.
+
+  breakout_options:
+    - id: b_1x800
+      breakout_id: 1x800g
+      from_speed: 800
+      logical_ports: 1
+      logical_speed: 800
+      optic_type: OSFP-800G-DR8
+    - id: brk_2x400_osfp
+      breakout_id: 2x400g
+      from_speed: 800
+      logical_ports: 2
+      logical_speed: 400
+      optic_type: OSFP-800G-2x400G-DR4
+    - id: brk_4x200_osfp
+      breakout_id: 4x200g
+      from_speed: 800
+      logical_ports: 4
+      logical_speed: 200
+      optic_type: OSFP-800G-4x200G-DR4
+    - id: b_1x1g
+      breakout_id: 1x1g
+      from_speed: 1
+      logical_ports: 1
+      logical_speed: 1
+      optic_type: RJ45
+    - id: brk_1x10_sfpplus
+      breakout_id: 1x10g
+      from_speed: 10
+      logical_ports: 1
+      logical_speed: 10
+      optic_type: SFP+-10G-LR-OS2
+
+  module_types:
+    - id: nic_xpu_be_8x400
+      manufacturer: nvidia
+      model: Generic xPU Backend 8x400G NIC
+      interface_templates:
+        - name: be0
+          type: other
+        - name: be1
+          type: other
+        - name: be2
+          type: other
+        - name: be3
+          type: other
+        - name: be4
+          type: other
+        - name: be5
+          type: other
+        - name: be6
+          type: other
+        - name: be7
+          type: other
+    - id: nic_xpu_fe_2x200
+      manufacturer: nvidia
+      model: Generic xPU Frontend 2x200G NIC
+      interface_templates:
+        - name: fe0
+          type: other
+        - name: fe1
+          type: other
+    - id: nic_dual_200g
+      manufacturer: generic
+      model: Generic Dual-Port 200G NIC
+      interface_templates:
+        - name: port0
+          type: other
+        - name: port1
+          type: other
+    - id: bmc_module
+      manufacturer: generic
+      model: BMC Management Port
+      interface_templates:
+        - name: bmc0
+          type: other
+
+plan:
+  name: OPG-64 Hyperconverged DS5000
+  status: draft
+  description: Small-site hyperconverged training topology with converged fabric, unmanaged OOB, and placeholder spine growth path. Post-generation collapsed-fabric edits are manual.
+
+switch_classes:
+  - switch_class_id: conv_leaf
+    fabric_name: converged
+    fabric_class: managed
+    hedgehog_role: server-leaf
+    device_type_extension: sw_ds5000_leaf_ext
+    override_quantity: 2
+    uplink_ports_per_switch: 32
+    mclag_pair: false
+    redundancy_type: eslag
+    redundancy_group: conv-leaf-hnp-shim
+    notes: HNP validation shim only. RA intent is L3MH with alternating distribution, not MLAG/ESLAG semantics.
+  - switch_class_id: conv_spine
+    fabric_name: converged
+    fabric_class: managed
+    hedgehog_role: spine
+    device_type_extension: sw_ds5000_spine_ext
+    override_quantity: 2
+    uplink_ports_per_switch: 0
+    mclag_pair: false
+  - switch_class_id: oob_leaf
+    fabric_name: oob-mgmt
+    fabric_class: unmanaged
+    hedgehog_role: server-leaf
+    device_type_extension: sw_ds1000_oob_ext
+    override_quantity: 2
+    uplink_ports_per_switch: 2
+    mclag_pair: false
+
+switch_port_zones:
+  - switch_class: conv_leaf
+    zone_name: uplink_800
+    zone_type: uplink
+    port_spec: 26,28,30,32,34,36,38-63
+    breakout_option: b_1x800
+    allocation_strategy: sequential
+    priority: 10
+  - switch_class: conv_leaf
+    zone_name: server_be_2x400
+    zone_type: server
+    port_spec: 1-16
+    breakout_option: brk_2x400_osfp
+    allocation_strategy: sequential
+    priority: 20
+  - switch_class: conv_leaf
+    zone_name: server_conv_4x200
+    zone_type: server
+    port_spec: 27,29,31,33,35,37
+    breakout_option: brk_4x200_osfp
+    allocation_strategy: sequential
+    priority: 30
+  - switch_class: conv_spine
+    zone_name: spine_uplink_800
+    zone_type: fabric
+    port_spec: 1-64
+    breakout_option: b_1x800
+    allocation_strategy: sequential
+    priority: 10
+  - switch_class: conv_spine
+    zone_name: spine_oob_10g
+    zone_type: oob
+    port_spec: 65-66
+    breakout_option: brk_1x10_sfpplus
+    allocation_strategy: sequential
+    priority: 20
+  - switch_class: oob_leaf
+    zone_name: oob_server_1g
+    zone_type: oob
+    port_spec: 1-32
+    breakout_option: b_1x1g
+    allocation_strategy: sequential
+    priority: 10
+  - switch_class: oob_leaf
+    zone_name: oob_uplink_10g
+    zone_type: oob
+    port_spec: 49-50
+    breakout_option: brk_1x10_sfpplus
+    allocation_strategy: sequential
+    priority: 20
+    peer_zone: conv_spine/spine_oob_10g
+
+server_classes:
+  - server_class_id: compute_xpu
+    description: Training compute servers, 8 xPU each
+    category: gpu
+    quantity: 8
+    gpus_per_server: 8
+    server_device_type: srv_xpu_generic_dt
+  - server_class_id: storage_srv
+    description: Hyperconverged storage servers
+    category: storage
+    quantity: 3
+    gpus_per_server: 0
+    server_device_type: srv_storage_generic_dt
+  - server_class_id: metadata_srv
+    description: Storage metadata servers
+    category: infrastructure
+    quantity: 3
+    gpus_per_server: 0
+    server_device_type: srv_metadata_generic_dt
+  - server_class_id: hh_gateway
+    description: Hedgehog gateway nodes
+    category: infrastructure
+    quantity: 2
+    gpus_per_server: 0
+    server_device_type: srv_hh_gateway_dt
+  - server_class_id: hh_controller
+    description: Hedgehog converged controller node
+    category: infrastructure
+    quantity: 1
+    gpus_per_server: 0
+    server_device_type: srv_hh_controller_dt
+
+server_nics:
+  - server_class: compute_xpu
+    nic_id: be
+    module_type: nic_xpu_be_8x400
+  - server_class: compute_xpu
+    nic_id: fe
+    module_type: nic_xpu_fe_2x200
+  - server_class: compute_xpu
+    nic_id: bmc
+    module_type: bmc_module
+  - server_class: storage_srv
+    nic_id: fe
+    module_type: nic_dual_200g
+  - server_class: storage_srv
+    nic_id: bmc
+    module_type: bmc_module
+  - server_class: metadata_srv
+    nic_id: fe
+    module_type: nic_dual_200g
+  - server_class: metadata_srv
+    nic_id: bmc
+    module_type: bmc_module
+  - server_class: hh_gateway
+    nic_id: fe
+    module_type: nic_dual_200g
+  - server_class: hh_gateway
+    nic_id: bmc
+    module_type: bmc_module
+  - server_class: hh_controller
+    nic_id: fe
+    module_type: nic_dual_200g
+  - server_class: hh_controller
+    nic_id: bmc
+    module_type: bmc_module
+
+server_connections:
+  - server_class: compute_xpu
+    connection_id: be
+    connection_name: converged-backend
+    nic: be
+    port_index: 0
+    ports_per_connection: 8
+    hedgehog_conn_type: unbundled
+    distribution: alternating
+    target_zone: conv_leaf/server_be_2x400
+    speed: 400
+    port_type: data
+  - server_class: compute_xpu
+    connection_id: fe
+    connection_name: converged-frontend
+    nic: fe
+    port_index: 0
+    ports_per_connection: 2
+    hedgehog_conn_type: unbundled
+    distribution: alternating
+    target_zone: conv_leaf/server_conv_4x200
+    speed: 200
+    port_type: data
+  - server_class: compute_xpu
+    connection_id: bmc
+    connection_name: bmc-oob
+    nic: bmc
+    port_index: 0
+    ports_per_connection: 1
+    hedgehog_conn_type: unbundled
+    distribution: same-switch
+    target_zone: oob_leaf/oob_server_1g
+    speed: 1
+    port_type: ipmi
+  - server_class: storage_srv
+    connection_id: fe
+    connection_name: converged-storage
+    nic: fe
+    port_index: 0
+    ports_per_connection: 2
+    hedgehog_conn_type: unbundled
+    distribution: alternating
+    target_zone: conv_leaf/server_conv_4x200
+    speed: 200
+    port_type: data
+  - server_class: storage_srv
+    connection_id: bmc
+    connection_name: bmc-oob
+    nic: bmc
+    port_index: 0
+    ports_per_connection: 1
+    hedgehog_conn_type: unbundled
+    distribution: same-switch
+    target_zone: oob_leaf/oob_server_1g
+    speed: 1
+    port_type: ipmi
+  - server_class: metadata_srv
+    connection_id: fe
+    connection_name: converged-metadata
+    nic: fe
+    port_index: 0
+    ports_per_connection: 2
+    hedgehog_conn_type: unbundled
+    distribution: alternating
+    target_zone: conv_leaf/server_conv_4x200
+    speed: 200
+    port_type: data
+  - server_class: metadata_srv
+    connection_id: bmc
+    connection_name: bmc-oob
+    nic: bmc
+    port_index: 0
+    ports_per_connection: 1
+    hedgehog_conn_type: unbundled
+    distribution: same-switch
+    target_zone: oob_leaf/oob_server_1g
+    speed: 1
+    port_type: ipmi
+  - server_class: hh_gateway
+    connection_id: fe
+    connection_name: converged-gateway
+    nic: fe
+    port_index: 0
+    ports_per_connection: 2
+    hedgehog_conn_type: unbundled
+    distribution: alternating
+    target_zone: conv_leaf/server_conv_4x200
+    speed: 200
+    port_type: data
+  - server_class: hh_gateway
+    connection_id: bmc
+    connection_name: bmc-oob
+    nic: bmc
+    port_index: 0
+    ports_per_connection: 1
+    hedgehog_conn_type: unbundled
+    distribution: same-switch
+    target_zone: oob_leaf/oob_server_1g
+    speed: 1
+    port_type: ipmi
+  - server_class: hh_controller
+    connection_id: fe
+    connection_name: converged-controller
+    nic: fe
+    port_index: 0
+    ports_per_connection: 2
+    hedgehog_conn_type: unbundled
+    distribution: alternating
+    target_zone: conv_leaf/server_conv_4x200
+    speed: 200
+    port_type: data
+  - server_class: hh_controller
+    connection_id: bmc
+    connection_name: bmc-oob
+    nic: bmc
+    port_index: 0
+    ports_per_connection: 1
+    hedgehog_conn_type: unbundled
+    distribution: same-switch
+    target_zone: oob_leaf/oob_server_1g
+    speed: 1
+    port_type: ipmi
+
+expected:
+  counts:
+    server_classes: 5
+    switch_classes: 3
+    connections: 11

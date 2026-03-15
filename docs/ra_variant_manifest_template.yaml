@@ -1,0 +1,40 @@
+# Copy one block per catalog variant and fill in the fields progressively.
+
+variant_id: training-opg128-clos-ro-air-2srv
+ra_family: training
+ra_series: OPG-128
+composition_group: null
+variant_slug: clos-ro--cx7-1x400g--bf3-2x200g--storage-conv-2x200g--cooling-air--dens-2srv
+source_repo: afewell-hh/training-ra
+source_path: compositions/OPG-128/clos-ro--cx7-1x400g--bf3-2x200g--storage-conv-2x200g--cooling-air--dens-2srv
+source_url: https://github.com/afewell-hh/training-ra/tree/main/compositions/OPG-128/clos-ro--cx7-1x400g--bf3-2x200g--storage-conv-2x200g--cooling-air--dens-2srv
+archetype: single-fabric-clos-ro
+expected_managed_fabrics:
+  - frontend
+  - backend
+topology_plan_name: RA Training OPG-128 CLOS RO Air 2srv
+topology_plan_yaml: artifacts/training/OPG-128/clos-ro--cx7-1x400g--bf3-2x200g--storage-conv-2x200g--cooling-air--dens-2srv/inputs/topology-plan.yaml
+local_test_case_yaml: netbox_hedgehog/test_cases/training_opg128_clos_ro_air_2srv.yaml
+asset_root: artifacts/training/OPG-128/clos-ro--cx7-1x400g--bf3-2x200g--storage-conv-2x200g--cooling-air--dens-2srv
+status: catalogued
+owner: dev-a
+peer_reviewer: dev-c
+translation_notes:
+  - Replace this list with concrete RA-to-DIET assumptions.
+known_gaps:
+  - Replace this list with blockers or unresolved export details.
+checklist:
+  sources_reviewed: false
+  topology_yaml_authored: false
+  topology_yaml_fixture_saved: false
+  topology_yaml_asset_copy_saved: false
+  topology_yaml_reviewed: false
+  ingested: false
+  devices_generated: false
+  interface_connections_csv_exported: false
+  inventory_json_exported: false
+  full_wiring_exported: false
+  split_wiring_exported: false
+  hhfab_validated: false
+  hhfab_diagrammed: false
+  asset_bundle_complete: false

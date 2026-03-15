@@ -17,7 +17,7 @@ from dcim.models import DeviceType, Manufacturer, Device, Interface, Cable
 from users.models import ObjectPermission
 from core.models import Job
 
-from netbox_hedgehog.tests.test_topology_planning import get_test_nic_module_type
+from netbox_hedgehog.tests.test_topology_planning import get_test_server_nic
 
 from netbox_hedgehog.models.topology_planning import (
     TopologyPlan,
@@ -160,7 +160,7 @@ class DeviceGenerationJobIntegrationTestCase(TestCase):
         PlanServerConnection.objects.create(
             connection_id='FE-001',
             server_class=self.server_class,
-            nic_module_type=get_test_nic_module_type(),
+            nic=get_test_server_nic(self.server_class),
             port_index=0,
             target_zone=self.server_zone,
             ports_per_connection=2,
@@ -935,7 +935,7 @@ class DeviceGenerationJobIntegrationTestCase(TestCase):
         PlanServerConnection.objects.create(
             connection_id='FE-001',
             server_class=reg_server,
-            nic_module_type=get_test_nic_module_type(),
+            nic=get_test_server_nic(reg_server),
             port_index=0,
             target_zone=reg_zone,
             ports_per_connection=2,

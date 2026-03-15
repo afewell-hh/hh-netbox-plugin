@@ -30,7 +30,7 @@ from netbox_hedgehog.utils.topology_calculations import (
 from dcim.models import DeviceType, Manufacturer, InterfaceTemplate
 from netbox_hedgehog.choices import PortZoneTypeChoices
 from netbox_hedgehog.models.topology_planning import SwitchPortZone
-from netbox_hedgehog.tests.test_topology_planning import get_test_nic_module_type
+from netbox_hedgehog.tests.test_topology_planning import get_test_server_nic
 
 User = get_user_model()
 
@@ -240,7 +240,7 @@ class CalculateSwitchQuantityTestCase(TestCase):
         PlanServerConnection.objects.create(
             server_class=server_class,
             connection_id='FE-001',
-            nic_module_type=get_test_nic_module_type(),
+            nic=get_test_server_nic(server_class),
             port_index=0,
             ports_per_connection=2,
             hedgehog_conn_type='unbundled',
@@ -290,7 +290,7 @@ class CalculateSwitchQuantityTestCase(TestCase):
         PlanServerConnection.objects.create(
             server_class=server_class,
             connection_id='FE-001',
-            nic_module_type=get_test_nic_module_type(),
+            nic=get_test_server_nic(server_class),
             port_index=0,
             ports_per_connection=2,
             hedgehog_conn_type='unbundled',
@@ -340,7 +340,7 @@ class CalculateSwitchQuantityTestCase(TestCase):
         PlanServerConnection.objects.create(
             server_class=server_class,
             connection_id='FE-001',
-            nic_module_type=get_test_nic_module_type(),
+            nic=get_test_server_nic(server_class),
             port_index=0,
             ports_per_connection=2,
             hedgehog_conn_type='mclag',
@@ -386,7 +386,7 @@ class CalculateSwitchQuantityTestCase(TestCase):
         PlanServerConnection.objects.create(
             server_class=gpu_server_class,
             connection_id='FE-GPU',
-            nic_module_type=get_test_nic_module_type(),
+            nic=get_test_server_nic(server_class),
             port_index=0,
             ports_per_connection=2,
             hedgehog_conn_type='unbundled',
@@ -405,7 +405,7 @@ class CalculateSwitchQuantityTestCase(TestCase):
         PlanServerConnection.objects.create(
             server_class=storage_server_class,
             connection_id='FE-STORAGE',
-            nic_module_type=get_test_nic_module_type(),
+            nic=get_test_server_nic(server_class),
             port_index=0,
             ports_per_connection=2,
             hedgehog_conn_type='bundled',
@@ -474,7 +474,7 @@ class CalculateSwitchQuantityTestCase(TestCase):
         PlanServerConnection.objects.create(
             server_class=server_class,
             connection_id='FE-001',
-            nic_module_type=get_test_nic_module_type(),
+            nic=get_test_server_nic(server_class),
             port_index=0,
             ports_per_connection=1,
             hedgehog_conn_type='unbundled',
@@ -540,7 +540,7 @@ class CalculateSwitchQuantityTestCase(TestCase):
             PlanServerConnection.objects.create(
                 server_class=server_class,
                 connection_id=f'BE-RAIL-{rail}',
-                nic_module_type=get_test_nic_module_type(),
+                nic=get_test_server_nic(server_class),
                 port_index=0,
                 ports_per_connection=1,
                 hedgehog_conn_type='unbundled',
@@ -1330,7 +1330,7 @@ class EdgeCaseValidationTestCase(TestCase):
             PlanServerConnection.objects.create(
                 server_class=server_class,
                 connection_id=f'BE-RAIL-{rail}',
-                nic_module_type=get_test_nic_module_type(),
+                nic=get_test_server_nic(server_class),
                 port_index=0,
                 ports_per_connection=1,
                 hedgehog_conn_type='unbundled',
@@ -1394,7 +1394,7 @@ class EdgeCaseValidationTestCase(TestCase):
             PlanServerConnection.objects.create(
                 server_class=server_class,
                 connection_id=f'BE-RAIL-{rail}',
-                nic_module_type=get_test_nic_module_type(),
+                nic=get_test_server_nic(server_class),
                 port_index=0,
                 ports_per_connection=1,
                 hedgehog_conn_type='unbundled',
@@ -1618,7 +1618,7 @@ class UpdatePlanCalculationsErrorHandlingTestCase(TestCase):
             PlanServerConnection.objects.create(
                 server_class=server_class,
                 connection_id=f'be-rail-{rail}',
-                nic_module_type=get_test_nic_module_type(),
+                nic=get_test_server_nic(server_class),
                 port_index=0,
                 connection_name=f'backend-rail-{rail}',
                 ports_per_connection=1,
@@ -1678,7 +1678,7 @@ class UpdatePlanCalculationsErrorHandlingTestCase(TestCase):
         PlanServerConnection.objects.create(
             server_class=server_class,
             connection_id='fe',
-            nic_module_type=get_test_nic_module_type(),
+            nic=get_test_server_nic(server_class),
             port_index=0,
             connection_name='frontend',
             ports_per_connection=2,
@@ -1721,7 +1721,7 @@ class UpdatePlanCalculationsErrorHandlingTestCase(TestCase):
             PlanServerConnection.objects.create(
                 server_class=gpu_server,
                 connection_id=f'be-rail-{rail}',
-                nic_module_type=get_test_nic_module_type(),
+                nic=get_test_server_nic(server_class),
                 port_index=0,
                 connection_name=f'backend-rail-{rail}',
                 ports_per_connection=1,
@@ -1778,7 +1778,7 @@ class UpdatePlanCalculationsErrorHandlingTestCase(TestCase):
         PlanServerConnection.objects.create(
             server_class=server_class,
             connection_id='fe',
-            nic_module_type=get_test_nic_module_type(),
+            nic=get_test_server_nic(server_class),
             port_index=0,
             connection_name='frontend',
             ports_per_connection=2,
@@ -1876,7 +1876,7 @@ class UpdatePlanCalculationsErrorHandlingTestCase(TestCase):
             PlanServerConnection.objects.create(
                 server_class=gpu_server,
                 connection_id=f'be-rail-{rail}',
-                nic_module_type=get_test_nic_module_type(),
+                nic=get_test_server_nic(server_class),
                 port_index=0,
                 connection_name=f'backend-rail-{rail}',
                 ports_per_connection=1,
@@ -1948,7 +1948,7 @@ class UpdatePlanCalculationsErrorHandlingTestCase(TestCase):
         PlanServerConnection.objects.create(
             server_class=server_class,
             connection_id='fe',
-            nic_module_type=get_test_nic_module_type(),
+            nic=get_test_server_nic(server_class),
             port_index=0,
             connection_name='frontend',
             ports_per_connection=2,
@@ -2041,7 +2041,7 @@ class ZoneBasedCapacityIntegrationTestCase(TestCase):
         PlanServerConnection.objects.create(
             server_class=server_class,
             connection_id='fe',
-            nic_module_type=get_test_nic_module_type(),
+            nic=get_test_server_nic(server_class),
             port_index=0,
             connection_name='frontend',
             ports_per_connection=1,
@@ -2120,7 +2120,7 @@ class ZoneBasedCapacityIntegrationTestCase(TestCase):
         PlanServerConnection.objects.create(
             server_class=server_class,
             connection_id='mgmt',
-            nic_module_type=get_test_nic_module_type(),
+            nic=get_test_server_nic(server_class),
             port_index=0,
             connection_name='mgmt',
             ports_per_connection=1,
@@ -2199,7 +2199,7 @@ class ZoneBasedCapacityIntegrationTestCase(TestCase):
         PlanServerConnection.objects.create(
             server_class=server_class,
             connection_id='fe',
-            nic_module_type=get_test_nic_module_type(),
+            nic=get_test_server_nic(server_class),
             port_index=0,
             connection_name='frontend',
             ports_per_connection=2,

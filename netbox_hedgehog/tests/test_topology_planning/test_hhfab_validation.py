@@ -269,7 +269,6 @@ spec:
   profile: celestica-ds3000
   boot:
     mac: 0c:20:12:aa:00:01
-  ecmp: {}
 ---
 apiVersion: wiring.githedgehog.com/v1beta1
 kind: Server

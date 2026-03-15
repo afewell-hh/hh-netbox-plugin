@@ -70,6 +70,7 @@ from netbox_hedgehog.models.topology_planning import (
     GenerationState,
     PlanServerClass,
     PlanServerConnection,
+    PlanServerNIC,
     PlanSwitchClass,
     SwitchPortZone,
     TopologyPlan,
@@ -236,10 +237,16 @@ class _HHFabGateBase(TestCase):
             allocation_strategy=AllocationStrategyChoices.SEQUENTIAL,
             priority=200,
         )
+        cls.nic, _ = PlanServerNIC.objects.get_or_create(
+            server_class=cls.server_class,
+            nic_id='nic-test',
+            defaults={'module_type': cls.nic_module_type},
+        )
+
         PlanServerConnection.objects.create(
             server_class=cls.server_class,
             connection_id='frontend',
-            nic_module_type=cls.nic_module_type,
+            nic=cls.nic,
             port_index=0,
             ports_per_connection=2,
             hedgehog_conn_type=ConnectionTypeChoices.UNBUNDLED,

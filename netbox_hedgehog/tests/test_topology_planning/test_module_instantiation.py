@@ -22,6 +22,7 @@ from netbox_hedgehog.models.topology_planning import (
     TopologyPlan, PlanServerClass, PlanSwitchClass, PlanServerConnection,
     DeviceTypeExtension, BreakoutOption
 )
+from netbox_hedgehog.tests.test_topology_planning import get_test_server_nic
 from netbox_hedgehog.services.device_generator import DeviceGenerator
 from netbox_hedgehog.choices import (
     TopologyPlanStatusChoices,
@@ -140,7 +141,7 @@ class ModuleInstantiationTestCase(TestCase):
         PlanServerConnection.objects.create(
             server_class=server_class,
             connection_id='fe',
-            nic_module_type=self.bf3_type,
+            nic=get_test_server_nic(server_class),
             port_index=0,
             ports_per_connection=1,
             target_zone=zone,
@@ -176,7 +177,7 @@ class ModuleInstantiationTestCase(TestCase):
         PlanServerConnection.objects.create(
             server_class=server_class,
             connection_id='fe',
-            nic_module_type=self.bf3_type,
+            nic=get_test_server_nic(server_class),
             port_index=0,
             ports_per_connection=1,
             target_zone=zone,
@@ -211,7 +212,7 @@ class ModuleInstantiationTestCase(TestCase):
         PlanServerConnection.objects.create(
             server_class=server_class,
             connection_id='fe',
-            nic_module_type=self.bf3_type,
+            nic=get_test_server_nic(server_class, nic_id='fe'),
             port_index=0,
             ports_per_connection=1,
             target_zone=zone,
@@ -221,7 +222,7 @@ class ModuleInstantiationTestCase(TestCase):
         generator = DeviceGenerator(plan=plan, site=self.site)
         generator.generate_all()
 
-        # Verify Interfaces auto-created (connection_id-prefixed names)
+        # Verify Interfaces auto-created (nic_id-prefixed names)
         server_device = Device.objects.get(name__contains='gpu-01')
         module = Module.objects.filter(device=server_device).first()
 
@@ -248,7 +249,7 @@ class ModuleInstantiationTestCase(TestCase):
         PlanServerConnection.objects.create(
             server_class=server_class,
             connection_id='fe',
-            nic_module_type=self.bf3_type,
+            nic=get_test_server_nic(server_class, nic_id='fe'),
             port_index=1,  # Use p1, not p0
             ports_per_connection=1,
             target_zone=zone,
@@ -293,11 +294,11 @@ class ModuleInstantiationTestCase(TestCase):
 
         switch_class, zone = self._create_switch_class_with_zone(plan, 'fe-leaf')
 
-        # Create 2 connections (frontend + backend)
+        # Create 2 connections (frontend + backend), each with its own NIC
         PlanServerConnection.objects.create(
             server_class=server_class,
             connection_id='fe',
-            nic_module_type=self.bf3_type,
+            nic=get_test_server_nic(server_class, nic_id='nic-fe'),
             port_index=0,
             ports_per_connection=1,
             target_zone=zone,
@@ -307,7 +308,7 @@ class ModuleInstantiationTestCase(TestCase):
         PlanServerConnection.objects.create(
             server_class=server_class,
             connection_id='be',
-            nic_module_type=self.bf3_type,
+            nic=get_test_server_nic(server_class, nic_id='nic-be'),
             port_index=0,
             ports_per_connection=1,
             target_zone=zone,
@@ -345,7 +346,7 @@ class ModuleInstantiationTestCase(TestCase):
         conn = PlanServerConnection(
             server_class=server_class,
             connection_id='fe',
-            nic_module_type=self.bf3_type,
+            nic=get_test_server_nic(server_class),
             port_index=2,  # INVALID: bf3 only has 2 ports (0, 1)
             ports_per_connection=1,
             target_zone=zone,

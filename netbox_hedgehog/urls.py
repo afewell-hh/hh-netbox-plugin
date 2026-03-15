@@ -31,6 +31,7 @@ from .views.topology_planning import (
     TopologyPlanGenerateView, TopologyPlanGenerateUpdateView, TopologyPlanRecalculateView, TopologyPlanExportView,
     PlanServerClassListView, PlanServerClassView, PlanServerClassEditView, PlanServerClassDeleteView,
     PlanSwitchClassListView, PlanSwitchClassView, PlanSwitchClassEditView, PlanSwitchClassDeleteView,
+    PlanServerNICListView, PlanServerNICView, PlanServerNICEditView, PlanServerNICDeleteView,
     PlanServerConnectionListView, PlanServerConnectionView, PlanServerConnectionEditView, PlanServerConnectionDeleteView,
     SwitchPortZoneListView, SwitchPortZoneView, SwitchPortZoneEditView, SwitchPortZoneDeleteView
 )
@@ -246,6 +247,14 @@ urlpatterns = [
     path('plan-switch-classes/<int:pk>/edit/', PlanSwitchClassEditView.as_view(), name='planswitchclass_edit'),
     path('plan-switch-classes/<int:pk>/delete/', PlanSwitchClassDeleteView.as_view(), name='planswitchclass_delete'),
     path('plan-switch-classes/<int:pk>/changelog/', PlanSwitchClassView.as_view(), name='planswitchclass_changelog'),
+
+    # PlanServerNIC URLs (DIET-294)
+    path('plan-server-nics/', PlanServerNICListView.as_view(), name='planservernic_list'),
+    path('plan-server-nics/add/', PlanServerNICEditView.as_view(), name='planservernic_add'),
+    path('plan-server-nics/<int:pk>/', PlanServerNICView.as_view(), name='planservernic_detail'),
+    path('plan-server-nics/<int:pk>/edit/', PlanServerNICEditView.as_view(), name='planservernic_edit'),
+    path('plan-server-nics/<int:pk>/delete/', PlanServerNICDeleteView.as_view(), name='planservernic_delete'),
+    path('plan-server-nics/<int:pk>/changelog/', PlanServerNICView.as_view(), name='planservernic_changelog'),
 
     # PlanServerConnection URLs (DIET-005)
     path('plan-server-connections/', PlanServerConnectionListView.as_view(), name='planserverconnection_list'),

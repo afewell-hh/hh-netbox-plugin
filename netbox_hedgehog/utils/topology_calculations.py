@@ -1116,7 +1116,29 @@ def update_plan_calculations(plan):
                 'error': str(e)
             })
 
+    # Fourth pass: mesh feasibility check
+    mesh_feasibility = {}
+    managed_fabrics = plan.switch_classes.values_list('fabric_name', flat=True).distinct()
+    for fabric in managed_fabrics:
+        prefer_mesh_classes = plan.switch_classes.filter(
+            fabric_name=fabric, topology_mode='prefer-mesh'
+        )
+        if not prefer_mesh_classes.exists():
+            continue
+        count = sum(sc.effective_quantity or 0 for sc in prefer_mesh_classes)
+        if count == 0:
+            continue
+        feasible = count in (2, 3)
+        spine_exists = plan.switch_classes.filter(fabric_name=fabric, hedgehog_role='spine').exists()
+        mesh_feasibility[fabric] = {
+            'feasible': feasible,
+            'switch_count': count,  # total physical switches (sum of effective_quantity)
+            'has_spine_fallback': spine_exists,
+            'blocked': not feasible and not spine_exists,
+        }
+
     return {
         'summary': summary,
-        'errors': errors
+        'errors': errors,
+        'mesh_feasibility': mesh_feasibility,
     }

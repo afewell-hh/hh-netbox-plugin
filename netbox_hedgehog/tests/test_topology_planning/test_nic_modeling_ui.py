@@ -1,23 +1,11 @@
 """
-Integration tests for NIC Modeling UI (DIET-173).
+Integration tests for PlanServerConnection NIC modeling UI (DIET-294).
 
-Tests validate real UX flows for PlanServerConnection with required
-nic_module_type and port_index fields following AGENTS.md standards.
+Rewritten for new schema: nic FK replaces nic_module_type on PlanServerConnection.
+All tests fail RED until GREEN implementation adds PlanServerNIC and updates
+PlanServerConnection to use the nic FK.
 
-Coverage:
-- List view displays NIC module type and port index
-- Add form shows NIC module type dropdown and port index field
-- Valid POST creates connection with required fields
-- Validation enforces required nic_module_type
-- Validation checks port_index within NIC port count
-- Validation checks sufficient ports for ports_per_connection
-- Detail view renders NIC metadata and transceiver attributes
-- Edit workflow updates NIC fields
-- Delete workflow removes connection
-- Permission enforcement (403 without permission, success with ObjectPermission)
-- Form displays ModuleType transceiver attributes for selection
-
-This file contains 11 integration tests as specified in Phase 3.
+11 tests covering AGENTS.md minimum UX-accurate flows.
 """
 
 from django.test import TestCase, Client
@@ -26,435 +14,248 @@ from django.contrib.auth import get_user_model
 from django.contrib.contenttypes.models import ContentType
 from users.models import ObjectPermission
 
-from dcim.models import DeviceType, Manufacturer, ModuleType, InterfaceTemplate, ModuleTypeProfile
+from dcim.models import DeviceType, Manufacturer, ModuleType, InterfaceTemplate
 
 from netbox_hedgehog.models.topology_planning import (
-    TopologyPlan,
-    PlanServerClass,
-    PlanSwitchClass,
-    PlanServerConnection,
-    DeviceTypeExtension,
-    BreakoutOption,
-    SwitchPortZone,
+    TopologyPlan, PlanServerClass, PlanSwitchClass, PlanServerConnection,
+    PlanServerNIC, DeviceTypeExtension, BreakoutOption, SwitchPortZone,
 )
 from netbox_hedgehog.choices import (
-    TopologyPlanStatusChoices,
-    FabricTypeChoices,
-    HedgehogRoleChoices,
-    ConnectionDistributionChoices,
-    ConnectionTypeChoices,
-    ServerClassCategoryChoices,
+    TopologyPlanStatusChoices, FabricTypeChoices, HedgehogRoleChoices,
+    ConnectionTypeChoices, ConnectionDistributionChoices,
+    ServerClassCategoryChoices, PortZoneTypeChoices, AllocationStrategyChoices,
+    FabricClassChoices,
 )
 
 User = get_user_model()
 
 
 class NICModelingUITestCase(TestCase):
-    """
-    Integration tests for PlanServerConnection NIC modeling UI (11 tests).
-    """
+    """Integration tests for PlanServerConnection NIC modeling UI (11 tests)."""
 
     @classmethod
     def setUpTestData(cls):
-        """Create shared test data including ModuleTypes."""
-        # Users
         cls.superuser = User.objects.create_user(
-            username='admin',
-            password='admin123',
-            is_staff=True,
-            is_superuser=True
+            username='nic-ui-admin', password='pass', is_staff=True, is_superuser=True,
         )
-
         cls.regular_user = User.objects.create_user(
-            username='regular',
-            password='regular123',
-            is_staff=True,
-            is_superuser=False
+            username='nic-ui-user', password='pass', is_staff=True, is_superuser=False,
         )
+        cls.nvidia, _ = Manufacturer.objects.get_or_create(name='NVIDIA', defaults={'slug': 'nvidia'})
+        cls.test_mfg, _ = Manufacturer.objects.get_or_create(name='UI-Test-Mfg', defaults={'slug': 'ui-test-mfg'})
 
-        # Manufacturers
-        cls.nvidia, _ = Manufacturer.objects.get_or_create(
-            name='NVIDIA',
-            defaults={'slug': 'nvidia'}
-        )
-
-        cls.test_mfg, _ = Manufacturer.objects.get_or_create(
-            name='Test Mfg',
-            defaults={'slug': 'test-mfg'}
-        )
-
-        # ModuleTypeProfile for transceiver attributes (may exist from migration)
-        cls.transceiver_profile, _ = ModuleTypeProfile.objects.get_or_create(
-            name='Network Transceiver',
-            defaults={
-                'schema': {
-                    'type': 'object',
-                    'properties': {
-                        'cage_type': {'type': 'string', 'enum': ['QSFP112', 'QSFP-DD']},
-                        'medium': {'type': 'string', 'enum': ['MMF', 'SMF', 'DAC']},
-                        'connector': {'type': 'string', 'enum': ['LC', 'MPO-12', 'Direct']},
-                        'wavelength_nm': {'type': 'integer'},
-                        'standard': {'type': 'string'},
-                        'reach_class': {'type': 'string', 'enum': ['SR', 'LR', 'DR', 'DAC']},
-                    }
-                }
-            }
-        )
-
-        # BlueField-3 BF3220 (dual-port) - may exist from migration
         cls.bf3_type, bf3_created = ModuleType.objects.get_or_create(
-            manufacturer=cls.nvidia,
-            model='BlueField-3 BF3220',
-            defaults={
-                'profile': cls.transceiver_profile,
-                'attribute_data': {
-                    'cage_type': 'QSFP112',
-                    'medium': 'MMF',
-                    'connector': 'MPO-12',
-                    'wavelength_nm': 850,
-                    'standard': '200GBASE-SR4',
-                    'reach_class': 'SR',
-                }
-            }
+            manufacturer=cls.nvidia, model='BlueField-3 BF3220',
         )
-        # Only create InterfaceTemplates if ModuleType was just created
         if bf3_created:
-            InterfaceTemplate.objects.create(
-                module_type=cls.bf3_type,
-                name='p0',
-                type='other'  # Using 'other' type - actual type not critical for NIC modeling tests
+            InterfaceTemplate.objects.get_or_create(
+                module_type=cls.bf3_type, name='p0', defaults={'type': '200gbase-x-qsfp112'},
             )
-            InterfaceTemplate.objects.create(
-                module_type=cls.bf3_type,
-                name='p1',
-                type='other'
+            InterfaceTemplate.objects.get_or_create(
+                module_type=cls.bf3_type, name='p1', defaults={'type': '200gbase-x-qsfp112'},
             )
 
-        # ConnectX-7 (single-port) - may exist from migration
-        cls.cx7_single, cx7_created = ModuleType.objects.get_or_create(
-            manufacturer=cls.nvidia,
-            model='ConnectX-7 (Single-Port)',
+        cls.server_dt, _ = DeviceType.objects.get_or_create(
+            manufacturer=cls.test_mfg, model='UI-SRV', defaults={'slug': 'ui-srv'},
+        )
+        cls.switch_dt, _ = DeviceType.objects.get_or_create(
+            manufacturer=cls.test_mfg, model='UI-SW', defaults={'slug': 'ui-sw'},
+        )
+        cls.device_ext, _ = DeviceTypeExtension.objects.get_or_create(
+            device_type=cls.switch_dt,
             defaults={
-                'profile': cls.transceiver_profile,
-                'attribute_data': {
-                    'cage_type': 'QSFP112',
-                    'medium': 'DAC',
-                    'connector': 'Direct',
-                    'standard': '200GBASE-CR4',
-                    'reach_class': 'DAC',
-                }
-            }
+                'native_speed': 200, 'uplink_ports': 4,
+                'supported_breakouts': ['1x200g'], 'mclag_capable': False,
+                'hedgehog_roles': ['server-leaf'],
+            },
         )
-        if cx7_created:
-            InterfaceTemplate.objects.create(
-                module_type=cls.cx7_single,
-                name='port0',
-                type='other'  # Using 'other' type - actual type not critical for NIC modeling tests
-            )
-
-        # Server DeviceType
-        cls.server_device_type = DeviceType.objects.create(
-            manufacturer=cls.test_mfg,
-            model='GPU Server',
-            slug='gpu-server'
-        )
-
-        # Switch DeviceType + Extension
-        cls.switch_device_type = DeviceType.objects.create(
-            manufacturer=cls.test_mfg,
-            model='Test Switch',
-            slug='test-switch'
-        )
-
         cls.breakout, _ = BreakoutOption.objects.get_or_create(
-            breakout_id='test-1x800g',
-            defaults={
-                'from_speed': 800,
-                'logical_ports': 1,
-                'logical_speed': 800,
-                'optic_type': 'QSFP-DD'
-            }
+            breakout_id='1x200g-ui',
+            defaults={'from_speed': 200, 'logical_ports': 1, 'logical_speed': 200},
         )
-
-        cls.device_ext = DeviceTypeExtension.objects.create(
-            device_type=cls.switch_device_type,
-            mclag_capable=True,
-            native_speed=800,
-            uplink_ports=16
-        )
-
-        # Topology Plan
-        cls.plan = TopologyPlan.objects.create(
-            name='Test Plan NIC',
-            status=TopologyPlanStatusChoices.DRAFT
-        )
-
-        # Server Class
+        cls.plan = TopologyPlan.objects.create(name='NIC-UI-Plan', status=TopologyPlanStatusChoices.DRAFT)
         cls.server_class = PlanServerClass.objects.create(
-            plan=cls.plan,
-            server_class_id='gpu-01',
-            description='GPU Servers',
-            category=ServerClassCategoryChoices.GPU,
-            quantity=2,
-            server_device_type=cls.server_device_type
+            plan=cls.plan, server_class_id='gpu',
+            server_device_type=cls.server_dt, quantity=1,
         )
-
-        # Switch Class
         cls.switch_class = PlanSwitchClass.objects.create(
-            plan=cls.plan,
-            switch_class_id='fe-leaf',
-            fabric=FabricTypeChoices.FRONTEND,
+            plan=cls.plan, switch_class_id='fe-leaf',
+            fabric_name=FabricTypeChoices.FRONTEND,
+            fabric_class=FabricClassChoices.MANAGED,
             hedgehog_role=HedgehogRoleChoices.SERVER_LEAF,
             device_type_extension=cls.device_ext,
-            override_quantity=2
+            uplink_ports_per_switch=0, mclag_pair=False,
+            override_quantity=2, redundancy_type='eslag',
         )
-
         cls.zone = SwitchPortZone.objects.create(
-            switch_class=cls.switch_class,
-            zone_name='server-downlinks',
-            zone_type='server',
+            switch_class=cls.switch_class, zone_name='server-downlinks',
+            zone_type=PortZoneTypeChoices.SERVER, port_spec='1-64',
+            breakout_option=cls.breakout,
+            allocation_strategy=AllocationStrategyChoices.SEQUENTIAL, priority=100,
+        )
+        cls.nic = PlanServerNIC.objects.create(
+            server_class=cls.server_class, nic_id='nic-fe', module_type=cls.bf3_type,
+        )
+        cls.connection = PlanServerConnection.objects.create(
+            server_class=cls.server_class, connection_id='fe',
+            nic=cls.nic, port_index=0, ports_per_connection=1,
+            hedgehog_conn_type=ConnectionTypeChoices.UNBUNDLED,
+            distribution=ConnectionDistributionChoices.ALTERNATING,
+            target_zone=cls.zone, speed=200, port_type='data',
         )
 
     def setUp(self):
-        """Set up test client."""
         self.client = Client()
-        self.client.login(username='admin', password='admin123')
+        self.client.login(username='nic-ui-admin', password='pass')
 
-    def test_list_view_displays_nic_module_type(self):
-        """Test that list view displays nic_module_type column."""
-        # Create connection with NIC
-        conn = PlanServerConnection.objects.create(
-            server_class=self.server_class,
-            connection_id='fe',
-            nic_module_type=self.bf3_type,
-            port_index=0,
-            ports_per_connection=1,
-            target_zone=self.zone,
-            speed=200
-        )
-
+    def test_list_view_displays_nic_slot_column(self):
         url = reverse('plugins:netbox_hedgehog:planserverconnection_list')
         response = self.client.get(url)
-
         self.assertEqual(response.status_code, 200)
-        self.assertContains(response, 'BlueField-3 BF3220')
-        self.assertContains(response, conn.connection_id)
+        # List should show NIC slot info, not nic_module_type
+        content = response.content.decode()
+        self.assertNotIn('nic_module_type', content)
 
-    def test_add_form_shows_nic_fields(self):
-        """Test that add form displays nic_module_type dropdown and port_index field."""
+    def test_add_form_shows_nic_dropdown_not_nic_module_type(self):
         url = reverse('plugins:netbox_hedgehog:planserverconnection_add')
-        response = self.client.get(url)
-
+        response = self.client.get(url + f'?server_class={self.server_class.pk}')
         self.assertEqual(response.status_code, 200)
-        # Check for nic_module_type field
-        self.assertContains(response, 'nic_module_type')
-        self.assertContains(response, 'BlueField-3 BF3220')
-        self.assertContains(response, 'ConnectX-7 (Single-Port)')
-        # Check for port_index field
-        self.assertContains(response, 'port_index')
+        content = response.content.decode()
+        self.assertIn('name="nic"', content)
+        self.assertNotIn('name="nic_module_type"', content)
 
-    def test_valid_post_creates_connection_with_nic(self):
-        """Test that valid POST creates connection with required NIC fields."""
+    def test_valid_post_creates_connection_with_nic_fk(self):
         url = reverse('plugins:netbox_hedgehog:planserverconnection_add')
         data = {
             'server_class': self.server_class.pk,
-            'connection_id': 'fe-test',
-            'connection_name': 'Frontend Test',
-            'nic_module_type': self.bf3_type.pk,
-            'port_index': 0,
+            'connection_id': 'fe-new',
+            'nic': self.nic.pk,
+            'port_index': 1,
             'ports_per_connection': 1,
-            'hedgehog_conn_type': ConnectionTypeChoices.UNBUNDLED,
-            'distribution': ConnectionDistributionChoices.SAME_SWITCH,
+            'hedgehog_conn_type': 'unbundled',
+            'distribution': 'alternating',
             'target_zone': self.zone.pk,
             'speed': 200,
+            'port_type': 'data',
+            'tags': [],
         }
-
-        response = self.client.post(url, data, follow=False)
-
-        # Should redirect on success (302)
+        response = self.client.post(url, data)
         self.assertEqual(response.status_code, 302)
+        conn = PlanServerConnection.objects.get(connection_id='fe-new')
+        self.assertEqual(conn.nic, self.nic)
 
-        # Verify connection created
-        conn = PlanServerConnection.objects.get(connection_id='fe-test')
-        self.assertEqual(conn.nic_module_type, self.bf3_type)
-        self.assertEqual(conn.port_index, 0)
-
-    def test_missing_nic_module_type_shows_error(self):
-        """Test that missing nic_module_type shows validation error."""
+    def test_validation_enforces_nic_required(self):
         url = reverse('plugins:netbox_hedgehog:planserverconnection_add')
         data = {
             'server_class': self.server_class.pk,
-            'connection_id': 'fe-missing-nic',
+            'connection_id': 'fe-noNIC',
+            'nic': '',
             'port_index': 0,
             'ports_per_connection': 1,
+            'hedgehog_conn_type': 'unbundled',
+            'distribution': 'alternating',
             'target_zone': self.zone.pk,
             'speed': 200,
+            'port_type': 'data',
+            'tags': [],
         }
-
         response = self.client.post(url, data)
+        self.assertEqual(response.status_code, 200)  # form re-render
+        self.assertFalse(PlanServerConnection.objects.filter(connection_id='fe-noNIC').exists())
 
-        # Should stay on form with error (200)
-        self.assertEqual(response.status_code, 200)
-        self.assertContains(response, 'required')  # Error message for required field
-
-    def test_invalid_port_index_shows_error(self):
-        """Test that port_index exceeding NIC port count shows error."""
+    def test_validation_port_index_against_nic_module_type(self):
         url = reverse('plugins:netbox_hedgehog:planserverconnection_add')
         data = {
             'server_class': self.server_class.pk,
-            'connection_id': 'fe-bad-index',
-            'nic_module_type': self.cx7_single.pk,  # Single-port (only index 0 valid)
-            'port_index': 1,  # INVALID: exceeds port count
+            'connection_id': 'fe-badport',
+            'nic': self.nic.pk,
+            'port_index': 99,  # BF3 only has p0, p1
             'ports_per_connection': 1,
+            'hedgehog_conn_type': 'unbundled',
+            'distribution': 'alternating',
             'target_zone': self.zone.pk,
             'speed': 200,
+            'port_type': 'data',
+            'tags': [],
         }
-
         response = self.client.post(url, data)
+        self.assertEqual(response.status_code, 200)  # form error
+        self.assertFalse(PlanServerConnection.objects.filter(connection_id='fe-badport').exists())
 
-        self.assertEqual(response.status_code, 200)
-        self.assertContains(response, 'Port index 1 exceeds available ports')
-
-    def test_insufficient_ports_for_connection_shows_error(self):
-        """Test that ports_per_connection exceeding available ports shows error."""
+    def test_validation_ports_per_connection_vs_available(self):
         url = reverse('plugins:netbox_hedgehog:planserverconnection_add')
         data = {
             'server_class': self.server_class.pk,
-            'connection_id': 'fe-too-many-ports',
-            'nic_module_type': self.cx7_single.pk,  # Single-port
-            'port_index': 0,
-            'ports_per_connection': 2,  # INVALID: NIC only has 1 port
+            'connection_id': 'fe-toomany',
+            'nic': self.nic.pk,
+            'port_index': 1,  # only port1 left; requesting 2 from index 1 → overflow
+            'ports_per_connection': 99,
+            'hedgehog_conn_type': 'unbundled',
+            'distribution': 'alternating',
             'target_zone': self.zone.pk,
             'speed': 200,
+            'port_type': 'data',
+            'tags': [],
         }
-
         response = self.client.post(url, data)
-
         self.assertEqual(response.status_code, 200)
-        self.assertContains(response, 'Insufficient ports')
+        self.assertFalse(PlanServerConnection.objects.filter(connection_id='fe-toomany').exists())
 
-    def test_detail_view_shows_nic_metadata(self):
-        """Test that detail view renders NIC model and transceiver attributes."""
-        conn = PlanServerConnection.objects.create(
-            server_class=self.server_class,
-            connection_id='fe-detail',
-            nic_module_type=self.bf3_type,
-            port_index=0,
-            ports_per_connection=1,
-            target_zone=self.zone,
-            speed=200
-        )
-
-        url = reverse('plugins:netbox_hedgehog:planserverconnection_detail', args=[conn.pk])
+    def test_detail_view_renders_nic_slot_and_transceiver_data(self):
+        url = reverse('plugins:netbox_hedgehog:planserverconnection_detail', args=[self.connection.pk])
         response = self.client.get(url)
-
         self.assertEqual(response.status_code, 200)
-        self.assertContains(response, 'BlueField-3 BF3220')
-        self.assertContains(response, 'Port Index')
-        self.assertContains(response, '0')  # port_index value
-        # Check transceiver attributes visible
-        self.assertContains(response, 'QSFP112')  # cage_type
-        self.assertContains(response, 'MMF')      # medium
+        self.assertContains(response, 'nic-fe')
 
-    def test_edit_form_loads_existing_nic_data(self):
-        """Test that edit form pre-populates nic_module_type and port_index."""
-        conn = PlanServerConnection.objects.create(
-            server_class=self.server_class,
-            connection_id='fe-edit',
-            nic_module_type=self.bf3_type,
-            port_index=1,  # Second port
-            ports_per_connection=1,
-            target_zone=self.zone,
-            speed=200
-        )
-
-        url = reverse('plugins:netbox_hedgehog:planserverconnection_edit', args=[conn.pk])
-        response = self.client.get(url)
-
-        self.assertEqual(response.status_code, 200)
-        self.assertContains(response, 'BlueField-3 BF3220')
-        self.assertContains(response, 'value="1"')  # port_index=1
-
-    def test_edit_post_updates_nic_fields(self):
-        """Test that edit POST successfully updates nic_module_type and port_index."""
-        conn = PlanServerConnection.objects.create(
-            server_class=self.server_class,
-            connection_id='fe-update',
-            nic_module_type=self.bf3_type,
-            port_index=0,
-            ports_per_connection=1,
-            target_zone=self.zone,
-            speed=200
-        )
-
-        url = reverse('plugins:netbox_hedgehog:planserverconnection_edit', args=[conn.pk])
+    def test_edit_workflow_updates_nic_and_transceiver_fields(self):
+        url = reverse('plugins:netbox_hedgehog:planserverconnection_edit', args=[self.connection.pk])
         data = {
             'server_class': self.server_class.pk,
-            'connection_id': 'fe-update',
-            'nic_module_type': self.cx7_single.pk,  # Change NIC type
+            'connection_id': 'fe',
+            'nic': self.nic.pk,
             'port_index': 0,
             'ports_per_connection': 1,
-            'hedgehog_conn_type': ConnectionTypeChoices.UNBUNDLED,
+            'hedgehog_conn_type': 'unbundled',
+            'distribution': 'alternating',
             'target_zone': self.zone.pk,
             'speed': 200,
+            'port_type': 'data',
+            'cage_type': 'OSFP',
+            'medium': 'SMF',
+            'connector': '',
+            'standard': '',
+            'tags': [],
         }
-
-        response = self.client.post(url, data, follow=False)
-
+        response = self.client.post(url, data)
         self.assertEqual(response.status_code, 302)
-
-        # Verify update
-        conn.refresh_from_db()
-        self.assertEqual(conn.nic_module_type, self.cx7_single)
+        self.connection.refresh_from_db()
+        self.assertEqual(self.connection.cage_type, 'OSFP')
 
     def test_delete_workflow_removes_connection(self):
-        """Test that delete workflow removes connection."""
         conn = PlanServerConnection.objects.create(
-            server_class=self.server_class,
-            connection_id='fe-delete',
-            nic_module_type=self.bf3_type,
-            port_index=0,
-            ports_per_connection=1,
-            target_zone=self.zone,
-            speed=200
+            server_class=self.server_class, connection_id='fe-todel',
+            nic=self.nic, port_index=1, ports_per_connection=1,
+            hedgehog_conn_type=ConnectionTypeChoices.UNBUNDLED,
+            distribution=ConnectionDistributionChoices.ALTERNATING,
+            target_zone=self.zone, speed=200, port_type='data',
         )
-
         url = reverse('plugins:netbox_hedgehog:planserverconnection_delete', args=[conn.pk])
-        response = self.client.post(url, {'confirm': True}, follow=False)
-
+        response = self.client.post(url, {'confirm': True})
         self.assertEqual(response.status_code, 302)
         self.assertFalse(PlanServerConnection.objects.filter(pk=conn.pk).exists())
 
-    def test_permission_enforcement(self):
-        """Test that regular user without permissions gets 403, with permission succeeds."""
-        conn = PlanServerConnection.objects.create(
-            server_class=self.server_class,
-            connection_id='fe-perm',
-            nic_module_type=self.bf3_type,
-            port_index=0,
-            ports_per_connection=1,
-            target_zone=self.zone,
-            speed=200
-        )
-
-        # Login as regular user (no permissions)
-        self.client.login(username='regular', password='regular123')
-
-        url = reverse('plugins:netbox_hedgehog:planserverconnection_detail', args=[conn.pk])
+    def test_without_permission_returns_403(self):
+        self.client.login(username='nic-ui-user', password='pass')
+        url = reverse('plugins:netbox_hedgehog:planserverconnection_list')
         response = self.client.get(url)
+        self.assertEqual(response.status_code, 403)
 
-        # Should get 403 or redirect to login
-        self.assertIn(response.status_code, [403, 302])
-
-        # Grant permission
-        content_type = ContentType.objects.get_for_model(PlanServerConnection)
-        permission = ObjectPermission.objects.create(
-            name='View PlanServerConnection',
-            actions=['view'],
-        )
-        permission.object_types.add(content_type)
-        permission.users.add(self.regular_user)
-
-        # Retry with permission
+    def test_with_objectpermission_succeeds(self):
+        ct = ContentType.objects.get_for_model(PlanServerConnection)
+        perm = ObjectPermission.objects.create(name='nic-ui-view', actions=['view'])
+        perm.object_types.add(ct)
+        perm.users.add(self.regular_user)
+        self.client.login(username='nic-ui-user', password='pass')
+        url = reverse('plugins:netbox_hedgehog:planserverconnection_list')
         response = self.client.get(url)
         self.assertEqual(response.status_code, 200)

@@ -30,6 +30,7 @@ from dcim.models import Site
 
 from netbox_hedgehog.models.topology_planning import TopologyPlan
 from netbox_hedgehog.services.device_generator import DeviceGenerator
+from netbox_hedgehog.utils.topology_calculations import update_plan_calculations
 
 
 class Command(BaseCommand):
@@ -86,6 +87,27 @@ class Command(BaseCommand):
         self.stdout.write(f'  Status: {plan.status}')
         self.stdout.write(f'  Server Classes: {plan.server_classes.count()}')
         self.stdout.write(f'  Switch Classes: {plan.switch_classes.count()}')
+
+        # Mirror the web generate/update flow: calculate switch quantities first.
+        calc_result = update_plan_calculations(plan)
+        if calc_result['errors']:
+            first_error = calc_result['errors'][0]
+            switch_class_id = (
+                first_error.get('switch_class_id')
+                or first_error.get('switch_class')
+                or 'unknown'
+            )
+            message = first_error.get('message') or first_error.get('error') or 'Unknown error'
+            raise CommandError(
+                f"Calculation failed for switch class '{switch_class_id}': {message}"
+            )
+
+        self.stdout.write(self.style.SUCCESS('\n✓ Recalculated switch quantities'))
+        for switch_class_id, summary in calc_result['summary'].items():
+            self.stdout.write(
+                f"  - {switch_class_id}: calculated={summary['calculated']} "
+                f"override={summary['override']} effective={summary['effective']}"
+            )
 
         # Check if plan has already been generated
         if hasattr(plan, 'generation_state') and not preview:

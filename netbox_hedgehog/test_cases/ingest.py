@@ -10,6 +10,7 @@ from netbox_hedgehog.models.topology_planning import (
     DeviceTypeExtension,
     GenerationState,
     PlanServerClass,
+    PlanServerNIC,
     PlanServerConnection,
     PlanSwitchClass,
     SwitchPortZone,
@@ -571,8 +572,52 @@ def apply_case(
         )
         server_map[server_id] = sc
 
+    # Upsert server_nics (DIET-294 NIC-first model).
+    # Maps (server_class_id, nic_id) → PlanServerNIC instance.
+    nic_map: dict[tuple[str, str], PlanServerNIC] = {}
+    declared_nic_keys: set[tuple[str, str]] = set()
+    for item in case.get("server_nics", []):
+        server_id = item["server_class"]
+        nic_id = item["nic_id"]
+        declared_nic_keys.add((server_id, nic_id))
+        server = server_map.get(server_id)
+        if not server:
+            raise TestCaseValidationError(
+                [
+                    {
+                        "severity": "error",
+                        "code": "unknown_reference",
+                        "path": f"server_nics[{nic_id}].server_class",
+                        "message": f"Unknown server_class ref '{server_id}'",
+                    }
+                ]
+            )
+        mt_ref = item.get("module_type")
+        module_type = refs["module_types"].get(mt_ref) if mt_ref else None
+        if not module_type:
+            raise TestCaseValidationError(
+                [
+                    {
+                        "severity": "error",
+                        "code": "unknown_reference",
+                        "path": f"server_nics[{nic_id}].module_type",
+                        "message": f"Unknown module_type ref '{mt_ref}'",
+                    }
+                ]
+            )
+        nic_obj, _ = PlanServerNIC.objects.update_or_create(
+            server_class=server,
+            nic_id=nic_id,
+            defaults={
+                "module_type": module_type,
+                "description": item.get("description", ""),
+            },
+        )
+        nic_map[(server_id, nic_id)] = nic_obj
+
     # Upsert connections.
     declared_conn_keys = set()
+    from django.core.exceptions import ValidationError as DjangoValidationError
     for item in case.get("server_connections", []):
         server_id = item["server_class"]
         conn_id = item["connection_id"]
@@ -593,7 +638,6 @@ def apply_case(
             )
 
         server = server_map.get(server_id)
-        nic = refs["module_types"].get(item.get("nic_module_type"))
 
         raw_zone = item.get("target_zone")
         if not raw_zone:
@@ -609,23 +653,80 @@ def apply_case(
             )
 
         target_zone = zone_map.get(raw_zone)
-        if not server or not target_zone or not nic:
+        if target_zone is None:
             raise TestCaseValidationError(
                 [
                     {
                         "severity": "error",
                         "code": "unknown_reference",
                         "path": f"server_connections[{conn_id}].target_zone",
-                        "message": f"Unknown server_class, target_zone, or nic_module_type reference (target_zone={raw_zone!r})",
+                        "message": f"Unknown target_zone ref '{raw_zone}'. Use format: 'switch_class_id/zone_name'.",
                     }
                 ]
             )
+
+        # Reject deprecated nic_module_type key (clean break — same policy as target_switch_class).
+        if "nic_module_type" in item:
+            raise TestCaseValidationError(
+                [
+                    {
+                        "severity": "error",
+                        "code": "deprecated_key",
+                        "path": f"server_connections[{conn_id}].nic_module_type",
+                        "message": (
+                            "nic_module_type is no longer supported (DIET-294). "
+                            "Add a server_nics: section and reference it with nic: '<nic_id>'."
+                        ),
+                        "hint": (
+                            "Add server_nics: [{server_class: ..., nic_id: ..., module_type: ...}] "
+                            "and set nic: '<nic_id>' on each connection."
+                        ),
+                    }
+                ]
+            )
+
+        # Resolve NIC: `nic` field references a nic_id declared in server_nics.
+        nic_obj = None
+        raw_nic_ref = item.get("nic")
+
+        if raw_nic_ref:
+            nic_obj = nic_map.get((server_id, raw_nic_ref))
+            if not nic_obj:
+                raise TestCaseValidationError(
+                    [
+                        {
+                            "severity": "error",
+                            "code": "unknown_reference",
+                            "path": f"server_connections[{conn_id}].nic",
+                            "message": (
+                                f"Unknown nic ref '{raw_nic_ref}' for server_class '{server_id}'. "
+                                "Ensure a matching entry exists in server_nics."
+                            ),
+                        }
+                    ]
+                )
+
+        if not server or not target_zone or not nic_obj:
+            raise TestCaseValidationError(
+                [
+                    {
+                        "severity": "error",
+                        "code": "unknown_reference",
+                        "path": f"server_connections[{conn_id}]",
+                        "message": (
+                            f"Could not resolve server_class, target_zone, or NIC for connection "
+                            f"(server={server_id!r}, target_zone={raw_zone!r}, nic={raw_nic_ref!r})"
+                        ),
+                    }
+                ]
+            )
+
         # Build-validate-save pattern: run full_clean() before persisting so that
         # model-level constraints (e.g. alternating requires redundancy_type) are
         # enforced on the ingest path, not just through forms/API.
         conn_defaults = {
             "connection_name": item.get("connection_name", ""),
-            "nic_module_type": nic,
+            "nic": nic_obj,
             "port_index": item.get("port_index", 0),
             "ports_per_connection": item["ports_per_connection"],
             "hedgehog_conn_type": item.get("hedgehog_conn_type", "unbundled"),
@@ -634,6 +735,10 @@ def apply_case(
             "speed": item["speed"],
             "rail": item.get("rail"),
             "port_type": item.get("port_type", ""),
+            "cage_type": item.get("cage_type", ""),
+            "medium": item.get("medium", ""),
+            "connector": item.get("connector", ""),
+            "standard": item.get("standard", ""),
         }
         try:
             conn = PlanServerConnection.objects.get(
@@ -645,7 +750,6 @@ def apply_case(
             conn = PlanServerConnection(
                 server_class=server, connection_id=conn_id, **conn_defaults
             )
-        from django.core.exceptions import ValidationError as DjangoValidationError
         try:
             conn.full_clean()
         except DjangoValidationError as exc:

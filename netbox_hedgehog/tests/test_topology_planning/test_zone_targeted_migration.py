@@ -21,6 +21,7 @@ from netbox_hedgehog.models.topology_planning import (
     GenerationState,
     PlanServerClass,
     PlanServerConnection,
+    PlanServerNIC,
     PlanSwitchClass,
     SwitchPortZone,
     TopologyPlan,
@@ -145,6 +146,11 @@ class BackfillTargetZoneTestCase(TestCase):
             quantity=1,
             server_device_type=cls.server_dt,
         )
+        cls.server_nic, _ = PlanServerNIC.objects.get_or_create(
+            server_class=cls.server_class,
+            nic_id='nic-mig-test',
+            defaults={'module_type': cls.nic_type},
+        )
 
     def _run_backfill(self, conn_switch_map):
         """
@@ -219,7 +225,7 @@ class BackfillTargetZoneTestCase(TestCase):
         conn = PlanServerConnection.objects.create(
             server_class=self.server_class,
             connection_id="case-a-01",
-            nic_module_type=self.nic_type,
+            nic=self.server_nic,
             port_index=0,
             ports_per_connection=1,
             hedgehog_conn_type="unbundled",
@@ -241,7 +247,7 @@ class BackfillTargetZoneTestCase(TestCase):
         conn = PlanServerConnection.objects.create(
             server_class=self.server_class,
             connection_id="case-b-01",
-            nic_module_type=self.nic_type,
+            nic=self.server_nic,
             port_index=0,
             ports_per_connection=1,
             hedgehog_conn_type="unbundled",
@@ -267,7 +273,7 @@ class BackfillTargetZoneTestCase(TestCase):
         conn = PlanServerConnection.objects.create(
             server_class=self.server_class,
             connection_id="case-d-01",
-            nic_module_type=self.nic_type,
+            nic=self.server_nic,
             port_index=0,
             ports_per_connection=1,
             hedgehog_conn_type="unbundled",
@@ -322,10 +328,15 @@ class SnapshotResetScopedTestCase(TestCase):
             quantity=1,
             server_device_type=cls.server_dt,
         )
+        cls.snap_nic, _ = PlanServerNIC.objects.get_or_create(
+            server_class=cls.sc_with,
+            nic_id='nic-snap-test',
+            defaults={'module_type': cls.nic_type},
+        )
         cls.conn = PlanServerConnection.objects.create(
             server_class=cls.sc_with,
             connection_id="snap-conn",
-            nic_module_type=cls.nic_type,
+            nic=cls.snap_nic,
             port_index=0,
             ports_per_connection=1,
             hedgehog_conn_type="unbundled",

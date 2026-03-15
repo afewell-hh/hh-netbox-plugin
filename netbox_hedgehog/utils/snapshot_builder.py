@@ -54,6 +54,7 @@ def build_plan_snapshot(plan: 'TopologyPlan') -> dict:
         'connections': [],
         'port_zones': [],
         'mclag_domains': [],
+        'mesh_ip_pool': plan.mesh_ip_pool,
     }
 
     # Server classes (include device type and GPU config)
@@ -77,6 +78,7 @@ def build_plan_snapshot(plan: 'TopologyPlan') -> dict:
             'hedgehog_role': switch_class.hedgehog_role or '',  # Normalize empty to ''
             'uplink_ports_per_switch': switch_class.uplink_ports_per_switch,  # Can be None
             'mclag_pair': switch_class.mclag_pair,
+            'topology_mode': switch_class.topology_mode,
         })
 
     # Connection definitions (all parameters that affect cable generation)

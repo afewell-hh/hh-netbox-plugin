@@ -205,6 +205,18 @@ class FabricClassChoices(ChoiceSet):
     ]
 
 
+class TopologyModeChoices(ChoiceSet):
+    """Topology mode choices for PlanSwitchClass."""
+
+    SPINE_LEAF = 'spine-leaf'
+    PREFER_MESH = 'prefer-mesh'
+
+    CHOICES = [
+        (SPINE_LEAF, 'Spine-Leaf'),
+        (PREFER_MESH, 'Prefer Mesh'),
+    ]
+
+
 class HedgehogRoleChoices(ChoiceSet):
     """Hedgehog role choices for PlanSwitchClass"""
 
@@ -245,6 +257,7 @@ class PortZoneTypeChoices(ChoiceSet):
     SESSION = 'session'
     OOB = 'oob'
     FABRIC = 'fabric'
+    MESH = 'mesh'
 
     CHOICES = [
         (SERVER, 'Server'),
@@ -254,6 +267,7 @@ class PortZoneTypeChoices(ChoiceSet):
         (SESSION, 'Session'),
         (OOB, 'OOB'),
         (FABRIC, 'Fabric'),
+        (MESH, 'Mesh'),
     ]
 
 
@@ -284,6 +298,60 @@ class PortTypeChoices(ChoiceSet):
         (DATA, 'Data'),
         (IPMI, 'IPMI'),
         (PXE, 'PXE'),
+    ]
+
+
+class CageTypeChoices(ChoiceSet):
+    """Transceiver cage/port form factor for PlanServerConnection."""
+
+    QSFP112 = 'QSFP112'
+    OSFP = 'OSFP'
+    QSFP_DD = 'QSFP-DD'
+    QSFP28 = 'QSFP28'
+    SFP28 = 'SFP28'
+    SFP_PLUS = 'SFP+'
+    RJ45 = 'RJ45'
+
+    CHOICES = [
+        (QSFP112, 'QSFP112'),
+        (OSFP, 'OSFP'),
+        (QSFP_DD, 'QSFP-DD'),
+        (QSFP28, 'QSFP28'),
+        (SFP28, 'SFP28'),
+        (SFP_PLUS, 'SFP+'),
+        (RJ45, 'RJ45'),
+    ]
+
+
+class MediumChoices(ChoiceSet):
+    """Physical transmission medium for PlanServerConnection."""
+
+    MMF = 'MMF'
+    SMF = 'SMF'
+    DAC = 'DAC'
+    ACC = 'ACC'
+
+    CHOICES = [
+        (MMF, 'Multimode Fiber (MMF)'),
+        (SMF, 'Single-mode Fiber (SMF)'),
+        (DAC, 'Direct-Attach Copper (DAC)'),
+        (ACC, 'Active Copper Cable (ACC)'),
+    ]
+
+
+class ConnectorChoices(ChoiceSet):
+    """Fiber connector type for PlanServerConnection."""
+
+    LC = 'LC'
+    MPO_12 = 'MPO-12'
+    MPO_16 = 'MPO-16'
+    DIRECT = 'Direct'
+
+    CHOICES = [
+        (LC, 'LC Duplex'),
+        (MPO_12, 'MPO-12'),
+        (MPO_16, 'MPO-16'),
+        (DIRECT, 'Direct Attach (no connector)'),
     ]
 
 

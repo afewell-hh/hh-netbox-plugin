@@ -1,0 +1,855 @@
+manifest_version: 1
+source_catalog: /home/ubuntu/afewell-hh/hh-netbox-plugin/topology-catlog.md
+generated_on: 2026-03-13
+summary:
+  total_variants: 36
+  training_variants: 30
+  inference_variants: 6
+local_fixture_convention:
+  training: netbox_hedgehog/test_cases/training_<series>_<variant_tokens>.yaml
+  inference: netbox_hedgehog/test_cases/inference_<series>_<variant_tokens>.yaml
+pilot_candidates:
+  - variant_id: inference-opg32-minimal-fe-converged
+    reason: Smallest inference variant and best first proof point for the end-to-end pipeline.
+  - variant_id: training-opg128-clos-ro-air-2srv
+    reason: Representative single-fabric training case with common naming conventions.
+  - variant_id: training-opg256-dual-plane-air-2srv
+    reason: First dual-plane candidate for validating multi-fabric plan translation.
+  - variant_id: training-xoc512-1xopg512-dual-plane-air-2srv
+    reason: Representative composed/XOC case to prove grouped composition handling.
+variants:
+  - variant_id: training-opg64-clos-ro-air-2srv
+    ra_family: training
+    ra_series: OPG-64
+    composition_group: null
+    variant_slug: clos-ro--cx7-1x400g--bf3-2x200g--storage-conv-2x200g--cooling-air--dens-2srv
+    source_repo: afewell-hh/training-ra
+    source_path: compositions/OPG-64/clos-ro--cx7-1x400g--bf3-2x200g--storage-conv-2x200g--cooling-air--dens-2srv
+    source_url: https://github.com/afewell-hh/training-ra/tree/main/compositions/OPG-64/clos-ro--cx7-1x400g--bf3-2x200g--storage-conv-2x200g--cooling-air--dens-2srv
+    archetype: single-fabric-clos-ro
+    expected_managed_fabrics:
+      - frontend
+      - backend
+    fabric_expectation_confidence: provisional
+    topology_plan_name: RA Training OPG-64 CLOS RO Air 2srv
+    asset_root: artifacts/training/OPG-64/clos-ro--cx7-1x400g--bf3-2x200g--storage-conv-2x200g--cooling-air--dens-2srv
+    status: sources-reviewed
+    owner: dev-a
+    peer_reviewer: dev-c
+    translation_notes:
+      - Confirm exact server/storage/infra class counts from the RA source files before authoring YAML.
+    known_gaps:
+      - Managed-fabric names are inferred from the variant slug and must be confirmed from source docs.
+
+  - variant_id: training-opg64-converged-hyperconverged
+    ra_family: training
+    ra_series: OPG-64
+    composition_group: null
+    variant_slug: converged-hyperconverged
+    source_repo: afewell-hh/training-ra
+    source_path: compositions/OPG-64/converged-hyperconverged
+    source_url: https://github.com/afewell-hh/training-ra/tree/main/compositions/OPG-64/converged-hyperconverged
+    archetype: converged-hyperconverged
+    expected_managed_fabrics:
+      - converged
+    fabric_expectation_confidence: provisional
+    topology_plan_name: RA Training OPG-64 Converged Hyperconverged
+    asset_root: artifacts/training/OPG-64/converged-hyperconverged
+    status: catalogued
+    owner: dev-a
+    peer_reviewer: dev-c
+    translation_notes:
+      - Verify whether storage and compute share the same managed fabric or whether multiple managed fabrics exist.
+    known_gaps:
+      - Fabric breakdown is not evident from the catalog slug alone.
+
+  - variant_id: training-opg128-clos-ro-air-2srv
+    ra_family: training
+    ra_series: OPG-128
+    composition_group: null
+    variant_slug: clos-ro--cx7-1x400g--bf3-2x200g--storage-conv-2x200g--cooling-air--dens-2srv
+    source_repo: afewell-hh/training-ra
+    source_path: compositions/OPG-128/clos-ro--cx7-1x400g--bf3-2x200g--storage-conv-2x200g--cooling-air--dens-2srv
+    source_url: https://github.com/afewell-hh/training-ra/tree/main/compositions/OPG-128/clos-ro--cx7-1x400g--bf3-2x200g--storage-conv-2x200g--cooling-air--dens-2srv
+    archetype: single-fabric-clos-ro
+    expected_managed_fabrics:
+      - frontend
+      - backend
+    fabric_expectation_confidence: provisional
+    topology_plan_name: RA Training OPG-128 CLOS RO Air 2srv
+    asset_root: artifacts/training/OPG-128/clos-ro--cx7-1x400g--bf3-2x200g--storage-conv-2x200g--cooling-air--dens-2srv
+    status: catalogued
+    owner: dev-a
+    peer_reviewer: dev-c
+    translation_notes:
+      - Use this as the baseline single-fabric training pilot after source review.
+      - Pilot worksheet: docs/ra_pilot_translation_worksheet.md
+    known_gaps:
+      - Managed-fabric names are inferred from the slug and need confirmation.
+
+  - variant_id: training-opg128-clos-ro-liquid-8srv
+    ra_family: training
+    ra_series: OPG-128
+    composition_group: null
+    variant_slug: clos-ro--cx7-1x400g--bf3-2x200g--storage-conv-2x200g--cooling-liquid--dens-8srv
+    source_repo: afewell-hh/training-ra
+    source_path: compositions/OPG-128/clos-ro--cx7-1x400g--bf3-2x200g--storage-conv-2x200g--cooling-liquid--dens-8srv
+    source_url: https://github.com/afewell-hh/training-ra/tree/main/compositions/OPG-128/clos-ro--cx7-1x400g--bf3-2x200g--storage-conv-2x200g--cooling-liquid--dens-8srv
+    archetype: single-fabric-clos-ro
+    expected_managed_fabrics:
+      - frontend
+      - backend
+    fabric_expectation_confidence: provisional
+    topology_plan_name: RA Training OPG-128 CLOS RO Liquid 8srv
+    asset_root: artifacts/training/OPG-128/clos-ro--cx7-1x400g--bf3-2x200g--storage-conv-2x200g--cooling-liquid--dens-8srv
+    status: catalogued
+    owner: dev-a
+    peer_reviewer: dev-c
+    translation_notes:
+      - Confirm whether density and cooling change only metadata or also rack/grouping semantics in the plan.
+    known_gaps:
+      - Managed-fabric names need confirmation from source docs.
+
+  - variant_id: training-opg128-clos-sh-air-2srv
+    ra_family: training
+    ra_series: OPG-128
+    composition_group: null
+    variant_slug: clos-sh--cx7-1x400g--bf3-2x200g--storage-conv-2x200g--cooling-air--dens-2srv
+    source_repo: afewell-hh/training-ra
+    source_path: compositions/OPG-128/clos-sh--cx7-1x400g--bf3-2x200g--storage-conv-2x200g--cooling-air--dens-2srv
+    source_url: https://github.com/afewell-hh/training-ra/tree/main/compositions/OPG-128/clos-sh--cx7-1x400g--bf3-2x200g--storage-conv-2x200g--cooling-air--dens-2srv
+    archetype: single-fabric-clos-sh
+    expected_managed_fabrics:
+      - frontend
+      - backend
+    fabric_expectation_confidence: provisional
+    topology_plan_name: RA Training OPG-128 CLOS SH Air 2srv
+    asset_root: artifacts/training/OPG-128/clos-sh--cx7-1x400g--bf3-2x200g--storage-conv-2x200g--cooling-air--dens-2srv
+    status: catalogued
+    owner: dev-a
+    peer_reviewer: dev-c
+    translation_notes:
+      - Confirm what SH changes in the fabric model compared with RO before reusing the RO translation rules.
+    known_gaps:
+      - Managed-fabric names need confirmation from source docs.
+
+  - variant_id: training-opg128-clos-sh-liquid-8srv
+    ra_family: training
+    ra_series: OPG-128
+    composition_group: null
+    variant_slug: clos-sh--cx7-1x400g--bf3-2x200g--storage-conv-2x200g--cooling-liquid--dens-8srv
+    source_repo: afewell-hh/training-ra
+    source_path: compositions/OPG-128/clos-sh--cx7-1x400g--bf3-2x200g--storage-conv-2x200g--cooling-liquid--dens-8srv
+    source_url: https://github.com/afewell-hh/training-ra/tree/main/compositions/OPG-128/clos-sh--cx7-1x400g--bf3-2x200g--storage-conv-2x200g--cooling-liquid--dens-8srv
+    archetype: single-fabric-clos-sh
+    expected_managed_fabrics:
+      - frontend
+      - backend
+    fabric_expectation_confidence: provisional
+    topology_plan_name: RA Training OPG-128 CLOS SH Liquid 8srv
+    asset_root: artifacts/training/OPG-128/clos-sh--cx7-1x400g--bf3-2x200g--storage-conv-2x200g--cooling-liquid--dens-8srv
+    status: catalogued
+    owner: dev-a
+    peer_reviewer: dev-c
+    translation_notes:
+      - Confirm whether density/cooling affect only metadata or change the plan structure.
+    known_gaps:
+      - Managed-fabric names need confirmation from source docs.
+
+  - variant_id: training-opg256-clos-ro-air-2srv
+    ra_family: training
+    ra_series: OPG-256
+    composition_group: null
+    variant_slug: clos-ro--cx7-1x400g--bf3-2x200g--storage-conv-2x200g--cooling-air--dens-2srv
+    source_repo: afewell-hh/training-ra
+    source_path: compositions/OPG-256/clos-ro--cx7-1x400g--bf3-2x200g--storage-conv-2x200g--cooling-air--dens-2srv
+    source_url: https://github.com/afewell-hh/training-ra/tree/main/compositions/OPG-256/clos-ro--cx7-1x400g--bf3-2x200g--storage-conv-2x200g--cooling-air--dens-2srv
+    archetype: single-fabric-clos-ro
+    expected_managed_fabrics:
+      - frontend
+      - backend
+    fabric_expectation_confidence: provisional
+    topology_plan_name: RA Training OPG-256 CLOS RO Air 2srv
+    asset_root: artifacts/training/OPG-256/clos-ro--cx7-1x400g--bf3-2x200g--storage-conv-2x200g--cooling-air--dens-2srv
+    status: catalogued
+    owner: dev-a
+    peer_reviewer: dev-c
+    translation_notes:
+      - Use this as a scaling check against the OPG-128 RO archetype after source review.
+    known_gaps:
+      - Managed-fabric names need confirmation from source docs.
+
+  - variant_id: training-opg256-clos-ro-liquid-8srv
+    ra_family: training
+    ra_series: OPG-256
+    composition_group: null
+    variant_slug: clos-ro--cx7-1x400g--bf3-2x200g--storage-conv-2x200g--cooling-liquid--dens-8srv
+    source_repo: afewell-hh/training-ra
+    source_path: compositions/OPG-256/clos-ro--cx7-1x400g--bf3-2x200g--storage-conv-2x200g--cooling-liquid--dens-8srv
+    source_url: https://github.com/afewell-hh/training-ra/tree/main/compositions/OPG-256/clos-ro--cx7-1x400g--bf3-2x200g--storage-conv-2x200g--cooling-liquid--dens-8srv
+    archetype: single-fabric-clos-ro
+    expected_managed_fabrics:
+      - frontend
+      - backend
+    fabric_expectation_confidence: provisional
+    topology_plan_name: RA Training OPG-256 CLOS RO Liquid 8srv
+    asset_root: artifacts/training/OPG-256/clos-ro--cx7-1x400g--bf3-2x200g--storage-conv-2x200g--cooling-liquid--dens-8srv
+    status: catalogued
+    owner: dev-a
+    peer_reviewer: dev-c
+    translation_notes:
+      - Reuse the OPG-256 RO translation rules once density/cooling semantics are confirmed.
+    known_gaps:
+      - Managed-fabric names need confirmation from source docs.
+
+  - variant_id: training-opg256-dual-plane-air-2srv
+    ra_family: training
+    ra_series: OPG-256
+    composition_group: null
+    variant_slug: dual-plane--cx8-2x400g--bf3-2x200g--2p--storage-conv-2x200g--cooling-air--dens-2srv
+    source_repo: afewell-hh/training-ra
+    source_path: compositions/OPG-256/dual-plane--cx8-2x400g--bf3-2x200g--2p--storage-conv-2x200g--cooling-air--dens-2srv
+    source_url: https://github.com/afewell-hh/training-ra/tree/main/compositions/OPG-256/dual-plane--cx8-2x400g--bf3-2x200g--2p--storage-conv-2x200g--cooling-air--dens-2srv
+    archetype: dual-plane
+    expected_managed_fabrics:
+      - frontend-plane-a
+      - frontend-plane-b
+      - backend
+    fabric_expectation_confidence: provisional
+    topology_plan_name: RA Training OPG-256 Dual Plane Air 2srv
+    asset_root: artifacts/training/OPG-256/dual-plane--cx8-2x400g--bf3-2x200g--2p--storage-conv-2x200g--cooling-air--dens-2srv
+    status: sources-reviewed
+    owner: dev-a
+    peer_reviewer: dev-c
+    translation_notes:
+      - Verify exact managed-fabric naming and whether the dual-plane applies to frontend only or more broadly.
+      - Pilot worksheet: docs/ra_pilot_translation_worksheet.md
+    known_gaps:
+      - Fabric breakdown is inferred and must be confirmed from the RA source files.
+
+  - variant_id: training-opg256-dual-plane-liquid-8srv
+    ra_family: training
+    ra_series: OPG-256
+    composition_group: null
+    variant_slug: dual-plane--cx8-2x400g--bf3-2x200g--2p--storage-conv-2x200g--cooling-liquid--dens-8srv
+    source_repo: afewell-hh/training-ra
+    source_path: compositions/OPG-256/dual-plane--cx8-2x400g--bf3-2x200g--2p--storage-conv-2x200g--cooling-liquid--dens-8srv
+    source_url: https://github.com/afewell-hh/training-ra/tree/main/compositions/OPG-256/dual-plane--cx8-2x400g--bf3-2x200g--2p--storage-conv-2x200g--cooling-liquid--dens-8srv
+    archetype: dual-plane
+    expected_managed_fabrics:
+      - frontend-plane-a
+      - frontend-plane-b
+      - backend
+    fabric_expectation_confidence: provisional
+    topology_plan_name: RA Training OPG-256 Dual Plane Liquid 8srv
+    asset_root: artifacts/training/OPG-256/dual-plane--cx8-2x400g--bf3-2x200g--2p--storage-conv-2x200g--cooling-liquid--dens-8srv
+    status: catalogued
+    owner: dev-a
+    peer_reviewer: dev-c
+    translation_notes:
+      - Reuse the OPG-256 dual-plane rules once fabric naming and density semantics are confirmed.
+    known_gaps:
+      - Fabric breakdown is inferred and must be confirmed from the RA source files.
+
+  - variant_id: training-opg512-clos-ro-air-2srv
+    ra_family: training
+    ra_series: OPG-512
+    composition_group: null
+    variant_slug: clos-ro--cx7-1x400g--bf3-2x200g--storage-conv-2x200g--cooling-air--dens-2srv
+    source_repo: afewell-hh/training-ra
+    source_path: compositions/OPG-512/clos-ro--cx7-1x400g--bf3-2x200g--storage-conv-2x200g--cooling-air--dens-2srv
+    source_url: https://github.com/afewell-hh/training-ra/tree/main/compositions/OPG-512/clos-ro--cx7-1x400g--bf3-2x200g--storage-conv-2x200g--cooling-air--dens-2srv
+    archetype: single-fabric-clos-ro
+    expected_managed_fabrics:
+      - frontend
+      - backend
+    fabric_expectation_confidence: provisional
+    topology_plan_name: RA Training OPG-512 CLOS RO Air 2srv
+    asset_root: artifacts/training/OPG-512/clos-ro--cx7-1x400g--bf3-2x200g--storage-conv-2x200g--cooling-air--dens-2srv
+    status: catalogued
+    owner: dev-a
+    peer_reviewer: dev-c
+    translation_notes:
+      - Use as a scale-out validation of the OPG single-fabric RO archetype.
+    known_gaps:
+      - Managed-fabric names need confirmation from source docs.
+
+  - variant_id: training-opg512-clos-ro-liquid-8srv
+    ra_family: training
+    ra_series: OPG-512
+    composition_group: null
+    variant_slug: clos-ro--cx7-1x400g--bf3-2x200g--storage-conv-2x200g--cooling-liquid--dens-8srv
+    source_repo: afewell-hh/training-ra
+    source_path: compositions/OPG-512/clos-ro--cx7-1x400g--bf3-2x200g--storage-conv-2x200g--cooling-liquid--dens-8srv
+    source_url: https://github.com/afewell-hh/training-ra/tree/main/compositions/OPG-512/clos-ro--cx7-1x400g--bf3-2x200g--storage-conv-2x200g--cooling-liquid--dens-8srv
+    archetype: single-fabric-clos-ro
+    expected_managed_fabrics:
+      - frontend
+      - backend
+    fabric_expectation_confidence: provisional
+    topology_plan_name: RA Training OPG-512 CLOS RO Liquid 8srv
+    asset_root: artifacts/training/OPG-512/clos-ro--cx7-1x400g--bf3-2x200g--storage-conv-2x200g--cooling-liquid--dens-8srv
+    status: catalogued
+    owner: dev-a
+    peer_reviewer: dev-c
+    translation_notes:
+      - Reuse OPG-512 RO rules once density/cooling semantics are confirmed.
+    known_gaps:
+      - Managed-fabric names need confirmation from source docs.
+
+  - variant_id: training-opg512-dual-plane-air-2srv
+    ra_family: training
+    ra_series: OPG-512
+    composition_group: null
+    variant_slug: dual-plane--cx8-2x400g--bf3-2x200g--2p--storage-conv-2x200g--cooling-air--dens-2srv
+    source_repo: afewell-hh/training-ra
+    source_path: compositions/OPG-512/dual-plane--cx8-2x400g--bf3-2x200g--2p--storage-conv-2x200g--cooling-air--dens-2srv
+    source_url: https://github.com/afewell-hh/training-ra/tree/main/compositions/OPG-512/dual-plane--cx8-2x400g--bf3-2x200g--2p--storage-conv-2x200g--cooling-air--dens-2srv
+    archetype: dual-plane
+    expected_managed_fabrics:
+      - frontend-plane-a
+      - frontend-plane-b
+      - backend
+    fabric_expectation_confidence: provisional
+    topology_plan_name: RA Training OPG-512 Dual Plane Air 2srv
+    asset_root: artifacts/training/OPG-512/dual-plane--cx8-2x400g--bf3-2x200g--2p--storage-conv-2x200g--cooling-air--dens-2srv
+    status: catalogued
+    owner: dev-a
+    peer_reviewer: dev-c
+    translation_notes:
+      - Use this only after the OPG-256 dual-plane pilot proves the fabric mapping pattern.
+    known_gaps:
+      - Fabric breakdown is inferred and must be confirmed from the RA source files.
+
+  - variant_id: training-opg512-dual-plane-liquid-8srv
+    ra_family: training
+    ra_series: OPG-512
+    composition_group: null
+    variant_slug: dual-plane--cx8-2x400g--bf3-2x200g--2p--storage-conv-2x200g--cooling-liquid--dens-8srv
+    source_repo: afewell-hh/training-ra
+    source_path: compositions/OPG-512/dual-plane--cx8-2x400g--bf3-2x200g--2p--storage-conv-2x200g--cooling-liquid--dens-8srv
+    source_url: https://github.com/afewell-hh/training-ra/tree/main/compositions/OPG-512/dual-plane--cx8-2x400g--bf3-2x200g--2p--storage-conv-2x200g--cooling-liquid--dens-8srv
+    archetype: dual-plane
+    expected_managed_fabrics:
+      - frontend-plane-a
+      - frontend-plane-b
+      - backend
+    fabric_expectation_confidence: provisional
+    topology_plan_name: RA Training OPG-512 Dual Plane Liquid 8srv
+    asset_root: artifacts/training/OPG-512/dual-plane--cx8-2x400g--bf3-2x200g--2p--storage-conv-2x200g--cooling-liquid--dens-8srv
+    status: catalogued
+    owner: dev-a
+    peer_reviewer: dev-c
+    translation_notes:
+      - Reuse OPG-512 dual-plane rules once the pilot proves the exact fabric mapping.
+    known_gaps:
+      - Fabric breakdown is inferred and must be confirmed from the RA source files.
+
+  - variant_id: training-xoc256-2xopg128-clos-ro-air-2srv
+    ra_family: training
+    ra_series: XOC-256
+    composition_group: 2x-OPG-128
+    variant_slug: clos-ro--cx7-1x400g--bf3-2x200g--storage-conv-2x200g--cooling-air--dens-2srv
+    source_repo: afewell-hh/training-ra
+    source_path: compositions/XOC-256/2x-OPG-128/clos-ro--cx7-1x400g--bf3-2x200g--storage-conv-2x200g--cooling-air--dens-2srv
+    source_url: https://github.com/afewell-hh/training-ra/tree/main/compositions/XOC-256/2x-OPG-128/clos-ro--cx7-1x400g--bf3-2x200g--storage-conv-2x200g--cooling-air--dens-2srv
+    archetype: xoc-composed-clos-ro
+    expected_managed_fabrics:
+      - frontend
+      - backend
+    fabric_expectation_confidence: provisional
+    topology_plan_name: RA Training XOC-256 2x OPG-128 CLOS RO Air 2srv
+    asset_root: artifacts/training/XOC-256/2x-OPG-128/clos-ro--cx7-1x400g--bf3-2x200g--storage-conv-2x200g--cooling-air--dens-2srv
+    status: catalogued
+    owner: dev-a
+    peer_reviewer: dev-c
+    translation_notes:
+      - Confirm whether XOC composition is modeled as one multi-fabric plan or as grouped OPG subdomains.
+    known_gaps:
+      - Composition semantics must be derived from the RA source docs.
+
+  - variant_id: training-xoc256-2xopg128-clos-ro-liquid-8srv
+    ra_family: training
+    ra_series: XOC-256
+    composition_group: 2x-OPG-128
+    variant_slug: clos-ro--cx7-1x400g--bf3-2x200g--storage-conv-2x200g--cooling-liquid--dens-8srv
+    source_repo: afewell-hh/training-ra
+    source_path: compositions/XOC-256/2x-OPG-128/clos-ro--cx7-1x400g--bf3-2x200g--storage-conv-2x200g--cooling-liquid--dens-8srv
+    source_url: https://github.com/afewell-hh/training-ra/tree/main/compositions/XOC-256/2x-OPG-128/clos-ro--cx7-1x400g--bf3-2x200g--storage-conv-2x200g--cooling-liquid--dens-8srv
+    archetype: xoc-composed-clos-ro
+    expected_managed_fabrics:
+      - frontend
+      - backend
+    fabric_expectation_confidence: provisional
+    topology_plan_name: RA Training XOC-256 2x OPG-128 CLOS RO Liquid 8srv
+    asset_root: artifacts/training/XOC-256/2x-OPG-128/clos-ro--cx7-1x400g--bf3-2x200g--storage-conv-2x200g--cooling-liquid--dens-8srv
+    status: catalogued
+    owner: dev-a
+    peer_reviewer: dev-c
+    translation_notes:
+      - Reuse the XOC-256 RO composition model once the pilot clarifies grouping semantics.
+    known_gaps:
+      - Composition semantics must be derived from the RA source docs.
+
+  - variant_id: training-xoc256-2xopg128-clos-sh-air-2srv
+    ra_family: training
+    ra_series: XOC-256
+    composition_group: 2x-OPG-128
+    variant_slug: clos-sh--cx7-1x400g--bf3-2x200g--storage-conv-2x200g--cooling-air--dens-2srv
+    source_repo: afewell-hh/training-ra
+    source_path: compositions/XOC-256/2x-OPG-128/clos-sh--cx7-1x400g--bf3-2x200g--storage-conv-2x200g--cooling-air--dens-2srv
+    source_url: https://github.com/afewell-hh/training-ra/tree/main/compositions/XOC-256/2x-OPG-128/clos-sh--cx7-1x400g--bf3-2x200g--storage-conv-2x200g--cooling-air--dens-2srv
+    archetype: xoc-composed-clos-sh
+    expected_managed_fabrics:
+      - frontend
+      - backend
+    fabric_expectation_confidence: provisional
+    topology_plan_name: RA Training XOC-256 2x OPG-128 CLOS SH Air 2srv
+    asset_root: artifacts/training/XOC-256/2x-OPG-128/clos-sh--cx7-1x400g--bf3-2x200g--storage-conv-2x200g--cooling-air--dens-2srv
+    status: catalogued
+    owner: dev-a
+    peer_reviewer: dev-c
+    translation_notes:
+      - Confirm what SH changes in the composed XOC case before reusing RO rules.
+    known_gaps:
+      - Composition semantics must be derived from the RA source docs.
+
+  - variant_id: training-xoc256-2xopg128-clos-sh-liquid-8srv
+    ra_family: training
+    ra_series: XOC-256
+    composition_group: 2x-OPG-128
+    variant_slug: clos-sh--cx7-1x400g--bf3-2x200g--storage-conv-2x200g--cooling-liquid--dens-8srv
+    source_repo: afewell-hh/training-ra
+    source_path: compositions/XOC-256/2x-OPG-128/clos-sh--cx7-1x400g--bf3-2x200g--storage-conv-2x200g--cooling-liquid--dens-8srv
+    source_url: https://github.com/afewell-hh/training-ra/tree/main/compositions/XOC-256/2x-OPG-128/clos-sh--cx7-1x400g--bf3-2x200g--storage-conv-2x200g--cooling-liquid--dens-8srv
+    archetype: xoc-composed-clos-sh
+    expected_managed_fabrics:
+      - frontend
+      - backend
+    fabric_expectation_confidence: provisional
+    topology_plan_name: RA Training XOC-256 2x OPG-128 CLOS SH Liquid 8srv
+    asset_root: artifacts/training/XOC-256/2x-OPG-128/clos-sh--cx7-1x400g--bf3-2x200g--storage-conv-2x200g--cooling-liquid--dens-8srv
+    status: catalogued
+    owner: dev-a
+    peer_reviewer: dev-c
+    translation_notes:
+      - Reuse composed SH rules once the XOC-256 SH pilot is understood.
+    known_gaps:
+      - Composition semantics must be derived from the RA source docs.
+
+  - variant_id: training-xoc512-1xopg512-clos-ro-air-2srv
+    ra_family: training
+    ra_series: XOC-512
+    composition_group: 1x-OPG-512
+    variant_slug: clos-ro--cx7-1x400g--bf3-2x200g--storage-conv-2x200g--cooling-air--dens-2srv
+    source_repo: afewell-hh/training-ra
+    source_path: compositions/XOC-512/1x-OPG-512/clos-ro--cx7-1x400g--bf3-2x200g--storage-conv-2x200g--cooling-air--dens-2srv
+    source_url: https://github.com/afewell-hh/training-ra/tree/main/compositions/XOC-512/1x-OPG-512/clos-ro--cx7-1x400g--bf3-2x200g--storage-conv-2x200g--cooling-air--dens-2srv
+    archetype: xoc-composed-clos-ro
+    expected_managed_fabrics:
+      - frontend
+      - backend
+    fabric_expectation_confidence: provisional
+    topology_plan_name: RA Training XOC-512 1x OPG-512 CLOS RO Air 2srv
+    asset_root: artifacts/training/XOC-512/1x-OPG-512/clos-ro--cx7-1x400g--bf3-2x200g--storage-conv-2x200g--cooling-air--dens-2srv
+    status: catalogued
+    owner: dev-a
+    peer_reviewer: dev-c
+    translation_notes:
+      - Confirm whether this should behave identically to the base OPG-512 case or carry XOC-specific composition metadata.
+    known_gaps:
+      - Composition semantics must be confirmed from the RA source docs.
+
+  - variant_id: training-xoc512-1xopg512-clos-ro-liquid-8srv
+    ra_family: training
+    ra_series: XOC-512
+    composition_group: 1x-OPG-512
+    variant_slug: clos-ro--cx7-1x400g--bf3-2x200g--storage-conv-2x200g--cooling-liquid--dens-8srv
+    source_repo: afewell-hh/training-ra
+    source_path: compositions/XOC-512/1x-OPG-512/clos-ro--cx7-1x400g--bf3-2x200g--storage-conv-2x200g--cooling-liquid--dens-8srv
+    source_url: https://github.com/afewell-hh/training-ra/tree/main/compositions/XOC-512/1x-OPG-512/clos-ro--cx7-1x400g--bf3-2x200g--storage-conv-2x200g--cooling-liquid--dens-8srv
+    archetype: xoc-composed-clos-ro
+    expected_managed_fabrics:
+      - frontend
+      - backend
+    fabric_expectation_confidence: provisional
+    topology_plan_name: RA Training XOC-512 1x OPG-512 CLOS RO Liquid 8srv
+    asset_root: artifacts/training/XOC-512/1x-OPG-512/clos-ro--cx7-1x400g--bf3-2x200g--storage-conv-2x200g--cooling-liquid--dens-8srv
+    status: catalogued
+    owner: dev-a
+    peer_reviewer: dev-c
+    translation_notes:
+      - Reuse the XOC-512 RO rules once the composition semantics are confirmed.
+    known_gaps:
+      - Composition semantics must be confirmed from the RA source docs.
+
+  - variant_id: training-xoc512-1xopg512-dual-plane-air-2srv
+    ra_family: training
+    ra_series: XOC-512
+    composition_group: 1x-OPG-512
+    variant_slug: dual-plane--cx8-2x400g--bf3-2x200g--2p--storage-conv-2x200g--cooling-air--dens-2srv
+    source_repo: afewell-hh/training-ra
+    source_path: compositions/XOC-512/1x-OPG-512/dual-plane--cx8-2x400g--bf3-2x200g--2p--storage-conv-2x200g--cooling-air--dens-2srv
+    source_url: https://github.com/afewell-hh/training-ra/tree/main/compositions/XOC-512/1x-OPG-512/dual-plane--cx8-2x400g--bf3-2x200g--2p--storage-conv-2x200g--cooling-air--dens-2srv
+    archetype: xoc-composed-dual-plane
+    expected_managed_fabrics:
+      - frontend-plane-a
+      - frontend-plane-b
+      - backend
+    fabric_expectation_confidence: provisional
+    topology_plan_name: RA Training XOC-512 1x OPG-512 Dual Plane Air 2srv
+    asset_root: artifacts/training/XOC-512/1x-OPG-512/dual-plane--cx8-2x400g--bf3-2x200g--2p--storage-conv-2x200g--cooling-air--dens-2srv
+    status: sources-reviewed
+    owner: dev-a
+    peer_reviewer: dev-c
+    translation_notes:
+      - Use this as the XOC dual-plane pilot after the base OPG dual-plane case is proven.
+      - Pilot worksheet: docs/ra_pilot_translation_worksheet.md
+    known_gaps:
+      - Composition and fabric semantics must be confirmed from the RA source docs.
+
+  - variant_id: training-xoc512-1xopg512-dual-plane-liquid-8srv
+    ra_family: training
+    ra_series: XOC-512
+    composition_group: 1x-OPG-512
+    variant_slug: dual-plane--cx8-2x400g--bf3-2x200g--2p--storage-conv-2x200g--cooling-liquid--dens-8srv
+    source_repo: afewell-hh/training-ra
+    source_path: compositions/XOC-512/1x-OPG-512/dual-plane--cx8-2x400g--bf3-2x200g--2p--storage-conv-2x200g--cooling-liquid--dens-8srv
+    source_url: https://github.com/afewell-hh/training-ra/tree/main/compositions/XOC-512/1x-OPG-512/dual-plane--cx8-2x400g--bf3-2x200g--2p--storage-conv-2x200g--cooling-liquid--dens-8srv
+    archetype: xoc-composed-dual-plane
+    expected_managed_fabrics:
+      - frontend-plane-a
+      - frontend-plane-b
+      - backend
+    fabric_expectation_confidence: provisional
+    topology_plan_name: RA Training XOC-512 1x OPG-512 Dual Plane Liquid 8srv
+    asset_root: artifacts/training/XOC-512/1x-OPG-512/dual-plane--cx8-2x400g--bf3-2x200g--2p--storage-conv-2x200g--cooling-liquid--dens-8srv
+    status: catalogued
+    owner: dev-a
+    peer_reviewer: dev-c
+    translation_notes:
+      - Reuse XOC dual-plane rules once the pilot confirms the composition/fabric pattern.
+    known_gaps:
+      - Composition and fabric semantics must be confirmed from the RA source docs.
+
+  - variant_id: training-xoc512-4xopg128-clos-ro-air-2srv
+    ra_family: training
+    ra_series: XOC-512
+    composition_group: 4x-OPG-128
+    variant_slug: clos-ro--cx7-1x400g--bf3-2x200g--storage-conv-2x200g--cooling-air--dens-2srv
+    source_repo: afewell-hh/training-ra
+    source_path: compositions/XOC-512/4x-OPG-128/clos-ro--cx7-1x400g--bf3-2x200g--storage-conv-2x200g--cooling-air--dens-2srv
+    source_url: https://github.com/afewell-hh/training-ra/tree/main/compositions/XOC-512/4x-OPG-128/clos-ro--cx7-1x400g--bf3-2x200g--storage-conv-2x200g--cooling-air--dens-2srv
+    archetype: xoc-composed-clos-ro
+    expected_managed_fabrics:
+      - frontend
+      - backend
+    fabric_expectation_confidence: provisional
+    topology_plan_name: RA Training XOC-512 4x OPG-128 CLOS RO Air 2srv
+    asset_root: artifacts/training/XOC-512/4x-OPG-128/clos-ro--cx7-1x400g--bf3-2x200g--storage-conv-2x200g--cooling-air--dens-2srv
+    status: catalogued
+    owner: dev-a
+    peer_reviewer: dev-c
+    translation_notes:
+      - Confirm whether the 4x OPG grouping should be modeled explicitly or just reflected in naming/metadata.
+    known_gaps:
+      - Composition semantics must be confirmed from the RA source docs.
+
+  - variant_id: training-xoc512-4xopg128-clos-ro-liquid-8srv
+    ra_family: training
+    ra_series: XOC-512
+    composition_group: 4x-OPG-128
+    variant_slug: clos-ro--cx7-1x400g--bf3-2x200g--storage-conv-2x200g--cooling-liquid--dens-8srv
+    source_repo: afewell-hh/training-ra
+    source_path: compositions/XOC-512/4x-OPG-128/clos-ro--cx7-1x400g--bf3-2x200g--storage-conv-2x200g--cooling-liquid--dens-8srv
+    source_url: https://github.com/afewell-hh/training-ra/tree/main/compositions/XOC-512/4x-OPG-128/clos-ro--cx7-1x400g--bf3-2x200g--storage-conv-2x200g--cooling-liquid--dens-8srv
+    archetype: xoc-composed-clos-ro
+    expected_managed_fabrics:
+      - frontend
+      - backend
+    fabric_expectation_confidence: provisional
+    topology_plan_name: RA Training XOC-512 4x OPG-128 CLOS RO Liquid 8srv
+    asset_root: artifacts/training/XOC-512/4x-OPG-128/clos-ro--cx7-1x400g--bf3-2x200g--storage-conv-2x200g--cooling-liquid--dens-8srv
+    status: catalogued
+    owner: dev-a
+    peer_reviewer: dev-c
+    translation_notes:
+      - Reuse the 4x OPG XOC composition rules once the pilot confirms the grouping approach.
+    known_gaps:
+      - Composition semantics must be confirmed from the RA source docs.
+
+  - variant_id: training-xoc512-4xopg128-clos-sh-air-2srv
+    ra_family: training
+    ra_series: XOC-512
+    composition_group: 4x-OPG-128
+    variant_slug: clos-sh--cx7-1x400g--bf3-2x200g--storage-conv-2x200g--cooling-air--dens-2srv
+    source_repo: afewell-hh/training-ra
+    source_path: compositions/XOC-512/4x-OPG-128/clos-sh--cx7-1x400g--bf3-2x200g--storage-conv-2x200g--cooling-air--dens-2srv
+    source_url: https://github.com/afewell-hh/training-ra/tree/main/compositions/XOC-512/4x-OPG-128/clos-sh--cx7-1x400g--bf3-2x200g--storage-conv-2x200g--cooling-air--dens-2srv
+    archetype: xoc-composed-clos-sh
+    expected_managed_fabrics:
+      - frontend
+      - backend
+    fabric_expectation_confidence: provisional
+    topology_plan_name: RA Training XOC-512 4x OPG-128 CLOS SH Air 2srv
+    asset_root: artifacts/training/XOC-512/4x-OPG-128/clos-sh--cx7-1x400g--bf3-2x200g--storage-conv-2x200g--cooling-air--dens-2srv
+    status: catalogued
+    owner: dev-a
+    peer_reviewer: dev-c
+    translation_notes:
+      - Confirm SH semantics for the 4x OPG XOC grouping before authoring YAML.
+    known_gaps:
+      - Composition semantics must be confirmed from the RA source docs.
+
+  - variant_id: training-xoc512-4xopg128-clos-sh-liquid-8srv
+    ra_family: training
+    ra_series: XOC-512
+    composition_group: 4x-OPG-128
+    variant_slug: clos-sh--cx7-1x400g--bf3-2x200g--storage-conv-2x200g--cooling-liquid--dens-8srv
+    source_repo: afewell-hh/training-ra
+    source_path: compositions/XOC-512/4x-OPG-128/clos-sh--cx7-1x400g--bf3-2x200g--storage-conv-2x200g--cooling-liquid--dens-8srv
+    source_url: https://github.com/afewell-hh/training-ra/tree/main/compositions/XOC-512/4x-OPG-128/clos-sh--cx7-1x400g--bf3-2x200g--storage-conv-2x200g--cooling-liquid--dens-8srv
+    archetype: xoc-composed-clos-sh
+    expected_managed_fabrics:
+      - frontend
+      - backend
+    fabric_expectation_confidence: provisional
+    topology_plan_name: RA Training XOC-512 4x OPG-128 CLOS SH Liquid 8srv
+    asset_root: artifacts/training/XOC-512/4x-OPG-128/clos-sh--cx7-1x400g--bf3-2x200g--storage-conv-2x200g--cooling-liquid--dens-8srv
+    status: catalogued
+    owner: dev-a
+    peer_reviewer: dev-c
+    translation_notes:
+      - Reuse SH composition rules only after the pilot confirms the grouping approach.
+    known_gaps:
+      - Composition semantics must be confirmed from the RA source docs.
+
+  - variant_id: training-xoc1024-2xopg512-clos-ro-air-2srv
+    ra_family: training
+    ra_series: XOC-1024
+    composition_group: 2x-OPG-512
+    variant_slug: clos-ro--cx7-1x400g--bf3-2x200g--storage-conv-2x200g--cooling-air--dens-2srv
+    source_repo: afewell-hh/training-ra
+    source_path: compositions/XOC-1024/2x-OPG-512/clos-ro--cx7-1x400g--bf3-2x200g--storage-conv-2x200g--cooling-air--dens-2srv
+    source_url: https://github.com/afewell-hh/training-ra/tree/main/compositions/XOC-1024/2x-OPG-512/clos-ro--cx7-1x400g--bf3-2x200g--storage-conv-2x200g--cooling-air--dens-2srv
+    archetype: xoc-composed-clos-ro
+    expected_managed_fabrics:
+      - frontend
+      - backend
+    fabric_expectation_confidence: provisional
+    topology_plan_name: RA Training XOC-1024 2x OPG-512 CLOS RO Air 2srv
+    asset_root: artifacts/training/XOC-1024/2x-OPG-512/clos-ro--cx7-1x400g--bf3-2x200g--storage-conv-2x200g--cooling-air--dens-2srv
+    status: catalogued
+    owner: dev-a
+    peer_reviewer: dev-c
+    translation_notes:
+      - Confirm whether this is one large plan or a composed grouping of OPG domains within a shared XOC envelope.
+    known_gaps:
+      - Composition semantics must be confirmed from the RA source docs.
+
+  - variant_id: training-xoc1024-2xopg512-clos-ro-liquid-8srv
+    ra_family: training
+    ra_series: XOC-1024
+    composition_group: 2x-OPG-512
+    variant_slug: clos-ro--cx7-1x400g--bf3-2x200g--storage-conv-2x200g--cooling-liquid--dens-8srv
+    source_repo: afewell-hh/training-ra
+    source_path: compositions/XOC-1024/2x-OPG-512/clos-ro--cx7-1x400g--bf3-2x200g--storage-conv-2x200g--cooling-liquid--dens-8srv
+    source_url: https://github.com/afewell-hh/training-ra/tree/main/compositions/XOC-1024/2x-OPG-512/clos-ro--cx7-1x400g--bf3-2x200g--storage-conv-2x200g--cooling-liquid--dens-8srv
+    archetype: xoc-composed-clos-ro
+    expected_managed_fabrics:
+      - frontend
+      - backend
+    fabric_expectation_confidence: provisional
+    topology_plan_name: RA Training XOC-1024 2x OPG-512 CLOS RO Liquid 8srv
+    asset_root: artifacts/training/XOC-1024/2x-OPG-512/clos-ro--cx7-1x400g--bf3-2x200g--storage-conv-2x200g--cooling-liquid--dens-8srv
+    status: catalogued
+    owner: dev-a
+    peer_reviewer: dev-c
+    translation_notes:
+      - Reuse XOC-1024 RO composition rules after the pilot confirms the grouping model.
+    known_gaps:
+      - Composition semantics must be confirmed from the RA source docs.
+
+  - variant_id: training-xoc1024-2xopg512-dual-plane-air-2srv
+    ra_family: training
+    ra_series: XOC-1024
+    composition_group: 2x-OPG-512
+    variant_slug: dual-plane--cx8-2x400g--bf3-2x200g--2p--storage-conv-2x200g--cooling-air--dens-2srv
+    source_repo: afewell-hh/training-ra
+    source_path: compositions/XOC-1024/2x-OPG-512/dual-plane--cx8-2x400g--bf3-2x200g--2p--storage-conv-2x200g--cooling-air--dens-2srv
+    source_url: https://github.com/afewell-hh/training-ra/tree/main/compositions/XOC-1024/2x-OPG-512/dual-plane--cx8-2x400g--bf3-2x200g--2p--storage-conv-2x200g--cooling-air--dens-2srv
+    archetype: xoc-composed-dual-plane
+    expected_managed_fabrics:
+      - frontend-plane-a
+      - frontend-plane-b
+      - backend
+    fabric_expectation_confidence: provisional
+    topology_plan_name: RA Training XOC-1024 2x OPG-512 Dual Plane Air 2srv
+    asset_root: artifacts/training/XOC-1024/2x-OPG-512/dual-plane--cx8-2x400g--bf3-2x200g--2p--storage-conv-2x200g--cooling-air--dens-2srv
+    status: catalogued
+    owner: dev-a
+    peer_reviewer: dev-c
+    translation_notes:
+      - Use only after both the base dual-plane and XOC composition pilots have succeeded.
+    known_gaps:
+      - Composition and fabric semantics must be confirmed from the RA source docs.
+
+  - variant_id: training-xoc1024-2xopg512-dual-plane-liquid-8srv
+    ra_family: training
+    ra_series: XOC-1024
+    composition_group: 2x-OPG-512
+    variant_slug: dual-plane--cx8-2x400g--bf3-2x200g--2p--storage-conv-2x200g--cooling-liquid--dens-8srv
+    source_repo: afewell-hh/training-ra
+    source_path: compositions/XOC-1024/2x-OPG-512/dual-plane--cx8-2x400g--bf3-2x200g--2p--storage-conv-2x200g--cooling-liquid--dens-8srv
+    source_url: https://github.com/afewell-hh/training-ra/tree/main/compositions/XOC-1024/2x-OPG-512/dual-plane--cx8-2x400g--bf3-2x200g--2p--storage-conv-2x200g--cooling-liquid--dens-8srv
+    archetype: xoc-composed-dual-plane
+    expected_managed_fabrics:
+      - frontend-plane-a
+      - frontend-plane-b
+      - backend
+    fabric_expectation_confidence: provisional
+    topology_plan_name: RA Training XOC-1024 2x OPG-512 Dual Plane Liquid 8srv
+    asset_root: artifacts/training/XOC-1024/2x-OPG-512/dual-plane--cx8-2x400g--bf3-2x200g--2p--storage-conv-2x200g--cooling-liquid--dens-8srv
+    status: catalogued
+    owner: dev-a
+    peer_reviewer: dev-c
+    translation_notes:
+      - Reuse XOC-1024 dual-plane rules only after the pilot confirms the composition/fabric model.
+    known_gaps:
+      - Composition and fabric semantics must be confirmed from the RA source docs.
+
+  - variant_id: inference-opg32-minimal-fe-converged
+    ra_family: inference
+    ra_series: OPG-32
+    composition_group: null
+    variant_slug: minimal-fe-converged
+    source_repo: afewell-hh/inference-ra
+    source_path: compositions/OPG-32/minimal-fe-converged
+    source_url: https://github.com/afewell-hh/inference-ra/tree/main/compositions/OPG-32/minimal-fe-converged
+    archetype: minimal-fe-converged
+    expected_managed_fabrics:
+      - converged
+    fabric_expectation_confidence: provisional
+    topology_plan_name: RA Inference OPG-32 Minimal FE Converged
+    asset_root: artifacts/inference/OPG-32/minimal-fe-converged
+    status: sources-reviewed
+    owner: dev-a
+    peer_reviewer: dev-c
+    translation_notes:
+      - Use as the first pilot because it should be the simplest full pipeline case.
+      - Pilot worksheet: docs/ra_pilot_translation_worksheet.md
+    known_gaps:
+      - Exact fabric naming must be confirmed from the RA source files.
+
+  - variant_id: inference-opg64-minimal-fe-converged
+    ra_family: inference
+    ra_series: OPG-64
+    composition_group: null
+    variant_slug: minimal-fe-converged
+    source_repo: afewell-hh/inference-ra
+    source_path: compositions/OPG-64/minimal-fe-converged
+    source_url: https://github.com/afewell-hh/inference-ra/tree/main/compositions/OPG-64/minimal-fe-converged
+    archetype: minimal-fe-converged
+    expected_managed_fabrics:
+      - converged
+    fabric_expectation_confidence: provisional
+    topology_plan_name: RA Inference OPG-64 Minimal FE Converged
+    asset_root: artifacts/inference/OPG-64/minimal-fe-converged
+    status: catalogued
+    owner: dev-a
+    peer_reviewer: dev-c
+    translation_notes:
+      - Reuse the minimal inference converged rules after the OPG-32 pilot is proven.
+    known_gaps:
+      - Exact fabric naming must be confirmed from the RA source files.
+
+  - variant_id: inference-opg64-clos-ro-air-2srv
+    ra_family: inference
+    ra_series: OPG-64
+    composition_group: null
+    variant_slug: clos-ro--cx7-1x400g--bf3-2x200g--storage-conv-2x200g--cooling-air--dens-2srv
+    source_repo: afewell-hh/inference-ra
+    source_path: compositions/OPG-64/clos-ro--cx7-1x400g--bf3-2x200g--storage-conv-2x200g--cooling-air--dens-2srv
+    source_url: https://github.com/afewell-hh/inference-ra/tree/main/compositions/OPG-64/clos-ro--cx7-1x400g--bf3-2x200g--storage-conv-2x200g--cooling-air--dens-2srv
+    archetype: inference-clos-ro
+    expected_managed_fabrics:
+      - frontend
+      - backend
+    fabric_expectation_confidence: provisional
+    topology_plan_name: RA Inference OPG-64 CLOS RO Air 2srv
+    asset_root: artifacts/inference/OPG-64/clos-ro--cx7-1x400g--bf3-2x200g--storage-conv-2x200g--cooling-air--dens-2srv
+    status: catalogued
+    owner: dev-a
+    peer_reviewer: dev-c
+    translation_notes:
+      - Compare against the training CLOS RO archetype to see whether inference changes only server classes or also fabric intent.
+    known_gaps:
+      - Managed-fabric names must be confirmed from the RA source docs.
+
+  - variant_id: inference-opg128-minimal-fe-converged
+    ra_family: inference
+    ra_series: OPG-128
+    composition_group: null
+    variant_slug: minimal-fe-converged
+    source_repo: afewell-hh/inference-ra
+    source_path: compositions/OPG-128/minimal-fe-converged
+    source_url: https://github.com/afewell-hh/inference-ra/tree/main/compositions/OPG-128/minimal-fe-converged
+    archetype: minimal-fe-converged
+    expected_managed_fabrics:
+      - converged
+    fabric_expectation_confidence: provisional
+    topology_plan_name: RA Inference OPG-128 Minimal FE Converged
+    asset_root: artifacts/inference/OPG-128/minimal-fe-converged
+    status: catalogued
+    owner: dev-a
+    peer_reviewer: dev-c
+    translation_notes:
+      - Reuse the minimal inference converged rules after the smaller pilots are proven.
+    known_gaps:
+      - Exact fabric naming must be confirmed from the RA source files.
+
+  - variant_id: inference-opg128-clos-ro-air-2srv
+    ra_family: inference
+    ra_series: OPG-128
+    composition_group: null
+    variant_slug: clos-ro--cx7-1x400g--bf3-2x200g--storage-conv-2x200g--cooling-air--dens-2srv
+    source_repo: afewell-hh/inference-ra
+    source_path: compositions/OPG-128/clos-ro--cx7-1x400g--bf3-2x200g--storage-conv-2x200g--cooling-air--dens-2srv
+    source_url: https://github.com/afewell-hh/inference-ra/tree/main/compositions/OPG-128/clos-ro--cx7-1x400g--bf3-2x200g--storage-conv-2x200g--cooling-air--dens-2srv
+    archetype: inference-clos-ro
+    expected_managed_fabrics:
+      - frontend
+      - backend
+    fabric_expectation_confidence: provisional
+    topology_plan_name: RA Inference OPG-128 CLOS RO Air 2srv
+    asset_root: artifacts/inference/OPG-128/clos-ro--cx7-1x400g--bf3-2x200g--storage-conv-2x200g--cooling-air--dens-2srv
+    status: catalogued
+    owner: dev-a
+    peer_reviewer: dev-c
+    translation_notes:
+      - Compare against the training OPG-128 RO case to isolate inference-specific server inputs.
+    known_gaps:
+      - Managed-fabric names must be confirmed from the RA source docs.
+
+  - variant_id: inference-opg128-clos-ro-liquid-8srv
+    ra_family: inference
+    ra_series: OPG-128
+    composition_group: null
+    variant_slug: clos-ro--cx7-1x400g--bf3-2x200g--storage-conv-2x200g--cooling-liquid--dens-8srv
+    source_repo: afewell-hh/inference-ra
+    source_path: compositions/OPG-128/clos-ro--cx7-1x400g--bf3-2x200g--storage-conv-2x200g--cooling-liquid--dens-8srv
+    source_url: https://github.com/afewell-hh/inference-ra/tree/main/compositions/OPG-128/clos-ro--cx7-1x400g--bf3-2x200g--storage-conv-2x200g--cooling-liquid--dens-8srv
+    archetype: inference-clos-ro
+    expected_managed_fabrics:
+      - frontend
+      - backend
+    fabric_expectation_confidence: provisional
+    topology_plan_name: RA Inference OPG-128 CLOS RO Liquid 8srv
+    asset_root: artifacts/inference/OPG-128/clos-ro--cx7-1x400g--bf3-2x200g--storage-conv-2x200g--cooling-liquid--dens-8srv
+    status: catalogued
+    owner: dev-a
+    peer_reviewer: dev-c
+    translation_notes:
+      - Reuse inference CLOS RO rules once the air variant confirms the translation pattern.
+    known_gaps:
+      - Managed-fabric names must be confirmed from the RA source docs.

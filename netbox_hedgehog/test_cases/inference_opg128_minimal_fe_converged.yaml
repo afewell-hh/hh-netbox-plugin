@@ -1,0 +1,279 @@
+meta:
+  case_id: inference_opg128_minimal_fe_converged
+  name: Inference OPG-128 Minimal FE Converged
+  description: FE-only DIET translation for OPG-128 minimal inference. No backend fabric. Front-end + converged storage via BF3.
+  version: 1
+  managed_by: yaml
+  tags:
+    - reference-architecture
+    - inference
+    - opg64
+    - minimal-fe
+
+reference_data:
+  manufacturers:
+    - id: generic
+      name: Generic
+      slug: generic
+    - id: celestica
+      name: Celestica
+      slug: celestica
+    - id: nvidia
+      name: NVIDIA
+      slug: nvidia
+
+  device_types:
+    - id: ds5000
+      manufacturer: celestica
+      model: Celestica DS5000
+      slug: celestica-ds5000
+      interface_templates:
+        - name: E1/1
+          type: 800gbase-x-osfp
+        - name: E1/2
+          type: 800gbase-x-osfp
+        - name: E1/3
+          type: 800gbase-x-osfp
+        - name: E1/4
+          type: 800gbase-x-osfp
+        - name: E1/5
+          type: 800gbase-x-osfp
+        - name: E1/6
+          type: 800gbase-x-osfp
+        - name: E1/7
+          type: 800gbase-x-osfp
+        - name: E1/8
+          type: 800gbase-x-osfp
+        - name: E1/9
+          type: 800gbase-x-osfp
+        - name: E1/10
+          type: 800gbase-x-osfp
+        - name: E1/11
+          type: 800gbase-x-osfp
+        - name: E1/12
+          type: 800gbase-x-osfp
+        - name: E1/13
+          type: 800gbase-x-osfp
+        - name: E1/14
+          type: 800gbase-x-osfp
+        - name: E1/15
+          type: 800gbase-x-osfp
+        - name: E1/16
+          type: 800gbase-x-osfp
+        - name: E1/17
+          type: 800gbase-x-osfp
+        - name: E1/18
+          type: 800gbase-x-osfp
+        - name: E1/19
+          type: 800gbase-x-osfp
+        - name: E1/20
+          type: 800gbase-x-osfp
+        - name: E1/21
+          type: 800gbase-x-osfp
+        - name: E1/22
+          type: 800gbase-x-osfp
+        - name: E1/23
+          type: 800gbase-x-osfp
+        - name: E1/24
+          type: 800gbase-x-osfp
+        - name: E1/25
+          type: 800gbase-x-osfp
+        - name: E1/26
+          type: 800gbase-x-osfp
+        - name: E1/27
+          type: 800gbase-x-osfp
+        - name: E1/28
+          type: 800gbase-x-osfp
+        - name: E1/29
+          type: 800gbase-x-osfp
+        - name: E1/30
+          type: 800gbase-x-osfp
+        - name: E1/31
+          type: 800gbase-x-osfp
+        - name: E1/32
+          type: 800gbase-x-osfp
+        - name: E1/33
+          type: 800gbase-x-osfp
+        - name: E1/34
+          type: 800gbase-x-osfp
+        - name: E1/35
+          type: 800gbase-x-osfp
+        - name: E1/36
+          type: 800gbase-x-osfp
+        - name: E1/37
+          type: 800gbase-x-osfp
+        - name: E1/38
+          type: 800gbase-x-osfp
+        - name: E1/39
+          type: 800gbase-x-osfp
+        - name: E1/40
+          type: 800gbase-x-osfp
+        - name: E1/41
+          type: 800gbase-x-osfp
+        - name: E1/42
+          type: 800gbase-x-osfp
+        - name: E1/43
+          type: 800gbase-x-osfp
+        - name: E1/44
+          type: 800gbase-x-osfp
+        - name: E1/45
+          type: 800gbase-x-osfp
+        - name: E1/46
+          type: 800gbase-x-osfp
+        - name: E1/47
+          type: 800gbase-x-osfp
+        - name: E1/48
+          type: 800gbase-x-osfp
+        - name: E1/49
+          type: 800gbase-x-osfp
+        - name: E1/50
+          type: 800gbase-x-osfp
+        - name: E1/51
+          type: 800gbase-x-osfp
+        - name: E1/52
+          type: 800gbase-x-osfp
+        - name: E1/53
+          type: 800gbase-x-osfp
+        - name: E1/54
+          type: 800gbase-x-osfp
+        - name: E1/55
+          type: 800gbase-x-osfp
+        - name: E1/56
+          type: 800gbase-x-osfp
+        - name: E1/57
+          type: 800gbase-x-osfp
+        - name: E1/58
+          type: 800gbase-x-osfp
+        - name: E1/59
+          type: 800gbase-x-osfp
+        - name: E1/60
+          type: 800gbase-x-osfp
+        - name: E1/61
+          type: 800gbase-x-osfp
+        - name: E1/62
+          type: 800gbase-x-osfp
+        - name: E1/63
+          type: 800gbase-x-osfp
+        - name: E1/64
+          type: 800gbase-x-osfp
+    - id: gpu_server_fe_only_128
+      manufacturer: generic
+      model: OPG-128 Inference Server FE-Only
+      slug: opg128-inference-server-fe-only
+      u_height: 2
+      is_full_depth: true
+
+  device_type_extensions:
+    - id: ds5000_ext
+      device_type: ds5000
+      mclag_capable: false
+      hedgehog_roles: [spine, server-leaf]
+      supported_breakouts: [1x800g, 2x400g, 4x200g, 8x100g]
+      native_speed: 800
+      uplink_ports: 32
+      hedgehog_profile_name: celestica-ds5000
+      notes: DS5000 profile for OPG-128 minimal inference FE-only
+
+  breakout_options:
+    - id: b_1x800
+      breakout_id: 1x800g
+      from_speed: 800
+      logical_ports: 1
+      logical_speed: 800
+      optic_type: OSFP-800G-DR8
+    - id: b_4x200
+      breakout_id: 4x200g
+      from_speed: 800
+      logical_ports: 4
+      logical_speed: 200
+      optic_type: OSFP-800G-4x200G-DR4
+
+  module_types:
+    - id: nic_bf3_2x200
+      manufacturer: nvidia
+      model: BlueField-3 2x200G
+      interface_templates:
+        - name: p0
+          type: other
+        - name: p1
+          type: other
+
+plan:
+  name: Inference OPG-128 Minimal FE Converged
+  status: draft
+  description: >
+    FE-only DIET translation of the OPG-128 minimal inference reference architecture.
+    No backend fabric. Servers connect only to the converged frontend fabric via BF3 2x200G.
+    Translation-note: backend omitted by design (RA defines no backend for this variant).
+
+switch_classes:
+  - switch_class_id: fe-leaf
+    fabric_name: frontend
+    fabric_class: managed
+    hedgehog_role: server-leaf
+    device_type_extension: ds5000_ext
+    mclag_pair: false
+    redundancy_type: mclag
+    redundancy_group: fe-mclag
+  - switch_class_id: fe-spine
+    fabric_name: frontend
+    fabric_class: managed
+    hedgehog_role: spine
+    device_type_extension: ds5000_ext
+    uplink_ports_per_switch: 0
+    mclag_pair: false
+
+switch_port_zones:
+  - switch_class: fe-leaf
+    zone_name: fe-server-ports
+    zone_type: server
+    port_spec: 1-63:2
+    breakout_option: b_4x200
+    allocation_strategy: sequential
+    priority: 10
+  - switch_class: fe-leaf
+    zone_name: fe-uplinks
+    zone_type: uplink
+    port_spec: 2-64:2
+    breakout_option: b_1x800
+    allocation_strategy: sequential
+    priority: 20
+  - switch_class: fe-spine
+    zone_name: fe-fabric-downlinks
+    zone_type: fabric
+    port_spec: 1-64
+    breakout_option: b_1x800
+    allocation_strategy: sequential
+    priority: 10
+
+server_classes:
+  - server_class_id: compute
+    description: 16 inference compute servers, 8 xPUs each
+    category: gpu
+    quantity: 16
+    gpus_per_server: 8
+    server_device_type: gpu_server_fe_only_128
+
+server_nics:
+  - server_class: compute
+    nic_id: fe
+    module_type: nic_bf3_2x200
+
+server_connections:
+  - server_class: compute
+    connection_id: fe
+    connection_name: frontend
+    nic: fe
+    port_index: 0
+    ports_per_connection: 2
+    hedgehog_conn_type: unbundled
+    distribution: alternating
+    target_zone: fe-leaf/fe-server-ports
+    speed: 200
+    port_type: data
+
+expected:
+  counts:
+    server_classes: 1
+    switch_classes: 2
+    connections: 1

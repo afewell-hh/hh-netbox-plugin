@@ -17,6 +17,7 @@ from netbox_hedgehog.models.topology_planning import (
     PlanSwitchClass,
     DeviceTypeExtension,
 )
+from netbox_hedgehog.tests.test_topology_planning import get_test_server_nic
 from netbox_hedgehog.choices import (
     TopologyPlanStatusChoices,
     ServerClassCategoryChoices,
@@ -509,8 +510,9 @@ class GenerateUpdateRailCalculationTestCase(TestCase):
             defaults={'slug': 'b200'}
         )
 
-        # Create device type extension
-        cls.device_ext, _ = DeviceTypeExtension.objects.get_or_create(
+        # Create device type extension (use update_or_create to ensure fields are set
+        # correctly even when test DB is reused with --keepdb)
+        cls.device_ext, _ = DeviceTypeExtension.objects.update_or_create(
             device_type=cls.switch_type,
             defaults={
                 'mclag_capable': True,
@@ -573,13 +575,16 @@ class GenerateUpdateRailCalculationTestCase(TestCase):
             category=ServerClassCategoryChoices.GPU
         )
 
-        # Create 8 rail-optimized connections (1 per rail)
+        # Create 8 rail-optimized connections (1 per rail), each with its own NIC
         from netbox_hedgehog.models.topology_planning import PlanServerConnection
         from netbox_hedgehog.choices import ConnectionTypeChoices
         for rail_num in range(8):
+            nic = get_test_server_nic(cls.server_class, nic_id=f'be-rail-{rail_num}')
             PlanServerConnection.objects.create(
                 connection_id=f'BE-RAIL-{rail_num}',
                 server_class=cls.server_class,
+                nic=nic,
+                port_index=0,
                 target_zone=cls.zone_be_rail_server,
                 ports_per_connection=1,
                 speed=400,
@@ -632,17 +637,10 @@ class GenerateUpdateRailCalculationTestCase(TestCase):
             "not 8 (1 per rail). See Issue #123."
         )
 
-        # Verify success message appears in response
-        messages = list(response.context['messages'])
-        self.assertTrue(
-            any('success' in str(m.tags) for m in messages),
-            "Should show success message after generation"
-        )
-        # Check for success header (avoiding brittle device count check)
-        self.assertTrue(
-            any('Devices generated successfully' in str(m.message) for m in messages),
-            "Success message should confirm devices generated"
-        )
+        # Note: the generate/update view now enqueues an async job and redirects
+        # to the job detail page — no inline "Devices generated successfully"
+        # message is shown in the response. The core assertion above (calculated_quantity)
+        # is the authoritative test for Issue #123.
 
     def test_rail_calculation_idempotent_via_endpoint(self):
         """Test that multiple POST requests produce identical results (idempotency)"""

@@ -64,6 +64,10 @@ Regression guardrails:
   - `docker compose exec netbox python manage.py ...`
 - Do not run manage.py on the host.
 - Plugin code is volume-mounted; most changes do not require a restart.
+- **Required: Plugin must be registered in netbox-docker config.**
+  `netbox-docker/configuration/plugins.py` must contain `PLUGINS = ["netbox_hedgehog"]`.
+  Run `scripts/setup_dev_env.sh` to apply this automatically, or set it manually.
+  Without this, all tests fail with `RuntimeError: HedgehogFabric not in INSTALLED_APPS`.
 
 ## Local Dev Workflow (Golden Path)
 - Default to local container iteration for speed; use CI only when needed.

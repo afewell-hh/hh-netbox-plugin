@@ -23,6 +23,7 @@ from netbox_hedgehog.models.topology_planning import (
     PlanMCLAGDomain,
     DeviceTypeExtension,
     PlanServerConnection,
+    PlanServerNIC,
     SwitchPortZone,
     GenerationState,
     BreakoutOption,
@@ -522,11 +523,18 @@ class YAMLExportBreakoutNamingTestCase(YAMLExportTestBase):
             priority=200
         )
 
-        # Create server connection - use NIC modeling fields (DIET-173 Phase 5)
+        # Create NIC for server connection (DIET-294 NIC FK)
+        self.nic, _ = PlanServerNIC.objects.get_or_create(
+            server_class=self.server_class,
+            nic_id='nic-test',
+            defaults={'module_type': self.nic_module_type},
+        )
+
+        # Create server connection - use NIC modeling fields (DIET-294 NIC FK)
         self.connection = PlanServerConnection.objects.create(
             server_class=self.server_class,
             connection_id='frontend',
-            nic_module_type=self.nic_module_type,  # Required (DIET-173 Phase 5)
+            nic=self.nic,
             port_index=0,  # Required (DIET-173 Phase 5)
             ports_per_connection=2,  # Correct field name
             hedgehog_conn_type=ConnectionTypeChoices.UNBUNDLED,  # Correct field name

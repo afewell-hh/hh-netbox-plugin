@@ -281,6 +281,23 @@ class TestMixedPlanExport(ManagedFabricTestBase):
         self.assertIn('fe-leaf-001', switch_names)
         self.assertNotIn('oob-leaf-001', switch_names)
 
+    def test_switch_crd_omits_empty_ecmp(self):
+        """T1e (issue #302): Switch CRDs must NOT contain ecmp: {} — hhfab validate rejects it."""
+        plan = self._make_plan_with_generation_state('T1-Ecmp-Omit')
+        fe = self._make_switch_device(plan, 'fe-leaf-ecmp', 'frontend', 'server-leaf')
+        self._anchor_cable(plan, fe)
+
+        docs = self._get_export_docs(plan)
+        switch_docs = [d for d in docs if d.get('kind') == 'Switch']
+        self.assertTrue(switch_docs, "Expected at least one Switch CRD")
+        for switch_doc in switch_docs:
+            spec = switch_doc.get('spec', {})
+            self.assertNotIn(
+                'ecmp', spec,
+                f"Switch CRD {switch_doc['metadata']['name']} must not contain 'ecmp' key "
+                f"(hhfab validate rejects empty ecmp: {{}} — issue #302)"
+            )
+
     def test_unmanaged_switch_appears_as_server_crd_surrogate(self):
         """T1b (revised DIET-250): oob-mgmt switch appears as Server CRD surrogate, not Switch CRD."""
         plan = self._make_plan_with_generation_state('T1-Mixed-Absent')

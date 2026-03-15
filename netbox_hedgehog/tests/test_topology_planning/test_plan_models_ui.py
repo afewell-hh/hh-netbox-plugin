@@ -28,6 +28,7 @@ from netbox_hedgehog.models.topology_planning import (
     PlanServerClass,
     PlanSwitchClass,
     PlanServerConnection,
+    PlanServerNIC,
     DeviceTypeExtension,
     SwitchPortZone,
 )
@@ -1118,11 +1119,17 @@ class PlanServerConnectionUITestCase(TestCase):
             zone_type='server',
         )
 
+        cls.nic, _ = PlanServerNIC.objects.get_or_create(
+            server_class=cls.server_class,
+            nic_id='nic-test',
+            defaults={'module_type': cls.nic_module},
+        )
+
         cls.connection = PlanServerConnection.objects.create(
             server_class=cls.server_class,
             connection_id='fe-001',
             target_zone=cls.zone,
-            nic_module_type=cls.nic_module,
+            nic=cls.nic,
             port_index=0,
             ports_per_connection=2,
             speed=200,
@@ -1209,7 +1216,7 @@ class PlanServerConnectionUITestCase(TestCase):
             'server_class': self.server_class.pk,
             'connection_id': 'fe-002',
             'target_zone': self.zone.pk,
-            'nic_module_type': self.nic_module.pk,
+            'nic': self.nic.pk,
             'port_index': 0,
             'ports_per_connection': 4,
             'speed': 200,
@@ -1235,7 +1242,7 @@ class PlanServerConnectionUITestCase(TestCase):
             'server_class': self.server_class.pk,
             'connection_id': 'invalid-conn',
             'target_zone': self.zone.pk,
-            'nic_module_type': self.nic_module.pk,
+            'nic': self.nic.pk,
             'ports_per_connection': 0,  # Invalid
             'speed': 100,
             'hedgehog_conn_type': 'unbundled',
@@ -1271,7 +1278,7 @@ class PlanServerConnectionUITestCase(TestCase):
             'server_class': self.server_class.pk,
             'connection_id': 'fe-001',
             'target_zone': self.zone.pk,
-            'nic_module_type': self.nic_module.pk,
+            'nic': self.nic.pk,
             'port_index': 0,
             'ports_per_connection': 4,  # Changed from 2
             'speed': 200,
@@ -1306,7 +1313,7 @@ class PlanServerConnectionUITestCase(TestCase):
             server_class=self.server_class,
             connection_id='temp-delete',
             target_zone=self.zone,
-            nic_module_type=self.nic_module,
+            nic=self.nic,
             ports_per_connection=1,
             speed=10,
             hedgehog_conn_type='unbundled',

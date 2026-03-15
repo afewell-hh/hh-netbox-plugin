@@ -231,7 +231,7 @@ class UCCase128GPURegressionTestCase(TestCase):
         Validate that server connections maintain their configuration.
 
         After NIC modeling (Phase 5), connections should:
-        - Have nic_module_type set (required field)
+        - Have nic set (required field)
         - Have port_index set (required field)
         - Maintain correct ports_per_connection values
         """
@@ -250,10 +250,10 @@ class UCCase128GPURegressionTestCase(TestCase):
             self.assertGreater(conn.ports_per_connection, 0)
             self.assertIsNotNone(conn.target_switch_class)
 
-            # NIC modeling fields are required (DIET-173 Phase 5)
+            # NIC FK is required (DIET-294)
             self.assertIsNotNone(
-                conn.nic_module_type,
-                f"Connection {conn.connection_id} should have nic_module_type"
+                conn.nic,
+                f"Connection {conn.connection_id} should have nic"
             )
             self.assertIsNotNone(
                 conn.port_index,

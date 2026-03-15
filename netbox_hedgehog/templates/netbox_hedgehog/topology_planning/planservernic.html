@@ -1,0 +1,29 @@
+{% extends 'generic/object.html' %}
+{% load helpers %}
+
+{% block title %}{{ object.nic_id }} - Server NIC{% endblock %}
+
+{% block content %}
+<div class="row">
+  <div class="col col-md-6">
+    <table class="table table-hover attr-table">
+      <tr>
+        <th scope="row">Server Class</th>
+        <td>{{ object.server_class }}</td>
+      </tr>
+      <tr>
+        <th scope="row">NIC ID</th>
+        <td>{{ object.nic_id }}</td>
+      </tr>
+      <tr>
+        <th scope="row">Module Type</th>
+        <td>{{ object.module_type }}</td>
+      </tr>
+      <tr>
+        <th scope="row">Description</th>
+        <td>{{ object.description|placeholder }}</td>
+      </tr>
+    </table>
+  </div>
+</div>
+{% endblock %}
