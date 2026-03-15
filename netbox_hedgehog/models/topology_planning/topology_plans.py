@@ -26,6 +26,7 @@ from netbox_hedgehog.choices import (
     CageTypeChoices,
     MediumChoices,
     ConnectorChoices,
+    TopologyModeChoices,
 )
 from netbox_hedgehog.services._fabric_utils import _legacy_fabric_name_to_class
 
@@ -76,6 +77,13 @@ class TopologyPlan(NetBoxModel):
     notes = models.TextField(
         blank=True,
         help_text="Additional notes about this plan"
+    )
+
+    mesh_ip_pool = models.CharField(
+        max_length=50,
+        blank=True,
+        default='',
+        help_text="CIDR prefix for mesh link /31 allocation (e.g. 172.30.128.0/24). Required when any fabric uses prefer-mesh topology."
     )
 
     class Meta:
@@ -350,6 +358,14 @@ class PlanSwitchClass(NetBoxModel):
         help_text="Additional notes about this switch class"
     )
 
+    topology_mode = models.CharField(
+        max_length=20,
+        choices=TopologyModeChoices,
+        default=TopologyModeChoices.SPINE_LEAF,
+        blank=True,
+        help_text="Topology mode for this switch class fabric."
+    )
+
     # MCLAG/ESLAG redundancy configuration (Issue #151)
     groups = models.JSONField(
         default=list,
@@ -467,8 +483,32 @@ class PlanSwitchClass(NetBoxModel):
         super().save(*args, **kwargs)
 
     def clean(self):
-        """Validate redundancy configuration (DIET-165 Phase 5)."""
+        """Validate redundancy configuration (DIET-165 Phase 5) and mesh topology invariants."""
         super().clean()
+
+        # Mesh/spine mutual exclusion and fabric-wide topology_mode invariant
+        if self.topology_mode == TopologyModeChoices.PREFER_MESH:
+            spine_exists = PlanSwitchClass.objects.filter(
+                plan=self.plan, fabric_name=self.fabric_name,
+                hedgehog_role='spine'
+            ).exclude(pk=self.pk).exists()
+            if spine_exists:
+                raise ValidationError({'topology_mode': 'Cannot use prefer-mesh when a spine switch class exists in this fabric.'})
+
+        if self.hedgehog_role == 'spine':
+            mesh_exists = PlanSwitchClass.objects.filter(
+                plan=self.plan, fabric_name=self.fabric_name,
+                topology_mode=TopologyModeChoices.PREFER_MESH
+            ).exclude(pk=self.pk).exists()
+            if mesh_exists:
+                raise ValidationError({'hedgehog_role': 'Cannot add spine when a prefer-mesh switch class exists in this fabric.'})
+
+        peers = PlanSwitchClass.objects.filter(
+            plan=self.plan, fabric_name=self.fabric_name
+        ).exclude(pk=self.pk).exclude(hedgehog_role='spine')
+        conflicting = peers.exclude(topology_mode=self.topology_mode)
+        if conflicting.exists():
+            raise ValidationError({'topology_mode': f'All non-spine switch classes in fabric "{self.fabric_name}" must share the same topology_mode.'})
 
         # If redundancy_type is set, redundancy_group is required
         if self.redundancy_type and not self.redundancy_group:
@@ -535,6 +575,63 @@ class PlanSwitchClass(NetBoxModel):
         if self.calculated_quantity is not None:
             return self.calculated_quantity
         return 0
+
+
+class PlanMeshLink(models.Model):
+    """
+    Represents a /31 point-to-point mesh link between two switch classes
+    in a prefer-mesh fabric topology (DIET-309).
+    """
+    plan = models.ForeignKey(
+        TopologyPlan,
+        on_delete=models.CASCADE,
+        related_name='mesh_links',
+    )
+    fabric_name = models.CharField(max_length=50, blank=True)
+    switch_class_a = models.ForeignKey(
+        PlanSwitchClass,
+        on_delete=models.CASCADE,
+        related_name='mesh_links_as_a',
+    )
+    switch_class_b = models.ForeignKey(
+        PlanSwitchClass,
+        on_delete=models.CASCADE,
+        related_name='mesh_links_as_b',
+    )
+    subnet = models.CharField(max_length=20, help_text="/31 subnet, e.g. 172.30.128.0/31")
+    link_index = models.IntegerField(default=0)
+    leaf1_port = models.CharField(max_length=50, blank=True)
+    leaf2_port = models.CharField(max_length=50, blank=True)
+    leaf1_name = models.CharField(max_length=200, blank=True, help_text="Physical switch name for leaf1")
+    leaf2_name = models.CharField(max_length=200, blank=True, help_text="Physical switch name for leaf2")
+
+    class Meta:
+        ordering = ['plan', 'fabric_name', 'link_index']
+        unique_together = [['plan', 'fabric_name', 'link_index']]
+
+    def clean(self):
+        import ipaddress
+        # Auto-populate fabric_name from switch_class_a if not set
+        if self.switch_class_a_id and not self.fabric_name:
+            self.fabric_name = self.switch_class_a.fabric_name
+        try:
+            net = ipaddress.ip_network(self.subnet, strict=True)
+        except ValueError as e:
+            raise ValidationError({'subnet': str(e)})
+        if net.prefixlen != 31:
+            raise ValidationError({'subnet': f'Mesh link subnet must be a /31, got /{net.prefixlen}.'})
+        if self.switch_class_a and self.switch_class_b:
+            if self.switch_class_a.switch_class_id > self.switch_class_b.switch_class_id:
+                raise ValidationError('switch_class_a must be alphabetically first.')
+
+    def save(self, *args, **kwargs):
+        # Auto-populate fabric_name from switch_class_a if not set
+        if self.switch_class_a_id and not self.fabric_name:
+            self.fabric_name = self.switch_class_a.fabric_name
+        super().save(*args, **kwargs)
+
+    def __str__(self):
+        return f"{self.fabric_name} mesh link {self.link_index}: {self.subnet}"
 
 
 class PlanServerConnection(NetBoxModel):

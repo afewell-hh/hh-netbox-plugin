@@ -205,6 +205,18 @@ class FabricClassChoices(ChoiceSet):
     ]
 
 
+class TopologyModeChoices(ChoiceSet):
+    """Topology mode choices for PlanSwitchClass."""
+
+    SPINE_LEAF = 'spine-leaf'
+    PREFER_MESH = 'prefer-mesh'
+
+    CHOICES = [
+        (SPINE_LEAF, 'Spine-Leaf'),
+        (PREFER_MESH, 'Prefer Mesh'),
+    ]
+
+
 class HedgehogRoleChoices(ChoiceSet):
     """Hedgehog role choices for PlanSwitchClass"""
 
@@ -245,6 +257,7 @@ class PortZoneTypeChoices(ChoiceSet):
     SESSION = 'session'
     OOB = 'oob'
     FABRIC = 'fabric'
+    MESH = 'mesh'
 
     CHOICES = [
         (SERVER, 'Server'),
@@ -254,6 +267,7 @@ class PortZoneTypeChoices(ChoiceSet):
         (SESSION, 'Session'),
         (OOB, 'OOB'),
         (FABRIC, 'Fabric'),
+        (MESH, 'Mesh'),
     ]
 
 

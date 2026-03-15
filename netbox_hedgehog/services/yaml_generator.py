@@ -37,7 +37,7 @@ class YAMLGenerator:
     All created by DeviceGenerator and tagged with hedgehog_plan_id.
     """
 
-    def __init__(self, plan: TopologyPlan, fabric: str = None):
+    def __init__(self, plan: TopologyPlan = None, fabric: str = None, plan_id: int = None):
         """
         Initialize the YAML generator for a specific plan.
 
@@ -46,8 +46,12 @@ class YAMLGenerator:
             fabric: Optional managed fabric name. When set, only CRDs for that
                 fabric are emitted. When None, all discovered managed fabrics
                 are included.
+            plan_id: Optional plan PK (alternative to passing plan instance)
         """
+        if plan is None and plan_id is not None:
+            plan = TopologyPlan.objects.get(pk=plan_id)
         self.plan = plan
+        self.plan_id = plan.pk if plan is not None else plan_id
         self.fabric = fabric
         valid_fabrics = self._managed_fabric_names_from_inventory() or self._managed_fabric_names_from_plan()
         if fabric is not None and fabric not in valid_fabrics:
@@ -271,6 +275,22 @@ class YAMLGenerator:
                 'switch_iface': switch_iface,
             })
 
+        elif conn_type == 'mesh':
+            # Mesh switch-switch connection: deterministic ordering by device name
+            if device_a.name <= device_b.name:
+                leaf1_device, leaf1_iface = device_a, iface_a
+                leaf2_device, leaf2_iface = device_b, iface_b
+            else:
+                leaf1_device, leaf1_iface = device_b, iface_b
+                leaf2_device, leaf2_iface = device_a, iface_a
+
+            return ('mesh', {
+                'leaf1_device': leaf1_device,
+                'leaf1_iface': leaf1_iface,
+                'leaf2_device': leaf2_device,
+                'leaf2_iface': leaf2_iface,
+            })
+
         elif conn_type == 'fabric':
             # Switch-switch connection (fabric)
             # Deterministic ordering: leaf/border before spine
@@ -397,6 +417,79 @@ class YAMLGenerator:
             'spec': {
                 'fabric': {
                     'links': fabric_links,
+                },
+            },
+        }
+
+    def _create_mesh_crd(
+        self,
+        switch_a: Device,
+        switch_b: Device,
+        links: List[Dict[str, Any]],
+    ) -> Dict[str, Any]:
+        """
+        Create a mesh Connection CRD for a point-to-point switch pair (DIET-309).
+
+        Args:
+            switch_a: First switch device (alphabetically first)
+            switch_b: Second switch device
+            links: List of link_data dicts for this pair (each has leaf1_device,
+                   leaf1_iface, leaf2_device, leaf2_iface)
+
+        Returns:
+            Connection CRD dictionary with spec.mesh.links
+        """
+        from netbox_hedgehog.models.topology_planning import PlanMeshLink
+
+        crd_name = self._sanitize_name(f"mesh--{switch_a.name}--{switch_b.name}")
+
+        # Look up IPs from PlanMeshLink for this switch pair
+        ip_a = ''
+        ip_b = ''
+        if self.plan_id:
+            try:
+                mesh_link = PlanMeshLink.objects.get(
+                    plan_id=self.plan_id,
+                    leaf1_name=switch_a.name,
+                    leaf2_name=switch_b.name,
+                )
+                import ipaddress
+                net = ipaddress.ip_network(mesh_link.subnet, strict=False)
+                hosts = list(net.hosts())
+                if len(hosts) >= 2:
+                    ip_a = f"{hosts[0]}/31"
+                    ip_b = f"{hosts[1]}/31"
+            except PlanMeshLink.DoesNotExist:
+                pass
+            except Exception:
+                pass
+
+        mesh_link_entries = []
+        for link_data in links:
+            entry = {
+                'leaf1': {
+                    'device': link_data['leaf1_device'].name,
+                    'port': f"{link_data['leaf1_device'].name}/{link_data['leaf1_iface'].name}",
+                    'ip': ip_a,
+                },
+                'leaf2': {
+                    'device': link_data['leaf2_device'].name,
+                    'port': f"{link_data['leaf2_device'].name}/{link_data['leaf2_iface'].name}",
+                    'ip': ip_b,
+                },
+            }
+            mesh_link_entries.append(entry)
+
+        return {
+            'apiVersion': 'wiring.githedgehog.com/v1beta1',
+            'kind': 'Connection',
+            'metadata': {
+                'name': crd_name,
+                'namespace': 'default',
+            },
+            'spec': {
+                'mesh': {
+                    'links': mesh_link_entries,
                 },
             },
         }
@@ -664,6 +757,13 @@ class YAMLGenerator:
             return 'server'
         return 'excluded'
 
+    def _is_mesh_endpoint(self, device: Device) -> bool:
+        """Return True if device belongs to a prefer-mesh switch class fabric."""
+        topology_mode = device.custom_field_data.get('hedgehog_topology_mode', '')
+        if topology_mode == 'prefer-mesh':
+            return True
+        return False
+
     def _determine_connection_type(self, device_a: Device, device_b: Device, cable_id: int) -> str:
         """
         Determine Hedgehog connection type from endpoint kinds (DIET-139, DIET-250).
@@ -674,6 +774,7 @@ class YAMLGenerator:
             cable_id: Cable ID for logging
 
         Returns:
+            'mesh'      for managed_switch↔managed_switch in prefer-mesh fabric
             'unbundled' for server↔managed_switch
             'fabric'    for managed_switch↔managed_switch
             'excluded'  for all other combinations (silent skip — no ValidationError)
@@ -690,8 +791,10 @@ class YAMLGenerator:
         if kind_a == 'server' and kind_b == 'server':
             raise ValidationError("Server-to-server connections are not supported. Expected server↔switch or switch↔switch.")
 
-        # managed_switch↔managed_switch → fabric
+        # managed_switch↔managed_switch — check for mesh topology before fabric
         if kind_a == 'managed_switch' and kind_b == 'managed_switch':
+            if self._is_mesh_endpoint(device_a) and self._is_mesh_endpoint(device_b):
+                return 'mesh'
             return 'fabric'
 
         # Everything else (surrogate↔surrogate, server↔surrogate, server↔server, excluded) — silent skip
@@ -1193,6 +1296,7 @@ class YAMLGenerator:
         mclag_domain_links = defaultdict(lambda: {'peer': [], 'session': []})  # (sw1, sw2) -> {peer: [...], session: [...]}
         server_links = defaultdict(list)  # server_device -> [link_data]
         fabric_links_by_pair = defaultdict(list)  # (leaf, spine) -> [link_data]
+        mesh_links_by_pair = defaultdict(list)  # (switch_a, switch_b) -> [link_data]
         unbundled_crds = []
 
         for cable in cables:
@@ -1208,6 +1312,11 @@ class YAMLGenerator:
                     iface_a = link_data['server_iface']
                     device_b = link_data['switch_device']
                     iface_b = link_data['switch_iface']
+                elif conn_type == 'mesh':
+                    device_a = link_data['leaf1_device']
+                    iface_a = link_data['leaf1_iface']
+                    device_b = link_data['leaf2_device']
+                    iface_b = link_data['leaf2_iface']
                 else:
                     device_a = link_data['leaf_device']
                     iface_a = link_data['leaf_iface']
@@ -1287,6 +1396,9 @@ class YAMLGenerator:
                     # No explicit zone classification - use endpoint-kind-based detection
                     if conn_type == 'unbundled':
                         unbundled_crds.append(self._create_unbundled_crd(link_data))
+                    elif conn_type == 'mesh':
+                        switch_pair = tuple(sorted([device_a.name, device_b.name]))
+                        mesh_links_by_pair[switch_pair].append(link_data)
                     elif conn_type == 'fabric':
                         device_pair = (link_data['leaf_device'], link_data['spine_device'])
                         fabric_links_by_pair[device_pair].append(link_data)
@@ -1347,7 +1459,14 @@ class YAMLGenerator:
         for (leaf_device, spine_device), links in fabric_links_by_pair.items():
             fabric_crds.append(self._create_fabric_crd(leaf_device, spine_device, links))
 
-        return mclag_domain_crds + server_conn_crds + unbundled_crds + fabric_crds
+        # Generate mesh CRDs
+        mesh_crds = []
+        for switch_pair, links in mesh_links_by_pair.items():
+            switch_a = Device.objects.get(name=switch_pair[0])
+            switch_b = Device.objects.get(name=switch_pair[1])
+            mesh_crds.append(self._create_mesh_crd(switch_a, switch_b, links))
+
+        return mclag_domain_crds + server_conn_crds + unbundled_crds + fabric_crds + mesh_crds
 
     def _generate_vlannamespaces(self) -> List[Dict[str, Any]]:
         """

@@ -26,6 +26,7 @@ from .topology_plans import (
     PlanServerClass,
     PlanServerNIC,
     PlanSwitchClass,
+    PlanMeshLink,
     PlanServerConnection,
     PlanMCLAGDomain,
 )
@@ -48,6 +49,7 @@ __all__ = [
     'PlanServerClass',
     'PlanServerNIC',
     'PlanSwitchClass',
+    'PlanMeshLink',
     'PlanServerConnection',
     'PlanMCLAGDomain',
     'SwitchPortZone',
