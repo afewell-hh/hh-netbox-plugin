@@ -218,17 +218,7 @@ class DeviceGenerator:
                     'boot_mac': self._generate_boot_mac(name),
                 }
                 if switch_class.topology_mode == 'prefer-mesh':
-                    from extras.models import CustomField
-                    from django.contrib.contenttypes.models import ContentType
-                    from dcim.models import Device as DcimDevice
-                    if not CustomField.objects.filter(name='hedgehog_topology_mode').exists():
-                        cf = CustomField.objects.create(
-                            name='hedgehog_topology_mode',
-                            type='text',
-                            label='Hedgehog Topology Mode',
-                        )
-                        ct = ContentType.objects.get_for_model(DcimDevice)
-                        cf.object_types.set([ct])
+                    # hedgehog_topology_mode is provisioned by migration 0042.
                     custom_fields['hedgehog_topology_mode'] = 'prefer-mesh'
                 device.custom_field_data = custom_fields
                 device.save()
