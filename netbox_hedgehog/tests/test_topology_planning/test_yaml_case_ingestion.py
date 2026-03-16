@@ -15,7 +15,7 @@ import importlib
 
 from django.test import TestCase
 
-from netbox_hedgehog.models.topology_planning import TopologyPlan
+from netbox_hedgehog.models.topology_planning import PlanSwitchClass, TopologyPlan
 
 
 class YAMLCaseIngestionRedTestCase(TestCase):
@@ -96,3 +96,52 @@ class YAMLCaseIngestionRedTestCase(TestCase):
 
         with self.assertRaises(Exception):
             ingest.apply_case(case, clean=False, prune=False, reference_mode="require")
+
+    def test_apply_case_persists_mesh_fields(self):
+        ingest = self._import_ingest()
+        case = self._minimal_case("mesh_case")
+        case["plan"]["mesh_ip_pool"] = "172.30.128.0/24"
+        case["reference_data"] = {
+            "manufacturers": [
+                {"id": "mesh_mfr", "name": "Mesh Mfr", "slug": "mesh-mfr"},
+            ],
+            "device_types": [
+                {
+                    "id": "mesh_switch_dt",
+                    "manufacturer": "mesh_mfr",
+                    "model": "Mesh Switch",
+                    "slug": "mesh-switch",
+                    "interface_templates": [
+                        {"name": "E1/1", "type": "100gbase-x-qsfp28"},
+                    ],
+                },
+            ],
+            "device_type_extensions": [
+                {
+                    "id": "mesh_switch_ext",
+                    "device_type": "mesh_switch_dt",
+                    "hedgehog_roles": ["server-leaf"],
+                    "native_speed": 100,
+                    "uplink_ports": 0,
+                    "supported_breakouts": ["1x100g"],
+                },
+            ],
+        }
+        case["switch_classes"] = [
+            {
+                "switch_class_id": "mesh-leaf",
+                "fabric_name": "frontend",
+                "fabric_class": "managed",
+                "hedgehog_role": "server-leaf",
+                "device_type_extension": "mesh_switch_ext",
+                "topology_mode": "prefer-mesh",
+                "override_quantity": 2,
+            },
+        ]
+
+        plan = ingest.apply_case(case, clean=False, prune=False, reference_mode="ensure")
+
+        plan.refresh_from_db()
+        self.assertEqual(plan.mesh_ip_pool, "172.30.128.0/24")
+        switch_class = PlanSwitchClass.objects.get(plan=plan, switch_class_id="mesh-leaf")
+        self.assertEqual(switch_class.topology_mode, "prefer-mesh")

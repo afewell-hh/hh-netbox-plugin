@@ -312,3 +312,226 @@ spec:
         non_null = [d for d in docs if d]
         self.assertEqual(len(non_null), 5,
                          "MINIMAL_SURROGATE_YAML must parse to 5 documents")
+
+
+# =============================================================================
+# Class: MeshWiringHHFabValidationTestCase — #311 RED
+#
+# Tests that a DIET-generated mesh wiring YAML (all IPs absent) passes
+# hhfab validate in default --hydrate-mode=if-not-present mode.
+#
+# RED state: current code injects mesh link IPs → HydrationStatusPartial →
+# hhfab validate fails.
+# GREEN state: IPs omitted → HydrationStatusNone → hhfab hydrates → validates.
+# =============================================================================
+
+class MeshWiringHHFabValidationTestCase(TestCase):
+    """RED tests for issue #311: hhfab validate must pass for DIET mesh wiring.
+
+    These tests verify the end-to-end acceptance criterion:
+      A DIET-generated mesh wiring YAML (all switch and connection IPs absent)
+      must pass hhfab validate in default --hydrate-mode=if-not-present mode.
+
+    The MINIMAL_MESH_WIRING_YAML constant represents the correct post-GREEN
+    output from DIET's _create_mesh_crd(): Switch CRDs with no management IPs
+    and mesh Connection CRDs with no leaf IP fields.
+
+    The BROKEN_MESH_WIRING_YAML constant represents the current (pre-GREEN)
+    output, which includes mesh link IPs — causing HydrationStatusPartial.
+    """
+
+    # Correct post-GREEN YAML: no IP fields, no 'device' fields (schema bug also fixed).
+    # ConnFabricLinkSwitch only has 'port' (inline BasePortName) and 'ip' (omitempty).
+    # 'device' is NOT a valid field — hhfab strict-decodes and rejects it.
+    # This is what hhfab validate must accept after #311 GREEN.
+    MINIMAL_MESH_WIRING_YAML = """\
+---
+apiVersion: wiring.githedgehog.com/v1beta1
+kind: VLANNamespace
+metadata:
+  name: default
+  namespace: default
+spec:
+  ranges:
+    - from: 1000
+      to: 2999
+---
+apiVersion: vpc.githedgehog.com/v1beta1
+kind: IPv4Namespace
+metadata:
+  name: default
+  namespace: default
+spec:
+  subnets:
+    - 10.0.0.0/16
+---
+apiVersion: wiring.githedgehog.com/v1beta1
+kind: Switch
+metadata:
+  name: fe-leaf-01
+  namespace: default
+spec:
+  role: server-leaf
+  profile: celestica-ds5000
+  boot:
+    mac: 0c:20:12:fe:01:01
+---
+apiVersion: wiring.githedgehog.com/v1beta1
+kind: Switch
+metadata:
+  name: fe-leaf-02
+  namespace: default
+spec:
+  role: server-leaf
+  profile: celestica-ds5000
+  boot:
+    mac: 0c:20:12:fe:02:01
+---
+apiVersion: wiring.githedgehog.com/v1beta1
+kind: Connection
+metadata:
+  name: mesh--fe-leaf-01--fe-leaf-02
+  namespace: default
+spec:
+  mesh:
+    links:
+      - leaf1:
+          port: fe-leaf-01/E1/63
+        leaf2:
+          port: fe-leaf-02/E1/63
+"""
+
+    # Current (pre-GREEN) output: mesh link IPs injected AND 'device' key emitted.
+    # Both are wrong: 'device' is not in schema, 'ip' causes HydrationStatusPartial.
+    # hhfab must fail on this YAML (it currently does, for the schema reason).
+    BROKEN_MESH_WIRING_YAML = """\
+---
+apiVersion: wiring.githedgehog.com/v1beta1
+kind: VLANNamespace
+metadata:
+  name: default
+  namespace: default
+spec:
+  ranges:
+    - from: 1000
+      to: 2999
+---
+apiVersion: vpc.githedgehog.com/v1beta1
+kind: IPv4Namespace
+metadata:
+  name: default
+  namespace: default
+spec:
+  subnets:
+    - 10.0.0.0/16
+---
+apiVersion: wiring.githedgehog.com/v1beta1
+kind: Switch
+metadata:
+  name: fe-leaf-01
+  namespace: default
+spec:
+  role: server-leaf
+  profile: celestica-ds5000
+  boot:
+    mac: 0c:20:12:fe:01:01
+---
+apiVersion: wiring.githedgehog.com/v1beta1
+kind: Switch
+metadata:
+  name: fe-leaf-02
+  namespace: default
+spec:
+  role: server-leaf
+  profile: celestica-ds5000
+  boot:
+    mac: 0c:20:12:fe:02:01
+---
+apiVersion: wiring.githedgehog.com/v1beta1
+kind: Connection
+metadata:
+  name: mesh--fe-leaf-01--fe-leaf-02
+  namespace: default
+spec:
+  mesh:
+    links:
+      - leaf1:
+          port: fe-leaf-01/E1/63
+          ip: 172.30.128.0/31
+        leaf2:
+          port: fe-leaf-02/E1/63
+          ip: 172.30.128.1/31
+"""
+
+    def test_minimal_mesh_wiring_yaml_is_parseable(self):
+        """T9a: The no-IP mesh wiring YAML must parse without errors."""
+        import yaml
+        docs = list(yaml.safe_load_all(self.MINIMAL_MESH_WIRING_YAML))
+        non_null = [d for d in docs if d]
+        self.assertEqual(len(non_null), 5, "Mesh wiring YAML must produce 5 documents")
+
+    def test_minimal_mesh_wiring_has_no_ip_keys(self):
+        """T9b: The no-IP mesh wiring YAML must contain no leaf1.ip or leaf2.ip keys."""
+        import yaml
+        docs = list(yaml.safe_load_all(self.MINIMAL_MESH_WIRING_YAML))
+        for doc in docs:
+            if not doc or doc.get('kind') != 'Connection':
+                continue
+            spec = doc.get('spec', {})
+            mesh = spec.get('mesh', {})
+            for link in mesh.get('links', []):
+                self.assertNotIn('ip', link.get('leaf1', {}),
+                                 "No leaf1.ip in MINIMAL_MESH_WIRING_YAML")
+                self.assertNotIn('ip', link.get('leaf2', {}),
+                                 "No leaf2.ip in MINIMAL_MESH_WIRING_YAML")
+
+    def test_broken_mesh_wiring_has_ip_keys(self):
+        """T9c: Sanity — the pre-GREEN (broken) YAML has ip keys present and no device keys."""
+        import yaml
+        docs = list(yaml.safe_load_all(self.BROKEN_MESH_WIRING_YAML))
+        found_ip = False
+        found_device = False
+        for doc in docs:
+            if not doc or doc.get('kind') != 'Connection':
+                continue
+            spec = doc.get('spec', {})
+            mesh = spec.get('mesh', {})
+            for link in mesh.get('links', []):
+                if 'ip' in link.get('leaf1', {}) or 'ip' in link.get('leaf2', {}):
+                    found_ip = True
+                if 'device' in link.get('leaf1', {}) or 'device' in link.get('leaf2', {}):
+                    found_device = True
+        self.assertTrue(found_ip, "BROKEN_MESH_WIRING_YAML must have ip keys for sanity check")
+        self.assertFalse(found_device, "BROKEN_MESH_WIRING_YAML must not have device keys")
+
+    @unittest.skipUnless(hhfab.is_hhfab_available(), "hhfab not installed")
+    def test_mesh_wiring_without_ips_passes_hhfab_validate(self):
+        """T10: hhfab validate must accept mesh wiring with no leaf IP fields.
+
+        RED state: this passes only after GREEN (#311) removes mesh IP injection.
+        The MINIMAL_MESH_WIRING_YAML has no Switch or Connection IPs, so hhfab
+        sees HydrationStatusNone and auto-assigns all IPs before validating.
+        """
+        success, stdout, stderr = hhfab.validate_yaml(self.MINIMAL_MESH_WIRING_YAML)
+        self.assertTrue(
+            success,
+            f"hhfab must accept mesh wiring with no IP fields (HydrationStatusNone). "
+            f"stderr: {stderr.strip()}\nstdout: {stdout.strip()}",
+        )
+
+    @unittest.skipUnless(hhfab.is_hhfab_available(), "hhfab not installed")
+    def test_mesh_wiring_with_ips_fails_hhfab_validate(self):
+        """T11: hhfab validate must FAIL for mesh wiring that has IPs present
+        while switch IPs are absent (HydrationStatusPartial).
+
+        This documents the failure mode of the pre-GREEN code. It also acts as
+        a sentinel — if this starts passing, something changed in hhfab's
+        hydration model and we need to re-evaluate.
+        """
+        success, stdout, stderr = hhfab.validate_yaml(self.BROKEN_MESH_WIRING_YAML)
+        self.assertFalse(
+            success,
+            f"hhfab must reject mesh wiring with IPs present but switch IPs absent "
+            f"(HydrationStatusPartial). If this passes, hhfab's hydration behavior changed. "
+            f"stdout: {stdout.strip()}\nstderr: {stderr.strip()}",
+        )

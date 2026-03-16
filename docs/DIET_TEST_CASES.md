@@ -1,6 +1,13 @@
 DIET Test Cases
 ================
 
+Note
+----
+For the current YAML authoring format used by `apply_diet_test_case`, see
+`docs/DIET_TOPOLOGY_PLAN_YAML_REFERENCE.md`.
+
+This file describes specific scenarios, not the full ingest schema.
+
 Case: 128 GPU Servers + Storage Split + Odd-Port Breakouts
 ----------------------------------------------------------
 
