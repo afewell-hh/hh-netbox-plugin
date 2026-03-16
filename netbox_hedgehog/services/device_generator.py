@@ -1247,13 +1247,6 @@ class DeviceGenerator:
                         f"mesh requires exactly 2 or 3. Skipping."
                     )
                 continue
-            if not plan.mesh_ip_pool:
-                if self.logger:
-                    self.logger.warning(
-                        f"Mesh fabric '{fabric_name}': mesh_ip_pool not set on plan. Skipping."
-                    )
-                continue
-
             mesh_links = allocate_mesh_links(
                 plan,
                 fabric_name,

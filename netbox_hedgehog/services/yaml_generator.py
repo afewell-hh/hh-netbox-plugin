@@ -430,6 +430,10 @@ class YAMLGenerator:
         """
         Create a mesh Connection CRD for a point-to-point switch pair (DIET-309).
 
+        IPs are unconditionally omitted (DIET-311): hhfab uses an all-or-nothing
+        hydration model; injecting mesh IPs while switch-level IPs are absent
+        produces HydrationStatusPartial which hhfab validate rejects.
+
         Args:
             switch_a: First switch device (alphabetically first)
             switch_b: Second switch device
@@ -439,43 +443,16 @@ class YAMLGenerator:
         Returns:
             Connection CRD dictionary with spec.mesh.links
         """
-        from netbox_hedgehog.models.topology_planning import PlanMeshLink
-
         crd_name = self._sanitize_name(f"mesh--{switch_a.name}--{switch_b.name}")
-
-        # Look up IPs from PlanMeshLink for this switch pair
-        ip_a = ''
-        ip_b = ''
-        if self.plan_id:
-            try:
-                mesh_link = PlanMeshLink.objects.get(
-                    plan_id=self.plan_id,
-                    leaf1_name=switch_a.name,
-                    leaf2_name=switch_b.name,
-                )
-                import ipaddress
-                net = ipaddress.ip_network(mesh_link.subnet, strict=False)
-                hosts = list(net.hosts())
-                if len(hosts) >= 2:
-                    ip_a = f"{hosts[0]}/31"
-                    ip_b = f"{hosts[1]}/31"
-            except PlanMeshLink.DoesNotExist:
-                pass
-            except Exception:
-                pass
 
         mesh_link_entries = []
         for link_data in links:
             entry = {
                 'leaf1': {
-                    'device': link_data['leaf1_device'].name,
                     'port': f"{link_data['leaf1_device'].name}/{link_data['leaf1_iface'].name}",
-                    'ip': ip_a,
                 },
                 'leaf2': {
-                    'device': link_data['leaf2_device'].name,
                     'port': f"{link_data['leaf2_device'].name}/{link_data['leaf2_iface'].name}",
-                    'ip': ip_b,
                 },
             }
             mesh_link_entries.append(entry)

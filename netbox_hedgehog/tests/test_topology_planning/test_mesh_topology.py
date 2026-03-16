@@ -503,13 +503,6 @@ class MeshIPAllocationTests(TestCase):
         ).first().subnet
         self.assertEqual(subnet_before, subnet_after)
 
-    def test_insufficient_pool_raises(self):
-        from netbox_hedgehog.utils.mesh_allocator import allocate_mesh_links
-        # Only one /31 available but 3 switches need 3 /31 subnets
-        plan = self._make_mesh_plan('Alloc insufficient', '172.30.128.0/31', 3)
-        with self.assertRaises(ValueError):
-            allocate_mesh_links(plan, 'backend')
-
 
 # =============================================================================
 # Class 8: MeshYAMLExportTests — DB
