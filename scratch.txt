@@ -37,8 +37,28 @@ The hedgehog documentation can be found here: https://hedgehog.io/docs/hedgehog/
 The hedgehog documentation for the API for these cr's can be found here: https://docs.hedgehog.cloud/latest/reference/fabric-api/
 </original instructions>
 
-
-
+--------------------------------
+why does the 866-test suite take 55 minutes?                                                                                            
+                                                                                          
+  Here's what I believe the actual breakdown is:                                                                                                                                    
+                                                                                                                                                                                    
+  Per-test overhead (not device generation):
+  - Django TestCase wraps every test in a transaction and rolls it back — hundreds of roundtrips to Postgres                                                                        
+  - setUpTestData runs once per class but there are ~40+ test classes, each creating plans, switch classes, zones, server classes, etc.
+  - HTTP integration tests go through the full Django request stack (middleware, ORM, template rendering) per request                                                               
+                                                                                                                                       
+  Tests that actually do generation (not tagged slow):                                                                                                                              
+  - test_fabric_connections — generates real device+interface+cable objects for fabric mesh tests                                                                                   
+  - test_unified_generate_update — generates small plans but still calls DeviceGenerator                                                                                            
+  - test_job_integration — runs the job runner                                                                                                                                      
+                                                                                        
+  The total DB operation count across 866 tests is enormous even for small plans. At ~3.8s per test average, the culprit isn't any single test — it's accumulated transaction       
+  overhead across hundreds of tests.                                                                                                                                                
+                                                                                                                                                                                    
+  --parallel is the right fix here. Each worker gets its own isolated database (test_default_1, test_default_2, etc.) so no contention. With 20 CPUs available, --parallel 8 would  
+  run 8 test classes simultaneously. That's roughly the reason the suite can be expected to drop from ~55 min to ~10-12 min.                                                        
+                                                                                                                            
+  Let me wait for the current run to finish and get the final numbers, then validate --parallel works:
 --------------------------------
 
 
@@ -159,6 +179,41 @@ You are a Kubernetes-to-NetBox Import Specialist for the Hedgehog NetBox Plugin 
   diet tools before resuming development on the operations toolset. You can use gh cli or use any of the creds in
   the .env file such as the GITHUB_USERNAME and    GITHUB_TOKEN values as needed to complete project tasks. Please
   review issue tickets #82 to understand project history, #83 to understand the intent with the diet tools, and
-  you had just wrapped up 119 when you crashed. let me know when you have
+  then review the most recent git activity to understand the latest changes. let me know when you have
   had the chance to review and get up to speed and I will provide you more specific instructions on what youre to
   do next, thanks!
+
+  Hi, You were previously working on this project and crashed, let me get you back up to speed. I am undergoing a
+  major transformation for this project, and I would like you to be the leader as you pair with another other dev to collaborate, share
+  opinions, and verify each others work.  there isnt a way for you to communicate directly with them, you are dev C, there is also dev A. you share the same local env so you can see the same filesystem, you all have access to the internet and to github so can read issue tickets and such. You can also   ask me to pass messages between you. This project was focused on making operational management tools for hedgehog open network fabric software. It was abandoned a while back, and we are reviving it, but, we now have a more urgent need to develop design and implementation excellence tools (diet) before we finish the operational
+  management tools, and so the intent is to revive the project, but in doing so to turn the initial focus to the diet tools before resuming development on the operations toolset. You can use gh cli or use any of the creds in the .env file such as the GITHUB_USERNAME and GITHUB_TOKEN values as needed to complete project tasks. Please  review issue tickets #82 to understand project history, #83 to understand the intent with the diet tools, and
+  then review the most recent git activity to understand the latest changes. let me know when you have
+  had the chance to review and get up to speed and I will provide you more specific instructions on what youre to
+  do next, thanks!
+
+
+
+  Yes. I created a recovery checkpoint at:
+
+  /home/ubuntu/afewell-hh/recovery_snapshots/20260312T235556Z-hnp-netbox-checkpoint
+
+  It captures:
+
+  - plugin repo baseline as a full git bundle
+  - current dirty workspace state as tracked-changes.patch
+  - current untracked files as untracked-files.tgz
+  - local NetBox Postgres state as netbox-postgres.dump
+  - restore instructions in RESTORE.txt
+
+  Current code anchor:
+
+  - branch: diet-291-phase4-green
+  - HEAD: cc47685966cad5a7d52447155382d8390f8f7f9c
+
+  A few artifact sizes, so you know they’re real:
+
+  - DB dump: 1.2M
+  - repo bundle: 70M
+
+  This is enough to get back to the current plugin code state and current local NetBox DB state without guessing. I did not stop containers or modify repo files.
+  If you want, I can also add a second heavier checkpoint by exporting the Docker volumes themselves, but for normal recovery this one is the right tradeoff.

@@ -598,7 +598,7 @@ class PlanMeshLink(models.Model):
         on_delete=models.CASCADE,
         related_name='mesh_links_as_b',
     )
-    subnet = models.CharField(max_length=20, help_text="/31 subnet, e.g. 172.30.128.0/31")
+    subnet = models.CharField(max_length=20, blank=True, help_text="/31 subnet, e.g. 172.30.128.0/31")
     link_index = models.IntegerField(default=0)
     leaf1_port = models.CharField(max_length=50, blank=True)
     leaf2_port = models.CharField(max_length=50, blank=True)
@@ -614,12 +614,13 @@ class PlanMeshLink(models.Model):
         # Auto-populate fabric_name from switch_class_a if not set
         if self.switch_class_a_id and not self.fabric_name:
             self.fabric_name = self.switch_class_a.fabric_name
-        try:
-            net = ipaddress.ip_network(self.subnet, strict=True)
-        except ValueError as e:
-            raise ValidationError({'subnet': str(e)})
-        if net.prefixlen != 31:
-            raise ValidationError({'subnet': f'Mesh link subnet must be a /31, got /{net.prefixlen}.'})
+        if self.subnet:
+            try:
+                net = ipaddress.ip_network(self.subnet, strict=True)
+            except ValueError as e:
+                raise ValidationError({'subnet': str(e)})
+            if net.prefixlen != 31:
+                raise ValidationError({'subnet': f'Mesh link subnet must be a /31, got /{net.prefixlen}.'})
         if self.switch_class_a and self.switch_class_b:
             if self.switch_class_a.switch_class_id > self.switch_class_b.switch_class_id:
                 raise ValidationError('switch_class_a must be alphabetically first.')

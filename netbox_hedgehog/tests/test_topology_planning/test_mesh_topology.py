@@ -503,13 +503,6 @@ class MeshIPAllocationTests(TestCase):
         ).first().subnet
         self.assertEqual(subnet_before, subnet_after)
 
-    def test_insufficient_pool_raises(self):
-        from netbox_hedgehog.utils.mesh_allocator import allocate_mesh_links
-        # Only one /31 available but 3 switches need 3 /31 subnets
-        plan = self._make_mesh_plan('Alloc insufficient', '172.30.128.0/31', 3)
-        with self.assertRaises(ValueError):
-            allocate_mesh_links(plan, 'backend')
-
 
 # =============================================================================
 # Class 8: MeshYAMLExportTests — DB
@@ -652,3 +645,349 @@ class MeshGenerationStateTests(TestCase):
         plan = _make_plan('No MeshLinks Snapshot Plan')
         snapshot = build_plan_snapshot(plan)
         self.assertNotIn('mesh_links', snapshot)
+
+
+# =============================================================================
+# Class 10: MeshIPOmissionExportTests — DB (#311 RED)
+#
+# These tests verify that _create_mesh_crd() never emits leaf1.ip / leaf2.ip,
+# regardless of whether mesh_ip_pool is set or PlanMeshLink.subnet is populated.
+# All tests in this class are expected to FAIL until GREEN (#311) is implemented.
+# =============================================================================
+
+class MeshIPOmissionExportTests(TestCase):
+    """RED tests for issue #311: mesh Connection CRDs must omit leaf IP fields."""
+
+    @classmethod
+    def setUpTestData(cls):
+        cls.mfr, cls.dt, cls.ext = _make_base_fixtures()
+
+    def _make_mesh_plan_with_pool(self, name):
+        """Return a plan with mesh_ip_pool set and two prefer-mesh switch classes."""
+        plan = TopologyPlan.objects.create(name=name, mesh_ip_pool='172.30.128.0/24')
+        PlanSwitchClass.objects.create(
+            plan=plan,
+            switch_class_id='ip-omit-leaf-01',
+            fabric_name='frontend',
+            fabric_class=FabricClassChoices.MANAGED,
+            hedgehog_role='server-leaf',
+            device_type_extension=self.ext,
+            uplink_ports_per_switch=0,
+            topology_mode='prefer-mesh',
+            override_quantity=1,
+        )
+        PlanSwitchClass.objects.create(
+            plan=plan,
+            switch_class_id='ip-omit-leaf-02',
+            fabric_name='frontend',
+            fabric_class=FabricClassChoices.MANAGED,
+            hedgehog_role='server-leaf',
+            device_type_extension=self.ext,
+            uplink_ports_per_switch=0,
+            topology_mode='prefer-mesh',
+            override_quantity=1,
+        )
+        return plan
+
+    def _make_minimal_link_data(self):
+        """Return minimal link_data dicts for _create_mesh_crd() using real Device stubs."""
+        from dcim.models import Device, DeviceRole, Site
+        site, _ = Site.objects.get_or_create(
+            slug='mesh-ip-omit-site',
+            defaults={'name': 'Mesh IP Omit Site'},
+        )
+        role, _ = DeviceRole.objects.get_or_create(
+            slug='server-leaf',
+            defaults={'name': 'server-leaf', 'color': '0000ff'},
+        )
+        count = Device.objects.count()
+        dev_a = Device.objects.create(
+            name=f'ip-omit-leaf-01-{count}',
+            device_type=self.dt,
+            role=role,
+            site=site,
+        )
+        dev_b = Device.objects.create(
+            name=f'ip-omit-leaf-02-{count+1}',
+            device_type=self.dt,
+            role=role,
+            site=site,
+        )
+        from dcim.models import Interface
+        iface_a = Interface.objects.create(
+            device=dev_a,
+            name='E1/1',
+            type='1000base-t',
+        )
+        iface_b = Interface.objects.create(
+            device=dev_b,
+            name='E1/1',
+            type='1000base-t',
+        )
+        links = [
+            {
+                'leaf1_device': dev_a,
+                'leaf1_iface': iface_a,
+                'leaf2_device': dev_b,
+                'leaf2_iface': iface_b,
+            }
+        ]
+        return dev_a, dev_b, links
+
+    def test_mesh_crd_omits_leaf1_ip_when_pool_is_present(self):
+        """T1: _create_mesh_crd() must not emit leaf1.ip even when mesh_ip_pool is set."""
+        from netbox_hedgehog.services.yaml_generator import YAMLGenerator
+        from netbox_hedgehog.models.topology_planning import PlanMeshLink
+
+        plan = self._make_mesh_plan_with_pool('IP Omit T1')
+        gen = YAMLGenerator(plan_id=plan.pk)
+        dev_a, dev_b, links = self._make_minimal_link_data()
+
+        # Populate a PlanMeshLink with a real subnet (legacy data)
+        sc_a = plan.switch_classes.get(switch_class_id='ip-omit-leaf-01')
+        sc_b = plan.switch_classes.get(switch_class_id='ip-omit-leaf-02')
+        PlanMeshLink.objects.create(
+            plan=plan,
+            fabric_name='frontend',
+            switch_class_a=sc_a,
+            switch_class_b=sc_b,
+            subnet='172.30.128.0/31',
+            link_index=0,
+            leaf1_name=dev_a.name,
+            leaf2_name=dev_b.name,
+        )
+
+        crd = gen._create_mesh_crd(dev_a, dev_b, links)
+
+        for link_entry in crd['spec']['mesh']['links']:
+            self.assertNotIn(
+                'ip', link_entry['leaf1'],
+                "leaf1.ip must be absent from mesh Connection CRD (hhfab hydration contract)"
+            )
+            self.assertNotIn(
+                'ip', link_entry['leaf2'],
+                "leaf2.ip must be absent from mesh Connection CRD (hhfab hydration contract)"
+            )
+            # 'device' is not a valid field in ConnFabricLinkSwitch — hhfab strict-decodes
+            self.assertNotIn(
+                'device', link_entry['leaf1'],
+                "leaf1.device must be absent — not a valid field in ConnFabricLinkSwitch schema"
+            )
+            self.assertNotIn(
+                'device', link_entry['leaf2'],
+                "leaf2.device must be absent — not a valid field in ConnFabricLinkSwitch schema"
+            )
+
+    def test_mesh_crd_omits_leaf2_ip_when_pool_is_present(self):
+        """T2: _create_mesh_crd() must not emit leaf2.ip even when mesh_ip_pool is set."""
+        from netbox_hedgehog.services.yaml_generator import YAMLGenerator
+        from netbox_hedgehog.models.topology_planning import PlanMeshLink
+
+        plan = self._make_mesh_plan_with_pool('IP Omit T2')
+        gen = YAMLGenerator(plan_id=plan.pk)
+        dev_a, dev_b, links = self._make_minimal_link_data()
+
+        sc_a = plan.switch_classes.get(switch_class_id='ip-omit-leaf-01')
+        sc_b = plan.switch_classes.get(switch_class_id='ip-omit-leaf-02')
+        PlanMeshLink.objects.create(
+            plan=plan,
+            fabric_name='frontend',
+            switch_class_a=sc_a,
+            switch_class_b=sc_b,
+            subnet='172.30.128.0/31',
+            link_index=0,
+            leaf1_name=dev_a.name,
+            leaf2_name=dev_b.name,
+        )
+
+        crd = gen._create_mesh_crd(dev_a, dev_b, links)
+        leaf2 = crd['spec']['mesh']['links'][0]['leaf2']
+        self.assertNotIn('ip', leaf2)
+
+    def test_mesh_crd_omits_ip_when_pool_absent(self):
+        """T3: _create_mesh_crd() must not emit ip fields when mesh_ip_pool is absent."""
+        from netbox_hedgehog.services.yaml_generator import YAMLGenerator
+
+        plan = TopologyPlan.objects.create(name='IP Omit T3 no pool')
+        gen = YAMLGenerator(plan_id=plan.pk)
+        dev_a, dev_b, links = self._make_minimal_link_data()
+
+        crd = gen._create_mesh_crd(dev_a, dev_b, links)
+
+        for link_entry in crd['spec']['mesh']['links']:
+            self.assertNotIn('ip', link_entry['leaf1'])
+            self.assertNotIn('ip', link_entry['leaf2'])
+
+    def test_mesh_crd_does_not_emit_empty_string_ip(self):
+        """T4: 'ip': '' is as bad as 'ip': '1.2.3.4' — the key must be absent entirely."""
+        from netbox_hedgehog.services.yaml_generator import YAMLGenerator
+
+        plan = TopologyPlan.objects.create(name='IP Omit T4 no key')
+        gen = YAMLGenerator(plan_id=plan.pk)
+        dev_a, dev_b, links = self._make_minimal_link_data()
+
+        crd = gen._create_mesh_crd(dev_a, dev_b, links)
+        leaf1 = crd['spec']['mesh']['links'][0]['leaf1']
+        # The 'ip' key must not appear at all, not even as an empty string
+        self.assertNotIn('ip', leaf1, "Empty-string 'ip' key must not be emitted")
+
+    def test_mesh_crd_backward_compat_legacy_pool_and_subnets(self):
+        """T5: backward compat — plan with mesh_ip_pool + populated PlanMeshLink.subnet
+        still produces wiring with no IP keys (legacy data is tolerated but not exported)."""
+        from netbox_hedgehog.services.yaml_generator import YAMLGenerator
+        from netbox_hedgehog.models.topology_planning import PlanMeshLink
+
+        plan = self._make_mesh_plan_with_pool('IP Omit T5 legacy')
+        gen = YAMLGenerator(plan_id=plan.pk)
+        dev_a, dev_b, links = self._make_minimal_link_data()
+
+        # Simulate legacy state: subnet value present from old code path
+        sc_a = plan.switch_classes.get(switch_class_id='ip-omit-leaf-01')
+        sc_b = plan.switch_classes.get(switch_class_id='ip-omit-leaf-02')
+        PlanMeshLink.objects.create(
+            plan=plan,
+            fabric_name='frontend',
+            switch_class_a=sc_a,
+            switch_class_b=sc_b,
+            subnet='172.30.128.4/31',
+            link_index=0,
+            leaf1_name=dev_a.name,
+            leaf2_name=dev_b.name,
+        )
+
+        crd = gen._create_mesh_crd(dev_a, dev_b, links)
+        for link_entry in crd['spec']['mesh']['links']:
+            self.assertNotIn('ip', link_entry['leaf1'])
+            self.assertNotIn('ip', link_entry['leaf2'])
+
+
+# =============================================================================
+# Class 11: MeshGenerationWithoutPoolTests — DB (#311 RED)
+#
+# These tests verify that:
+# - allocate_mesh_links() works without mesh_ip_pool (pairing-only mode)
+# - PlanMeshLink.subnet allows blank
+# - DeviceGenerator creates mesh cables without requiring mesh_ip_pool
+# All tests are expected to FAIL until GREEN (#311) is implemented.
+# =============================================================================
+
+class MeshGenerationWithoutPoolTests(TestCase):
+    """RED tests for issue #311: mesh generation must not require mesh_ip_pool."""
+
+    @classmethod
+    def setUpTestData(cls):
+        cls.mfr, cls.dt, cls.ext = _make_base_fixtures()
+
+    def test_plan_mesh_link_allows_blank_subnet(self):
+        """T6: PlanMeshLink.clean() must accept blank subnet (not raise ValidationError)."""
+        from netbox_hedgehog.models.topology_planning import PlanMeshLink
+
+        plan = TopologyPlan.objects.create(name='Blank Subnet T6')
+        sc_a = PlanSwitchClass.objects.create(
+            plan=plan,
+            switch_class_id='blank-leaf-01',
+            fabric_name='backend',
+            fabric_class=FabricClassChoices.MANAGED,
+            hedgehog_role='server-leaf',
+            device_type_extension=self.ext,
+            uplink_ports_per_switch=0,
+            topology_mode='prefer-mesh',
+        )
+        sc_b = PlanSwitchClass.objects.create(
+            plan=plan,
+            switch_class_id='blank-leaf-02',
+            fabric_name='backend',
+            fabric_class=FabricClassChoices.MANAGED,
+            hedgehog_role='server-leaf',
+            device_type_extension=self.ext,
+            uplink_ports_per_switch=0,
+            topology_mode='prefer-mesh',
+        )
+        link = PlanMeshLink(
+            plan=plan,
+            switch_class_a=sc_a,
+            switch_class_b=sc_b,
+            subnet='',  # blank — must be tolerated
+            link_index=0,
+            leaf1_name='blank-leaf-01-01',
+            leaf2_name='blank-leaf-02-01',
+        )
+        # Must not raise ValidationError
+        try:
+            link.full_clean()
+        except ValidationError as e:
+            self.fail(f"PlanMeshLink.full_clean() raised ValidationError for blank subnet: {e}")
+        link.save()
+        self.assertEqual(PlanMeshLink.objects.filter(plan=plan).count(), 1)
+
+    def test_allocate_mesh_links_without_pool_creates_pairing_rows(self):
+        """T7: allocate_mesh_links() with no mesh_ip_pool must create PlanMeshLink rows
+        with correct pairing (leaf names, switch class FKs) and blank subnet."""
+        from netbox_hedgehog.utils.mesh_allocator import allocate_mesh_links
+        from netbox_hedgehog.models.topology_planning import PlanMeshLink
+
+        plan = TopologyPlan.objects.create(name='No Pool Pairing T7')  # no mesh_ip_pool
+        PlanSwitchClass.objects.create(
+            plan=plan,
+            switch_class_id='pair-leaf-01',
+            fabric_name='backend',
+            fabric_class=FabricClassChoices.MANAGED,
+            hedgehog_role='server-leaf',
+            device_type_extension=self.ext,
+            uplink_ports_per_switch=0,
+            topology_mode='prefer-mesh',
+            override_quantity=1,
+        )
+        PlanSwitchClass.objects.create(
+            plan=plan,
+            switch_class_id='pair-leaf-02',
+            fabric_name='backend',
+            fabric_class=FabricClassChoices.MANAGED,
+            hedgehog_role='server-leaf',
+            device_type_extension=self.ext,
+            uplink_ports_per_switch=0,
+            topology_mode='prefer-mesh',
+            override_quantity=1,
+        )
+
+        links = allocate_mesh_links(plan, 'backend')
+
+        self.assertEqual(len(links), 1, "Should create 1 pairing row for 2-switch mesh")
+        link = links[0]
+        self.assertEqual(link.leaf1_name, 'pair-leaf-01-01')
+        self.assertEqual(link.leaf2_name, 'pair-leaf-02-01')
+        self.assertEqual(link.subnet, '', "subnet must be blank when no pool is configured")
+
+    def test_allocate_mesh_links_without_pool_does_not_raise(self):
+        """T8: allocate_mesh_links() must not raise ValueError when mesh_ip_pool is absent."""
+        from netbox_hedgehog.utils.mesh_allocator import allocate_mesh_links
+
+        plan = TopologyPlan.objects.create(name='No Pool No Raise T8')
+        PlanSwitchClass.objects.create(
+            plan=plan,
+            switch_class_id='noraise-leaf-01',
+            fabric_name='backend',
+            fabric_class=FabricClassChoices.MANAGED,
+            hedgehog_role='server-leaf',
+            device_type_extension=self.ext,
+            uplink_ports_per_switch=0,
+            topology_mode='prefer-mesh',
+            override_quantity=1,
+        )
+        PlanSwitchClass.objects.create(
+            plan=plan,
+            switch_class_id='noraise-leaf-02',
+            fabric_name='backend',
+            fabric_class=FabricClassChoices.MANAGED,
+            hedgehog_role='server-leaf',
+            device_type_extension=self.ext,
+            uplink_ports_per_switch=0,
+            topology_mode='prefer-mesh',
+            override_quantity=1,
+        )
+        try:
+            allocate_mesh_links(plan, 'backend')
+        except ValueError as e:
+            self.fail(
+                f"allocate_mesh_links() raised ValueError with no mesh_ip_pool: {e}"
+            )

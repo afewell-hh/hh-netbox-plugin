@@ -361,6 +361,7 @@ def apply_case(
     plan_name = case["plan"]["name"]
     plan_status = case["plan"]["status"]
     plan_description = case["plan"].get("description", "")
+    plan_mesh_ip_pool = case["plan"].get("mesh_ip_pool", "")
 
     _validate_reference_data(case, reference_mode)
     refs = _ensure_reference_data(case, reference_mode)
@@ -394,11 +395,13 @@ def apply_case(
         plan.name = plan_name
         plan.status = plan_status
         plan.description = plan_description
+        plan.mesh_ip_pool = plan_mesh_ip_pool
     else:
         plan = TopologyPlan(
             name=plan_name,
             status=plan_status,
             description=plan_description,
+            mesh_ip_pool=plan_mesh_ip_pool,
         )
 
     cf = dict(plan.custom_field_data or {})
@@ -468,6 +471,7 @@ def apply_case(
                 "uplink_ports_per_switch": item.get("uplink_ports_per_switch"),
                 "mclag_pair": item.get("mclag_pair", False),
                 "override_quantity": item.get("override_quantity"),
+                "topology_mode": item.get("topology_mode", ""),
                 "redundancy_type": item.get("redundancy_type", ""),
                 "redundancy_group": item.get("redundancy_group", ""),
             },
