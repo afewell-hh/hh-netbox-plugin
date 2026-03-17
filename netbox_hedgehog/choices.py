@@ -209,11 +209,11 @@ class TopologyModeChoices(ChoiceSet):
     """Topology mode choices for PlanSwitchClass."""
 
     SPINE_LEAF = 'spine-leaf'
-    PREFER_MESH = 'prefer-mesh'
+    MESH = 'mesh'
 
     CHOICES = [
         (SPINE_LEAF, 'Spine-Leaf'),
-        (PREFER_MESH, 'Prefer Mesh'),
+        (MESH, 'Mesh'),
     ]
 
 

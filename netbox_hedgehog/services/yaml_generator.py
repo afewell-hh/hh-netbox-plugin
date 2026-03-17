@@ -53,6 +53,17 @@ class YAMLGenerator:
         self.plan = plan
         self.plan_id = plan.pk if plan is not None else plan_id
         self.fabric = fabric
+        # Precompute mesh switch class IDs from plan state for export classification.
+        # This replaces the old hedgehog_topology_mode device custom field approach.
+        from ..choices import TopologyModeChoices
+        if self.plan is not None:
+            self._mesh_switch_class_ids = frozenset(
+                self.plan.switch_classes.filter(
+                    topology_mode=TopologyModeChoices.MESH
+                ).values_list('switch_class_id', flat=True)
+            )
+        else:
+            self._mesh_switch_class_ids = frozenset()
         valid_fabrics = self._managed_fabric_names_from_inventory() or self._managed_fabric_names_from_plan()
         if fabric is not None and fabric not in valid_fabrics:
             raise ValueError(
@@ -437,25 +448,16 @@ class YAMLGenerator:
         Args:
             switch_a: First switch device (alphabetically first)
             switch_b: Second switch device
-            links: List of link_data dicts for this pair (each has leaf1_device,
-                   leaf1_iface, leaf2_device, leaf2_iface)
+            links: List of pre-formatted mesh link entry dicts:
+                   {'leaf1': {'port': 'switch-a/E1/1'}, 'leaf2': {'port': 'switch-b/E1/2'}}
+                   IPs must NOT be included (DIET-311).
 
         Returns:
             Connection CRD dictionary with spec.mesh.links
         """
         crd_name = self._sanitize_name(f"mesh--{switch_a.name}--{switch_b.name}")
 
-        mesh_link_entries = []
-        for link_data in links:
-            entry = {
-                'leaf1': {
-                    'port': f"{link_data['leaf1_device'].name}/{link_data['leaf1_iface'].name}",
-                },
-                'leaf2': {
-                    'port': f"{link_data['leaf2_device'].name}/{link_data['leaf2_iface'].name}",
-                },
-            }
-            mesh_link_entries.append(entry)
+        mesh_link_entries = list(links)
 
         return {
             'apiVersion': 'wiring.githedgehog.com/v1beta1',
@@ -735,11 +737,13 @@ class YAMLGenerator:
         return 'excluded'
 
     def _is_mesh_endpoint(self, device: Device) -> bool:
-        """Return True if device belongs to a prefer-mesh switch class fabric."""
-        topology_mode = device.custom_field_data.get('hedgehog_topology_mode', '')
-        if topology_mode == 'prefer-mesh':
-            return True
-        return False
+        """Return True if device belongs to a mesh switch class in the plan.
+
+        Classification is derived from plan state (PlanSwitchClass.topology_mode),
+        not from the deprecated hedgehog_topology_mode device custom field.
+        """
+        switch_class_id = device.custom_field_data.get('hedgehog_class', '')
+        return switch_class_id in self._mesh_switch_class_ids
 
     def _determine_connection_type(self, device_a: Device, device_b: Device, cable_id: int) -> str:
         """
@@ -751,7 +755,7 @@ class YAMLGenerator:
             cable_id: Cable ID for logging
 
         Returns:
-            'mesh'      for managed_switch↔managed_switch in prefer-mesh fabric
+            'mesh'      for managed_switch↔managed_switch in explicit mesh fabric
             'unbundled' for server↔managed_switch
             'fabric'    for managed_switch↔managed_switch
             'excluded'  for all other combinations (silent skip — no ValidationError)
@@ -1438,10 +1442,18 @@ class YAMLGenerator:
 
         # Generate mesh CRDs
         mesh_crds = []
-        for switch_pair, links in mesh_links_by_pair.items():
+        for switch_pair, raw_links in mesh_links_by_pair.items():
             switch_a = Device.objects.get(name=switch_pair[0])
             switch_b = Device.objects.get(name=switch_pair[1])
-            mesh_crds.append(self._create_mesh_crd(switch_a, switch_b, links))
+            # Pre-format link_data into the mesh CRD link entry format (IPs omitted per DIET-311)
+            formatted_links = [
+                {
+                    'leaf1': {'port': f"{ld['leaf1_device'].name}/{ld['leaf1_iface'].name}"},
+                    'leaf2': {'port': f"{ld['leaf2_device'].name}/{ld['leaf2_iface'].name}"},
+                }
+                for ld in raw_links
+            ]
+            mesh_crds.append(self._create_mesh_crd(switch_a, switch_b, formatted_links))
 
         return mclag_domain_crds + server_conn_crds + unbundled_crds + fabric_crds + mesh_crds
 

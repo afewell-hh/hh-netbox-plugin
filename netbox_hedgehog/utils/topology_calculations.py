@@ -1045,9 +1045,10 @@ def update_plan_calculations(plan):
     errors = []
 
     # First pass: Calculate leaf switches (server-leaf, border-leaf)
+    # Exclude mesh classes — they use manual override_quantity, not calculated quantities.
     leaf_switches = plan.switch_classes.filter(
         hedgehog_role__in=['server-leaf', 'border-leaf']
-    )
+    ).exclude(topology_mode='mesh')
     for switch_class in leaf_switches:
         try:
             calculated = calculate_switch_quantity(switch_class)
@@ -1096,9 +1097,10 @@ def update_plan_calculations(plan):
                 })
 
     # Third pass: Any other switch types (virtual, etc.)
+    # Exclude mesh classes — they use manual override_quantity.
     other_switches = plan.switch_classes.exclude(
         hedgehog_role__in=['server-leaf', 'border-leaf', 'spine']
-    )
+    ).exclude(topology_mode='mesh')
     for switch_class in other_switches:
         try:
             calculated = calculate_switch_quantity(switch_class)
@@ -1116,29 +1118,7 @@ def update_plan_calculations(plan):
                 'error': str(e)
             })
 
-    # Fourth pass: mesh feasibility check
-    mesh_feasibility = {}
-    managed_fabrics = plan.switch_classes.values_list('fabric_name', flat=True).distinct()
-    for fabric in managed_fabrics:
-        prefer_mesh_classes = plan.switch_classes.filter(
-            fabric_name=fabric, topology_mode='prefer-mesh'
-        )
-        if not prefer_mesh_classes.exists():
-            continue
-        count = sum(sc.effective_quantity or 0 for sc in prefer_mesh_classes)
-        if count == 0:
-            continue
-        feasible = count in (2, 3)
-        spine_exists = plan.switch_classes.filter(fabric_name=fabric, hedgehog_role='spine').exists()
-        mesh_feasibility[fabric] = {
-            'feasible': feasible,
-            'switch_count': count,  # total physical switches (sum of effective_quantity)
-            'has_spine_fallback': spine_exists,
-            'blocked': not feasible and not spine_exists,
-        }
-
     return {
         'summary': summary,
         'errors': errors,
-        'mesh_feasibility': mesh_feasibility,
     }

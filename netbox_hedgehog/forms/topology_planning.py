@@ -241,6 +241,7 @@ class PlanSwitchClassForm(NetBoxModelForm):
             'fabric_class',
             'hedgehog_role',
             'device_type_extension',
+            'topology_mode',
             'redundancy_type',
             'redundancy_group',
             'uplink_ports_per_switch',

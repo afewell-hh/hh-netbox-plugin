@@ -361,7 +361,8 @@ def apply_case(
     plan_name = case["plan"]["name"]
     plan_status = case["plan"]["status"]
     plan_description = case["plan"].get("description", "")
-    plan_mesh_ip_pool = case["plan"].get("mesh_ip_pool", "")
+    # mesh_ip_pool is no longer a TopologyPlan field (removed in DIET-317).
+    # Silently ignore it if present in legacy YAML (backward-compat transition shim).
 
     _validate_reference_data(case, reference_mode)
     refs = _ensure_reference_data(case, reference_mode)
@@ -395,13 +396,11 @@ def apply_case(
         plan.name = plan_name
         plan.status = plan_status
         plan.description = plan_description
-        plan.mesh_ip_pool = plan_mesh_ip_pool
     else:
         plan = TopologyPlan(
             name=plan_name,
             status=plan_status,
             description=plan_description,
-            mesh_ip_pool=plan_mesh_ip_pool,
         )
 
     cf = dict(plan.custom_field_data or {})
@@ -460,6 +459,21 @@ def apply_case(
                     }
                 ]
             )
+        topology_mode = item.get("topology_mode", "")
+        if topology_mode == "prefer-mesh":
+            raise TestCaseValidationError(
+                [
+                    {
+                        "severity": "error",
+                        "code": "invalid_value",
+                        "path": f"switch_classes[{switch_id}].topology_mode",
+                        "message": (
+                            "topology_mode 'prefer-mesh' is no longer supported. "
+                            "Use 'mesh' for explicit manual mesh topology."
+                        ),
+                    }
+                ]
+            )
         sw, _ = PlanSwitchClass.objects.update_or_create(
             plan=plan,
             switch_class_id=switch_id,
@@ -471,7 +485,7 @@ def apply_case(
                 "uplink_ports_per_switch": item.get("uplink_ports_per_switch"),
                 "mclag_pair": item.get("mclag_pair", False),
                 "override_quantity": item.get("override_quantity"),
-                "topology_mode": item.get("topology_mode", ""),
+                "topology_mode": topology_mode,
                 "redundancy_type": item.get("redundancy_type", ""),
                 "redundancy_group": item.get("redundancy_group", ""),
             },

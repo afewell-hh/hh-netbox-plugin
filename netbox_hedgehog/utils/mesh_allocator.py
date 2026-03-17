@@ -1,9 +1,9 @@
 """
-Mesh link pairing for prefer-mesh topology fabrics (DIET-309/311).
+Mesh link pairing for explicit mesh topology fabrics (DIET-309/311/317).
 
-Creates PlanMeshLink rows for each pair of physical switches in a prefer-mesh
-fabric.  IPs (subnet) are intentionally omitted — hhfab auto-assigns all mesh
-link IPs via its all-or-nothing hydration model (DIET-311).
+Creates PlanMeshLink rows for each pair of physical switches in a mesh fabric.
+IPs (subnet) are intentionally omitted — hhfab auto-assigns all mesh link IPs
+via its all-or-nothing hydration model (DIET-311).
 """
 
 from itertools import combinations
@@ -38,7 +38,7 @@ def _expand_switch_names(switch_class, render_device_name_fn=None):
 
 def allocate_mesh_links(plan, fabric_name, render_device_name_fn=None):
     """
-    Pair all physical switches in a prefer-mesh fabric and create PlanMeshLink rows.
+    Pair all physical switches in a mesh fabric and create PlanMeshLink rows.
 
     Operates on individual switch instances (not switch-class pairs), using the
     same naming convention as DeviceGenerator.  Each pair (sorted alphabetically)
@@ -61,12 +61,12 @@ def allocate_mesh_links(plan, fabric_name, render_device_name_fn=None):
     from netbox_hedgehog.models.topology_planning import PlanSwitchClass, PlanMeshLink
     from netbox_hedgehog.choices import TopologyModeChoices
 
-    # Get all prefer-mesh switch classes for this fabric, sorted deterministically
+    # Get all mesh switch classes for this fabric, sorted deterministically
     switch_classes = list(
         PlanSwitchClass.objects.filter(
             plan=plan,
             fabric_name=fabric_name,
-            topology_mode=TopologyModeChoices.PREFER_MESH,
+            topology_mode=TopologyModeChoices.MESH,
         ).order_by('switch_class_id')
     )
 

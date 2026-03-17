@@ -54,7 +54,6 @@ def build_plan_snapshot(plan: 'TopologyPlan') -> dict:
         'connections': [],
         'port_zones': [],
         'mclag_domains': [],
-        'mesh_ip_pool': plan.mesh_ip_pool,
     }
 
     # Server classes (include device type and GPU config)
