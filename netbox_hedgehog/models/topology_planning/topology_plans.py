@@ -79,13 +79,6 @@ class TopologyPlan(NetBoxModel):
         help_text="Additional notes about this plan"
     )
 
-    mesh_ip_pool = models.CharField(
-        max_length=50,
-        blank=True,
-        default='',
-        help_text="CIDR prefix for mesh link /31 allocation (e.g. 172.30.128.0/24). Required when any fabric uses prefer-mesh topology."
-    )
-
     class Meta:
         ordering = ['-created']
         verbose_name = "Topology Plan"
@@ -486,22 +479,32 @@ class PlanSwitchClass(NetBoxModel):
         """Validate redundancy configuration (DIET-165 Phase 5) and mesh topology invariants."""
         super().clean()
 
+        # Mesh mode: require override_quantity exactly 2 or 3
+        if self.topology_mode == TopologyModeChoices.MESH:
+            if self.override_quantity not in (2, 3):
+                raise ValidationError({
+                    'override_quantity': (
+                        'Mesh mode requires override_quantity to be exactly 2 or 3 '
+                        '(the number of physical switches in this mesh fabric).'
+                    )
+                })
+
         # Mesh/spine mutual exclusion and fabric-wide topology_mode invariant
-        if self.topology_mode == TopologyModeChoices.PREFER_MESH:
+        if self.topology_mode == TopologyModeChoices.MESH:
             spine_exists = PlanSwitchClass.objects.filter(
                 plan=self.plan, fabric_name=self.fabric_name,
                 hedgehog_role='spine'
             ).exclude(pk=self.pk).exists()
             if spine_exists:
-                raise ValidationError({'topology_mode': 'Cannot use prefer-mesh when a spine switch class exists in this fabric.'})
+                raise ValidationError({'topology_mode': 'Cannot use mesh topology when a spine switch class exists in this fabric.'})
 
         if self.hedgehog_role == 'spine':
             mesh_exists = PlanSwitchClass.objects.filter(
                 plan=self.plan, fabric_name=self.fabric_name,
-                topology_mode=TopologyModeChoices.PREFER_MESH
+                topology_mode=TopologyModeChoices.MESH
             ).exclude(pk=self.pk).exists()
             if mesh_exists:
-                raise ValidationError({'hedgehog_role': 'Cannot add spine when a prefer-mesh switch class exists in this fabric.'})
+                raise ValidationError({'hedgehog_role': 'Cannot add spine when a mesh switch class exists in this fabric.'})
 
         peers = PlanSwitchClass.objects.filter(
             plan=self.plan, fabric_name=self.fabric_name

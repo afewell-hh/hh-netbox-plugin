@@ -134,9 +134,9 @@ class DeviceGenerator:
             server_devices,
         )
 
-        # Milestone 5b: Creating mesh connections (prefer-mesh fabrics)
+        # Milestone 5b: Creating mesh connections (explicit mesh fabrics)
         if self.logger:
-            self.logger.info("Creating mesh connections (if any prefer-mesh fabrics)")
+            self.logger.info("Creating mesh connections (if any mesh-mode fabrics)")
         mesh_ifaces, mesh_cables = self._create_mesh_connections(self.plan, switch_devices)
         interfaces.extend(mesh_ifaces)
         cables.extend(mesh_cables)
@@ -217,9 +217,6 @@ class DeviceGenerator:
                     'hedgehog_role': switch_class.hedgehog_role or "",
                     'boot_mac': self._generate_boot_mac(name),
                 }
-                if switch_class.topology_mode == 'prefer-mesh':
-                    # hedgehog_topology_mode is provisioned by migration 0042.
-                    custom_fields['hedgehog_topology_mode'] = 'prefer-mesh'
                 device.custom_field_data = custom_fields
                 device.save()
                 devices.append(device)
@@ -1207,46 +1204,73 @@ class DeviceGenerator:
 
     def _create_mesh_connections(self, plan, switch_devices: dict[str, Device]):
         """
-        Allocate mesh links for all prefer-mesh fabrics and create NetBox cables.
+        Allocate mesh links for all explicit mesh fabrics and create NetBox cables.
 
         Returns:
             tuple(list[Interface], list[Cable]) — mesh interfaces and cables created,
             for inclusion in the caller's tagging/counting/cleanup lifecycle.
 
-        For each fabric where switch classes have topology_mode='prefer-mesh',
-        and the total physical switch count is 2 or 3:
-        1. Calls allocate_mesh_links() to get/update PlanMeshLink rows (with
-           the plan's NamingTemplate-aware render function for consistent names).
-        2. For each PlanMeshLink, locates the two switch devices by name.
-        3. Finds an available interface in a MESH-type SwitchPortZone on each switch.
-        4. Creates a Cable between those interfaces (tagged hedgehog_plan_id).
-        5. Stores the chosen port names back on the PlanMeshLink.
+        For each fabric where switch classes have topology_mode='mesh':
+        1. Hard-validates that fabric switch total is 2 or 3.
+        2. Hard-validates that each switch class has at least one MESH-type zone.
+        3. Hard-validates that each MESH zone has enough ports (n_switches-1 per switch).
+        4. Calls allocate_mesh_links() to get/update PlanMeshLink rows.
+        5. For each PlanMeshLink, locates the two switch devices by name.
+        6. Allocates one MESH-zone port from each device (no fallback).
+        7. Creates a Cable between those interfaces.
+        8. Stores the chosen port names back on the PlanMeshLink.
         """
         from netbox_hedgehog.utils.mesh_allocator import allocate_mesh_links
         from netbox_hedgehog.choices import TopologyModeChoices
+        from netbox_hedgehog.services.port_specification import PortSpecification
 
         mesh_interfaces = []
         mesh_cables = []
 
         fabric_names = list(
             plan.switch_classes.filter(
-                topology_mode=TopologyModeChoices.PREFER_MESH,
+                topology_mode=TopologyModeChoices.MESH,
             ).values_list('fabric_name', flat=True).distinct()
         )
 
         for fabric_name in fabric_names:
-            prefer_mesh_classes = plan.switch_classes.filter(
+            mesh_classes = list(plan.switch_classes.filter(
                 fabric_name=fabric_name,
-                topology_mode=TopologyModeChoices.PREFER_MESH,
-            )
-            total_switches = sum(sc.effective_quantity for sc in prefer_mesh_classes)
+                topology_mode=TopologyModeChoices.MESH,
+            ))
+            total_switches = sum(sc.effective_quantity for sc in mesh_classes)
+
+            # Hard validation 1: fabric switch count must be 2 or 3
             if total_switches not in (2, 3):
-                if self.logger:
-                    self.logger.warning(
-                        f"Mesh fabric '{fabric_name}' has {total_switches} switches; "
-                        f"mesh requires exactly 2 or 3. Skipping."
+                raise ValidationError(
+                    f"Mesh fabric '{fabric_name}' has {total_switches} switches; "
+                    f"mesh requires exactly 2 or 3."
+                )
+
+            ports_needed_per_switch = total_switches - 1  # 1 for 2-switch, 2 for 3-switch
+
+            # Hard validation 2 & 3: each switch class must have a MESH zone with
+            # enough ports to connect to all other mesh switches.
+            for sc in mesh_classes:
+                mesh_zones = list(sc.port_zones.filter(
+                    zone_type=PortZoneTypeChoices.MESH
+                ).order_by('priority', 'zone_name'))
+                if not mesh_zones:
+                    raise ValidationError(
+                        f"Mesh switch class '{sc.switch_class_id}' in fabric '{fabric_name}' "
+                        f"has no MESH-type port zones defined. "
+                        f"Add a zone with zone_type=MESH before generating."
                     )
-                continue
+                total_mesh_ports = sum(
+                    len(PortSpecification(z.port_spec).parse()) for z in mesh_zones
+                )
+                if total_mesh_ports < ports_needed_per_switch:
+                    raise ValidationError(
+                        f"Mesh switch class '{sc.switch_class_id}' in fabric '{fabric_name}' "
+                        f"has only {total_mesh_ports} MESH zone port(s) but needs "
+                        f"{ports_needed_per_switch} (for a {total_switches}-switch mesh)."
+                    )
+
             mesh_links = allocate_mesh_links(
                 plan,
                 fabric_name,
@@ -1257,63 +1281,50 @@ class DeviceGenerator:
                 device_a = switch_devices.get(mesh_link.leaf1_name)
                 device_b = switch_devices.get(mesh_link.leaf2_name)
                 if device_a is None or device_b is None:
-                    if self.logger:
-                        self.logger.warning(
-                            f"Mesh link {mesh_link.leaf1_name}↔{mesh_link.leaf2_name}: "
-                            f"one or both switch devices not found in switch_devices dict. Skipping."
-                        )
-                    continue
+                    raise ValidationError(
+                        f"Mesh link {mesh_link.leaf1_name}↔{mesh_link.leaf2_name}: "
+                        f"one or both switch devices not found."
+                    )
 
                 switch_class_a = mesh_link.switch_class_a
                 switch_class_b = mesh_link.switch_class_b
 
-                # Find an available interface from a MESH zone on each switch device.
-                # Fall back to any unconnected interface if no MESH zone is defined.
                 def _pick_mesh_interface(device, switch_class):
-                    mesh_zones = switch_class.port_zones.filter(
+                    """Allocate one port from a MESH zone; raises if none available."""
+                    mesh_zones = list(switch_class.port_zones.filter(
                         zone_type=PortZoneTypeChoices.MESH
-                    ).order_by('priority', 'zone_name') if switch_class else []
+                    ).order_by('priority', 'zone_name')) if switch_class else []
 
-                    if mesh_zones:
-                        ports = self._allocate_ports_for_zones(device.name, mesh_zones, count=1)
-                        if ports:
-                            zone, port = ports[0]
-                            return self._get_or_create_interface(
-                                device=device,
-                                name=port.name,
-                                interfaces=mesh_interfaces,
-                                custom_fields={
-                                    'hedgehog_plan_id': str(plan.pk),
-                                    'hedgehog_zone': zone.zone_name,
-                                    'hedgehog_physical_port': port.physical_port,
-                                    'hedgehog_breakout_index': port.breakout_index,
-                                },
-                                interface_type=self._interface_type_for_zone(zone),
-                            )
+                    if not mesh_zones:
+                        raise ValidationError(
+                            f"Device '{device.name}': switch class '{switch_class.switch_class_id}' "
+                            f"has no MESH-type port zones."
+                        )
 
-                    # Fallback: first unconnected interface on the device
-                    used_iface_ids = set(
-                        Interface.objects.filter(
-                            device=device,
-                        ).exclude(
-                            cable__isnull=True,
-                        ).values_list('id', flat=True)
-                    )
-                    iface = Interface.objects.filter(
+                    ports = self._allocate_ports_for_zones(device.name, mesh_zones, count=1)
+                    if not ports:
+                        raise ValidationError(
+                            f"Device '{device.name}': no available ports in MESH zones of "
+                            f"switch class '{switch_class.switch_class_id}'. "
+                            f"Add more ports to the MESH zone for this fabric size."
+                        )
+
+                    zone, port = ports[0]
+                    return self._get_or_create_interface(
                         device=device,
-                    ).exclude(id__in=used_iface_ids).order_by('name').first()
-                    return iface
+                        name=port.name,
+                        interfaces=mesh_interfaces,
+                        custom_fields={
+                            'hedgehog_plan_id': str(plan.pk),
+                            'hedgehog_zone': zone.zone_name,
+                            'hedgehog_physical_port': port.physical_port,
+                            'hedgehog_breakout_index': port.breakout_index,
+                        },
+                        interface_type=self._interface_type_for_zone(zone),
+                    )
 
                 iface_a = _pick_mesh_interface(device_a, switch_class_a)
                 iface_b = _pick_mesh_interface(device_b, switch_class_b)
-
-                if iface_a is None or iface_b is None:
-                    if self.logger:
-                        self.logger.warning(
-                            f"Mesh link {mesh_link.leaf1_name}↔{mesh_link.leaf2_name}: "
-                            f"could not find available interface on one or both devices. Skipping."
-                        )
-                    continue
 
                 cable = Cable(
                     a_terminations=[iface_a],
