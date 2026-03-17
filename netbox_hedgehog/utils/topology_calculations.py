@@ -556,66 +556,95 @@ def calculate_switch_quantity(switch_class) -> int:
         )
 
     # Standard (non-rail) calculation
-    # Step 1: Calculate total port demand
-    total_ports_needed = 0
-    connection_speeds = []
-
-    for connection in connections:
-        server_quantity = connection.server_class.quantity
-        ports_per_connection = connection.ports_per_connection
-        total_ports_needed += server_quantity * ports_per_connection
-        connection_speeds.append(connection.speed)
-
-    # Step 2: Determine primary connection speed (use most common speed)
-    # For MVP, we assume all connections use the same speed
-    # TODO: Handle mixed speeds (multiple breakouts) in post-MVP
-    primary_speed = connection_speeds[0] if connection_speeds else 800
-
-    # Step 3: Get switch capacity from DeviceTypeExtension
     device_extension = switch_class.device_type_extension
-
-    # Get zone-based capacity for server connections
-    capacity = get_port_capacity_for_connection(
-        device_extension=device_extension,
-        switch_class=switch_class,
-        connection_type=PortZoneTypeChoices.SERVER
-    )
-    native_speed = capacity.native_speed
-    physical_ports = capacity.port_count
     supported_breakouts = device_extension.supported_breakouts or []
 
-    # Step 4: Determine optimal breakout
-    breakout = determine_optimal_breakout(
-        native_speed=native_speed,
-        required_speed=primary_speed,
-        supported_breakouts=supported_breakouts
+    # Total demand used for the alternating min-2 guard below.
+    total_ports_needed = sum(
+        c.server_class.quantity * c.ports_per_connection for c in connections
     )
 
-    # Step 5: Calculate logical ports per switch
-    logical_ports_per_switch = physical_ports * breakout.logical_ports
+    # Partition connections by target_zone.  Each server zone occupies a
+    # disjoint set of physical ports on the same switch instance, so demand
+    # in zone A never borrows capacity from zone B.  The required switch count
+    # is therefore the maximum across all zones (not a sum).
+    zone_map = {}  # zone_id → {'zone': SwitchPortZone, 'conns': [...]}
+    ungrouped = []
+    for conn in connections:
+        if conn.target_zone_id:
+            entry = zone_map.setdefault(
+                conn.target_zone_id, {'zone': conn.target_zone, 'conns': []}
+            )
+            entry['conns'].append(conn)
+        else:
+            ungrouped.append(conn)
 
-    # Step 6: Subtract uplink ports (conditional based on capacity source)
-    # Zone-based (is_fallback=False): capacity.port_count is server zone ONLY (excludes uplinks)
-    # Fallback (is_fallback=True): capacity.port_count includes ALL ports (must subtract uplinks)
-    if capacity.is_fallback:
-        # Fallback path: total ports includes uplinks, subtract them
-        uplink_ports = get_uplink_port_count(switch_class)
-        available_ports_per_switch = logical_ports_per_switch - uplink_ports
+    if zone_map:
+        # Per-zone path: compute switches_needed for each zone, take max().
+        per_zone_switches = []
+        for entry in zone_map.values():
+            zone = entry['zone']
+            zone_conns = entry['conns']
+
+            if not zone.breakout_option:
+                raise ValidationError(
+                    f"SwitchPortZone '{zone.zone_name}' has no breakout_option defined. "
+                    f"Cannot determine per-zone capacity."
+                )
+
+            zone_native_speed = zone.breakout_option.from_speed
+            zone_port_count = len(PortSpecification(zone.port_spec).parse())
+            # Mixed-speed-within-zone is deferred (#319 scope); use first connection's speed.
+            zone_speed = zone_conns[0].speed
+
+            breakout = determine_optimal_breakout(
+                native_speed=zone_native_speed,
+                required_speed=zone_speed,
+                supported_breakouts=supported_breakouts,
+            )
+            logical_per_switch = zone_port_count * breakout.logical_ports
+            if logical_per_switch <= 0:
+                continue
+
+            zone_demand = sum(
+                c.server_class.quantity * c.ports_per_connection for c in zone_conns
+            )
+            if zone_demand > 0:
+                per_zone_switches.append(math.ceil(zone_demand / logical_per_switch))
+
+        switches_needed = max(per_zone_switches) if per_zone_switches else 0
+        if total_ports_needed > 0 and switches_needed == 0:
+            switches_needed = 1
+
     else:
-        # Zone-based path: server zone already excludes uplinks, don't subtract
-        available_ports_per_switch = logical_ports_per_switch
+        # Legacy fallback: connections have no target_zone; use aggregate demand
+        # against first available server zone or DeviceTypeExtension.native_speed.
+        primary_speed = ungrouped[0].speed if ungrouped else 800
 
-    if available_ports_per_switch <= 0:
-        # All ports reserved for uplinks, cannot accept server connections
-        # This is likely a configuration error
-        return 0
+        capacity = get_port_capacity_for_connection(
+            device_extension=device_extension,
+            switch_class=switch_class,
+            connection_type=PortZoneTypeChoices.SERVER,
+        )
+        breakout = determine_optimal_breakout(
+            native_speed=capacity.native_speed,
+            required_speed=primary_speed,
+            supported_breakouts=supported_breakouts,
+        )
+        logical_ports_per_switch = capacity.port_count * breakout.logical_ports
 
-    # Step 7: Calculate switches needed
-    switches_needed = math.ceil(total_ports_needed / available_ports_per_switch)
+        if capacity.is_fallback:
+            uplink_ports = get_uplink_port_count(switch_class)
+            available_ports_per_switch = logical_ports_per_switch - uplink_ports
+        else:
+            available_ports_per_switch = logical_ports_per_switch
 
-    # Ensure at least 1 switch if there are connections
-    if total_ports_needed > 0 and switches_needed == 0:
-        switches_needed = 1
+        if available_ports_per_switch <= 0:
+            return 0
+
+        switches_needed = math.ceil(total_ports_needed / available_ports_per_switch)
+        if total_ports_needed > 0 and switches_needed == 0:
+            switches_needed = 1
 
     # Enforce minimum 2 switches when any connection uses distribution=alternating
     # AND there is actual port demand (mirrors the total_ports_needed > 0 guard above).
@@ -628,7 +657,7 @@ def calculate_switch_quantity(switch_class) -> int:
             and switches_needed < 2):
         switches_needed = 2
 
-    # Step 8: Apply redundancy constraints (uses module-level helper)
+    # Apply redundancy constraints (uses module-level helper)
     try:
         return _apply_redundancy_rounding(switch_class, switches_needed)
     except ValidationError as e:
