@@ -202,11 +202,10 @@ reference_data:
 plan:
   name: Inference OPG-64 Minimal FE Converged Mesh
   status: draft
-  mesh_ip_pool: 172.30.128.0/24
   description: >
     FE-only DIET translation of the OPG-64 minimal inference reference architecture.
     No backend fabric. Servers connect only to a two-leaf frontend mesh via BF3 2x200G.
-    This case demonstrates mesh authoring in YAML: no spine class, prefer-mesh topology,
+    This case demonstrates mesh authoring in YAML: no spine class, explicit mesh topology,
     and an explicit mesh port zone.
 
 switch_classes:
@@ -215,7 +214,7 @@ switch_classes:
     fabric_class: managed
     hedgehog_role: server-leaf
     device_type_extension: ds5000_ext
-    topology_mode: prefer-mesh
+    topology_mode: mesh
     override_quantity: 2
     mclag_pair: false
     redundancy_type: mclag
