@@ -184,19 +184,26 @@ class FabricProfileGoParser:
         """
         Extract port definitions from Go source.
 
+        Matches both data ports ("E1/N") and management ports ("MN", e.g. "M1").
+        Management ports carry Management: true and no Profile field.
+
         Args:
             go_source: Raw Go source code
 
         Returns:
-            Dictionary of port name to port data: {"E1/1": {...}, "E1/2": {...}, ...}
+            Dictionary of port name to port data:
+            {
+                "E1/1": {"nos_name": "...", "label": "...", "profile": "..."},
+                "M1":   {"nos_name": "Management0", "management": True},
+                ...
+            }
         """
         ports = {}
 
-        # Simpler approach: just find all "E1/N": {...} patterns in the entire file
-        # Since we only want E1/ ports, this avoids complex block extraction
-        # Pattern: "E1/N": {NOSName: "...", Label: "...", Profile: "...", ...}
+        # Match E1/N data ports and M<N> management ports (e.g. M1).
+        # See also issue #323 (generic management-port parser bug).
         port_pattern = re.compile(
-            r'"(E1/\d+)":\s*\{([^}]+)\}',
+            r'"((?:E1/|M)\d+)":\s*\{([^}]+)\}',
             re.MULTILINE
         )
 
@@ -204,7 +211,6 @@ class FabricProfileGoParser:
             port_key = match.group(1)
             port_content = match.group(2)
 
-            # Extract port fields
             port_data = {}
 
             # Extract NOSName
@@ -212,12 +218,16 @@ class FabricProfileGoParser:
             if nos_name_match:
                 port_data["nos_name"] = nos_name_match.group(1)
 
-            # Extract Label
+            # Extract Management flag (present on M-prefixed ports)
+            if re.search(r'\bManagement:\s*true\b', port_content):
+                port_data["management"] = True
+
+            # Extract Label (data ports only)
             label_match = re.search(r'Label:\s*"([^"]+)"', port_content)
             if label_match:
                 port_data["label"] = label_match.group(1)
 
-            # Extract Profile
+            # Extract Profile (data ports only; management ports have no Profile)
             profile_match = re.search(r'Profile:\s*"([^"]+)"', port_content)
             if profile_match:
                 port_data["profile"] = profile_match.group(1)
@@ -225,7 +235,7 @@ class FabricProfileGoParser:
             ports[port_key] = port_data
 
         if not ports:
-            raise ValidationError("No E1/N ports found in profile")
+            raise ValidationError("No ports found in profile")
 
         return ports
 
@@ -535,6 +545,10 @@ class FabricProfileImporter:
         "Hedgehog": "Hedgehog",
     }
 
+    # NetBox interface type for dedicated switch management ports (M1, etc.)
+    # 1GbE copper RJ45 is the standard management port hardware on Hedgehog-supported switches.
+    MANAGEMENT_PORT_INTERFACE_TYPE = "1000base-t"
+
     # Port profile name → NetBox interface type mapping (DIET-148)
     # These take precedence over speed-based fallback mapping
     PROFILE_NAME_TO_INTERFACE_TYPE = {
@@ -558,6 +572,9 @@ class FabricProfileImporter:
 
         # 2.5G profiles (copper)
         "RJ45-2.5G": "2.5gbase-t",            # Edgecore EPS203 copper ports
+
+        # 1G profiles (copper) — DS1000 access switch data ports
+        "RJ45-1G": "1000base-t",              # Celestica DS1000 1GbE RJ45 ports
     }
 
     # Speed → NetBox interface type mapping (fallback for unmapped profiles)
@@ -646,6 +663,48 @@ class FabricProfileImporter:
             },
             "notes": "Virtual switch CLS+ derived from Dell S5248F-ON (E1/1-48 only, no breakouts)",
         }
+    }
+
+    # Manually seeded hardware profiles that have no upstream Hedgehog Go source file.
+    # These follow the same port-dict format as VIRTUAL_SWITCH_PROFILES and are imported
+    # by import_fabric_profiles alongside the parsed profiles.
+    #
+    # DS1000: no upstream profile exists in githedgehog/fabric as of 2026-03-30.
+    # Port layout is per the hardware assumption documented in issue #324.
+    # Primary-source verification against Celestica datasheets should be performed
+    # before shipping customer-facing deployments on this platform.
+    # See also issue #323 (generic management-port parser fix).
+    MANUALLY_SEEDED_PROFILES = {
+        "celestica-ds1000": {
+            "display_name": "Celestica DS1000",
+            "manufacturer": "Celestica",
+            "model": "celestica-ds1000",
+            "ports": {
+                # Dedicated management port (1GbE copper)
+                "M1": {"management": True},
+                # 48x 1GbE RJ45 data ports
+                **{f"E1/{i}": {"profile": "RJ45-1G"} for i in range(1, 49)},
+                # 8x 10GbE SFP+ uplink ports
+                **{f"E1/{i}": {"profile": "SFP28-10G"} for i in range(49, 57)},
+            },
+            "port_profiles": {
+                "RJ45-1G": {
+                    "speed": {
+                        "default": "1G",
+                        "supported": ["10M", "100M", "1G"],
+                    }
+                },
+                "SFP28-10G": {
+                    "speed": {
+                        "default": "10G",
+                        "supported": ["1G", "10G"],
+                    }
+                },
+            },
+            "features": {
+                "MCLAG": False,
+            },
+        },
     }
 
     def extract_manufacturer(self, display_name: str) -> str:
@@ -841,9 +900,9 @@ class FabricProfileImporter:
         Create InterfaceTemplates from parsed ports.
 
         Rules:
-        - Only create for data-plane ports (skip management ports)
-        - Use E1/N naming from fabric
-        - Map port profile → NetBox interface type
+        - Management ports (management: True flag) → 1000base-t, mgmt_only=True
+        - Data-plane ports → map via PROFILE_NAME_TO_INTERFACE_TYPE then speed fallback
+        - Use port key (E1/N or M1) as template name
 
         Args:
             device_type: NetBox DeviceType instance
@@ -851,11 +910,20 @@ class FabricProfileImporter:
             port_profiles: PortProfiles dict from parsed profile
         """
         for port_name, port_config in parsed_ports.items():
-            # Skip management ports (M1, eth0, mgmt0)
-            if port_name.startswith("M") or port_name in ["eth0", "mgmt0"]:
+            # Management ports get a dedicated management interface template.
+            # See issues #323 and #324.
+            if port_config.get("management"):
+                InterfaceTemplate.objects.get_or_create(
+                    device_type=device_type,
+                    name=port_name,
+                    defaults={
+                        "type": self.MANAGEMENT_PORT_INTERFACE_TYPE,
+                        "mgmt_only": True,
+                    }
+                )
                 continue
 
-            # Get port profile
+            # Data ports: require a profile entry
             profile_name = port_config.get("profile")
             if not profile_name or profile_name not in port_profiles:
                 continue
@@ -878,7 +946,7 @@ class FabricProfileImporter:
             # Create or update interface template
             InterfaceTemplate.objects.get_or_create(
                 device_type=device_type,
-                name=port_name,  # Already in E1/N format
+                name=port_name,
                 defaults={"type": interface_type}
             )
 

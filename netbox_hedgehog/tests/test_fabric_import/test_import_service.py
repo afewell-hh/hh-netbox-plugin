@@ -296,6 +296,35 @@ class FabricProfileImporterTestCase(TestCase):
         e1_65 = templates.get(name="E1/65")
         self.assertEqual(e1_65.type, "25gbase-x-sfp28")
 
+    def test_create_interface_templates_includes_management_port(self):
+        """Management ports must produce a mgmt_only InterfaceTemplate (issues #323, #324)."""
+        device_type = DeviceType.objects.create(
+            manufacturer=self.celestica,
+            model='TEST-MGMT-PORT',
+            slug='test-mgmt-port'
+        )
+
+        parsed_ports = {
+            "M1": {"nos_name": "Management0", "management": True},
+            "E1/1": {"nos_name": "Ethernet0", "label": "1", "profile": "SFP28-25G"},
+        }
+        port_profiles = {
+            "SFP28-25G": {"speed": {"default": "25G", "supported": ["25G"]}}
+        }
+
+        self.importer.create_interface_templates(device_type, parsed_ports, port_profiles)
+
+        templates = InterfaceTemplate.objects.filter(device_type=device_type)
+        self.assertEqual(templates.count(), 2)
+
+        m1 = templates.get(name="M1")
+        self.assertEqual(m1.type, "1000base-t",
+                         "Management port must use 1000base-t type")
+        self.assertTrue(m1.mgmt_only, "Management port InterfaceTemplate must be mgmt_only")
+
+        e1_1 = templates.get(name="E1/1")
+        self.assertFalse(e1_1.mgmt_only, "Data port must not be mgmt_only")
+
     def test_create_breakout_options_from_port_profiles(self):
         """Create BreakoutOption records from breakout modes."""
         port_profiles = {
@@ -629,3 +658,179 @@ class VirtualSwitchTestCase(TestCase):
 
         self.assertEqual(ext.supported_breakouts, [], "VS should have no breakouts")
         self.assertEqual(ext.native_speed, 25, "VS native speed should be 25G")
+
+
+# =============================================================================
+# DIET-324: DS2000 import regression tests (management port + data ports)
+# =============================================================================
+
+class DS2000ImportTestCase(TestCase):
+    """DS2000 import creates correct interface templates including M1 (issues #323, #324)."""
+
+    @classmethod
+    def setUpTestData(cls):
+        cls.manufacturer, _ = Manufacturer.objects.get_or_create(
+            name="Celestica",
+            defaults={"slug": "celestica"},
+        )
+
+    def setUp(self):
+        from netbox_hedgehog.utils.fabric_import import FabricProfileGoParser
+        self.parser = FabricProfileGoParser()
+        self.importer = FabricProfileImporter()
+
+    def test_ds2000_parser_includes_management_port(self):
+        """DS2000 parser must include M1 in the parsed ports dict."""
+        from pathlib import Path
+        fixture = Path(__file__).parent / "fixtures" / "p_bcm_celestica_ds2000.go"
+
+        result = self.parser.parse_profile_from_file(str(fixture))
+        ports = result["spec"]["ports"]
+
+        self.assertIn("M1", ports, "DS2000 parser must include M1 management port")
+        self.assertTrue(ports["M1"].get("management"))
+
+    def test_ds2000_import_creates_management_interface_template(self):
+        """Importing DS2000 must produce an M1 mgmt_only InterfaceTemplate."""
+        from pathlib import Path
+        fixture = Path(__file__).parent / "fixtures" / "p_bcm_celestica_ds2000.go"
+
+        parsed_data = self.parser.parse_profile_from_file(str(fixture))
+        device_type = DeviceType.objects.create(
+            manufacturer=self.manufacturer,
+            model="test-ds2000-mgmt",
+            slug="test-ds2000-mgmt",
+        )
+
+        self.importer.create_interface_templates(
+            device_type,
+            parsed_data["spec"]["ports"],
+            parsed_data["spec"]["port_profiles"],
+        )
+
+        m1 = device_type.interfacetemplates.filter(name="M1").first()
+        self.assertIsNotNone(m1, "DS2000 import must create M1 InterfaceTemplate")
+        self.assertEqual(m1.type, "1000base-t")
+        self.assertTrue(m1.mgmt_only)
+
+    def test_ds2000_import_creates_sfp28_data_port_templates(self):
+        """DS2000 E1/1-48 SFP28-25G ports must produce 25gbase-x-sfp28 templates."""
+        from pathlib import Path
+        fixture = Path(__file__).parent / "fixtures" / "p_bcm_celestica_ds2000.go"
+
+        parsed_data = self.parser.parse_profile_from_file(str(fixture))
+        device_type = DeviceType.objects.create(
+            manufacturer=self.manufacturer,
+            model="test-ds2000-data",
+            slug="test-ds2000-data",
+        )
+
+        self.importer.create_interface_templates(
+            device_type,
+            parsed_data["spec"]["ports"],
+            parsed_data["spec"]["port_profiles"],
+        )
+
+        sfp28 = device_type.interfacetemplates.filter(type="25gbase-x-sfp28")
+        self.assertEqual(sfp28.count(), 48, "DS2000 must have 48 SFP28-25G templates")
+
+
+# =============================================================================
+# DIET-324: DS1000 manually seeded profile tests
+# =============================================================================
+
+class DS1000ManualProfileTestCase(TestCase):
+    """DS1000 manual profile in MANUALLY_SEEDED_PROFILES has the correct port layout."""
+
+    @classmethod
+    def setUpTestData(cls):
+        cls.manufacturer, _ = Manufacturer.objects.get_or_create(
+            name="Celestica",
+            defaults={"slug": "celestica"},
+        )
+
+    def setUp(self):
+        self.importer = FabricProfileImporter()
+        self.ds1000 = self.importer.MANUALLY_SEEDED_PROFILES["celestica-ds1000"]
+
+    def test_ds1000_profile_exists(self):
+        """celestica-ds1000 must be present in MANUALLY_SEEDED_PROFILES."""
+        self.assertIn("celestica-ds1000", self.importer.MANUALLY_SEEDED_PROFILES)
+
+    def test_ds1000_has_management_port(self):
+        """DS1000 manual profile must include M1 management port."""
+        self.assertIn("M1", self.ds1000["ports"])
+        self.assertTrue(self.ds1000["ports"]["M1"].get("management"))
+
+    def test_ds1000_has_48_rj45_1g_data_ports(self):
+        """DS1000 must have 48 RJ45-1G data ports (E1/1-48)."""
+        ports = self.ds1000["ports"]
+        for i in range(1, 49):
+            port_key = f"E1/{i}"
+            self.assertIn(port_key, ports, f"DS1000 must include {port_key}")
+            self.assertEqual(ports[port_key]["profile"], "RJ45-1G")
+
+    def test_ds1000_has_8_sfp28_10g_uplink_ports(self):
+        """DS1000 must have 8 SFP28-10G uplink ports (E1/49-56)."""
+        ports = self.ds1000["ports"]
+        for i in range(49, 57):
+            port_key = f"E1/{i}"
+            self.assertIn(port_key, ports, f"DS1000 must include {port_key}")
+            self.assertEqual(ports[port_key]["profile"], "SFP28-10G")
+
+    def test_ds1000_total_port_count(self):
+        """DS1000 must have 57 ports total (1 M1 + 48 E1/1-48 + 8 E1/49-56)."""
+        self.assertEqual(len(self.ds1000["ports"]), 57)
+
+    def test_ds1000_import_creates_management_template(self):
+        """Importing DS1000 must create M1 mgmt_only InterfaceTemplate."""
+        device_type = DeviceType.objects.create(
+            manufacturer=self.manufacturer,
+            model="test-ds1000-import",
+            slug="test-ds1000-import",
+        )
+
+        self.importer.create_interface_templates(
+            device_type,
+            self.ds1000["ports"],
+            self.ds1000["port_profiles"],
+        )
+
+        m1 = device_type.interfacetemplates.filter(name="M1").first()
+        self.assertIsNotNone(m1, "DS1000 import must create M1 InterfaceTemplate")
+        self.assertEqual(m1.type, "1000base-t")
+        self.assertTrue(m1.mgmt_only)
+
+    def test_ds1000_import_creates_rj45_1g_templates(self):
+        """DS1000 E1/1-48 must produce 1000base-t InterfaceTemplates."""
+        device_type = DeviceType.objects.create(
+            manufacturer=self.manufacturer,
+            model="test-ds1000-rj45",
+            slug="test-ds1000-rj45",
+        )
+
+        self.importer.create_interface_templates(
+            device_type,
+            self.ds1000["ports"],
+            self.ds1000["port_profiles"],
+        )
+
+        rj45_1g = device_type.interfacetemplates.filter(type="1000base-t", mgmt_only=False)
+        self.assertEqual(rj45_1g.count(), 48, "DS1000 must have 48 1000base-t data port templates")
+
+    def test_ds1000_import_creates_sfp28_10g_templates(self):
+        """DS1000 E1/49-56 must produce 10gbase-x-sfpp InterfaceTemplates."""
+        device_type = DeviceType.objects.create(
+            manufacturer=self.manufacturer,
+            model="test-ds1000-sfp",
+            slug="test-ds1000-sfp",
+        )
+
+        self.importer.create_interface_templates(
+            device_type,
+            self.ds1000["ports"],
+            self.ds1000["port_profiles"],
+        )
+
+        sfp10g = device_type.interfacetemplates.filter(type="10gbase-x-sfpp")
+        self.assertEqual(sfp10g.count(), 8, "DS1000 must have 8 10gbase-x-sfpp uplink templates")

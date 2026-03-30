@@ -33,11 +33,15 @@ class FabricProfileGoParserTestCase(unittest.TestCase):
         # Validate Spec.DisplayName for manufacturer extraction
         self.assertEqual(result["spec"]["display_name"], "Celestica DS5000")
 
-        # Validate Ports (DS5000 has 64 OSFP-800G + 2 SFP28-25G = 66 total)
+        # Validate Ports (DS5000 has 64 OSFP-800G + 2 SFP28-25G + 1 M1 management = 67 total)
         ports = result["spec"]["ports"]
-        self.assertEqual(len(ports), 66, "DS5000 should have 66 ports total")
+        self.assertEqual(len(ports), 67, "DS5000 should have 67 ports (66 E1/ + M1 management)")
 
-        # Validate port naming pattern (uses E1/N format)
+        # Management port must be present
+        self.assertIn("M1", ports, "DS5000 must include M1 management port")
+        self.assertTrue(ports["M1"].get("management"), "M1 must have management=True")
+
+        # Validate data port naming pattern (uses E1/N format)
         port_keys = list(ports.keys())
         self.assertIn("E1/1", port_keys)
         self.assertIn("E1/64", port_keys)
@@ -79,9 +83,13 @@ class FabricProfileGoParserTestCase(unittest.TestCase):
         # Validate manufacturer from DisplayName
         self.assertTrue(result["spec"]["display_name"].startswith("Celestica"))
 
-        # Validate Ports (DS3000 has 32 QSFP-DD + 1 management port = 33 total E1/ ports)
+        # Validate Ports: 32 QSFP28-100G + 1 RJ45-10G console + 1 M1 management = 34 total
         ports = result["spec"]["ports"]
-        self.assertEqual(len(ports), 33, "DS3000 should have 33 E1/ ports")
+        self.assertEqual(len(ports), 34, "DS3000 should have 34 ports (33 E1/ + M1 management)")
+
+        # Management port must be present
+        self.assertIn("M1", ports, "DS3000 must include M1 management port")
+        self.assertTrue(ports["M1"].get("management"), "M1 must have management=True")
 
     def test_parse_edgecore_dcs203(self):
         """Parse Edgecore DCS203 profile (mixed-port device)."""
@@ -149,21 +157,47 @@ class FabricProfileGoParserTestCase(unittest.TestCase):
         self.assertIn("1x800g", osfp_breakout)
         self.assertIn("2x400g", osfp_breakout)
 
-    def test_parser_skips_management_ports(self):
-        """Verify parser excludes management ports from Ports list."""
+    def test_parser_includes_management_port(self):
+        """Parser must include M1 management ports in the parsed Ports dict.
+
+        Regression guard for issues #323 and #324: earlier code only matched E1/N
+        patterns and silently dropped M1.
+        """
         fixture_path = self.fixtures_dir / "p_bcm_celestica_ds5000.go"
 
         result = self.parser.parse_profile_from_file(str(fixture_path))
         ports = result["spec"]["ports"]
 
-        # Check no port key contains management-like names
-        for port_key in ports.keys():
-            port = ports[port_key]
-            # Skip ports that have Management: true or similar
-            # Based on actual file, management ports might be excluded by other means
-            # Just verify all ports follow E1/N pattern
-            if not port_key.startswith("E1/"):
-                self.fail(f"Port {port_key} doesn't follow E1/N naming pattern")
+        # M1 management port must be present
+        self.assertIn("M1", ports, "Parser must include M1 management port (regression: #323)")
+        m1 = ports["M1"]
+        self.assertTrue(m1.get("management"), "M1 port_data must carry management=True")
+        self.assertIn("nos_name", m1, "M1 must have nos_name extracted")
+
+    def test_parse_celestica_ds2000(self):
+        """Parse Celestica DS2000 profile — validates management port + data port counts."""
+        fixture_path = self.fixtures_dir / "p_bcm_celestica_ds2000.go"
+
+        result = self.parser.parse_profile_from_file(str(fixture_path))
+
+        self.assertEqual(result["object_meta"]["name"], "celestica-ds2000")
+        self.assertTrue(result["spec"]["display_name"].startswith("Celestica"))
+
+        ports = result["spec"]["ports"]
+
+        # DS2000: 48 SFP28-25G + 8 QSFP28-100G (some via string concat, skipped) + M1 = 57 total
+        # E1/50-55 use Go constant concatenation → Profile field not matched → 6 ports have no
+        # usable profile, but they are still parsed as port entries.
+        self.assertIn("M1", ports, "DS2000 must include M1 management port")
+        self.assertTrue(ports["M1"].get("management"), "M1 must have management=True")
+
+        # E1/1-48 data ports present
+        for i in range(1, 49):
+            self.assertIn(f"E1/{i}", ports, f"DS2000 must have E1/{i}")
+            self.assertEqual(ports[f"E1/{i}"]["profile"], "SFP28-25G")
+
+        # MCLAG capability
+        self.assertTrue(result["spec"]["features"]["MCLAG"], "DS2000 supports MCLAG")
 
     def test_parser_handles_mclag_feature_flag(self):
         """Validate MCLAG feature extraction."""

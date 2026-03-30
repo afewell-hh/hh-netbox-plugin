@@ -210,6 +210,42 @@ class Command(BaseCommand):
                 self.style.SUCCESS(f"✓ Imported: {profile_name}")
             )
 
+        # Import manually seeded hardware profiles (no upstream Go source).
+        # See issue #324 (DS1000) and FabricProfileImporter.MANUALLY_SEEDED_PROFILES.
+        for profile_name, profile_config in importer.MANUALLY_SEEDED_PROFILES.items():
+            if profile_names and profile_name not in profile_names:
+                continue
+
+            parsed_data = self._build_virtual_profile_data(profile_name, profile_config)
+            stats["processed"] += 1
+
+            if dry_run:
+                self.stdout.write(
+                    self.style.WARNING(f"[DRY RUN] Would import: {profile_name}")
+                )
+                manufacturer = importer.extract_manufacturer(profile_config["display_name"])
+                self.stdout.write(f"  Manufacturer: {manufacturer}")
+                self.stdout.write(f"  Model: {profile_name}")
+                continue
+
+            result = self._import_profile(parsed_data, importer)
+            if result["device_type_created"]:
+                stats["device_types_created"] += 1
+            else:
+                stats["device_types_updated"] += 1
+
+            if result["extension_created"]:
+                stats["extensions_created"] += 1
+            else:
+                stats["extensions_updated"] += 1
+
+            stats["interface_templates_created"] += result["interface_templates_created"]
+            stats["breakout_options_created"] += result["breakout_options_created"]
+
+            self.stdout.write(
+                self.style.SUCCESS(f"✓ Imported: {profile_name}")
+            )
+
         # Print summary
         self.stdout.write("\n" + "=" * 60)
         if dry_run:
