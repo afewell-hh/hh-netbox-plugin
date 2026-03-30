@@ -302,7 +302,7 @@ class DeviceGenerator:
                             f"No switch instances available for {switch_class.switch_class_id}."
                         )
 
-                    # Pre-calculate total_rails for rail-optimized connections
+                    # Pre-calculate per-distribution context values
                     total_rails = None
                     if connection_def.distribution == ConnectionDistributionChoices.RAIL_OPTIMIZED:
                         total_rails = self._get_total_rails_for_target(
@@ -335,6 +335,7 @@ class DeviceGenerator:
                             port_index,
                             rail=connection_def.rail,
                             total_rails=total_rails,
+                            total_servers=server_class.quantity,
                         )
                         switch_port = self.port_allocator.allocate(
                             switch_device.name,
@@ -1043,6 +1044,7 @@ class DeviceGenerator:
         port_index: int,
         rail: int | None = None,
         total_rails: int | None = None,
+        total_servers: int | None = None,
     ) -> Device:
         if len(switch_instances) == 1:
             return switch_instances[0]
@@ -1050,7 +1052,18 @@ class DeviceGenerator:
         if distribution == ConnectionDistributionChoices.ALTERNATING:
             return switch_instances[port_index % len(switch_instances)]
         if distribution == ConnectionDistributionChoices.SAME_SWITCH:
-            return switch_instances[server_index % len(switch_instances)]
+            # Grouped-per-leaf: fill each switch with a contiguous block of servers
+            # before moving to the next.  With 8 servers and 2 leaves the result is
+            # servers 0-3 → leaf A, servers 4-7 → leaf B (issue #322).
+            # Uneven splits round up on the first switch(es): 7 servers → 4/3 not 3.5/3.5.
+            num_switches = len(switch_instances)
+            if total_servers and total_servers > 0:
+                servers_per_switch = math.ceil(total_servers / num_switches)
+                switch_index = min(server_index // servers_per_switch, num_switches - 1)
+            else:
+                # Fallback when total_servers not provided (should not happen in normal flow).
+                switch_index = server_index % num_switches
+            return switch_instances[switch_index]
         if distribution == ConnectionDistributionChoices.RAIL_OPTIMIZED:
             # Rail-optimized: all servers' NIC at position N connect to same switch(es)
             # Algorithm: rails_per_switch = ceil(total_rails / num_switches)
