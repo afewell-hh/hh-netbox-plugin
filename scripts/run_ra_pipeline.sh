@@ -81,16 +81,17 @@ cd "$NETBOX_DIR" && docker compose cp "netbox:${CONTAINER_TMP}/netbox/." "$ARTIF
 if [[ "$FE_ONLY" == "false" ]]; then
   echo "[4/7] Exporting wiring YAMLs..."
   cd "$NETBOX_DIR" && docker compose exec -T netbox sh -c "mkdir -p ${CONTAINER_TMP}/wiring_tmp" 2>/dev/null || true
-  # FE wiring will fail (known mclag gap) — capture error, continue
+  # Export all per-fabric wiring artifacts.  Some fabrics (e.g. frontend with mclag gap) may fail;
+  # capture the error to the log and continue — the successful artifacts are preserved.
   RUN export_wiring_yaml "$PLAN_ID" --split-by-fabric --output "${CONTAINER_TMP}/wiring_tmp/wiring" >> "$ARTIFACT_DIR/logs/wiring_export.log" 2>&1 || true
-  # Move wiring files into wiring_tmp dir, then copy to host
-  cd "$NETBOX_DIR" && docker compose exec -T netbox sh -c "
-    ls ${CONTAINER_TMP}/wiring_tmp-*.yaml 2>/dev/null && mv ${CONTAINER_TMP}/wiring_tmp-*.yaml ${CONTAINER_TMP}/wiring_tmp/ 2>/dev/null || true
-  " 2>/dev/null || true
+  # Copy all wiring files to the host artifact dir.
+  # NOTE: --split-by-fabric writes <base>-<fabric>.yaml inside the base directory, so the
+  # container source for docker compose cp is the wiring_tmp/ directory itself.
   cd "$NETBOX_DIR" && docker compose cp "netbox:${CONTAINER_TMP}/wiring_tmp/." "$ARTIFACT_DIR/wiring/" 2>/dev/null || echo "  WARN: cp wiring failed"
-  # Keep only backend wiring files (FE export fails with known mclag gap)
-  find "$ARTIFACT_DIR/wiring/" -name "wiring-frontend*.yaml" -delete 2>/dev/null || true
-  WIRING_FILES=$(find "$ARTIFACT_DIR/wiring/" -name "*.yaml" 2>/dev/null | sort)
+  # All per-fabric artifacts are preserved — do NOT delete any wiring-<fabric>.yaml files here.
+  # If hhfab cannot validate a particular fabric artifact, that gap is recorded in the hhfab logs
+  # (see step 5) and documented in translation-notes; the artifact itself is kept.
+  WIRING_FILES=$(find "$ARTIFACT_DIR/wiring/" -name "wiring-*.yaml" 2>/dev/null | sort)
   echo "  Wiring files: $(echo "$WIRING_FILES" | wc -l | tr -d ' ')"
 else
   echo "[4/7] Skipping wiring export (FE-only variant — known mclag gap applies)"
@@ -114,9 +115,14 @@ elif [[ -n "$LIQUID_CLONE_OF" ]] && [[ -d "$LIQUID_CLONE_OF" ]]; then
     echo "(Per-fabric validate logs copied from air variant; topology identical.)" >> "$ARTIFACT_DIR/hhfab/hhfab_validate.log"
   fi
 else
-  WIRING_FILES_LIST=$(find "$ARTIFACT_DIR/wiring/" -name "wiring-backend*.yaml" -o -name "wiring-backend-plane*.yaml" 2>/dev/null | sort)
+  # Iterate over ALL per-fabric wiring artifacts discovered in the wiring/ dir.
+  # We do not filter by fabric name — backend, frontend, or any arbitrary managed-fabric name
+  # is treated identically here.  If hhfab cannot validate a specific fabric (e.g. frontend
+  # with the known mclag gap), the failure is captured in a per-fabric log file and the
+  # artifact is still kept.  See issue #326.
+  WIRING_FILES_LIST=$(find "$ARTIFACT_DIR/wiring/" -name "wiring-*.yaml" 2>/dev/null | sort)
   if [[ -z "$WIRING_FILES_LIST" ]]; then
-    echo "No backend wiring files found; skipping hhfab." > "$ARTIFACT_DIR/hhfab/hhfab_validate.log"
+    echo "No per-fabric wiring files found; skipping hhfab." > "$ARTIFACT_DIR/hhfab/hhfab_validate.log"
   else
     for WIRING_F in $WIRING_FILES_LIST; do
       FABRIC_NAME=$(basename "$WIRING_F" .yaml | sed 's/^wiring-//')
@@ -125,13 +131,20 @@ else
       mkdir -p "$HHFAB_WORK"
       cp "$WIRING_F" "${HHFAB_WORK}/wiring.yaml"
       pushd "$HHFAB_WORK" > /dev/null
+      VALIDATE_LOG="${ARTIFACT_DIR}/hhfab/hhfab_validate_${FABRIC_NAME}.log"
       hhfab init --dev --force > "${ARTIFACT_DIR}/hhfab/hhfab_init_${FABRIC_NAME}.log" 2>&1 || true
-      hhfab validate >> "${ARTIFACT_DIR}/hhfab/hhfab_validate.log" 2>&1 || true
+      if hhfab validate > "$VALIDATE_LOG" 2>&1; then
+        echo "  [hhfab] ${FABRIC_NAME}: validate OK"
+      else
+        echo "  [hhfab] ${FABRIC_NAME}: validate FAILED (see ${VALIDATE_LOG}; artifact preserved)"
+      fi
       hhfab diagram > "${ARTIFACT_DIR}/hhfab/hhfab_diagram_${FABRIC_NAME}.log" 2>&1 || true
       find . -name "*.drawio" -exec cp {} "${ARTIFACT_DIR}/hhfab/${FABRIC_NAME}.drawio" \; 2>/dev/null || true
       popd > /dev/null
       rm -rf "$HHFAB_WORK"
     done
+    # Write a combined validate summary for easy review
+    cat "${ARTIFACT_DIR}/hhfab/hhfab_validate_"*.log > "${ARTIFACT_DIR}/hhfab/hhfab_validate.log" 2>/dev/null || true
   fi
 fi
 
@@ -147,28 +160,31 @@ cat > "$ARTIFACT_DIR/inputs/translation-notes.md" << NOTES_EOF
 - Site slug: ${SITE_SLUG}
 - Device count: ${DEVICE_COUNT:-unknown}
 
-## Known Gaps
+## Wiring Artifacts
+All managed-fabric wiring artifacts produced by --split-by-fabric are preserved in
+wiring/. Each wiring-<fabric>.yaml file is independently consumable.
+See hhfab/ for per-fabric validation logs (hhfab_validate_<fabric>.log).
 
-### Frontend Wiring Export
-Frontend wiring YAML export fails with:
-  "Switch references group 'fe-mclag' but no PlanMCLAGDomain exists"
-This is a pre-existing DIET gap affecting all DS5000 L3MH variants.
-Backend wiring exported and validated successfully.
+If a fabric's wiring export or hhfab validation failed, the artifact is still
+preserved and the failure is recorded in the corresponding log file.
+Known gap: frontend (DS5000 L3MH variants) export may fail with a mclag gap —
+"Switch references group 'fe-mclag' but no PlanMCLAGDomain exists". This is
+tracked as a pre-existing DIET gap. The artifact is kept even if export partially
+failed; see wiring_export.log for the full error.
 
-$(if [[ "$FE_ONLY" == "true" ]]; then echo "### FE-Only Variant
+$(if [[ "$FE_ONLY" == "true" ]]; then echo "## FE-Only Variant
 This variant has no backend fabric by RA design. Only a frontend fabric is defined.
-Frontend wiring export also blocked by the mclag gap above.
-hhfab validation not applicable (no backend wiring available)."; fi)
+Wiring export and hhfab validation are skipped (FE-only; no backend wiring available).
+Frontend wiring export is also blocked by the known mclag gap above."; fi)
 
-$(if [[ -n "$LIQUID_CLONE_OF" ]]; then echo "### Liquid Cooling Variant
+$(if [[ -n "$LIQUID_CLONE_OF" ]]; then echo "## Liquid Cooling Variant
 This variant is topologically identical to the corresponding air-cooled variant.
 Cooling medium and rack density differ only (not modeled in DIET).
 Reference air-cooled variant for the same wiring topology."; fi)
 
-## SH Distribution Shim (if applicable)
-Single-homed backend variants use rail-optimized distribution (rails 0-7) as a
-structural shim. DIET has no per-server SH distribution; this approximates the
-intent. Document deviation in RA notes.
+## SH Distribution Note (if applicable)
+Single-homed scale-out variants use same-switch grouped-per-leaf distribution.
+Servers are allocated in contiguous blocks per leaf (first N/2 → leaf A, rest → leaf B).
 
 ## XOC Composition Note (if applicable)
 XOC variants are modeled as a single scaled DIET plan with the combined server

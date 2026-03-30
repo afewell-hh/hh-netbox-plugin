@@ -8,7 +8,7 @@ being refined, generated outputs are copied into a `generated/` subtree.
 
 ## Destination Layout
 
-Example:
+Example (two-fabric plan with `backend` and `frontend` managed fabrics):
 
 ```text
 training-ra/compositions/OPG-128/clos-ro--.../
@@ -28,19 +28,35 @@ training-ra/compositions/OPG-128/clos-ro--.../
       inventory.json
       interface-connections.csv
     wiring/
-      full.yaml
-      backend.yaml
-      frontend.yaml
+      wiring-backend.yaml
+      wiring-frontend.yaml
     hhfab/
-      backend.validate.txt
+      hhfab_validate_backend.log
+      hhfab_validate_frontend.log
+      hhfab_validate.log        ← combined summary
       backend.drawio
-      frontend.validate.txt
       frontend.drawio
     logs/
       ingest.log
       generate.log
-      export.log
-      diagram.log
+      wiring_export.log
+```
+
+The exact fabric names in `wiring/` depend on the managed fabrics defined in the
+topology plan.  The pipeline preserves **all** per-fabric artifacts emitted by
+`export_wiring_yaml --split-by-fabric`.  No wiring artifact is deleted, even if
+hhfab validation for that fabric fails.  Validation failures are recorded in
+`hhfab/hhfab_validate_<fabric>.log` alongside the preserved artifact.
+
+For a single-fabric backend-only plan the layout would be:
+
+```text
+    wiring/
+      wiring-backend.yaml
+    hhfab/
+      hhfab_validate_backend.log
+      hhfab_validate.log
+      backend.drawio
 ```
 
 ## Publisher Script
