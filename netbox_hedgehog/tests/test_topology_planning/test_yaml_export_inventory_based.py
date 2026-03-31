@@ -1351,6 +1351,132 @@ class YAMLExportRedundancyCRDsTestCase(YAMLExportTestBase):
         links = bundled_crds[0]['spec']['bundled']['links']
         self.assertEqual(len(links), 2)
 
+    # ------------------------------------------------------------------ #
+    # Issue #330 — SwitchGroup export must not require PlanMCLAGDomain   #
+    # ------------------------------------------------------------------ #
+
+    def test_switchgroup_emitted_without_mclag_domain_record(self):
+        """
+        A switch class with redundancy_group set but NO PlanMCLAGDomain must
+        still produce a SwitchGroup CRD on export (Issue #330).
+
+        This is the root cause of the DS5000 L3MH frontend wiring export failure:
+        ingest never creates PlanMCLAGDomain, so _generate_switchgroups() always
+        raises ValidationError for any switch class with redundancy_group set.
+        """
+        from netbox_hedgehog.services.yaml_generator import generate_yaml_for_plan
+
+        plan = TopologyPlan.objects.create(
+            name='MCLAG No-Domain Export Plan',
+            created_by=self.user,
+        )
+
+        PlanSwitchClass.objects.create(
+            plan=plan,
+            switch_class_id='fe-gpu-leaf',
+            fabric=FabricTypeChoices.FRONTEND,
+            hedgehog_role=HedgehogRoleChoices.SERVER_LEAF,
+            device_type_extension=self.device_ext,
+            calculated_quantity=2,
+            redundancy_type='mclag',
+            redundancy_group='fe-mclag',
+        )
+
+        self._create_switch_device(plan, 'fe-gpu-leaf-01', 'fe-gpu-leaf')
+        self._create_switch_device(plan, 'fe-gpu-leaf-02', 'fe-gpu-leaf')
+
+        self._create_generation_state(plan, device_count=2, interface_count=0, cable_count=0)
+
+        # Must not raise — previously raised:
+        # "Switch references group 'fe-mclag' but no PlanMCLAGDomain exists"
+        yaml_str = generate_yaml_for_plan(plan, fabric='frontend')
+        documents = list(yaml.safe_load_all(yaml_str))
+        switchgroups = [doc for doc in documents if doc and doc.get('kind') == 'SwitchGroup']
+        self.assertEqual(len(switchgroups), 1)
+        self.assertEqual(switchgroups[0]['metadata']['name'], 'fe-mclag')
+        self.assertEqual(switchgroups[0]['spec'], {})
+
+    def test_switchgroup_emitted_without_mclag_domain_split_by_fabric(self):
+        """
+        Per-fabric export (fabric='frontend') with a switch class that has
+        redundancy_group set but no PlanMCLAGDomain must succeed (Issue #330).
+
+        This covers the exact path used by export_wiring_yaml --split-by-fabric.
+        """
+        from netbox_hedgehog.services.yaml_generator import generate_yaml_for_plan
+
+        plan = TopologyPlan.objects.create(
+            name='MCLAG No-Domain Split-Fabric Plan',
+            created_by=self.user,
+        )
+
+        PlanSwitchClass.objects.create(
+            plan=plan,
+            switch_class_id='fe-gpu-leaf',
+            fabric=FabricTypeChoices.FRONTEND,
+            hedgehog_role=HedgehogRoleChoices.SERVER_LEAF,
+            device_type_extension=self.device_ext,
+            calculated_quantity=2,
+            redundancy_type='mclag',
+            redundancy_group='fe-mclag',
+        )
+
+        self._create_switch_device(plan, 'fe-leaf-01', 'fe-gpu-leaf')
+        self._create_switch_device(plan, 'fe-leaf-02', 'fe-gpu-leaf')
+
+        self._create_generation_state(plan, device_count=2, interface_count=0, cable_count=0)
+
+        # Must not raise
+        yaml_str = generate_yaml_for_plan(plan, fabric='frontend')
+        documents = list(yaml.safe_load_all(yaml_str))
+        switchgroups = [doc for doc in documents if doc and doc.get('kind') == 'SwitchGroup']
+        self.assertEqual(len(switchgroups), 1)
+        self.assertEqual(switchgroups[0]['metadata']['name'], 'fe-mclag')
+
+    def test_existing_mclag_domain_still_emits_switchgroup(self):
+        """
+        Plans that DO have a PlanMCLAGDomain must still export the SwitchGroup
+        CRD correctly after the fix (regression guard, Issue #330).
+        """
+        from netbox_hedgehog.services.yaml_generator import generate_yaml_for_plan
+
+        plan = TopologyPlan.objects.create(
+            name='MCLAG With-Domain Regression Plan',
+            created_by=self.user,
+        )
+
+        switch_class = PlanSwitchClass.objects.create(
+            plan=plan,
+            switch_class_id='leaf-rg',
+            fabric=FabricTypeChoices.FRONTEND,
+            hedgehog_role=HedgehogRoleChoices.SERVER_LEAF,
+            device_type_extension=self.device_ext,
+            calculated_quantity=2,
+            redundancy_type='mclag',
+            redundancy_group='mclag-legacy',
+        )
+
+        PlanMCLAGDomain.objects.create(
+            plan=plan,
+            domain_id='mclag-legacy',
+            switch_class=switch_class,
+            peer_link_count=2,
+            session_link_count=2,
+            switch_group_name='mclag-legacy',
+        )
+
+        self._create_switch_device(plan, 'leaf-legacy-01', 'leaf-rg')
+        self._create_switch_device(plan, 'leaf-legacy-02', 'leaf-rg')
+
+        self._create_generation_state(plan, device_count=2, interface_count=0, cable_count=0)
+
+        yaml_str = generate_yaml_for_plan(plan, fabric='frontend')
+        documents = list(yaml.safe_load_all(yaml_str))
+        switchgroups = [doc for doc in documents if doc and doc.get('kind') == 'SwitchGroup']
+        self.assertEqual(len(switchgroups), 1)
+        self.assertEqual(switchgroups[0]['metadata']['name'], 'mclag-legacy')
+        self.assertEqual(switchgroups[0]['spec'], {})
+
 
 class YAMLExportUITestCase(YAMLExportTestBase):
     """
