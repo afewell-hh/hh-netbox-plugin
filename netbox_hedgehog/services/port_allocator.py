@@ -67,6 +67,10 @@ class PortAllocatorV2:
         self._cursors[key] = cursor + count
         return allocated
 
+    def capacity_for_zone(self, zone) -> int:
+        """Return total logical port capacity for a zone (all ports, no allocation consumed)."""
+        return len(self._build_sequence(zone))
+
     def _build_sequence(self, zone) -> list[PortSlot]:
         ports = PortSpecification(zone.port_spec).parse()
         ordered_ports = self._apply_strategy(zone, ports)

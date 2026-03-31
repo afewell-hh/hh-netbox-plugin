@@ -302,13 +302,22 @@ class DeviceGenerator:
                             f"No switch instances available for {switch_class.switch_class_id}."
                         )
 
-                    # Pre-calculate total_rails for rail-optimized connections
+                    # Pre-calculate total_rails and servers_per_domain for rail-optimized connections
                     total_rails = None
+                    servers_per_domain = None
                     if connection_def.distribution == ConnectionDistributionChoices.RAIL_OPTIMIZED:
                         total_rails = self._get_total_rails_for_target(
                             server_class,
                             zone,
                         )
+                        num_sw = len(switch_instances)
+                        if total_rails and num_sw >= total_rails:
+                            # Domain-based: compute how many servers fit in one first-hop rail domain.
+                            # Each domain has total_rails switches (one per rail); each switch serves
+                            # zone_capacity / ports_per_connection servers for its rail.
+                            zone_capacity = self.port_allocator.capacity_for_zone(zone)
+                            ppc = connection_def.ports_per_connection or 1
+                            servers_per_domain = max(1, zone_capacity // ppc)
 
                     module = nic_to_module.get(connection_def.nic_id)
                     if module is None:
@@ -335,6 +344,7 @@ class DeviceGenerator:
                             port_index,
                             rail=connection_def.rail,
                             total_rails=total_rails,
+                            servers_per_domain=servers_per_domain,
                         )
                         switch_port = self.port_allocator.allocate(
                             switch_device.name,
@@ -1043,6 +1053,7 @@ class DeviceGenerator:
         port_index: int,
         rail: int | None = None,
         total_rails: int | None = None,
+        servers_per_domain: int | None = None,
     ) -> Device:
         if len(switch_instances) == 1:
             return switch_instances[0]
@@ -1052,9 +1063,22 @@ class DeviceGenerator:
         if distribution == ConnectionDistributionChoices.SAME_SWITCH:
             return switch_instances[server_index % len(switch_instances)]
         if distribution == ConnectionDistributionChoices.RAIL_OPTIMIZED:
-            # Rail-optimized: all servers' NIC at position N connect to same switch(es)
-            # Algorithm: rails_per_switch = ceil(total_rails / num_switches)
-            #            switch_index = rail // rails_per_switch
+            # Rail-optimized: all servers' NIC at position N connect to the same rail's switch.
+            # Two sub-cases:
+            #
+            # A) num_switches < total_rails (capacity-sharing):
+            #    Multiple rails are served by one switch. Map by:
+            #        rails_per_switch = ceil(total_rails / num_switches)
+            #        switch_index = rail // rails_per_switch
+            #    server_index is irrelevant here (all servers share same mapping).
+            #
+            # B) num_switches >= total_rails (domain-based / repeated first-hop domains):
+            #    Each domain has exactly total_rails switches (one per rail).
+            #    Domains repeat when server demand exceeds one switch's capacity.
+            #        domain_index = server_index // servers_per_domain
+            #        switch_index = domain_index * total_rails + rail
+            #    This ensures servers 0..N-1 use domain 0 and servers N..2N-1 use domain 1,
+            #    each domain using the same rail→switch-within-domain mapping.
             if rail is None:
                 raise ValidationError(
                     "Rail number required for rail-optimized distribution"
@@ -1065,9 +1089,23 @@ class DeviceGenerator:
                 )
 
             num_switches = len(switch_instances)
-            rails_per_switch = math.ceil(total_rails / num_switches)
-            switch_index = rail // rails_per_switch
 
+            if num_switches >= total_rails:
+                # Domain-based: repeated first-hop rail domains
+                if servers_per_domain is None or servers_per_domain <= 0:
+                    raise ValidationError(
+                        "servers_per_domain required for rail-optimized distribution "
+                        "when num_switches >= total_rails"
+                    )
+                domain_index = server_index // servers_per_domain
+                switch_index = domain_index * total_rails + rail
+            else:
+                # Capacity-sharing: multiple rails map to one switch
+                rails_per_switch = math.ceil(total_rails / num_switches)
+                switch_index = rail // rails_per_switch
+
+            # Safety clamp — should never fire for well-formed plans
+            switch_index = min(switch_index, num_switches - 1)
             return switch_instances[switch_index]
 
         return switch_instances[server_index % len(switch_instances)]
