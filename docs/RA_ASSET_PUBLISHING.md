@@ -21,8 +21,8 @@ training-ra/compositions/OPG-128/clos-ro--.../
     README.md
     hhfab/
       backend.drawio
-      hhfab_validate_backend.log     ← present only when validation failed
-      hhfab_validate_frontend.log    ← present (documents gap or success)
+      hhfab_validate_backend.log     ← present for every exported fabric
+      hhfab_validate_frontend.log    ← present for every exported fabric
   wiring/
     wiring-backend.yaml
     wiring-frontend.yaml             ← absent while MCLAG gap exists; see note
@@ -47,15 +47,15 @@ published to the composition directory.
 
 ### Frontend wiring gap note
 
-All current training variants have both `backend` and `frontend` managed
-fabrics.  The `export_wiring_yaml --split-by-fabric` command attempts to
-export both fabrics but the frontend export fails with:
+When a plan includes a `frontend` fabric, `export_wiring_yaml --split-by-fabric`
+attempts to export it, but the export fails for DS5000 L3MH topologies with:
 
 > Switch references group 'fe-mclag' but no PlanMCLAGDomain exists
 
-As a result `wiring-frontend.yaml` is absent from `wiring/`.  This is a
-known pre-existing DIET gap (DS5000 L3MH MCLAG domain not modeled).  Each
-variant documents the situation in `diagrams/hhfab/hhfab_validate_frontend.log`.
+As a result `wiring-frontend.yaml` is absent from `wiring/` for those variants.
+This is a known pre-existing DIET gap (DS5000 L3MH MCLAG domain not modeled).
+Each affected variant documents the situation in
+`diagrams/hhfab/hhfab_validate_frontend.log`.
 
 ## Publisher Script
 
