@@ -327,13 +327,29 @@ class DeviceGenerator:
                             "Ensure Pass 1 created the module correctly."
                         )
 
+                    # DIET-334 Stage 1: create server-side transceiver Module if FK is set.
+                    self._create_server_transceiver_module(server_device, connection_def)
+
                     # Build transceiver spec string for server-side interface custom field.
-                    _xcvr_parts = [
-                        connection_def.cage_type,
-                        connection_def.medium,
-                        connection_def.connector,
-                        connection_def.standard,
-                    ]
+                    # Prefer FK attribute_data when available; fall back to flat fields.
+                    # DEPRECATED: hedgehog_transceiver_spec will be removed in Stage 3 (#334).
+                    # Use Module.attribute_data on the generated transceiver Module instead.
+                    xcvr_mt = getattr(connection_def, 'transceiver_module_type', None)
+                    if xcvr_mt is not None:
+                        _ad = xcvr_mt.attribute_data or {}
+                        _xcvr_parts = [
+                            _ad.get('cage_type', ''),
+                            _ad.get('medium', ''),
+                            _ad.get('standard', ''),
+                            _ad.get('connector', ''),
+                        ]
+                    else:
+                        _xcvr_parts = [
+                            connection_def.cage_type,
+                            connection_def.medium,
+                            connection_def.connector,
+                            connection_def.standard,
+                        ]
                     transceiver_spec = ' | '.join(p for p in _xcvr_parts if p)
 
                     for port_index in range(connection_def.ports_per_connection):
@@ -1170,6 +1186,53 @@ class DeviceGenerator:
             iface.custom_field_data.setdefault('hedgehog_transceiver_spec', '')
             iface.save()
 
+        return module
+
+    def _create_server_transceiver_module(
+        self,
+        device: Device,
+        connection,
+    ):
+        """
+        Create a device-level ModuleBay and transceiver Module for a PlanServerConnection
+        when transceiver_module_type FK is set (DIET-334 Stage 1).
+
+        Stage 1 approximation: the bay is at the Device level, NOT nested inside the NIC
+        Module. Bay name is '{nic_id}-cage-{port_index}'. This will be replaced in Stage 2
+        with nested NIC-port-bay placement.
+
+        Returns the created or existing Module, or None if FK is null.
+        """
+        xcvr_mt = getattr(connection, 'transceiver_module_type', None)
+        if xcvr_mt is None:
+            return None
+
+        from dcim.models import ModuleBay, Module
+
+        bay_name = f"{connection.nic.nic_id}-cage-{connection.port_index}"
+
+        module_bay, _ = ModuleBay.objects.get_or_create(
+            device=device,
+            name=bay_name,
+            defaults={'label': f'Transceiver cage {bay_name}'},
+        )
+
+        existing = Module.objects.filter(device=device, module_bay=module_bay).first()
+        if existing is not None:
+            if existing.module_type_id == xcvr_mt.pk:
+                return existing
+            # Transceiver changed in plan; replace it.
+            existing.delete()
+
+        module = Module(
+            device=device,
+            module_bay=module_bay,
+            module_type=xcvr_mt,
+            status='planned',
+            serial=f"{device.name}-{bay_name}",
+        )
+        module.custom_field_data = {'hedgehog_plan_id': str(self.plan.pk)}
+        module.save()
         return module
 
     def _get_module_interface_by_port_index(

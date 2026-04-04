@@ -346,6 +346,7 @@ class PlanServerConnectionForm(NetBoxModelForm):
             'speed',
             'rail',
             'port_type',
+            'transceiver_module_type',
             'cage_type',
             'medium',
             'connector',
@@ -363,6 +364,11 @@ class PlanServerConnectionForm(NetBoxModelForm):
             'port_index': (
                 'Zero-based port index on the NIC (0 for first port, 1 for second port). '
                 'Used to select which physical port on the NIC to use for this connection.'
+            ),
+            'transceiver_module_type': (
+                'Transceiver or DAC/AOC SKU to install in this port cage. '
+                'Must have the Network Transceiver profile. '
+                'Leave blank to use flat fields for spec only.'
             ),
             'cage_type': 'Transceiver cage/port form factor (leave blank if not specified).',
             'medium': 'Physical transmission medium (leave blank if not specified).',
@@ -408,6 +414,16 @@ class PlanServerConnectionForm(NetBoxModelForm):
             self.fields['nic'].help_text = (
                 'Select a server class first. NIC must belong to the same server class.'
             )
+
+        # Filter transceiver_module_type to Network Transceiver profile only (DIET-334).
+        from dcim.models import ModuleType, ModuleTypeProfile
+        xcvr_profile = ModuleTypeProfile.objects.filter(name='Network Transceiver').first()
+        if xcvr_profile:
+            self.fields['transceiver_module_type'].queryset = ModuleType.objects.filter(
+                profile=xcvr_profile
+            ).select_related('manufacturer').order_by('manufacturer__name', 'model')
+        else:
+            self.fields['transceiver_module_type'].queryset = ModuleType.objects.none()
 
     def clean(self):
         """Validate form data including interface selection"""
@@ -501,6 +517,7 @@ class SwitchPortZoneForm(NetBoxModelForm):
             'allocation_strategy',
             'allocation_order',
             'priority',
+            'transceiver_module_type',
             'tags',
         ]
         widgets = {
@@ -510,4 +527,21 @@ class SwitchPortZoneForm(NetBoxModelForm):
             'zone_name': "Zone name (e.g., 'server-ports', 'spine-uplinks')",
             'port_spec': "Port specification (e.g., '1-48', '1-32:2', '1,3,5')",
             'allocation_order': 'JSON list of port numbers used when strategy is custom',
+            'transceiver_module_type': (
+                'Intended transceiver/DAC SKU for all ports in this zone. '
+                'Must have the Network Transceiver profile. '
+                'Used for plan-save compatibility validation (Stage 2: switch-side Module generation).'
+            ),
         }
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        # Filter transceiver_module_type to Network Transceiver profile only (DIET-334).
+        from dcim.models import ModuleType, ModuleTypeProfile
+        xcvr_profile = ModuleTypeProfile.objects.filter(name='Network Transceiver').first()
+        if xcvr_profile:
+            self.fields['transceiver_module_type'].queryset = ModuleType.objects.filter(
+                profile=xcvr_profile
+            ).select_related('manufacturer').order_by('manufacturer__name', 'model')
+        else:
+            self.fields['transceiver_module_type'].queryset = ModuleType.objects.none()

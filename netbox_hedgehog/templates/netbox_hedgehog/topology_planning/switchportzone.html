@@ -31,6 +31,14 @@
         <th scope="row">Priority</th>
         <td>{{ object.priority }}</td>
       </tr>
+      <tr>
+        <th scope="row">Transceiver SKU</th>
+        <td>
+          {% if object.transceiver_module_type %}
+            {{ object.transceiver_module_type.manufacturer }} {{ object.transceiver_module_type.model }}
+          {% else %}&mdash;{% endif %}
+        </td>
+      </tr>
     </table>
   </div>
 </div>

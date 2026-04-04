@@ -403,7 +403,8 @@ class PlanServerConnectionTable(NetBoxTable):
             'pk', 'id', 'connection_id', 'server_class', 'connection_name',
             'nic', 'port_index', 'ports_per_connection', 'hedgehog_conn_type',
             'distribution', 'target_zone', 'speed', 'rail',
-            'port_type', 'cage_type', 'medium', 'connector', 'standard',
+            'port_type', 'transceiver_module_type',
+            'cage_type', 'medium', 'connector', 'standard',
             'tags', 'created', 'last_updated',
         )
         default_columns = (
@@ -456,8 +457,8 @@ class SwitchPortZoneTable(NetBoxTable):
         model = SwitchPortZone
         fields = (
             'pk', 'id', 'zone_name', 'switch_class', 'zone_type', 'port_spec',
-            'breakout_option', 'allocation_strategy', 'priority', 'tags',
-            'created', 'last_updated'
+            'breakout_option', 'allocation_strategy', 'priority',
+            'transceiver_module_type', 'tags', 'created', 'last_updated'
         )
         default_columns = (
             'zone_name', 'switch_class', 'zone_type', 'port_spec',
