@@ -7,6 +7,7 @@ Groups:
   C - switch-side transceiver Module placement in generator
   D - nested NIC-port-bay server-side transceiver placement
   E - post-generation pairwise compatibility sweep (aggregate-all-mismatches-then-fail)
+  F - hard-fail when transceiver FK is set but required ModuleBay is absent (#345)
   G - hedgehog_transceiver_spec suppression when transceiver Module present
 
 All tests in this file are RED until Stage 2 GREEN implementation lands.
@@ -564,6 +565,182 @@ class CompatibilitySweepTestCase(TestCase):
         mismatches = report.get('mismatches', [])
         self.assertGreaterEqual(len(mismatches), 2,
             "Sweep must collect ALL mismatches before failing — both connections must appear")
+
+
+# ---------------------------------------------------------------------------
+# Group F: Hard-fail when transceiver FK is set but required bay is absent (#345)
+# ---------------------------------------------------------------------------
+
+class MissingBayHardFailTestCase(TestCase):
+    """
+    F.1–F.4: Generation must FAIL (not succeed) when transceiver_module_type is set
+    but populate_transceiver_bays was not run (so the required ModuleBay is absent).
+
+    These tests use FRESH DeviceType/ModuleType objects that have NEVER had
+    ModuleBayTemplates added to them, ensuring the missing-bay path is exercised.
+    """
+
+    @classmethod
+    def setUpTestData(cls):
+        cls.mfr, _ = Manufacturer.objects.get_or_create(
+            name='F-Test-Mfg', defaults={'slug': 'f-test-mfg'}
+        )
+        # Fresh switch DeviceType — no ModuleBayTemplates ever added.
+        cls.switch_dt, _ = DeviceType.objects.get_or_create(
+            manufacturer=cls.mfr, model='F-SW-NOBAY', defaults={'slug': 'f-sw-nobay'}
+        )
+        # Add InterfaceTemplates (needed so device has interfaces to wire) but do NOT
+        # call populate_transceiver_bays, so no ModuleBayTemplates are created.
+        for port_n in range(1, 5):
+            InterfaceTemplate.objects.get_or_create(
+                device_type=cls.switch_dt, name=f'E1/{port_n}',
+                defaults={'type': '200gbase-x-qsfp112'},
+            )
+        cls.device_ext, _ = DeviceTypeExtension.objects.update_or_create(
+            device_type=cls.switch_dt,
+            defaults={
+                'native_speed': 200, 'uplink_ports': 0,
+                'supported_breakouts': ['1x200g-f'], 'mclag_capable': False,
+                'hedgehog_roles': ['server-leaf'],
+            },
+        )
+        cls.breakout, _ = BreakoutOption.objects.get_or_create(
+            breakout_id='1x200g-f',
+            defaults={'from_speed': 200, 'logical_ports': 1, 'logical_speed': 200},
+        )
+        cls.server_dt, _ = DeviceType.objects.get_or_create(
+            manufacturer=cls.mfr, model='F-SRV-NOBAY', defaults={'slug': 'f-srv-nobay'}
+        )
+        cls.site, _ = Site.objects.get_or_create(
+            name='F-TestSite', defaults={'slug': 'f-testsite'}
+        )
+        cls.xcvr_mt = get_test_transceiver_module_type()
+        # Fresh NIC ModuleType — no ModuleBayTemplate children ever added.
+        mfr2, _ = Manufacturer.objects.get_or_create(
+            name='F-NIC-Mfg', defaults={'slug': 'f-nic-mfg'}
+        )
+        cls.nic_mt_fresh, _ = ModuleType.objects.get_or_create(
+            manufacturer=mfr2, model='F-NIC-NOBAY',
+            defaults={},
+        )
+        # Add InterfaceTemplates to NIC so NIC Module gets interfaces when installed.
+        from dcim.models import InterfaceTemplate as IfaceTemplate
+        IfaceTemplate.objects.get_or_create(
+            module_type=cls.nic_mt_fresh, name='p0',
+            defaults={'type': '200gbase-x-qsfp112'},
+        )
+
+    def _make_plan_missing_bays(self, name_suffix, set_switch_xcvr=False, set_conn_xcvr=False):
+        """Build a plan using the fresh (no-bay) DeviceType and ModuleType."""
+        plan = TopologyPlan.objects.create(
+            name=f'S2FPlan-{name_suffix}-{id(self)}',
+            status=TopologyPlanStatusChoices.DRAFT,
+        )
+        sc = PlanServerClass.objects.create(
+            plan=plan, server_class_id='gpu-f',
+            server_device_type=self.server_dt, quantity=1,
+        )
+        sw = PlanSwitchClass.objects.create(
+            plan=plan, switch_class_id='fe-leaf-f',
+            fabric_name=FabricTypeChoices.FRONTEND,
+            fabric_class=FabricClassChoices.MANAGED,
+            hedgehog_role=HedgehogRoleChoices.SERVER_LEAF,
+            device_type_extension=self.device_ext,
+            uplink_ports_per_switch=0, mclag_pair=False,
+            override_quantity=2, redundancy_type='eslag',
+        )
+        zone_kwargs = {}
+        if set_switch_xcvr:
+            zone_kwargs['transceiver_module_type'] = self.xcvr_mt
+        zone = SwitchPortZone.objects.create(
+            switch_class=sw, zone_name='server-downlinks',
+            zone_type=PortZoneTypeChoices.SERVER, port_spec='1-64',
+            breakout_option=self.breakout,
+            allocation_strategy=AllocationStrategyChoices.SEQUENTIAL, priority=100,
+            **zone_kwargs,
+        )
+        nic = PlanServerNIC.objects.create(
+            server_class=sc, nic_id='nic-fe-f', module_type=self.nic_mt_fresh,
+        )
+        conn_kwargs = {}
+        if set_conn_xcvr:
+            conn_kwargs['transceiver_module_type'] = self.xcvr_mt
+        PlanServerConnection.objects.create(
+            server_class=sc, connection_id='fe-f',
+            nic=nic, port_index=0, ports_per_connection=1,
+            hedgehog_conn_type=ConnectionTypeChoices.UNBUNDLED,
+            distribution=ConnectionDistributionChoices.ALTERNATING,
+            target_zone=zone, speed=200, port_type='data',
+            **conn_kwargs,
+        )
+        return plan, sc, sw, zone, nic
+
+    def tearDown(self):
+        for p in list(TopologyPlan.objects.filter(name__startswith='S2FPlan-')):
+            _cleanup(p.pk)
+            _delete_plan(p)
+
+    def test_missing_switch_bay_fails_generation(self):
+        """F.1: zone.transceiver_module_type set + no switch ModuleBay → status=FAILED."""
+        plan, sc, sw, zone, nic = self._make_plan_missing_bays(
+            'F1', set_switch_xcvr=True, set_conn_xcvr=False
+        )
+        # Do NOT call populate_transceiver_bays → switch DeviceType has no ModuleBayTemplates
+        # → no ModuleBays on created switch devices → bay lookup fails
+        _generate(plan)
+        gs = GenerationState.objects.filter(plan=plan).first()
+        self.assertIsNotNone(gs, "GenerationState must exist after failed generation")
+        self.assertEqual(
+            gs.status, GenerationStatusChoices.FAILED,
+            "Missing switch ModuleBay with transceiver FK set must result in status=FAILED, not GENERATED",
+        )
+
+    def test_missing_switch_bay_report_contains_bay_errors(self):
+        """F.2: mismatch_report.bay_errors is populated when switch bay is absent."""
+        plan, sc, sw, zone, nic = self._make_plan_missing_bays(
+            'F2', set_switch_xcvr=True, set_conn_xcvr=False
+        )
+        _generate(plan)
+        gs = GenerationState.objects.filter(plan=plan).first()
+        report = getattr(gs, 'mismatch_report', None)
+        self.assertIsNotNone(report, "mismatch_report must be populated when bay errors occur")
+        bay_errors = report.get('bay_errors', [])
+        self.assertGreater(len(bay_errors), 0,
+            "mismatch_report.bay_errors must contain at least one entry")
+        first = bay_errors[0]
+        self.assertEqual(first.get('error_type'), 'missing_switch_bay',
+            "bay_error entry must have error_type='missing_switch_bay'")
+
+    def test_missing_nested_bay_fails_generation(self):
+        """F.3: connection.transceiver_module_type set + no nested NIC cage bay → status=FAILED."""
+        plan, sc, sw, zone, nic = self._make_plan_missing_bays(
+            'F3', set_switch_xcvr=False, set_conn_xcvr=True
+        )
+        # Do NOT call populate_transceiver_bays → NIC ModuleType has no ModuleBayTemplate children
+        # → no nested cage bays when NIC Module is installed → bay lookup fails
+        _generate(plan)
+        gs = GenerationState.objects.filter(plan=plan).first()
+        self.assertIsNotNone(gs, "GenerationState must exist after failed generation")
+        self.assertEqual(
+            gs.status, GenerationStatusChoices.FAILED,
+            "Missing nested NIC cage bay with transceiver FK set must result in status=FAILED, not GENERATED",
+        )
+
+    def test_missing_nested_bay_report_contains_bay_errors(self):
+        """F.4: mismatch_report.bay_errors is populated when nested NIC cage bay is absent."""
+        plan, sc, sw, zone, nic = self._make_plan_missing_bays(
+            'F4', set_switch_xcvr=False, set_conn_xcvr=True
+        )
+        _generate(plan)
+        gs = GenerationState.objects.filter(plan=plan).first()
+        report = getattr(gs, 'mismatch_report', None)
+        self.assertIsNotNone(report, "mismatch_report must be populated when bay errors occur")
+        bay_errors = report.get('bay_errors', [])
+        self.assertGreater(len(bay_errors), 0,
+            "mismatch_report.bay_errors must contain at least one entry")
+        first = bay_errors[0]
+        self.assertEqual(first.get('error_type'), 'missing_nested_bay',
+            "bay_error entry must have error_type='missing_nested_bay'")
 
 
 # ---------------------------------------------------------------------------

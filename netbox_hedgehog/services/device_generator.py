@@ -116,6 +116,11 @@ class DeviceGenerator:
         interfaces = []
         cables = []
 
+        # Stage 2: missing-bay error accumulator.  Populated by
+        # _create_nested_transceiver_module() and _create_switch_transceiver_module()
+        # when a transceiver FK is set but the required ModuleBay is absent.
+        self._bay_placement_errors: list = []
+
         # Milestone 3: Creating switch devices
         if self.logger:
             self.logger.info("Creating switch devices")
@@ -146,7 +151,24 @@ class DeviceGenerator:
             self.logger.info("Tagging objects and finalizing generation")
         self._tag_objects(devices, interfaces, cables)
 
-        # Milestone 7: Post-generation pairwise transceiver compatibility sweep (Stage 2).
+        # Milestone 7a: Bay-placement hard-fail check (Stage 2, #345).
+        # If any transceiver FK was set but the required ModuleBay was absent,
+        # generation must not succeed.  Collected by placement helpers above.
+        if self._bay_placement_errors:
+            self._upsert_generation_state(
+                device_count=len(devices),
+                interface_count=len(interfaces),
+                cable_count=len(cables),
+                status=GenerationStatusChoices.FAILED,
+                mismatch_report={'bay_errors': self._bay_placement_errors},
+            )
+            return GenerationResult(
+                device_count=len(devices),
+                interface_count=len(interfaces),
+                cable_count=len(cables),
+            )
+
+        # Milestone 7b: Post-generation pairwise transceiver compatibility sweep (Stage 2).
         # Runs after all objects are created; collects all mismatches before failing.
         mismatches = self._run_compatibility_sweep()
         if mismatches:
@@ -1280,10 +1302,10 @@ class DeviceGenerator:
 
         The cage-N ModuleBay is auto-instantiated by NetBox when the NIC Module is installed
         (driven by ModuleBayTemplate children on the NIC ModuleType, added by
-        populate_transceiver_bays). If the nested bay is absent (command not run), logs a
-        warning and returns None without hard-failing.
+        populate_transceiver_bays). If the nested bay is absent and the connection has a
+        transceiver FK set, this is a hard error — generation will be marked FAILED (#345).
 
-        Returns the created/existing transceiver Module, or None if FK is null or bay absent.
+        Returns the created/existing transceiver Module, or None if FK is null.
         """
         xcvr_mt = getattr(connection, 'transceiver_module_type', None)
         if xcvr_mt is None:
@@ -1298,12 +1320,13 @@ class DeviceGenerator:
         ).first()
 
         if nested_bay is None:
-            import logging
-            logging.getLogger(__name__).warning(
-                'Stage 2: nested bay %r not found on NIC Module %s (device %s). '
-                'Run populate_transceiver_bays to add ModuleBayTemplates to NIC ModuleTypes.',
-                cage_name, nic_module, device.name,
-            )
+            self._bay_placement_errors.append({
+                'error_type': 'missing_nested_bay',
+                'device': device.name,
+                'cage': cage_name,
+                'connection_id': connection.pk,
+                'hint': 'Run populate_transceiver_bays to add ModuleBayTemplates to NIC ModuleTypes.',
+            })
             return None
 
         existing = Module.objects.filter(module_bay=nested_bay).first()
@@ -1335,9 +1358,10 @@ class DeviceGenerator:
         The ModuleBay named `port_name` must already exist on the switch Device (auto-created
         from ModuleBayTemplate by NetBox when the device was created, after
         populate_transceiver_bays added the templates to the DeviceType). If the bay is
-        absent (command not run), logs a warning and returns None without hard-failing.
+        absent and the zone has a transceiver FK set, this is a hard error — generation
+        will be marked FAILED (#345).
 
-        Returns the created/existing transceiver Module, or None if zone FK is null or bay absent.
+        Returns the created/existing transceiver Module, or None if zone FK is null.
         """
         xcvr_mt = getattr(zone, 'transceiver_module_type', None)
         if xcvr_mt is None:
@@ -1347,12 +1371,13 @@ class DeviceGenerator:
 
         bay = ModuleBay.objects.filter(device=device, name=port_name).first()
         if bay is None:
-            import logging
-            logging.getLogger(__name__).warning(
-                'Stage 2: switch ModuleBay %r not found on device %s. '
-                'Run populate_transceiver_bays to add ModuleBayTemplates to switch DeviceTypes.',
-                port_name, device.name,
-            )
+            self._bay_placement_errors.append({
+                'error_type': 'missing_switch_bay',
+                'device': device.name,
+                'port': port_name,
+                'zone': zone.zone_name,
+                'hint': 'Run populate_transceiver_bays to add ModuleBayTemplates to switch DeviceTypes.',
+            })
             return None
 
         existing = Module.objects.filter(device=device, module_bay=bay).first()
