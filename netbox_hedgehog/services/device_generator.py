@@ -145,6 +145,25 @@ class DeviceGenerator:
         if self.logger:
             self.logger.info("Tagging objects and finalizing generation")
         self._tag_objects(devices, interfaces, cables)
+
+        # Milestone 7: Post-generation pairwise transceiver compatibility sweep (Stage 2).
+        # Runs after all objects are created; collects all mismatches before failing.
+        mismatches = self._run_compatibility_sweep()
+        if mismatches:
+            self._upsert_generation_state(
+                device_count=len(devices),
+                interface_count=len(interfaces),
+                cable_count=len(cables),
+                status=GenerationStatusChoices.FAILED,
+                mismatch_report={'mismatches': mismatches},
+            )
+            # Return result anyway so callers can inspect counts; status signals failure.
+            return GenerationResult(
+                device_count=len(devices),
+                interface_count=len(interfaces),
+                cable_count=len(cables),
+            )
+
         self._upsert_generation_state(
             device_count=len(devices),
             interface_count=len(interfaces),
@@ -327,30 +346,37 @@ class DeviceGenerator:
                             "Ensure Pass 1 created the module correctly."
                         )
 
-                    # DIET-334 Stage 1: create server-side transceiver Module if FK is set.
-                    self._create_server_transceiver_module(server_device, connection_def)
+                    # DIET-334 Stage 2: place server-side transceiver in nested NIC-port bay.
+                    xcvr_module = self._create_nested_transceiver_module(
+                        server_device, module, connection_def
+                    )
 
                     # Build transceiver spec string for server-side interface custom field.
                     # Prefer FK attribute_data when available; fall back to flat fields.
                     # DEPRECATED: hedgehog_transceiver_spec will be removed in Stage 3 (#334).
-                    # Use Module.attribute_data on the generated transceiver Module instead.
+                    # Stage 2: suppress write when a real transceiver Module was placed.
                     xcvr_mt = getattr(connection_def, 'transceiver_module_type', None)
-                    if xcvr_mt is not None:
-                        _ad = xcvr_mt.attribute_data or {}
-                        _xcvr_parts = [
-                            _ad.get('cage_type', ''),
-                            _ad.get('medium', ''),
-                            _ad.get('standard', ''),
-                            _ad.get('connector', ''),
-                        ]
+                    if xcvr_module is None:
+                        # No Module placed — build fallback spec from flat fields or FK attrs.
+                        if xcvr_mt is not None:
+                            _ad = xcvr_mt.attribute_data or {}
+                            _xcvr_parts = [
+                                _ad.get('cage_type', ''),
+                                _ad.get('medium', ''),
+                                _ad.get('standard', ''),
+                                _ad.get('connector', ''),
+                            ]
+                        else:
+                            _xcvr_parts = [
+                                connection_def.cage_type,
+                                connection_def.medium,
+                                connection_def.connector,
+                                connection_def.standard,
+                            ]
+                        transceiver_spec = ' | '.join(p for p in _xcvr_parts if p)
                     else:
-                        _xcvr_parts = [
-                            connection_def.cage_type,
-                            connection_def.medium,
-                            connection_def.connector,
-                            connection_def.standard,
-                        ]
-                    transceiver_spec = ' | '.join(p for p in _xcvr_parts if p)
+                        # Transceiver Module placed — suppress legacy custom field write.
+                        transceiver_spec = ''
 
                     for port_index in range(connection_def.ports_per_connection):
                         switch_device = self._select_switch_instance(
@@ -379,6 +405,11 @@ class DeviceGenerator:
                                 'hedgehog_breakout_index': switch_port.breakout_index,
                             },
                             interface_type=self._speed_to_interface_type(connection_def.speed),
+                        )
+
+                        # DIET-334 Stage 2: place switch-side transceiver Module.
+                        self._create_switch_transceiver_module(
+                            switch_device, switch_port.name, zone
                         )
 
                         # Get server interface from Module using port_index (DIET-294 NIC-first)
@@ -946,6 +977,8 @@ class DeviceGenerator:
         device_count: int,
         interface_count: int,
         cable_count: int,
+        status: str = GenerationStatusChoices.GENERATED,
+        mismatch_report=None,
     ) -> None:
         GenerationState.objects.filter(plan=self.plan).delete()
         state = GenerationState(
@@ -954,9 +987,55 @@ class DeviceGenerator:
             interface_count=interface_count,
             cable_count=cable_count,
             snapshot=build_plan_snapshot(self.plan),
-            status=GenerationStatusChoices.GENERATED,
+            status=status,
+            mismatch_report=mismatch_report,
         )
         state.save()
+
+    def _run_compatibility_sweep(self) -> list:
+        """
+        Stage 2: post-generation pairwise transceiver compatibility sweep.
+
+        Iterates over all PlanServerConnections for this plan and compares
+        cage_type and medium from both cable ends. Collects ALL mismatches
+        before returning — aggregate-all-mismatches-then-fail per approved spec.
+
+        Returns a list of mismatch dicts (empty list = all compatible).
+        """
+        from netbox_hedgehog.models.topology_planning import PlanServerConnection
+
+        mismatches = []
+        connections = PlanServerConnection.objects.filter(
+            server_class__plan=self.plan
+        ).select_related(
+            'transceiver_module_type',
+            'target_zone__transceiver_module_type',
+            'server_class',
+        )
+
+        for conn in connections:
+            server_mt = getattr(conn, 'transceiver_module_type', None)
+            zone_mt = getattr(conn.target_zone, 'transceiver_module_type', None)
+            if server_mt is None or zone_mt is None:
+                continue
+
+            s_attrs = server_mt.attribute_data or {}
+            z_attrs = zone_mt.attribute_data or {}
+
+            for dim in ('cage_type', 'medium'):
+                s_val = s_attrs.get(dim)
+                z_val = z_attrs.get(dim)
+                if s_val and z_val and s_val != z_val:
+                    mismatches.append({
+                        'connection_id': conn.pk,
+                        'server_device': str(conn.server_class.server_class_id),
+                        'switch_port': conn.target_zone.zone_name,
+                        'mismatch_type': dim,
+                        'server_end': s_val,
+                        'switch_end': z_val,
+                    })
+
+        return mismatches
 
     def _render_device_name(
         self,
@@ -1188,20 +1267,23 @@ class DeviceGenerator:
 
         return module
 
-    def _create_server_transceiver_module(
+    def _create_nested_transceiver_module(
         self,
         device: Device,
+        nic_module,
         connection,
     ):
         """
-        Create a device-level ModuleBay and transceiver Module for a PlanServerConnection
-        when transceiver_module_type FK is set (DIET-334 Stage 1).
+        Stage 2: place transceiver Module in the nested port-cage bay inside the NIC Module.
 
-        Stage 1 approximation: the bay is at the Device level, NOT nested inside the NIC
-        Module. Bay name is '{nic_id}-cage-{port_index}'. This will be replaced in Stage 2
-        with nested NIC-port-bay placement.
+        Object chain: device -> NIC module bay -> NIC Module -> cage-N bay -> transceiver Module.
 
-        Returns the created or existing Module, or None if FK is null.
+        The cage-N ModuleBay is auto-instantiated by NetBox when the NIC Module is installed
+        (driven by ModuleBayTemplate children on the NIC ModuleType, added by
+        populate_transceiver_bays). If the nested bay is absent (command not run), logs a
+        warning and returns None without hard-failing.
+
+        Returns the created/existing transceiver Module, or None if FK is null or bay absent.
         """
         xcvr_mt = getattr(connection, 'transceiver_module_type', None)
         if xcvr_mt is None:
@@ -1209,27 +1291,82 @@ class DeviceGenerator:
 
         from dcim.models import ModuleBay, Module
 
-        bay_name = f"{connection.nic.nic_id}-cage-{connection.port_index}"
+        cage_name = f'cage-{connection.port_index}'
+        nested_bay = ModuleBay.objects.filter(
+            module=nic_module,
+            name=cage_name,
+        ).first()
 
-        module_bay, _ = ModuleBay.objects.get_or_create(
-            device=device,
-            name=bay_name,
-            defaults={'label': f'Transceiver cage {bay_name}'},
-        )
+        if nested_bay is None:
+            import logging
+            logging.getLogger(__name__).warning(
+                'Stage 2: nested bay %r not found on NIC Module %s (device %s). '
+                'Run populate_transceiver_bays to add ModuleBayTemplates to NIC ModuleTypes.',
+                cage_name, nic_module, device.name,
+            )
+            return None
 
-        existing = Module.objects.filter(device=device, module_bay=module_bay).first()
+        existing = Module.objects.filter(module_bay=nested_bay).first()
         if existing is not None:
             if existing.module_type_id == xcvr_mt.pk:
                 return existing
-            # Transceiver changed in plan; replace it.
             existing.delete()
 
         module = Module(
             device=device,
-            module_bay=module_bay,
+            module_bay=nested_bay,
             module_type=xcvr_mt,
             status='planned',
-            serial=f"{device.name}-{bay_name}",
+            serial=f'{device.name}-{cage_name}',
+        )
+        module.custom_field_data = {'hedgehog_plan_id': str(self.plan.pk)}
+        module.save()
+        return module
+
+    def _create_switch_transceiver_module(
+        self,
+        device: Device,
+        port_name: str,
+        zone,
+    ):
+        """
+        Stage 2: place transceiver Module in the switch port bay for a given port.
+
+        The ModuleBay named `port_name` must already exist on the switch Device (auto-created
+        from ModuleBayTemplate by NetBox when the device was created, after
+        populate_transceiver_bays added the templates to the DeviceType). If the bay is
+        absent (command not run), logs a warning and returns None without hard-failing.
+
+        Returns the created/existing transceiver Module, or None if zone FK is null or bay absent.
+        """
+        xcvr_mt = getattr(zone, 'transceiver_module_type', None)
+        if xcvr_mt is None:
+            return None
+
+        from dcim.models import ModuleBay, Module
+
+        bay = ModuleBay.objects.filter(device=device, name=port_name).first()
+        if bay is None:
+            import logging
+            logging.getLogger(__name__).warning(
+                'Stage 2: switch ModuleBay %r not found on device %s. '
+                'Run populate_transceiver_bays to add ModuleBayTemplates to switch DeviceTypes.',
+                port_name, device.name,
+            )
+            return None
+
+        existing = Module.objects.filter(device=device, module_bay=bay).first()
+        if existing is not None:
+            if existing.module_type_id == xcvr_mt.pk:
+                return existing
+            existing.delete()
+
+        module = Module(
+            device=device,
+            module_bay=bay,
+            module_type=xcvr_mt,
+            status='planned',
+            serial=f'{device.name}-{port_name}',
         )
         module.custom_field_data = {'hedgehog_plan_id': str(self.plan.pk)}
         module.save()

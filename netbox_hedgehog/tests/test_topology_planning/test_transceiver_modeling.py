@@ -45,6 +45,14 @@ def _make_xcvr_fixtures(cls):
     cls.switch_dt, _ = DeviceType.objects.get_or_create(
         manufacturer=cls.mfr, model='XCVR-SW', defaults={'slug': 'xcvr-sw'}
     )
+    # Add InterfaceTemplates so populate_transceiver_bays adds ModuleBayTemplates.
+    # Port allocator names non-breakout ports E1/{n} for port_spec ranges.
+    from dcim.models import InterfaceTemplate as _IT
+    for _pn in range(1, 9):
+        _IT.objects.get_or_create(
+            device_type=cls.switch_dt, name=f'E1/{_pn}',
+            defaults={'type': '200gbase-x-qsfp112'},
+        )
     cls.device_ext, _ = DeviceTypeExtension.objects.get_or_create(
         device_type=cls.switch_dt,
         defaults={
@@ -462,7 +470,10 @@ class ServerTransceiverGeneratorTestCase(TestCase):
         return plan
 
     def _generate(self, plan):
+        from django.core.management import call_command as _cc
         from netbox_hedgehog.services.device_generator import DeviceGenerator
+        # Stage 2: populate bays before generation so nested placement works.
+        _cc('populate_transceiver_bays')
         DeviceGenerator(plan).generate_all()
 
     def test_transceiver_module_created_when_fk_set(self):
@@ -476,14 +487,20 @@ class ServerTransceiverGeneratorTestCase(TestCase):
         self.assertEqual(xcvr_modules.count(), 1, "Expected 1 transceiver Module")
 
     def test_transceiver_module_bay_name(self):
-        """Generated transceiver ModuleBay name is '{nic_id}-cage-{port_index}'."""
+        """Stage 2: transceiver is in nested bay 'cage-0' inside the NIC Module (not device-level)."""
+        # Stage 2: intentional update from Stage 1 assertion (device-level 'nic-fe-cage-0').
         plan = self._make_gen_plan(set_xcvr=True)
         self._generate(plan)
-        xcvr_bay = ModuleBay.objects.filter(
+        nic_modules = Module.objects.filter(
             device__custom_field_data__hedgehog_plan_id=str(plan.pk),
-            name='nic-fe-cage-0',
+            module_type=get_test_nic_module_type(),
+        )
+        self.assertGreater(nic_modules.count(), 0, "NIC Module must exist")
+        nested_bay = ModuleBay.objects.filter(
+            module=nic_modules.first(), name='cage-0',
         ).first()
-        self.assertIsNotNone(xcvr_bay, "ModuleBay named 'nic-fe-cage-0' must exist")
+        self.assertIsNotNone(nested_bay,
+            "Stage 2: transceiver bay 'cage-0' must be nested inside NIC Module")
 
     def test_transceiver_module_status_is_planned(self):
         """Generated transceiver Module has status='planned'."""
@@ -539,7 +556,10 @@ class ServerTransceiverGeneratorTestCase(TestCase):
         )
 
     def test_hedgehog_transceiver_spec_derived_from_fk(self):
-        """hedgehog_transceiver_spec CF contains FK attribute_data values when FK set."""
+        """Stage 2: hedgehog_transceiver_spec is SUPPRESSED when transceiver Module is placed.
+        Stage 2: intentional update — Stage 1 wrote spec from FK; Stage 2 suppresses it
+        when a real transceiver Module exists (suppression is the approved Stage 2 behavior).
+        """
         plan = self._make_gen_plan(set_xcvr=True)
         self._generate(plan)
         from dcim.models import Interface
@@ -551,9 +571,10 @@ class ServerTransceiverGeneratorTestCase(TestCase):
             iface.custom_field_data.get('hedgehog_transceiver_spec', '')
             for iface in server_ifaces
         ]
-        self.assertTrue(
-            any('QSFP112' in v for v in spec_values),
-            f"Expected 'QSFP112' in hedgehog_transceiver_spec; got: {spec_values}",
+        self.assertFalse(
+            any(bool(v) for v in spec_values),
+            f"Stage 2: hedgehog_transceiver_spec must be suppressed when transceiver Module placed; "
+            f"got: {spec_values}",
         )
 
     def test_hedgehog_transceiver_spec_fallback_flat_fields(self):
@@ -640,16 +661,21 @@ class TransceiverMigrationTestCase(TestCase):
 
 
 # =============================================================================
-# Class F: Stage 1 boundary assertions (3 tests)
+# Class F: Stage 2 assertions (replacing Stage 1 boundary guardrails)
 # =============================================================================
+# Stage 2: intentional replacement of Stage 1 Class F guardrail assertions.
+# The original Stage 1 assertions tested temporary approximation boundaries
+# ("not yet generated"). Stage 2 replaces each with the correct target behavior.
+# All three tests below are RED until Stage 2 GREEN implementation lands.
 
 class Stage1BoundaryTestCase(TestCase):
     """
-    Guardrail tests asserting Stage 1 approximation boundaries.
+    Stage 2 replacement of Stage 1 Class F guardrail tests.
 
-    F.1 will be RED until Stage 1 is implemented (field doesn't exist yet).
-    F.2 and F.3 should pass even in RED state (no switch modules, no nested bays).
-    All three will intentionally FAIL when Stage 2 is implemented -- that is by design.
+    F.1 now asserts transceiver is NESTED inside NIC Module bay (not device-level).
+    F.2 now asserts switch-side transceiver Modules ARE created when FK is set.
+    F.3 now asserts NIC ModuleType HAS nested ModuleBayTemplate children after command.
+    All three are intentionally RED until Stage 2 implementation is complete.
     """
 
     @classmethod
@@ -700,34 +726,49 @@ class Stage1BoundaryTestCase(TestCase):
             target_zone=zone, speed=200, port_type='data',
             transceiver_module_type=self.xcvr_mt,
         )
+        from django.core.management import call_command as _cc
         from netbox_hedgehog.services.device_generator import DeviceGenerator
+        _cc('populate_transceiver_bays')
         DeviceGenerator(plan).generate_all()
         return plan
 
     def test_stage1_server_transceiver_bay_is_device_level_not_nested(self):
         """
-        Stage 1: transceiver ModuleBay is on the Device directly (device_id set, module_id None).
-        FAILS in RED (field doesn't exist). FAILS in Stage 2 (nested bay replaces device bay).
+        Stage 2: transceiver ModuleBay is NESTED inside NIC Module (module_id set, not device-level).
+        Stage 2: intentional replacement of Stage 1 Class F guardrail assertion.
+        RED until Stage 2 nested NIC-port-bay placement is implemented.
         """
         plan = self._make_and_generate()
-        xcvr_bay = ModuleBay.objects.filter(
+        # In Stage 2 the transceiver bay is a child of the NIC Module, not at device level.
+        # Find NIC module for this plan's server device.
+        from netbox_hedgehog.tests.test_topology_planning import get_test_nic_module_type
+        nic_modules = Module.objects.filter(
+            device__custom_field_data__hedgehog_plan_id=str(plan.pk),
+            module_type=get_test_nic_module_type(),
+        )
+        self.assertGreater(nic_modules.count(), 0, "NIC Module must be created by generator")
+        nic_module = nic_modules.first()
+        # Transceiver Module must be nested inside NIC module's bay.
+        nested_xcvr = Module.objects.filter(
+            module_bay__module=nic_module,
+        )
+        self.assertGreater(nested_xcvr.count(), 0,
+            "Transceiver Module must be nested inside NIC Module bay in Stage 2 (module_bay.module set)")
+        # Device-level bay 'nic-fe-cage-0' must NOT exist (Stage 1 scaffolding retired).
+        device_level_bay = ModuleBay.objects.filter(
             device__custom_field_data__hedgehog_plan_id=str(plan.pk),
             name='nic-fe-cage-0',
+            module__isnull=True,
         ).first()
-        self.assertIsNotNone(xcvr_bay, "Transceiver ModuleBay 'nic-fe-cage-0' must exist")
-        self.assertIsNotNone(xcvr_bay.device_id, "Bay must be at device level (device_id set)")
-        self.assertIsNone(
-            getattr(xcvr_bay, 'module_id', None),
-            "Bay must NOT be nested inside a Module (module_id must be None in Stage 1)",
-        )
+        self.assertIsNone(device_level_bay,
+            "Stage 1 device-level transceiver bay must not exist in Stage 2")
 
     def test_stage1_no_switch_side_transceiver_modules(self):
         """
-        Stage 1: no Module objects exist on switch Devices (status='planned').
-        Passes in Stage 1 (and in RED). Fails when Stage 2 adds switch-side Modules.
-        Uses a plan WITHOUT transceiver FK so this test passes even before migration 0044.
+        Stage 2: switch-side transceiver Modules ARE created when zone.transceiver_module_type is set.
+        Stage 2: intentional replacement of Stage 1 Class F guardrail assertion.
+        RED until Stage 2 switch-side Module placement is implemented.
         """
-        # Generate a plan without transceiver FK to avoid dependency on the missing field.
         plan = TopologyPlan.objects.create(
             name=f'F2BoundaryPlan-{id(self)}', status=TopologyPlanStatusChoices.DRAFT,
         )
@@ -747,6 +788,7 @@ class Stage1BoundaryTestCase(TestCase):
             zone_type=PortZoneTypeChoices.SERVER, port_spec='1-64',
             breakout_option=self.breakout,
             allocation_strategy=AllocationStrategyChoices.SEQUENTIAL, priority=100,
+            transceiver_module_type=self.xcvr_mt,
         )
         nic = PlanServerNIC.objects.create(
             server_class=sc, nic_id='nic-fe', module_type=self.nic_mt,
@@ -758,25 +800,30 @@ class Stage1BoundaryTestCase(TestCase):
             distribution=ConnectionDistributionChoices.ALTERNATING,
             target_zone=zone, speed=200, port_type='data',
         )
+        from django.core.management import call_command as _cc
         from netbox_hedgehog.services.device_generator import DeviceGenerator
+        _cc('populate_transceiver_bays')
         DeviceGenerator(plan).generate_all()
         switch_modules = Module.objects.filter(
             device__custom_field_data__hedgehog_plan_id=str(plan.pk),
             device__device_type=self.switch_dt,
             status='planned',
         )
-        self.assertEqual(
+        self.assertGreater(
             switch_modules.count(), 0,
-            "Stage 1 must not generate any switch-side transceiver Modules",
+            "Stage 2 must generate switch-side transceiver Modules when zone.transceiver_module_type is set",
         )
 
     def test_stage1_no_nested_module_bay_templates_on_nic_module_types(self):
         """
-        Stage 1: NIC ModuleType has no ModuleBayTemplate children (nested bays not added yet).
-        Passes in Stage 1 (and in RED). Fails when Stage 2 adds nested bay templates.
+        Stage 2: NIC ModuleType HAS nested ModuleBayTemplate children after populate_transceiver_bays.
+        Stage 2: intentional replacement of Stage 1 Class F guardrail assertion.
+        RED until populate_transceiver_bays command adds nested bay templates.
         """
+        from django.core.management import call_command as _cc
+        _cc('populate_transceiver_bays')
         nested_bays = ModuleBayTemplate.objects.filter(module_type=self.nic_mt)
-        self.assertEqual(
+        self.assertGreater(
             nested_bays.count(), 0,
-            "Stage 1 must not add ModuleBayTemplate children to NIC ModuleType",
+            "Stage 2: populate_transceiver_bays must add nested ModuleBayTemplate children to NIC ModuleType",
         )
