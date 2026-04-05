@@ -1,4 +1,91 @@
 # Topology Planning Tests
+#
+# Helper additions for DIET-334 transceiver modeling (Phase 3 RED tests).
+
+
+def get_test_transceiver_module_type():
+    """
+    Return (or create) a Network Transceiver ModuleType for use in DIET-334 tests.
+
+    Uses get_or_create so repeated calls in --keepdb runs return the same object.
+    If the 'Network Transceiver' ModuleTypeProfile does not exist (bare test DB),
+    the ModuleType is created without a profile and tests that rely on profile
+    validation will assert the expected ValidationError correctly.
+    """
+    from dcim.models import Manufacturer, ModuleType, ModuleTypeProfile
+
+    mfr, _ = Manufacturer.objects.get_or_create(
+        name='XCVR-Test-Vendor', defaults={'slug': 'xcvr-test-vendor'}
+    )
+    profile = ModuleTypeProfile.objects.filter(name='Network Transceiver').first()
+    mt, _ = ModuleType.objects.get_or_create(
+        manufacturer=mfr,
+        model='XCVR-QSFP112-MMF-TEST',
+        defaults={
+            'profile': profile,
+            'attribute_data': {
+                'cage_type': 'QSFP112',
+                'medium': 'MMF',
+                'connector': 'MPO-12',
+                'standard': '200GBASE-SR4',
+                'reach_class': 'SR',
+            },
+        },
+    )
+    return mt
+
+
+def get_test_transceiver_module_type_osfp():
+    """
+    Return (or create) a Network Transceiver ModuleType with OSFP cage type.
+
+    Used in migration tests that verify OSFP is valid after migration 0044 adds
+    it to the profile schema enum. In RED state this ModuleType may fail profile
+    schema validation -- that is the expected RED failure for E.3.
+    """
+    from dcim.models import Manufacturer, ModuleType, ModuleTypeProfile
+
+    mfr, _ = Manufacturer.objects.get_or_create(
+        name='XCVR-Test-Vendor', defaults={'slug': 'xcvr-test-vendor'}
+    )
+    profile = ModuleTypeProfile.objects.filter(name='Network Transceiver').first()
+    mt, _ = ModuleType.objects.get_or_create(
+        manufacturer=mfr,
+        model='XCVR-OSFP-400G-TEST',
+        defaults={
+            'profile': profile,
+            'attribute_data': {
+                'cage_type': 'OSFP',
+                'medium': 'MMF',
+                'standard': '400GBASE-SR4',
+                'reach_class': 'SR',
+            },
+        },
+    )
+    return mt
+
+
+def get_test_non_transceiver_module_type():
+    """
+    Return (or create) a ModuleType WITHOUT the Network Transceiver profile.
+
+    Used in validation tests that assert a non-transceiver ModuleType is rejected
+    when set as transceiver_module_type on PlanServerConnection or SwitchPortZone.
+    """
+    from dcim.models import InterfaceTemplate, Manufacturer, ModuleType
+
+    mfr, _ = Manufacturer.objects.get_or_create(
+        name='XCVR-Test-Vendor', defaults={'slug': 'xcvr-test-vendor'}
+    )
+    mt, created = ModuleType.objects.get_or_create(
+        manufacturer=mfr,
+        model='NON-XCVR-NIC-TEST',
+    )
+    if created:
+        InterfaceTemplate.objects.get_or_create(
+            module_type=mt, name='p0', defaults={'type': '200gbase-x-qsfp112'}
+        )
+    return mt
 
 
 def get_test_nic_module_type():

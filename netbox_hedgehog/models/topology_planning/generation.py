@@ -71,6 +71,17 @@ class GenerationState(models.Model):
         help_text="NetBox Job executing or that executed this generation"
     )
 
+    mismatch_report = models.JSONField(
+        null=True,
+        blank=True,
+        default=None,
+        help_text=(
+            'Structured list of transceiver incompatibilities found during '
+            'post-generation pairwise sweep. Null when generation succeeded '
+            'or has not run. Set before status=FAILED when mismatches found.'
+        ),
+    )
+
     class Meta:
         verbose_name = "Generation State"
         verbose_name_plural = "Generation States"

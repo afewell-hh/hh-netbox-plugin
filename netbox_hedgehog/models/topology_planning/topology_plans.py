@@ -762,6 +762,23 @@ class PlanServerConnection(NetBoxModel):
         help_text="Optical/electrical standard (e.g., 200GBASE-SR4, 400GAUI-8 C2M)",
     )
 
+    # DIET-334 Stage 1: authoritative transceiver ModuleType FK.
+    # When set, the generator installs a transceiver Module in a device-level
+    # ModuleBay named '{nic_id}-cage-{port_index}' on the server Device.
+    # Flat fields above remain for backward compat and validation cross-checking.
+    transceiver_module_type = models.ForeignKey(
+        ModuleType,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='plan_server_connections',
+        help_text=(
+            "Transceiver or DAC/AOC ModuleType to install in this port cage. "
+            "Must have the 'Network Transceiver' ModuleTypeProfile. "
+            "If null, no transceiver Module is generated (Stage 1 backward compat)."
+        ),
+    )
+
     class Meta:
         ordering = ['server_class', 'connection_id']
         verbose_name = "Server Connection"
@@ -849,6 +866,70 @@ class PlanServerConnection(NetBoxModel):
             raise ValidationError({
                 'nic': 'NIC is required.'
             })
+
+        # DIET-334 Stage 1: transceiver_module_type validation.
+        self._validate_transceiver_module_type()
+
+    def _validate_transceiver_module_type(self):
+        """Validate transceiver_module_type FK and cross-end compatibility."""
+        xcvr_mt = None
+        if self.transceiver_module_type_id:
+            from dcim.models import ModuleTypeProfile
+            xcvr_mt = self.transceiver_module_type
+            # V1: FK must reference a Network Transceiver ModuleType.
+            if not (xcvr_mt.profile_id and xcvr_mt.profile.name == 'Network Transceiver'):
+                raise ValidationError({
+                    'transceiver_module_type': (
+                        "Must reference a ModuleType with the 'Network Transceiver' profile. "
+                        f"'{xcvr_mt.model}' does not have this profile."
+                    )
+                })
+            xcvr_ad = xcvr_mt.attribute_data or {}
+            # V2: flat cage_type must match FK attribute_data if both set.
+            if self.cage_type and xcvr_ad.get('cage_type') and self.cage_type != xcvr_ad['cage_type']:
+                raise ValidationError({
+                    'cage_type': (
+                        f"cage_type '{self.cage_type}' conflicts with transceiver_module_type "
+                        f"attribute_data cage_type '{xcvr_ad['cage_type']}'."
+                    )
+                })
+            # V3: flat medium must match FK attribute_data if both set.
+            if self.medium and xcvr_ad.get('medium') and self.medium != xcvr_ad['medium']:
+                raise ValidationError({
+                    'medium': (
+                        f"medium '{self.medium}' conflicts with transceiver_module_type "
+                        f"attribute_data medium '{xcvr_ad['medium']}'."
+                    )
+                })
+
+        # Cross-end compatibility against target zone's transceiver FK (V4, V5).
+        if self.target_zone_id:
+            zone_mt = getattr(self.target_zone, 'transceiver_module_type', None)
+            if zone_mt is not None:
+                zone_ad = zone_mt.attribute_data or {}
+                # Resolve server-side cage_type and medium (FK takes precedence over flat fields).
+                srv_cage = (xcvr_mt.attribute_data or {}).get('cage_type') if xcvr_mt else self.cage_type
+                srv_medium = (xcvr_mt.attribute_data or {}).get('medium') if xcvr_mt else self.medium
+                zone_cage = zone_ad.get('cage_type')
+                zone_medium = zone_ad.get('medium')
+                # V4/V6: cage_type must match.
+                if srv_cage and zone_cage and srv_cage != zone_cage:
+                    field = 'transceiver_module_type' if xcvr_mt else 'cage_type'
+                    raise ValidationError({
+                        field: (
+                            f"Server-side cage_type '{srv_cage}' does not match "
+                            f"zone transceiver cage_type '{zone_cage}'."
+                        )
+                    })
+                # V5/V8: medium must be compatible (DAC↔DAC, ACC↔ACC, MMF↔MMF, SMF↔SMF).
+                if srv_medium and zone_medium and srv_medium != zone_medium:
+                    field = 'transceiver_module_type' if xcvr_mt else 'medium'
+                    raise ValidationError({
+                        field: (
+                            f"Server-side medium '{srv_medium}' is incompatible with "
+                            f"zone transceiver medium '{zone_medium}'. Both ends must use the same medium."
+                        )
+                    })
 
         # Validate nic belongs to the same server_class (not cross-plan, not cross-server-class)
         if self.nic_id and self.server_class_id:

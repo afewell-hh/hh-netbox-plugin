@@ -116,6 +116,11 @@ class DeviceGenerator:
         interfaces = []
         cables = []
 
+        # Stage 2: missing-bay error accumulator.  Populated by
+        # _create_nested_transceiver_module() and _create_switch_transceiver_module()
+        # when a transceiver FK is set but the required ModuleBay is absent.
+        self._bay_placement_errors: list = []
+
         # Milestone 3: Creating switch devices
         if self.logger:
             self.logger.info("Creating switch devices")
@@ -145,6 +150,42 @@ class DeviceGenerator:
         if self.logger:
             self.logger.info("Tagging objects and finalizing generation")
         self._tag_objects(devices, interfaces, cables)
+
+        # Milestone 7a: Bay-placement hard-fail check (Stage 2, #345).
+        # If any transceiver FK was set but the required ModuleBay was absent,
+        # generation must not succeed.  Collected by placement helpers above.
+        if self._bay_placement_errors:
+            self._upsert_generation_state(
+                device_count=len(devices),
+                interface_count=len(interfaces),
+                cable_count=len(cables),
+                status=GenerationStatusChoices.FAILED,
+                mismatch_report={'bay_errors': self._bay_placement_errors},
+            )
+            return GenerationResult(
+                device_count=len(devices),
+                interface_count=len(interfaces),
+                cable_count=len(cables),
+            )
+
+        # Milestone 7b: Post-generation pairwise transceiver compatibility sweep (Stage 2).
+        # Runs after all objects are created; collects all mismatches before failing.
+        mismatches = self._run_compatibility_sweep()
+        if mismatches:
+            self._upsert_generation_state(
+                device_count=len(devices),
+                interface_count=len(interfaces),
+                cable_count=len(cables),
+                status=GenerationStatusChoices.FAILED,
+                mismatch_report={'mismatches': mismatches},
+            )
+            # Return result anyway so callers can inspect counts; status signals failure.
+            return GenerationResult(
+                device_count=len(devices),
+                interface_count=len(interfaces),
+                cable_count=len(cables),
+            )
+
         self._upsert_generation_state(
             device_count=len(devices),
             interface_count=len(interfaces),
@@ -302,13 +343,22 @@ class DeviceGenerator:
                             f"No switch instances available for {switch_class.switch_class_id}."
                         )
 
-                    # Pre-calculate total_rails for rail-optimized connections
+                    # Pre-calculate total_rails and servers_per_domain for rail-optimized connections
                     total_rails = None
+                    servers_per_domain = None
                     if connection_def.distribution == ConnectionDistributionChoices.RAIL_OPTIMIZED:
                         total_rails = self._get_total_rails_for_target(
                             server_class,
                             zone,
                         )
+                        num_sw = len(switch_instances)
+                        if total_rails and num_sw >= total_rails:
+                            # Domain-based: compute how many servers fit in one first-hop rail domain.
+                            # Each domain has total_rails switches (one per rail); each switch serves
+                            # zone_capacity / ports_per_connection servers for its rail.
+                            zone_capacity = self.port_allocator.capacity_for_zone(zone)
+                            ppc = connection_def.ports_per_connection or 1
+                            servers_per_domain = max(1, zone_capacity // ppc)
 
                     module = nic_to_module.get(connection_def.nic_id)
                     if module is None:
@@ -318,14 +368,37 @@ class DeviceGenerator:
                             "Ensure Pass 1 created the module correctly."
                         )
 
+                    # DIET-334 Stage 2: place server-side transceiver in nested NIC-port bay.
+                    xcvr_module = self._create_nested_transceiver_module(
+                        server_device, module, connection_def
+                    )
+
                     # Build transceiver spec string for server-side interface custom field.
-                    _xcvr_parts = [
-                        connection_def.cage_type,
-                        connection_def.medium,
-                        connection_def.connector,
-                        connection_def.standard,
-                    ]
-                    transceiver_spec = ' | '.join(p for p in _xcvr_parts if p)
+                    # Prefer FK attribute_data when available; fall back to flat fields.
+                    # DEPRECATED: hedgehog_transceiver_spec will be removed in Stage 3 (#334).
+                    # Stage 2: suppress write when a real transceiver Module was placed.
+                    xcvr_mt = getattr(connection_def, 'transceiver_module_type', None)
+                    if xcvr_module is None:
+                        # No Module placed — build fallback spec from flat fields or FK attrs.
+                        if xcvr_mt is not None:
+                            _ad = xcvr_mt.attribute_data or {}
+                            _xcvr_parts = [
+                                _ad.get('cage_type', ''),
+                                _ad.get('medium', ''),
+                                _ad.get('standard', ''),
+                                _ad.get('connector', ''),
+                            ]
+                        else:
+                            _xcvr_parts = [
+                                connection_def.cage_type,
+                                connection_def.medium,
+                                connection_def.connector,
+                                connection_def.standard,
+                            ]
+                        transceiver_spec = ' | '.join(p for p in _xcvr_parts if p)
+                    else:
+                        # Transceiver Module placed — suppress legacy custom field write.
+                        transceiver_spec = ''
 
                     for port_index in range(connection_def.ports_per_connection):
                         switch_device = self._select_switch_instance(
@@ -335,6 +408,7 @@ class DeviceGenerator:
                             port_index,
                             rail=connection_def.rail,
                             total_rails=total_rails,
+                            servers_per_domain=servers_per_domain,
                         )
                         switch_port = self.port_allocator.allocate(
                             switch_device.name,
@@ -353,6 +427,11 @@ class DeviceGenerator:
                                 'hedgehog_breakout_index': switch_port.breakout_index,
                             },
                             interface_type=self._speed_to_interface_type(connection_def.speed),
+                        )
+
+                        # DIET-334 Stage 2: place switch-side transceiver Module.
+                        self._create_switch_transceiver_module(
+                            switch_device, switch_port.name, zone
                         )
 
                         # Get server interface from Module using port_index (DIET-294 NIC-first)
@@ -920,6 +999,8 @@ class DeviceGenerator:
         device_count: int,
         interface_count: int,
         cable_count: int,
+        status: str = GenerationStatusChoices.GENERATED,
+        mismatch_report=None,
     ) -> None:
         GenerationState.objects.filter(plan=self.plan).delete()
         state = GenerationState(
@@ -928,9 +1009,55 @@ class DeviceGenerator:
             interface_count=interface_count,
             cable_count=cable_count,
             snapshot=build_plan_snapshot(self.plan),
-            status=GenerationStatusChoices.GENERATED,
+            status=status,
+            mismatch_report=mismatch_report,
         )
         state.save()
+
+    def _run_compatibility_sweep(self) -> list:
+        """
+        Stage 2: post-generation pairwise transceiver compatibility sweep.
+
+        Iterates over all PlanServerConnections for this plan and compares
+        cage_type and medium from both cable ends. Collects ALL mismatches
+        before returning — aggregate-all-mismatches-then-fail per approved spec.
+
+        Returns a list of mismatch dicts (empty list = all compatible).
+        """
+        from netbox_hedgehog.models.topology_planning import PlanServerConnection
+
+        mismatches = []
+        connections = PlanServerConnection.objects.filter(
+            server_class__plan=self.plan
+        ).select_related(
+            'transceiver_module_type',
+            'target_zone__transceiver_module_type',
+            'server_class',
+        )
+
+        for conn in connections:
+            server_mt = getattr(conn, 'transceiver_module_type', None)
+            zone_mt = getattr(conn.target_zone, 'transceiver_module_type', None)
+            if server_mt is None or zone_mt is None:
+                continue
+
+            s_attrs = server_mt.attribute_data or {}
+            z_attrs = zone_mt.attribute_data or {}
+
+            for dim in ('cage_type', 'medium'):
+                s_val = s_attrs.get(dim)
+                z_val = z_attrs.get(dim)
+                if s_val and z_val and s_val != z_val:
+                    mismatches.append({
+                        'connection_id': conn.pk,
+                        'server_device': str(conn.server_class.server_class_id),
+                        'switch_port': conn.target_zone.zone_name,
+                        'mismatch_type': dim,
+                        'server_end': s_val,
+                        'switch_end': z_val,
+                    })
+
+        return mismatches
 
     def _render_device_name(
         self,
@@ -1043,6 +1170,7 @@ class DeviceGenerator:
         port_index: int,
         rail: int | None = None,
         total_rails: int | None = None,
+        servers_per_domain: int | None = None,
     ) -> Device:
         if len(switch_instances) == 1:
             return switch_instances[0]
@@ -1052,9 +1180,22 @@ class DeviceGenerator:
         if distribution == ConnectionDistributionChoices.SAME_SWITCH:
             return switch_instances[server_index % len(switch_instances)]
         if distribution == ConnectionDistributionChoices.RAIL_OPTIMIZED:
-            # Rail-optimized: all servers' NIC at position N connect to same switch(es)
-            # Algorithm: rails_per_switch = ceil(total_rails / num_switches)
-            #            switch_index = rail // rails_per_switch
+            # Rail-optimized: all servers' NIC at position N connect to the same rail's switch.
+            # Two sub-cases:
+            #
+            # A) num_switches < total_rails (capacity-sharing):
+            #    Multiple rails are served by one switch. Map by:
+            #        rails_per_switch = ceil(total_rails / num_switches)
+            #        switch_index = rail // rails_per_switch
+            #    server_index is irrelevant here (all servers share same mapping).
+            #
+            # B) num_switches >= total_rails (domain-based / repeated first-hop domains):
+            #    Each domain has exactly total_rails switches (one per rail).
+            #    Domains repeat when server demand exceeds one switch's capacity.
+            #        domain_index = server_index // servers_per_domain
+            #        switch_index = domain_index * total_rails + rail
+            #    This ensures servers 0..N-1 use domain 0 and servers N..2N-1 use domain 1,
+            #    each domain using the same rail→switch-within-domain mapping.
             if rail is None:
                 raise ValidationError(
                     "Rail number required for rail-optimized distribution"
@@ -1065,9 +1206,23 @@ class DeviceGenerator:
                 )
 
             num_switches = len(switch_instances)
-            rails_per_switch = math.ceil(total_rails / num_switches)
-            switch_index = rail // rails_per_switch
 
+            if num_switches >= total_rails:
+                # Domain-based: repeated first-hop rail domains
+                if servers_per_domain is None or servers_per_domain <= 0:
+                    raise ValidationError(
+                        "servers_per_domain required for rail-optimized distribution "
+                        "when num_switches >= total_rails"
+                    )
+                domain_index = server_index // servers_per_domain
+                switch_index = domain_index * total_rails + rail
+            else:
+                # Capacity-sharing: multiple rails map to one switch
+                rails_per_switch = math.ceil(total_rails / num_switches)
+                switch_index = rail // rails_per_switch
+
+            # Safety clamp — should never fire for well-formed plans
+            switch_index = min(switch_index, num_switches - 1)
             return switch_instances[switch_index]
 
         return switch_instances[server_index % len(switch_instances)]
@@ -1132,6 +1287,114 @@ class DeviceGenerator:
             iface.custom_field_data.setdefault('hedgehog_transceiver_spec', '')
             iface.save()
 
+        return module
+
+    def _create_nested_transceiver_module(
+        self,
+        device: Device,
+        nic_module,
+        connection,
+    ):
+        """
+        Stage 2: place transceiver Module in the nested port-cage bay inside the NIC Module.
+
+        Object chain: device -> NIC module bay -> NIC Module -> cage-N bay -> transceiver Module.
+
+        The cage-N ModuleBay is auto-instantiated by NetBox when the NIC Module is installed
+        (driven by ModuleBayTemplate children on the NIC ModuleType, added by
+        populate_transceiver_bays). If the nested bay is absent and the connection has a
+        transceiver FK set, this is a hard error — generation will be marked FAILED (#345).
+
+        Returns the created/existing transceiver Module, or None if FK is null.
+        """
+        xcvr_mt = getattr(connection, 'transceiver_module_type', None)
+        if xcvr_mt is None:
+            return None
+
+        from dcim.models import ModuleBay, Module
+
+        cage_name = f'cage-{connection.port_index}'
+        nested_bay = ModuleBay.objects.filter(
+            module=nic_module,
+            name=cage_name,
+        ).first()
+
+        if nested_bay is None:
+            self._bay_placement_errors.append({
+                'error_type': 'missing_nested_bay',
+                'device': device.name,
+                'cage': cage_name,
+                'connection_id': connection.pk,
+                'hint': 'Run populate_transceiver_bays to add ModuleBayTemplates to NIC ModuleTypes.',
+            })
+            return None
+
+        existing = Module.objects.filter(module_bay=nested_bay).first()
+        if existing is not None:
+            if existing.module_type_id == xcvr_mt.pk:
+                return existing
+            existing.delete()
+
+        module = Module(
+            device=device,
+            module_bay=nested_bay,
+            module_type=xcvr_mt,
+            status='planned',
+            serial=f'{device.name}-{cage_name}',
+        )
+        module.custom_field_data = {'hedgehog_plan_id': str(self.plan.pk)}
+        module.save()
+        return module
+
+    def _create_switch_transceiver_module(
+        self,
+        device: Device,
+        port_name: str,
+        zone,
+    ):
+        """
+        Stage 2: place transceiver Module in the switch port bay for a given port.
+
+        The ModuleBay named `port_name` must already exist on the switch Device (auto-created
+        from ModuleBayTemplate by NetBox when the device was created, after
+        populate_transceiver_bays added the templates to the DeviceType). If the bay is
+        absent and the zone has a transceiver FK set, this is a hard error — generation
+        will be marked FAILED (#345).
+
+        Returns the created/existing transceiver Module, or None if zone FK is null.
+        """
+        xcvr_mt = getattr(zone, 'transceiver_module_type', None)
+        if xcvr_mt is None:
+            return None
+
+        from dcim.models import ModuleBay, Module
+
+        bay = ModuleBay.objects.filter(device=device, name=port_name).first()
+        if bay is None:
+            self._bay_placement_errors.append({
+                'error_type': 'missing_switch_bay',
+                'device': device.name,
+                'port': port_name,
+                'zone': zone.zone_name,
+                'hint': 'Run populate_transceiver_bays to add ModuleBayTemplates to switch DeviceTypes.',
+            })
+            return None
+
+        existing = Module.objects.filter(device=device, module_bay=bay).first()
+        if existing is not None:
+            if existing.module_type_id == xcvr_mt.pk:
+                return existing
+            existing.delete()
+
+        module = Module(
+            device=device,
+            module_bay=bay,
+            module_type=xcvr_mt,
+            status='planned',
+            serial=f'{device.name}-{port_name}',
+        )
+        module.custom_field_data = {'hedgehog_plan_id': str(self.plan.pk)}
+        module.save()
         return module
 
     def _get_module_interface_by_port_index(

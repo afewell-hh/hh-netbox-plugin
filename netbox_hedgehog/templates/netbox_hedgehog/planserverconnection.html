@@ -45,9 +45,17 @@
             <th scope="row">Port Index</th>
             <td>{{ object.port_index }}</td>
           </tr>
+          <tr>
+            <th scope="row">Transceiver SKU</th>
+            <td>
+              {% if object.transceiver_module_type %}
+                {{ object.transceiver_module_type.manufacturer }} {{ object.transceiver_module_type.model }}
+              {% else %}&mdash;{% endif %}
+            </td>
+          </tr>
           {% if object.cage_type or object.medium or object.connector or object.standard %}
           <tr>
-            <th scope="row">Transceiver</th>
+            <th scope="row">Transceiver (flat fields)</th>
             <td>
               <dl class="row mb-0">
                 {% if object.cage_type %}<dt class="col-sm-4">Cage Type</dt><dd class="col-sm-8">{{ object.cage_type }}</dd>{% endif %}

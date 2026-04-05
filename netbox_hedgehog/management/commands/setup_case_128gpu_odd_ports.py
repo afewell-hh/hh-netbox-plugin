@@ -107,6 +107,17 @@ class Command(BaseCommand):
                 if options["generate"]:
                     self.stdout.write("⚙️  Generating devices for case...")
                     result = DeviceGenerator(plan).generate_all()
+                    # Re-read state to get the status the generator set (#345).
+                    plan.refresh_from_db()
+                    gs = plan.generation_state
+                    if gs.status == 'failed':
+                        report = gs.mismatch_report or {}
+                        detail = (
+                            "Transceiver bays missing. Run populate_transceiver_bays."
+                            if report.get('bay_errors')
+                            else "Transceiver compatibility mismatches found."
+                        )
+                        raise ValidationError(f"Generation failed: {detail}")
                     self.stdout.write(
                         self.style.SUCCESS(
                             "✅ Generation complete: "

@@ -8,6 +8,8 @@ from django.db import models
 from django.urls import reverse
 from netbox.models import NetBoxModel
 
+from dcim.models import ModuleType
+
 from netbox_hedgehog.choices import AllocationStrategyChoices, PortZoneTypeChoices
 from netbox_hedgehog.services.port_specification import PortSpecification
 
@@ -71,6 +73,22 @@ class SwitchPortZone(NetBoxModel):
         help_text="Lower numbers allocate earlier",
     )
 
+    # DIET-334 Stage 1: intended transceiver for all ports in this zone.
+    # Used for plan-save compatibility validation; switch-side Module generation
+    # is deferred to Stage 2.
+    transceiver_module_type = models.ForeignKey(
+        ModuleType,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='switch_port_zones',
+        help_text=(
+            "Intended transceiver/DAC ModuleType for all ports in this zone (Stage 2). "
+            "Must have the 'Network Transceiver' ModuleTypeProfile. "
+            "Used for plan-save compatibility validation."
+        ),
+    )
+
     peer_zone = models.ForeignKey(
         'self',
         on_delete=models.SET_NULL,
@@ -98,6 +116,17 @@ class SwitchPortZone(NetBoxModel):
 
     def clean(self):
         super().clean()
+
+        # DIET-334 V7: transceiver_module_type must have Network Transceiver profile.
+        if self.transceiver_module_type_id:
+            mt = self.transceiver_module_type
+            if not (mt.profile_id and mt.profile.name == 'Network Transceiver'):
+                raise ValidationError({
+                    'transceiver_module_type': (
+                        "Must reference a ModuleType with the 'Network Transceiver' profile. "
+                        f"'{mt.model}' does not have this profile."
+                    )
+                })
 
         try:
             port_list = PortSpecification(self.port_spec).parse()
