@@ -9,13 +9,16 @@ Groups:
   E - post-generation pairwise compatibility sweep (aggregate-all-mismatches-then-fail)
   F - hard-fail when transceiver FK is set but required ModuleBay is absent (#345)
   G - hedgehog_transceiver_spec suppression when transceiver Module present
+  H - FAILED status propagation to callers: job runner and synchronous view (#345 review finding)
 
 All tests in this file are RED until Stage 2 GREEN implementation lands.
 """
 
+from unittest.mock import patch, MagicMock
+
 from django.core.management import call_command
 from django.db.utils import OperationalError
-from django.test import TestCase
+from django.test import TestCase, Client
 
 from dcim.models import (
     Device, DeviceType, InterfaceTemplate, Manufacturer,
@@ -804,3 +807,181 @@ class TransceiverSpecSuppressionTestCase(TestCase):
         )
         self.assertTrue(any_spec,
             "hedgehog_transceiver_spec fallback write must still fire when no transceiver Module placed")
+
+
+# ---------------------------------------------------------------------------
+# Group H: FAILED status propagation to callers (#345 review finding)
+# ---------------------------------------------------------------------------
+
+class FailedStatusPropagationTestCase(TestCase):
+    """
+    H.1–H.3: Assert that FAILED status set by generate_all() is preserved by
+    the async job runner and the synchronous UI view.
+
+    These tests verify the fix for the review finding that the job runner was
+    unconditionally overwriting GenerationState.status=GENERATED after any
+    non-exceptional return from generate_all(), and that the view was showing
+    a success message regardless of the resulting GenerationState status.
+    """
+
+    @classmethod
+    def setUpTestData(cls):
+        from django.contrib.auth import get_user_model
+        User = get_user_model()
+        cls.superuser, _ = User.objects.get_or_create(
+            username='h-test-admin',
+            defaults={'is_staff': True, 'is_superuser': True},
+        )
+        cls.superuser.set_password('testpass123')
+        cls.superuser.save()
+        _make_s2_fixtures(cls)
+
+    def _make_failed_plan(self, name_suffix):
+        """Create a plan that generates with FAILED status (missing bays, FK set)."""
+        from netbox_hedgehog.management.commands.setup_case_128gpu_odd_ports import (
+            DeviceGenerator as _DG
+        )
+        # Use Group F fixtures: fresh DeviceType with no bays, transceiver FK set
+        plan = TopologyPlan.objects.create(
+            name=f'S2HFPlan-{name_suffix}-{id(self)}',
+            status=TopologyPlanStatusChoices.DRAFT,
+        )
+        mfr, _ = Manufacturer.objects.get_or_create(
+            name='H-Test-Mfg', defaults={'slug': 'h-test-mfg'}
+        )
+        switch_dt, _ = DeviceType.objects.get_or_create(
+            manufacturer=mfr, model=f'H-SW-{name_suffix}', defaults={'slug': f'h-sw-{name_suffix.lower()}'}
+        )
+        for port_n in range(1, 5):
+            InterfaceTemplate.objects.get_or_create(
+                device_type=switch_dt, name=f'E1/{port_n}',
+                defaults={'type': '200gbase-x-qsfp112'},
+            )
+        device_ext, _ = DeviceTypeExtension.objects.update_or_create(
+            device_type=switch_dt,
+            defaults={
+                'native_speed': 200, 'uplink_ports': 0,
+                'supported_breakouts': ['1x200g-h'], 'mclag_capable': False,
+                'hedgehog_roles': ['server-leaf'],
+            },
+        )
+        breakout, _ = BreakoutOption.objects.get_or_create(
+            breakout_id='1x200g-h',
+            defaults={'from_speed': 200, 'logical_ports': 1, 'logical_speed': 200},
+        )
+        server_dt, _ = DeviceType.objects.get_or_create(
+            manufacturer=mfr, model=f'H-SRV-{name_suffix}', defaults={'slug': f'h-srv-{name_suffix.lower()}'}
+        )
+        sc = PlanServerClass.objects.create(
+            plan=plan, server_class_id='gpu-h',
+            server_device_type=server_dt, quantity=1,
+        )
+        sw = PlanSwitchClass.objects.create(
+            plan=plan, switch_class_id='fe-leaf-h',
+            fabric_name=FabricTypeChoices.FRONTEND,
+            fabric_class=FabricClassChoices.MANAGED,
+            hedgehog_role=HedgehogRoleChoices.SERVER_LEAF,
+            device_type_extension=device_ext,
+            uplink_ports_per_switch=0, mclag_pair=False,
+            override_quantity=2, redundancy_type='eslag',
+        )
+        # Set zone transceiver FK — bays absent (no populate_transceiver_bays run)
+        zone = SwitchPortZone.objects.create(
+            switch_class=sw, zone_name='server-downlinks',
+            zone_type=PortZoneTypeChoices.SERVER, port_spec='1-64',
+            breakout_option=breakout,
+            allocation_strategy=AllocationStrategyChoices.SEQUENTIAL, priority=100,
+            transceiver_module_type=self.xcvr_mt,
+        )
+        nic_mt_fresh, _ = ModuleType.objects.get_or_create(
+            manufacturer=mfr, model=f'H-NIC-{name_suffix}', defaults={}
+        )
+        from dcim.models import InterfaceTemplate as IfaceTemplate
+        IfaceTemplate.objects.get_or_create(
+            module_type=nic_mt_fresh, name='p0',
+            defaults={'type': '200gbase-x-qsfp112'},
+        )
+        nic = PlanServerNIC.objects.create(
+            server_class=sc, nic_id='nic-fe-h', module_type=nic_mt_fresh,
+        )
+        PlanServerConnection.objects.create(
+            server_class=sc, connection_id='fe-h',
+            nic=nic, port_index=0, ports_per_connection=1,
+            hedgehog_conn_type=ConnectionTypeChoices.UNBUNDLED,
+            distribution=ConnectionDistributionChoices.ALTERNATING,
+            target_zone=zone, speed=200, port_type='data',
+        )
+        return plan
+
+    def tearDown(self):
+        for p in list(TopologyPlan.objects.filter(name__startswith='S2HFPlan-')):
+            _cleanup(p.pk)
+            _delete_plan(p)
+
+    def test_job_runner_preserves_failed_status(self):
+        """H.1: Job runner must NOT overwrite FAILED → GENERATED after generate_all() returns normally."""
+        from netbox_hedgehog.jobs.device_generation import DeviceGenerationJob
+        from core.models import Job
+
+        plan = self._make_failed_plan('H1')
+        # Do NOT call populate_transceiver_bays — bays are absent.
+        # generate_all() will return normally but set status=FAILED in DB.
+
+        job = DeviceGenerationJob.enqueue(
+            name='H1 FAILED Status Test',
+            user=self.superuser,
+            plan_id=plan.pk,
+        )
+        job_runner = DeviceGenerationJob(job=job)
+        job_runner.run(plan_id=plan.pk)
+
+        plan.refresh_from_db()
+        gs = plan.generation_state
+        self.assertEqual(
+            gs.status, GenerationStatusChoices.FAILED,
+            "Job runner must preserve status=FAILED set by generate_all(); "
+            "it must not overwrite FAILED → GENERATED",
+        )
+
+    def test_job_runner_preserves_failed_mismatch_report(self):
+        """H.2: Job runner must not clear mismatch_report set during FAILED generation."""
+        from netbox_hedgehog.jobs.device_generation import DeviceGenerationJob
+
+        plan = self._make_failed_plan('H2')
+        job = DeviceGenerationJob.enqueue(
+            name='H2 Report Test',
+            user=self.superuser,
+            plan_id=plan.pk,
+        )
+        DeviceGenerationJob(job=job).run(plan_id=plan.pk)
+
+        plan.refresh_from_db()
+        gs = plan.generation_state
+        report = gs.mismatch_report or {}
+        self.assertTrue(
+            bool(report.get('bay_errors') or report.get('mismatches')),
+            "Job runner must preserve mismatch_report populated by generate_all()",
+        )
+
+    def test_sync_view_shows_error_on_failed_generation(self):
+        """H.3: Synchronous generate view must show error message, not success, when status=FAILED."""
+        from django.urls import reverse
+
+        plan = self._make_failed_plan('H3')
+        client = Client()
+        client.login(username='h-test-admin', password='testpass123')
+
+        url = reverse('plugins:netbox_hedgehog:topologyplan_generate', kwargs={'pk': plan.pk})
+        response = client.post(url)
+
+        # Should redirect to plan detail (not generate page)
+        self.assertIn(response.status_code, [302, 200])
+        if response.status_code == 302:
+            self.assertIn(str(plan.pk), response['Location'],
+                "On FAILED generation, view must redirect to plan detail")
+
+        plan.refresh_from_db()
+        self.assertEqual(
+            plan.generation_state.status, GenerationStatusChoices.FAILED,
+            "GenerationState must remain FAILED after synchronous view generation",
+        )

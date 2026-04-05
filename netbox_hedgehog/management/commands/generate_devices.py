@@ -185,6 +185,18 @@ class Command(BaseCommand):
             # Generate all objects
             result = generator.generate_all()
 
+            # Re-read generation state to get the status the generator set (#345).
+            plan.refresh_from_db()
+            gs = plan.generation_state
+            if gs.status == 'failed':
+                report = gs.mismatch_report or {}
+                if report.get('bay_errors'):
+                    detail = "Transceiver bays are missing. Run populate_transceiver_bays and regenerate."
+                else:
+                    detail = "Transceiver compatibility mismatches found. Check mismatch_report."
+                self.stdout.write(self.style.ERROR(f'\n✗ Generation failed: {detail}'))
+                raise CommandError(f'Generation failed: {detail}')
+
             # Display results
             self.stdout.write(self.style.SUCCESS('\n✓ Generation complete!'))
             self.stdout.write(self.style.SUCCESS(f'\nCreated:'))
@@ -208,6 +220,8 @@ class Command(BaseCommand):
             self.stdout.write(f'  - Or custom field: hedgehog_plan_id={plan.pk}')
             self.stdout.write('  - Check cable connections')
 
+        except CommandError:
+            raise
         except Exception as e:
             self.stdout.write(self.style.ERROR(f'\n✗ Generation failed: {str(e)}'))
             raise CommandError(f'Generation failed: {str(e)}')

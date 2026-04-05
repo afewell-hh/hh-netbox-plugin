@@ -84,19 +84,28 @@ class DeviceGenerationJob(JobRunner):
             self.logger.info("Calling DeviceGenerator.generate_all()...")
             result = generator.generate_all()
 
-            # Success: Update state to GENERATED
-            # Note: DeviceGenerator._upsert_generation_state() deletes and recreates
-            # the GenerationState, so we must re-fetch it and re-link the job
+            # DeviceGenerator._upsert_generation_state() deletes and recreates the
+            # GenerationState with the correct status (GENERATED or FAILED for Stage 2
+            # bay-placement / compatibility errors).  Re-fetch and re-link the job
+            # without overwriting the status the generator already set (#345).
             plan.refresh_from_db()
             state = plan.generation_state
-            state.status = GenerationStatusChoices.GENERATED
             state.job = self.job  # Re-link job to new state object
             state.save()
 
-            self.logger.info(
-                f"Generation complete: {result.device_count} devices, "
-                f"{result.interface_count} interfaces, {result.cable_count} cables"
-            )
+            if state.status == GenerationStatusChoices.FAILED:
+                report = state.mismatch_report or {}
+                self.logger.warning(
+                    f"Generation finished with FAILED status "
+                    f"({result.device_count} devices, "
+                    f"{result.interface_count} interfaces, {result.cable_count} cables). "
+                    f"Check mismatch_report for details: {list(report.keys())}"
+                )
+            else:
+                self.logger.info(
+                    f"Generation complete: {result.device_count} devices, "
+                    f"{result.interface_count} interfaces, {result.cable_count} cables"
+                )
 
         except Exception as exc:
             import traceback as tb

@@ -245,6 +245,18 @@ class TopologyPlanGenerateView(PermissionRequiredMixin, View):
             messages.error(request, f"Generation failed: {exc}")
             return redirect('plugins:netbox_hedgehog:topologyplan_generate', pk=plan.pk)
 
+        # Re-fetch state to get the status the generator actually set (#345).
+        plan.refresh_from_db()
+        gs = plan.generation_state
+        if gs.status == choices.GenerationStatusChoices.FAILED:
+            report = gs.mismatch_report or {}
+            if report.get('bay_errors'):
+                detail = "Transceiver bays are missing. Run populate_transceiver_bays and regenerate."
+            else:
+                detail = "Transceiver compatibility mismatches found. See plan details for the mismatch report."
+            messages.error(request, f"Generation failed: {detail}")
+            return redirect('plugins:netbox_hedgehog:topologyplan_detail', pk=plan.pk)
+
         messages.success(
             request,
             "Generation complete: "
