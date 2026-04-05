@@ -368,37 +368,26 @@ class DeviceGenerator:
                             "Ensure Pass 1 created the module correctly."
                         )
 
-                    # DIET-334 Stage 2: place server-side transceiver in nested NIC-port bay.
-                    xcvr_module = self._create_nested_transceiver_module(
-                        server_device, module, connection_def
-                    )
-
-                    # Build transceiver spec string for server-side interface custom field.
-                    # Prefer FK attribute_data when available; fall back to flat fields.
+                    # Build the fallback transceiver spec string once per connection.
+                    # If a real Module is placed per-port below, spec is suppressed for that port.
                     # DEPRECATED: hedgehog_transceiver_spec will be removed in Stage 3 (#334).
-                    # Stage 2: suppress write when a real transceiver Module was placed.
                     xcvr_mt = getattr(connection_def, 'transceiver_module_type', None)
-                    if xcvr_module is None:
-                        # No Module placed — build fallback spec from flat fields or FK attrs.
-                        if xcvr_mt is not None:
-                            _ad = xcvr_mt.attribute_data or {}
-                            _xcvr_parts = [
-                                _ad.get('cage_type', ''),
-                                _ad.get('medium', ''),
-                                _ad.get('standard', ''),
-                                _ad.get('connector', ''),
-                            ]
-                        else:
-                            _xcvr_parts = [
-                                connection_def.cage_type,
-                                connection_def.medium,
-                                connection_def.connector,
-                                connection_def.standard,
-                            ]
-                        transceiver_spec = ' | '.join(p for p in _xcvr_parts if p)
+                    if xcvr_mt is not None:
+                        _ad = xcvr_mt.attribute_data or {}
+                        _xcvr_parts = [
+                            _ad.get('cage_type', ''),
+                            _ad.get('medium', ''),
+                            _ad.get('standard', ''),
+                            _ad.get('connector', ''),
+                        ]
                     else:
-                        # Transceiver Module placed — suppress legacy custom field write.
-                        transceiver_spec = ''
+                        _xcvr_parts = [
+                            connection_def.cage_type,
+                            connection_def.medium,
+                            connection_def.connector,
+                            connection_def.standard,
+                        ]
+                    transceiver_spec_fallback = ' | '.join(p for p in _xcvr_parts if p)
 
                     for port_index in range(connection_def.ports_per_connection):
                         switch_device = self._select_switch_instance(
@@ -436,6 +425,16 @@ class DeviceGenerator:
 
                         # Get server interface from Module using port_index (DIET-294 NIC-first)
                         actual_port_index = connection_def.port_index + port_index
+
+                        # DIET-334 Stage 2: place server-side transceiver per wired port.
+                        # Called inside the per-port loop so multi-port connections
+                        # (ports_per_connection > 1) get one Module per physical port.
+                        xcvr_module = self._create_nested_transceiver_module(
+                            server_device, module, connection_def,
+                            actual_port_index=actual_port_index,
+                        )
+                        transceiver_spec = '' if xcvr_module is not None else transceiver_spec_fallback
+
                         server_interface = self._get_module_interface_by_port_index(
                             device=server_device,
                             module=module,
@@ -1294,11 +1293,16 @@ class DeviceGenerator:
         device: Device,
         nic_module,
         connection,
+        actual_port_index: int = None,
     ):
         """
         Stage 2: place transceiver Module in the nested port-cage bay inside the NIC Module.
 
         Object chain: device -> NIC module bay -> NIC Module -> cage-N bay -> transceiver Module.
+
+        Must be called once per wired port, inside the per-port loop. Pass actual_port_index
+        (connection.port_index + loop offset) so that multi-port connections place one Module
+        per physical port rather than one Module for the whole connection.
 
         The cage-N ModuleBay is auto-instantiated by NetBox when the NIC Module is installed
         (driven by ModuleBayTemplate children on the NIC ModuleType, added by
@@ -1313,7 +1317,8 @@ class DeviceGenerator:
 
         from dcim.models import ModuleBay, Module
 
-        cage_name = f'cage-{connection.port_index}'
+        cage_index = actual_port_index if actual_port_index is not None else connection.port_index
+        cage_name = f'cage-{cage_index}'
         nested_bay = ModuleBay.objects.filter(
             module=nic_module,
             name=cage_name,

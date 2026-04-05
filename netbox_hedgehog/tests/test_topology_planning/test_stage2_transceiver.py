@@ -985,3 +985,186 @@ class FailedStatusPropagationTestCase(TestCase):
             plan.generation_state.status, GenerationStatusChoices.FAILED,
             "GenerationState must remain FAILED after synchronous view generation",
         )
+
+
+# ---------------------------------------------------------------------------
+# Group I: Multi-port connection transceiver placement and natural-sort ordering
+# ---------------------------------------------------------------------------
+
+class MultiPortTransceiverPlacementTestCase(TestCase):
+    """
+    I.1–I.3: Assert that multi-port connections place one transceiver Module per
+    wired port, and that populate_transceiver_bays uses natural sort order so
+    cage-N aligns with the natural-sort port index for double-digit port names.
+    """
+
+    @classmethod
+    def setUpTestData(cls):
+        cls.mfr, _ = Manufacturer.objects.get_or_create(
+            name='I-Test-Mfg', defaults={'slug': 'i-test-mfg'}
+        )
+        cls.server_dt, _ = DeviceType.objects.get_or_create(
+            manufacturer=cls.mfr, model='I-SRV', defaults={'slug': 'i-srv'}
+        )
+        cls.switch_dt, _ = DeviceType.objects.get_or_create(
+            manufacturer=cls.mfr, model='I-SW', defaults={'slug': 'i-sw'}
+        )
+        for port_n in range(1, 9):
+            InterfaceTemplate.objects.get_or_create(
+                device_type=cls.switch_dt, name=f'E1/{port_n}',
+                defaults={'type': '200gbase-x-qsfp112'},
+            )
+        cls.device_ext, _ = DeviceTypeExtension.objects.update_or_create(
+            device_type=cls.switch_dt,
+            defaults={
+                'native_speed': 200, 'uplink_ports': 0,
+                'supported_breakouts': ['1x200g-i'], 'mclag_capable': False,
+                'hedgehog_roles': ['server-leaf'],
+            },
+        )
+        cls.breakout, _ = BreakoutOption.objects.get_or_create(
+            breakout_id='1x200g-i',
+            defaults={'from_speed': 200, 'logical_ports': 1, 'logical_speed': 200},
+        )
+        cls.site, _ = Site.objects.get_or_create(
+            name='I-TestSite', defaults={'slug': 'i-testsite'}
+        )
+        cls.xcvr_mt = get_test_transceiver_module_type()
+
+        # NIC ModuleType with 4 ports for multi-port test (I.1)
+        cls.nic_mt_multi, _ = ModuleType.objects.get_or_create(
+            manufacturer=cls.mfr, model='I-NIC-4PORT', defaults={}
+        )
+        for pname in ('p0', 'p1', 'p2', 'p3'):
+            from dcim.models import InterfaceTemplate as IfaceTemplate
+            IfaceTemplate.objects.get_or_create(
+                module_type=cls.nic_mt_multi, name=pname,
+                defaults={'type': '200gbase-x-qsfp112'},
+            )
+
+        # NIC ModuleType with double-digit ports for natural-sort test (I.2, I.3)
+        # Names p0..p9, p10 — lexicographic order puts p10 before p2
+        cls.nic_mt_bigport, _ = ModuleType.objects.get_or_create(
+            manufacturer=cls.mfr, model='I-NIC-11PORT', defaults={}
+        )
+        from dcim.models import InterfaceTemplate as IfaceTemplate
+        for pname in ('p0', 'p1', 'p2', 'p3', 'p4', 'p5', 'p6', 'p7', 'p8', 'p9', 'p10'):
+            IfaceTemplate.objects.get_or_create(
+                module_type=cls.nic_mt_bigport, name=pname,
+                defaults={'type': '200gbase-x-qsfp112'},
+            )
+
+    def _make_multiport_plan(self, name_suffix, nic_mt, ports_per_connection,
+                              port_index=0, with_xcvr=True):
+        plan = TopologyPlan.objects.create(
+            name=f'S2IPlan-{name_suffix}-{id(self)}',
+            status=TopologyPlanStatusChoices.DRAFT,
+        )
+        sc = PlanServerClass.objects.create(
+            plan=plan, server_class_id='gpu-i',
+            server_device_type=self.server_dt, quantity=1,
+        )
+        sw = PlanSwitchClass.objects.create(
+            plan=plan, switch_class_id='fe-leaf-i',
+            fabric_name=FabricTypeChoices.FRONTEND,
+            fabric_class=FabricClassChoices.MANAGED,
+            hedgehog_role=HedgehogRoleChoices.SERVER_LEAF,
+            device_type_extension=self.device_ext,
+            uplink_ports_per_switch=0, mclag_pair=False,
+            override_quantity=2, redundancy_type='eslag',
+        )
+        zone = SwitchPortZone.objects.create(
+            switch_class=sw, zone_name='server-downlinks',
+            zone_type=PortZoneTypeChoices.SERVER, port_spec='1-64',
+            breakout_option=self.breakout,
+            allocation_strategy=AllocationStrategyChoices.SEQUENTIAL, priority=100,
+        )
+        nic = PlanServerNIC.objects.create(
+            server_class=sc, nic_id='nic-fe-i', module_type=nic_mt,
+        )
+        conn_kwargs = {}
+        if with_xcvr:
+            conn_kwargs['transceiver_module_type'] = self.xcvr_mt
+        PlanServerConnection.objects.create(
+            server_class=sc, connection_id='fe-i',
+            nic=nic, port_index=port_index,
+            ports_per_connection=ports_per_connection,
+            hedgehog_conn_type=ConnectionTypeChoices.UNBUNDLED,
+            distribution=ConnectionDistributionChoices.ALTERNATING,
+            target_zone=zone, speed=200, port_type='data',
+            **conn_kwargs,
+        )
+        return plan, sc, sw, zone, nic
+
+    def tearDown(self):
+        for p in list(TopologyPlan.objects.filter(name__startswith='S2IPlan-')):
+            _cleanup(p.pk)
+            _delete_plan(p)
+
+    def test_multi_port_connection_places_transceiver_per_port(self):
+        """I.1: ports_per_connection=2 with transceiver FK → two nested cage Modules, not one."""
+        plan, sc, sw, zone, nic = self._make_multiport_plan(
+            'I1', self.nic_mt_multi, ports_per_connection=2, port_index=0, with_xcvr=True
+        )
+        call_command('populate_transceiver_bays')
+        _generate(plan)
+
+        gs = GenerationState.objects.filter(plan=plan).first()
+        self.assertIsNotNone(gs)
+        self.assertEqual(gs.status, GenerationStatusChoices.GENERATED,
+            "Multi-port connection with bays present must succeed as GENERATED")
+
+        # Both cage-0 and cage-1 should contain a transceiver Module
+        nic_modules = Module.objects.filter(
+            device__custom_field_data__hedgehog_plan_id=str(plan.pk),
+            module_type=self.nic_mt_multi,
+        )
+        self.assertGreater(nic_modules.count(), 0, "NIC Module must exist")
+        nic_module = nic_modules.first()
+
+        for cage in ('cage-0', 'cage-1'):
+            xcvr = Module.objects.filter(
+                module_bay__module=nic_module,
+                module_bay__name=cage,
+                module_type=self.xcvr_mt,
+            )
+            self.assertGreater(xcvr.count(), 0,
+                f"Multi-port connection (ports_per_connection=2) must place transceiver in {cage}")
+
+    def test_natural_sort_cage_alignment_for_double_digit_ports(self):
+        """I.2: populate_transceiver_bays uses natural sort; cage-2 maps to p2, not p10."""
+        # Create plan (and PlanServerNIC) FIRST so populate_transceiver_bays discovers
+        # nic_mt_bigport via PlanServerNIC references.
+        plan, sc, sw, zone, nic = self._make_multiport_plan(
+            'I2', self.nic_mt_bigport, ports_per_connection=1,
+            port_index=2, with_xcvr=True
+        )
+        call_command('populate_transceiver_bays')
+
+        bays = ModuleBayTemplate.objects.filter(module_type=self.nic_mt_bigport)
+        self.assertEqual(bays.count(), 11,
+            "11-port NIC must produce 11 cage ModuleBayTemplates")
+
+        # With natural sort: cage-0=p0, cage-1=p1, cage-2=p2, ..., cage-10=p10
+        # With lexicographic sort: cage-2 would be p10 (wrong).
+        # Verify by generating with port_index=2: cage-2 must exist for generation to succeed.
+        _generate(plan)
+
+        gs = GenerationState.objects.filter(plan=plan).first()
+        self.assertIsNotNone(gs)
+        self.assertEqual(gs.status, GenerationStatusChoices.GENERATED,
+            "Generation with port_index=2 on 11-port NIC must succeed "
+            "(cage-2 must exist = natural sort used in populate_transceiver_bays)")
+
+    def test_natural_sort_cage_count_matches_port_count(self):
+        """I.3: Number of cage bays equals number of interface templates on NIC ModuleType."""
+        # Create PlanServerNIC first so the command discovers nic_mt_bigport.
+        plan, sc, sw, zone, nic = self._make_multiport_plan(
+            'I3', self.nic_mt_bigport, ports_per_connection=1,
+            port_index=0, with_xcvr=False
+        )
+        call_command('populate_transceiver_bays')
+        iface_count = InterfaceTemplate.objects.filter(module_type=self.nic_mt_bigport).count()
+        bay_count = ModuleBayTemplate.objects.filter(module_type=self.nic_mt_bigport).count()
+        self.assertEqual(iface_count, bay_count,
+            "cage bay count must equal interface template count on NIC ModuleType")

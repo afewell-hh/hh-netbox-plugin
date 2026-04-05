@@ -14,6 +14,8 @@ Run this command after applying migration 0045, before running Stage 2
 generation for the first time.
 """
 
+import re
+
 from django.core.management.base import BaseCommand
 
 from dcim.models import DeviceType, InterfaceTemplate, ModuleBayTemplate, ModuleType
@@ -48,8 +50,15 @@ class Command(BaseCommand):
         # All ModuleTypes referenced by at least one PlanServerNIC.
         nic_mt_ids = PlanServerNIC.objects.values_list('module_type_id', flat=True).distinct()
         for mt in ModuleType.objects.filter(pk__in=nic_mt_ids):
-            port_templates = list(
-                InterfaceTemplate.objects.filter(module_type=mt).order_by('name')
+            # Use natural sort (matching _get_module_interface_by_port_index) so that
+            # cage-N indices align correctly for multi-digit port names (p0…p10, etc.).
+            def _natural_key(it):
+                parts = re.split(r'(\d+)', it.name)
+                return [int(p) if p.isdigit() else p.lower() for p in parts]
+
+            port_templates = sorted(
+                InterfaceTemplate.objects.filter(module_type=mt),
+                key=_natural_key,
             )
             for index, _it in enumerate(port_templates):
                 _, created = ModuleBayTemplate.objects.get_or_create(
