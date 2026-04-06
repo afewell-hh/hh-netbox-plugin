@@ -152,6 +152,70 @@ class TopologyPlanView(generic.ObjectView):
 
         transceiver_bay_readiness = check_transceiver_bay_readiness(instance)
 
+        # --- Compatibility report preprocessing (#375) ---
+        from django.urls import reverse
+
+        show_failure_report = False
+        mismatch_rows = []
+        bay_error_rows = []
+
+        gs = getattr(instance, 'generation_state', None)
+        if (
+            gs is not None
+            and gs.status == choices.GenerationStatusChoices.FAILED
+            and gs.mismatch_report  # falsy guard: None and {} both excluded
+        ):
+            report = gs.mismatch_report
+            sweep_entries = report.get('mismatches', [])
+            bay_entries = report.get('bay_errors', [])
+
+            if sweep_entries:
+                show_failure_report = True
+                conn_pks = [e['connection_id'] for e in sweep_entries if 'connection_id' in e]
+                conn_labels = {
+                    c.pk: c.connection_id
+                    for c in models.PlanServerConnection.objects.filter(
+                        pk__in=conn_pks
+                    ).only('pk', 'connection_id')
+                }
+                for entry in sweep_entries:
+                    pk = entry.get('connection_id')
+                    found = pk is not None and pk in conn_labels
+                    label = conn_labels[pk] if found else (f'#{pk}' if pk is not None else '—')
+                    url = (
+                        reverse('plugins:netbox_hedgehog:planserverconnection_detail', args=[pk])
+                        if found else None
+                    )
+                    mismatch_rows.append({
+                        'connection_label': label,
+                        'connection_url': url,
+                        'server_device': entry.get('server_device', '—'),
+                        'switch_port': entry.get('switch_port', '—'),
+                        'dimension': entry.get('mismatch_type', '—'),
+                        'server_end': entry.get('server_end', '—'),
+                        'switch_end': entry.get('switch_end', '—'),
+                    })
+
+            if bay_entries:
+                show_failure_report = True
+                for entry in bay_entries:
+                    error_type = entry.get('error_type', '')
+                    if error_type == 'missing_nested_bay':
+                        display_type = 'Missing NIC Port Bay'
+                        bay_or_port = entry.get('cage', '—')
+                    elif error_type == 'missing_switch_bay':
+                        display_type = 'Missing Switch Port Bay'
+                        bay_or_port = entry.get('port', '—')
+                    else:
+                        display_type = 'Unknown Bay Error'
+                        bay_or_port = entry.get('port', entry.get('cage', '—'))
+                    bay_error_rows.append({
+                        'error_type_display': display_type,
+                        'device': entry.get('device', '—'),
+                        'bay_or_port': bay_or_port,
+                        'hint': entry.get('hint', 'Run populate_transceiver_bays and regenerate.'),
+                    })
+
         return {
             'server_classes': instance.server_classes.all(),
             'switch_classes': instance.switch_classes.all(),
@@ -163,6 +227,9 @@ class TopologyPlanView(generic.ObjectView):
             'expected_interface_count': expected_interface_count,
             'expected_cable_count': expected_cable_count,
             'transceiver_bay_readiness': transceiver_bay_readiness,
+            'show_failure_report': show_failure_report,
+            'mismatch_rows': mismatch_rows,
+            'bay_error_rows': bay_error_rows,
         }
 
     def _can_user_generate_devices(self, request, instance):
