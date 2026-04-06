@@ -662,3 +662,262 @@ class TopologyPlanDetailTransceiverAdvisoryTestCase(TestCase):
 
         self.assertEqual(response.status_code, 200)
         self.assertNotContains(response, 'transceiver bays are missing')
+
+
+# ---------------------------------------------------------------------------
+# S6 — Mixed-plan scope narrowing: unrelated NICs and switch classes
+#       must not cause over-blocking when they carry no transceiver intent.
+# ---------------------------------------------------------------------------
+
+def _get_or_create_unrelated_nic_module_type():
+    """
+    Return a second NIC ModuleType with no ModuleBayTemplates.
+
+    This simulates a NIC whose PlanServerConnection carries no
+    transceiver_module_type FK — it must NOT be checked by pre-flight.
+    """
+    mfr, _ = Manufacturer.objects.get_or_create(
+        name='Preflight-Test-Vendor',
+        defaults={'slug': 'preflight-test-vendor'},
+    )
+    mt, _ = ModuleType.objects.get_or_create(
+        manufacturer=mfr,
+        model='Unrelated-NIC-NoBays',
+    )
+    # Deliberately no ModuleBayTemplates created.
+    return mt
+
+
+def _get_or_create_second_switch_fixtures():
+    """
+    Return (device_type_B, ext_B, breakout_option) for a second switch class.
+
+    DeviceType PF-Switch-200 has InterfaceTemplates but NO ModuleBayTemplates —
+    simulating a switch class whose zones carry no transceiver_module_type FK.
+    """
+    mfr, _ = Manufacturer.objects.get_or_create(
+        name='Preflight-Test-Vendor',
+        defaults={'slug': 'preflight-test-vendor'},
+    )
+    dt_b, _ = DeviceType.objects.get_or_create(
+        manufacturer=mfr,
+        model='PF-Switch-200',
+        defaults={'slug': 'pf-switch-200'},
+    )
+    # Add an InterfaceTemplate so the switch looks real, but no ModuleBayTemplate.
+    InterfaceTemplate.objects.get_or_create(
+        device_type=dt_b,
+        name='Ethernet2/1',
+        defaults={'type': '100gbase-x-qsfp28'},
+    )
+    bo, _ = BreakoutOption.objects.get_or_create(
+        breakout_id='4x200g-pf',
+        defaults={'from_speed': 800, 'logical_ports': 4, 'logical_speed': 200},
+    )
+    ext_b, _ = DeviceTypeExtension.objects.update_or_create(
+        device_type=dt_b,
+        defaults={
+            'native_speed': 800,
+            'supported_breakouts': ['1x800g', '4x200g'],
+            'mclag_capable': False,
+            'hedgehog_roles': ['server-leaf'],
+        },
+    )
+    return dt_b, ext_b, bo
+
+
+class MixedPlanPreflightTestCase(TestCase):
+    """
+    Regression tests for the narrowed pre-flight scope (review fix).
+
+    A "mixed plan" has some connections/zones with transceiver FKs and some
+    without.  Only the entities referenced by FK-bearing rows should be
+    checked.  Unrelated NICs and switch classes must not cause over-blocking.
+    """
+
+    @classmethod
+    def setUpTestData(cls):
+        cls.superuser = User.objects.create_user(
+            username='pf-mixed-superuser',
+            password='testpass123',
+            is_staff=True,
+            is_superuser=True,
+        )
+
+    def setUp(self):
+        self.client = Client()
+
+    # ------------------------------------------------------------------
+    # Service-level mixed-NIC test
+    # ------------------------------------------------------------------
+
+    def test_unrelated_nic_without_bays_does_not_block(self):
+        """
+        Mixed-NIC plan: one connection HAS transceiver FK (NIC module type has
+        bays); a second connection in the SAME plan has no FK (NIC module type
+        has NO bays).  Pre-flight must pass — only the FK-bearing connection's
+        NIC type is checked.
+        """
+        from netbox_hedgehog.services.preflight import check_transceiver_bay_readiness
+        from netbox_hedgehog.tests.test_topology_planning import get_test_nic_module_type
+
+        # Build the "prepared" half of the plan (FK set, bays present).
+        plan, switch_dt = _build_plan_with_transceiver_fk(with_bays=True)
+
+        # Add a second server class whose connection carries NO transceiver FK.
+        # Its NIC uses an unrelated module type that has NO ModuleBayTemplates.
+        srv_dt = _get_or_create_server_fixtures()
+        unrelated_mt = _get_or_create_unrelated_nic_module_type()
+        ModuleBayTemplate.objects.filter(module_type=unrelated_mt).delete()
+
+        sc2 = PlanServerClass.objects.create(
+            plan=plan,
+            server_class_id='pf-gpu-unrelated',
+            category=ServerClassCategoryChoices.GPU,
+            quantity=1,
+            gpus_per_server=8,
+            server_device_type=srv_dt,
+        )
+        from netbox_hedgehog.models.topology_planning import PlanServerNIC
+        nic2 = PlanServerNIC.objects.create(
+            server_class=sc2,
+            nic_id='pf-nic-unrelated',
+            module_type=unrelated_mt,
+        )
+        # Reuse the existing zone from the plan (any zone works; no FK on this conn).
+        from netbox_hedgehog.models.topology_planning import SwitchPortZone as SPZ
+        zone = SPZ.objects.filter(switch_class__plan=plan).first()
+        PlanServerConnection.objects.create(
+            server_class=sc2,
+            connection_id='PF-UNRELATED-001',
+            nic=nic2,
+            port_index=0,
+            target_zone=zone,
+            ports_per_connection=2,
+            hedgehog_conn_type=ConnectionTypeChoices.UNBUNDLED,
+            distribution=ConnectionDistributionChoices.ALTERNATING,
+            speed=200,
+            port_type='data',
+            # transceiver_module_type intentionally NOT set
+        )
+
+        result = check_transceiver_bay_readiness(plan)
+
+        self.assertTrue(
+            result.is_ready,
+            'Mixed-NIC plan must be ready when only the FK-bearing NIC type has bays; '
+            'unrelated NIC type (no FK, no bays) must not cause blocking.',
+        )
+
+    # ------------------------------------------------------------------
+    # Service-level mixed-switch test
+    # ------------------------------------------------------------------
+
+    def test_unrelated_switch_class_without_bays_does_not_block(self):
+        """
+        Mixed-switch plan: one switch class has a zone WITH transceiver FK
+        (device type has sufficient bays); a second switch class in the SAME
+        plan has a zone WITHOUT transceiver FK (device type has NO bays).
+        Pre-flight must pass — only the FK-bearing zone's device type is checked.
+        """
+        from netbox_hedgehog.services.preflight import check_transceiver_bay_readiness
+
+        # Build the "prepared" half (zone FK set, switch DT has bays).
+        plan, switch_dt = _build_plan_with_transceiver_fk(with_bays=True)
+
+        # Add a second switch class whose zone carries NO transceiver FK.
+        # Its device type has an InterfaceTemplate but NO ModuleBayTemplate.
+        dt_b, ext_b, bo = _get_or_create_second_switch_fixtures()
+        ModuleBayTemplate.objects.filter(device_type=dt_b).delete()
+
+        sc2 = PlanSwitchClass.objects.create(
+            plan=plan,
+            switch_class_id='pf-fe-leaf-unrelated',
+            fabric=FabricTypeChoices.FRONTEND,
+            hedgehog_role=HedgehogRoleChoices.SERVER_LEAF,
+            device_type_extension=ext_b,
+            uplink_ports_per_switch=4,
+            mclag_pair=False,
+        )
+        SwitchPortZone.objects.create(
+            switch_class=sc2,
+            zone_name='pf-unrelated-ports',
+            zone_type=PortZoneTypeChoices.SERVER,
+            port_spec='1-48',
+            breakout_option=bo,
+            allocation_strategy=AllocationStrategyChoices.SEQUENTIAL,
+            priority=100,
+            # transceiver_module_type intentionally NOT set
+        )
+
+        result = check_transceiver_bay_readiness(plan)
+
+        self.assertTrue(
+            result.is_ready,
+            'Mixed-switch plan must be ready when only the FK-bearing zone\'s device '
+            'type has bays; unrelated switch class (no FK, no bays) must not block.',
+        )
+
+    # ------------------------------------------------------------------
+    # Integration-level view test: mixed-NIC plan is not over-blocked
+    # ------------------------------------------------------------------
+
+    def test_generate_update_view_not_blocked_by_unrelated_nic(self):
+        """
+        POST to generate-update on a mixed-NIC plan (FK-bearing NIC has bays,
+        unrelated NIC has no bays) must NOT be blocked by pre-flight.
+
+        The pre-flight passes, so the view proceeds to dispatch generation
+        (a GenerationState is created).
+        """
+        from netbox_hedgehog.models.topology_planning import PlanServerNIC
+        from netbox_hedgehog.models.topology_planning import SwitchPortZone as SPZ
+
+        plan, switch_dt = _build_plan_with_transceiver_fk(with_bays=True)
+
+        # Add the unrelated server class + connection with no transceiver FK.
+        srv_dt = _get_or_create_server_fixtures()
+        unrelated_mt = _get_or_create_unrelated_nic_module_type()
+        ModuleBayTemplate.objects.filter(module_type=unrelated_mt).delete()
+
+        sc2 = PlanServerClass.objects.create(
+            plan=plan,
+            server_class_id='pf-gpu-view-unrelated',
+            category=ServerClassCategoryChoices.GPU,
+            quantity=1,
+            gpus_per_server=8,
+            server_device_type=srv_dt,
+        )
+        nic2 = PlanServerNIC.objects.create(
+            server_class=sc2,
+            nic_id='pf-nic-view-unrelated',
+            module_type=unrelated_mt,
+        )
+        zone = SPZ.objects.filter(switch_class__plan=plan).first()
+        PlanServerConnection.objects.create(
+            server_class=sc2,
+            connection_id='PF-VIEW-UNRELATED-001',
+            nic=nic2,
+            port_index=0,
+            target_zone=zone,
+            ports_per_connection=2,
+            hedgehog_conn_type=ConnectionTypeChoices.UNBUNDLED,
+            distribution=ConnectionDistributionChoices.ALTERNATING,
+            speed=200,
+            port_type='data',
+            # transceiver_module_type intentionally NOT set
+        )
+
+        self.client.login(username='pf-mixed-superuser', password='testpass123')
+        url = reverse(
+            'plugins:netbox_hedgehog:topologyplan_generate_update',
+            kwargs={'pk': plan.pk},
+        )
+        self.client.post(url, follow=True)
+
+        # Pre-flight passed → generation was dispatched → GenerationState exists
+        self.assertTrue(
+            GenerationState.objects.filter(plan=plan).exists(),
+            'GenerationState must be created; pre-flight must not block mixed-NIC plan '
+            'when only the FK-bearing NIC type has bays.',
+        )

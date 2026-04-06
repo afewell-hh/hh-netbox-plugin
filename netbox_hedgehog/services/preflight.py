@@ -20,11 +20,7 @@ from django.db.models import Count
 
 from dcim.models import DeviceType, ModuleType
 
-from netbox_hedgehog.models.topology_planning.topology_plans import (
-    PlanServerConnection,
-    PlanServerNIC,
-    PlanSwitchClass,
-)
+from netbox_hedgehog.models.topology_planning.topology_plans import PlanServerConnection
 from netbox_hedgehog.models.topology_planning.port_zones import SwitchPortZone
 
 if TYPE_CHECKING:
@@ -75,11 +71,15 @@ def check_transceiver_bay_readiness(plan: "TopologyPlan") -> TransceiverBayReadi
 
     Phase 2 (bay presence checks — checks 3 & 4):
         Only reached when at least one FK is set.
-        Check 3: NIC ModuleType — each ModuleType referenced by a PlanServerNIC
-            in this plan must have at least one ModuleBayTemplate child.
+        Check 3: NIC ModuleType — each ModuleType referenced by a
+            PlanServerConnection with a non-null transceiver_module_type in this
+            plan must have at least one ModuleBayTemplate child.
         Check 4: Switch DeviceType bay count parity — each DeviceType referenced
-            by a PlanSwitchClass in this plan must have at least as many
-            ModuleBayTemplate rows as InterfaceTemplate rows.
+            by a SwitchPortZone with a non-null transceiver_module_type in this
+            plan must have at least as many ModuleBayTemplate rows as
+            InterfaceTemplate rows.
+        Unrelated NICs and switch classes in the same plan that carry no
+        transceiver intent are deliberately excluded from both checks.
 
     Returns a TransceiverBayReadinessResult. Never raises.
     """
@@ -107,10 +107,17 @@ def check_transceiver_bay_readiness(plan: "TopologyPlan") -> TransceiverBayReadi
     missing = []
 
     # Check 3 — NIC ModuleType bay presence (at-least-one-bay check)
-    # FK chain: PlanServerNIC.server_class__plan, PlanServerNIC.module_type
+    # Scope: only NIC module types actually referenced by PlanServerConnection rows
+    # in this plan that have a non-null transceiver_module_type FK.  Unrelated NICs
+    # in the same plan (no transceiver intent) are deliberately excluded so that
+    # mixed plans are not over-blocked.
+    # FK chain: PlanServerConnection.nic__module_type_id (nic → PlanServerNIC)
     nic_mt_ids = (
-        PlanServerNIC.objects.filter(server_class__plan=plan)
-        .values_list('module_type_id', flat=True)
+        PlanServerConnection.objects.filter(
+            server_class__plan=plan,
+            transceiver_module_type__isnull=False,
+        )
+        .values_list('nic__module_type_id', flat=True)
         .distinct()
     )
     missing_nic_types = ModuleType.objects.filter(
@@ -131,10 +138,17 @@ def check_transceiver_bay_readiness(plan: "TopologyPlan") -> TransceiverBayReadi
         })
 
     # Check 4 — Switch DeviceType bay count parity
-    # FK chain: PlanSwitchClass.device_type_extension__device_type
+    # Scope: only device types actually referenced by SwitchPortZone rows in this
+    # plan that have a non-null transceiver_module_type FK.  Unrelated switch classes
+    # in the same plan (no transceiver intent on any of their zones) are deliberately
+    # excluded so that mixed plans are not over-blocked.
+    # FK chain: SwitchPortZone.switch_class__device_type_extension__device_type_id
     dt_ids = (
-        PlanSwitchClass.objects.filter(plan=plan)
-        .values_list('device_type_extension__device_type_id', flat=True)
+        SwitchPortZone.objects.filter(
+            switch_class__plan=plan,
+            transceiver_module_type__isnull=False,
+        )
+        .values_list('switch_class__device_type_extension__device_type_id', flat=True)
         .distinct()
     )
     for dt in DeviceType.objects.filter(pk__in=dt_ids).annotate(
