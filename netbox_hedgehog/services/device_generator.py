@@ -368,27 +368,6 @@ class DeviceGenerator:
                             "Ensure Pass 1 created the module correctly."
                         )
 
-                    # Build the fallback transceiver spec string once per connection.
-                    # If a real Module is placed per-port below, spec is suppressed for that port.
-                    # DEPRECATED: hedgehog_transceiver_spec will be removed in Stage 3 (#334).
-                    xcvr_mt = getattr(connection_def, 'transceiver_module_type', None)
-                    if xcvr_mt is not None:
-                        _ad = xcvr_mt.attribute_data or {}
-                        _xcvr_parts = [
-                            _ad.get('cage_type', ''),
-                            _ad.get('medium', ''),
-                            _ad.get('standard', ''),
-                            _ad.get('connector', ''),
-                        ]
-                    else:
-                        _xcvr_parts = [
-                            connection_def.cage_type,
-                            connection_def.medium,
-                            connection_def.connector,
-                            connection_def.standard,
-                        ]
-                    transceiver_spec_fallback = ' | '.join(p for p in _xcvr_parts if p)
-
                     for port_index in range(connection_def.ports_per_connection):
                         switch_device = self._select_switch_instance(
                             switch_instances,
@@ -433,7 +412,6 @@ class DeviceGenerator:
                             server_device, module, connection_def,
                             actual_port_index=actual_port_index,
                         )
-                        transceiver_spec = '' if xcvr_module is not None else transceiver_spec_fallback
 
                         server_interface = self._get_module_interface_by_port_index(
                             device=server_device,
@@ -441,14 +419,6 @@ class DeviceGenerator:
                             port_index=actual_port_index,
                         )
 
-                        # Write transceiver spec to server-side interface (DIET-294).
-                        # Only set on server-side; switch-side must not have this field.
-                        if transceiver_spec:
-                            server_interface.custom_field_data = dict(
-                                server_interface.custom_field_data or {}
-                            )
-                            server_interface.custom_field_data['hedgehog_transceiver_spec'] = transceiver_spec
-                            server_interface.save(update_fields=['custom_field_data'])
                         # NOTE: server-side interfaces are NOT added to `interfaces` list.
                         # interface_count and hedgehog-generated tag are switch-side only.
 
@@ -1282,8 +1252,6 @@ class DeviceGenerator:
         # "p0" → "nic-fe-p0", "port0" → "nic-be-rail-0-port0"
         for iface in Interface.objects.filter(device=device, module=module):
             iface.name = f"{nic_def.nic_id}-{iface.name}"
-            iface.custom_field_data = dict(iface.custom_field_data or {})
-            iface.custom_field_data.setdefault('hedgehog_transceiver_spec', '')
             iface.save()
 
         return module

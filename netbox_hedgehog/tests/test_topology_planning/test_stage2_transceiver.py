@@ -8,7 +8,6 @@ Groups:
   D - nested NIC-port-bay server-side transceiver placement
   E - post-generation pairwise compatibility sweep (aggregate-all-mismatches-then-fail)
   F - hard-fail when transceiver FK is set but required ModuleBay is absent (#345)
-  G - hedgehog_transceiver_spec suppression when transceiver Module present
   H - FAILED status propagation to callers: job runner and synchronous view (#345 review finding)
 
 All tests in this file are RED until Stage 2 GREEN implementation lands.
@@ -744,69 +743,6 @@ class MissingBayHardFailTestCase(TestCase):
         first = bay_errors[0]
         self.assertEqual(first.get('error_type'), 'missing_nested_bay',
             "bay_error entry must have error_type='missing_nested_bay'")
-
-
-# ---------------------------------------------------------------------------
-# Group G: hedgehog_transceiver_spec suppression
-# ---------------------------------------------------------------------------
-
-class TransceiverSpecSuppressionTestCase(TestCase):
-    """
-    G.1–G.2: Assert hedgehog_transceiver_spec is suppressed when transceiver Module present.
-    RED until suppression conditional is added in device_generator.py.
-    """
-
-    @classmethod
-    def setUpTestData(cls):
-        _make_s2_fixtures(cls)
-
-    def tearDown(self):
-        for p in list(TopologyPlan.objects.filter(name__startswith='S2Plan-')):
-            _cleanup(p.pk)
-            _delete_plan(p)
-
-    def test_spec_not_written_when_transceiver_module_placed(self):
-        """G.1: hedgehog_transceiver_spec must be absent on server interface when transceiver Module exists."""
-        plan, sc, sw, zone, nic = _make_plan_with_xcvr(self, 'G1', with_xcvr=True)
-        call_command('populate_transceiver_bays')
-        _generate(plan)
-        from dcim.models import Interface
-        server_ifaces = Interface.objects.filter(
-            device__custom_field_data__hedgehog_plan_id=str(plan.pk),
-            device__device_type=self.server_dt,
-        )
-        self.assertGreater(server_ifaces.count(), 0, "Server interfaces must exist")
-        for iface in server_ifaces:
-            spec = (iface.custom_field_data or {}).get('hedgehog_transceiver_spec')
-            self.assertFalse(
-                bool(spec),
-                f"hedgehog_transceiver_spec must be suppressed when transceiver Module placed; "
-                f"got {spec!r} on {iface.name}",
-            )
-
-    def test_spec_written_as_fallback_when_no_transceiver_module(self):
-        """G.2: hedgehog_transceiver_spec fallback write still fires when transceiver FK is null."""
-        # No transceiver FK → no Module placed → fallback write should fire
-        plan, sc, sw, zone, nic = _make_plan_with_xcvr(self, 'G2', with_xcvr=False)
-        call_command('populate_transceiver_bays')
-        # Give the connection flat field values so the spec string is non-empty
-        conn = PlanServerConnection.objects.get(server_class=sc)
-        conn.cage_type = 'QSFP28'
-        conn.medium = 'MMF'
-        conn.save()
-        _generate(plan)
-        from dcim.models import Interface
-        server_ifaces = Interface.objects.filter(
-            device__custom_field_data__hedgehog_plan_id=str(plan.pk),
-            device__device_type=self.server_dt,
-        )
-        self.assertGreater(server_ifaces.count(), 0, "Server interfaces must exist")
-        any_spec = any(
-            bool((iface.custom_field_data or {}).get('hedgehog_transceiver_spec'))
-            for iface in server_ifaces
-        )
-        self.assertTrue(any_spec,
-            "hedgehog_transceiver_spec fallback write must still fire when no transceiver Module placed")
 
 
 # ---------------------------------------------------------------------------
