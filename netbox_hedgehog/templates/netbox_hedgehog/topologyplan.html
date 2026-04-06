@@ -231,6 +231,93 @@
     </div>
 </div>
 
+{% if show_failure_report %}
+<div class="row mt-3">
+    <div class="col-12">
+        <div class="card border-danger">
+            <h5 class="card-header bg-danger text-white">
+                <i class="mdi mdi-alert-circle"></i> Generation Failure Report
+            </h5>
+            <div class="card-body">
+
+                {% if mismatch_rows %}
+                <h6 class="mt-0 mb-2">Transceiver Compatibility Mismatches</h6>
+                <p class="text-muted small mb-2">
+                    The following transceiver attribute mismatches prevented generation from succeeding.
+                    Navigate to each connection to correct the transceiver assignment.
+                </p>
+                <div class="table-responsive">
+                <table class="table table-hover table-sm">
+                    <thead>
+                        <tr>
+                            <th>Connection</th>
+                            <th>Server Class</th>
+                            <th>Switch Zone</th>
+                            <th>Dimension</th>
+                            <th>Server-Side Value</th>
+                            <th>Switch-Side Value</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for row in mismatch_rows %}
+                        <tr>
+                            <td>
+                                {% if row.connection_url %}
+                                    <a href="{{ row.connection_url }}">{{ row.connection_label }}</a>
+                                {% else %}
+                                    {{ row.connection_label }}
+                                {% endif %}
+                            </td>
+                            <td>{{ row.server_device }}</td>
+                            <td>{{ row.switch_port }}</td>
+                            <td><code>{{ row.dimension }}</code></td>
+                            <td>{{ row.server_end }}</td>
+                            <td>{{ row.switch_end }}</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+                </div>
+                {% endif %}
+
+                {% if bay_error_rows %}
+                {% if mismatch_rows %}<hr class="my-3">{% endif %}
+                <h6 class="mt-0 mb-2">Bay Configuration Errors</h6>
+                <p class="text-muted small mb-2">
+                    Required ModuleBays are missing. Run
+                    <code>python manage.py populate_transceiver_bays</code>
+                    then regenerate.
+                </p>
+                <div class="table-responsive">
+                <table class="table table-hover table-sm">
+                    <thead>
+                        <tr>
+                            <th>Error Type</th>
+                            <th>Device</th>
+                            <th>Bay / Port</th>
+                            <th>Action</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for row in bay_error_rows %}
+                        <tr>
+                            <td>{{ row.error_type_display }}</td>
+                            <td>{{ row.device }}</td>
+                            <td><code>{{ row.bay_or_port }}</code></td>
+                            <td>{{ row.hint }}</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+                </div>
+                {% endif %}
+
+            </div>
+        </div>
+    </div>
+</div>
+{% endif %}
+
 <div class="row">
     <div class="col-12">
         <div class="card">
