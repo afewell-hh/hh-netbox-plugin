@@ -226,6 +226,15 @@
                         <i class="mdi mdi-download"></i> Export YAML
                     </button>
                 {% endif %}
+                {% if object.generation_state and object.generation_state.status == 'generated' %}
+                    <a href="{% url 'plugins:netbox_hedgehog:topologyplan_bom_csv' pk=object.pk %}" class="btn btn-info">
+                        <i class="mdi mdi-download"></i> Download BOM (CSV)
+                    </a>
+                {% else %}
+                    <button class="btn btn-secondary" disabled title="Device generation must be completed before downloading BOM">
+                        <i class="mdi mdi-download"></i> Download BOM (CSV)
+                    </button>
+                {% endif %}
             </div>
         </div>
     </div>
@@ -312,6 +321,63 @@
                 </div>
                 {% endif %}
 
+            </div>
+        </div>
+    </div>
+</div>
+{% endif %}
+
+{% if plan_bom %}
+<div class="row mt-3">
+    <div class="col-12">
+        <div class="card">
+            <h5 class="card-header">
+                Bill of Materials (Generated)
+                <span class="badge badge-secondary">{{ plan_bom.line_items|length }}</span>
+            </h5>
+            <div class="card-body table-responsive">
+                {% if plan_bom.line_items %}
+                <table class="table table-hover table-sm">
+                    <thead>
+                        <tr>
+                            <th>Section</th>
+                            <th>Manufacturer</th>
+                            <th>Module Type</th>
+                            <th>Qty</th>
+                            <th>Cage Type</th>
+                            <th>Medium</th>
+                            <th>Connector</th>
+                            <th>Standard</th>
+                            <th>Cable Assembly?</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for item in plan_bom.line_items %}
+                        <tr>
+                            <td>
+                                {% if item.section == 'nic' %}NIC
+                                {% elif item.section == 'server_transceiver' %}Server Transceiver
+                                {% elif item.section == 'switch_transceiver' %}Switch Transceiver
+                                {% else %}{{ item.section }}{% endif %}
+                            </td>
+                            <td>{{ item.manufacturer }}</td>
+                            <td>{{ item.module_type_model }}</td>
+                            <td>{{ item.quantity }}</td>
+                            <td>{{ item.cage_type|default:'' }}</td>
+                            <td>{{ item.medium|default:'' }}</td>
+                            <td>{{ item.connector|default:'' }}</td>
+                            <td>{{ item.standard|default:'' }}</td>
+                            <td>{% if item.is_cable_assembly %}Yes{% else %}No{% endif %}</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+                {% else %}
+                <p class="text-muted">No module line items for this plan. Check transceiver FK configuration or run device generation.</p>
+                {% endif %}
+                <small class="text-muted d-block mt-2">
+                    Suppressed switch-side cable assembly modules (DAC/ACC): {{ plan_bom.suppressed_switch_cable_assembly_count }}
+                </small>
             </div>
         </div>
     </div>
