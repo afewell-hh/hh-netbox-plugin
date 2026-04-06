@@ -731,9 +731,9 @@ class PlanServerConnection(NetBoxModel):
     )
 
     # Transceiver review fields (DIET-294) – flat attributes for engineer review.
-    # Written to hedgehog_transceiver_spec custom field on generated server-side
-    # interfaces.  A future first-class transceiver model (issue #194) may replace
-    # these flat fields.
+    # These fields are UI-only metadata after Stage 3 (#347) removed the legacy
+    # hedgehog_transceiver_spec write path. Transceiver generation uses the
+    # Module-based model via transceiver_module_type FK (DIET-334 Stage 2).
 
     cage_type = models.CharField(
         max_length=20,
