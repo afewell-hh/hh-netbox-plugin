@@ -901,6 +901,14 @@ class PlanServerConnection(NetBoxModel):
                         f"attribute_data medium '{xcvr_ad['medium']}'."
                     )
                 })
+            # V2c: flat connector must match FK attribute_data connector if both set.
+            if self.connector and xcvr_ad.get('connector') and self.connector != xcvr_ad['connector']:
+                raise ValidationError({
+                    'connector': (
+                        f"connector '{self.connector}' conflicts with transceiver_module_type "
+                        f"attribute_data connector '{xcvr_ad['connector']}'."
+                    )
+                })
 
         # Cross-end compatibility against target zone's transceiver FK (V4, V5).
         if self.target_zone_id:
@@ -928,6 +936,17 @@ class PlanServerConnection(NetBoxModel):
                         field: (
                             f"Server-side medium '{srv_medium}' is incompatible with "
                             f"zone transceiver medium '{zone_medium}'. Both ends must use the same medium."
+                        )
+                    })
+                # V6: connector must match.
+                srv_connector = (xcvr_mt.attribute_data or {}).get('connector') if xcvr_mt else self.connector
+                zone_connector = zone_ad.get('connector')
+                if srv_connector and zone_connector and srv_connector != zone_connector:
+                    field = 'transceiver_module_type' if xcvr_mt else 'connector'
+                    raise ValidationError({
+                        field: (
+                            f"Server-side connector '{srv_connector}' does not match "
+                            f"zone transceiver connector '{zone_connector}'."
                         )
                     })
 
