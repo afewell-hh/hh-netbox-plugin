@@ -120,6 +120,24 @@
         <div class="card">
             <h5 class="card-header">Actions</h5>
             <div class="card-body">
+                {% if transceiver_bay_readiness.has_transceiver_fks and not transceiver_bay_readiness.is_ready %}
+                <div class="alert alert-danger mb-3" role="alert">
+                    <h6 class="alert-heading">
+                        <i class="mdi mdi-alert-circle"></i>
+                        Transceiver Bay Prerequisite Missing
+                    </h6>
+                    <p class="mb-1">
+                        Transceiver types are configured for this plan but the required
+                        <strong>ModuleBayTemplates</strong> have not been added to one or more
+                        switch DeviceTypes or NIC ModuleTypes.
+                        Generation will be blocked until this is resolved.
+                    </p>
+                    <p class="mb-0">
+                        Run: <code>python manage.py populate_transceiver_bays</code>
+                        then retry generation.
+                    </p>
+                </div>
+                {% endif %}
                 {# Unified Generate/Update Button (DIET #127 + #132) #}
                 {# Check for active job (not orphaned) #}
                 {% if object.generation_state and object.generation_state.job and object.generation_state.status == 'queued' or object.generation_state and object.generation_state.job and object.generation_state.status == 'in_progress' %}

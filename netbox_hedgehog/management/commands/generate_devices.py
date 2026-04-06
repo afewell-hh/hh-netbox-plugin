@@ -181,6 +181,18 @@ class Command(BaseCommand):
         """Actually perform the generation"""
         self.stdout.write(self.style.WARNING('\n=== GENERATING OBJECTS ===\n'))
 
+        from netbox_hedgehog.services.preflight import (
+            check_transceiver_bay_readiness,
+            cli_message,
+        )
+        readiness = check_transceiver_bay_readiness(plan)
+        if not readiness.is_ready:
+            self.stdout.write(self.style.ERROR(cli_message(readiness)))
+            raise CommandError(
+                "Generation blocked: transceiver bays missing. "
+                "Run populate_transceiver_bays and retry."
+            )
+
         try:
             # Generate all objects
             result = generator.generate_all()
@@ -191,7 +203,7 @@ class Command(BaseCommand):
             if gs.status == 'failed':
                 report = gs.mismatch_report or {}
                 if report.get('bay_errors'):
-                    detail = "Transceiver bays are missing. Run populate_transceiver_bays and regenerate."
+                    detail = "Transceiver bay placement failed during generation. Check the mismatch report."
                 else:
                     detail = "Transceiver compatibility mismatches found. Check mismatch_report."
                 self.stdout.write(self.style.ERROR(f'\n✗ Generation failed: {detail}'))

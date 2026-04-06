@@ -68,6 +68,20 @@
                 {% if switch_count == 0 %}
                     <p class="text-danger mt-2 mb-0">No switch classes defined.</p>
                 {% endif %}
+                {% if transceiver_bay_readiness.has_transceiver_fks and not transceiver_bay_readiness.is_ready %}
+                <div class="alert alert-danger mt-2 mb-0" role="alert">
+                    <strong>
+                        <i class="mdi mdi-alert-circle"></i>
+                        Transceiver Bay Prerequisite Missing
+                    </strong>
+                    <p class="mb-1 mt-1">
+                        Required ModuleBayTemplates are absent. Generation will fail.
+                    </p>
+                    <p class="mb-0">
+                        Run: <code>python manage.py populate_transceiver_bays</code>
+                    </p>
+                </div>
+                {% endif %}
             </div>
         </div>
         <div class="card mt-3">
