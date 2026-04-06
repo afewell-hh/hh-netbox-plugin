@@ -1104,3 +1104,512 @@ class MultiPortTransceiverPlacementTestCase(TestCase):
         bay_count = ModuleBayTemplate.objects.filter(module_type=self.nic_mt_bigport).count()
         self.assertEqual(iface_count, bay_count,
             "cage bay count must equal interface template count on NIC ModuleType")
+
+
+# ---------------------------------------------------------------------------
+# Shared helper for DIET-350 Phase 3 connector/standard tests
+# ---------------------------------------------------------------------------
+
+def _make_xcvr_mt_350(connector=None, standard=None, cage_type='QSFP112', medium='MMF',
+                      model_suffix='default'):
+    """Create a Network Transceiver ModuleType with the given attribute_data values."""
+    mfr, _ = Manufacturer.objects.get_or_create(
+        name='XCVR-Test-Vendor', defaults={'slug': 'xcvr-test-vendor'}
+    )
+    profile = ModuleTypeProfile.objects.filter(name='Network Transceiver').first()
+    attrs = {'cage_type': cage_type, 'medium': medium}
+    if connector is not None:
+        attrs['connector'] = connector
+    if standard is not None:
+        attrs['standard'] = standard
+    mt, _ = ModuleType.objects.get_or_create(
+        manufacturer=mfr,
+        model=f'XCVR-350-{model_suffix}',
+        defaults={'profile': profile, 'attribute_data': attrs},
+    )
+    return mt
+
+
+def _make_350_plan_fixtures(cls):
+    """Minimal plan fixtures for DIET-350 plan-save and sweep tests."""
+    cls.mfr350, _ = Manufacturer.objects.get_or_create(
+        name='T350-Mfg', defaults={'slug': 't350-mfg'}
+    )
+    cls.server_dt350, _ = DeviceType.objects.get_or_create(
+        manufacturer=cls.mfr350, model='T350-SRV', defaults={'slug': 't350-srv'}
+    )
+    cls.switch_dt350, _ = DeviceType.objects.get_or_create(
+        manufacturer=cls.mfr350, model='T350-SW', defaults={'slug': 't350-sw'}
+    )
+    for port_n in range(1, 9):
+        InterfaceTemplate.objects.get_or_create(
+            device_type=cls.switch_dt350, name=f'E1/{port_n}',
+            defaults={'type': '200gbase-x-qsfp112'},
+        )
+    cls.device_ext350, _ = DeviceTypeExtension.objects.update_or_create(
+        device_type=cls.switch_dt350,
+        defaults={
+            'native_speed': 200, 'uplink_ports': 0,
+            'supported_breakouts': ['1x200g-350'], 'mclag_capable': False,
+            'hedgehog_roles': ['server-leaf'],
+        },
+    )
+    cls.breakout350, _ = BreakoutOption.objects.get_or_create(
+        breakout_id='1x200g-350',
+        defaults={'from_speed': 200, 'logical_ports': 1, 'logical_speed': 200},
+    )
+    cls.site350, _ = Site.objects.get_or_create(
+        name='T350-Site', defaults={'slug': 't350-site'}
+    )
+    cls.nic_mt350 = get_test_nic_module_type()
+
+
+def _make_350_base_connection(server_class, nic, zone, connection_id='conn-350', **extra):
+    """Create (and save) a PlanServerConnection for DIET-350 tests."""
+    return PlanServerConnection.objects.create(
+        server_class=server_class,
+        connection_id=connection_id,
+        nic=nic,
+        port_index=0,
+        ports_per_connection=1,
+        hedgehog_conn_type=ConnectionTypeChoices.UNBUNDLED,
+        distribution=ConnectionDistributionChoices.ALTERNATING,
+        target_zone=zone,
+        speed=200,
+        port_type='data',
+        **extra,
+    )
+
+
+# ---------------------------------------------------------------------------
+# Group C: Plan-save connector validation (DIET-350 Phase 3)
+# C.1, C.4 are RED until V2c/V6 added to _validate_transceiver_module_type().
+# C.2, C.3, C.5, C.6, C.7 verify null-skip and positive cases.
+# ---------------------------------------------------------------------------
+
+class ConnectorPlanSaveValidationTestCase(TestCase):
+    """
+    C.1–C.7: Plan-save validation for connector dimension (DIET-350 #372).
+
+    C.1: V2c — flat connector conflicts with own FK attribute_data → ValidationError
+    C.2: V2c — flat connector matches FK attribute_data → no error
+    C.3: V2c — flat connector set, FK has no connector in attribute_data → no error (null-skip)
+    C.4: V6 — cross-end connector mismatch (both FKs set) → ValidationError
+    C.5: V6 — cross-end connector match → no error
+    C.6: V6 — zone FK has no connector in attribute_data → no error (null-skip)
+    C.7: standard mismatch at plan-save → NO ValidationError (sweep-only guard)
+
+    C.1 and C.4 are RED until GREEN adds V2c and V6.
+    """
+
+    @classmethod
+    def setUpTestData(cls):
+        _make_350_plan_fixtures(cls)
+        cls.plan350 = TopologyPlan.objects.create(
+            name='C-PlanSave-350', status=TopologyPlanStatusChoices.DRAFT,
+        )
+        cls.sc350 = PlanServerClass.objects.create(
+            plan=cls.plan350, server_class_id='c-gpu',
+            server_device_type=cls.server_dt350, quantity=1,
+        )
+        cls.sw350 = PlanSwitchClass.objects.create(
+            plan=cls.plan350, switch_class_id='c-fe-leaf',
+            fabric_name=FabricTypeChoices.FRONTEND,
+            fabric_class=FabricClassChoices.MANAGED,
+            hedgehog_role=HedgehogRoleChoices.SERVER_LEAF,
+            device_type_extension=cls.device_ext350,
+            uplink_ports_per_switch=0, mclag_pair=False,
+            override_quantity=2, redundancy_type='eslag',
+        )
+        # Zone without transceiver FK — used for V2c tests (C.1–C.3)
+        cls.zone_no_xcvr = SwitchPortZone.objects.create(
+            switch_class=cls.sw350, zone_name='c-server-ports-noxcvr',
+            zone_type=PortZoneTypeChoices.SERVER, port_spec='1-32',
+            breakout_option=cls.breakout350,
+            allocation_strategy=AllocationStrategyChoices.SEQUENTIAL, priority=100,
+        )
+        cls.nic350 = PlanServerNIC.objects.create(
+            server_class=cls.sc350, nic_id='c-nic-fe', module_type=cls.nic_mt350,
+        )
+        # Transceiver MTs for test use
+        cls.mt_mpo12 = _make_xcvr_mt_350(connector='MPO-12', standard='200GBASE-SR4',
+                                          model_suffix='mpo12')
+        # Same cage_type/medium as mt_mpo12 but connector='LC' — used for pure connector
+        # cross-end mismatch test (C.4) so V4/V5 don't fire before V6.
+        cls.mt_lc_mmf = _make_xcvr_mt_350(connector='LC', medium='MMF',
+                                           standard='200GBASE-SR4', model_suffix='lc-mmf')
+        cls.mt_direct = _make_xcvr_mt_350(connector='Direct', medium='DAC',
+                                           standard='200GBASE-CR4', model_suffix='direct')
+        cls.mt_no_connector = _make_xcvr_mt_350(connector=None, standard='200GBASE-SR4',
+                                                 model_suffix='no-conn')
+        cls.mt_standard_a = _make_xcvr_mt_350(connector='MPO-12', standard='200GBASE-SR4',
+                                               model_suffix='std-a')
+        cls.mt_standard_b = _make_xcvr_mt_350(connector='MPO-12', standard='400GBASE-SR4',
+                                               model_suffix='std-b')
+
+    def test_c1_v2c_flat_connector_conflicts_with_fk_raises(self):
+        """C.1: V2c — flat connector='LC' conflicts with FK attribute_data connector='MPO-12' → ValidationError.
+
+        RED until V2c is added to _validate_transceiver_module_type().
+        """
+        psc = _make_350_base_connection(
+            self.sc350, self.nic350, self.zone_no_xcvr,
+            connection_id='c1-conn',
+            transceiver_module_type=self.mt_mpo12,
+        )
+        psc.connector = 'LC'  # flat field conflicts with FK attribute_data connector='MPO-12'
+        with self.assertRaises(Exception) as ctx:
+            psc.full_clean()
+        from django.core.exceptions import ValidationError as DjangoVE
+        self.assertIsInstance(ctx.exception, DjangoVE,
+            "V2c: flat connector conflicting with FK attribute_data must raise ValidationError")
+        self.assertIn('connector', ctx.exception.message_dict,
+            "ValidationError must be on 'connector' field")
+        self.assertIn(
+            "conflicts with transceiver_module_type",
+            str(ctx.exception),
+            "Error message must mention 'conflicts with transceiver_module_type'",
+        )
+
+    def test_c2_v2c_flat_connector_matches_fk_ok(self):
+        """C.2: V2c — flat connector='MPO-12' matches FK attribute_data connector='MPO-12' → no error."""
+        psc = _make_350_base_connection(
+            self.sc350, self.nic350, self.zone_no_xcvr,
+            connection_id='c2-conn',
+            transceiver_module_type=self.mt_mpo12,
+        )
+        psc.connector = 'MPO-12'
+        psc.full_clean()  # must not raise
+
+    def test_c3_v2c_flat_connector_set_fk_has_no_connector_no_error(self):
+        """C.3: V2c null-skip — flat connector set, FK has no connector in attribute_data → no error."""
+        psc = _make_350_base_connection(
+            self.sc350, self.nic350, self.zone_no_xcvr,
+            connection_id='c3-conn',
+            transceiver_module_type=self.mt_no_connector,
+        )
+        psc.connector = 'LC'  # flat field set, but FK has no connector key
+        psc.full_clean()  # null-skip: must not raise
+
+    def test_c4_v6_cross_end_connector_mismatch_raises(self):
+        """C.4: V6 — cross-end connector mismatch (MPO-12 server, LC zone) → ValidationError.
+
+        Uses mt_lc_mmf for the zone: same cage_type/medium as mt_mpo12 (QSFP112/MMF) so V4/V5
+        do not fire, isolating V6 (connector). RED until V6 added to
+        _validate_transceiver_module_type().
+        """
+        # Zone uses LC connector (same medium=MMF so V5 doesn't fire first)
+        zone_with_xcvr = SwitchPortZone.objects.create(
+            switch_class=self.sw350, zone_name='c4-zone-lc',
+            zone_type=PortZoneTypeChoices.SERVER, port_spec='33-48',
+            breakout_option=self.breakout350,
+            allocation_strategy=AllocationStrategyChoices.SEQUENTIAL, priority=200,
+            transceiver_module_type=self.mt_lc_mmf,
+        )
+        psc = _make_350_base_connection(
+            self.sc350, self.nic350, zone_with_xcvr,
+            connection_id='c4-conn',
+            transceiver_module_type=self.mt_mpo12,  # MPO-12 server vs LC zone
+        )
+        from django.core.exceptions import ValidationError as DjangoVE
+        with self.assertRaises(DjangoVE) as ctx:
+            psc.full_clean()
+        exc_str = str(ctx.exception)
+        self.assertIn("Server-side connector", exc_str,
+            "V6: error message must mention 'Server-side connector'")
+        self.assertIn("does not match zone transceiver connector", exc_str,
+            "V6: error message must mention 'does not match zone transceiver connector'")
+        self.assertIn("MPO-12", exc_str, "V6: server_end value must appear in error message")
+        self.assertIn("LC", exc_str, "V6: zone connector value must appear in error message")
+
+    def test_c5_v6_cross_end_connector_match_ok(self):
+        """C.5: V6 — cross-end connector match (MPO-12 both ends) → no error."""
+        zone_with_xcvr = SwitchPortZone.objects.create(
+            switch_class=self.sw350, zone_name='c5-zone-mpo12',
+            zone_type=PortZoneTypeChoices.SERVER, port_spec='49-56',
+            breakout_option=self.breakout350,
+            allocation_strategy=AllocationStrategyChoices.SEQUENTIAL, priority=210,
+            transceiver_module_type=self.mt_mpo12,
+        )
+        psc = _make_350_base_connection(
+            self.sc350, self.nic350, zone_with_xcvr,
+            connection_id='c5-conn',
+            transceiver_module_type=self.mt_mpo12,  # MPO-12 both ends
+        )
+        psc.full_clean()  # must not raise
+
+    def test_c6_v6_zone_has_no_connector_no_error(self):
+        """C.6: V6 null-skip — zone FK has no connector in attribute_data → no error."""
+        zone_with_xcvr = SwitchPortZone.objects.create(
+            switch_class=self.sw350, zone_name='c6-zone-noconn',
+            zone_type=PortZoneTypeChoices.SERVER, port_spec='57-64',
+            breakout_option=self.breakout350,
+            allocation_strategy=AllocationStrategyChoices.SEQUENTIAL, priority=220,
+            transceiver_module_type=self.mt_no_connector,  # no connector in attribute_data
+        )
+        psc = _make_350_base_connection(
+            self.sc350, self.nic350, zone_with_xcvr,
+            connection_id='c6-conn',
+            transceiver_module_type=self.mt_mpo12,  # server has connector set
+        )
+        psc.full_clean()  # null-skip on zone side: must not raise
+
+    def test_c7_standard_mismatch_at_save_does_not_raise(self):
+        """C.7: standard is sweep-only — mismatching standard at plan-save must NOT raise.
+
+        This test guards that standard is never added to clean() validation.
+        """
+        zone_with_xcvr = SwitchPortZone.objects.create(
+            switch_class=self.sw350, zone_name='c7-zone-std',
+            zone_type=PortZoneTypeChoices.SERVER, port_spec='1-8',
+            breakout_option=self.breakout350,
+            allocation_strategy=AllocationStrategyChoices.SEQUENTIAL, priority=230,
+            transceiver_module_type=self.mt_standard_b,  # standard='400GBASE-SR4'
+        )
+        psc = _make_350_base_connection(
+            self.sc350, self.nic350, zone_with_xcvr,
+            connection_id='c7-conn',
+            transceiver_module_type=self.mt_standard_a,  # standard='200GBASE-SR4'
+        )
+        psc.full_clean()  # standard mismatch must NOT raise at save time
+
+
+# ---------------------------------------------------------------------------
+# Group E (extended): Connector and standard sweep tests (DIET-350 Phase 3)
+# E.5–E.12: RED until _SWEEP_DIMS extended and sweep tuple replaced.
+# ---------------------------------------------------------------------------
+
+class ConnectorStandardSweepTestCase(TestCase):
+    """
+    E.5–E.12: Post-generation sweep coverage for connector and standard (DIET-350 #372).
+
+    E.5:  connector match → GENERATED, no connector mismatch entry
+    E.6:  connector mismatch → FAILED, connector entry in mismatch_report  [RED]
+    E.7:  standard match → GENERATED, no standard mismatch entry
+    E.8:  standard mismatch → FAILED, standard entry in mismatch_report    [RED]
+    E.9:  connector null on server end → sweep skips, no mismatch
+    E.10: standard null on zone end → sweep skips, no mismatch
+    E.11: _SWEEP_DIMS constant importable and contains connector+standard   [RED]
+    E.12: regression — cage_type mismatch still fires (no regression)
+    """
+
+    @classmethod
+    def setUpTestData(cls):
+        _make_s2_fixtures(cls)
+        # MPO-12 / MMF / 200GBASE-SR4  (same as default xcvr_mt from get_test_transceiver_module_type)
+        cls.mt_mpo12_sr4 = get_test_transceiver_module_type()
+        # Direct / DAC / 200GBASE-CR4  (connector mismatch vs MPO-12)
+        mfr, _ = Manufacturer.objects.get_or_create(
+            name='XCVR-Test-Vendor', defaults={'slug': 'xcvr-test-vendor'}
+        )
+        profile = ModuleTypeProfile.objects.filter(name='Network Transceiver').first()
+        cls.mt_direct_dac, _ = ModuleType.objects.get_or_create(
+            manufacturer=mfr, model='XCVR-350-DIRECT-DAC',
+            defaults={
+                'profile': profile,
+                'attribute_data': {
+                    'cage_type': 'QSFP112', 'medium': 'DAC',
+                    'connector': 'Direct', 'standard': '200GBASE-CR4',
+                },
+            },
+        )
+        # MPO-12 / MMF / 400GBASE-SR4  (standard mismatch vs 200GBASE-SR4, connector match)
+        cls.mt_mpo12_400g, _ = ModuleType.objects.get_or_create(
+            manufacturer=mfr, model='XCVR-350-MPO12-400G',
+            defaults={
+                'profile': profile,
+                'attribute_data': {
+                    'cage_type': 'QSFP112', 'medium': 'MMF',
+                    'connector': 'MPO-12', 'standard': '400GBASE-SR4',
+                },
+            },
+        )
+        # No connector in attribute_data (null-skip test E.9)
+        cls.mt_no_connector, _ = ModuleType.objects.get_or_create(
+            manufacturer=mfr, model='XCVR-350-NO-CONN',
+            defaults={
+                'profile': profile,
+                'attribute_data': {'cage_type': 'QSFP112', 'medium': 'MMF'},
+            },
+        )
+        # No standard in attribute_data (null-skip test E.10)
+        cls.mt_no_standard, _ = ModuleType.objects.get_or_create(
+            manufacturer=mfr, model='XCVR-350-NO-STD',
+            defaults={
+                'profile': profile,
+                'attribute_data': {
+                    'cage_type': 'QSFP112', 'medium': 'MMF', 'connector': 'MPO-12',
+                },
+            },
+        )
+        # OSFP cage_type mismatch (regression E.12)
+        cls.mt_osfp, _ = ModuleType.objects.get_or_create(
+            manufacturer=mfr, model='XCVR-350-OSFP-REG',
+            defaults={
+                'profile': profile,
+                'attribute_data': {
+                    'cage_type': 'OSFP', 'medium': 'MMF',
+                    'connector': 'MPO-12', 'standard': '400GBASE-SR4',
+                },
+            },
+        )
+
+    def tearDown(self):
+        for p in list(TopologyPlan.objects.filter(name__startswith='S2Plan-')):
+            _cleanup(p.pk)
+            _delete_plan(p)
+
+    def _make_sweep_plan(self, suffix, server_mt, zone_mt):
+        """Build a plan where connection has server_mt and zone has zone_mt."""
+        plan, sc, sw, zone, nic = _make_plan_with_xcvr(
+            self, suffix, with_xcvr=True, zone_xcvr=zone_mt
+        )
+        # Override connection's transceiver_module_type to server_mt
+        conn = PlanServerConnection.objects.filter(server_class__plan=plan).first()
+        conn.transceiver_module_type = server_mt
+        conn.save()
+        return plan
+
+    def test_e5_connector_match_generation_succeeds(self):
+        """E.5: connector match (MPO-12 both ends) → GENERATED, no connector mismatch entry."""
+        plan = self._make_sweep_plan('E5', self.mt_mpo12_sr4, self.mt_mpo12_sr4)
+        call_command('populate_transceiver_bays')
+        _generate(plan)
+        gs = GenerationState.objects.filter(plan=plan).first()
+        self.assertIsNotNone(gs)
+        self.assertEqual(gs.status, GenerationStatusChoices.GENERATED,
+            "E.5: connector match must produce GENERATED status")
+        if gs.mismatch_report:
+            connector_entries = [
+                e for e in gs.mismatch_report.get('mismatches', [])
+                if e.get('mismatch_type') == 'connector'
+            ]
+            self.assertEqual(len(connector_entries), 0,
+                "E.5: no connector mismatch entries expected when connectors match")
+
+    def test_e6_connector_mismatch_sets_failed_status(self):
+        """E.6: connector mismatch (MPO-12 server vs Direct zone) → FAILED + connector entry.
+
+        RED until _SWEEP_DIMS includes 'connector'.
+        """
+        plan = self._make_sweep_plan('E6', self.mt_mpo12_sr4, self.mt_direct_dac)
+        call_command('populate_transceiver_bays')
+        _generate(plan)
+        gs = GenerationState.objects.filter(plan=plan).first()
+        self.assertIsNotNone(gs)
+        self.assertEqual(gs.status, GenerationStatusChoices.FAILED,
+            "E.6: connector mismatch must set status=FAILED")
+        self.assertIsNotNone(gs.mismatch_report,
+            "E.6: mismatch_report must be populated on connector mismatch")
+        connector_entries = [
+            e for e in gs.mismatch_report.get('mismatches', [])
+            if e.get('mismatch_type') == 'connector'
+        ]
+        self.assertGreater(len(connector_entries), 0,
+            "E.6: mismatch_report must contain a 'connector' mismatch entry")
+        entry = connector_entries[0]
+        self.assertEqual(entry.get('server_end'), 'MPO-12',
+            "E.6: server_end must be 'MPO-12'")
+        self.assertEqual(entry.get('switch_end'), 'Direct',
+            "E.6: switch_end must be 'Direct'")
+
+    def test_e7_standard_match_generation_succeeds(self):
+        """E.7: standard match (200GBASE-SR4 both ends) → GENERATED, no standard entry."""
+        plan = self._make_sweep_plan('E7', self.mt_mpo12_sr4, self.mt_mpo12_sr4)
+        call_command('populate_transceiver_bays')
+        _generate(plan)
+        gs = GenerationState.objects.filter(plan=plan).first()
+        self.assertIsNotNone(gs)
+        self.assertEqual(gs.status, GenerationStatusChoices.GENERATED,
+            "E.7: standard match must produce GENERATED status")
+
+    def test_e8_standard_mismatch_sets_failed_status(self):
+        """E.8: standard mismatch (200GBASE-SR4 server vs 400GBASE-SR4 zone) → FAILED + standard entry.
+
+        RED until _SWEEP_DIMS includes 'standard'.
+        """
+        plan = self._make_sweep_plan('E8', self.mt_mpo12_sr4, self.mt_mpo12_400g)
+        call_command('populate_transceiver_bays')
+        _generate(plan)
+        gs = GenerationState.objects.filter(plan=plan).first()
+        self.assertIsNotNone(gs)
+        self.assertEqual(gs.status, GenerationStatusChoices.FAILED,
+            "E.8: standard mismatch must set status=FAILED")
+        self.assertIsNotNone(gs.mismatch_report)
+        standard_entries = [
+            e for e in gs.mismatch_report.get('mismatches', [])
+            if e.get('mismatch_type') == 'standard'
+        ]
+        self.assertGreater(len(standard_entries), 0,
+            "E.8: mismatch_report must contain a 'standard' mismatch entry")
+        entry = standard_entries[0]
+        self.assertEqual(entry.get('server_end'), '200GBASE-SR4')
+        self.assertEqual(entry.get('switch_end'), '400GBASE-SR4')
+
+    def test_e9_connector_null_on_server_end_sweep_skips(self):
+        """E.9: server MT has no connector in attribute_data → sweep skips, no connector mismatch."""
+        plan = self._make_sweep_plan('E9', self.mt_no_connector, self.mt_mpo12_sr4)
+        call_command('populate_transceiver_bays')
+        _generate(plan)
+        gs = GenerationState.objects.filter(plan=plan).first()
+        self.assertIsNotNone(gs)
+        if gs.mismatch_report:
+            connector_entries = [
+                e for e in gs.mismatch_report.get('mismatches', [])
+                if e.get('mismatch_type') == 'connector'
+            ]
+            self.assertEqual(len(connector_entries), 0,
+                "E.9: null-skip — no connector mismatch when server end has no connector")
+
+    def test_e10_standard_null_on_zone_end_sweep_skips(self):
+        """E.10: zone MT has no standard in attribute_data → sweep skips, no standard mismatch."""
+        plan = self._make_sweep_plan('E10', self.mt_mpo12_sr4, self.mt_no_standard)
+        call_command('populate_transceiver_bays')
+        _generate(plan)
+        gs = GenerationState.objects.filter(plan=plan).first()
+        self.assertIsNotNone(gs)
+        if gs.mismatch_report:
+            standard_entries = [
+                e for e in gs.mismatch_report.get('mismatches', [])
+                if e.get('mismatch_type') == 'standard'
+            ]
+            self.assertEqual(len(standard_entries), 0,
+                "E.10: null-skip — no standard mismatch when zone end has no standard")
+
+    def test_e11_sweep_dims_constant_importable_and_contains_new_dimensions(self):
+        """E.11: _SWEEP_DIMS is a module-level constant in device_generator containing connector+standard.
+
+        RED until _SWEEP_DIMS is added to device_generator.py.
+        """
+        try:
+            from netbox_hedgehog.services.device_generator import _SWEEP_DIMS
+        except ImportError:
+            self.fail(
+                "_SWEEP_DIMS must be importable from netbox_hedgehog.services.device_generator. "
+                "Add it as a module-level constant."
+            )
+        self.assertIn('cage_type', _SWEEP_DIMS,
+            "_SWEEP_DIMS must retain 'cage_type' (regression guard)")
+        self.assertIn('medium', _SWEEP_DIMS,
+            "_SWEEP_DIMS must retain 'medium' (regression guard)")
+        self.assertIn('connector', _SWEEP_DIMS,
+            "_SWEEP_DIMS must include 'connector' (new in DIET-350)")
+        self.assertIn('standard', _SWEEP_DIMS,
+            "_SWEEP_DIMS must include 'standard' (new in DIET-350)")
+
+    def test_e12_regression_cage_type_mismatch_still_fires(self):
+        """E.12: existing cage_type sweep check still fires after _SWEEP_DIMS change."""
+        # mt_osfp has cage_type='OSFP'; default xcvr_mt has cage_type='QSFP112' → mismatch
+        plan = self._make_sweep_plan('E12', self.mt_mpo12_sr4, self.mt_osfp)
+        call_command('populate_transceiver_bays')
+        _generate(plan)
+        gs = GenerationState.objects.filter(plan=plan).first()
+        self.assertIsNotNone(gs)
+        self.assertEqual(gs.status, GenerationStatusChoices.FAILED,
+            "E.12: cage_type regression — mismatch must still produce FAILED")
+        cage_entries = [
+            e for e in (gs.mismatch_report or {}).get('mismatches', [])
+            if e.get('mismatch_type') == 'cage_type'
+        ]
+        self.assertGreater(len(cage_entries), 0,
+            "E.12: cage_type mismatch entry must still appear after _SWEEP_DIMS refactor")

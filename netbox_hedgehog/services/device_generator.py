@@ -38,6 +38,10 @@ from netbox_hedgehog.services.port_specification import PortSpecification
 from netbox_hedgehog.services._fabric_utils import _is_managed_device
 from netbox_hedgehog.utils.snapshot_builder import build_plan_snapshot
 
+# Transceiver attribute dimensions swept pairwise at post-generation.
+# Extend this tuple (not the sweep method body) to add new dimensions.
+_SWEEP_DIMS = ('cage_type', 'medium', 'connector', 'standard')
+
 
 @dataclass(frozen=True)
 class GenerationResult:
@@ -1013,7 +1017,7 @@ class DeviceGenerator:
             s_attrs = server_mt.attribute_data or {}
             z_attrs = zone_mt.attribute_data or {}
 
-            for dim in ('cage_type', 'medium'):
+            for dim in _SWEEP_DIMS:
                 s_val = s_attrs.get(dim)
                 z_val = z_attrs.get(dim)
                 if s_val and z_val and s_val != z_val:
