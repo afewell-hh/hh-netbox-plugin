@@ -180,10 +180,11 @@ class TopologyPlanView(generic.ObjectView):
                 }
                 for entry in sweep_entries:
                     pk = entry.get('connection_id')
-                    label = conn_labels.get(pk, f'#{pk}') if pk is not None else '—'
+                    found = pk is not None and pk in conn_labels
+                    label = conn_labels[pk] if found else (f'#{pk}' if pk is not None else '—')
                     url = (
                         reverse('plugins:netbox_hedgehog:planserverconnection_detail', args=[pk])
-                        if pk is not None else None
+                        if found else None
                     )
                     mismatch_rows.append({
                         'connection_label': label,
@@ -202,9 +203,12 @@ class TopologyPlanView(generic.ObjectView):
                     if error_type == 'missing_nested_bay':
                         display_type = 'Missing NIC Port Bay'
                         bay_or_port = entry.get('cage', '—')
-                    else:
+                    elif error_type == 'missing_switch_bay':
                         display_type = 'Missing Switch Port Bay'
                         bay_or_port = entry.get('port', '—')
+                    else:
+                        display_type = 'Unknown Bay Error'
+                        bay_or_port = entry.get('port', entry.get('cage', '—'))
                     bay_error_rows.append({
                         'error_type_display': display_type,
                         'device': entry.get('device', '—'),

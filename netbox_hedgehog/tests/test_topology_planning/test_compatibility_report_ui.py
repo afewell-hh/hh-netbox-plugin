@@ -476,10 +476,11 @@ class CompatibilityReportUITestCase(TestCase):
     # T9 — Deleted connection renders fallback label
     # =========================================================================
 
-    def test_t9_deleted_connection_renders_fallback_label(self):
+    def test_t9_deleted_connection_renders_fallback_label_no_link(self):
         """
         T9: When connection_id in mismatch_report refers to a nonexistent PK,
-        the view must render a fallback label '#<pk>' rather than crashing.
+        the view renders a plain fallback label '#<pk>' with NO hyperlink.
+        The detail URL for the missing connection must not appear in the HTML.
         """
         nonexistent_pk = 999999
         self._make_generation_state(
@@ -500,6 +501,49 @@ class CompatibilityReportUITestCase(TestCase):
         self.assertIn(_PANEL_HEADING, content)
         self.assertIn(f'#{nonexistent_pk}', content,
                       "Fallback label #<pk> must be rendered for deleted connection")
+        # No dead link — the detail URL for the missing PK must not appear
+        from django.urls import reverse
+        dead_url = reverse(
+            'plugins:netbox_hedgehog:planserverconnection_detail',
+            args=[nonexistent_pk],
+        )
+        self.assertNotIn(dead_url, content,
+                         "Dead link to missing connection detail must not be rendered")
+
+    # =========================================================================
+    # T12 — Unknown bay_error subtype renders safely
+    # =========================================================================
+
+    def test_t12_unknown_bay_error_subtype_renders_safely(self):
+        """
+        T12: When bay_errors contains an unknown error_type, the view must
+        render 'Unknown Bay Error' (not 'Missing Switch Port Bay') and must
+        not crash. The hint is preserved.
+        """
+        self._make_generation_state(
+            status=GenerationStatusChoices.FAILED,
+            mismatch_report={'bay_errors': [{
+                'error_type': 'future_unknown_subtype',
+                'device': 'some-device',
+                'port': 'Ethernet9/9',
+                'connection_id': 7,
+                'hint': 'This is a future hint message.',
+            }]},
+        )
+        response = self.client.get(_detail_url(self.plan.pk))
+        self.assertEqual(response.status_code, 200,
+                         "Page must not crash for unknown bay_error subtype")
+        content = response.content.decode()
+        self.assertIn(_PANEL_HEADING, content)
+        self.assertIn(_BAY_SECTION, content)
+        self.assertIn('Unknown Bay Error', content,
+                      "Unknown subtype must render as 'Unknown Bay Error'")
+        self.assertNotIn('Missing Switch Port Bay', content,
+                         "Unknown subtype must not be mislabelled as 'Missing Switch Port Bay'")
+        self.assertIn('some-device', content,
+                      "Device name must be rendered")
+        self.assertIn('This is a future hint message.', content,
+                      "Provided hint must be preserved")
 
     # =========================================================================
     # T10 — RBAC: user without view permission → 302/403
