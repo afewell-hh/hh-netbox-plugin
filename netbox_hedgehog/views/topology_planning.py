@@ -21,6 +21,7 @@ from ..services.device_generator import DeviceGenerator
 from ..utils.topology_calculations import update_plan_calculations
 from ..services.yaml_generator import generate_yaml_for_plan
 from ..jobs.device_generation import DeviceGenerationJob
+from ..services.preflight import check_transceiver_bay_readiness, user_message
 
 
 def _require_topologyplan_change_permission(request, plan=None):
@@ -149,6 +150,8 @@ class TopologyPlanView(generic.ObjectView):
         is_first_time = not has_existing_devices
         is_destructive = has_existing_devices
 
+        transceiver_bay_readiness = check_transceiver_bay_readiness(instance)
+
         return {
             'server_classes': instance.server_classes.all(),
             'switch_classes': instance.switch_classes.all(),
@@ -159,6 +162,7 @@ class TopologyPlanView(generic.ObjectView):
             'expected_device_count': expected_device_count,
             'expected_interface_count': expected_interface_count,
             'expected_cable_count': expected_cable_count,
+            'transceiver_bay_readiness': transceiver_bay_readiness,
         }
 
     def _can_user_generate_devices(self, request, instance):
@@ -235,6 +239,11 @@ class TopologyPlanGenerateView(PermissionRequiredMixin, View):
             )
             return redirect('plugins:netbox_hedgehog:topologyplan_generate', pk=plan.pk)
 
+        readiness = check_transceiver_bay_readiness(plan)
+        if not readiness.is_ready:
+            messages.error(request, user_message(readiness))
+            return redirect('plugins:netbox_hedgehog:topologyplan_generate', pk=plan.pk)
+
         generator = DeviceGenerator(plan=plan)
         try:
             result = generator.generate_all()
@@ -278,6 +287,8 @@ class TopologyPlanGenerateView(PermissionRequiredMixin, View):
             for connection in sc.connections.all()
         )
 
+        transceiver_bay_readiness = check_transceiver_bay_readiness(plan)
+
         return {
             'object': plan,
             'server_count': server_count,
@@ -288,6 +299,7 @@ class TopologyPlanGenerateView(PermissionRequiredMixin, View):
             'generation_state': getattr(plan, 'generation_state', None),
             'needs_regeneration': plan.needs_regeneration,
             'site_name': DeviceGenerator.DEFAULT_SITE_NAME,
+            'transceiver_bay_readiness': transceiver_bay_readiness,
         }
 
 
@@ -340,6 +352,13 @@ class TopologyPlanGenerateUpdateView(View):
 
         # Enforce change_topologyplan permission (supports ObjectPermission)
         _require_topologyplan_change_permission(request, plan)
+
+        # Pre-flight: check transceiver bay readiness before enforcing DCIM perms
+        # so the error is visible to plan editors even without device-creation perms.
+        readiness = check_transceiver_bay_readiness(plan)
+        if not readiness.is_ready:
+            messages.error(request, user_message(readiness))
+            return redirect('plugins:netbox_hedgehog:topologyplan_detail', pk=plan.pk)
 
         # Enforce DCIM permissions (required for device/cable generation)
         self._require_dcim_permissions(request)
