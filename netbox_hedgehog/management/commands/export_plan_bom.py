@@ -9,7 +9,6 @@ counted separately in the metadata for audit purposes.
 """
 from __future__ import annotations
 
-import csv
 import hashlib
 import json
 import os
@@ -20,7 +19,7 @@ from django.core.management.base import BaseCommand, CommandError
 
 from netbox_hedgehog.choices import GenerationStatusChoices
 from netbox_hedgehog.models.topology_planning import TopologyPlan
-from netbox_hedgehog.services.bom_export import get_plan_bom
+from netbox_hedgehog.services.bom_export import get_plan_bom, render_bom_csv
 
 
 class Command(BaseCommand):
@@ -61,7 +60,7 @@ class Command(BaseCommand):
         if fmt == 'json':
             content = self._build_json(bom, exported_at)
         else:
-            content = self._build_csv(bom)
+            content = render_bom_csv(bom)
 
         self._atomic_write(output_path, content)
         sha256 = hashlib.sha256(content.encode('utf-8')).hexdigest()
@@ -99,30 +98,6 @@ class Command(BaseCommand):
             ],
         }
         return json.dumps(doc, indent=2) + '\n'
-
-    def _build_csv(self, bom) -> str:
-        import io
-        buf = io.StringIO()
-        fieldnames = [
-            'section', 'module_type_model', 'manufacturer', 'quantity',
-            'cage_type', 'medium', 'connector', 'standard', 'is_cable_assembly',
-        ]
-        writer = csv.DictWriter(buf, fieldnames=fieldnames, lineterminator='\n')
-        writer.writeheader()
-        for item in bom.line_items:
-            writer.writerow({
-                'section': item.section,
-                'module_type_model': item.module_type_model,
-                'manufacturer': item.manufacturer,
-                'quantity': item.quantity,
-                'cage_type': item.cage_type if item.cage_type is not None else '',
-                'medium': item.medium if item.medium is not None else '',
-                'connector': item.connector if item.connector is not None else '',
-                'standard': item.standard if item.standard is not None else '',
-                'is_cable_assembly': 'true' if item.is_cable_assembly else 'false',
-            })
-        buf.write(f"# suppressed_switch_cable_assembly_count,{bom.suppressed_switch_cable_assembly_count}\n")
-        return buf.getvalue()
 
     def _write_table(self, bom):
         col = '{:<22}{:<36}{:<18}{:<6}{:<10}{:<8}{}\n'

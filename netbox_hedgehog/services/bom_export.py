@@ -111,6 +111,39 @@ def get_plan_bom(plan) -> PlanBOM:
     )
 
 
+def render_bom_csv(bom: PlanBOM) -> str:
+    """Return a CSV string for the given BOM, including the suppressed-count footer.
+
+    Field order: section, module_type_model, manufacturer, quantity,
+                 cage_type, medium, connector, standard, is_cable_assembly
+    Footer: # suppressed_switch_cable_assembly_count,N
+    """
+    import csv
+    import io
+
+    buf = io.StringIO()
+    fieldnames = [
+        'section', 'module_type_model', 'manufacturer', 'quantity',
+        'cage_type', 'medium', 'connector', 'standard', 'is_cable_assembly',
+    ]
+    writer = csv.DictWriter(buf, fieldnames=fieldnames, lineterminator='\n')
+    writer.writeheader()
+    for item in bom.line_items:
+        writer.writerow({
+            'section': item.section,
+            'module_type_model': item.module_type_model,
+            'manufacturer': item.manufacturer,
+            'quantity': item.quantity,
+            'cage_type': item.cage_type if item.cage_type is not None else '',
+            'medium': item.medium if item.medium is not None else '',
+            'connector': item.connector if item.connector is not None else '',
+            'standard': item.standard if item.standard is not None else '',
+            'is_cable_assembly': 'true' if item.is_cable_assembly else 'false',
+        })
+    buf.write(f"# suppressed_switch_cable_assembly_count,{bom.suppressed_switch_cable_assembly_count}\n")
+    return buf.getvalue()
+
+
 def _classify_module(module) -> str:
     """Single classification authority for BOM section assignment."""
     if module.module_bay.module_id is not None:
