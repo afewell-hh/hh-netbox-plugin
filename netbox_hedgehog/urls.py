@@ -29,6 +29,7 @@ from .views.topology_planning import (
     DeviceTypeExtensionListView, DeviceTypeExtensionView, DeviceTypeExtensionEditView, DeviceTypeExtensionDeleteView,
     TopologyPlanListView, TopologyPlanView, TopologyPlanEditView, TopologyPlanDeleteView,
     TopologyPlanGenerateView, TopologyPlanGenerateUpdateView, TopologyPlanRecalculateView, TopologyPlanExportView,
+    TopologyPlanBOMCSVView,
     PlanServerClassListView, PlanServerClassView, PlanServerClassEditView, PlanServerClassDeleteView,
     PlanSwitchClassListView, PlanSwitchClassView, PlanSwitchClassEditView, PlanSwitchClassDeleteView,
     PlanServerNICListView, PlanServerNICView, PlanServerNICEditView, PlanServerNICDeleteView,
@@ -231,6 +232,7 @@ urlpatterns = [
     path('topology-plans/<int:pk>/generate-update/', TopologyPlanGenerateUpdateView.as_view(), name='topologyplan_generate_update'),
     path('topology-plans/<int:pk>/recalculate/', TopologyPlanRecalculateView.as_view(), name='topologyplan_recalculate'),
     path('topology-plans/<int:pk>/export/', TopologyPlanExportView.as_view(), name='topologyplan_export'),
+    path('topology-plans/<int:pk>/bom.csv', TopologyPlanBOMCSVView.as_view(), name='topologyplan_bom_csv'),
 
     # PlanServerClass URLs (DIET-004)
     path('plan-server-classes/', PlanServerClassListView.as_view(), name='planserverclass_list'),

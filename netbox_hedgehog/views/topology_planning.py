@@ -216,6 +216,14 @@ class TopologyPlanView(generic.ObjectView):
                         'hint': entry.get('hint', 'Run populate_transceiver_bays and regenerate.'),
                     })
 
+        # BOM context injection (#382)
+        from netbox_hedgehog.services.bom_export import get_plan_bom
+        gs_for_bom = getattr(instance, 'generation_state', None)
+        if gs_for_bom is not None and gs_for_bom.status == choices.GenerationStatusChoices.GENERATED:
+            plan_bom = get_plan_bom(instance)
+        else:
+            plan_bom = None
+
         return {
             'server_classes': instance.server_classes.all(),
             'switch_classes': instance.switch_classes.all(),
@@ -230,6 +238,7 @@ class TopologyPlanView(generic.ObjectView):
             'show_failure_report': show_failure_report,
             'mismatch_rows': mismatch_rows,
             'bay_error_rows': bay_error_rows,
+            'plan_bom': plan_bom,
         }
 
     def _can_user_generate_devices(self, request, instance):
@@ -654,6 +663,39 @@ class TopologyPlanExportView(PermissionRequiredMixin, View):
         response = HttpResponse(yaml_content, content_type='text/yaml; charset=utf-8')
         response['Content-Disposition'] = f'attachment; filename="{filename}"'
 
+        return response
+
+
+class TopologyPlanBOMCSVView(PermissionRequiredMixin, View):
+    """
+    Download BOM as CSV for a topology plan (#382).
+
+    Read-only. Requires view_topologyplan permission.
+    Only available when GenerationState.status == GENERATED.
+    """
+    permission_required = 'netbox_hedgehog.view_topologyplan'
+    raise_exception = True
+
+    def get(self, request, pk):
+        from netbox_hedgehog.services.bom_export import get_plan_bom, render_bom_csv
+
+        plan = get_object_or_404(models.TopologyPlan, pk=pk)
+        gs = getattr(plan, 'generation_state', None)
+
+        if gs is None:
+            return HttpResponseBadRequest(
+                "Device generation has not been completed for this plan."
+            )
+        if gs.status != choices.GenerationStatusChoices.GENERATED:
+            return HttpResponseBadRequest(
+                f"BOM download is only available when generation status is 'generated'. "
+                f"Current status: '{gs.status}'."
+            )
+
+        bom = get_plan_bom(plan)
+        content = render_bom_csv(bom)
+        response = HttpResponse(content, content_type='text/csv; charset=utf-8')
+        response['Content-Disposition'] = f'attachment; filename="plan-{plan.pk}-bom.csv"'
         return response
 
 
