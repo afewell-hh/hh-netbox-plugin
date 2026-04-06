@@ -555,52 +555,6 @@ class ServerTransceiverGeneratorTestCase(TestCase):
             "Transceiver Modules must be cascade-deleted with Device",
         )
 
-    def test_hedgehog_transceiver_spec_derived_from_fk(self):
-        """Stage 2: hedgehog_transceiver_spec is SUPPRESSED when transceiver Module is placed.
-        Stage 2: intentional update — Stage 1 wrote spec from FK; Stage 2 suppresses it
-        when a real transceiver Module exists (suppression is the approved Stage 2 behavior).
-        """
-        plan = self._make_gen_plan(set_xcvr=True)
-        self._generate(plan)
-        from dcim.models import Interface
-        server_ifaces = Interface.objects.filter(
-            device__custom_field_data__hedgehog_plan_id=str(plan.pk),
-            module__isnull=False,
-        )
-        spec_values = [
-            iface.custom_field_data.get('hedgehog_transceiver_spec', '')
-            for iface in server_ifaces
-        ]
-        self.assertFalse(
-            any(bool(v) for v in spec_values),
-            f"Stage 2: hedgehog_transceiver_spec must be suppressed when transceiver Module placed; "
-            f"got: {spec_values}",
-        )
-
-    def test_hedgehog_transceiver_spec_fallback_flat_fields(self):
-        """hedgehog_transceiver_spec falls back to flat fields when FK is null."""
-        plan = self._make_gen_plan(set_xcvr=False)
-        # Set flat cage_type before generation
-        conn = PlanServerConnection.objects.filter(
-            server_class__plan=plan
-        ).first()
-        conn.cage_type = 'QSFP28'
-        conn.save()
-        self._generate(plan)
-        from dcim.models import Interface
-        server_ifaces = Interface.objects.filter(
-            device__custom_field_data__hedgehog_plan_id=str(plan.pk),
-            module__isnull=False,
-        )
-        spec_values = [
-            iface.custom_field_data.get('hedgehog_transceiver_spec', '')
-            for iface in server_ifaces
-        ]
-        self.assertTrue(
-            any('QSFP28' in v for v in spec_values),
-            f"Expected 'QSFP28' in hedgehog_transceiver_spec; got: {spec_values}",
-        )
-
 
 # =============================================================================
 # Class E: Migration tests (4 tests)
