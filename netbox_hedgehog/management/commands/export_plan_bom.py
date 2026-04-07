@@ -33,8 +33,8 @@ class Command(BaseCommand):
         )
         parser.add_argument(
             '--format', dest='output_format', default='json',
-            choices=['json', 'csv', 'table'],
-            help="Output format: json (default), csv, or table (stdout only)",
+            choices=['json', 'csv', 'table', 'per-device-csv'],
+            help="Output format: json (default), csv, table (stdout only), or per-device-csv",
         )
 
     def handle(self, *args, **options):
@@ -42,6 +42,30 @@ class Command(BaseCommand):
         self._require_generated(plan)
 
         fmt = options['output_format']
+
+        if fmt == 'per-device-csv':
+            output_path = options.get('output')
+            if not output_path:
+                raise CommandError("--output is required for per-device-csv format")
+            output_path = os.path.abspath(output_path)
+            output_dir = os.path.dirname(output_path)
+            if not os.path.isdir(output_dir):
+                raise CommandError(f"Output directory does not exist: {output_dir}")
+            from netbox_hedgehog.services.bom_export import (
+                get_plan_bom_by_device, render_bom_per_device_csv,
+            )
+            bom = get_plan_bom_by_device(plan)
+            content = render_bom_per_device_csv(bom)
+            self._atomic_write(output_path, content)
+            sha256 = hashlib.sha256(content.encode('utf-8')).hexdigest()
+            self.stdout.write(f"\n[OK] Per-device BOM export complete: {output_path}")
+            self.stdout.write(f"  plan_id:          {plan.pk}")
+            self.stdout.write(f"  per_device_rows:  {len(bom.line_items)}")
+            self.stdout.write(f"  suppressed:       {bom.suppressed_switch_cable_assembly_count}")
+            self.stdout.write(f"  sha256:           {sha256}")
+            self.stdout.write(f"  bytes:            {len(content.encode('utf-8'))}")
+            return
+
         bom = get_plan_bom(plan)
         exported_at = datetime.now(tz=timezone.utc).isoformat()
 
