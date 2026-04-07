@@ -24,6 +24,7 @@ from netbox_hedgehog.models.topology_planning import (
     GenerationState,
     DeviceTypeExtension,
 )
+from netbox_hedgehog.utils.snapshot_builder import build_plan_snapshot
 from dcim.models import DeviceType, Manufacturer
 
 
@@ -196,30 +197,21 @@ class GenerationStateModelTestCase(TestCase):
             slug="gpu-server"
         )
 
-        server = PlanServerClass.objects.create(
+        PlanServerClass.objects.create(
             plan=plan,
             server_class_id="gpu-b200",
             quantity=96,
             server_device_type=server_dt
         )
 
-        # Create snapshot matching current state
-        snapshot = {
-            'server_classes': [
-                {
-                    'server_class_id': 'gpu-b200',
-                    'quantity': 96
-                }
-            ],
-            'switch_classes': []
-        }
-
+        # Snapshot taken at "generation time" using the same builder production uses.
+        # Structurally identical to what is_dirty() will compare against.
         state = GenerationState.objects.create(
             plan=plan,
             device_count=96,
             interface_count=192,
             cable_count=192,
-            snapshot=snapshot,
+            snapshot=build_plan_snapshot(plan),
             status='generated'
         )
 
@@ -242,27 +234,17 @@ class GenerationStateModelTestCase(TestCase):
             server_device_type=server_dt
         )
 
-        # Create snapshot with old quantity
-        snapshot = {
-            'server_classes': [
-                {
-                    'server_class_id': 'gpu-b200',
-                    'quantity': 96
-                }
-            ],
-            'switch_classes': []
-        }
-
+        # Snapshot captures plan at quantity=96 (simulates generation time).
         state = GenerationState.objects.create(
             plan=plan,
             device_count=96,
             interface_count=192,
             cable_count=192,
-            snapshot=snapshot,
+            snapshot=build_plan_snapshot(plan),
             status='generated'
         )
 
-        # Change server quantity
+        # Change server quantity — plan now differs from stored snapshot.
         server.quantity = 128
         server.save()
 
@@ -278,7 +260,7 @@ class GenerationStateModelTestCase(TestCase):
             slug="gpu-server"
         )
 
-        # Create initial server
+        # Create initial server.
         PlanServerClass.objects.create(
             plan=plan,
             server_class_id="gpu-b200",
@@ -286,27 +268,17 @@ class GenerationStateModelTestCase(TestCase):
             server_device_type=server_dt
         )
 
-        # Create snapshot with one server class
-        snapshot = {
-            'server_classes': [
-                {
-                    'server_class_id': 'gpu-b200',
-                    'quantity': 96
-                }
-            ],
-            'switch_classes': []
-        }
-
+        # Snapshot captures plan with one server class (simulates generation time).
         state = GenerationState.objects.create(
             plan=plan,
             device_count=96,
             interface_count=192,
             cable_count=192,
-            snapshot=snapshot,
+            snapshot=build_plan_snapshot(plan),
             status='generated'
         )
 
-        # Add new server class
+        # Add a second server class — plan now has 2, snapshot has 1.
         PlanServerClass.objects.create(
             plan=plan,
             server_class_id="storage-a",
@@ -326,8 +298,8 @@ class GenerationStateModelTestCase(TestCase):
             slug="gpu-server"
         )
 
-        # Create two server classes
-        server1 = PlanServerClass.objects.create(
+        # Create two server classes.
+        PlanServerClass.objects.create(
             plan=plan,
             server_class_id="gpu-b200",
             quantity=96,
@@ -341,25 +313,17 @@ class GenerationStateModelTestCase(TestCase):
             server_device_type=server_dt
         )
 
-        # Create snapshot with both
-        snapshot = {
-            'server_classes': [
-                {'server_class_id': 'gpu-b200', 'quantity': 96},
-                {'server_class_id': 'storage-a', 'quantity': 32}
-            ],
-            'switch_classes': []
-        }
-
+        # Snapshot captures plan with both server classes (simulates generation time).
         state = GenerationState.objects.create(
             plan=plan,
             device_count=128,
             interface_count=256,
             cable_count=256,
-            snapshot=snapshot,
+            snapshot=build_plan_snapshot(plan),
             status='generated'
         )
 
-        # Remove one server class
+        # Remove one server class — plan now has 1, snapshot has 2.
         server2.delete()
 
         self.assertTrue(state.is_dirty())
@@ -368,7 +332,7 @@ class GenerationStateModelTestCase(TestCase):
         """Test is_dirty() detects switch quantity changes"""
         plan = TopologyPlan.objects.create(name="Plan")
 
-        # Create switch class
+        # Create switch class with override_quantity=12.
         switch = PlanSwitchClass.objects.create(
             plan=plan,
             switch_class_id="fe-leaf",
@@ -377,27 +341,17 @@ class GenerationStateModelTestCase(TestCase):
             override_quantity=12
         )
 
-        # Create snapshot
-        snapshot = {
-            'server_classes': [],
-            'switch_classes': [
-                {
-                    'switch_class_id': 'fe-leaf',
-                    'effective_quantity': 12
-                }
-            ]
-        }
-
+        # Snapshot captures effective_quantity=12 (simulates generation time).
         state = GenerationState.objects.create(
             plan=plan,
             device_count=12,
             interface_count=768,
             cable_count=0,
-            snapshot=snapshot,
+            snapshot=build_plan_snapshot(plan),
             status='generated'
         )
 
-        # Change switch quantity
+        # Change switch quantity — plan now has effective_quantity=16, snapshot has 12.
         switch.override_quantity = 16
         switch.save()
 
@@ -595,12 +549,13 @@ class TopologyPlanPropertiesTestCase(TestCase):
         """Test needs_regeneration returns False when not dirty"""
         plan = TopologyPlan.objects.create(name="Plan")
 
+        # Snapshot of empty plan using production builder — matches what is_dirty() compares against.
         GenerationState.objects.create(
             plan=plan,
             device_count=0,
             interface_count=0,
             cable_count=0,
-            snapshot={'server_classes': [], 'switch_classes': []},
+            snapshot=build_plan_snapshot(plan),
             status='generated'
         )
 
@@ -619,18 +574,17 @@ class TopologyPlanPropertiesTestCase(TestCase):
             slug="gpu-server"
         )
 
-        # Create initial state
-        snapshot = {'server_classes': [], 'switch_classes': []}
+        # Snapshot of empty plan at "generation time".
         GenerationState.objects.create(
             plan=plan,
             device_count=0,
             interface_count=0,
             cable_count=0,
-            snapshot=snapshot,
+            snapshot=build_plan_snapshot(plan),
             status='generated'
         )
 
-        # Add server class (modifies plan)
+        # Add server class — plan now differs from empty snapshot.
         PlanServerClass.objects.create(
             plan=plan,
             server_class_id="gpu-b200",
