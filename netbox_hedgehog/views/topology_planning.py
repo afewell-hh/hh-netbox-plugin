@@ -701,6 +701,41 @@ class TopologyPlanBOMCSVView(LoginRequiredMixin, View):
         return response
 
 
+class TopologyPlanBOMPerDeviceCSVView(LoginRequiredMixin, View):
+    """
+    Download per-device BOM as CSV for a topology plan (#389).
+
+    Read-only. Enforces object-level view_topologyplan permission.
+    Only available when GenerationState.status == GENERATED.
+    """
+    raise_exception = True
+
+    def get(self, request, pk):
+        from netbox_hedgehog.services.bom_export import (
+            get_plan_bom_by_device, render_bom_per_device_csv,
+        )
+
+        plan = get_object_or_404(models.TopologyPlan, pk=pk)
+        if not request.user.has_perm('netbox_hedgehog.view_topologyplan', plan):
+            raise PermissionDenied
+        gs = getattr(plan, 'generation_state', None)
+        if gs is None:
+            return HttpResponseBadRequest(
+                "Device generation has not been completed for this plan."
+            )
+        if gs.status != choices.GenerationStatusChoices.GENERATED:
+            return HttpResponseBadRequest(
+                f"BOM download is only available when generation status is 'generated'. "
+                f"Current status: '{gs.status}'."
+            )
+
+        bom = get_plan_bom_by_device(plan)
+        content = render_bom_per_device_csv(bom)
+        response = HttpResponse(content, content_type='text/csv; charset=utf-8')
+        response['Content-Disposition'] = f'attachment; filename="plan-{plan.pk}-bom-per-device.csv"'
+        return response
+
+
 # =============================================================================
 # PlanServerClass Views (DIET-004)
 # =============================================================================
