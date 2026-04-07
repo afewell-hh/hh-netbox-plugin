@@ -6,7 +6,7 @@ CRUD views for BreakoutOption, DeviceTypeExtension, and Topology Plan models.
 import re
 from django.conf import settings
 from django.contrib import messages
-from django.contrib.auth.mixins import PermissionRequiredMixin
+from django.contrib.auth.mixins import LoginRequiredMixin, PermissionRequiredMixin
 from django.core.exceptions import PermissionDenied, ValidationError
 from django.http import HttpResponse, HttpResponseBadRequest
 from django.shortcuts import get_object_or_404, redirect, render
@@ -666,20 +666,22 @@ class TopologyPlanExportView(PermissionRequiredMixin, View):
         return response
 
 
-class TopologyPlanBOMCSVView(PermissionRequiredMixin, View):
+class TopologyPlanBOMCSVView(LoginRequiredMixin, View):
     """
     Download BOM as CSV for a topology plan (#382).
 
-    Read-only. Requires view_topologyplan permission.
+    Read-only. Enforces object-level view_topologyplan permission on the
+    specific TopologyPlan via NetBox's ObjectPermissionBackend.
     Only available when GenerationState.status == GENERATED.
     """
-    permission_required = 'netbox_hedgehog.view_topologyplan'
     raise_exception = True
 
     def get(self, request, pk):
         from netbox_hedgehog.services.bom_export import get_plan_bom, render_bom_csv
 
         plan = get_object_or_404(models.TopologyPlan, pk=pk)
+        if not request.user.has_perm('netbox_hedgehog.view_topologyplan', plan):
+            raise PermissionDenied
         gs = getattr(plan, 'generation_state', None)
 
         if gs is None:

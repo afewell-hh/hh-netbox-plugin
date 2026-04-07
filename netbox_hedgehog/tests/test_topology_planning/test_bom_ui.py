@@ -24,7 +24,6 @@ import csv
 import io
 
 from django.contrib.auth import get_user_model
-from django.contrib.auth.models import Permission
 from django.contrib.contenttypes.models import ContentType
 from django.test import Client, TestCase
 from django.urls import reverse, NoReverseMatch
@@ -107,13 +106,9 @@ class _BOMUIFixtureMixin:
         )
         cls.view_user.set_password('testpass123')
         cls.view_user.save()
-        # NetBox uses ObjectPermissionBackend (no ModelBackend) — grant ObjectPermission.
-        # Also add model-level permission per NetBox's "additive" pattern.
-        perm = Permission.objects.get(
-            content_type__app_label='netbox_hedgehog',
-            codename='view_topologyplan',
-        )
-        cls.view_user.user_permissions.add(perm)
+        # NetBox uses ObjectPermissionBackend (no ModelBackend) — ObjectPermission alone
+        # is sufficient. Model-level user_permissions.add() has no effect and is omitted
+        # so that positive tests verify the real RBAC boundary.
         ct = ContentType.objects.get_for_model(TopologyPlan)
         obj_perm, _ = ObjectPermission.objects.get_or_create(
             name='bom-ui-viewer-view-topologyplan',
