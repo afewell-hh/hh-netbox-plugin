@@ -1510,46 +1510,31 @@ class YAMLGenerator:
         Args:
             referenced_group_names: The set of group names that appear in spec.groups of
                 the Switch CRDs included in this export artifact. Only groups in this set
-                are emitted. A ValidationError is raised if a referenced group has no
-                corresponding PlanMCLAGDomain (dangling Switch.spec.groups reference).
+                are emitted.
 
         Returns:
             List of SwitchGroup CRD dicts with empty spec: {}
 
         NOTE: Per authoritative Hedgehog schema, SwitchGroup has EMPTY spec (marker object only).
         Switch membership is tracked via Switch CRD spec.groups field, NOT in SwitchGroup.
+        PlanMCLAGDomain records are NOT required for export. The group name from the Switch
+        CRD is the only data needed to emit the SwitchGroup CRD (Issue #330).
         """
-        from ..models.topology_planning import PlanMCLAGDomain
-
         if not referenced_group_names:
             return []
 
-        # Build a lookup of all PlanMCLAGDomain entries for this plan.
-        domain_map = {
-            d.switch_group_name: d
-            for d in PlanMCLAGDomain.objects.filter(plan=self.plan)
-        }
-
-        switchgroup_crds = []
-
-        for group_name in sorted(referenced_group_names):
-            if group_name not in domain_map:
-                raise ValidationError(
-                    f"Switch references group '{group_name}' but no PlanMCLAGDomain "
-                    f"exists with that switch_group_name for this plan."
-                )
-            domain = domain_map[group_name]
-            switchgroup_crds.append({
+        return [
+            {
                 'apiVersion': 'wiring.githedgehog.com/v1beta1',
                 'kind': 'SwitchGroup',
                 'metadata': {
-                    'name': domain.switch_group_name,
+                    'name': group_name,
                     'namespace': 'default'
                 },
                 'spec': {}  # Empty spec per authoritative schema
-            })
-
-        return switchgroup_crds
+            }
+            for group_name in sorted(referenced_group_names)
+        ]
 
 
 def generate_yaml_for_plan(plan: TopologyPlan, fabric: str = None) -> str:
