@@ -26,6 +26,8 @@ from netbox_hedgehog.models.topology_planning import (
 )
 from dcim.models import DeviceType, Manufacturer
 
+from netbox_hedgehog.utils.snapshot_builder import build_plan_snapshot
+
 
 class GenerationStateModelTestCase(TestCase):
     """Test suite for GenerationState model"""
@@ -203,16 +205,8 @@ class GenerationStateModelTestCase(TestCase):
             server_device_type=server_dt
         )
 
-        # Create snapshot matching current state
-        snapshot = {
-            'server_classes': [
-                {
-                    'server_class_id': 'gpu-b200',
-                    'quantity': 96
-                }
-            ],
-            'switch_classes': []
-        }
+        # Capture real snapshot from current DB state
+        snapshot = build_plan_snapshot(plan)
 
         state = GenerationState.objects.create(
             plan=plan,
@@ -242,16 +236,8 @@ class GenerationStateModelTestCase(TestCase):
             server_device_type=server_dt
         )
 
-        # Create snapshot with old quantity
-        snapshot = {
-            'server_classes': [
-                {
-                    'server_class_id': 'gpu-b200',
-                    'quantity': 96
-                }
-            ],
-            'switch_classes': []
-        }
+        # Capture real snapshot before modification
+        snapshot = build_plan_snapshot(plan)
 
         state = GenerationState.objects.create(
             plan=plan,
@@ -286,16 +272,8 @@ class GenerationStateModelTestCase(TestCase):
             server_device_type=server_dt
         )
 
-        # Create snapshot with one server class
-        snapshot = {
-            'server_classes': [
-                {
-                    'server_class_id': 'gpu-b200',
-                    'quantity': 96
-                }
-            ],
-            'switch_classes': []
-        }
+        # Capture real snapshot before adding second class
+        snapshot = build_plan_snapshot(plan)
 
         state = GenerationState.objects.create(
             plan=plan,
@@ -341,14 +319,8 @@ class GenerationStateModelTestCase(TestCase):
             server_device_type=server_dt
         )
 
-        # Create snapshot with both
-        snapshot = {
-            'server_classes': [
-                {'server_class_id': 'gpu-b200', 'quantity': 96},
-                {'server_class_id': 'storage-a', 'quantity': 32}
-            ],
-            'switch_classes': []
-        }
+        # Capture real snapshot before removing a class
+        snapshot = build_plan_snapshot(plan)
 
         state = GenerationState.objects.create(
             plan=plan,
@@ -377,16 +349,8 @@ class GenerationStateModelTestCase(TestCase):
             override_quantity=12
         )
 
-        # Create snapshot
-        snapshot = {
-            'server_classes': [],
-            'switch_classes': [
-                {
-                    'switch_class_id': 'fe-leaf',
-                    'effective_quantity': 12
-                }
-            ]
-        }
+        # Capture real snapshot before modification
+        snapshot = build_plan_snapshot(plan)
 
         state = GenerationState.objects.create(
             plan=plan,
@@ -600,7 +564,7 @@ class TopologyPlanPropertiesTestCase(TestCase):
             device_count=0,
             interface_count=0,
             cable_count=0,
-            snapshot={'server_classes': [], 'switch_classes': []},
+            snapshot=build_plan_snapshot(plan),
             status='generated'
         )
 
@@ -619,14 +583,13 @@ class TopologyPlanPropertiesTestCase(TestCase):
             slug="gpu-server"
         )
 
-        # Create initial state
-        snapshot = {'server_classes': [], 'switch_classes': []}
+        # Capture real snapshot before adding server class
         GenerationState.objects.create(
             plan=plan,
             device_count=0,
             interface_count=0,
             cable_count=0,
-            snapshot=snapshot,
+            snapshot=build_plan_snapshot(plan),
             status='generated'
         )
 
