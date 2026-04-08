@@ -90,7 +90,7 @@ def compare_plan_vs_generated(plan) -> BOMComparisonResult:
             total_generated_not_in_plan=0,
         )
 
-    needs_regeneration = getattr(gs, 'needs_regeneration', False)
+    needs_regeneration = plan.needs_regeneration
     plan_id = str(plan.pk)
 
     devices = Device.objects.filter(
@@ -110,7 +110,33 @@ def compare_plan_vs_generated(plan) -> BOMComparisonResult:
                 server_class_id=hedgehog_class,
             )
         except PlanServerClass.DoesNotExist:
-            # No plan class for this device — skip.
+            # No current plan class for this device — all generated modules are
+            # orphaned (the class was removed from the plan after generation).
+            orphan_modules = Module.objects.filter(
+                device=device,
+                custom_field_data__hedgehog_plan_id=plan_id,
+            ).select_related('module_bay', 'module_type')
+            orphan_items = tuple(
+                ModuleComparisonItem(
+                    bay_name=m.module_bay.name,
+                    section='server_transceiver' if m.module_bay.module_id is not None else 'nic',
+                    plan_module_type=None,
+                    generated_module_type=m.module_type.model,
+                    status=MatchStatus.GENERATED_NOT_IN_PLAN,
+                )
+                for m in orphan_modules
+            )
+            device_comparisons.append(DeviceBOMComparison(
+                device_name=device.name,
+                device_pk=device.pk,
+                hedgehog_class=hedgehog_class,
+                server_class_id='',
+                items=orphan_items,
+                matched=0,
+                mismatched=0,
+                expected_not_generated=0,
+                generated_not_in_plan=len(orphan_items),
+            ))
             continue
 
         # Expected NICs from plan.

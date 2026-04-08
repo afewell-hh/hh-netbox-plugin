@@ -572,6 +572,49 @@ class BOMComparisonServiceTestCase(_BOMComparisonFixtureMixin, TestCase):
         self.assertEqual(result.total_expected_not_generated, exp_not_gen)
         self.assertEqual(result.total_generated_not_in_plan, gen_not_plan)
 
+    def test_no_matching_server_class(self):
+        """
+        When a generated server device's hedgehog_class no longer resolves to a
+        current PlanServerClass, all its generated modules are reported as
+        GENERATED_NOT_IN_PLAN (not silently dropped).
+        """
+        compare_plan_vs_generated, BOMComparisonResult = self._import_service()
+        plan = self._make_generated_plan('svc-no-sc')
+        # Create a device tagged to this plan with a class that has NO PlanServerClass.
+        orphan_device = Device.objects.create(
+            name=f'bom-cmp-orphan-dev-{plan.pk}',
+            device_type=self.server_dt,
+            role=self.server_role,
+            site=self.site,
+            status='planned',
+            custom_field_data={
+                'hedgehog_plan_id': str(plan.pk),
+                'hedgehog_class': 'class-does-not-exist',
+            },
+        )
+        # Add a module to the orphan device so there is something to report.
+        bay = ModuleBay.objects.create(device=orphan_device, name='nic-fe')
+        Module.objects.create(
+            device=orphan_device,
+            module_bay=bay,
+            module_type=self.nic_mt_a,
+            status='active',
+            custom_field_data={'hedgehog_plan_id': str(plan.pk)},
+        )
+
+        result = compare_plan_vs_generated(plan)
+        self.assertIsInstance(result, BOMComparisonResult)
+        self.assertGreater(
+            result.total_generated_not_in_plan, 0,
+            "Modules on a device with no current PlanServerClass must appear as "
+            "GENERATED_NOT_IN_PLAN, not be silently dropped",
+        )
+        device_names = [d.device_name for d in result.devices]
+        self.assertIn(
+            orphan_device.name, device_names,
+            "Device with no current PlanServerClass must appear in comparison result",
+        )
+
 
 # ---------------------------------------------------------------------------
 # Class 2 — BOM comparison panel on plan detail view
@@ -626,17 +669,39 @@ class BOMComparisonPanelTestCase(_BOMComparisonFixtureMixin, TestCase):
 
     def test_needs_regeneration_warning_absent(self):
         """
-        When GenerationState.status == GENERATED, the staleness warning is absent.
+        When GenerationState.status == GENERATED, the raw attribute name
+        'needs_regeneration' must not appear literally in the page HTML.
+        (Guards against the broken path where the flag was always False because
+        the wrong attribute was read from GenerationState.)
         """
         plan = self._make_generated_plan('panel-no-warn')
         response = self.client.get(_detail_url(plan.pk))
         self.assertEqual(response.status_code, 200)
-        # Panel is present; stale-data warning should NOT appear alongside it.
         content = response.content.decode()
         self.assertIn(_COMPARISON_PANEL_HEADING, content,
                       "BOM Comparison panel must be present when GENERATED")
         self.assertNotIn('needs_regeneration', content,
-                         "needs_regeneration warning must be absent when status=GENERATED")
+                         "Raw attribute name 'needs_regeneration' must not appear in HTML")
+
+    def test_stale_warning_shown_when_plan_dirty(self):
+        """
+        When status == GENERATED but plan.needs_regeneration is True
+        (plan has been modified since generation), the stale-state warning
+        banner must appear inside the comparison panel.
+
+        All fixture plans store snapshot={}, which always makes is_dirty() True
+        because the stored empty dict differs from the actual empty-plan snapshot.
+        This confirms the warning path is wired to plan.needs_regeneration,
+        not to the (non-existent) GenerationState.needs_regeneration attribute.
+        """
+        plan = self._make_generated_plan('panel-stale-warn')
+        response = self.client.get(_detail_url(plan.pk))
+        self.assertEqual(response.status_code, 200)
+        content = response.content.decode()
+        self.assertIn(_COMPARISON_PANEL_HEADING, content,
+                      "Panel must be present when GENERATED")
+        self.assertIn('has been modified since the last generation run', content,
+                      "Stale warning must appear when plan.needs_regeneration is True")
 
 
 # ---------------------------------------------------------------------------

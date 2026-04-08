@@ -410,10 +410,17 @@
                 BOM Comparison (Plan vs. Generated) <small class="text-muted">(Server-side only)</small>
             </h5>
             <div class="card-body">
+                {% if plan_bom_comparison.needs_regeneration %}
+                <div class="alert alert-warning">
+                    <strong>Warning:</strong> This plan has been modified since the last generation run.
+                    Comparison data reflects the previously generated inventory, not the current plan state.
+                    Re-generate to bring the comparison up to date.
+                </div>
+                {% endif %}
                 <p class="text-muted">
-                    <strong>Note:</strong> The "needs regeneration" indicator does not detect changes to
-                    transceiver module type assignments made after the last generation run.
-                    Treat mismatch counts as the authoritative freshness signal.
+                    <strong>Note:</strong> Change detection does not cover transceiver module type
+                    assignments made after the last generation run. Treat mismatch counts as the
+                    authoritative freshness signal.
                 </p>
                 <div class="d-flex gap-2 mb-3 flex-wrap">
                     <span class="badge badge-success">{{ plan_bom_comparison.total_matched }} Matched</span>
