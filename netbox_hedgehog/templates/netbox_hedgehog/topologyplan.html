@@ -244,6 +244,15 @@
                         <i class="mdi mdi-download"></i> Download Per-Device BOM (CSV)
                     </button>
                 {% endif %}
+                {% if object.generation_state and object.generation_state.status == 'generated' %}
+                    <a href="{% url 'plugins:netbox_hedgehog:topologyplan_bom_comparison_csv' pk=object.pk %}" class="btn btn-info">
+                        <i class="mdi mdi-download"></i> Download Comparison CSV
+                    </a>
+                {% else %}
+                    <button class="btn btn-secondary" disabled title="Device generation must be completed before downloading comparison">
+                        <i class="mdi mdi-download"></i> Download Comparison CSV
+                    </button>
+                {% endif %}
             </div>
         </div>
     </div>
@@ -387,6 +396,78 @@
                 <small class="text-muted d-block mt-2">
                     Suppressed switch-side cable assembly modules (DAC/ACC): {{ plan_bom.suppressed_switch_cable_assembly_count }}
                 </small>
+            </div>
+        </div>
+    </div>
+</div>
+{% endif %}
+
+{% if plan_bom_comparison %}
+<div class="row">
+    <div class="col-12">
+        <div class="card">
+            <h5 class="card-header">
+                BOM Comparison (Plan vs. Generated) <small class="text-muted">(Server-side only)</small>
+            </h5>
+            <div class="card-body">
+                {% if plan_bom_comparison.needs_regeneration %}
+                <div class="alert alert-warning">
+                    <strong>Warning:</strong> This plan has been modified since the last generation run.
+                    Comparison data reflects the previously generated inventory, not the current plan state.
+                    Re-generate to bring the comparison up to date.
+                </div>
+                {% endif %}
+                <p class="text-muted">
+                    <strong>Note:</strong> Change detection does not cover transceiver module type
+                    assignments made after the last generation run. Treat mismatch counts as the
+                    authoritative freshness signal.
+                </p>
+                <div class="d-flex gap-2 mb-3 flex-wrap">
+                    <span class="badge badge-success">{{ plan_bom_comparison.total_matched }} Matched</span>
+                    <span class="badge badge-warning">{{ plan_bom_comparison.total_mismatched }} Type Mismatches</span>
+                    <span class="badge badge-danger">{{ plan_bom_comparison.total_expected_not_generated }} Expected Not Generated</span>
+                    <span class="badge badge-info">{{ plan_bom_comparison.total_generated_not_in_plan }} Generated Not in Plan</span>
+                </div>
+                {% if plan_bom_comparison.total_mismatched == 0 and plan_bom_comparison.total_expected_not_generated == 0 and plan_bom_comparison.total_generated_not_in_plan == 0 %}
+                    <p class="text-success">No mismatches found. All planned modules match generated inventory.</p>
+                {% else %}
+                    <div class="table-responsive">
+                        <table class="table table-hover table-sm">
+                            <thead>
+                                <tr>
+                                    <th>Device</th>
+                                    <th>Class</th>
+                                    <th>Bay</th>
+                                    <th>Section</th>
+                                    <th>Plan Module Type</th>
+                                    <th>Generated Module Type</th>
+                                    <th>Status</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for dev in plan_bom_comparison.devices %}
+                                    {% for item in dev.items %}
+                                        {% if item.status != 'match' %}
+                                        <tr>
+                                            <td>{{ dev.device_name }}</td>
+                                            <td>{{ dev.hedgehog_class }}</td>
+                                            <td>{{ item.bay_name }}</td>
+                                            <td>{{ item.section }}</td>
+                                            <td>{{ item.plan_module_type|default:"—" }}</td>
+                                            <td>{{ item.generated_module_type|default:"—" }}</td>
+                                            <td><span class="badge {% if item.status == 'type_mismatch' %}badge-warning{% elif item.status == 'expected_not_generated' %}badge-danger{% else %}badge-info{% endif %}">{{ item.status }}</span></td>
+                                        </tr>
+                                        {% endif %}
+                                    {% endfor %}
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                {% endif %}
+                <a href="{% url 'plugins:netbox_hedgehog:topologyplan_bom_comparison_csv' pk=object.pk %}"
+                   class="btn btn-sm btn-outline-secondary mt-2">
+                    <i class="mdi mdi-download"></i> Download Comparison CSV
+                </a>
             </div>
         </div>
     </div>

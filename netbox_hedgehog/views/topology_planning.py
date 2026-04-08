@@ -224,6 +224,13 @@ class TopologyPlanView(generic.ObjectView):
         else:
             plan_bom = None
 
+        # BOM comparison context injection (#401)
+        from netbox_hedgehog.services.bom_comparison import compare_plan_vs_generated
+        if gs_for_bom is not None and gs_for_bom.status == choices.GenerationStatusChoices.GENERATED:
+            plan_bom_comparison = compare_plan_vs_generated(instance)
+        else:
+            plan_bom_comparison = None
+
         return {
             'server_classes': instance.server_classes.all(),
             'switch_classes': instance.switch_classes.all(),
@@ -239,6 +246,7 @@ class TopologyPlanView(generic.ObjectView):
             'mismatch_rows': mismatch_rows,
             'bay_error_rows': bay_error_rows,
             'plan_bom': plan_bom,
+            'plan_bom_comparison': plan_bom_comparison,
         }
 
     def _can_user_generate_devices(self, request, instance):
@@ -733,6 +741,43 @@ class TopologyPlanBOMPerDeviceCSVView(LoginRequiredMixin, View):
         content = render_bom_per_device_csv(bom)
         response = HttpResponse(content, content_type='text/csv; charset=utf-8')
         response['Content-Disposition'] = f'attachment; filename="plan-{plan.pk}-bom-per-device.csv"'
+        return response
+
+
+class TopologyPlanBOMComparisonCSVView(LoginRequiredMixin, View):
+    """
+    Download planned-vs-generated BOM comparison as CSV for a topology plan (#401).
+
+    Read-only. Enforces object-level view_topologyplan permission.
+    Only available when GenerationState.status == GENERATED.
+    """
+    raise_exception = True
+
+    def get(self, request, pk):
+        from netbox_hedgehog.services.bom_comparison import (
+            compare_plan_vs_generated, render_comparison_csv,
+        )
+
+        plan = get_object_or_404(models.TopologyPlan, pk=pk)
+        if not request.user.has_perm('netbox_hedgehog.view_topologyplan', plan):
+            raise PermissionDenied
+        gs = getattr(plan, 'generation_state', None)
+        if gs is None:
+            return HttpResponseBadRequest(
+                "Device generation has not been completed for this plan."
+            )
+        if gs.status != choices.GenerationStatusChoices.GENERATED:
+            return HttpResponseBadRequest(
+                f"BOM comparison is only available when generation status is 'generated'. "
+                f"Current status: '{gs.status}'."
+            )
+
+        result = compare_plan_vs_generated(plan)
+        content = render_comparison_csv(result)
+        response = HttpResponse(content, content_type='text/csv; charset=utf-8')
+        response['Content-Disposition'] = (
+            f'attachment; filename="plan-{plan.pk}-bom-comparison.csv"'
+        )
         return response
 
 
