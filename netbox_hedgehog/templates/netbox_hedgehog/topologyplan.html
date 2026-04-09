@@ -366,6 +366,9 @@
                             <th>Medium</th>
                             <th>Connector</th>
                             <th>Standard</th>
+                            <th>Reach Class</th>
+                            <th>Wavelength (nm)</th>
+                            <th>Optical Lane Pattern</th>
                             <th>Cable Assembly?</th>
                         </tr>
                     </thead>
@@ -385,6 +388,9 @@
                             <td>{{ item.medium|default:'' }}</td>
                             <td>{{ item.connector|default:'' }}</td>
                             <td>{{ item.standard|default:'' }}</td>
+                            <td>{{ item.reach_class|default:'' }}</td>
+                            <td>{{ item.wavelength_nm|default:'' }}</td>
+                            <td>{{ item.optical_lane_pattern|default:'' }}</td>
                             <td>{% if item.is_cable_assembly %}Yes{% else %}No{% endif %}</td>
                         </tr>
                         {% endfor %}

@@ -14,6 +14,14 @@ from dataclasses import dataclass
 from dcim.models import Module
 
 _CABLE_ASSEMBLY_MEDIUMS = frozenset({'DAC', 'ACC'})
+_CABLE_ASSEMBLY_TYPES = frozenset({'DAC', 'ACC', 'AOC'})
+
+
+def _render_gearbox(value) -> str:
+    """Render gearbox_present for CSV: True->'true', False->'false', None->'Unknown'."""
+    if value is None:
+        return 'Unknown'
+    return 'true' if value else 'false'
 
 _SECTION_ORDER = {'nic': 0, 'server_transceiver': 1, 'switch_transceiver': 2}
 
@@ -29,6 +37,14 @@ class BOMLineItem:
     medium: str | None
     connector: str | None
     standard: str | None
+    reach_class: str | None
+    wavelength_nm: int | None
+    lane_count: int | None
+    host_serdes_gbps_per_lane: int | None
+    optical_lane_pattern: str | None
+    gearbox_present: bool | None
+    cable_assembly_type: str | None
+    breakout_topology: str | None
     is_cable_assembly: bool
 
 
@@ -64,7 +80,11 @@ def get_plan_bom(plan) -> PlanBOM:
         section = _classify_module(module)
         attrs = module.module_type.attribute_data or {}
         medium = attrs.get('medium')
-        is_cable_assembly = medium in _CABLE_ASSEMBLY_MEDIUMS
+        cable_assembly_type = attrs.get('cable_assembly_type')
+        is_cable_assembly = (
+            medium in _CABLE_ASSEMBLY_MEDIUMS
+            or cable_assembly_type in _CABLE_ASSEMBLY_TYPES
+        )
 
         if section == 'switch_transceiver' and is_cable_assembly:
             suppressed += 1
@@ -81,6 +101,14 @@ def get_plan_bom(plan) -> PlanBOM:
                 'medium': medium,
                 'connector': attrs.get('connector'),
                 'standard': attrs.get('standard'),
+                'reach_class': attrs.get('reach_class'),
+                'wavelength_nm': attrs.get('wavelength_nm'),
+                'lane_count': attrs.get('lane_count'),
+                'host_serdes_gbps_per_lane': attrs.get('host_serdes_gbps_per_lane'),
+                'optical_lane_pattern': attrs.get('optical_lane_pattern'),
+                'gearbox_present': attrs.get('gearbox_present'),
+                'cable_assembly_type': cable_assembly_type,
+                'breakout_topology': attrs.get('breakout_topology'),
                 'is_cable_assembly': is_cable_assembly,
             }
 
@@ -124,7 +152,10 @@ def render_bom_csv(bom: PlanBOM) -> str:
     buf = io.StringIO()
     fieldnames = [
         'section', 'module_type_model', 'manufacturer', 'quantity',
-        'cage_type', 'medium', 'connector', 'standard', 'is_cable_assembly',
+        'cage_type', 'medium', 'connector', 'standard',
+        'reach_class', 'wavelength_nm', 'host_lane_count', 'host_serdes_gbps_per_lane',
+        'optical_lane_pattern', 'gearbox_present', 'cable_assembly_type', 'breakout_topology',
+        'is_cable_assembly',
     ]
     writer = csv.DictWriter(buf, fieldnames=fieldnames, lineterminator='\n')
     writer.writeheader()
@@ -134,10 +165,18 @@ def render_bom_csv(bom: PlanBOM) -> str:
             'module_type_model': item.module_type_model,
             'manufacturer': item.manufacturer,
             'quantity': item.quantity,
-            'cage_type': item.cage_type if item.cage_type is not None else '',
-            'medium': item.medium if item.medium is not None else '',
-            'connector': item.connector if item.connector is not None else '',
-            'standard': item.standard if item.standard is not None else '',
+            'cage_type': item.cage_type or '',
+            'medium': item.medium or '',
+            'connector': item.connector or '',
+            'standard': item.standard or '',
+            'reach_class': item.reach_class or '',
+            'wavelength_nm': '' if item.wavelength_nm is None else item.wavelength_nm,
+            'host_lane_count': '' if item.lane_count is None else item.lane_count,
+            'host_serdes_gbps_per_lane': '' if item.host_serdes_gbps_per_lane is None else item.host_serdes_gbps_per_lane,
+            'optical_lane_pattern': item.optical_lane_pattern or '',
+            'gearbox_present': _render_gearbox(item.gearbox_present),
+            'cable_assembly_type': item.cable_assembly_type or '',
+            'breakout_topology': item.breakout_topology or '',
             'is_cable_assembly': 'true' if item.is_cable_assembly else 'false',
         })
     buf.write(f"# suppressed_switch_cable_assembly_count,{bom.suppressed_switch_cable_assembly_count}\n")
@@ -158,6 +197,14 @@ class PerDeviceBOMLineItem:
     medium: str | None
     connector: str | None
     standard: str | None
+    reach_class: str | None
+    wavelength_nm: int | None
+    lane_count: int | None
+    host_serdes_gbps_per_lane: int | None
+    optical_lane_pattern: str | None
+    gearbox_present: bool | None
+    cable_assembly_type: str | None
+    breakout_topology: str | None
     is_cable_assembly: bool
 
 
@@ -194,7 +241,11 @@ def get_plan_bom_by_device(plan) -> PlanBOMPerDevice:
         section = _classify_module(module)
         attrs = module.module_type.attribute_data or {}
         medium = attrs.get('medium')
-        is_cable_assembly = medium in _CABLE_ASSEMBLY_MEDIUMS
+        cable_assembly_type = attrs.get('cable_assembly_type')
+        is_cable_assembly = (
+            medium in _CABLE_ASSEMBLY_MEDIUMS
+            or cable_assembly_type in _CABLE_ASSEMBLY_TYPES
+        )
 
         if section == 'switch_transceiver' and is_cable_assembly:
             suppressed += 1
@@ -215,6 +266,14 @@ def get_plan_bom_by_device(plan) -> PlanBOMPerDevice:
                 'medium': medium,
                 'connector': attrs.get('connector'),
                 'standard': attrs.get('standard'),
+                'reach_class': attrs.get('reach_class'),
+                'wavelength_nm': attrs.get('wavelength_nm'),
+                'lane_count': attrs.get('lane_count'),
+                'host_serdes_gbps_per_lane': attrs.get('host_serdes_gbps_per_lane'),
+                'optical_lane_pattern': attrs.get('optical_lane_pattern'),
+                'gearbox_present': attrs.get('gearbox_present'),
+                'cable_assembly_type': cable_assembly_type,
+                'breakout_topology': attrs.get('breakout_topology'),
                 'is_cable_assembly': is_cable_assembly,
             }
 
@@ -269,7 +328,10 @@ def render_bom_per_device_csv(bom: PlanBOMPerDevice) -> str:
     fieldnames = [
         'device_name', 'hedgehog_class', 'device_role',
         'section', 'module_type_model', 'manufacturer', 'quantity',
-        'cage_type', 'medium', 'connector', 'standard', 'is_cable_assembly',
+        'cage_type', 'medium', 'connector', 'standard',
+        'reach_class', 'wavelength_nm', 'host_lane_count', 'host_serdes_gbps_per_lane',
+        'optical_lane_pattern', 'gearbox_present', 'cable_assembly_type', 'breakout_topology',
+        'is_cable_assembly',
     ]
     writer = csv.DictWriter(buf, fieldnames=fieldnames, lineterminator='\n')
     writer.writeheader()
@@ -282,10 +344,18 @@ def render_bom_per_device_csv(bom: PlanBOMPerDevice) -> str:
             'module_type_model': item.module_type_model,
             'manufacturer': item.manufacturer,
             'quantity': item.quantity,
-            'cage_type': item.cage_type if item.cage_type is not None else '',
-            'medium': item.medium if item.medium is not None else '',
-            'connector': item.connector if item.connector is not None else '',
-            'standard': item.standard if item.standard is not None else '',
+            'cage_type': item.cage_type or '',
+            'medium': item.medium or '',
+            'connector': item.connector or '',
+            'standard': item.standard or '',
+            'reach_class': item.reach_class or '',
+            'wavelength_nm': '' if item.wavelength_nm is None else item.wavelength_nm,
+            'host_lane_count': '' if item.lane_count is None else item.lane_count,
+            'host_serdes_gbps_per_lane': '' if item.host_serdes_gbps_per_lane is None else item.host_serdes_gbps_per_lane,
+            'optical_lane_pattern': item.optical_lane_pattern or '',
+            'gearbox_present': _render_gearbox(item.gearbox_present),
+            'cable_assembly_type': item.cable_assembly_type or '',
+            'breakout_topology': item.breakout_topology or '',
             'is_cable_assembly': 'true' if item.is_cable_assembly else 'false',
         })
     buf.write(f"# suppressed_switch_cable_assembly_count,{bom.suppressed_switch_cable_assembly_count}\n")

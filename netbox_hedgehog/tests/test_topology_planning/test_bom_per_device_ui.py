@@ -46,7 +46,10 @@ _PER_DEVICE_CSV_FILENAME_FRAGMENT = 'bom-per-device.csv'
 _PER_DEVICE_CSV_HEADER = (
     'device_name,hedgehog_class,device_role,section,'
     'module_type_model,manufacturer,quantity,'
-    'cage_type,medium,connector,standard,is_cable_assembly'
+    'cage_type,medium,connector,standard,'
+    'reach_class,wavelength_nm,host_lane_count,host_serdes_gbps_per_lane,'
+    'optical_lane_pattern,gearbox_present,cable_assembly_type,breakout_topology,'
+    'is_cable_assembly'
 )
 
 _AGGREGATE_BOM_PANEL_HEADING = 'Bill of Materials (Generated)'
