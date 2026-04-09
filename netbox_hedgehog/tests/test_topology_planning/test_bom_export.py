@@ -470,8 +470,13 @@ class BOMExportCommandTestCase(_BOMFixtureMixin, TestCase):
         with open(path, newline='') as f:
             reader = csv.DictReader(f)
             fieldnames = reader.fieldnames
-        expected = ['section', 'module_type_model', 'manufacturer', 'quantity',
-                    'cage_type', 'medium', 'connector', 'standard', 'is_cable_assembly']
+        expected = [
+            'section', 'module_type_model', 'manufacturer', 'quantity',
+            'cage_type', 'medium', 'connector', 'standard',
+            'reach_class', 'wavelength_nm', 'host_lane_count', 'host_serdes_gbps_per_lane',
+            'optical_lane_pattern', 'gearbox_present', 'cable_assembly_type', 'breakout_topology',
+            'is_cable_assembly',
+        ]
         self.assertEqual(fieldnames, expected)
 
     # T27
@@ -774,7 +779,10 @@ class BOMPerDeviceCSVRenderTestCase(_BOMFixtureMixin, TestCase):
         expected = (
             'device_name,hedgehog_class,device_role,section,'
             'module_type_model,manufacturer,quantity,'
-            'cage_type,medium,connector,standard,is_cable_assembly'
+            'cage_type,medium,connector,standard,'
+            'reach_class,wavelength_nm,host_lane_count,host_serdes_gbps_per_lane,'
+            'optical_lane_pattern,gearbox_present,cable_assembly_type,breakout_topology,'
+            'is_cable_assembly'
         )
         self.assertEqual(first_line, expected,
                          f"CSV header mismatch. Got: {first_line!r}")
@@ -890,7 +898,10 @@ class BOMPerDeviceCommandTestCase(_BOMFixtureMixin, TestCase):
         expected = [
             'device_name', 'hedgehog_class', 'device_role',
             'section', 'module_type_model', 'manufacturer', 'quantity',
-            'cage_type', 'medium', 'connector', 'standard', 'is_cable_assembly',
+            'cage_type', 'medium', 'connector', 'standard',
+            'reach_class', 'wavelength_nm', 'host_lane_count', 'host_serdes_gbps_per_lane',
+            'optical_lane_pattern', 'gearbox_present', 'cable_assembly_type', 'breakout_topology',
+            'is_cable_assembly',
         ]
         self.assertEqual(fieldnames, expected)
 

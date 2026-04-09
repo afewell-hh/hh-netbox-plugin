@@ -329,7 +329,10 @@ class BOMCSVEndpointTestCase(_BOMUIFixtureMixin, TestCase):
         )
         expected_header = (
             'section,module_type_model,manufacturer,quantity,'
-            'cage_type,medium,connector,standard,is_cable_assembly'
+            'cage_type,medium,connector,standard,'
+            'reach_class,wavelength_nm,host_lane_count,host_serdes_gbps_per_lane,'
+            'optical_lane_pattern,gearbox_present,cable_assembly_type,breakout_topology,'
+            'is_cable_assembly'
         )
         self.assertEqual(first_line, expected_header,
                          f"CSV header row mismatch. Got: {first_line!r}")
