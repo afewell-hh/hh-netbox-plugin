@@ -1111,17 +1111,28 @@ class MultiPortTransceiverPlacementTestCase(TestCase):
 # ---------------------------------------------------------------------------
 
 def _make_xcvr_mt_350(connector=None, standard=None, cage_type='QSFP112', medium='MMF',
-                      model_suffix='default'):
-    """Create a Network Transceiver ModuleType with the given attribute_data values."""
+                      reach_class=None, model_suffix='default'):
+    """Create a Network Transceiver ModuleType with the given attribute_data values.
+
+    medium=None excludes the 'medium' key from attribute_data entirely (for null-skip tests).
+    reach_class=None (default) excludes the 'reach_class' key.
+    All other None params are also excluded.
+    Existing callers that omit reach_class and pass medium='MMF' (or rely on the default)
+    are unaffected — backward-compatible.
+    """
     mfr, _ = Manufacturer.objects.get_or_create(
         name='XCVR-Test-Vendor', defaults={'slug': 'xcvr-test-vendor'}
     )
     profile = ModuleTypeProfile.objects.filter(name='Network Transceiver').first()
-    attrs = {'cage_type': cage_type, 'medium': medium}
+    attrs = {'cage_type': cage_type}
+    if medium is not None:
+        attrs['medium'] = medium
     if connector is not None:
         attrs['connector'] = connector
     if standard is not None:
         attrs['standard'] = standard
+    if reach_class is not None:
+        attrs['reach_class'] = reach_class
     mt, _ = ModuleType.objects.get_or_create(
         manufacturer=mfr,
         model=f'XCVR-350-{model_suffix}',
@@ -1613,3 +1624,351 @@ class ConnectorStandardSweepTestCase(TestCase):
         ]
         self.assertGreater(len(cage_entries), 0,
             "E.12: cage_type mismatch entry must still appear after _SWEEP_DIMS refactor")
+
+
+# ---------------------------------------------------------------------------
+# Group R: reach_class plan-save validation (DIET-409 Phase 3)
+# R.1, R.2, R.3, R.4, R.13 are RED until V7 is added to
+# _validate_transceiver_module_type().
+# R.5–R.12, R.14–R.16 verify compatible, null-skip, and regression cases.
+# ---------------------------------------------------------------------------
+
+class ReachClassPlanSaveValidationTestCase(TestCase):
+    """
+    R.1–R.16: Plan-save validation for reach_class / medium intra-connection invariant (DIET-409 #413).
+
+    V7 enforces: reach_class='DAC' requires medium ∈ {DAC, ACC};
+                 reach_class ∈ {SR, LR, DR} requires medium ∈ {MMF, SMF}.
+    Null-skip when either value is absent.
+
+    RED tests (require V7 implementation):
+      R.1:  copper reach_class='DAC' + optical medium='MMF' → ValidationError
+      R.2:  copper reach_class='DAC' + optical medium='SMF' → ValidationError
+      R.3:  optical reach_class='SR' + copper medium='DAC' → ValidationError
+      R.4:  optical reach_class='LR' + copper medium='ACC' → ValidationError
+      R.13: copper reach_class='DAC' + no attr_data medium, flat medium='MMF' → ValidationError
+             (fallback medium path)
+
+    Green tests (pass without V7):
+      R.5–R.9:   compatible pairs (no error expected)
+      R.10–R.12: null-skip cases (no error expected)
+      R.14:      compatible fallback medium path (no error expected)
+      R.15–R.16: regression guards for seeded-like optical and copper NICs
+    """
+
+    @classmethod
+    def setUpTestData(cls):
+        _make_350_plan_fixtures(cls)
+        cls.plan_r = TopologyPlan.objects.create(
+            name='R-PlanSave-409', status=TopologyPlanStatusChoices.DRAFT,
+        )
+        cls.sc_r = PlanServerClass.objects.create(
+            plan=cls.plan_r, server_class_id='r-gpu',
+            server_device_type=cls.server_dt350, quantity=1,
+        )
+        cls.sw_r = PlanSwitchClass.objects.create(
+            plan=cls.plan_r, switch_class_id='r-fe-leaf',
+            fabric_name=FabricTypeChoices.FRONTEND,
+            fabric_class=FabricClassChoices.MANAGED,
+            hedgehog_role=HedgehogRoleChoices.SERVER_LEAF,
+            device_type_extension=cls.device_ext350,
+            uplink_ports_per_switch=0, mclag_pair=False,
+            override_quantity=2, redundancy_type='eslag',
+        )
+        # Zone without transceiver FK — prevents cross-end V4–V6 from firing.
+        cls.zone_no_xcvr_r = SwitchPortZone.objects.create(
+            switch_class=cls.sw_r, zone_name='r-server-ports-noxcvr',
+            zone_type=PortZoneTypeChoices.SERVER, port_spec='1-32',
+            breakout_option=cls.breakout350,
+            allocation_strategy=AllocationStrategyChoices.SEQUENTIAL, priority=100,
+        )
+        cls.nic_r = PlanServerNIC.objects.create(
+            server_class=cls.sc_r, nic_id='r-nic-fe', module_type=cls.nic_mt350,
+        )
+
+        # --- Incompatible pairs (R.1–R.4): copper reach on optical medium, or vice versa ---
+        cls.mt_dac_rc_mmf_med = _make_xcvr_mt_350(
+            medium='MMF', reach_class='DAC', model_suffix='dac-rc-mmf-med')
+        cls.mt_dac_rc_smf_med = _make_xcvr_mt_350(
+            medium='SMF', reach_class='DAC', model_suffix='dac-rc-smf-med')
+        cls.mt_sr_rc_dac_med = _make_xcvr_mt_350(
+            medium='DAC', reach_class='SR', model_suffix='sr-rc-dac-med')
+        cls.mt_lr_rc_acc_med = _make_xcvr_mt_350(
+            medium='ACC', reach_class='LR', model_suffix='lr-rc-acc-med')
+
+        # --- Compatible pairs (R.5–R.9) ---
+        cls.mt_dac_rc_dac_med = _make_xcvr_mt_350(
+            medium='DAC', reach_class='DAC', model_suffix='dac-rc-dac-med')
+        cls.mt_dac_rc_acc_med = _make_xcvr_mt_350(
+            medium='ACC', reach_class='DAC', model_suffix='dac-rc-acc-med')
+        cls.mt_sr_rc_mmf_med = _make_xcvr_mt_350(
+            medium='MMF', reach_class='SR', model_suffix='sr-rc-mmf-med')
+        cls.mt_lr_rc_smf_med = _make_xcvr_mt_350(
+            medium='SMF', reach_class='LR', model_suffix='lr-rc-smf-med')
+        cls.mt_dr_rc_mmf_med = _make_xcvr_mt_350(
+            medium='MMF', reach_class='DR', model_suffix='dr-rc-mmf-med')
+
+        # --- Null-skip cases (R.10–R.12) ---
+        # R.10: medium in attrs, no reach_class key
+        cls.mt_no_rc = _make_xcvr_mt_350(
+            medium='MMF', reach_class=None, model_suffix='no-rc')
+        # R.11, R.14: reach_class='SR', no medium key — used with different flat medium values
+        cls.mt_rc_no_med = _make_xcvr_mt_350(
+            medium=None, reach_class='SR', model_suffix='rc-no-med')
+
+        # --- Fallback-medium cases (R.13, R.14) ---
+        # R.13: reach_class='DAC', no medium in attrs → fallback to flat self.medium
+        cls.mt_dac_rc_no_med = _make_xcvr_mt_350(
+            medium=None, reach_class='DAC', model_suffix='dac-rc-no-med')
+
+        # --- Regression guards (R.15–R.16) ---
+        # R.15: optical NIC like BF3220 (medium=MMF, reach_class=SR)
+        cls.mt_reg_optical = _make_xcvr_mt_350(
+            medium='MMF', reach_class='SR', connector='MPO-12',
+            standard='200GBASE-SR4', model_suffix='reg-optical')
+        # R.16: copper NIC like CX7 (medium=DAC, reach_class=DAC)
+        cls.mt_reg_copper = _make_xcvr_mt_350(
+            medium='DAC', reach_class='DAC', connector='Direct',
+            standard='200GBASE-CR4', model_suffix='reg-copper')
+
+    # -------------------------------------------------------------------------
+    # R.1–R.4: Incompatible pairs — must raise ValidationError on
+    #          'transceiver_module_type'. RED until V7 is added.
+    # -------------------------------------------------------------------------
+
+    def test_r1_v7_dac_reach_class_on_mmf_medium_raises(self):
+        """R.1: V7 — reach_class='DAC' with medium='MMF' (optical) → ValidationError.
+
+        RED until V7 is added to _validate_transceiver_module_type().
+        """
+        psc = _make_350_base_connection(
+            self.sc_r, self.nic_r, self.zone_no_xcvr_r,
+            connection_id='r1-conn',
+            transceiver_module_type=self.mt_dac_rc_mmf_med,
+        )
+        from django.core.exceptions import ValidationError as DjangoVE
+        with self.assertRaises(DjangoVE) as ctx:
+            psc.full_clean()
+        self.assertIn('transceiver_module_type', ctx.exception.message_dict,
+            "V7: error must be on 'transceiver_module_type' field")
+        self.assertIn('DAC', str(ctx.exception),
+            "V7: error message must mention the conflicting reach_class value 'DAC'")
+        self.assertIn('MMF', str(ctx.exception),
+            "V7: error message must mention the conflicting medium value 'MMF'")
+
+    def test_r2_v7_dac_reach_class_on_smf_medium_raises(self):
+        """R.2: V7 — reach_class='DAC' with medium='SMF' (optical) → ValidationError.
+
+        RED until V7 is added to _validate_transceiver_module_type().
+        """
+        psc = _make_350_base_connection(
+            self.sc_r, self.nic_r, self.zone_no_xcvr_r,
+            connection_id='r2-conn',
+            transceiver_module_type=self.mt_dac_rc_smf_med,
+        )
+        from django.core.exceptions import ValidationError as DjangoVE
+        with self.assertRaises(DjangoVE) as ctx:
+            psc.full_clean()
+        self.assertIn('transceiver_module_type', ctx.exception.message_dict,
+            "V7: error must be on 'transceiver_module_type' field")
+        self.assertIn('SMF', str(ctx.exception),
+            "V7: error message must mention the conflicting medium value 'SMF'")
+
+    def test_r3_v7_sr_reach_class_on_dac_medium_raises(self):
+        """R.3: V7 — reach_class='SR' with medium='DAC' (copper) → ValidationError.
+
+        RED until V7 is added to _validate_transceiver_module_type().
+        """
+        psc = _make_350_base_connection(
+            self.sc_r, self.nic_r, self.zone_no_xcvr_r,
+            connection_id='r3-conn',
+            transceiver_module_type=self.mt_sr_rc_dac_med,
+        )
+        from django.core.exceptions import ValidationError as DjangoVE
+        with self.assertRaises(DjangoVE) as ctx:
+            psc.full_clean()
+        self.assertIn('transceiver_module_type', ctx.exception.message_dict,
+            "V7: error must be on 'transceiver_module_type' field")
+        self.assertIn('SR', str(ctx.exception),
+            "V7: error message must mention the conflicting reach_class value 'SR'")
+        self.assertIn('DAC', str(ctx.exception),
+            "V7: error message must mention the conflicting medium value 'DAC'")
+
+    def test_r4_v7_lr_reach_class_on_acc_medium_raises(self):
+        """R.4: V7 — reach_class='LR' with medium='ACC' (copper) → ValidationError.
+
+        Verifies LR (optical) + ACC (copper) is rejected. ACC is in the copper group.
+        RED until V7 is added to _validate_transceiver_module_type().
+        """
+        psc = _make_350_base_connection(
+            self.sc_r, self.nic_r, self.zone_no_xcvr_r,
+            connection_id='r4-conn',
+            transceiver_module_type=self.mt_lr_rc_acc_med,
+        )
+        from django.core.exceptions import ValidationError as DjangoVE
+        with self.assertRaises(DjangoVE) as ctx:
+            psc.full_clean()
+        self.assertIn('transceiver_module_type', ctx.exception.message_dict,
+            "V7: error must be on 'transceiver_module_type' field")
+        self.assertIn('LR', str(ctx.exception),
+            "V7: error message must mention the conflicting reach_class value 'LR'")
+        self.assertIn('ACC', str(ctx.exception),
+            "V7: error message must mention the conflicting medium value 'ACC'")
+
+    # -------------------------------------------------------------------------
+    # R.5–R.9: Compatible pairs — must not raise. Green without V7.
+    # -------------------------------------------------------------------------
+
+    def test_r5_v7_dac_reach_class_dac_medium_ok(self):
+        """R.5: V7 — reach_class='DAC', medium='DAC' → no error (copper-compatible)."""
+        psc = _make_350_base_connection(
+            self.sc_r, self.nic_r, self.zone_no_xcvr_r,
+            connection_id='r5-conn',
+            transceiver_module_type=self.mt_dac_rc_dac_med,
+        )
+        psc.full_clean()  # must not raise
+
+    def test_r6_v7_dac_reach_class_acc_medium_ok(self):
+        """R.6: V7 — reach_class='DAC', medium='ACC' → no error.
+
+        ACC is in the copper group; DAC reach_class is correct for it.
+        """
+        psc = _make_350_base_connection(
+            self.sc_r, self.nic_r, self.zone_no_xcvr_r,
+            connection_id='r6-conn',
+            transceiver_module_type=self.mt_dac_rc_acc_med,
+        )
+        psc.full_clean()  # must not raise
+
+    def test_r7_v7_sr_reach_class_mmf_medium_ok(self):
+        """R.7: V7 — reach_class='SR', medium='MMF' → no error (optical-compatible)."""
+        psc = _make_350_base_connection(
+            self.sc_r, self.nic_r, self.zone_no_xcvr_r,
+            connection_id='r7-conn',
+            transceiver_module_type=self.mt_sr_rc_mmf_med,
+        )
+        psc.full_clean()  # must not raise
+
+    def test_r8_v7_lr_reach_class_smf_medium_ok(self):
+        """R.8: V7 — reach_class='LR', medium='SMF' → no error (optical-compatible, SMF variant)."""
+        psc = _make_350_base_connection(
+            self.sc_r, self.nic_r, self.zone_no_xcvr_r,
+            connection_id='r8-conn',
+            transceiver_module_type=self.mt_lr_rc_smf_med,
+        )
+        psc.full_clean()  # must not raise
+
+    def test_r9_v7_dr_reach_class_mmf_medium_ok(self):
+        """R.9: V7 — reach_class='DR', medium='MMF' → no error (DR is in the optical group)."""
+        psc = _make_350_base_connection(
+            self.sc_r, self.nic_r, self.zone_no_xcvr_r,
+            connection_id='r9-conn',
+            transceiver_module_type=self.mt_dr_rc_mmf_med,
+        )
+        psc.full_clean()  # must not raise
+
+    # -------------------------------------------------------------------------
+    # R.10–R.12: Null-skip cases — must not raise. Green without V7.
+    # -------------------------------------------------------------------------
+
+    def test_r10_v7_no_reach_class_null_skip(self):
+        """R.10: V7 null-skip — reach_class absent from attribute_data → no error.
+
+        When rc is falsy, the if-guard does not enter, regardless of medium.
+        """
+        psc = _make_350_base_connection(
+            self.sc_r, self.nic_r, self.zone_no_xcvr_r,
+            connection_id='r10-conn',
+            transceiver_module_type=self.mt_no_rc,  # medium='MMF', no reach_class key
+        )
+        psc.full_clean()  # null-skip: must not raise
+
+    def test_r11_v7_reach_class_present_no_medium_anywhere_null_skip(self):
+        """R.11: V7 null-skip — reach_class='SR', no medium in attribute_data, no flat medium.
+
+        resolved_medium = None or '' = '' which is falsy → null-skip.
+        """
+        psc = _make_350_base_connection(
+            self.sc_r, self.nic_r, self.zone_no_xcvr_r,
+            connection_id='r11-conn',
+            transceiver_module_type=self.mt_rc_no_med,  # reach_class='SR', no medium key
+        )
+        # flat self.medium defaults to '' (empty string) — no override needed
+        psc.full_clean()  # null-skip: must not raise
+
+    def test_r12_v7_no_reach_class_flat_medium_set_null_skip(self):
+        """R.12: V7 null-skip — reach_class absent, flat medium='MMF' set.
+
+        When reach_class (rc) is falsy, the if-guard does not enter regardless of medium.
+        """
+        psc = _make_350_base_connection(
+            self.sc_r, self.nic_r, self.zone_no_xcvr_r,
+            connection_id='r12-conn',
+            transceiver_module_type=self.mt_no_rc,  # medium='MMF' in attrs, no reach_class
+        )
+        psc.medium = 'MMF'  # flat field set; V3 doesn't fire (same as attr_data); V7 skips (no rc)
+        psc.full_clean()  # null-skip: must not raise
+
+    # -------------------------------------------------------------------------
+    # R.13–R.14: Fallback-medium path — medium resolved from flat self.medium.
+    # -------------------------------------------------------------------------
+
+    def test_r13_v7_dac_reach_class_fallback_medium_mmf_raises(self):
+        """R.13: V7 — reach_class='DAC', no medium in attribute_data, flat self.medium='MMF' → raises.
+
+        resolved_medium = xcvr_ad.get('medium') or self.medium = None or 'MMF' = 'MMF'.
+        'MMF' ∈ optical_mediums, reach_class='DAC' → ValidationError.
+        RED until V7 is added to _validate_transceiver_module_type().
+        """
+        psc = _make_350_base_connection(
+            self.sc_r, self.nic_r, self.zone_no_xcvr_r,
+            connection_id='r13-conn',
+            transceiver_module_type=self.mt_dac_rc_no_med,  # reach_class='DAC', no medium in attrs
+        )
+        psc.medium = 'MMF'  # flat medium; V3 null-skips (no attr_data medium); V7 uses as fallback
+        from django.core.exceptions import ValidationError as DjangoVE
+        with self.assertRaises(DjangoVE) as ctx:
+            psc.full_clean()
+        self.assertIn('transceiver_module_type', ctx.exception.message_dict,
+            "V7: fallback medium path — error must be on 'transceiver_module_type' field")
+
+    def test_r14_v7_sr_reach_class_fallback_medium_mmf_ok(self):
+        """R.14: V7 — reach_class='SR', no medium in attribute_data, flat self.medium='MMF' → no error.
+
+        resolved_medium = None or 'MMF' = 'MMF'. 'SR' + 'MMF' = optical/optical → compatible.
+        """
+        psc = _make_350_base_connection(
+            self.sc_r, self.nic_r, self.zone_no_xcvr_r,
+            connection_id='r14-conn',
+            transceiver_module_type=self.mt_rc_no_med,  # reach_class='SR', no medium in attrs
+        )
+        psc.medium = 'MMF'  # fallback medium — compatible with SR
+        psc.full_clean()  # must not raise
+
+    # -------------------------------------------------------------------------
+    # R.15–R.16: Regression guards — seeded-like module types pass V7 cleanly.
+    # -------------------------------------------------------------------------
+
+    def test_r15_v7_regression_optical_nic_passes(self):
+        """R.15: Regression — optical NIC (medium=MMF, reach_class=SR, like BF3220) passes V7.
+
+        Ensures that the migration-seeded BF3220 attribute profile remains valid after V7 lands.
+        """
+        psc = _make_350_base_connection(
+            self.sc_r, self.nic_r, self.zone_no_xcvr_r,
+            connection_id='r15-conn',
+            transceiver_module_type=self.mt_reg_optical,
+        )
+        psc.full_clean()  # must not raise
+
+    def test_r16_v7_regression_copper_nic_passes(self):
+        """R.16: Regression — copper NIC (medium=DAC, reach_class=DAC, like CX7) passes V7.
+
+        Ensures that the migration-seeded CX7 attribute profile remains valid after V7 lands.
+        """
+        psc = _make_350_base_connection(
+            self.sc_r, self.nic_r, self.zone_no_xcvr_r,
+            connection_id='r16-conn',
+            transceiver_module_type=self.mt_reg_copper,
+        )
+        psc.full_clean()  # must not raise

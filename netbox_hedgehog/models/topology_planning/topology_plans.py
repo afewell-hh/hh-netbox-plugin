@@ -909,6 +909,28 @@ class PlanServerConnection(NetBoxModel):
                         f"attribute_data connector '{xcvr_ad['connector']}'."
                     )
                 })
+            # V7: reach_class must be compatible with resolved medium (copper vs. optical invariant).
+            rc = xcvr_ad.get('reach_class')
+            resolved_medium = xcvr_ad.get('medium') or self.medium
+            if rc and resolved_medium:
+                _copper_mediums = {'DAC', 'ACC'}
+                _optical_mediums = {'MMF', 'SMF'}
+                _optical_reach_classes = {'SR', 'LR', 'DR'}
+                if rc == 'DAC' and resolved_medium in _optical_mediums:
+                    raise ValidationError({
+                        'transceiver_module_type': (
+                            f"reach_class 'DAC' is incompatible with medium '{resolved_medium}': "
+                            f"DAC reach class requires a copper medium (DAC or ACC)."
+                        )
+                    })
+                elif rc in _optical_reach_classes and resolved_medium in _copper_mediums:
+                    raise ValidationError({
+                        'transceiver_module_type': (
+                            f"reach_class '{rc}' is incompatible with medium '{resolved_medium}': "
+                            f"optical reach classes (SR, LR, DR) require a fiber medium (MMF or SMF)."
+                        )
+                    })
+                # Unknown reach_class values not in either group → null-skip (forward-compatible).
 
         # Cross-end compatibility against target zone's transceiver FK (V4, V5).
         if self.target_zone_id:
