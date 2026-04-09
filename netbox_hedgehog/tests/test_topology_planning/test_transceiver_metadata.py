@@ -280,18 +280,18 @@ class TransceiverMetadataSeededValuesTestCase(_XcvrMetaFixtureMixin, TestCase):
         self.assertIsInstance(mt.attribute_data.get('lane_count'), int)
 
     def test_t2_5_cx7_single_cable_assembly_type(self):
-        """T2.5: CX-7 Single cable_assembly_type == 'DAC'. FAILS until 0047."""
+        """T2.5: CX-7 Single cable_assembly_type == 'none' (NIC card, not an integrated assembly). FAILS until 0047."""
         mt = self._get_cx7_single()
         if mt is None:
             self.skipTest("CX-7 Single not seeded")
-        self.assertEqual(mt.attribute_data.get('cable_assembly_type'), 'DAC')
+        self.assertEqual(mt.attribute_data.get('cable_assembly_type'), 'none')
 
     def test_t2_6_cx7_single_gearbox_present(self):
-        """T2.6: CX-7 Single gearbox_present == False. FAILS until 0047."""
+        """T2.6: CX-7 Single gearbox_present is None (not applicable for a NIC card). FAILS until 0047."""
         mt = self._get_cx7_single()
         if mt is None:
             self.skipTest("CX-7 Single not seeded")
-        self.assertIs(mt.attribute_data.get('gearbox_present'), False)
+        self.assertIsNone(mt.attribute_data.get('gearbox_present'))
 
     def test_t2_7_cx7_dual_breakout_topology(self):
         """T2.7: CX-7 Dual breakout_topology == '1x'. FAILS until 0047."""

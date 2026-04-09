@@ -94,9 +94,9 @@ def _seed_module_types(apps, schema_editor):
                 # Verify vs NVIDIA CX-7 datasheet.
                 'lane_count': 4,
                 'host_serdes_gbps_per_lane': 50,
-                'optical_lane_pattern': None,    # DAC — no optical side
-                'gearbox_present': False,         # passive copper, no gearbox
-                'cable_assembly_type': 'DAC',
+                'optical_lane_pattern': None,    # copper medium — no optical lane pattern
+                'gearbox_present': None,          # not applicable: NIC card, not a cable assembly
+                'cable_assembly_type': 'none',    # NIC card; link medium=DAC but card itself is not an integrated assembly
                 'breakout_topology': '1x',
             },
         ),
@@ -106,8 +106,8 @@ def _seed_module_types(apps, schema_editor):
                 'lane_count': 4,
                 'host_serdes_gbps_per_lane': 50,
                 'optical_lane_pattern': None,
-                'gearbox_present': False,
-                'cable_assembly_type': 'DAC',
+                'gearbox_present': None,          # not applicable: NIC card, not a cable assembly
+                'cable_assembly_type': 'none',    # NIC card; link medium=DAC but card itself is not an integrated assembly
                 'breakout_topology': '1x',
             },
         ),
