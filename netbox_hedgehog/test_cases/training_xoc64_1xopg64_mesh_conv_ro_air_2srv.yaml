@@ -356,6 +356,21 @@ reference_data:
       logical_ports: 4
       logical_speed: 200
       optic_type: OSFP-800G-4x200G-DR4
+    - id: b_1x25
+      breakout_id: 1x25g
+      from_speed: 25
+      logical_ports: 1
+      logical_speed: 25
+    - id: b_1x10
+      breakout_id: 1x10g
+      from_speed: 10
+      logical_ports: 1
+      logical_speed: 10
+    - id: b_1x1
+      breakout_id: 1x1g
+      from_speed: 1
+      logical_ports: 1
+      logical_speed: 1
 
   module_types:
     - id: nic_xpu_scale_out_8x400
@@ -508,18 +523,21 @@ switch_port_zones:
     zone_name: inb_mgmt_server_25g
     zone_type: server
     port_spec: 1-24
+    breakout_option: b_1x25
     allocation_strategy: sequential
     priority: 10
   - switch_class: oob_leaf
     zone_name: oob_server_1g
     zone_type: oob
     port_spec: 1-48
+    breakout_option: b_1x1
     allocation_strategy: sequential
     priority: 10
   - switch_class: oob_leaf
     zone_name: oob_uplink_10g
     zone_type: oob
     port_spec: 49-56
+    breakout_option: b_1x10
     allocation_strategy: sequential
     priority: 20
 
