@@ -511,6 +511,39 @@ def apply_case(
                     }
                 ]
             )
+        # Resolve optional transceiver_module_type FK for this zone.
+        xcvr_zone_ref = item.get("transceiver_module_type")
+        if xcvr_zone_ref is not None:
+            xcvr_zone_mt = refs["module_types"].get(xcvr_zone_ref)
+            if xcvr_zone_mt is None:
+                raise TestCaseValidationError(
+                    [
+                        {
+                            "severity": "error",
+                            "code": "unknown_reference",
+                            "path": f"switch_port_zones[{zone_name}].transceiver_module_type",
+                            "message": f"Unknown module_type ref '{xcvr_zone_ref}'",
+                        }
+                    ]
+                )
+            if not (xcvr_zone_mt.profile_id and xcvr_zone_mt.profile and
+                    xcvr_zone_mt.profile.name == 'Network Transceiver'):
+                raise TestCaseValidationError(
+                    [
+                        {
+                            "severity": "error",
+                            "code": "invalid_value",
+                            "path": f"switch_port_zones[{zone_name}].transceiver_module_type",
+                            "message": (
+                                f"ModuleType '{xcvr_zone_mt.model}' does not have the "
+                                "'Network Transceiver' profile."
+                            ),
+                        }
+                    ]
+                )
+        else:
+            xcvr_zone_mt = None
+
         SwitchPortZone.objects.update_or_create(
             switch_class=switch,
             zone_name=zone_name,
@@ -520,6 +553,7 @@ def apply_case(
                 "breakout_option": breakout,
                 "allocation_strategy": item.get("allocation_strategy", "sequential"),
                 "priority": item.get("priority", 100),
+                "transceiver_module_type": xcvr_zone_mt,
             },
         )
 
@@ -739,6 +773,24 @@ def apply_case(
                 ]
             )
 
+        # Resolve optional transceiver_module_type FK for this connection.
+        xcvr_conn_ref = item.get("transceiver_module_type")
+        if xcvr_conn_ref is not None:
+            xcvr_conn_mt = refs["module_types"].get(xcvr_conn_ref)
+            if xcvr_conn_mt is None:
+                raise TestCaseValidationError(
+                    [
+                        {
+                            "severity": "error",
+                            "code": "unknown_reference",
+                            "path": f"server_connections[{conn_id}].transceiver_module_type",
+                            "message": f"Unknown module_type ref '{xcvr_conn_ref}'",
+                        }
+                    ]
+                )
+        else:
+            xcvr_conn_mt = None
+
         # Build-validate-save pattern: run full_clean() before persisting so that
         # model-level constraints (e.g. alternating requires redundancy_type) are
         # enforced on the ingest path, not just through forms/API.
@@ -757,6 +809,7 @@ def apply_case(
             "medium": item.get("medium", ""),
             "connector": item.get("connector", ""),
             "standard": item.get("standard", ""),
+            "transceiver_module_type": xcvr_conn_mt,
         }
         try:
             conn = PlanServerConnection.objects.get(
