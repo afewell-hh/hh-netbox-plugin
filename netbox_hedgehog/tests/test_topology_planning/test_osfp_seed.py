@@ -95,20 +95,28 @@ class OSFPTransceiverSeedTestCase(TestCase):
         self.assertEqual(data.get('breakout_topology'), '1x')
 
     # ------------------------------------------------------------------
-    # T4: OSFP-400G-DR4 has one InterfaceTemplate of type 400gbase-x-osfp
+    # T4: OSFP-400G-DR4 has no InterfaceTemplates (transceivers are optics,
+    #     not NICs — they do not add logical interfaces to the parent device)
     # ------------------------------------------------------------------
 
-    def test_osfp_400g_dr4_interface_template(self):
-        """OSFP-400G-DR4 has exactly one InterfaceTemplate: port0 (400gbase-x-osfp)."""
+    def test_osfp_400g_dr4_no_interface_templates(self):
+        """
+        OSFP-400G-DR4 has zero InterfaceTemplates after migration 0049.
+
+        Transceivers are physical optics installed in NIC cage bays. The
+        parent device's interfaces come from the NIC module type, not from
+        the transceiver. Adding interface templates to transceiver ModuleTypes
+        causes duplicate-interface errors when multiple transceivers are
+        installed on the same server (e.g., 8 rails × port0 = 8 collisions).
+        """
         generic = self._get_generic()
         mt = ModuleType.objects.filter(
             manufacturer=generic, model='OSFP-400G-DR4'
         ).first()
         self.assertIsNotNone(mt)
         templates = list(mt.interfacetemplates.all())
-        self.assertEqual(len(templates), 1)
-        self.assertEqual(templates[0].name, 'port0')
-        self.assertEqual(templates[0].type, '400gbase-x-osfp')
+        self.assertEqual(len(templates), 0,
+                         "OSFP-400G-DR4 must have no InterfaceTemplates (migration 0049)")
 
     # ------------------------------------------------------------------
     # T5: OSFP-200G-DR4 exists with correct profile
@@ -151,19 +159,24 @@ class OSFPTransceiverSeedTestCase(TestCase):
         self.assertEqual(data.get('breakout_topology'), '1x')
 
     # ------------------------------------------------------------------
-    # T7: OSFP-200G-DR4 has one InterfaceTemplate
+    # T7: OSFP-200G-DR4 has no InterfaceTemplates (same rationale as T4)
     # ------------------------------------------------------------------
 
-    def test_osfp_200g_dr4_interface_template(self):
-        """OSFP-200G-DR4 has exactly one InterfaceTemplate: port0."""
+    def test_osfp_200g_dr4_no_interface_templates(self):
+        """
+        OSFP-200G-DR4 has zero InterfaceTemplates after migration 0049.
+
+        See T4 for the full rationale. Transceivers do not add logical
+        interfaces to the parent device; the NIC module provides those.
+        """
         generic = self._get_generic()
         mt = ModuleType.objects.filter(
             manufacturer=generic, model='OSFP-200G-DR4'
         ).first()
         self.assertIsNotNone(mt)
         templates = list(mt.interfacetemplates.all())
-        self.assertEqual(len(templates), 1)
-        self.assertEqual(templates[0].name, 'port0')
+        self.assertEqual(len(templates), 0,
+                         "OSFP-200G-DR4 must have no InterfaceTemplates (migration 0049)")
 
     # ------------------------------------------------------------------
     # T8: OSFP-200G-DR4 is NOT QSFP112 (documents resolved intent)
