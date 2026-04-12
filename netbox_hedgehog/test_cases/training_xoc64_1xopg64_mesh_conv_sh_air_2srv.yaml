@@ -1,0 +1,768 @@
+meta:
+  case_id: training_xoc64_1xopg64_mesh_conv_sh_air_2srv
+  name: Training XOC-64 1x OPG-64 Mesh Converged SH Air 2srv
+  description: XOC-64 composition built from one OPG-64 mesh-converged training building block with single-homed scale-out
+  version: 1
+  managed_by: yaml
+  tags:
+    - reference-architecture
+    - training
+    - xoc64
+    - 1x-opg64
+    - mesh
+    - converged
+    - single-homed
+
+reference_data:
+  manufacturers:
+    - id: generic
+      name: Generic
+      slug: generic
+    - id: celestica
+      name: Celestica
+      slug: celestica
+    - id: nvidia
+      name: NVIDIA
+      slug: nvidia
+
+  device_types:
+    - id: sw_ds5000_leaf_dt
+      manufacturer: celestica
+      model: Celestica DS5000 Leaf
+      slug: celestica-ds5000-leaf
+    - id: sw_ds2000_inb_dt
+      manufacturer: celestica
+      model: Celestica DS2000
+      slug: celestica-ds2000
+      interface_templates:
+        - name: M1
+          type: 1000base-t
+        - name: E1/1
+          type: 25gbase-x-sfp28
+        - name: E1/2
+          type: 25gbase-x-sfp28
+        - name: E1/3
+          type: 25gbase-x-sfp28
+        - name: E1/4
+          type: 25gbase-x-sfp28
+        - name: E1/5
+          type: 25gbase-x-sfp28
+        - name: E1/6
+          type: 25gbase-x-sfp28
+        - name: E1/7
+          type: 25gbase-x-sfp28
+        - name: E1/8
+          type: 25gbase-x-sfp28
+        - name: E1/9
+          type: 25gbase-x-sfp28
+        - name: E1/10
+          type: 25gbase-x-sfp28
+        - name: E1/11
+          type: 25gbase-x-sfp28
+        - name: E1/12
+          type: 25gbase-x-sfp28
+        - name: E1/13
+          type: 25gbase-x-sfp28
+        - name: E1/14
+          type: 25gbase-x-sfp28
+        - name: E1/15
+          type: 25gbase-x-sfp28
+        - name: E1/16
+          type: 25gbase-x-sfp28
+        - name: E1/17
+          type: 25gbase-x-sfp28
+        - name: E1/18
+          type: 25gbase-x-sfp28
+        - name: E1/19
+          type: 25gbase-x-sfp28
+        - name: E1/20
+          type: 25gbase-x-sfp28
+        - name: E1/21
+          type: 25gbase-x-sfp28
+        - name: E1/22
+          type: 25gbase-x-sfp28
+        - name: E1/23
+          type: 25gbase-x-sfp28
+        - name: E1/24
+          type: 25gbase-x-sfp28
+        - name: E1/25
+          type: 25gbase-x-sfp28
+        - name: E1/26
+          type: 25gbase-x-sfp28
+        - name: E1/27
+          type: 25gbase-x-sfp28
+        - name: E1/28
+          type: 25gbase-x-sfp28
+        - name: E1/29
+          type: 25gbase-x-sfp28
+        - name: E1/30
+          type: 25gbase-x-sfp28
+        - name: E1/31
+          type: 25gbase-x-sfp28
+        - name: E1/32
+          type: 25gbase-x-sfp28
+        - name: E1/33
+          type: 25gbase-x-sfp28
+        - name: E1/34
+          type: 25gbase-x-sfp28
+        - name: E1/35
+          type: 25gbase-x-sfp28
+        - name: E1/36
+          type: 25gbase-x-sfp28
+        - name: E1/37
+          type: 25gbase-x-sfp28
+        - name: E1/38
+          type: 25gbase-x-sfp28
+        - name: E1/39
+          type: 25gbase-x-sfp28
+        - name: E1/40
+          type: 25gbase-x-sfp28
+        - name: E1/41
+          type: 25gbase-x-sfp28
+        - name: E1/42
+          type: 25gbase-x-sfp28
+        - name: E1/43
+          type: 25gbase-x-sfp28
+        - name: E1/44
+          type: 25gbase-x-sfp28
+        - name: E1/45
+          type: 25gbase-x-sfp28
+        - name: E1/46
+          type: 25gbase-x-sfp28
+        - name: E1/47
+          type: 25gbase-x-sfp28
+        - name: E1/48
+          type: 25gbase-x-sfp28
+        - name: E1/49
+          type: 100gbase-x-qsfp28
+        - name: E1/50
+          type: 100gbase-x-qsfp28
+        - name: E1/51
+          type: 100gbase-x-qsfp28
+        - name: E1/52
+          type: 100gbase-x-qsfp28
+        - name: E1/53
+          type: 100gbase-x-qsfp28
+        - name: E1/54
+          type: 100gbase-x-qsfp28
+        - name: E1/55
+          type: 100gbase-x-qsfp28
+        - name: E1/56
+          type: 100gbase-x-qsfp28
+    - id: sw_ds1000_oob_dt
+      manufacturer: celestica
+      model: Celestica DS1000
+      slug: celestica-ds1000
+      interface_templates:
+        - name: M1
+          type: 1000base-t
+        - name: E1/1
+          type: 1000base-t
+        - name: E1/2
+          type: 1000base-t
+        - name: E1/3
+          type: 1000base-t
+        - name: E1/4
+          type: 1000base-t
+        - name: E1/5
+          type: 1000base-t
+        - name: E1/6
+          type: 1000base-t
+        - name: E1/7
+          type: 1000base-t
+        - name: E1/8
+          type: 1000base-t
+        - name: E1/9
+          type: 1000base-t
+        - name: E1/10
+          type: 1000base-t
+        - name: E1/11
+          type: 1000base-t
+        - name: E1/12
+          type: 1000base-t
+        - name: E1/13
+          type: 1000base-t
+        - name: E1/14
+          type: 1000base-t
+        - name: E1/15
+          type: 1000base-t
+        - name: E1/16
+          type: 1000base-t
+        - name: E1/17
+          type: 1000base-t
+        - name: E1/18
+          type: 1000base-t
+        - name: E1/19
+          type: 1000base-t
+        - name: E1/20
+          type: 1000base-t
+        - name: E1/21
+          type: 1000base-t
+        - name: E1/22
+          type: 1000base-t
+        - name: E1/23
+          type: 1000base-t
+        - name: E1/24
+          type: 1000base-t
+        - name: E1/25
+          type: 1000base-t
+        - name: E1/26
+          type: 1000base-t
+        - name: E1/27
+          type: 1000base-t
+        - name: E1/28
+          type: 1000base-t
+        - name: E1/29
+          type: 1000base-t
+        - name: E1/30
+          type: 1000base-t
+        - name: E1/31
+          type: 1000base-t
+        - name: E1/32
+          type: 1000base-t
+        - name: E1/33
+          type: 1000base-t
+        - name: E1/34
+          type: 1000base-t
+        - name: E1/35
+          type: 1000base-t
+        - name: E1/36
+          type: 1000base-t
+        - name: E1/37
+          type: 1000base-t
+        - name: E1/38
+          type: 1000base-t
+        - name: E1/39
+          type: 1000base-t
+        - name: E1/40
+          type: 1000base-t
+        - name: E1/41
+          type: 1000base-t
+        - name: E1/42
+          type: 1000base-t
+        - name: E1/43
+          type: 1000base-t
+        - name: E1/44
+          type: 1000base-t
+        - name: E1/45
+          type: 1000base-t
+        - name: E1/46
+          type: 1000base-t
+        - name: E1/47
+          type: 1000base-t
+        - name: E1/48
+          type: 1000base-t
+        - name: E1/49
+          type: 10gbase-x-sfpp
+        - name: E1/50
+          type: 10gbase-x-sfpp
+        - name: E1/51
+          type: 10gbase-x-sfpp
+        - name: E1/52
+          type: 10gbase-x-sfpp
+        - name: E1/53
+          type: 10gbase-x-sfpp
+        - name: E1/54
+          type: 10gbase-x-sfpp
+        - name: E1/55
+          type: 10gbase-x-sfpp
+        - name: E1/56
+          type: 10gbase-x-sfpp
+    - id: srv_xpu_generic_dt
+      manufacturer: generic
+      model: OCP-Compliant xPU Server
+      slug: ocp-compliant-xpu-server
+      u_height: 4
+      is_full_depth: true
+    - id: srv_storage_generic_dt
+      manufacturer: generic
+      model: OCP-Compliant Storage Server
+      slug: ocp-compliant-storage-server
+      u_height: 2
+      is_full_depth: true
+    - id: srv_metadata_generic_dt
+      manufacturer: generic
+      model: OCP-Compliant Metadata Server
+      slug: ocp-compliant-metadata-server
+      u_height: 1
+      is_full_depth: false
+    - id: srv_hh_gateway_dt
+      manufacturer: generic
+      model: Hedgehog Gateway x86
+      slug: hedgehog-gateway-x86
+      u_height: 1
+      is_full_depth: false
+    - id: srv_hh_controller_dt
+      manufacturer: generic
+      model: Hedgehog Controller x86
+      slug: hedgehog-controller-x86
+      u_height: 1
+      is_full_depth: false
+
+  device_type_extensions:
+    - id: sw_ds5000_scale_out_ext
+      device_type: sw_ds5000_leaf_dt
+      mclag_capable: false
+      hedgehog_roles: [server-leaf]
+      supported_breakouts: [1x800g, 2x400g, 4x200g, 8x100g]
+      native_speed: 800
+      uplink_ports: 32
+      hedgehog_profile_name: celestica-ds5000
+      notes: Scale-out mesh leaf pair for the XOC-64 composed OPG-64 topology.
+    - id: sw_ds5000_soc_storage_ext
+      device_type: sw_ds5000_leaf_dt
+      mclag_capable: false
+      hedgehog_roles: [server-leaf]
+      supported_breakouts: [1x800g, 2x400g, 4x200g, 8x100g]
+      native_speed: 800
+      uplink_ports: 32
+      hedgehog_profile_name: celestica-ds5000
+      notes: SoC and storage mesh leaf pair for the XOC-64 composed OPG-64 topology.
+    - id: sw_ds2000_inb_ext
+      device_type: sw_ds2000_inb_dt
+      mclag_capable: false
+      hedgehog_roles: [server-leaf]
+      supported_breakouts: []
+      native_speed: 25
+      uplink_ports: 8
+      hedgehog_profile_name: celestica-ds2000
+      notes: DS2000 in-band management fabric for 25GbE server management links.
+    - id: sw_ds1000_oob_ext
+      device_type: sw_ds1000_oob_dt
+      mclag_capable: false
+      hedgehog_roles: [server-leaf]
+      supported_breakouts: []
+      native_speed: 1
+      uplink_ports: 8
+      hedgehog_profile_name: celestica-ds1000
+      notes: DS1000 OOB management switch pair with explicit interface templates including M1.
+
+  breakout_options:
+    - id: b_1x800
+      breakout_id: 1x800g
+      from_speed: 800
+      logical_ports: 1
+      logical_speed: 800
+      optic_type: OSFP-800G-DR8
+    - id: brk_2x400_osfp
+      breakout_id: 2x400g
+      from_speed: 800
+      logical_ports: 2
+      logical_speed: 400
+      optic_type: OSFP-800G-2x400G-DR4
+    - id: brk_4x200_osfp
+      breakout_id: 4x200g
+      from_speed: 800
+      logical_ports: 4
+      logical_speed: 200
+      optic_type: OSFP-800G-4x200G-DR4
+
+  module_types:
+    - id: nic_xpu_scale_out_8x400
+      manufacturer: nvidia
+      model: Generic xPU Scale-Out 8x400G NIC
+      interface_templates:
+        - name: so0
+          type: other
+        - name: so1
+          type: other
+        - name: so2
+          type: other
+        - name: so3
+          type: other
+        - name: so4
+          type: other
+        - name: so5
+          type: other
+        - name: so6
+          type: other
+        - name: so7
+          type: other
+    - id: nic_xpu_soc_storage_2x200
+      manufacturer: nvidia
+      model: Generic xPU SoC/Storage 2x200G NIC
+      interface_templates:
+        - name: ss0
+          type: other
+        - name: ss1
+          type: other
+    - id: nic_dual_200g
+      manufacturer: generic
+      model: Generic Dual-Port 200G NIC
+      interface_templates:
+        - name: port0
+          type: other
+        - name: port1
+          type: other
+    - id: nic_dual_25g
+      manufacturer: generic
+      model: Generic Dual-Port 25GbE NIC
+      interface_templates:
+        - name: mgmt0
+          type: other
+        - name: mgmt1
+          type: other
+    - id: bmc_module
+      manufacturer: generic
+      model: BMC Management Port
+      interface_templates:
+        - name: bmc0
+          type: other
+    - id: osfp_400g_dr4
+      manufacturer: generic
+      model: OSFP-400G-DR4
+    - id: osfp_200g_dr4
+      manufacturer: generic
+      model: OSFP-200G-DR4
+
+plan:
+  name: Training XOC-64 1x OPG-64 Mesh Converged SH Air 2srv
+  status: draft
+  description: >
+    XOC-64 composition of one OPG-64 training building block. Scale-out and
+    soc-storage are explicit two-leaf mesh fabrics. In-band management uses a
+    DS2000 pair and a generic 2x25GbE NIC on every server class; only one port
+    from that NIC is connected. OOB uses a DS1000 pair with explicit interface
+    templates including the management port. Intended grouped single-homed
+    behavior depends on hh-netbox-plugin issue #322.
+
+switch_classes:
+  - switch_class_id: scale_out_leaf
+    fabric_name: scale-out
+    fabric_class: managed
+    hedgehog_role: server-leaf
+    device_type_extension: sw_ds5000_scale_out_ext
+    topology_mode: mesh
+    override_quantity: 2
+    uplink_ports_per_switch: 32
+    mclag_pair: false
+    notes: Intended grouped-per-leaf single-homed semantics depend on hh-netbox-plugin issue #322.
+  - switch_class_id: soc_storage_leaf
+    fabric_name: soc-storage
+    fabric_class: managed
+    hedgehog_role: server-leaf
+    device_type_extension: sw_ds5000_soc_storage_ext
+    topology_mode: mesh
+    override_quantity: 2
+    uplink_ports_per_switch: 32
+    mclag_pair: false
+  - switch_class_id: inb_mgmt_leaf
+    fabric_name: inb-mgmt
+    fabric_class: managed
+    hedgehog_role: server-leaf
+    device_type_extension: sw_ds2000_inb_ext
+    override_quantity: 2
+    uplink_ports_per_switch: 8
+    mclag_pair: false
+  - switch_class_id: oob_leaf
+    fabric_name: oob-mgmt
+    fabric_class: unmanaged
+    hedgehog_role: server-leaf
+    device_type_extension: sw_ds1000_oob_ext
+    override_quantity: 2
+    uplink_ports_per_switch: 8
+    mclag_pair: false
+
+switch_port_zones:
+  - switch_class: scale_out_leaf
+    zone_name: scale_out_uplink_800
+    zone_type: uplink
+    port_spec: 26,28,30,32,34,36,38-63
+    breakout_option: b_1x800
+    allocation_strategy: sequential
+    priority: 10
+  - switch_class: scale_out_leaf
+    zone_name: scale_out_server_2x400
+    zone_type: server
+    port_spec: 1-16
+    breakout_option: brk_2x400_osfp
+    allocation_strategy: sequential
+    priority: 20
+  - switch_class: scale_out_leaf
+    zone_name: scale_out_mesh_800
+    zone_type: mesh
+    port_spec: 26,28
+    breakout_option: b_1x800
+    allocation_strategy: sequential
+    priority: 30
+  - switch_class: soc_storage_leaf
+    zone_name: soc_storage_uplink_800
+    zone_type: uplink
+    port_spec: 26,28,30,32,34,36,38-63
+    breakout_option: b_1x800
+    allocation_strategy: sequential
+    priority: 10
+  - switch_class: soc_storage_leaf
+    zone_name: soc_storage_server_4x200
+    zone_type: server
+    port_spec: 27,29,31,33,35,37
+    breakout_option: brk_4x200_osfp
+    allocation_strategy: sequential
+    priority: 20
+  - switch_class: soc_storage_leaf
+    zone_name: soc_storage_mesh_800
+    zone_type: mesh
+    port_spec: 26,28
+    breakout_option: b_1x800
+    allocation_strategy: sequential
+    priority: 30
+  - switch_class: inb_mgmt_leaf
+    zone_name: inb_mgmt_server_25g
+    zone_type: server
+    port_spec: 1-24
+    allocation_strategy: sequential
+    priority: 10
+  - switch_class: oob_leaf
+    zone_name: oob_server_1g
+    zone_type: oob
+    port_spec: 1-48
+    allocation_strategy: sequential
+    priority: 10
+  - switch_class: oob_leaf
+    zone_name: oob_uplink_10g
+    zone_type: oob
+    port_spec: 49-56
+    allocation_strategy: sequential
+    priority: 20
+
+server_classes:
+  - server_class_id: compute_xpu
+    description: Training compute servers, 8 xPU each
+    category: gpu
+    quantity: 8
+    gpus_per_server: 8
+    server_device_type: srv_xpu_generic_dt
+  - server_class_id: storage_srv
+    description: Hyperconverged storage servers
+    category: storage
+    quantity: 3
+    gpus_per_server: 0
+    server_device_type: srv_storage_generic_dt
+  - server_class_id: metadata_srv
+    description: Storage metadata servers
+    category: infrastructure
+    quantity: 3
+    gpus_per_server: 0
+    server_device_type: srv_metadata_generic_dt
+  - server_class_id: hh_gateway
+    description: Hedgehog gateway nodes
+    category: infrastructure
+    quantity: 2
+    gpus_per_server: 0
+    server_device_type: srv_hh_gateway_dt
+  - server_class_id: hh_controller
+    description: Hedgehog controller node
+    category: infrastructure
+    quantity: 1
+    gpus_per_server: 0
+    server_device_type: srv_hh_controller_dt
+
+server_nics:
+  - server_class: compute_xpu
+    nic_id: scale_out
+    module_type: nic_xpu_scale_out_8x400
+  - server_class: compute_xpu
+    nic_id: soc_storage
+    module_type: nic_xpu_soc_storage_2x200
+  - server_class: compute_xpu
+    nic_id: inb_mgmt
+    module_type: nic_dual_25g
+  - server_class: compute_xpu
+    nic_id: bmc
+    module_type: bmc_module
+  - server_class: storage_srv
+    nic_id: soc_storage
+    module_type: nic_dual_200g
+  - server_class: storage_srv
+    nic_id: inb_mgmt
+    module_type: nic_dual_25g
+  - server_class: storage_srv
+    nic_id: bmc
+    module_type: bmc_module
+  - server_class: metadata_srv
+    nic_id: soc_storage
+    module_type: nic_dual_200g
+  - server_class: metadata_srv
+    nic_id: inb_mgmt
+    module_type: nic_dual_25g
+  - server_class: metadata_srv
+    nic_id: bmc
+    module_type: bmc_module
+  - server_class: hh_gateway
+    nic_id: inb_mgmt
+    module_type: nic_dual_25g
+  - server_class: hh_gateway
+    nic_id: bmc
+    module_type: bmc_module
+  - server_class: hh_controller
+    nic_id: inb_mgmt
+    module_type: nic_dual_25g
+  - server_class: hh_controller
+    nic_id: bmc
+    module_type: bmc_module
+
+server_connections:
+  - server_class: compute_xpu
+    connection_id: scale-out
+    connection_name: scale-out
+    nic: scale_out
+    port_index: 0
+    ports_per_connection: 8
+    hedgehog_conn_type: unbundled
+    distribution: same-switch
+    target_zone: scale_out_leaf/scale_out_server_2x400
+    speed: 400
+    port_type: data
+    transceiver_module_type: osfp_400g_dr4
+  - server_class: compute_xpu
+    connection_id: soc-storage
+    connection_name: soc-storage
+    nic: soc_storage
+    port_index: 0
+    ports_per_connection: 2
+    hedgehog_conn_type: unbundled
+    distribution: alternating
+    target_zone: soc_storage_leaf/soc_storage_server_4x200
+    speed: 200
+    port_type: data
+    transceiver_module_type: osfp_200g_dr4
+  - server_class: compute_xpu
+    connection_id: inb-mgmt
+    connection_name: inb-mgmt
+    nic: inb_mgmt
+    port_index: 0
+    ports_per_connection: 1
+    hedgehog_conn_type: unbundled
+    distribution: alternating
+    target_zone: inb_mgmt_leaf/inb_mgmt_server_25g
+    speed: 25
+    port_type: data
+  - server_class: compute_xpu
+    connection_id: oob-mgmt
+    connection_name: oob-mgmt
+    nic: bmc
+    port_index: 0
+    ports_per_connection: 1
+    hedgehog_conn_type: unbundled
+    distribution: same-switch
+    target_zone: oob_leaf/oob_server_1g
+    speed: 1
+    port_type: ipmi
+  - server_class: storage_srv
+    connection_id: soc-storage
+    connection_name: soc-storage
+    nic: soc_storage
+    port_index: 0
+    ports_per_connection: 2
+    hedgehog_conn_type: unbundled
+    distribution: alternating
+    target_zone: soc_storage_leaf/soc_storage_server_4x200
+    speed: 200
+    port_type: data
+    transceiver_module_type: osfp_200g_dr4
+  - server_class: storage_srv
+    connection_id: inb-mgmt
+    connection_name: inb-mgmt
+    nic: inb_mgmt
+    port_index: 0
+    ports_per_connection: 1
+    hedgehog_conn_type: unbundled
+    distribution: alternating
+    target_zone: inb_mgmt_leaf/inb_mgmt_server_25g
+    speed: 25
+    port_type: data
+  - server_class: storage_srv
+    connection_id: oob-mgmt
+    connection_name: oob-mgmt
+    nic: bmc
+    port_index: 0
+    ports_per_connection: 1
+    hedgehog_conn_type: unbundled
+    distribution: same-switch
+    target_zone: oob_leaf/oob_server_1g
+    speed: 1
+    port_type: ipmi
+  - server_class: metadata_srv
+    connection_id: soc-storage
+    connection_name: soc-storage
+    nic: soc_storage
+    port_index: 0
+    ports_per_connection: 2
+    hedgehog_conn_type: unbundled
+    distribution: alternating
+    target_zone: soc_storage_leaf/soc_storage_server_4x200
+    speed: 200
+    port_type: data
+    transceiver_module_type: osfp_200g_dr4
+  - server_class: metadata_srv
+    connection_id: inb-mgmt
+    connection_name: inb-mgmt
+    nic: inb_mgmt
+    port_index: 0
+    ports_per_connection: 1
+    hedgehog_conn_type: unbundled
+    distribution: alternating
+    target_zone: inb_mgmt_leaf/inb_mgmt_server_25g
+    speed: 25
+    port_type: data
+  - server_class: metadata_srv
+    connection_id: oob-mgmt
+    connection_name: oob-mgmt
+    nic: bmc
+    port_index: 0
+    ports_per_connection: 1
+    hedgehog_conn_type: unbundled
+    distribution: same-switch
+    target_zone: oob_leaf/oob_server_1g
+    speed: 1
+    port_type: ipmi
+  - server_class: hh_gateway
+    connection_id: inb-mgmt
+    connection_name: inb-mgmt
+    nic: inb_mgmt
+    port_index: 0
+    ports_per_connection: 1
+    hedgehog_conn_type: unbundled
+    distribution: alternating
+    target_zone: inb_mgmt_leaf/inb_mgmt_server_25g
+    speed: 25
+    port_type: data
+  - server_class: hh_gateway
+    connection_id: oob-mgmt
+    connection_name: oob-mgmt
+    nic: bmc
+    port_index: 0
+    ports_per_connection: 1
+    hedgehog_conn_type: unbundled
+    distribution: same-switch
+    target_zone: oob_leaf/oob_server_1g
+    speed: 1
+    port_type: ipmi
+  - server_class: hh_controller
+    connection_id: inb-mgmt
+    connection_name: inb-mgmt
+    nic: inb_mgmt
+    port_index: 0
+    ports_per_connection: 1
+    hedgehog_conn_type: unbundled
+    distribution: alternating
+    target_zone: inb_mgmt_leaf/inb_mgmt_server_25g
+    speed: 25
+    port_type: data
+  - server_class: hh_controller
+    connection_id: oob-mgmt
+    connection_name: oob-mgmt
+    nic: bmc
+    port_index: 0
+    ports_per_connection: 1
+    hedgehog_conn_type: unbundled
+    distribution: same-switch
+    target_zone: oob_leaf/oob_server_1g
+    speed: 1
+    port_type: ipmi
+
+expected:
+  counts:
+    server_classes: 5
+    switch_classes: 4
+    connections: 14
