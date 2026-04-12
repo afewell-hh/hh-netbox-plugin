@@ -4,10 +4,28 @@ Migration 0048: Seed OSFP transceiver ModuleTypes for XOC-64 (DIET-434).
 Seeds two Network Transceiver ModuleType records required before training-ra#20
 can express truthful transceiver intent for the XOC-64 topology:
 
-- OSFP-400G-DR4  — CX-7 scale-out NIC ports (server-side, 400G SMF DR4)
-- OSFP-200G-DR4  — BF3 soc-storage NIC ports (server-side, 200G SMF DR4)
+- OSFP-400G-DR4  — scale-out NIC server-side port (400G SMF DR4)
+- OSFP-200G-DR4  — soc-storage NIC server-side port (200G SMF DR4)
 
 Both use the Generic manufacturer; both carry the Network Transceiver profile.
+
+## Why OSFP (not QSFP112)
+
+XOC-64 switch zones declare OSFP 800G DR4 breakout optics:
+  - scale_out_server_2x400: brk_2x400_osfp → OSFP-800G-2x400G-DR4 (SMF)
+  - soc_storage_server_4x200: brk_4x200_osfp → OSFP-800G-4x200G-DR4 (SMF)
+
+OSFP SMF (DR4) is physically incompatible with QSFP112 MMF (SR4):
+  - cage type differs (OSFP ≠ QSFP112)
+  - medium differs (SMF ≠ MMF)
+Therefore the existing seeded BlueField-3 BF3220 (cage_type=QSFP112, medium=MMF)
+is NOT the server-side transceiver for this topology, despite the 'bf3-2x200g'
+shorthand in the XOC-64 folder name. That naming describes the server role/class;
+the DIET case file uses 'Generic xPU SoC/Storage 2x200G NIC' (OSFP-caged) as the
+actual module type. OSFP-200G-DR4 is the correct server-side optic here.
+
+## Standards basis
+
 All lane_count / host_serdes values are based on IEEE 802.3bs (400GBASE-DR4)
 and 802.3bs annex (200GBASE-DR4) conventions. Verify against vendor datasheets
 before promoting to production if exact values matter for your catalog.
@@ -38,6 +56,7 @@ def seed_osfp_transceiver_module_types(apps, schema_editor):
         return
 
     # 3. Seed OSFP-400G-DR4
+    #    Server-side optic for CX-7 scale-out NIC ports in XOC-64.
     #    IEEE 400GBASE-DR4: 4 × 100G PAM4 lanes over parallel SMF, 1310 nm,
     #    500 m reach, MPO-12 connector.
     osfp_400g, osfp_400g_created = ModuleType.objects.get_or_create(
@@ -70,9 +89,12 @@ def seed_osfp_transceiver_module_types(apps, schema_editor):
         )
 
     # 4. Seed OSFP-200G-DR4
+    #    Server-side optic for the generic OSFP-caged SoC/Storage NIC in XOC-64
+    #    ('Generic xPU SoC/Storage 2x200G NIC' in the DIET case file). This is
+    #    NOT a BF3220/QSFP112 optic — the switch zone declares OSFP-800G-4x200G-DR4
+    #    (SMF), which is physically incompatible with QSFP112/MMF.
     #    IEEE 200GBASE-DR4: 4 × 50G PAM4 lanes over parallel SMF, 1310 nm,
-    #    500 m reach, MPO-12 connector. This is the per-lane profile for a
-    #    server-side BF3 OSFP port on a 4x200G breakout from an 800G switch OSFP.
+    #    500 m reach, MPO-12 connector.
     osfp_200g, osfp_200g_created = ModuleType.objects.get_or_create(
         manufacturer=generic,
         model='OSFP-200G-DR4',

@@ -4,6 +4,14 @@ Tests for migration 0048: OSFP transceiver ModuleType seeding (DIET-434).
 Confirms that after migration runs, both OSFP records exist with the
 correct Network Transceiver profile and expected attribute_data.
 
+XOC-64 server-side intent (resolved in training-ra#20 Phase 0):
+- OSFP-400G-DR4: server-side optic for CX-7 scale-out NIC ports
+- OSFP-200G-DR4: server-side optic for the Generic OSFP SoC/Storage NIC
+  ('Generic xPU SoC/Storage 2x200G NIC' in the DIET case file)
+  NOT the BF3220/QSFP112 optic — the XOC-64 switch zone declares
+  OSFP-800G-4x200G-DR4 (SMF), which is physically incompatible with
+  QSFP112/MMF (different cage type and medium).
+
 These tests depend on the seeded data being present (via --keepdb or
 a freshly applied migration run) rather than creating test fixtures.
 """
@@ -14,7 +22,14 @@ from dcim.models import Manufacturer, ModuleType, ModuleTypeProfile
 
 
 class OSFPTransceiverSeedTestCase(TestCase):
-    """Verify both OSFP transceiver ModuleTypes are seeded correctly."""
+    """
+    Verify both OSFP transceiver ModuleTypes are seeded correctly.
+
+    These records serve the XOC-64 server-side transceiver paths:
+    - OSFP-400G-DR4: CX-7 scale-out NIC ports
+    - OSFP-200G-DR4: generic OSFP SoC/Storage NIC ports
+      (NOT BF3220/QSFP112 — see module docstring for physical rationale)
+    """
 
     def _get_generic(self):
         return Manufacturer.objects.filter(name='Generic').first()
@@ -151,7 +166,32 @@ class OSFPTransceiverSeedTestCase(TestCase):
         self.assertEqual(templates[0].name, 'port0')
 
     # ------------------------------------------------------------------
-    # T8: Both types are distinct (no model-name collision)
+    # T8: OSFP-200G-DR4 is NOT QSFP112 (documents resolved intent)
+    # ------------------------------------------------------------------
+
+    def test_osfp_200g_dr4_is_not_qsfp112(self):
+        """
+        OSFP-200G-DR4 cage_type is OSFP, not QSFP112.
+
+        Regression guard: confirms the XOC-64 soc-storage server-side optic is
+        genuinely OSFP/SMF (compatible with the switch's OSFP-800G-4x200G-DR4
+        zone), not QSFP112/MMF (which would fail the cross-end V4 cage_type check).
+        """
+        generic = self._get_generic()
+        mt = ModuleType.objects.filter(
+            manufacturer=generic, model='OSFP-200G-DR4'
+        ).first()
+        self.assertIsNotNone(mt)
+        data = mt.attribute_data or {}
+        self.assertNotEqual(data.get('cage_type'), 'QSFP112',
+                            "OSFP-200G-DR4 must not use QSFP112 cage_type")
+        self.assertNotEqual(data.get('medium'), 'MMF',
+                            "OSFP-200G-DR4 must not use MMF medium")
+        self.assertEqual(data.get('cage_type'), 'OSFP')
+        self.assertEqual(data.get('medium'), 'SMF')
+
+    # ------------------------------------------------------------------
+    # T9: Both types are distinct (no model-name collision)
     # ------------------------------------------------------------------
 
     def test_osfp_types_are_distinct(self):
