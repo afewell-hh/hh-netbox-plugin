@@ -1,6 +1,6 @@
 meta:
-  case_id: inference_opg128_clos_ro_air_2srv
-  name: Inference OPG-128 Clos RO Air 2srv
+  case_id: inference_opg128_clos_ro
+  name: Inference OPG-128 Clos RO
   description: Compute-only DIET translation for the OPG-128 rail-optimized air-cooled inference RA
   version: 1
   managed_by: yaml
@@ -212,7 +212,7 @@ reference_data:
           type: other
 
 plan:
-  name: Inference OPG-128 Clos RO Air 2srv
+  name: Inference OPG-128 Clos RO
   status: draft
   description: Compute-only DIET translation of the OPG-128 rail-optimized air-cooled training reference architecture. Non-compute endpoint counts remain intentionally excluded pending source confirmation.
 

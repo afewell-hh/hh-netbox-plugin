@@ -395,7 +395,7 @@ Suggested local fixture naming convention:
 
 Examples:
 
-- `netbox_hedgehog/test_cases/training_opg128_clos_ro_air_2srv.yaml`
+- `netbox_hedgehog/test_cases/training_opg128_clos_ro.yaml`
 - `netbox_hedgehog/test_cases/inference_opg32_minimal_fe_converged.yaml`
 
 ## Translation Worksheet Guidance

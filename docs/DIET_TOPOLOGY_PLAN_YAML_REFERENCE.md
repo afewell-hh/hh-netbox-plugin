@@ -558,8 +558,8 @@ Useful flags:
 - Current large regression case:
   - `netbox_hedgehog/test_cases/ux_case_128gpu_odd_ports.yaml`
 - Modern generated-plan cases:
-  - `netbox_hedgehog/test_cases/training_opg128_clos_ro_air_2srv.yaml`
-  - `netbox_hedgehog/test_cases/inference_opg64_clos_ro_air_2srv.yaml`
+  - `netbox_hedgehog/test_cases/training_opg128_clos_ro.yaml`
+  - `netbox_hedgehog/test_cases/inference_opg64_clos_ro.yaml`
 
 ## Important note
 

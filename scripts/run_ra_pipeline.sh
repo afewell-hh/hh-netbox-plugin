@@ -103,10 +103,15 @@ if [[ "$FE_ONLY" == "true" ]]; then
   echo "Skipped: FE-only variant, no backend wiring available." > "$ARTIFACT_DIR/hhfab/hhfab_validate.log"
 elif [[ -n "$LIQUID_CLONE_OF" ]] && [[ -d "$LIQUID_CLONE_OF" ]]; then
   echo "Liquid clone of ${LIQUID_CLONE_OF}. Topology identical to air variant." > "$ARTIFACT_DIR/hhfab/hhfab_validate.log"
-  # Copy air variant's hhfab output if available
+  # Copy air variant's hhfab output (diagrams + per-fabric validate logs) if available.
+  # Per-fabric validate logs are required by publish_ra_assets.sh (hhfab_validate_*.log pattern).
   if ls "${LIQUID_CLONE_OF}"/hhfab/*.drawio 2>/dev/null | head -1 > /dev/null; then
     cp "${LIQUID_CLONE_OF}"/hhfab/*.drawio "$ARTIFACT_DIR/hhfab/" 2>/dev/null || true
     echo "(Diagrams copied from air variant; topology identical.)" >> "$ARTIFACT_DIR/hhfab/hhfab_validate.log"
+  fi
+  if ls "${LIQUID_CLONE_OF}"/hhfab/hhfab_validate_*.log 2>/dev/null | head -1 > /dev/null; then
+    cp "${LIQUID_CLONE_OF}"/hhfab/hhfab_validate_*.log "$ARTIFACT_DIR/hhfab/" 2>/dev/null || true
+    echo "(Per-fabric validate logs copied from air variant; topology identical.)" >> "$ARTIFACT_DIR/hhfab/hhfab_validate.log"
   fi
 else
   WIRING_FILES_LIST=$(find "$ARTIFACT_DIR/wiring/" -name "wiring-backend*.yaml" -o -name "wiring-backend-plane*.yaml" 2>/dev/null | sort)
@@ -171,7 +176,14 @@ count. Per-OPG-unit composition semantics are not modeled in DIET pass-1.
 
 NOTES_EOF
 
-# 8. Publish to RA repo
+# 8. FK verification (before reset)
+echo "[fk-check] Verifying transceiver_module_type FKs on PlanServerConnection..."
+FK_QUERY="from netbox_hedgehog.models.topology_planning import PlanServerConnection; conns = PlanServerConnection.objects.filter(server_class__plan_id=${PLAN_ID}); total = conns.count(); non_null = conns.exclude(transceiver_module_type=None).count(); print(f'total={total} non_null_transceiver_fk={non_null}')"
+FK_RESULT=$(SHELL_QUERY "$FK_QUERY" 2>/dev/null || echo "fk-check-failed")
+echo "  FK result: $FK_RESULT"
+echo "$FK_RESULT" > "$ARTIFACT_DIR/logs/fk_verification.txt"
+
+# 8b. Publish to RA repo
 echo "[7/7] Publishing to $COMPOSITION_DIR ..."
 "${PLUGIN_DIR}/scripts/publish_ra_assets.sh" \
   --artifact-root "$ARTIFACT_DIR" \

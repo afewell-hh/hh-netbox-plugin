@@ -1,14 +1,13 @@
 meta:
-  case_id: training_opg512_clos_ro_air_2srv
-  name: Training OPG-512 Clos RO Air 2srv
-  description: Compute-only DIET translation for the OPG-512 rail-optimized air-cooled training RA
+  case_id: training_opg64_clos_ro
+  name: Training OPG-64 Clos RO
+  description: Compute-only DIET translation for the OPG-64 rail-optimized air-cooled training RA
   version: 1
   managed_by: yaml
   tags:
-    - opg256
     - reference-architecture
     - training
-
+    - opg128
     - clos-ro
     - pilot
 
@@ -160,8 +159,8 @@ reference_data:
           type: 800gbase-x-osfp
     - id: gpu_server_fe_be
       manufacturer: generic
-      model: OPG-512 Compute Server FE-BE
-      slug: opg512-compute-server-fe-be
+      model: OPG-64 Compute Server FE-BE
+      slug: opg64-compute-server-fe-be
       u_height: 2
       is_full_depth: true
 
@@ -174,7 +173,7 @@ reference_data:
       native_speed: 800
       uplink_ports: 32
       hedgehog_profile_name: celestica-ds5000
-      notes: DS5000 profile for OPG-512 rail-optimized
+      notes: DS5000 profile for OPG-64 rail-optimized
 
   breakout_options:
     - id: b_1x800
@@ -213,9 +212,9 @@ reference_data:
           type: other
 
 plan:
-  name: Training OPG-512 Clos RO Air 2srv
+  name: Training OPG-64 Clos RO
   status: draft
-  description: Compute-only DIET translation of the OPG-512 rail-optimized air-cooled training reference architecture. Non-compute endpoint counts remain intentionally excluded pending source confirmation.
+  description: Compute-only DIET translation of the OPG-64 rail-optimized air-cooled training reference architecture. Non-compute endpoint counts remain intentionally excluded pending source confirmation.
 
 switch_classes:
   - switch_class_id: fe-leaf
@@ -293,9 +292,9 @@ switch_port_zones:
 
 server_classes:
   - server_class_id: compute
-    description: 64 training compute servers, 8 xPUs each
+    description: 8 training compute servers, 8 xPUs each
     category: gpu
-    quantity: 64
+    quantity: 8
     gpus_per_server: 8
     server_device_type: gpu_server_fe_be
 

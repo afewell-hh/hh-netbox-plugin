@@ -1,7 +1,7 @@
 meta:
-  case_id: training_xoc64_1xopg64_mesh_conv_sh_air_2srv
-  name: Training XOC-64 1x OPG-64 Mesh Converged SH Air 2srv
-  description: XOC-64 composition built from one OPG-64 mesh-converged training building block with single-homed scale-out
+  case_id: training_xoc64_1xopg64_mesh_conv_ro
+  name: Training XOC-64 1x OPG-64 Mesh Converged RO
+  description: XOC-64 composition built from one OPG-64 mesh-converged training building block with rail-optimized scale-out on a shared SoC/storage/scale-out DS5000 mesh pair
   version: 1
   managed_by: yaml
   tags:
@@ -11,7 +11,7 @@ meta:
     - 1x-opg64
     - mesh
     - converged
-    - single-homed
+    - rail-optimized
 
 reference_data:
   manufacturers:
@@ -300,7 +300,7 @@ reference_data:
       is_full_depth: false
 
   device_type_extensions:
-    - id: sw_ds5000_scale_out_ext
+    - id: sw_ds5000_soc_storage_scale_out_ext
       device_type: sw_ds5000_leaf_dt
       mclag_capable: false
       hedgehog_roles: [server-leaf]
@@ -308,16 +308,7 @@ reference_data:
       native_speed: 800
       uplink_ports: 32
       hedgehog_profile_name: celestica-ds5000
-      notes: Scale-out mesh leaf pair for the XOC-64 composed OPG-64 topology.
-    - id: sw_ds5000_soc_storage_ext
-      device_type: sw_ds5000_leaf_dt
-      mclag_capable: false
-      hedgehog_roles: [server-leaf]
-      supported_breakouts: [1x800g, 2x400g, 4x200g, 8x100g]
-      native_speed: 800
-      uplink_ports: 32
-      hedgehog_profile_name: celestica-ds5000
-      notes: SoC and storage mesh leaf pair for the XOC-64 composed OPG-64 topology.
+      notes: Shared SoC/storage/scale-out mesh leaf pair for the XOC-64 composed OPG-64 topology.
     - id: sw_ds2000_inb_ext
       device_type: sw_ds2000_inb_dt
       mclag_capable: false
@@ -431,32 +422,21 @@ reference_data:
       model: OSFP-200G-DR4
 
 plan:
-  name: Training XOC-64 1x OPG-64 Mesh Converged SH Air 2srv
+  name: Training XOC-64 1x OPG-64 Mesh Converged RO
   status: draft
   description: >
     XOC-64 composition of one OPG-64 training building block. Scale-out and
-    soc-storage are explicit two-leaf mesh fabrics. In-band management uses a
-    DS2000 pair and a generic 2x25GbE NIC on every server class; only one port
-    from that NIC is connected. OOB uses a DS1000 pair with explicit interface
-    templates including the management port. Intended grouped single-homed
-    behavior depends on hh-netbox-plugin issue #322.
+    soc-storage share one explicit two-leaf DS5000 mesh fabric. In-band
+    management uses a DS2000 pair and a generic 2x25GbE NIC on every server
+    class; only one port from that NIC is connected. OOB uses a DS1000 pair
+    with explicit interface templates including the management port.
 
 switch_classes:
-  - switch_class_id: scale_out_leaf
-    fabric_name: scale-out
+  - switch_class_id: soc_storage_scale_out_leaf
+    fabric_name: soc-storage-scale-out
     fabric_class: managed
     hedgehog_role: server-leaf
-    device_type_extension: sw_ds5000_scale_out_ext
-    topology_mode: mesh
-    override_quantity: 2
-    uplink_ports_per_switch: 32
-    mclag_pair: false
-    notes: Intended grouped-per-leaf single-homed semantics depend on hh-netbox-plugin issue #322.
-  - switch_class_id: soc_storage_leaf
-    fabric_name: soc-storage
-    fabric_class: managed
-    hedgehog_role: server-leaf
-    device_type_extension: sw_ds5000_soc_storage_ext
+    device_type_extension: sw_ds5000_soc_storage_scale_out_ext
     topology_mode: mesh
     override_quantity: 2
     uplink_ports_per_switch: 32
@@ -466,7 +446,6 @@ switch_classes:
     fabric_class: managed
     hedgehog_role: server-leaf
     device_type_extension: sw_ds2000_inb_ext
-    override_quantity: 2
     uplink_ports_per_switch: 8
     mclag_pair: false
   - switch_class_id: oob_leaf
@@ -474,53 +453,38 @@ switch_classes:
     fabric_class: unmanaged
     hedgehog_role: server-leaf
     device_type_extension: sw_ds1000_oob_ext
-    override_quantity: 2
     uplink_ports_per_switch: 8
     mclag_pair: false
 
 switch_port_zones:
-  - switch_class: scale_out_leaf
-    zone_name: scale_out_uplink_800
+  - switch_class: soc_storage_scale_out_leaf
+    zone_name: soc_storage_scale_out_uplink_800
     zone_type: uplink
     port_spec: 26,28,30,32,34,36,38-63
     breakout_option: b_1x800
     allocation_strategy: sequential
     priority: 10
-  - switch_class: scale_out_leaf
+  - switch_class: soc_storage_scale_out_leaf
     zone_name: scale_out_server_2x400
     zone_type: server
     port_spec: 1-16
     breakout_option: brk_2x400_osfp
     allocation_strategy: sequential
     priority: 20
-  - switch_class: scale_out_leaf
-    zone_name: scale_out_mesh_800
-    zone_type: mesh
-    port_spec: 26,28
-    breakout_option: b_1x800
-    allocation_strategy: sequential
-    priority: 30
-  - switch_class: soc_storage_leaf
-    zone_name: soc_storage_uplink_800
-    zone_type: uplink
-    port_spec: 26,28,30,32,34,36,38-63
-    breakout_option: b_1x800
-    allocation_strategy: sequential
-    priority: 10
-  - switch_class: soc_storage_leaf
+  - switch_class: soc_storage_scale_out_leaf
     zone_name: soc_storage_server_4x200
     zone_type: server
     port_spec: 27,29,31,33,35,37
     breakout_option: brk_4x200_osfp
     allocation_strategy: sequential
-    priority: 20
-  - switch_class: soc_storage_leaf
-    zone_name: soc_storage_mesh_800
+    priority: 30
+  - switch_class: soc_storage_scale_out_leaf
+    zone_name: soc_storage_scale_out_mesh_800
     zone_type: mesh
     port_spec: 26,28
     breakout_option: b_1x800
     allocation_strategy: sequential
-    priority: 30
+    priority: 40
   - switch_class: inb_mgmt_leaf
     zone_name: inb_mgmt_server_25g
     zone_type: server
@@ -621,15 +585,107 @@ server_nics:
 
 server_connections:
   - server_class: compute_xpu
-    connection_id: scale-out
+    connection_id: scale-out-rail-0
     connection_name: scale-out
     nic: scale_out
     port_index: 0
-    ports_per_connection: 8
+    ports_per_connection: 1
     hedgehog_conn_type: unbundled
-    distribution: same-switch
-    target_zone: scale_out_leaf/scale_out_server_2x400
+    distribution: rail-optimized
+    target_zone: soc_storage_scale_out_leaf/scale_out_server_2x400
     speed: 400
+    rail: 0
+    port_type: data
+    transceiver_module_type: osfp_400g_dr4
+  - server_class: compute_xpu
+    connection_id: scale-out-rail-1
+    connection_name: scale-out
+    nic: scale_out
+    port_index: 1
+    ports_per_connection: 1
+    hedgehog_conn_type: unbundled
+    distribution: rail-optimized
+    target_zone: soc_storage_scale_out_leaf/scale_out_server_2x400
+    speed: 400
+    rail: 1
+    port_type: data
+    transceiver_module_type: osfp_400g_dr4
+  - server_class: compute_xpu
+    connection_id: scale-out-rail-2
+    connection_name: scale-out
+    nic: scale_out
+    port_index: 2
+    ports_per_connection: 1
+    hedgehog_conn_type: unbundled
+    distribution: rail-optimized
+    target_zone: soc_storage_scale_out_leaf/scale_out_server_2x400
+    speed: 400
+    rail: 2
+    port_type: data
+    transceiver_module_type: osfp_400g_dr4
+  - server_class: compute_xpu
+    connection_id: scale-out-rail-3
+    connection_name: scale-out
+    nic: scale_out
+    port_index: 3
+    ports_per_connection: 1
+    hedgehog_conn_type: unbundled
+    distribution: rail-optimized
+    target_zone: soc_storage_scale_out_leaf/scale_out_server_2x400
+    speed: 400
+    rail: 3
+    port_type: data
+    transceiver_module_type: osfp_400g_dr4
+  - server_class: compute_xpu
+    connection_id: scale-out-rail-4
+    connection_name: scale-out
+    nic: scale_out
+    port_index: 4
+    ports_per_connection: 1
+    hedgehog_conn_type: unbundled
+    distribution: rail-optimized
+    target_zone: soc_storage_scale_out_leaf/scale_out_server_2x400
+    speed: 400
+    rail: 4
+    port_type: data
+    transceiver_module_type: osfp_400g_dr4
+  - server_class: compute_xpu
+    connection_id: scale-out-rail-5
+    connection_name: scale-out
+    nic: scale_out
+    port_index: 5
+    ports_per_connection: 1
+    hedgehog_conn_type: unbundled
+    distribution: rail-optimized
+    target_zone: soc_storage_scale_out_leaf/scale_out_server_2x400
+    speed: 400
+    rail: 5
+    port_type: data
+    transceiver_module_type: osfp_400g_dr4
+  - server_class: compute_xpu
+    connection_id: scale-out-rail-6
+    connection_name: scale-out
+    nic: scale_out
+    port_index: 6
+    ports_per_connection: 1
+    hedgehog_conn_type: unbundled
+    distribution: rail-optimized
+    target_zone: soc_storage_scale_out_leaf/scale_out_server_2x400
+    speed: 400
+    rail: 6
+    port_type: data
+    transceiver_module_type: osfp_400g_dr4
+  - server_class: compute_xpu
+    connection_id: scale-out-rail-7
+    connection_name: scale-out
+    nic: scale_out
+    port_index: 7
+    ports_per_connection: 1
+    hedgehog_conn_type: unbundled
+    distribution: rail-optimized
+    target_zone: soc_storage_scale_out_leaf/scale_out_server_2x400
+    speed: 400
+    rail: 7
     port_type: data
     transceiver_module_type: osfp_400g_dr4
   - server_class: compute_xpu
@@ -639,8 +695,8 @@ server_connections:
     port_index: 0
     ports_per_connection: 2
     hedgehog_conn_type: unbundled
-    distribution: alternating
-    target_zone: soc_storage_leaf/soc_storage_server_4x200
+    distribution: same-switch
+    target_zone: soc_storage_scale_out_leaf/soc_storage_server_4x200
     speed: 200
     port_type: data
     transceiver_module_type: osfp_200g_dr4
@@ -651,7 +707,7 @@ server_connections:
     port_index: 0
     ports_per_connection: 1
     hedgehog_conn_type: unbundled
-    distribution: alternating
+    distribution: same-switch
     target_zone: inb_mgmt_leaf/inb_mgmt_server_25g
     speed: 25
     port_type: data
@@ -673,8 +729,8 @@ server_connections:
     port_index: 0
     ports_per_connection: 2
     hedgehog_conn_type: unbundled
-    distribution: alternating
-    target_zone: soc_storage_leaf/soc_storage_server_4x200
+    distribution: same-switch
+    target_zone: soc_storage_scale_out_leaf/soc_storage_server_4x200
     speed: 200
     port_type: data
     transceiver_module_type: osfp_200g_dr4
@@ -685,7 +741,7 @@ server_connections:
     port_index: 0
     ports_per_connection: 1
     hedgehog_conn_type: unbundled
-    distribution: alternating
+    distribution: same-switch
     target_zone: inb_mgmt_leaf/inb_mgmt_server_25g
     speed: 25
     port_type: data
@@ -707,8 +763,8 @@ server_connections:
     port_index: 0
     ports_per_connection: 2
     hedgehog_conn_type: unbundled
-    distribution: alternating
-    target_zone: soc_storage_leaf/soc_storage_server_4x200
+    distribution: same-switch
+    target_zone: soc_storage_scale_out_leaf/soc_storage_server_4x200
     speed: 200
     port_type: data
     transceiver_module_type: osfp_200g_dr4
@@ -719,7 +775,7 @@ server_connections:
     port_index: 0
     ports_per_connection: 1
     hedgehog_conn_type: unbundled
-    distribution: alternating
+    distribution: same-switch
     target_zone: inb_mgmt_leaf/inb_mgmt_server_25g
     speed: 25
     port_type: data
@@ -741,7 +797,7 @@ server_connections:
     port_index: 0
     ports_per_connection: 1
     hedgehog_conn_type: unbundled
-    distribution: alternating
+    distribution: same-switch
     target_zone: inb_mgmt_leaf/inb_mgmt_server_25g
     speed: 25
     port_type: data
@@ -763,7 +819,7 @@ server_connections:
     port_index: 0
     ports_per_connection: 1
     hedgehog_conn_type: unbundled
-    distribution: alternating
+    distribution: same-switch
     target_zone: inb_mgmt_leaf/inb_mgmt_server_25g
     speed: 25
     port_type: data
@@ -782,5 +838,5 @@ server_connections:
 expected:
   counts:
     server_classes: 5
-    switch_classes: 4
-    connections: 14
+    switch_classes: 3
+    connections: 21
