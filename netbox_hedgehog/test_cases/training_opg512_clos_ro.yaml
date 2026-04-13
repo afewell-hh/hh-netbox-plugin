@@ -1,14 +1,16 @@
 meta:
-  case_id: training_xoc512_4xopg128_clos_sh_air_2srv
-  name: Training XOC-512 4x OPG-128 Clos SH Air 2srv
-  description: Compute-only DIET translation for the XOC-512 (4x OPG-128) single-homed air-cooled training RA
+  case_id: training_opg512_clos_ro
+  name: Training OPG-512 Clos RO
+  description: Compute-only DIET translation for the OPG-512 rail-optimized air-cooled training RA
   version: 1
   managed_by: yaml
   tags:
+    - opg256
     - reference-architecture
     - training
-    - opg128
-    - clos-sh
+
+    - clos-ro
+    - pilot
 
 reference_data:
   manufacturers:
@@ -158,8 +160,8 @@ reference_data:
           type: 800gbase-x-osfp
     - id: gpu_server_fe_be
       manufacturer: generic
-      model: OPG-256 Compute Server FE-BE
-      slug: opg256-compute-server-fe-be
+      model: OPG-512 Compute Server FE-BE
+      slug: opg512-compute-server-fe-be
       u_height: 2
       is_full_depth: true
 
@@ -172,7 +174,7 @@ reference_data:
       native_speed: 800
       uplink_ports: 32
       hedgehog_profile_name: celestica-ds5000
-      notes: DS5000 profile for OPG-128 single-homed pilot
+      notes: DS5000 profile for OPG-512 rail-optimized
 
   breakout_options:
     - id: b_1x800
@@ -211,12 +213,9 @@ reference_data:
           type: other
 
 plan:
-  name: Training XOC-512 4x OPG-128 Clos SH Air 2srv
+  name: Training OPG-512 Clos RO
   status: draft
-  description: >
-    Compute-only DIET translation of the XOC-512 (4x OPG-128) single-homed air-cooled training reference
-    architecture. Backend servers are single-homed (8 servers per leaf). Frontend is L3MH.
-    Non-compute endpoint counts excluded pending source confirmation.
+  description: Compute-only DIET translation of the OPG-512 rail-optimized air-cooled training reference architecture. Non-compute endpoint counts remain intentionally excluded pending source confirmation.
 
 switch_classes:
   - switch_class_id: fe-leaf
@@ -234,7 +233,7 @@ switch_classes:
     device_type_extension: ds5000_ext
     uplink_ports_per_switch: 0
     mclag_pair: false
-  - switch_class_id: be-leaf
+  - switch_class_id: be-rail-leaf
     fabric_name: backend
     fabric_class: managed
     hedgehog_role: server-leaf
@@ -270,14 +269,14 @@ switch_port_zones:
     breakout_option: b_1x800
     allocation_strategy: sequential
     priority: 10
-  - switch_class: be-leaf
+  - switch_class: be-rail-leaf
     zone_name: be-server-ports
     zone_type: server
     port_spec: 1-32
     breakout_option: b_2x400
     allocation_strategy: sequential
     priority: 10
-  - switch_class: be-leaf
+  - switch_class: be-rail-leaf
     zone_name: be-uplinks
     zone_type: uplink
     port_spec: 33-64
@@ -342,98 +341,98 @@ server_connections:
     speed: 200
     port_type: data
   - server_class: compute
-    connection_id: be-0
-    connection_name: backend-0
+    connection_id: be-rail-0
+    connection_name: backend-rail-0
     nic: be0
     port_index: 0
     ports_per_connection: 1
     hedgehog_conn_type: unbundled
     distribution: rail-optimized
-    target_zone: be-leaf/be-server-ports
+    target_zone: be-rail-leaf/be-server-ports
     speed: 400
     rail: 0
     port_type: data
   - server_class: compute
-    connection_id: be-1
-    connection_name: backend-1
+    connection_id: be-rail-1
+    connection_name: backend-rail-1
     nic: be1
     port_index: 0
     ports_per_connection: 1
     hedgehog_conn_type: unbundled
     distribution: rail-optimized
-    target_zone: be-leaf/be-server-ports
+    target_zone: be-rail-leaf/be-server-ports
     speed: 400
     rail: 1
     port_type: data
   - server_class: compute
-    connection_id: be-2
-    connection_name: backend-2
+    connection_id: be-rail-2
+    connection_name: backend-rail-2
     nic: be2
     port_index: 0
     ports_per_connection: 1
     hedgehog_conn_type: unbundled
     distribution: rail-optimized
-    target_zone: be-leaf/be-server-ports
+    target_zone: be-rail-leaf/be-server-ports
     speed: 400
     rail: 2
     port_type: data
   - server_class: compute
-    connection_id: be-3
-    connection_name: backend-3
+    connection_id: be-rail-3
+    connection_name: backend-rail-3
     nic: be3
     port_index: 0
     ports_per_connection: 1
     hedgehog_conn_type: unbundled
     distribution: rail-optimized
-    target_zone: be-leaf/be-server-ports
+    target_zone: be-rail-leaf/be-server-ports
     speed: 400
     rail: 3
     port_type: data
   - server_class: compute
-    connection_id: be-4
-    connection_name: backend-4
+    connection_id: be-rail-4
+    connection_name: backend-rail-4
     nic: be4
     port_index: 0
     ports_per_connection: 1
     hedgehog_conn_type: unbundled
     distribution: rail-optimized
-    target_zone: be-leaf/be-server-ports
+    target_zone: be-rail-leaf/be-server-ports
     speed: 400
     rail: 4
     port_type: data
   - server_class: compute
-    connection_id: be-5
-    connection_name: backend-5
+    connection_id: be-rail-5
+    connection_name: backend-rail-5
     nic: be5
     port_index: 0
     ports_per_connection: 1
     hedgehog_conn_type: unbundled
     distribution: rail-optimized
-    target_zone: be-leaf/be-server-ports
+    target_zone: be-rail-leaf/be-server-ports
     speed: 400
     rail: 5
     port_type: data
   - server_class: compute
-    connection_id: be-6
-    connection_name: backend-6
+    connection_id: be-rail-6
+    connection_name: backend-rail-6
     nic: be6
     port_index: 0
     ports_per_connection: 1
     hedgehog_conn_type: unbundled
     distribution: rail-optimized
-    target_zone: be-leaf/be-server-ports
+    target_zone: be-rail-leaf/be-server-ports
     speed: 400
     rail: 6
     port_type: data
   - server_class: compute
-    connection_id: be-7
-    connection_name: backend-7
+    connection_id: be-rail-7
+    connection_name: backend-rail-7
     nic: be7
     port_index: 0
     ports_per_connection: 1
     hedgehog_conn_type: unbundled
     distribution: rail-optimized
-    target_zone: be-leaf/be-server-ports
+    target_zone: be-rail-leaf/be-server-ports
     speed: 400
     rail: 7
     port_type: data

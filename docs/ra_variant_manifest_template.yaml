@@ -12,9 +12,9 @@ archetype: single-fabric-clos-ro
 expected_managed_fabrics:
   - frontend
   - backend
-topology_plan_name: RA Training OPG-128 CLOS RO Air 2srv
+topology_plan_name: RA Training OPG-128 CLOS RO
 topology_plan_yaml: artifacts/training/OPG-128/clos-ro--cx7-1x400g--bf3-2x200g--storage-conv-2x200g--cooling-air--dens-2srv/inputs/topology-plan.yaml
-local_test_case_yaml: netbox_hedgehog/test_cases/training_opg128_clos_ro_air_2srv.yaml
+local_test_case_yaml: netbox_hedgehog/test_cases/training_opg128_clos_ro.yaml
 asset_root: artifacts/training/OPG-128/clos-ro--cx7-1x400g--bf3-2x200g--storage-conv-2x200g--cooling-air--dens-2srv
 status: catalogued
 owner: dev-a

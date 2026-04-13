@@ -31,7 +31,7 @@ variants:
       - frontend
       - backend
     fabric_expectation_confidence: provisional
-    topology_plan_name: RA Training OPG-64 CLOS RO Air 2srv
+    topology_plan_name: RA Training OPG-64 CLOS RO
     asset_root: artifacts/training/OPG-64/clos-ro--cx7-1x400g--bf3-2x200g--storage-conv-2x200g--cooling-air--dens-2srv
     status: sources-reviewed
     owner: dev-a
@@ -76,7 +76,7 @@ variants:
       - frontend
       - backend
     fabric_expectation_confidence: provisional
-    topology_plan_name: RA Training OPG-128 CLOS RO Air 2srv
+    topology_plan_name: RA Training OPG-128 CLOS RO
     asset_root: artifacts/training/OPG-128/clos-ro--cx7-1x400g--bf3-2x200g--storage-conv-2x200g--cooling-air--dens-2srv
     status: catalogued
     owner: dev-a
@@ -123,7 +123,7 @@ variants:
       - frontend
       - backend
     fabric_expectation_confidence: provisional
-    topology_plan_name: RA Training OPG-128 CLOS SH Air 2srv
+    topology_plan_name: RA Training OPG-128 CLOS SH
     asset_root: artifacts/training/OPG-128/clos-sh--cx7-1x400g--bf3-2x200g--storage-conv-2x200g--cooling-air--dens-2srv
     status: catalogued
     owner: dev-a
@@ -169,7 +169,7 @@ variants:
       - frontend
       - backend
     fabric_expectation_confidence: provisional
-    topology_plan_name: RA Training OPG-256 CLOS RO Air 2srv
+    topology_plan_name: RA Training OPG-256 CLOS RO
     asset_root: artifacts/training/OPG-256/clos-ro--cx7-1x400g--bf3-2x200g--storage-conv-2x200g--cooling-air--dens-2srv
     status: catalogued
     owner: dev-a
@@ -216,7 +216,7 @@ variants:
       - frontend-plane-b
       - backend
     fabric_expectation_confidence: provisional
-    topology_plan_name: RA Training OPG-256 Dual Plane Air 2srv
+    topology_plan_name: RA Training OPG-256 Dual Plane
     asset_root: artifacts/training/OPG-256/dual-plane--cx8-2x400g--bf3-2x200g--2p--storage-conv-2x200g--cooling-air--dens-2srv
     status: sources-reviewed
     owner: dev-a
@@ -264,7 +264,7 @@ variants:
       - frontend
       - backend
     fabric_expectation_confidence: provisional
-    topology_plan_name: RA Training OPG-512 CLOS RO Air 2srv
+    topology_plan_name: RA Training OPG-512 CLOS RO
     asset_root: artifacts/training/OPG-512/clos-ro--cx7-1x400g--bf3-2x200g--storage-conv-2x200g--cooling-air--dens-2srv
     status: catalogued
     owner: dev-a
@@ -311,7 +311,7 @@ variants:
       - frontend-plane-b
       - backend
     fabric_expectation_confidence: provisional
-    topology_plan_name: RA Training OPG-512 Dual Plane Air 2srv
+    topology_plan_name: RA Training OPG-512 Dual Plane
     asset_root: artifacts/training/OPG-512/dual-plane--cx8-2x400g--bf3-2x200g--2p--storage-conv-2x200g--cooling-air--dens-2srv
     status: catalogued
     owner: dev-a
@@ -358,7 +358,7 @@ variants:
       - frontend
       - backend
     fabric_expectation_confidence: provisional
-    topology_plan_name: RA Training XOC-256 2x OPG-128 CLOS RO Air 2srv
+    topology_plan_name: RA Training XOC-256 2x OPG-128 CLOS RO
     asset_root: artifacts/training/XOC-256/2x-OPG-128/clos-ro--cx7-1x400g--bf3-2x200g--storage-conv-2x200g--cooling-air--dens-2srv
     status: catalogued
     owner: dev-a
@@ -404,7 +404,7 @@ variants:
       - frontend
       - backend
     fabric_expectation_confidence: provisional
-    topology_plan_name: RA Training XOC-256 2x OPG-128 CLOS SH Air 2srv
+    topology_plan_name: RA Training XOC-256 2x OPG-128 CLOS SH
     asset_root: artifacts/training/XOC-256/2x-OPG-128/clos-sh--cx7-1x400g--bf3-2x200g--storage-conv-2x200g--cooling-air--dens-2srv
     status: catalogued
     owner: dev-a
@@ -450,7 +450,7 @@ variants:
       - frontend
       - backend
     fabric_expectation_confidence: provisional
-    topology_plan_name: RA Training XOC-512 1x OPG-512 CLOS RO Air 2srv
+    topology_plan_name: RA Training XOC-512 1x OPG-512 CLOS RO
     asset_root: artifacts/training/XOC-512/1x-OPG-512/clos-ro--cx7-1x400g--bf3-2x200g--storage-conv-2x200g--cooling-air--dens-2srv
     status: catalogued
     owner: dev-a
@@ -497,7 +497,7 @@ variants:
       - frontend-plane-b
       - backend
     fabric_expectation_confidence: provisional
-    topology_plan_name: RA Training XOC-512 1x OPG-512 Dual Plane Air 2srv
+    topology_plan_name: RA Training XOC-512 1x OPG-512 Dual Plane
     asset_root: artifacts/training/XOC-512/1x-OPG-512/dual-plane--cx8-2x400g--bf3-2x200g--2p--storage-conv-2x200g--cooling-air--dens-2srv
     status: sources-reviewed
     owner: dev-a
@@ -545,7 +545,7 @@ variants:
       - frontend
       - backend
     fabric_expectation_confidence: provisional
-    topology_plan_name: RA Training XOC-512 4x OPG-128 CLOS RO Air 2srv
+    topology_plan_name: RA Training XOC-512 4x OPG-128 CLOS RO
     asset_root: artifacts/training/XOC-512/4x-OPG-128/clos-ro--cx7-1x400g--bf3-2x200g--storage-conv-2x200g--cooling-air--dens-2srv
     status: catalogued
     owner: dev-a
@@ -591,7 +591,7 @@ variants:
       - frontend
       - backend
     fabric_expectation_confidence: provisional
-    topology_plan_name: RA Training XOC-512 4x OPG-128 CLOS SH Air 2srv
+    topology_plan_name: RA Training XOC-512 4x OPG-128 CLOS SH
     asset_root: artifacts/training/XOC-512/4x-OPG-128/clos-sh--cx7-1x400g--bf3-2x200g--storage-conv-2x200g--cooling-air--dens-2srv
     status: catalogued
     owner: dev-a
@@ -637,7 +637,7 @@ variants:
       - frontend
       - backend
     fabric_expectation_confidence: provisional
-    topology_plan_name: RA Training XOC-1024 2x OPG-512 CLOS RO Air 2srv
+    topology_plan_name: RA Training XOC-1024 2x OPG-512 CLOS RO
     asset_root: artifacts/training/XOC-1024/2x-OPG-512/clos-ro--cx7-1x400g--bf3-2x200g--storage-conv-2x200g--cooling-air--dens-2srv
     status: catalogued
     owner: dev-a
@@ -684,7 +684,7 @@ variants:
       - frontend-plane-b
       - backend
     fabric_expectation_confidence: provisional
-    topology_plan_name: RA Training XOC-1024 2x OPG-512 Dual Plane Air 2srv
+    topology_plan_name: RA Training XOC-1024 2x OPG-512 Dual Plane
     asset_root: artifacts/training/XOC-1024/2x-OPG-512/dual-plane--cx8-2x400g--bf3-2x200g--2p--storage-conv-2x200g--cooling-air--dens-2srv
     status: catalogued
     owner: dev-a
@@ -776,7 +776,7 @@ variants:
       - frontend
       - backend
     fabric_expectation_confidence: provisional
-    topology_plan_name: RA Inference OPG-64 CLOS RO Air 2srv
+    topology_plan_name: RA Inference OPG-64 CLOS RO
     asset_root: artifacts/inference/OPG-64/clos-ro--cx7-1x400g--bf3-2x200g--storage-conv-2x200g--cooling-air--dens-2srv
     status: catalogued
     owner: dev-a
@@ -821,7 +821,7 @@ variants:
       - frontend
       - backend
     fabric_expectation_confidence: provisional
-    topology_plan_name: RA Inference OPG-128 CLOS RO Air 2srv
+    topology_plan_name: RA Inference OPG-128 CLOS RO
     asset_root: artifacts/inference/OPG-128/clos-ro--cx7-1x400g--bf3-2x200g--storage-conv-2x200g--cooling-air--dens-2srv
     status: catalogued
     owner: dev-a

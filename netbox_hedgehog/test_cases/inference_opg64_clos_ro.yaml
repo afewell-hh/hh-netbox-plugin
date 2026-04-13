@@ -1,14 +1,15 @@
 meta:
-  case_id: training_opg256_dual_plane_air_2srv
-  name: Training OPG-256 Dual Plane Air 2srv
-  description: Compute-only DIET translation for the OPG-256 dual-plane air-cooled training RA
+  case_id: inference_opg64_clos_ro
+  name: Inference OPG-64 Clos RO
+  description: Compute-only DIET translation for the OPG-64 rail-optimized air-cooled inference RA
   version: 1
   managed_by: yaml
   tags:
     - reference-architecture
-    - training
-    - opg256
-    - dual-plane
+    - inference
+    - opg128
+    - clos-ro
+    - pilot
 
 reference_data:
   manufacturers:
@@ -156,10 +157,10 @@ reference_data:
           type: 800gbase-x-osfp
         - name: E1/64
           type: 800gbase-x-osfp
-    - id: gpu_server_dual_plane
+    - id: gpu_server_fe_be
       manufacturer: generic
-      model: OPG-256 Compute Server Dual Plane
-      slug: opg256-compute-server-dual-plane
+      model: OPG-64 Compute Server FE-BE
+      slug: opg64-compute-server-fe-be
       u_height: 2
       is_full_depth: true
 
@@ -172,7 +173,7 @@ reference_data:
       native_speed: 800
       uplink_ports: 32
       hedgehog_profile_name: celestica-ds5000
-      notes: DS5000 profile for OPG-256 dual-plane
+      notes: DS5000 profile for OPG-64 rail-optimized
 
   breakout_options:
     - id: b_1x800
@@ -203,23 +204,17 @@ reference_data:
           type: other
         - name: p1
           type: other
-    - id: nic_cx8_dual_400
+    - id: nic_cx7_single_400
       manufacturer: nvidia
-      model: ConnectX-8 Dual-Port 400G
+      model: ConnectX-7 Single-Port 400G
       interface_templates:
         - name: port0
           type: other
-        - name: port1
-          type: other
 
 plan:
-  name: Training OPG-256 Dual Plane Air 2srv
+  name: Inference OPG-64 Clos RO
   status: draft
-  description: >
-    Compute-only DIET translation of the OPG-256 dual-plane air-cooled training reference
-    architecture. Two independent backend fabrics (plane-a, plane-b) with CX8 2x400G per
-    GPU: port-0 to plane-a, port-1 to plane-b. Frontend is L3MH with BF3 2x200G.
-    Non-compute endpoint counts excluded pending source confirmation.
+  description: Compute-only DIET translation of the OPG-64 rail-optimized air-cooled training reference architecture. Non-compute endpoint counts remain intentionally excluded pending source confirmation.
 
 switch_classes:
   - switch_class_id: fe-leaf
@@ -237,27 +232,14 @@ switch_classes:
     device_type_extension: ds5000_ext
     uplink_ports_per_switch: 0
     mclag_pair: false
-  - switch_class_id: be-plane-a-leaf
-    fabric_name: backend-plane-a
+  - switch_class_id: be-rail-leaf
+    fabric_name: backend
     fabric_class: managed
     hedgehog_role: server-leaf
     device_type_extension: ds5000_ext
     mclag_pair: false
-  - switch_class_id: be-plane-a-spine
-    fabric_name: backend-plane-a
-    fabric_class: managed
-    hedgehog_role: spine
-    device_type_extension: ds5000_ext
-    uplink_ports_per_switch: 0
-    mclag_pair: false
-  - switch_class_id: be-plane-b-leaf
-    fabric_name: backend-plane-b
-    fabric_class: managed
-    hedgehog_role: server-leaf
-    device_type_extension: ds5000_ext
-    mclag_pair: false
-  - switch_class_id: be-plane-b-spine
-    fabric_name: backend-plane-b
+  - switch_class_id: be-spine
+    fabric_name: backend
     fabric_class: managed
     hedgehog_role: spine
     device_type_extension: ds5000_ext
@@ -286,43 +268,22 @@ switch_port_zones:
     breakout_option: b_1x800
     allocation_strategy: sequential
     priority: 10
-  - switch_class: be-plane-a-leaf
-    zone_name: be-plane-a-server-ports
+  - switch_class: be-rail-leaf
+    zone_name: be-server-ports
     zone_type: server
     port_spec: 1-32
     breakout_option: b_2x400
     allocation_strategy: sequential
     priority: 10
-  - switch_class: be-plane-a-leaf
-    zone_name: be-plane-a-uplinks
+  - switch_class: be-rail-leaf
+    zone_name: be-uplinks
     zone_type: uplink
     port_spec: 33-64
     breakout_option: b_1x800
     allocation_strategy: sequential
     priority: 20
-  - switch_class: be-plane-a-spine
-    zone_name: be-plane-a-fabric-downlinks
-    zone_type: fabric
-    port_spec: 1-64
-    breakout_option: b_1x800
-    allocation_strategy: sequential
-    priority: 10
-  - switch_class: be-plane-b-leaf
-    zone_name: be-plane-b-server-ports
-    zone_type: server
-    port_spec: 1-32
-    breakout_option: b_2x400
-    allocation_strategy: sequential
-    priority: 10
-  - switch_class: be-plane-b-leaf
-    zone_name: be-plane-b-uplinks
-    zone_type: uplink
-    port_spec: 33-64
-    breakout_option: b_1x800
-    allocation_strategy: sequential
-    priority: 20
-  - switch_class: be-plane-b-spine
-    zone_name: be-plane-b-fabric-downlinks
+  - switch_class: be-spine
+    zone_name: be-fabric-downlinks
     zone_type: fabric
     port_spec: 1-64
     breakout_option: b_1x800
@@ -331,40 +292,40 @@ switch_port_zones:
 
 server_classes:
   - server_class_id: compute
-    description: 32 training compute servers, 8 xPUs each (dual-plane backend)
+    description: 8 training compute servers, 8 xPUs each
     category: gpu
-    quantity: 32
+    quantity: 8
     gpus_per_server: 8
-    server_device_type: gpu_server_dual_plane
+    server_device_type: gpu_server_fe_be
 
 server_nics:
   - server_class: compute
     nic_id: fe
     module_type: nic_bf3_2x200
   - server_class: compute
-    nic_id: be-gpu0
-    module_type: nic_cx8_dual_400
+    nic_id: be0
+    module_type: nic_cx7_single_400
   - server_class: compute
-    nic_id: be-gpu1
-    module_type: nic_cx8_dual_400
+    nic_id: be1
+    module_type: nic_cx7_single_400
   - server_class: compute
-    nic_id: be-gpu2
-    module_type: nic_cx8_dual_400
+    nic_id: be2
+    module_type: nic_cx7_single_400
   - server_class: compute
-    nic_id: be-gpu3
-    module_type: nic_cx8_dual_400
+    nic_id: be3
+    module_type: nic_cx7_single_400
   - server_class: compute
-    nic_id: be-gpu4
-    module_type: nic_cx8_dual_400
+    nic_id: be4
+    module_type: nic_cx7_single_400
   - server_class: compute
-    nic_id: be-gpu5
-    module_type: nic_cx8_dual_400
+    nic_id: be5
+    module_type: nic_cx7_single_400
   - server_class: compute
-    nic_id: be-gpu6
-    module_type: nic_cx8_dual_400
+    nic_id: be6
+    module_type: nic_cx7_single_400
   - server_class: compute
-    nic_id: be-gpu7
-    module_type: nic_cx8_dual_400
+    nic_id: be7
+    module_type: nic_cx7_single_400
 
 server_connections:
   - server_class: compute
@@ -378,197 +339,99 @@ server_connections:
     target_zone: fe-leaf/fe-server-ports
     speed: 200
     port_type: data
-  # Plane A: port0 of each CX8 GPU NIC → backend-plane-a
   - server_class: compute
-    connection_id: be-gpu0-plane-a
-    connection_name: backend-gpu0-plane-a
-    nic: be-gpu0
+    connection_id: be-rail-0
+    connection_name: backend-rail-0
+    nic: be0
     port_index: 0
     ports_per_connection: 1
     hedgehog_conn_type: unbundled
     distribution: rail-optimized
-    target_zone: be-plane-a-leaf/be-plane-a-server-ports
+    target_zone: be-rail-leaf/be-server-ports
     speed: 400
     rail: 0
     port_type: data
   - server_class: compute
-    connection_id: be-gpu1-plane-a
-    connection_name: backend-gpu1-plane-a
-    nic: be-gpu1
+    connection_id: be-rail-1
+    connection_name: backend-rail-1
+    nic: be1
     port_index: 0
     ports_per_connection: 1
     hedgehog_conn_type: unbundled
     distribution: rail-optimized
-    target_zone: be-plane-a-leaf/be-plane-a-server-ports
+    target_zone: be-rail-leaf/be-server-ports
     speed: 400
     rail: 1
     port_type: data
   - server_class: compute
-    connection_id: be-gpu2-plane-a
-    connection_name: backend-gpu2-plane-a
-    nic: be-gpu2
+    connection_id: be-rail-2
+    connection_name: backend-rail-2
+    nic: be2
     port_index: 0
     ports_per_connection: 1
     hedgehog_conn_type: unbundled
     distribution: rail-optimized
-    target_zone: be-plane-a-leaf/be-plane-a-server-ports
+    target_zone: be-rail-leaf/be-server-ports
     speed: 400
     rail: 2
     port_type: data
   - server_class: compute
-    connection_id: be-gpu3-plane-a
-    connection_name: backend-gpu3-plane-a
-    nic: be-gpu3
+    connection_id: be-rail-3
+    connection_name: backend-rail-3
+    nic: be3
     port_index: 0
     ports_per_connection: 1
     hedgehog_conn_type: unbundled
     distribution: rail-optimized
-    target_zone: be-plane-a-leaf/be-plane-a-server-ports
+    target_zone: be-rail-leaf/be-server-ports
     speed: 400
     rail: 3
     port_type: data
   - server_class: compute
-    connection_id: be-gpu4-plane-a
-    connection_name: backend-gpu4-plane-a
-    nic: be-gpu4
+    connection_id: be-rail-4
+    connection_name: backend-rail-4
+    nic: be4
     port_index: 0
     ports_per_connection: 1
     hedgehog_conn_type: unbundled
     distribution: rail-optimized
-    target_zone: be-plane-a-leaf/be-plane-a-server-ports
+    target_zone: be-rail-leaf/be-server-ports
     speed: 400
     rail: 4
     port_type: data
   - server_class: compute
-    connection_id: be-gpu5-plane-a
-    connection_name: backend-gpu5-plane-a
-    nic: be-gpu5
+    connection_id: be-rail-5
+    connection_name: backend-rail-5
+    nic: be5
     port_index: 0
     ports_per_connection: 1
     hedgehog_conn_type: unbundled
     distribution: rail-optimized
-    target_zone: be-plane-a-leaf/be-plane-a-server-ports
+    target_zone: be-rail-leaf/be-server-ports
     speed: 400
     rail: 5
     port_type: data
   - server_class: compute
-    connection_id: be-gpu6-plane-a
-    connection_name: backend-gpu6-plane-a
-    nic: be-gpu6
+    connection_id: be-rail-6
+    connection_name: backend-rail-6
+    nic: be6
     port_index: 0
     ports_per_connection: 1
     hedgehog_conn_type: unbundled
     distribution: rail-optimized
-    target_zone: be-plane-a-leaf/be-plane-a-server-ports
+    target_zone: be-rail-leaf/be-server-ports
     speed: 400
     rail: 6
     port_type: data
   - server_class: compute
-    connection_id: be-gpu7-plane-a
-    connection_name: backend-gpu7-plane-a
-    nic: be-gpu7
+    connection_id: be-rail-7
+    connection_name: backend-rail-7
+    nic: be7
     port_index: 0
     ports_per_connection: 1
     hedgehog_conn_type: unbundled
     distribution: rail-optimized
-    target_zone: be-plane-a-leaf/be-plane-a-server-ports
-    speed: 400
-    rail: 7
-    port_type: data
-  # Plane B: port1 of each CX8 GPU NIC → backend-plane-b
-  - server_class: compute
-    connection_id: be-gpu0-plane-b
-    connection_name: backend-gpu0-plane-b
-    nic: be-gpu0
-    port_index: 1
-    ports_per_connection: 1
-    hedgehog_conn_type: unbundled
-    distribution: rail-optimized
-    target_zone: be-plane-b-leaf/be-plane-b-server-ports
-    speed: 400
-    rail: 0
-    port_type: data
-  - server_class: compute
-    connection_id: be-gpu1-plane-b
-    connection_name: backend-gpu1-plane-b
-    nic: be-gpu1
-    port_index: 1
-    ports_per_connection: 1
-    hedgehog_conn_type: unbundled
-    distribution: rail-optimized
-    target_zone: be-plane-b-leaf/be-plane-b-server-ports
-    speed: 400
-    rail: 1
-    port_type: data
-  - server_class: compute
-    connection_id: be-gpu2-plane-b
-    connection_name: backend-gpu2-plane-b
-    nic: be-gpu2
-    port_index: 1
-    ports_per_connection: 1
-    hedgehog_conn_type: unbundled
-    distribution: rail-optimized
-    target_zone: be-plane-b-leaf/be-plane-b-server-ports
-    speed: 400
-    rail: 2
-    port_type: data
-  - server_class: compute
-    connection_id: be-gpu3-plane-b
-    connection_name: backend-gpu3-plane-b
-    nic: be-gpu3
-    port_index: 1
-    ports_per_connection: 1
-    hedgehog_conn_type: unbundled
-    distribution: rail-optimized
-    target_zone: be-plane-b-leaf/be-plane-b-server-ports
-    speed: 400
-    rail: 3
-    port_type: data
-  - server_class: compute
-    connection_id: be-gpu4-plane-b
-    connection_name: backend-gpu4-plane-b
-    nic: be-gpu4
-    port_index: 1
-    ports_per_connection: 1
-    hedgehog_conn_type: unbundled
-    distribution: rail-optimized
-    target_zone: be-plane-b-leaf/be-plane-b-server-ports
-    speed: 400
-    rail: 4
-    port_type: data
-  - server_class: compute
-    connection_id: be-gpu5-plane-b
-    connection_name: backend-gpu5-plane-b
-    nic: be-gpu5
-    port_index: 1
-    ports_per_connection: 1
-    hedgehog_conn_type: unbundled
-    distribution: rail-optimized
-    target_zone: be-plane-b-leaf/be-plane-b-server-ports
-    speed: 400
-    rail: 5
-    port_type: data
-  - server_class: compute
-    connection_id: be-gpu6-plane-b
-    connection_name: backend-gpu6-plane-b
-    nic: be-gpu6
-    port_index: 1
-    ports_per_connection: 1
-    hedgehog_conn_type: unbundled
-    distribution: rail-optimized
-    target_zone: be-plane-b-leaf/be-plane-b-server-ports
-    speed: 400
-    rail: 6
-    port_type: data
-  - server_class: compute
-    connection_id: be-gpu7-plane-b
-    connection_name: backend-gpu7-plane-b
-    nic: be-gpu7
-    port_index: 1
-    ports_per_connection: 1
-    hedgehog_conn_type: unbundled
-    distribution: rail-optimized
-    target_zone: be-plane-b-leaf/be-plane-b-server-ports
+    target_zone: be-rail-leaf/be-server-ports
     speed: 400
     rail: 7
     port_type: data
@@ -576,5 +439,5 @@ server_connections:
 expected:
   counts:
     server_classes: 1
-    switch_classes: 6
-    connections: 17
+    switch_classes: 4
+    connections: 9
