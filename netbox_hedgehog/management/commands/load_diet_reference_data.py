@@ -55,6 +55,7 @@ class Command(BaseCommand):
             skip=options.get("skip_switch_profile_import", False)
         )
         management_switch_count = self.seed_management_switch_device_types()
+        server_dt_count = self.seed_generic_server_device_types()
         transceiver_profile = self.ensure_network_transceiver_profile()
         module_type_count = self.seed_static_module_inventory(transceiver_profile)
 
@@ -69,6 +70,9 @@ class Command(BaseCommand):
         ))
         self.stdout.write(self.style.SUCCESS(
             f'  - Management switch types ensured: {management_switch_count}'
+        ))
+        self.stdout.write(self.style.SUCCESS(
+            f'  - Generic server DeviceTypes ensured: {server_dt_count}'
         ))
         self.stdout.write(self.style.SUCCESS(
             f'  - Module inventory ensured: {module_type_count}'
@@ -221,6 +225,82 @@ class Command(BaseCommand):
         self._ensure_interfaces(es1000, [("mgmt0", "1000base-t")])
 
         return 1
+
+    @transaction.atomic
+    def seed_generic_server_device_types(self) -> int:
+        """
+        Ensure the three generic planning-time server DeviceTypes exist.
+
+        These DeviceTypes were previously seeded only by seed_diet_device_types
+        (DIET-448).  Moving them here makes load_diet_reference_data the single
+        canonical reset path for all repo-owned DeviceType seeds.
+
+        - GPU-Server-FE:       2×200G frontend NICs
+        - GPU-Server-FE-BE:    2×200G frontend + 8×400G backend NICs
+        - Storage-Server-200G: 2×200G NICs
+        """
+        generic, _ = Manufacturer.objects.get_or_create(
+            name="Generic",
+            defaults={"slug": "generic"},
+        )
+
+        server_specs = [
+            {
+                "model": "GPU-Server-FE",
+                "slug": "gpu-server-fe",
+                "u_height": 2,
+                "comments": "Generic GPU server with 2×200G frontend NICs",
+                "interfaces": [
+                    ("eth1", "200gbase-x-qsfp56"),
+                    ("eth2", "200gbase-x-qsfp56"),
+                ],
+            },
+            {
+                "model": "GPU-Server-FE-BE",
+                "slug": "gpu-server-fe-be",
+                "u_height": 2,
+                "comments": "Generic GPU server with 2×200G frontend + 8×400G backend NICs",
+                "interfaces": [
+                    ("eth1", "200gbase-x-qsfp56"),
+                    ("eth2", "200gbase-x-qsfp56"),
+                    ("cx7-1", "400gbase-x-qsfpdd"),
+                    ("cx7-2", "400gbase-x-qsfpdd"),
+                    ("cx7-3", "400gbase-x-qsfpdd"),
+                    ("cx7-4", "400gbase-x-qsfpdd"),
+                    ("cx7-5", "400gbase-x-qsfpdd"),
+                    ("cx7-6", "400gbase-x-qsfpdd"),
+                    ("cx7-7", "400gbase-x-qsfpdd"),
+                    ("cx7-8", "400gbase-x-qsfpdd"),
+                ],
+            },
+            {
+                "model": "Storage-Server-200G",
+                "slug": "storage-server-200g",
+                "u_height": 2,
+                "comments": "Generic storage server with 2×200G NICs",
+                "interfaces": [
+                    ("eth1", "200gbase-x-qsfp56"),
+                    ("eth2", "200gbase-x-qsfp56"),
+                ],
+            },
+        ]
+
+        total = 0
+        for spec in server_specs:
+            dt, _ = DeviceType.objects.get_or_create(
+                manufacturer=generic,
+                model=spec["model"],
+                defaults={
+                    "slug": spec["slug"],
+                    "u_height": spec["u_height"],
+                    "is_full_depth": True,
+                    "comments": spec["comments"],
+                },
+            )
+            self._ensure_interfaces(dt, spec["interfaces"])
+            total += 1
+
+        return total
 
     @transaction.atomic
     def ensure_network_transceiver_profile(self) -> ModuleTypeProfile:

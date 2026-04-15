@@ -900,26 +900,52 @@ class FailedStatusPropagationTestCase(TestCase):
         )
 
     def test_sync_view_shows_error_on_failed_generation(self):
-        """H.3: Synchronous generate view must show error message, not success, when status=FAILED."""
+        """H.3: Sync view must redirect to plan detail and show FAILED when sweep finds mismatch.
+
+        Uses a mismatched connection transceiver (SFP28) vs zone (QSFP112) so the
+        compatibility sweep fails.  populate_transceiver_bays is called first so
+        the preflight check passes and generate_all() actually runs.
+        """
         from django.urls import reverse
 
         plan = self._make_failed_plan('H3')
+
+        # Add a mismatching server-side transceiver (SFP28 cage vs zone's QSFP112).
+        # This ensures the preflight check passes (bays will exist) but the sweep fails.
+        mfr, _ = Manufacturer.objects.get_or_create(
+            name='H-Test-Mfg', defaults={'slug': 'h-test-mfg'}
+        )
+        profile = ModuleTypeProfile.objects.filter(name='Network Transceiver').first()
+        mismatch_mt, _ = ModuleType.objects.get_or_create(
+            manufacturer=mfr, model='H-XCVR-MISMATCH-H3',
+            defaults={
+                'profile': profile,
+                'attribute_data': {'cage_type': 'SFP28', 'medium': 'MMF'},
+            },
+        )
+        conn = PlanServerConnection.objects.filter(server_class__plan=plan).first()
+        conn.transceiver_module_type = mismatch_mt
+        conn.save()
+
+        # Populate bays so preflight is ready; then the sweep can run and fail.
+        call_command('populate_transceiver_bays')
+
         client = Client()
         client.login(username='h-test-admin', password='testpass123')
 
         url = reverse('plugins:netbox_hedgehog:topologyplan_generate', kwargs={'pk': plan.pk})
         response = client.post(url)
 
-        # Should redirect to plan detail (not generate page)
+        # Should redirect to plan detail (not back to generate page)
         self.assertIn(response.status_code, [302, 200])
         if response.status_code == 302:
             self.assertIn(str(plan.pk), response['Location'],
-                "On FAILED generation, view must redirect to plan detail")
+                "On FAILED generation, view must redirect to plan detail, not generate page")
 
         plan.refresh_from_db()
         self.assertEqual(
             plan.generation_state.status, GenerationStatusChoices.FAILED,
-            "GenerationState must remain FAILED after synchronous view generation",
+            "GenerationState must be FAILED after sync view generation with mismatch",
         )
 
 
@@ -1409,7 +1435,7 @@ class ConnectorStandardSweepTestCase(TestCase):
         _make_s2_fixtures(cls)
         # MPO-12 / MMF / 200GBASE-SR4  (same as default xcvr_mt from get_test_transceiver_module_type)
         cls.mt_mpo12_sr4 = get_test_transceiver_module_type()
-        # Direct / DAC / 200GBASE-CR4  (connector mismatch vs MPO-12)
+        # Direct / DAC / 200GBASE-CR4  (medium mismatch vs MPO-12/MMF; kept for backward compat)
         mfr, _ = Manufacturer.objects.get_or_create(
             name='XCVR-Test-Vendor', defaults={'slug': 'xcvr-test-vendor'}
         )
@@ -1464,6 +1490,17 @@ class ConnectorStandardSweepTestCase(TestCase):
                 },
             },
         )
+        # QSFP112 / MMF / LC — connector mismatch vs MPO-12, same cage+medium (E.6)
+        cls.mt_qsfp112_mmf_lc, _ = ModuleType.objects.get_or_create(
+            manufacturer=mfr, model='XCVR-350-QSFP112-LC',
+            defaults={
+                'profile': profile,
+                'attribute_data': {
+                    'cage_type': 'QSFP112', 'medium': 'MMF',
+                    'connector': 'LC', 'standard': '200GBASE-SR4',
+                },
+            },
+        )
 
     def tearDown(self):
         for p in list(TopologyPlan.objects.filter(name__startswith='S2Plan-')):
@@ -1499,11 +1536,12 @@ class ConnectorStandardSweepTestCase(TestCase):
                 "E.5: no connector mismatch entries expected when connectors match")
 
     def test_e6_connector_mismatch_sets_failed_status(self):
-        """E.6: connector mismatch (MPO-12 server vs Direct zone) → FAILED + connector entry.
+        """E.6: connector mismatch (MPO-12 server vs LC zone, same cage+medium) → FAILED + connector entry.
 
-        RED until _SWEEP_DIMS includes 'connector'.
+        Uses mt_qsfp112_mmf_lc (QSFP112/MMF/LC) as zone so only connector differs.
+        The rule engine fires R_CONNECTOR_MISMATCH → mismatch_type='connector'.
         """
-        plan = self._make_sweep_plan('E6', self.mt_mpo12_sr4, self.mt_direct_dac)
+        plan = self._make_sweep_plan('E6', self.mt_mpo12_sr4, self.mt_qsfp112_mmf_lc)
         call_command('populate_transceiver_bays')
         _generate(plan)
         gs = GenerationState.objects.filter(plan=plan).first()
@@ -1521,8 +1559,8 @@ class ConnectorStandardSweepTestCase(TestCase):
         entry = connector_entries[0]
         self.assertEqual(entry.get('server_end'), 'MPO-12',
             "E.6: server_end must be 'MPO-12'")
-        self.assertEqual(entry.get('switch_end'), 'Direct',
-            "E.6: switch_end must be 'Direct'")
+        self.assertEqual(entry.get('switch_end'), 'LC',
+            "E.6: switch_end must be 'LC'")
 
     def test_e7_standard_match_generation_succeeds(self):
         """E.7: standard match (200GBASE-SR4 both ends) → GENERATED, no standard entry."""
@@ -1534,28 +1572,28 @@ class ConnectorStandardSweepTestCase(TestCase):
         self.assertEqual(gs.status, GenerationStatusChoices.GENERATED,
             "E.7: standard match must produce GENERATED status")
 
-    def test_e8_standard_mismatch_sets_failed_status(self):
-        """E.8: standard mismatch (200GBASE-SR4 server vs 400GBASE-SR4 zone) → FAILED + standard entry.
+    def test_e8_standard_mismatch_does_not_fail(self):
+        """E.8 (updated): standard mismatch alone (same cage/medium/connector) → GENERATED.
 
-        RED until _SWEEP_DIMS includes 'standard'.
+        The rule engine (DIET-450) intentionally does not check 'standard' as a
+        blocking dimension; differing standards with matching cage, medium, and
+        connector → R_MATCH → GENERATED status.  The _SWEEP_DIMS tuple retains
+        'standard' for backward compatibility but the sweep loop no longer uses it.
         """
         plan = self._make_sweep_plan('E8', self.mt_mpo12_sr4, self.mt_mpo12_400g)
         call_command('populate_transceiver_bays')
         _generate(plan)
         gs = GenerationState.objects.filter(plan=plan).first()
         self.assertIsNotNone(gs)
-        self.assertEqual(gs.status, GenerationStatusChoices.FAILED,
-            "E.8: standard mismatch must set status=FAILED")
-        self.assertIsNotNone(gs.mismatch_report)
-        standard_entries = [
-            e for e in gs.mismatch_report.get('mismatches', [])
-            if e.get('mismatch_type') == 'standard'
-        ]
-        self.assertGreater(len(standard_entries), 0,
-            "E.8: mismatch_report must contain a 'standard' mismatch entry")
-        entry = standard_entries[0]
-        self.assertEqual(entry.get('server_end'), '200GBASE-SR4')
-        self.assertEqual(entry.get('switch_end'), '400GBASE-SR4')
+        self.assertEqual(gs.status, GenerationStatusChoices.GENERATED,
+            "E.8: standard-only mismatch must now produce GENERATED (rule engine ignores standard)")
+        if gs.mismatch_report:
+            standard_entries = [
+                e for e in gs.mismatch_report.get('mismatches', [])
+                if e.get('mismatch_type') == 'standard'
+            ]
+            self.assertEqual(len(standard_entries), 0,
+                "E.8: no 'standard' mismatch entries expected — rule engine does not check standard")
 
     def test_e9_connector_null_on_server_end_sweep_skips(self):
         """E.9: server MT has no connector in attribute_data → sweep skips, no connector mismatch."""

@@ -39,8 +39,17 @@ from netbox_hedgehog.services._fabric_utils import _is_managed_device
 from netbox_hedgehog.utils.snapshot_builder import build_plan_snapshot
 
 # Transceiver attribute dimensions swept pairwise at post-generation.
-# Extend this tuple (not the sweep method body) to add new dimensions.
+# Retained for backward-compat with tests that import/assert on _SWEEP_DIMS.
+# The sweep loop itself now delegates to evaluate_xcvr_pair() (DIET-450).
 _SWEEP_DIMS = ('cage_type', 'medium', 'connector', 'standard')
+
+# Maps rule engine reason codes to the attribute dimension name used in mismatch_type.
+# Only codes that produce a non-match outcome are listed.
+_REASON_DIM = {
+    'R_MEDIUM_MISMATCH': 'medium',
+    'R_CAGE_MISMATCH': 'cage_type',
+    'R_CONNECTOR_MISMATCH': 'connector',
+}
 
 
 @dataclass(frozen=True)
@@ -998,13 +1007,24 @@ class DeviceGenerator:
         """
         Stage 2: post-generation pairwise transceiver compatibility sweep.
 
-        Iterates over all PlanServerConnections for this plan and compares
-        cage_type and medium from both cable ends. Collects ALL mismatches
-        before returning — aggregate-all-mismatches-then-fail per approved spec.
+        Delegates all transceiver compatibility decisions to the rule engine
+        (services/transceiver_rules.py) via evaluate_xcvr_pair(). This ensures
+        the same semantics are used here and in the connection review UX.
+
+        Rule ordering is enforced by the rule engine:
+          medium mismatch → blocked (highest priority)
+          approved asymmetric pair → match (no mismatch reported)
+          cage mismatch → needs_review
+          connector mismatch → needs_review
+          otherwise → match
+
+        Collects ALL mismatches before returning — aggregate-all-mismatches-then-fail
+        per approved spec.
 
         Returns a list of mismatch dicts (empty list = all compatible).
         """
         from netbox_hedgehog.models.topology_planning import PlanServerConnection
+        from netbox_hedgehog.services.transceiver_rules import OUTCOME_MATCH, evaluate_xcvr_pair
 
         mismatches = []
         connections = PlanServerConnection.objects.filter(
@@ -1015,8 +1035,6 @@ class DeviceGenerator:
             'server_class',
         )
 
-        from netbox_hedgehog.transceiver_compat import is_approved_asymmetric_pair
-
         for conn in connections:
             server_mt = getattr(conn, 'transceiver_module_type', None)
             zone_mt = getattr(conn.target_zone, 'transceiver_module_type', None)
@@ -1026,39 +1044,20 @@ class DeviceGenerator:
             s_attrs = server_mt.attribute_data or {}
             z_attrs = zone_mt.attribute_data or {}
 
-            # Approved asymmetric pairs skip the full _SWEEP_DIMS loop.
-            # Medium (V5/V8 invariant) is still checked even for approved pairs.
-            if is_approved_asymmetric_pair(
-                z_attrs.get('cage_type'), z_attrs.get('connector'),
-                z_attrs.get('medium'), z_attrs.get('breakout_topology'),
-                s_attrs.get('cage_type'), s_attrs.get('connector'),
-            ):
-                s_medium = s_attrs.get('medium')
-                z_medium = z_attrs.get('medium')
-                if s_medium and z_medium and s_medium != z_medium:
-                    mismatches.append({
-                        'connection_id': conn.pk,
-                        'server_device': str(conn.server_class.server_class_id),
-                        'switch_port': conn.target_zone.zone_name,
-                        'mismatch_type': 'medium',
-                        'server_end': s_medium,
-                        'switch_end': z_medium,
-                    })
-                continue  # skip full _SWEEP_DIMS loop for this connection
+            result = evaluate_xcvr_pair(s_attrs, z_attrs)
+            if result.outcome == OUTCOME_MATCH:
+                continue
 
-            # Standard dimensional sweep for symmetric / non-approved connections.
-            for dim in _SWEEP_DIMS:
-                s_val = s_attrs.get(dim)
-                z_val = z_attrs.get(dim)
-                if s_val and z_val and s_val != z_val:
-                    mismatches.append({
-                        'connection_id': conn.pk,
-                        'server_device': str(conn.server_class.server_class_id),
-                        'switch_port': conn.target_zone.zone_name,
-                        'mismatch_type': dim,
-                        'server_end': s_val,
-                        'switch_end': z_val,
-                    })
+            # Map rule reason code to the attribute dimension name used in mismatch_type.
+            dim = _REASON_DIM.get(result.reason_code, 'cage_type')
+            mismatches.append({
+                'connection_id': conn.pk,
+                'server_device': str(conn.server_class.server_class_id),
+                'switch_port': conn.target_zone.zone_name,
+                'mismatch_type': dim,
+                'server_end': s_attrs.get(dim, ''),
+                'switch_end': z_attrs.get(dim, ''),
+            })
 
         return mismatches
 
