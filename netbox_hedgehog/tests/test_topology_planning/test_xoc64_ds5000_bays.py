@@ -145,8 +145,12 @@ class LegacyDS5000AbsenceRegressionTestCase(TestCase):
 
 class RetireLegacyDeviceTypesTestCase(TestCase):
     """
-    Verify that load_diet_reference_data removes stale celestica-ds5000-leaf
-    and -spine DeviceTypes from dirty environments during reset.
+    Verify that load_diet_reference_data --retire-legacy removes stale
+    celestica-ds5000-leaf and -spine DeviceTypes from dirty environments.
+
+    --retire-legacy is required (DIET-466 fix): the plain command is idempotent
+    and must not destroy data.  Only reset_local_dev.sh (and these tests)
+    pass the flag.
     """
 
     def _create_legacy_dt(self, slug: str):
@@ -162,31 +166,40 @@ class RetireLegacyDeviceTypesTestCase(TestCase):
         )
 
     def test_load_diet_reference_data_removes_legacy_leaf_slug(self):
-        """load_diet_reference_data must delete celestica-ds5000-leaf if present."""
+        """load_diet_reference_data --retire-legacy must delete celestica-ds5000-leaf."""
         self._create_legacy_dt('celestica-ds5000-leaf')
         self.assertTrue(
             DeviceType.objects.filter(slug='celestica-ds5000-leaf').exists(),
             "Pre-condition: celestica-ds5000-leaf must exist before the command runs",
         )
-        call_command('load_diet_reference_data', stdout=StringIO())
+        call_command('load_diet_reference_data', retire_legacy=True, stdout=StringIO())
         self.assertFalse(
             DeviceType.objects.filter(slug='celestica-ds5000-leaf').exists(),
-            "load_diet_reference_data must remove the retired celestica-ds5000-leaf",
+            "load_diet_reference_data --retire-legacy must remove celestica-ds5000-leaf",
         )
 
     def test_load_diet_reference_data_removes_legacy_spine_slug(self):
-        """load_diet_reference_data must delete celestica-ds5000-spine if present."""
+        """load_diet_reference_data --retire-legacy must delete celestica-ds5000-spine."""
         self._create_legacy_dt('celestica-ds5000-spine')
-        call_command('load_diet_reference_data', stdout=StringIO())
+        call_command('load_diet_reference_data', retire_legacy=True, stdout=StringIO())
         self.assertFalse(
             DeviceType.objects.filter(slug='celestica-ds5000-spine').exists(),
-            "load_diet_reference_data must remove the retired celestica-ds5000-spine",
+            "load_diet_reference_data --retire-legacy must remove celestica-ds5000-spine",
         )
 
     def test_retire_is_noop_on_clean_db(self):
-        """retire_legacy_device_types must be a no-op when legacy types are absent."""
+        """--retire-legacy must be a no-op when legacy types are absent."""
         self.assertFalse(DeviceType.objects.filter(slug='celestica-ds5000-leaf').exists())
         self.assertFalse(DeviceType.objects.filter(slug='celestica-ds5000-spine').exists())
         # Must not raise; canonical DS5000 must still be present after seed
-        call_command('load_diet_reference_data', stdout=StringIO())
+        call_command('load_diet_reference_data', retire_legacy=True, stdout=StringIO())
         self.assertTrue(DeviceType.objects.filter(slug='celestica-ds5000').exists())
+
+    def test_without_flag_does_not_remove_legacy_slug(self):
+        """Plain load_diet_reference_data (no --retire-legacy) must NOT remove legacy types."""
+        self._create_legacy_dt('celestica-ds5000-leaf')
+        call_command('load_diet_reference_data', stdout=StringIO())
+        self.assertTrue(
+            DeviceType.objects.filter(slug='celestica-ds5000-leaf').exists(),
+            "Plain load_diet_reference_data must not remove celestica-ds5000-leaf (no --retire-legacy)",
+        )
