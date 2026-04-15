@@ -1,21 +1,23 @@
 """
 Management command to seed DIET DeviceTypes and related objects.
 
-DEPRECATED for switch seeding (DIET-448).
-Do NOT call this command from bootstrap or reset scripts.
-The canonical Hedgehog switch inventory is now managed entirely by
-load_diet_reference_data (which calls import_fabric_profiles internally).
+DEPRECATED (DIET-448) — do NOT call from bootstrap or reset scripts.
 
-The DS5000 switch type seeded here (model="DS5000", slug="ds5000") is a
-legacy artifact that differs from the canonical importer output
-(model="celestica-ds5000", slug="celestica-ds5000") and uses the wrong
-interface type (800gbase-x-qsfpdd instead of 800gbase-x-osfp).
+All DeviceType seeds previously handled by this command are now managed
+by load_diet_reference_data:
+  - Bundled switch profiles (e.g. celestica-ds5000) via import_fabric_profiles
+  - celestica-es1000 management switch via seed_management_switch_device_types
+  - GPU-Server-FE, GPU-Server-FE-BE, Storage-Server-200G via
+    seed_generic_server_device_types (added DIET-448)
 
-The server DeviceTypes below (GPU-Server-FE, GPU-Server-FE-BE,
-Storage-Server-200G) remain available but are also not called from
-any modern bootstrap path.
+The DS5000 switch type still created here (model="DS5000", slug="ds5000")
+is a legacy artifact:
+  - Different model name from the canonical "celestica-ds5000"
+  - Wrong interface type: 800gbase-x-qsfpdd instead of 800gbase-x-osfp
 
-This command is idempotent - safe to run multiple times.
+This command is retained for historical reference and manual use only.
+It is idempotent and safe to run, but is not called from any bootstrap
+or reset path.
 
 Usage:
     docker compose exec netbox python manage.py seed_diet_device_types

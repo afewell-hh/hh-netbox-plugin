@@ -24,7 +24,7 @@ from netbox_hedgehog.models.topology_planning import BreakoutOption, DeviceTypeE
 
 
 class Command(BaseCommand):
-    help = 'Load DIET reference data (BreakoutOptions + baseline switch profiles)'
+    help = 'Load DIET reference data (BreakoutOptions, bundled switch profiles, and static DeviceTypes)'
 
     def add_arguments(self, parser):
         parser.add_argument(
@@ -44,6 +44,7 @@ class Command(BaseCommand):
             skip=options.get("skip_switch_profile_import", False)
         )
         management_switch_count = self.seed_management_switch_device_types()
+        server_dt_count = self.seed_generic_server_device_types()
 
         self.stdout.write(self.style.SUCCESS(
             f'\nSuccessfully loaded DIET reference data:'
@@ -52,10 +53,13 @@ class Command(BaseCommand):
             f'  - BreakoutOption: {breakout_count} records created/updated'
         ))
         self.stdout.write(self.style.SUCCESS(
-            f'  - Switch profiles imported: {imported_switch_profiles}'
+            f'  - Switch profiles imported (bundled): {imported_switch_profiles}'
         ))
         self.stdout.write(self.style.SUCCESS(
             f'  - Management switch types ensured: {management_switch_count}'
+        ))
+        self.stdout.write(self.style.SUCCESS(
+            f'  - Generic server DeviceTypes ensured: {server_dt_count}'
         ))
 
     @transaction.atomic
@@ -206,10 +210,93 @@ class Command(BaseCommand):
 
         return 1
 
+    @transaction.atomic
+    def seed_generic_server_device_types(self) -> int:
+        """
+        Ensure the three generic planning-time server DeviceTypes exist.
+
+        These DeviceTypes were previously seeded only by seed_diet_device_types
+        (DIET-448).  Moving them here makes load_diet_reference_data the single
+        canonical reset path for all repo-owned DeviceType seeds.
+
+        - GPU-Server-FE:       2×200G frontend NICs
+        - GPU-Server-FE-BE:    2×200G frontend + 8×400G backend NICs
+        - Storage-Server-200G: 2×200G NICs
+        """
+        generic, _ = Manufacturer.objects.get_or_create(
+            name="Generic",
+            defaults={"slug": "generic"},
+        )
+
+        server_specs = [
+            {
+                "model": "GPU-Server-FE",
+                "slug": "gpu-server-fe",
+                "u_height": 2,
+                "comments": "Generic GPU server with 2×200G frontend NICs",
+                "interfaces": [
+                    ("eth1", "200gbase-x-qsfp56"),
+                    ("eth2", "200gbase-x-qsfp56"),
+                ],
+            },
+            {
+                "model": "GPU-Server-FE-BE",
+                "slug": "gpu-server-fe-be",
+                "u_height": 2,
+                "comments": "Generic GPU server with 2×200G frontend + 8×400G backend NICs",
+                "interfaces": [
+                    ("eth1", "200gbase-x-qsfp56"),
+                    ("eth2", "200gbase-x-qsfp56"),
+                    ("cx7-1", "400gbase-x-qsfpdd"),
+                    ("cx7-2", "400gbase-x-qsfpdd"),
+                    ("cx7-3", "400gbase-x-qsfpdd"),
+                    ("cx7-4", "400gbase-x-qsfpdd"),
+                    ("cx7-5", "400gbase-x-qsfpdd"),
+                    ("cx7-6", "400gbase-x-qsfpdd"),
+                    ("cx7-7", "400gbase-x-qsfpdd"),
+                    ("cx7-8", "400gbase-x-qsfpdd"),
+                ],
+            },
+            {
+                "model": "Storage-Server-200G",
+                "slug": "storage-server-200g",
+                "u_height": 2,
+                "comments": "Generic storage server with 2×200G NICs",
+                "interfaces": [
+                    ("eth1", "200gbase-x-qsfp56"),
+                    ("eth2", "200gbase-x-qsfp56"),
+                ],
+            },
+        ]
+
+        total = 0
+        for spec in server_specs:
+            dt, _ = DeviceType.objects.get_or_create(
+                manufacturer=generic,
+                model=spec["model"],
+                defaults={
+                    "slug": spec["slug"],
+                    "u_height": spec["u_height"],
+                    "is_full_depth": True,
+                    "comments": spec["comments"],
+                },
+            )
+            self._ensure_interfaces(dt, spec["interfaces"])
+            total += 1
+
+        return total
+
     def _ensure_interfaces(
         self, device_type: DeviceType, interface_specs: list[tuple[str, str]]
     ) -> None:
-        """Create missing interface templates for a DeviceType."""
+        """
+        Create missing interface templates for a DeviceType.
+
+        Unlike _ensure_module_type(), this helper intentionally does not prune
+        or retype existing templates. It is used for static seeds where we only
+        want to fill obvious gaps without rewriting any local operator
+        customizations on the DeviceType.
+        """
         existing = set(
             InterfaceTemplate.objects.filter(device_type=device_type).values_list("name", flat=True)
         )
