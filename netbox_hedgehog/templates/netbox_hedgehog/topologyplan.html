@@ -643,6 +643,71 @@
     </div>
 </div>
 
+{# ------------------------------------------------------------------ #}
+{# Connection Review panel (DIET-449) #}
+{# ------------------------------------------------------------------ #}
+<div class="row mb-3">
+    <div class="col">
+        <div class="card">
+            <h5 class="card-header d-flex align-items-center gap-2">
+                Connection Review
+                {% if connection_review.match_count %}
+                    <span class="badge bg-success">{{ connection_review.match_count }} match</span>
+                {% endif %}
+                {% if connection_review.needs_review_count %}
+                    <span class="badge bg-warning text-dark">{{ connection_review.needs_review_count }} needs review</span>
+                {% endif %}
+                {% if connection_review.blocked_count %}
+                    <span class="badge bg-danger">{{ connection_review.blocked_count }} blocked</span>
+                {% endif %}
+                <small class="text-muted ms-auto">{{ connection_review.total_connections }} connection{{ connection_review.total_connections|pluralize }}</small>
+            </h5>
+            <div class="card-body table-responsive">
+                {% if connection_review.groups %}
+                    <table class="table table-hover table-sm">
+                        <thead>
+                            <tr>
+                                <th>Speed</th>
+                                <th>Type</th>
+                                <th>Breakout</th>
+                                <th>Connection Transceiver</th>
+                                <th>Zone Transceiver</th>
+                                <th>Count</th>
+                                <th>Outcome</th>
+                                <th>Note</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for group in connection_review.groups %}
+                            <tr class="{% if group.outcome == 'blocked' %}table-danger{% elif group.outcome == 'needs_review' %}table-warning{% else %}table-success{% endif %}">
+                                <td>{{ group.speed }}G</td>
+                                <td>{{ group.conn_type_display }}</td>
+                                <td>{{ group.breakout_id|default:"—" }}</td>
+                                <td>{{ group.connection_xcvr|default:"—" }}</td>
+                                <td>{{ group.zone_xcvr|default:"—" }}</td>
+                                <td>{{ group.count }}</td>
+                                <td>
+                                    {% if group.outcome == 'match' %}
+                                        <span class="badge bg-success">match</span>
+                                    {% elif group.outcome == 'needs_review' %}
+                                        <span class="badge bg-warning text-dark">needs review</span>
+                                    {% else %}
+                                        <span class="badge bg-danger">blocked</span>
+                                    {% endif %}
+                                </td>
+                                <td><small class="text-muted">{{ group.reason }}</small></td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                {% else %}
+                    <p class="text-muted mb-0">No server connections defined yet. Add connections to see the review summary.</p>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+
 {# Destructive Confirmation Modal #}
 <div class="modal fade" id="destructiveConfirmModal" tabindex="-1" aria-labelledby="destructiveConfirmModalLabel" aria-hidden="true">
   <div class="modal-dialog">

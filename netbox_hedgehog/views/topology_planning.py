@@ -231,6 +231,10 @@ class TopologyPlanView(generic.ObjectView):
         else:
             plan_bom_comparison = None
 
+        # Connection review summary (#449) — always available, no GenerationState needed
+        from netbox_hedgehog.services.connection_review import build_connection_review_summary
+        connection_review = build_connection_review_summary(instance)
+
         return {
             'server_classes': instance.server_classes.all(),
             'switch_classes': instance.switch_classes.all(),
@@ -247,6 +251,7 @@ class TopologyPlanView(generic.ObjectView):
             'bay_error_rows': bay_error_rows,
             'plan_bom': plan_bom,
             'plan_bom_comparison': plan_bom_comparison,
+            'connection_review': connection_review,
         }
 
     def _can_user_generate_devices(self, request, instance):
