@@ -83,6 +83,5 @@ if [[ "$PURGE_INVENTORY" == "true" ]]; then
 fi
 
 docker compose exec -T netbox python manage.py load_diet_reference_data
-docker compose exec -T netbox python manage.py seed_diet_device_types
 
 echo "Done."

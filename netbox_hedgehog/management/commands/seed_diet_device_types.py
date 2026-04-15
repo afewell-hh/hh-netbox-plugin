@@ -1,17 +1,23 @@
 """
 Management command to seed DIET DeviceTypes and related objects.
 
-This command creates the standard DIET DeviceTypes used for topology planning:
-- DS5000 switch (64x800G)
-- GPU-Server-FE (2x200G frontend)
-- GPU-Server-FE-BE (2x200G frontend + 8x400G backend)
-- Storage-Server-200G (2x200G)
+DEPRECATED (DIET-448) — do NOT call from bootstrap or reset scripts.
 
-Each DeviceType includes:
-- InterfaceTemplates
-- DeviceTypeExtension with native_speed, supported_breakouts, etc.
+All DeviceType seeds previously handled by this command are now managed
+by load_diet_reference_data:
+  - Bundled switch profiles (e.g. celestica-ds5000) via import_fabric_profiles
+  - celestica-es1000 management switch via seed_management_switch_device_types
+  - GPU-Server-FE, GPU-Server-FE-BE, Storage-Server-200G via
+    seed_generic_server_device_types (added DIET-448)
 
-This command is idempotent - safe to run multiple times.
+The DS5000 switch type still created here (model="DS5000", slug="ds5000")
+is a legacy artifact:
+  - Different model name from the canonical "celestica-ds5000"
+  - Wrong interface type: 800gbase-x-qsfpdd instead of 800gbase-x-osfp
+
+This command is retained for historical reference and manual use only.
+It is idempotent and safe to run, but is not called from any bootstrap
+or reset path.
 
 Usage:
     docker compose exec netbox python manage.py seed_diet_device_types
@@ -19,6 +25,7 @@ Usage:
 
 Reference:
     - Issue #124: Define CI testing strategy
+    - Issue #448: Unify bootstrap and switch inventory seeding (deprecation)
     - Based on setup_case_128gpu_odd_ports.py
 """
 

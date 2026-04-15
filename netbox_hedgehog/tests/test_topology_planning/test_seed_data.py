@@ -156,6 +156,52 @@ class SeedDataCommandTestCase(TestCase):
         call_command('load_diet_reference_data', stdout=StringIO())
         self.assertTrue(DeviceType.objects.filter(model='celestica-es1000').exists())
 
+    def test_command_seeds_generic_server_device_types(self):
+        """load_diet_reference_data should ensure all three generic server DeviceTypes exist."""
+        call_command('load_diet_reference_data', stdout=StringIO())
+        for model in ('GPU-Server-FE', 'GPU-Server-FE-BE', 'Storage-Server-200G'):
+            self.assertTrue(
+                DeviceType.objects.filter(model=model).exists(),
+                f"Expected generic server DeviceType '{model}' to be present",
+            )
+
+    def test_generic_server_device_types_have_correct_interfaces(self):
+        """Generic server DeviceTypes should have the expected interface templates."""
+        call_command('load_diet_reference_data', stdout=StringIO())
+
+        fe = DeviceType.objects.get(model='GPU-Server-FE')
+        self.assertEqual(
+            InterfaceTemplate.objects.filter(device_type=fe).count(), 2
+        )
+        self.assertTrue(
+            InterfaceTemplate.objects.filter(
+                device_type=fe, name='eth1', type='200gbase-x-qsfp56'
+            ).exists()
+        )
+
+        fe_be = DeviceType.objects.get(model='GPU-Server-FE-BE')
+        self.assertEqual(
+            InterfaceTemplate.objects.filter(device_type=fe_be).count(), 10
+        )
+        self.assertEqual(
+            InterfaceTemplate.objects.filter(
+                device_type=fe_be, type='400gbase-x-qsfpdd'
+            ).count(), 8
+        )
+
+    def test_generic_server_device_types_recreated_after_purge(self):
+        """Generic server DeviceTypes should be restored after a DeviceType purge."""
+        call_command('load_diet_reference_data', stdout=StringIO())
+        DeviceType.objects.all().delete()
+
+        call_command('load_diet_reference_data', stdout=StringIO())
+
+        for model in ('GPU-Server-FE', 'GPU-Server-FE-BE', 'Storage-Server-200G'):
+            self.assertTrue(
+                DeviceType.objects.filter(model=model).exists(),
+                f"'{model}' must be recreated after purge+reseed",
+            )
+
 
 class SeedDataRecordTestCase(TestCase):
     """Test that seeded data records are correct"""
