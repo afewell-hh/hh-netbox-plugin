@@ -23,14 +23,10 @@ reference_data:
       slug: nvidia
 
   device_types:
-    - id: sw_ds5000_leaf_dt
+    - id: sw_ds5000_dt
       manufacturer: celestica
-      model: Celestica DS5000 Leaf
-      slug: celestica-ds5000-leaf
-    - id: sw_ds5000_spine_dt
-      manufacturer: celestica
-      model: Celestica DS5000 Spine
-      slug: celestica-ds5000-spine
+      model: celestica-ds5000
+      slug: celestica-ds5000
     - id: sw_ds1000_oob_dt
       manufacturer: celestica
       model: Celestica DS1000
@@ -67,24 +63,14 @@ reference_data:
       is_full_depth: false
 
   device_type_extensions:
-    - id: sw_ds5000_leaf_ext
-      device_type: sw_ds5000_leaf_dt
+    - id: sw_ds5000_ext
+      device_type: sw_ds5000_dt
       mclag_capable: false
-      hedgehog_roles: [server-leaf]
-      supported_breakouts: [1x800g, 2x400g, 4x200g, 8x100g]
+      hedgehog_roles: [server-leaf, spine]
+      supported_breakouts: [1x800g, 2x400g, 4x200g, 8x100g, 1x10g]
       native_speed: 800
-      uplink_ports: 32
       hedgehog_profile_name: celestica-ds5000
-      notes: Converged collapsed leaf pair. redundancy_type is an HNP validation shim only; RA intent is L3MH.
-    - id: sw_ds5000_spine_ext
-      device_type: sw_ds5000_spine_dt
-      mclag_capable: false
-      hedgehog_roles: [spine]
-      supported_breakouts: [1x800g, 1x10g]
-      native_speed: 800
-      uplink_ports: 0
-      hedgehog_profile_name: celestica-ds5000
-      notes: Placeholder growth-path spine pair retained in plan for manual post-generation handling.
+      notes: Canonical DS5000 used for both converged leaf and placeholder spine roles in this topology.
     - id: sw_ds1000_oob_ext
       device_type: sw_ds1000_oob_dt
       mclag_capable: false
@@ -181,7 +167,7 @@ switch_classes:
     fabric_name: converged
     fabric_class: managed
     hedgehog_role: server-leaf
-    device_type_extension: sw_ds5000_leaf_ext
+    device_type_extension: sw_ds5000_ext
     override_quantity: 2
     uplink_ports_per_switch: 32
     mclag_pair: false
@@ -192,7 +178,7 @@ switch_classes:
     fabric_name: converged
     fabric_class: managed
     hedgehog_role: spine
-    device_type_extension: sw_ds5000_spine_ext
+    device_type_extension: sw_ds5000_ext
     override_quantity: 2
     uplink_ports_per_switch: 0
     mclag_pair: false
