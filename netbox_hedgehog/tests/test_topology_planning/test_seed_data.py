@@ -14,7 +14,7 @@ from django.test import TestCase
 from django.core.management import call_command
 from io import StringIO
 
-from dcim.models import DeviceType, InterfaceTemplate
+from dcim.models import DeviceType, InterfaceTemplate, ModuleType, ModuleTypeProfile
 
 from netbox_hedgehog.models.topology_planning import BreakoutOption, DeviceTypeExtension
 
@@ -155,6 +155,25 @@ class SeedDataCommandTestCase(TestCase):
 
         call_command('load_diet_reference_data', stdout=StringIO())
         self.assertTrue(DeviceType.objects.filter(model='celestica-es1000').exists())
+
+    def test_command_recreates_network_transceiver_profile_after_inventory_purge(self):
+        """load_diet_reference_data should restore Network Transceiver profile after purge."""
+        # Must delete ModuleTypes before ModuleTypeProfile to avoid ProtectedError
+        # (mirrors what reset_local_dev.sh --purge-inventory does in the container)
+        ModuleType.objects.all().delete()
+        ModuleTypeProfile.objects.all().delete()
+
+        call_command('load_diet_reference_data', stdout=StringIO())
+
+        profile = ModuleTypeProfile.objects.filter(name='Network Transceiver').first()
+        self.assertIsNotNone(profile, "Network Transceiver profile must be recreated")
+        cage_enum = (
+            profile.schema.get('properties', {})
+            .get('cage_type', {})
+            .get('enum', [])
+        )
+        self.assertIn('OSFP', cage_enum)
+        self.assertIn('QSFP56', cage_enum)
 
 
 class SeedDataRecordTestCase(TestCase):

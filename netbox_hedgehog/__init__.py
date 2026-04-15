@@ -7,6 +7,20 @@ except ModuleNotFoundError:
     PluginConfig = object  # Dummy base class
 
 
+def _seed_reference_data(sender, **kwargs):
+    """
+    Ensure repo-owned reference data exists after migrate.
+
+    Runs the full load_diet_reference_data path, including the bundled
+    Hedgehog switch-profile import.  That import reads only local files
+    (netbox_hedgehog/fabric_profiles/) so it is deterministic, has no
+    external network dependency, and is safe to run on every migrate.
+    """
+    from django.core.management import call_command
+
+    call_command("load_diet_reference_data", verbosity=0)
+
+
 class HedgehogPluginConfig(PluginConfig):
     name = 'netbox_hedgehog'
     verbose_name = 'Hedgehog Fabric Manager'
@@ -26,5 +40,18 @@ class HedgehogPluginConfig(PluginConfig):
         'fabric_status': 60,  # Cache fabric status for 60 seconds
         'crd_schemas': 3600,  # Cache CRD schemas for 1 hour
     }
+
+    def ready(self):
+        from django.db.models.signals import post_migrate
+
+        super_ready = getattr(super(), "ready", None)
+        if callable(super_ready):
+            super_ready()
+
+        post_migrate.connect(
+            _seed_reference_data,
+            sender=self,
+            dispatch_uid="netbox_hedgehog.seed_reference_data",
+        )
 
 config = HedgehogPluginConfig

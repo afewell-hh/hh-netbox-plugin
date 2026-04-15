@@ -1,15 +1,19 @@
 """
 Management command to seed DIET DeviceTypes and related objects.
 
-This command creates the standard DIET DeviceTypes used for topology planning:
-- DS5000 switch (64x800G)
-- GPU-Server-FE (2x200G frontend)
-- GPU-Server-FE-BE (2x200G frontend + 8x400G backend)
-- Storage-Server-200G (2x200G)
+DEPRECATED for switch seeding (DIET-448).
+Do NOT call this command from bootstrap or reset scripts.
+The canonical Hedgehog switch inventory is now managed entirely by
+load_diet_reference_data (which calls import_fabric_profiles internally).
 
-Each DeviceType includes:
-- InterfaceTemplates
-- DeviceTypeExtension with native_speed, supported_breakouts, etc.
+The DS5000 switch type seeded here (model="DS5000", slug="ds5000") is a
+legacy artifact that differs from the canonical importer output
+(model="celestica-ds5000", slug="celestica-ds5000") and uses the wrong
+interface type (800gbase-x-qsfpdd instead of 800gbase-x-osfp).
+
+The server DeviceTypes below (GPU-Server-FE, GPU-Server-FE-BE,
+Storage-Server-200G) remain available but are also not called from
+any modern bootstrap path.
 
 This command is idempotent - safe to run multiple times.
 
@@ -19,6 +23,7 @@ Usage:
 
 Reference:
     - Issue #124: Define CI testing strategy
+    - Issue #448: Unify bootstrap and switch inventory seeding (deprecation)
     - Based on setup_case_128gpu_odd_ports.py
 """
 
