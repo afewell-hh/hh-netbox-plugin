@@ -28,8 +28,8 @@ reference_data:
   device_types:
     - id: sw_ds5000_leaf_dt
       manufacturer: celestica
-      model: Celestica DS5000 Leaf
-      slug: celestica-ds5000-leaf
+      model: celestica-ds5000
+      slug: celestica-ds5000
     - id: sw_ds2000_inb_dt
       manufacturer: celestica
       model: Celestica DS2000
@@ -303,12 +303,11 @@ reference_data:
     - id: sw_ds5000_soc_storage_scale_out_ext
       device_type: sw_ds5000_leaf_dt
       mclag_capable: false
-      hedgehog_roles: [server-leaf]
+      hedgehog_roles: [server-leaf, spine]
       supported_breakouts: [1x800g, 2x400g, 4x200g, 8x100g]
       native_speed: 800
-      uplink_ports: 32
       hedgehog_profile_name: celestica-ds5000
-      notes: Shared SoC/storage/scale-out mesh leaf pair for the XOC-64 composed OPG-64 topology.
+      notes: Canonical DS5000 used as SoC/storage/scale-out mesh leaf for the XOC-64 composed OPG-64 topology.
     - id: sw_ds2000_inb_ext
       device_type: sw_ds2000_inb_dt
       mclag_capable: false
