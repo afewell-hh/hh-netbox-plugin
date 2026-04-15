@@ -49,6 +49,9 @@ class Command(BaseCommand):
 
         self.stdout.write(self.style.WARNING('Loading DIET reference data...'))
 
+        # Remove retired legacy DeviceTypes before seeding canonical ones
+        retired_count = self.retire_legacy_device_types()
+
         # Load BreakoutOption seed data
         breakout_count = self.load_breakout_options()
         imported_switch_profiles = self.import_bundled_switch_profiles(
@@ -77,6 +80,63 @@ class Command(BaseCommand):
         self.stdout.write(self.style.SUCCESS(
             f'  - Module inventory ensured: {module_type_count}'
         ))
+        if retired_count:
+            self.stdout.write(self.style.WARNING(
+                f'  - Retired legacy DeviceTypes removed: {retired_count}'
+            ))
+
+    @transaction.atomic
+    def retire_legacy_device_types(self) -> int:
+        """
+        Remove DeviceTypes that were retired in favour of the canonical
+        celestica-ds5000 profile-backed type.
+
+        Previously, some case files created separate leaf/spine clones:
+          - celestica-ds5000-leaf  (replaced by celestica-ds5000)
+          - celestica-ds5000-spine (replaced by celestica-ds5000)
+
+        This method is safe to run on clean DBs (no-op) and on dirty dev
+        environments that still carry the stale types.  Cascade order:
+        Devices → PlanServerConnection → SwitchPortZone → PlanSwitchClass
+        → DeviceTypeExtension → DeviceType.
+        """
+        from dcim.models import Device
+        from netbox_hedgehog.models.topology_planning import (
+            PlanServerConnection,
+            PlanSwitchClass,
+            SwitchPortZone,
+        )
+
+        RETIRED_SLUGS = ['celestica-ds5000-leaf', 'celestica-ds5000-spine']
+        removed = 0
+
+        for slug in RETIRED_SLUGS:
+            try:
+                dt = DeviceType.objects.get(slug=slug)
+            except DeviceType.DoesNotExist:
+                continue
+
+            # Cascade: switch classes → zones + connections → extension
+            ext_qs = DeviceTypeExtension.objects.filter(device_type=dt)
+            sc_qs = PlanSwitchClass.objects.filter(device_type_extension__in=ext_qs)
+            zone_qs = SwitchPortZone.objects.filter(switch_class__in=sc_qs)
+            PlanServerConnection.objects.filter(target_zone__in=zone_qs).delete()
+            zone_qs.delete()
+            sc_qs.delete()
+            ext_qs.delete()
+
+            # Cascade: devices (and their cables)
+            for dev in Device.objects.filter(device_type=dt):
+                for iface in dev.interfaces.all():
+                    if iface.cable:
+                        iface.cable.delete()
+            Device.objects.filter(device_type=dt).delete()
+
+            dt.delete()
+            self.stdout.write(self.style.WARNING(f'  Retired legacy DeviceType: {slug}'))
+            removed += 1
+
+        return removed
 
     @transaction.atomic
     def load_breakout_options(self):
