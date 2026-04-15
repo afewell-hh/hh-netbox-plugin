@@ -110,10 +110,10 @@ def _make_switch_class(plan, ext):
     )
 
 
-def _make_server_class(plan, server_dt, qty=2):
+def _make_server_class(plan, server_dt, qty=2, server_class_id='crv-gpu'):
     return PlanServerClass.objects.create(
         plan=plan,
-        server_class_id='crv-gpu',
+        server_class_id=server_class_id,
         category=ServerClassCategoryChoices.GPU,
         quantity=qty,
         gpus_per_server=8,
@@ -279,14 +279,15 @@ class TestConnectionReviewService(TestCase):
     # ------------------------------------------------------------------
 
     def test_two_connections_same_type_form_one_group(self):
-        """Two connections with identical type key → one group, count=2."""
+        """Two connections with identical type key → one group, count = 2 rows × qty=2 × ppc=2 = 8."""
         zone = _make_zone(self.switch_class, self.bo_4x200g)
         _make_connection(self.server_class, zone, nic_id='nic-1', conn_id='FE-001', port_index=0)
         _make_connection(self.server_class, zone, nic_id='nic-2', conn_id='FE-002', port_index=1)
         summary = self._build()
         self.assertEqual(len(summary.groups), 1)
-        self.assertEqual(summary.groups[0].count, 2)
-        self.assertEqual(summary.total_connections, 2)
+        # 2 rows × server_class.quantity(2) × ports_per_connection(2) = 8
+        self.assertEqual(summary.groups[0].count, 8)
+        self.assertEqual(summary.total_connections, 8)
 
     def test_different_speeds_form_separate_groups(self):
         """Connections with different speeds → separate groups."""
@@ -298,7 +299,8 @@ class TestConnectionReviewService(TestCase):
                          port_index=1, speed=200)
         summary = self._build()
         self.assertEqual(len(summary.groups), 2)
-        self.assertEqual(summary.total_connections, 2)
+        # Each group: qty=2 × ppc=2 = 4; total across both = 8
+        self.assertEqual(summary.total_connections, 8)
 
     def test_different_breakouts_form_separate_groups(self):
         """Connections with different breakout options → separate groups."""
@@ -369,6 +371,148 @@ class TestConnectionReviewService(TestCase):
         summary = self._build()
         speeds = [g.speed for g in summary.groups]
         self.assertEqual(speeds, sorted(speeds, reverse=True))
+
+    # ------------------------------------------------------------------
+    # S1.7 — Count expansion: server_class.quantity × ports_per_connection
+    # ------------------------------------------------------------------
+
+    def test_count_expands_by_server_quantity(self):
+        """
+        count = server_class.quantity × ports_per_connection.
+
+        A single PlanServerConnection row applied to 4 servers with
+        ports_per_connection=2 must yield count=8, not count=1.
+        """
+        server_class_4 = _make_server_class(
+            self.plan, self.server_dt, qty=4, server_class_id='crv-gpu-exp-qty')
+        zone = _make_zone(self.switch_class, self.bo_4x200g, zone_name='z-exp-qty')
+        _make_connection(server_class_4, zone, nic_id='nic-exp-qty',
+                         conn_id='EXP-QTY', port_index=0)
+        # _make_connection sets ports_per_connection=2 (see fixture helper)
+        summary = self._build()
+
+        # The group for server_class_4's connection: 4 servers × 2 ports = 8
+        self.assertEqual(len(summary.groups), 1)
+        self.assertEqual(
+            summary.groups[0].count, 8,
+            f'Expected 4 servers × 2 ports = 8; got {summary.groups[0].count}',
+        )
+
+    def test_count_expands_by_ports_per_connection(self):
+        """
+        Higher ports_per_connection multiplies the count correctly.
+        4 servers × 4 ports_per_connection = 16.
+        """
+        from netbox_hedgehog.models.topology_planning import PlanServerNIC
+
+        server_class_4 = _make_server_class(
+            self.plan, self.server_dt, qty=4, server_class_id='crv-gpu-exp-ppc')
+        zone = _make_zone(self.switch_class, self.bo_4x200g, zone_name='z-exp-ppc')
+        nic = get_test_server_nic(server_class_4, nic_id='nic-exp-ppc')
+        PlanServerConnection.objects.create(
+            server_class=server_class_4,
+            connection_id='EXP-PPC',
+            nic=nic,
+            port_index=0,
+            target_zone=zone,
+            ports_per_connection=4,
+            hedgehog_conn_type=ConnectionTypeChoices.UNBUNDLED,
+            distribution=ConnectionDistributionChoices.ALTERNATING,
+            speed=200,
+            port_type='data',
+        )
+        summary = self._build()
+
+        self.assertEqual(len(summary.groups), 1)
+        self.assertEqual(
+            summary.groups[0].count, 16,
+            f'Expected 4 servers × 4 ports = 16; got {summary.groups[0].count}',
+        )
+
+    def test_total_connections_is_sum_of_expanded_counts(self):
+        """
+        total_connections sums the expanded counts across all groups.
+        2 groups: (2 servers × 2 ports) + (3 servers × 1 port) = 4 + 3 = 7.
+        """
+        from netbox_hedgehog.models.topology_planning import PlanServerNIC
+
+        # Group 1: 2 servers × 2 ports = 4
+        server_class_2 = _make_server_class(
+            self.plan, self.server_dt, qty=2, server_class_id='crv-gpu-tot-a')
+        zone_a = _make_zone(self.switch_class, self.bo_4x200g, zone_name='z-tot-a')
+        nic_a = get_test_server_nic(server_class_2, nic_id='nic-tot-a')
+        PlanServerConnection.objects.create(
+            server_class=server_class_2, connection_id='TOT-A', nic=nic_a,
+            port_index=0, target_zone=zone_a, ports_per_connection=2,
+            hedgehog_conn_type=ConnectionTypeChoices.UNBUNDLED,
+            distribution=ConnectionDistributionChoices.ALTERNATING,
+            speed=200, port_type='data',
+        )
+
+        # Group 2: 3 servers × 1 port = 3  (different zone breakout → separate group)
+        server_class_3 = PlanServerClass.objects.create(
+            plan=self.plan, server_class_id='crv-gpu-3', quantity=3,
+            category=ServerClassCategoryChoices.GPU,
+            gpus_per_server=8, server_device_type=self.server_dt,
+        )
+        zone_b = _make_zone(self.switch_class, self.bo_1x800g, zone_name='z-tot-b')
+        nic_b = get_test_server_nic(server_class_3, nic_id='nic-tot-b')
+        PlanServerConnection.objects.create(
+            server_class=server_class_3, connection_id='TOT-B', nic=nic_b,
+            port_index=0, target_zone=zone_b, ports_per_connection=1,
+            hedgehog_conn_type=ConnectionTypeChoices.UNBUNDLED,
+            distribution=ConnectionDistributionChoices.ALTERNATING,
+            speed=800, port_type='data',
+        )
+
+        summary = self._build()
+        self.assertEqual(
+            summary.total_connections, 7,
+            f'Expected (2×2) + (3×1) = 7; got {summary.total_connections}',
+        )
+
+    def test_same_type_multiple_server_classes_counts_are_summed(self):
+        """
+        Two PlanServerConnection rows with the same type key (different server classes)
+        must land in the same group and their expanded counts are summed.
+        (2 servers × 2 ports) + (3 servers × 2 ports) = 4 + 6 = 10 in one group.
+        """
+        from netbox_hedgehog.models.topology_planning import PlanServerNIC
+
+        zone = _make_zone(self.switch_class, self.bo_4x200g, zone_name='z-merge')
+
+        sc_2 = _make_server_class(
+            self.plan, self.server_dt, qty=2, server_class_id='crv-gpu-merge-a')
+        nic_2 = get_test_server_nic(sc_2, nic_id='nic-merge-a')
+        PlanServerConnection.objects.create(
+            server_class=sc_2, connection_id='MERGE-A', nic=nic_2,
+            port_index=0, target_zone=zone, ports_per_connection=2,
+            hedgehog_conn_type=ConnectionTypeChoices.UNBUNDLED,
+            distribution=ConnectionDistributionChoices.ALTERNATING,
+            speed=200, port_type='data',
+        )
+
+        sc_3 = PlanServerClass.objects.create(
+            plan=self.plan, server_class_id='crv-gpu-merge3', quantity=3,
+            category=ServerClassCategoryChoices.GPU,
+            gpus_per_server=8, server_device_type=self.server_dt,
+        )
+        nic_3 = get_test_server_nic(sc_3, nic_id='nic-merge-b')
+        PlanServerConnection.objects.create(
+            server_class=sc_3, connection_id='MERGE-B', nic=nic_3,
+            port_index=0, target_zone=zone, ports_per_connection=2,
+            hedgehog_conn_type=ConnectionTypeChoices.UNBUNDLED,
+            distribution=ConnectionDistributionChoices.ALTERNATING,
+            speed=200, port_type='data',
+        )
+
+        summary = self._build()
+        # Both rows have identical type key → one group
+        self.assertEqual(len(summary.groups), 1)
+        self.assertEqual(
+            summary.groups[0].count, 10,
+            f'Expected (2×2) + (3×2) = 10; got {summary.groups[0].count}',
+        )
 
 
 # ---------------------------------------------------------------------------

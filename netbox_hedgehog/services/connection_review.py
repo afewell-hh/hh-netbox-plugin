@@ -64,7 +64,10 @@ class ConnectionGroup:
     port_type : str | None
         Port type value (e.g. 'data', 'ipmi'), or None if unset.
     count : int
-        Number of PlanServerConnection objects in this group.
+        Number of physical connections of this type in the topology.
+        Equals sum(server_class.quantity × ports_per_connection) across all
+        PlanServerConnection rows that share this group key.  This matches
+        the double loop in DeviceGenerator._create_connections().
     outcome : str
         One of 'match', 'needs_review', 'blocked'.
     reason : str
@@ -169,6 +172,18 @@ def build_connection_review_summary(plan: "TopologyPlan") -> ConnectionReviewSum
     Queries all PlanServerConnection objects for the plan in a single pass,
     groups them by distinct connection type, and assigns each group an outcome.
 
+    Count semantics
+    ---------------
+    Each PlanServerConnection row is a *template* that the generator expands
+    over every server in the server class.  The meaningful count for the
+    review panel is the number of physical connections of each type that will
+    exist in the topology:
+
+        count += server_class.quantity * ports_per_connection
+
+    This matches the double loop in DeviceGenerator._create_connections()
+    (outer: server_class.quantity; inner: ports_per_connection).
+
     Returns a ConnectionReviewSummary. Never raises; returns an empty summary
     if the plan has no connections.
     """
@@ -178,6 +193,7 @@ def build_connection_review_summary(plan: "TopologyPlan") -> ConnectionReviewSum
         PlanServerConnection.objects
         .filter(server_class__plan=plan)
         .select_related(
+            'server_class',
             'target_zone',
             'target_zone__breakout_option',
             'target_zone__transceiver_module_type',
@@ -226,7 +242,8 @@ def build_connection_review_summary(plan: "TopologyPlan") -> ConnectionReviewSum
                 'outcome': outcome,
                 'reason': reason,
             }
-        groups_acc[key]['count'] += 1
+        # Expand: each connection template applies to every server × every port
+        groups_acc[key]['count'] += conn.server_class.quantity * conn.ports_per_connection
 
     # Build sorted list of ConnectionGroup objects
     sorted_keys = sorted(
