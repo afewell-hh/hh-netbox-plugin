@@ -18,13 +18,24 @@ from django.core.management import call_command
 from django.core.management.base import BaseCommand
 from django.db import transaction
 
-from dcim.models import DeviceType, InterfaceTemplate, Manufacturer
+from dcim.models import (
+    DeviceType,
+    InterfaceTemplate,
+    Manufacturer,
+    ModuleType,
+    ModuleTypeProfile,
+)
 
 from netbox_hedgehog.models.topology_planning import BreakoutOption, DeviceTypeExtension
+from netbox_hedgehog.seed_catalog import (
+    NETWORK_TRANSCEIVER_PROFILE_SCHEMA,
+    STATIC_NIC_MODULE_TYPES,
+    STATIC_TRANSCEIVER_MODULE_TYPES,
+)
 
 
 class Command(BaseCommand):
-    help = 'Load DIET reference data (BreakoutOptions, bundled switch profiles, and static DeviceTypes)'
+    help = 'Load DIET reference data (breakouts, switch profiles, and static module inventory)'
 
     def add_arguments(self, parser):
         parser.add_argument(
@@ -44,7 +55,8 @@ class Command(BaseCommand):
             skip=options.get("skip_switch_profile_import", False)
         )
         management_switch_count = self.seed_management_switch_device_types()
-        server_dt_count = self.seed_generic_server_device_types()
+        transceiver_profile = self.ensure_network_transceiver_profile()
+        module_type_count = self.seed_static_module_inventory(transceiver_profile)
 
         self.stdout.write(self.style.SUCCESS(
             f'\nSuccessfully loaded DIET reference data:'
@@ -53,13 +65,13 @@ class Command(BaseCommand):
             f'  - BreakoutOption: {breakout_count} records created/updated'
         ))
         self.stdout.write(self.style.SUCCESS(
-            f'  - Switch profiles imported (bundled): {imported_switch_profiles}'
+            f'  - Switch profiles imported: {imported_switch_profiles}'
         ))
         self.stdout.write(self.style.SUCCESS(
             f'  - Management switch types ensured: {management_switch_count}'
         ))
         self.stdout.write(self.style.SUCCESS(
-            f'  - Generic server DeviceTypes ensured: {server_dt_count}'
+            f'  - Module inventory ensured: {module_type_count}'
         ))
 
     @transaction.atomic
@@ -211,80 +223,107 @@ class Command(BaseCommand):
         return 1
 
     @transaction.atomic
-    def seed_generic_server_device_types(self) -> int:
+    def ensure_network_transceiver_profile(self) -> ModuleTypeProfile:
         """
-        Ensure the three generic planning-time server DeviceTypes exist.
+        Recreate the Network Transceiver profile after inventory purges.
 
-        These DeviceTypes were previously seeded only by seed_diet_device_types
-        (DIET-448).  Moving them here makes load_diet_reference_data the single
-        canonical reset path for all repo-owned DeviceType seeds.
-
-        - GPU-Server-FE:       2×200G frontend NICs
-        - GPU-Server-FE-BE:    2×200G frontend + 8×400G backend NICs
-        - Storage-Server-200G: 2×200G NICs
+        reset_local_dev.sh --purge-inventory deletes ModuleTypeProfile rows, so the
+        reference-data command must be able to reconstruct the canonical schema.
         """
-        generic, _ = Manufacturer.objects.get_or_create(
-            name="Generic",
-            defaults={"slug": "generic"},
+        profile, created = ModuleTypeProfile.objects.get_or_create(
+            name="Network Transceiver",
+            defaults={"schema": NETWORK_TRANSCEIVER_PROFILE_SCHEMA},
         )
+        if not created and profile.schema != NETWORK_TRANSCEIVER_PROFILE_SCHEMA:
+            profile.schema = NETWORK_TRANSCEIVER_PROFILE_SCHEMA
+            profile.save(update_fields=["schema"])
+        return profile
 
-        server_specs = [
-            {
-                "model": "GPU-Server-FE",
-                "slug": "gpu-server-fe",
-                "u_height": 2,
-                "comments": "Generic GPU server with 2×200G frontend NICs",
-                "interfaces": [
-                    ("eth1", "200gbase-x-qsfp56"),
-                    ("eth2", "200gbase-x-qsfp56"),
-                ],
-            },
-            {
-                "model": "GPU-Server-FE-BE",
-                "slug": "gpu-server-fe-be",
-                "u_height": 2,
-                "comments": "Generic GPU server with 2×200G frontend + 8×400G backend NICs",
-                "interfaces": [
-                    ("eth1", "200gbase-x-qsfp56"),
-                    ("eth2", "200gbase-x-qsfp56"),
-                    ("cx7-1", "400gbase-x-qsfpdd"),
-                    ("cx7-2", "400gbase-x-qsfpdd"),
-                    ("cx7-3", "400gbase-x-qsfpdd"),
-                    ("cx7-4", "400gbase-x-qsfpdd"),
-                    ("cx7-5", "400gbase-x-qsfpdd"),
-                    ("cx7-6", "400gbase-x-qsfpdd"),
-                    ("cx7-7", "400gbase-x-qsfpdd"),
-                    ("cx7-8", "400gbase-x-qsfpdd"),
-                ],
-            },
-            {
-                "model": "Storage-Server-200G",
-                "slug": "storage-server-200g",
-                "u_height": 2,
-                "comments": "Generic storage server with 2×200G NICs",
-                "interfaces": [
-                    ("eth1", "200gbase-x-qsfp56"),
-                    ("eth2", "200gbase-x-qsfp56"),
-                ],
-            },
-        ]
+    @transaction.atomic
+    def seed_static_module_inventory(self, transceiver_profile: ModuleTypeProfile) -> int:
+        """
+        Seed repo-owned ModuleType inventory used by DIET planning/BOM flows.
 
+        This path is intentionally separate from dynamic Hedgehog switch-profile
+        import. It covers static optics and NIC inventory that should be
+        recreated on local resets without relying on migrations being rerun.
+        """
         total = 0
-        for spec in server_specs:
-            dt, _ = DeviceType.objects.get_or_create(
-                manufacturer=generic,
-                model=spec["model"],
-                defaults={
-                    "slug": spec["slug"],
-                    "u_height": spec["u_height"],
-                    "is_full_depth": True,
-                    "comments": spec["comments"],
-                },
+
+        for spec in STATIC_TRANSCEIVER_MODULE_TYPES:
+            self._ensure_module_type(
+                spec=spec,
+                profile=transceiver_profile,
+                interface_specs=[],
             )
-            self._ensure_interfaces(dt, spec["interfaces"])
+            total += 1
+
+        for spec in STATIC_NIC_MODULE_TYPES:
+            self._ensure_module_type(
+                spec=spec,
+                profile=None,
+                interface_specs=spec["interface_templates"],
+            )
             total += 1
 
         return total
+
+    def _ensure_module_type(
+        self,
+        *,
+        spec: dict,
+        profile: ModuleTypeProfile | None,
+        interface_specs: list[tuple[str, str]],
+    ) -> ModuleType:
+        """Create or update one ModuleType plus its InterfaceTemplates."""
+        manufacturer, _ = Manufacturer.objects.get_or_create(
+            name=spec["manufacturer"],
+            defaults={"slug": spec["manufacturer_slug"]},
+        )
+        module_type, _ = ModuleType.objects.update_or_create(
+            manufacturer=manufacturer,
+            model=spec["model"],
+            defaults={
+                "profile": profile,
+                "part_number": spec.get("part_number", ""),
+                "description": spec.get("description", ""),
+                "comments": spec.get("comments", ""),
+                "attribute_data": spec.get("attribute_data", {}),
+            },
+        )
+
+        existing = InterfaceTemplate.objects.filter(module_type=module_type)
+        if not interface_specs:
+            if existing.exists():
+                existing.delete()
+            return module_type
+
+        existing_by_name = {
+            tpl.name: tpl for tpl in existing
+        }
+        desired_names = {name for name, _ in interface_specs}
+
+        for name, interface_type in interface_specs:
+            tpl = existing_by_name.get(name)
+            if tpl is None:
+                InterfaceTemplate.objects.create(
+                    module_type=module_type,
+                    name=name,
+                    type=interface_type,
+                )
+                continue
+            if tpl.type != interface_type:
+                tpl.type = interface_type
+                tpl.save(update_fields=["type"])
+
+        stale_names = set(existing_by_name) - desired_names
+        if stale_names:
+            InterfaceTemplate.objects.filter(
+                module_type=module_type,
+                name__in=stale_names,
+            ).delete()
+
+        return module_type
 
     def _ensure_interfaces(
         self, device_type: DeviceType, interface_specs: list[tuple[str, str]]
@@ -293,9 +332,9 @@ class Command(BaseCommand):
         Create missing interface templates for a DeviceType.
 
         Unlike _ensure_module_type(), this helper intentionally does not prune
-        or retype existing templates. It is used for static seeds where we only
-        want to fill obvious gaps without rewriting any local operator
-        customizations on the DeviceType.
+        or retype existing templates. It is used for static management-switch
+        seeds where we only want to fill obvious gaps without rewriting any
+        local operator customizations on the DeviceType.
         """
         existing = set(
             InterfaceTemplate.objects.filter(device_type=device_type).values_list("name", flat=True)

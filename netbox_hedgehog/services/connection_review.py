@@ -117,42 +117,49 @@ class ConnectionReviewSummary:
 def _determine_outcome(
     breakout_id: str | None,
     logical_ports: int | None,
-    connection_xcvr: str | None,
-    zone_xcvr: str | None,
+    server_attrs: dict | None,
+    zone_attrs: dict | None,
 ) -> tuple[str, str]:
     """
     Derive (outcome, reason) for a connection group.
 
+    Uses the transceiver rule engine (services/transceiver_rules.py) for all
+    transceiver compatibility decisions.  Structural checks (zone breakout
+    option, breakout-without-transceiver advisory) are applied around the
+    rule engine call.
+
+    Parameters
+    ----------
+    breakout_id:
+        BreakoutOption.breakout_id from the target zone, or None if absent.
+    logical_ports:
+        BreakoutOption.logical_ports, or None if absent.
+    server_attrs:
+        ModuleType.attribute_data for the server-side transceiver, or None.
+    zone_attrs:
+        ModuleType.attribute_data for the zone-side transceiver, or None.
+
     Returns a 2-tuple (outcome_str, reason_str).
     """
-    # Blocked: no breakout option on zone — switch quantity cannot be calculated
+    from netbox_hedgehog.services.transceiver_rules import evaluate_xcvr_pair, R_NULL
+
+    # Structural: no breakout option on zone → blocked (switch quantity unknown)
     if breakout_id is None:
         return 'blocked', 'No breakout option configured on switch zone'
 
-    # Needs review: transceiver intent exists on one side only
-    if connection_xcvr is not None and zone_xcvr is None:
-        return (
-            'needs_review',
-            'Connection specifies a transceiver but the switch zone does not',
-        )
-    if connection_xcvr is None and zone_xcvr is not None:
-        return (
-            'needs_review',
-            'Switch zone specifies a transceiver but the connection does not',
-        )
-    if (
-        connection_xcvr is not None
-        and zone_xcvr is not None
-        and connection_xcvr != zone_xcvr
-    ):
-        return (
-            'needs_review',
-            f'Connection transceiver ({connection_xcvr}) differs from '
-            f'zone transceiver ({zone_xcvr})',
-        )
+    # Delegate transceiver compatibility evaluation to the rule engine.
+    xcvr_result = evaluate_xcvr_pair(server_attrs, zone_attrs)
 
-    # Needs review: breakout implies passive splitter but no transceiver is named
-    if logical_ports is not None and logical_ports > 1 and connection_xcvr is None:
+    # Non-null result: the rule engine owns the outcome.
+    # R_NULL means both endpoints have no transceiver FK; fall through to the
+    # breakout advisory check below.
+    if xcvr_result.reason_code != R_NULL:
+        return xcvr_result.outcome, xcvr_result.reason
+
+    # R_NULL path: both FKs absent.
+    # Breakout with logical_ports > 1 and no transceiver named needs attention
+    # because a passive splitter/DAC type should be specified.
+    if logical_ports is not None and logical_ports > 1:
         return (
             'needs_review',
             f'{breakout_id} breakout: specify the splitter/DAC transceiver type',
@@ -216,6 +223,8 @@ def build_connection_review_summary(plan: "TopologyPlan") -> ConnectionReviewSum
 
         connection_xcvr = conn_xcvr_mt.model if conn_xcvr_mt else None
         zone_xcvr = zone_xcvr_mt.model if zone_xcvr_mt else None
+        server_attrs = conn_xcvr_mt.attribute_data if conn_xcvr_mt else None
+        zone_xcvr_attrs = zone_xcvr_mt.attribute_data if zone_xcvr_mt else None
 
         key = (
             conn.speed,
@@ -228,7 +237,7 @@ def build_connection_review_summary(plan: "TopologyPlan") -> ConnectionReviewSum
 
         if key not in groups_acc:
             outcome, reason = _determine_outcome(
-                breakout_id, logical_ports, connection_xcvr, zone_xcvr
+                breakout_id, logical_ports, server_attrs, zone_xcvr_attrs
             )
             groups_acc[key] = {
                 'speed': conn.speed,

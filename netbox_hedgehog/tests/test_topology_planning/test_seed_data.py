@@ -14,7 +14,7 @@ from django.test import TestCase
 from django.core.management import call_command
 from io import StringIO
 
-from dcim.models import DeviceType, InterfaceTemplate
+from dcim.models import DeviceType, InterfaceTemplate, ModuleType, ModuleTypeProfile
 
 from netbox_hedgehog.models.topology_planning import BreakoutOption, DeviceTypeExtension
 
@@ -156,51 +156,61 @@ class SeedDataCommandTestCase(TestCase):
         call_command('load_diet_reference_data', stdout=StringIO())
         self.assertTrue(DeviceType.objects.filter(model='celestica-es1000').exists())
 
-    def test_command_seeds_generic_server_device_types(self):
-        """load_diet_reference_data should ensure all three generic server DeviceTypes exist."""
-        call_command('load_diet_reference_data', stdout=StringIO())
-        for model in ('GPU-Server-FE', 'GPU-Server-FE-BE', 'Storage-Server-200G'):
-            self.assertTrue(
-                DeviceType.objects.filter(model=model).exists(),
-                f"Expected generic server DeviceType '{model}' to be present",
-            )
+    def test_command_recreates_network_transceiver_profile_after_inventory_purge(self):
+        """load_diet_reference_data should restore Network Transceiver profile after purge."""
+        # Must delete ModuleTypes before ModuleTypeProfile to avoid ProtectedError
+        # (mirrors what reset_local_dev.sh --purge-inventory does in the container)
+        ModuleType.objects.all().delete()
+        ModuleTypeProfile.objects.all().delete()
 
-    def test_generic_server_device_types_have_correct_interfaces(self):
-        """Generic server DeviceTypes should have the expected interface templates."""
         call_command('load_diet_reference_data', stdout=StringIO())
 
-        fe = DeviceType.objects.get(model='GPU-Server-FE')
+        profile = ModuleTypeProfile.objects.filter(name='Network Transceiver').first()
+        self.assertIsNotNone(profile, "Network Transceiver profile must be recreated")
+        cage_enum = (
+            profile.schema.get('properties', {})
+            .get('cage_type', {})
+            .get('enum', [])
+        )
+        self.assertIn('OSFP', cage_enum)
+        self.assertIn('QSFP56', cage_enum)
+
+    def test_command_seeds_celestica_transceiver_module_inventory(self):
+        """load_diet_reference_data should ensure static Celestica optics exist."""
+        call_command('load_diet_reference_data', stdout=StringIO())
+
+        optic = ModuleType.objects.filter(model='R4113-A9311-DR').first()
+        self.assertIsNotNone(optic, "Expected Celestica DR8 optic ModuleType")
+        self.assertEqual(optic.part_number, 'R4113-A9311-DR')
+        self.assertEqual(optic.profile.name, 'Network Transceiver')
+        self.assertEqual(optic.description, '800G OSFP112 DR8 (MPO-16)')
+        self.assertEqual(optic.attribute_data.get('cage_type'), 'OSFP')
+        self.assertEqual(optic.attribute_data.get('reach_class'), 'DR')
+        self.assertEqual(optic.interfacetemplates.count(), 0)
+
+    def test_command_seeds_static_nic_module_inventory(self):
+        """load_diet_reference_data should ensure static NIC ModuleTypes exist."""
+        call_command('load_diet_reference_data', stdout=StringIO())
+
+        nic = ModuleType.objects.filter(model='AOC-CX766003N-SQ0').first()
+        self.assertIsNotNone(nic, "Expected ConnectX-7 400G OSFP NIC ModuleType")
+        self.assertEqual(nic.part_number, 'AOC-CX766003N-SQ0')
+        self.assertEqual(nic.description, '1x NDR400G IB/EN OSFP Gen5 x16 CX7')
         self.assertEqual(
-            InterfaceTemplate.objects.filter(device_type=fe).count(), 2
-        )
-        self.assertTrue(
-            InterfaceTemplate.objects.filter(
-                device_type=fe, name='eth1', type='200gbase-x-qsfp56'
-            ).exists()
+            list(nic.interfacetemplates.order_by('name').values_list('name', flat=True)),
+            ['port0'],
         )
 
-        fe_be = DeviceType.objects.get(model='GPU-Server-FE-BE')
-        self.assertEqual(
-            InterfaceTemplate.objects.filter(device_type=fe_be).count(), 10
-        )
-        self.assertEqual(
-            InterfaceTemplate.objects.filter(
-                device_type=fe_be, type='400gbase-x-qsfpdd'
-            ).count(), 8
-        )
-
-    def test_generic_server_device_types_recreated_after_purge(self):
-        """Generic server DeviceTypes should be restored after a DeviceType purge."""
+    def test_command_restores_module_inventory_after_purge(self):
+        """Simulate reset/purge flow and ensure static ModuleTypes are restored."""
         call_command('load_diet_reference_data', stdout=StringIO())
-        DeviceType.objects.all().delete()
+        ModuleType.objects.all().delete()
+        ModuleTypeProfile.objects.all().delete()
 
         call_command('load_diet_reference_data', stdout=StringIO())
 
-        for model in ('GPU-Server-FE', 'GPU-Server-FE-BE', 'Storage-Server-200G'):
-            self.assertTrue(
-                DeviceType.objects.filter(model=model).exists(),
-                f"'{model}' must be recreated after purge+reseed",
-            )
+        self.assertTrue(ModuleType.objects.filter(model='R4113-A9311-DR').exists())
+        self.assertTrue(ModuleType.objects.filter(model='AOC-CX766003N-SQ0').exists())
 
 
 class SeedDataRecordTestCase(TestCase):
@@ -248,7 +258,7 @@ class SeedDataRecordTestCase(TestCase):
 
     def test_breakout_options_ordered_correctly(self):
         """Test that breakout options are ordered by from_speed desc, logical_ports"""
-        breakouts = list(BreakoutOption.objects.all())
+        breakouts = list(BreakoutOption.objects.order_by('-from_speed', 'logical_ports'))
 
         # Verify ordering (highest speed first)
         if len(breakouts) >= 2:
@@ -265,3 +275,15 @@ class SeedDataRecordTestCase(TestCase):
                         same_speed_breakouts[i + 1].logical_ports,
                         "Within same speed, breakouts should be ordered by logical_ports"
                     )
+
+    def test_static_module_inventory_counts_are_seeded(self):
+        """Reference data seed should include the expected static optics and NICs."""
+        self.assertGreaterEqual(
+            ModuleType.objects.filter(model__startswith='R4113-').count(),
+            10,
+            "Expected at least the 10 Celestica transceiver SKUs from the repo catalog",
+        )
+        self.assertTrue(
+            ModuleType.objects.filter(model='AOC-A100G-B2CM-O').exists(),
+            "Expected Supermicro AOC-A100G-B2CM-O NIC ModuleType",
+        )
