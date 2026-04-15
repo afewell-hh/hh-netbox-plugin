@@ -39,8 +39,17 @@ from netbox_hedgehog.services._fabric_utils import _is_managed_device
 from netbox_hedgehog.utils.snapshot_builder import build_plan_snapshot
 
 # Transceiver attribute dimensions swept pairwise at post-generation.
-# Extend this tuple (not the sweep method body) to add new dimensions.
+# Retained for backward-compat with tests that import/assert on _SWEEP_DIMS.
+# The sweep loop itself now delegates to evaluate_xcvr_pair() (DIET-450).
 _SWEEP_DIMS = ('cage_type', 'medium', 'connector', 'standard')
+
+# Maps rule engine reason codes to the attribute dimension name used in mismatch_type.
+# Only codes that produce a non-match outcome are listed.
+_REASON_DIM = {
+    'R_MEDIUM_MISMATCH': 'medium',
+    'R_CAGE_MISMATCH': 'cage_type',
+    'R_CONNECTOR_MISMATCH': 'connector',
+}
 
 
 @dataclass(frozen=True)
@@ -124,6 +133,12 @@ class DeviceGenerator:
         # _create_nested_transceiver_module() and _create_switch_transceiver_module()
         # when a transceiver FK is set but the required ModuleBay is absent.
         self._bay_placement_errors: list = []
+
+        # #445: Deduplication set for switch-side transceiver placement.
+        # Keyed by (device.pk, cage_name) so that breakout child ports that
+        # share a parent cage (e.g. E1/27/1 and E1/27/2 → cage E1/27) only
+        # trigger one Module placement per physical cage per generation run.
+        self._placed_switch_xcvr_bays: set[tuple[int, str]] = set()
 
         # Milestone 3: Creating switch devices
         if self.logger:
@@ -381,6 +396,7 @@ class DeviceGenerator:
                             rail=connection_def.rail,
                             total_rails=total_rails,
                             servers_per_domain=servers_per_domain,
+                            total_servers=server_class.quantity,
                         )
                         switch_port = self.port_allocator.allocate(
                             switch_device.name,
@@ -991,13 +1007,24 @@ class DeviceGenerator:
         """
         Stage 2: post-generation pairwise transceiver compatibility sweep.
 
-        Iterates over all PlanServerConnections for this plan and compares
-        cage_type and medium from both cable ends. Collects ALL mismatches
-        before returning — aggregate-all-mismatches-then-fail per approved spec.
+        Delegates all transceiver compatibility decisions to the rule engine
+        (services/transceiver_rules.py) via evaluate_xcvr_pair(). This ensures
+        the same semantics are used here and in the connection review UX.
+
+        Rule ordering is enforced by the rule engine:
+          medium mismatch → blocked (highest priority)
+          approved asymmetric pair → match (no mismatch reported)
+          cage mismatch → needs_review
+          connector mismatch → needs_review
+          otherwise → match
+
+        Collects ALL mismatches before returning — aggregate-all-mismatches-then-fail
+        per approved spec.
 
         Returns a list of mismatch dicts (empty list = all compatible).
         """
         from netbox_hedgehog.models.topology_planning import PlanServerConnection
+        from netbox_hedgehog.services.transceiver_rules import OUTCOME_MATCH, evaluate_xcvr_pair
 
         mismatches = []
         connections = PlanServerConnection.objects.filter(
@@ -1017,18 +1044,20 @@ class DeviceGenerator:
             s_attrs = server_mt.attribute_data or {}
             z_attrs = zone_mt.attribute_data or {}
 
-            for dim in _SWEEP_DIMS:
-                s_val = s_attrs.get(dim)
-                z_val = z_attrs.get(dim)
-                if s_val and z_val and s_val != z_val:
-                    mismatches.append({
-                        'connection_id': conn.pk,
-                        'server_device': str(conn.server_class.server_class_id),
-                        'switch_port': conn.target_zone.zone_name,
-                        'mismatch_type': dim,
-                        'server_end': s_val,
-                        'switch_end': z_val,
-                    })
+            result = evaluate_xcvr_pair(s_attrs, z_attrs)
+            if result.outcome == OUTCOME_MATCH:
+                continue
+
+            # Map rule reason code to the attribute dimension name used in mismatch_type.
+            dim = _REASON_DIM.get(result.reason_code, 'cage_type')
+            mismatches.append({
+                'connection_id': conn.pk,
+                'server_device': str(conn.server_class.server_class_id),
+                'switch_port': conn.target_zone.zone_name,
+                'mismatch_type': dim,
+                'server_end': s_attrs.get(dim, ''),
+                'switch_end': z_attrs.get(dim, ''),
+            })
 
         return mismatches
 
@@ -1144,6 +1173,7 @@ class DeviceGenerator:
         rail: int | None = None,
         total_rails: int | None = None,
         servers_per_domain: int | None = None,
+        total_servers: int | None = None,
     ) -> Device:
         if len(switch_instances) == 1:
             return switch_instances[0]
@@ -1151,7 +1181,22 @@ class DeviceGenerator:
         if distribution == ConnectionDistributionChoices.ALTERNATING:
             return switch_instances[port_index % len(switch_instances)]
         if distribution == ConnectionDistributionChoices.SAME_SWITCH:
-            return switch_instances[server_index % len(switch_instances)]
+            if total_servers is None or total_servers <= 0:
+                return switch_instances[server_index % len(switch_instances)]
+
+            num_switches = len(switch_instances)
+            base_group_size = total_servers // num_switches
+            extra_servers = total_servers % num_switches
+            lower_bound = 0
+
+            for switch_index in range(num_switches):
+                group_size = base_group_size + (1 if switch_index < extra_servers else 0)
+                upper_bound = lower_bound + group_size
+                if server_index < upper_bound:
+                    return switch_instances[switch_index]
+                lower_bound = upper_bound
+
+            return switch_instances[-1]
         if distribution == ConnectionDistributionChoices.RAIL_OPTIMIZED:
             # Rail-optimized: all servers' NIC at position N connect to the same rail's switch.
             # Two sub-cases:
@@ -1323,6 +1368,24 @@ class DeviceGenerator:
         module.save()
         return module
 
+    @staticmethod
+    def _parent_cage_name(port_name: str) -> str:
+        """
+        Derive the physical parent cage name from a (possibly breakout) port name.
+
+        Non-breakout port:    'E1/27'   → 'E1/27'  (unchanged)
+        Breakout child port:  'E1/27/1' → 'E1/27'  (strip last /lane index)
+
+        ModuleBayTemplates are created by populate_transceiver_bays using
+        InterfaceTemplate names (parent cage names).  Breakout child ports
+        share one physical transceiver in the parent cage.
+        """
+        parts = port_name.split('/')
+        # Three-part name (e.g. E1, 27, 1) means breakout child port
+        if len(parts) >= 3:
+            return '/'.join(parts[:-1])
+        return port_name
+
     def _create_switch_transceiver_module(
         self,
         device: Device,
@@ -1332,11 +1395,15 @@ class DeviceGenerator:
         """
         Stage 2: place transceiver Module in the switch port bay for a given port.
 
-        The ModuleBay named `port_name` must already exist on the switch Device (auto-created
-        from ModuleBayTemplate by NetBox when the device was created, after
-        populate_transceiver_bays added the templates to the DeviceType). If the bay is
-        absent and the zone has a transceiver FK set, this is a hard error — generation
-        will be marked FAILED (#345).
+        For breakout zones, `port_name` is a child port (e.g. 'E1/27/1').  The
+        physical ModuleBay is keyed by the parent cage ('E1/27'), which is what
+        populate_transceiver_bays creates from InterfaceTemplate names.  Multiple
+        logical child ports that share the same parent cage must each call this
+        method, but only the first call places the Module; subsequent calls for
+        the same (device, cage) pair are silently skipped via _placed_switch_xcvr_bays.
+
+        If the bay is absent and the zone has a transceiver FK set, this is a hard
+        error — generation will be marked FAILED (#345).
 
         Returns the created/existing transceiver Module, or None if zone FK is null.
         """
@@ -1344,14 +1411,22 @@ class DeviceGenerator:
         if xcvr_mt is None:
             return None
 
+        # #445: resolve breakout child port name to parent physical cage name.
+        cage_name = self._parent_cage_name(port_name)
+
+        # Deduplicate: skip if we already placed a transceiver in this bay this run.
+        dedup_key = (device.pk, cage_name)
+        if dedup_key in self._placed_switch_xcvr_bays:
+            return None
+
         from dcim.models import ModuleBay, Module
 
-        bay = ModuleBay.objects.filter(device=device, name=port_name).first()
+        bay = ModuleBay.objects.filter(device=device, name=cage_name).first()
         if bay is None:
             self._bay_placement_errors.append({
                 'error_type': 'missing_switch_bay',
                 'device': device.name,
-                'port': port_name,
+                'port': cage_name,
                 'zone': zone.zone_name,
                 'hint': 'Run populate_transceiver_bays to add ModuleBayTemplates to switch DeviceTypes.',
             })
@@ -1360,6 +1435,7 @@ class DeviceGenerator:
         existing = Module.objects.filter(device=device, module_bay=bay).first()
         if existing is not None:
             if existing.module_type_id == xcvr_mt.pk:
+                self._placed_switch_xcvr_bays.add(dedup_key)
                 return existing
             existing.delete()
 
@@ -1368,10 +1444,11 @@ class DeviceGenerator:
             module_bay=bay,
             module_type=xcvr_mt,
             status='planned',
-            serial=f'{device.name}-{port_name}',
+            serial=f'{device.name}-{cage_name}',
         )
         module.custom_field_data = {'hedgehog_plan_id': str(self.plan.pk)}
         module.save()
+        self._placed_switch_xcvr_bays.add(dedup_key)
         return module
 
     def _get_module_interface_by_port_index(

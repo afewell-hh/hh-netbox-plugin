@@ -932,18 +932,28 @@ class PlanServerConnection(NetBoxModel):
                     })
                 # Unknown reach_class values not in either group → null-skip (forward-compatible).
 
-        # Cross-end compatibility against target zone's transceiver FK (V4, V5).
+        # Cross-end compatibility against target zone's transceiver FK (V4, V5, V6).
         if self.target_zone_id:
             zone_mt = getattr(self.target_zone, 'transceiver_module_type', None)
             if zone_mt is not None:
                 zone_ad = zone_mt.attribute_data or {}
-                # Resolve server-side cage_type and medium (FK takes precedence over flat fields).
+                # Resolve all cross-end fields up front (FK takes precedence over flat fields).
                 srv_cage = (xcvr_mt.attribute_data or {}).get('cage_type') if xcvr_mt else self.cage_type
                 srv_medium = (xcvr_mt.attribute_data or {}).get('medium') if xcvr_mt else self.medium
+                srv_connector = (xcvr_mt.attribute_data or {}).get('connector') if xcvr_mt else self.connector
                 zone_cage = zone_ad.get('cage_type')
                 zone_medium = zone_ad.get('medium')
-                # V4/V6: cage_type must match.
-                if srv_cage and zone_cage and srv_cage != zone_cage:
+                zone_connector = zone_ad.get('connector')
+                zone_breakout_topology = zone_ad.get('breakout_topology')
+                # Consult approved-asymmetric-pair registry before cage/connector checks.
+                # Medium (V5/V8) is always enforced independently of this registry.
+                from netbox_hedgehog.transceiver_compat import is_approved_asymmetric_pair
+                _approved = is_approved_asymmetric_pair(
+                    zone_cage, zone_connector, zone_medium, zone_breakout_topology,
+                    srv_cage, srv_connector,
+                )
+                # V4/V6: cage_type must match (unless approved asymmetric pair).
+                if not _approved and srv_cage and zone_cage and srv_cage != zone_cage:
                     field = 'transceiver_module_type' if xcvr_mt else 'cage_type'
                     raise ValidationError({
                         field: (
@@ -952,6 +962,7 @@ class PlanServerConnection(NetBoxModel):
                         )
                     })
                 # V5/V8: medium must be compatible (DAC↔DAC, ACC↔ACC, MMF↔MMF, SMF↔SMF).
+                # Always enforced — approved asymmetric pairs do not bypass medium strictness.
                 if srv_medium and zone_medium and srv_medium != zone_medium:
                     field = 'transceiver_module_type' if xcvr_mt else 'medium'
                     raise ValidationError({
@@ -960,10 +971,8 @@ class PlanServerConnection(NetBoxModel):
                             f"zone transceiver medium '{zone_medium}'. Both ends must use the same medium."
                         )
                     })
-                # V6: connector must match.
-                srv_connector = (xcvr_mt.attribute_data or {}).get('connector') if xcvr_mt else self.connector
-                zone_connector = zone_ad.get('connector')
-                if srv_connector and zone_connector and srv_connector != zone_connector:
+                # V6: connector must match (unless approved asymmetric pair).
+                if not _approved and srv_connector and zone_connector and srv_connector != zone_connector:
                     field = 'transceiver_module_type' if xcvr_mt else 'connector'
                     raise ValidationError({
                         field: (
