@@ -199,6 +199,20 @@ class TestSwitchFabricReviewService(TestCase):
         self.assertIsNone(unpaired[0].outcome)
         self.assertIn('peer_zone', unpaired[0].reason.lower())
 
+    # Asymmetric dedup: only near has peer_zone set; far is visited first in
+    # queryset order → must emit exactly one paired row (not one unpaired + one paired)
+    def test_asymmetric_peer_zone_far_first_emits_one_paired_row_only(self):
+        sw2 = _make_switch_class(self.plan, self.ext, sc_id='sfr-spine-asym')
+        # far name sorts before near name → far is iterated first
+        far = _make_uplink_zone(sw2, name='sfr-a-far-dl', zone_type=PortZoneTypeChoices.FABRIC)
+        near = _make_uplink_zone(self.sw, name='sfr-b-near-ul', peer_zone=far)
+        # far.peer_zone is NOT set (asymmetric)
+        summary = self._build()
+        self.assertEqual(len(summary.rows), 1, 'Expected exactly one row, not unpaired+paired duplicate')
+        self.assertTrue(summary.rows[0].is_paired)
+        self.assertEqual(summary.paired_count, 1)
+        self.assertEqual(summary.unpaired_count, 0)
+
     # SFR-6: peer_zone set on both A and B → exactly one row emitted
     def test_sfr6_symmetric_peer_zone_emits_one_row(self):
         sw2 = _make_switch_class(self.plan, self.ext, sc_id='sfr-spine-6')

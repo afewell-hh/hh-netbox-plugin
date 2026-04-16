@@ -579,13 +579,13 @@ class TestConnectionReviewPanelView(TestCase):
         _make_connection(self.server_class, zone)
         response = self._get_detail()
         self.assertEqual(response.status_code, 200)
-        self.assertIn('connection_review', response.context)
+        self.assertIn('server_link_review', response.context)
 
     def test_review_panel_present_even_without_connections(self):
         """Review panel context key is always present, even with zero connections."""
         response = self._get_detail()
         self.assertEqual(response.status_code, 200)
-        self.assertIn('connection_review', response.context)
+        self.assertIn('server_link_review', response.context)
 
     def test_review_section_heading_in_html(self):
         """HTML response must contain the 'Server-Link Review' heading (DIET-460 replaced legacy panel)."""
@@ -601,7 +601,7 @@ class TestConnectionReviewPanelView(TestCase):
         zone = _make_zone(self.switch_class, self.bo_1x800g, zone_name='crv-1x-match')
         _make_connection(self.server_class, zone, speed=800)
         response = self._get_detail()
-        summary = response.context['connection_review']
+        summary = response.context['server_link_review']
         self.assertEqual(summary.match_count, 1)
         self.assertEqual(summary.needs_review_count, 0)
         self.assertEqual(summary.blocked_count, 0)
@@ -612,7 +612,7 @@ class TestConnectionReviewPanelView(TestCase):
         zone = _make_zone(self.switch_class, self.bo_4x200g, xcvr_mt=None)
         _make_connection(self.server_class, zone, xcvr_mt=xcvr)
         response = self._get_detail()
-        summary = response.context['connection_review']
+        summary = response.context['server_link_review']
         self.assertEqual(summary.needs_review_count, 1)
         self.assertEqual(summary.match_count, 0)
 
@@ -629,7 +629,7 @@ class TestConnectionReviewPanelView(TestCase):
         )
         _make_connection(self.server_class, zone)
         response = self._get_detail()
-        summary = response.context['connection_review']
+        summary = response.context['server_link_review']
         self.assertEqual(summary.blocked_count, 1)
 
     # ------------------------------------------------------------------
@@ -684,10 +684,10 @@ class TestConnectionReviewPanelView(TestCase):
         self.assertEqual(response.status_code, 403)
 
     def test_plan_viewer_sees_review_panel(self):
-        """User with view ObjectPermission can see the connection review panel."""
+        """User with view ObjectPermission can see the server-link review panel."""
         zone = _make_zone(self.switch_class, self.bo_4x200g)
         _make_connection(self.server_class, zone)
         self.client.login(username='crv-viewer', password='pass')
         response = self.client.get(self._detail_url())
         self.assertEqual(response.status_code, 200)
-        self.assertIn('connection_review', response.context)
+        self.assertIn('server_link_review', response.context)

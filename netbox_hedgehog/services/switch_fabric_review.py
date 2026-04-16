@@ -72,8 +72,18 @@ def build_switch_fabric_review(plan: "TopologyPlan") -> SwitchFabricReviewSummar
 
     Queries all switch-fabric zones (zone_type not in SERVER/OOB) across all
     switch classes in the plan.  Paired rows (peer_zone set) are deduplicated
-    by emitting the row only when zone.pk < zone.peer_zone.pk.  Unpaired zones
-    appear as honest one-sided rows with outcome=None.
+    using a two-pass strategy that is safe regardless of iteration order:
+
+    Pass 1 — collect the PKs of every zone that is referenced as a far-end
+    target (i.e. some other zone's peer_zone points to it).  These zones must
+    never be emitted as unpaired rows, even if they appear in the queryset
+    before the near-end zone that carries the peer_zone FK.
+
+    Pass 2 — emit rows:
+      * Zone with peer_zone set → emit paired row; mark both PKs as seen.
+        Skip if peer.pk is already in seen_paired_pks (symmetric dedup).
+      * Zone without peer_zone → skip if pk is in far_end_pks or
+        seen_paired_pks; otherwise emit as honest one-sided row.
 
     Rows are sorted by near_fabric_name then near_zone_name.
     """
@@ -81,7 +91,7 @@ def build_switch_fabric_review(plan: "TopologyPlan") -> SwitchFabricReviewSummar
     from netbox_hedgehog.models.topology_planning.port_zones import SwitchPortZone
     from netbox_hedgehog.services.transceiver_rules import evaluate_xcvr_pair, R_NULL
 
-    zones = (
+    zones = list(
         SwitchPortZone.objects
         .filter(
             switch_class__plan=plan,
@@ -99,6 +109,11 @@ def build_switch_fabric_review(plan: "TopologyPlan") -> SwitchFabricReviewSummar
         .order_by('switch_class__fabric_name', 'zone_name')
     )
 
+    # Pass 1: collect PKs that will be consumed as far-end of a paired row.
+    far_end_pks: set[int] = {
+        z.peer_zone_id for z in zones if z.peer_zone_id is not None
+    }
+
     rows = []
     seen_paired_pks: set[int] = set()
 
@@ -106,8 +121,7 @@ def build_switch_fabric_review(plan: "TopologyPlan") -> SwitchFabricReviewSummar
         peer = zone.peer_zone
 
         if peer is not None:
-            # Deduplicate: if the peer was already emitted as the "near" end of
-            # a paired row, skip this zone (it was already included as "far").
+            # Already emitted as the far-end of a previously-processed near zone.
             if peer.pk in seen_paired_pks:
                 continue
             # Emit this as the canonical paired row; mark both ends as seen.
@@ -147,9 +161,10 @@ def build_switch_fabric_review(plan: "TopologyPlan") -> SwitchFabricReviewSummar
                 ),
             ))
         else:
-            # If this zone appeared as the "far" end of an already-emitted paired
-            # row (because its peer had peer_zone pointing at this zone), skip it.
-            if zone.pk in seen_paired_pks:
+            # Skip zones that are the far-end target of some near zone's
+            # peer_zone FK (caught by pass-1 pre-scan), or that were already
+            # covered as the far end of an earlier paired row.
+            if zone.pk in far_end_pks or zone.pk in seen_paired_pks:
                 continue
             # Unpaired: honest one-sided row
             rows.append(SwitchFabricRow(

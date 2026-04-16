@@ -231,16 +231,10 @@ class TopologyPlanView(generic.ObjectView):
         else:
             plan_bom_comparison = None
 
-        # Connection review summary (#449) — always available, no GenerationState needed
-        from netbox_hedgehog.services.connection_review import (
-            build_connection_review_summary,
-            build_server_link_review,
-        )
-        connection_review = build_connection_review_summary(instance)
-        server_link_review = build_server_link_review(instance)
-
-        # Switch-Fabric Link Review (#460)
+        # Server-Link Review + Switch-Fabric Link Review (#460)
+        from netbox_hedgehog.services.connection_review import build_server_link_review
         from netbox_hedgehog.services.switch_fabric_review import build_switch_fabric_review
+        server_link_review = build_server_link_review(instance)
         switch_fabric_review = build_switch_fabric_review(instance)
 
         return {
@@ -259,7 +253,6 @@ class TopologyPlanView(generic.ObjectView):
             'bay_error_rows': bay_error_rows,
             'plan_bom': plan_bom,
             'plan_bom_comparison': plan_bom_comparison,
-            'connection_review': connection_review,
             'server_link_review': server_link_review,
             'switch_fabric_review': switch_fabric_review,
         }
