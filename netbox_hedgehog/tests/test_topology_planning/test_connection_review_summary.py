@@ -588,9 +588,9 @@ class TestConnectionReviewPanelView(TestCase):
         self.assertIn('connection_review', response.context)
 
     def test_review_section_heading_in_html(self):
-        """HTML response must contain the 'Connection Review' heading."""
+        """HTML response must contain the 'Server-Link Review' heading (DIET-460 replaced legacy panel)."""
         response = self._get_detail()
-        self.assertContains(response, 'Connection Review')
+        self.assertContains(response, 'Server-Link Review')
 
     # ------------------------------------------------------------------
     # V2: Match/needs_review/blocked badge counts in context

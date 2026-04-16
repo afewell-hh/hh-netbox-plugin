@@ -3,10 +3,57 @@ Topology Planning Forms (DIET Module)
 Forms for BreakoutOption and DeviceTypeExtension models.
 """
 
+from collections import Counter
+
 from django import forms
 from netbox.forms import NetBoxModelForm
 from dcim.models import DeviceType, ModuleType
 from utilities.forms.fields import DynamicModelChoiceField
+
+
+# ---------------------------------------------------------------------------
+# Transceiver picker label helpers (DIET-460)
+# ---------------------------------------------------------------------------
+
+def _xcvr_label(mt) -> str:
+    """Single-value description-first label for one ModuleType (no collision check)."""
+    if mt is None:
+        return '—'
+    desc = (mt.description or '').strip()
+    if desc:
+        return f'{desc} ({mt.model})'
+    return f'{mt.manufacturer} {mt.model}'
+
+
+def _make_xcvr_label_fn(queryset):
+    """
+    Return a label function for a transceiver ModelChoiceField.
+
+    Pre-scans *queryset* to detect description collisions. When two or more
+    ModuleTypes in the queryset share the same non-empty description, the
+    returned label function appends ``[manufacturer]`` to disambiguate.
+
+    Usage::
+
+        qs = ModuleType.objects.filter(...).select_related('manufacturer')
+        field.label_from_instance = _make_xcvr_label_fn(qs)
+    """
+    # Count descriptions across the queryset (blank descriptions never collide)
+    desc_counts: Counter = Counter()
+    for mt in queryset:
+        desc = (mt.description or '').strip()
+        if desc:
+            desc_counts[desc] += 1
+
+    def label_fn(mt) -> str:
+        desc = (mt.description or '').strip()
+        if not desc:
+            return f'{mt.manufacturer} {mt.model}'
+        if desc_counts[desc] > 1:
+            return f'{desc} ({mt.model}) [{mt.manufacturer}]'
+        return f'{desc} ({mt.model})'
+
+    return label_fn
 
 from ..models.topology_planning import (
     BreakoutOption,
@@ -416,14 +463,22 @@ class PlanServerConnectionForm(NetBoxModelForm):
             )
 
         # Filter transceiver_module_type to Network Transceiver profile only (DIET-334).
+        # Wire description-first labels (DIET-460).
         from dcim.models import ModuleType, ModuleTypeProfile
         xcvr_profile = ModuleTypeProfile.objects.filter(name='Network Transceiver').first()
         if xcvr_profile:
-            self.fields['transceiver_module_type'].queryset = ModuleType.objects.filter(
+            xcvr_qs = ModuleType.objects.filter(
                 profile=xcvr_profile
             ).select_related('manufacturer').order_by('manufacturer__name', 'model')
+            self.fields['transceiver_module_type'].queryset = xcvr_qs
+            self.fields['transceiver_module_type'].label_from_instance = _make_xcvr_label_fn(xcvr_qs)
         else:
             self.fields['transceiver_module_type'].queryset = ModuleType.objects.none()
+        # Help text: tell user switch-side optic is on the zone (DIET-460)
+        self.fields['transceiver_module_type'].help_text = (
+            'Server-side transceiver for this port. '
+            'The switch-side transceiver is set on the zone — edit it via the Switch Port Zone form.'
+        )
 
     def clean(self):
         """Validate form data including interface selection"""
@@ -537,11 +592,14 @@ class SwitchPortZoneForm(NetBoxModelForm):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         # Filter transceiver_module_type to Network Transceiver profile only (DIET-334).
+        # Wire description-first labels (DIET-460).
         from dcim.models import ModuleType, ModuleTypeProfile
         xcvr_profile = ModuleTypeProfile.objects.filter(name='Network Transceiver').first()
         if xcvr_profile:
-            self.fields['transceiver_module_type'].queryset = ModuleType.objects.filter(
+            xcvr_qs = ModuleType.objects.filter(
                 profile=xcvr_profile
             ).select_related('manufacturer').order_by('manufacturer__name', 'model')
+            self.fields['transceiver_module_type'].queryset = xcvr_qs
+            self.fields['transceiver_module_type'].label_from_instance = _make_xcvr_label_fn(xcvr_qs)
         else:
             self.fields['transceiver_module_type'].queryset = ModuleType.objects.none()
