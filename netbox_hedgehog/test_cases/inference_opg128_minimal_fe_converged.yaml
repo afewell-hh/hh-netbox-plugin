@@ -198,6 +198,10 @@ reference_data:
         - name: p1
           type: other
 
+    - id: xcvr_generic_200g
+      manufacturer: generic
+      model: QSFP112-200GBASE-SR2
+
 plan:
   name: Inference OPG-128 Minimal FE Converged
   status: draft
@@ -226,6 +230,7 @@ switch_classes:
 switch_port_zones:
   - switch_class: fe-leaf
     zone_name: fe-server-ports
+    transceiver_module_type: xcvr_generic_200g
     zone_type: server
     port_spec: 1-63:2
     breakout_option: b_4x200
@@ -233,6 +238,7 @@ switch_port_zones:
     priority: 10
   - switch_class: fe-leaf
     zone_name: fe-uplinks
+    transceiver_module_type: xcvr_generic_200g
     zone_type: uplink
     port_spec: 2-64:2
     breakout_option: b_1x800
@@ -240,6 +246,7 @@ switch_port_zones:
     priority: 20
   - switch_class: fe-spine
     zone_name: fe-fabric-downlinks
+    transceiver_module_type: xcvr_generic_200g
     zone_type: fabric
     port_spec: 1-64
     breakout_option: b_1x800
@@ -262,6 +269,7 @@ server_nics:
 server_connections:
   - server_class: compute
     connection_id: fe
+    transceiver_module_type: xcvr_generic_200g
     connection_name: frontend
     nic: fe
     port_index: 0

@@ -39,7 +39,7 @@ if TYPE_CHECKING:
 def _xcvr_label(mt) -> str:
     """Description-first label for a ModuleType (used in review rows)."""
     if mt is None:
-        return '—'
+        return '⚠ Missing (required)'
     desc = (mt.description or '').strip()
     if desc:
         return f'{desc} ({mt.model})'
@@ -156,6 +156,10 @@ def _determine_outcome(
     # Structural: no breakout option on zone → blocked (switch quantity unknown)
     if breakout_id is None:
         return 'blocked', 'No breakout option configured on switch zone'
+
+    # DIET-466: null-transceiver gate — blocked when either end is missing.
+    if server_attrs is None or zone_attrs is None:
+        return 'blocked', 'Transceiver intent missing — required on both connection and zone'
 
     # Delegate transceiver compatibility evaluation to the rule engine.
     xcvr_result = evaluate_xcvr_pair(server_attrs, zone_attrs)

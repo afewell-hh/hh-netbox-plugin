@@ -18,7 +18,9 @@ from django.db import IntegrityError
 from dcim.models import DeviceType, Manufacturer, ModuleType, InterfaceTemplate, Module, ModuleBay
 from users.models import ObjectPermission
 
-from netbox_hedgehog.tests.test_topology_planning import get_test_nic_module_type, get_test_server_nic
+from netbox_hedgehog.tests.test_topology_planning import (
+    get_test_nic_module_type, get_test_server_nic, get_test_transceiver_module_type,
+)
 from netbox_hedgehog.models.topology_planning import (
     TopologyPlan, PlanServerClass, PlanSwitchClass, PlanServerConnection,
     PlanServerNIC, DeviceTypeExtension, BreakoutOption, SwitchPortZone,
@@ -256,6 +258,7 @@ class PlanServerConnectionNICFKTestCase(TestCase):
             target_zone=self.zone,
             speed=200,
             port_type='data',
+            transceiver_module_type=get_test_transceiver_module_type(),  # DIET-466: required
         )
         defaults.update(kwargs)
         return PlanServerConnection(**defaults)
@@ -288,7 +291,10 @@ class PlanServerConnectionNICFKTestCase(TestCase):
             conn.full_clean()
         self.assertIn('nic', ctx.exception.message_dict)
 
-    def test_connection_transceiver_fields_optional_and_stored(self):
+    def test_connection_transceiver_fields_stored(self):
+        """DIET-466: transceiver_module_type is required; cage/medium/connector/standard are stored."""
+        # _make_connection includes transceiver_module_type by default (QSFP112/MMF).
+        # cage_type and medium must match the transceiver's attribute_data.
         conn = self._make_connection(
             connection_id='conn-xcvr',
             cage_type='QSFP112', medium='MMF', connector='MPO-12', standard='200GBASE-SR4',
@@ -328,6 +334,7 @@ class PlanServerConnectionNICFKTestCase(TestCase):
             hedgehog_conn_type=ConnectionTypeChoices.UNBUNDLED,
             distribution=ConnectionDistributionChoices.ALTERNATING,
             target_zone=self.zone, speed=200, port_type='data',
+            transceiver_module_type=get_test_transceiver_module_type(),  # DIET-466: required so nic check fires
         )
         with self.assertRaises(ValidationError) as ctx:
             conn.full_clean()

@@ -526,15 +526,15 @@ class AsymmetricSaveTimeValidationTestCase(TestCase):
             conn.full_clean()
 
     def test_no_transceiver_fks_passes_validation(self):
-        """B6 GREEN: No transceiver FKs on either side passes full_clean() (null-skip path)."""
+        """DIET-466: Both null → full_clean() raises ValidationError (transceiver required)."""
         conn, plan = self._make_conn_with_xcvr(
             server_xcvr=None,
             zone_xcvr=None,
         )
-        try:
+        with self.assertRaises(ValidationError) as ctx:
             conn.full_clean()
-        except ValidationError as e:
-            self.fail(f"Null-FK path must pass full_clean(): {e.message_dict}")
+        # Must be the transceiver_module_type field that triggered the error
+        self.assertIn('transceiver_module_type', ctx.exception.message_dict)
 
 
 # ---------------------------------------------------------------------------

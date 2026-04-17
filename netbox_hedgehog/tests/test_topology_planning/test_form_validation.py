@@ -569,6 +569,10 @@ class PlanServerConnectionFormValidationTestCase(TestCase):
             defaults={'module_type': cls.nic_module_type},
         )
 
+        # Create a Network Transceiver ModuleType for DIET-466 required field tests.
+        from netbox_hedgehog.tests.test_topology_planning import get_test_transceiver_module_type
+        cls.xcvr_mt = get_test_transceiver_module_type()
+
     def setUp(self):
         """Login before each test"""
         self.client = Client()
@@ -588,6 +592,7 @@ class PlanServerConnectionFormValidationTestCase(TestCase):
             'distribution': ConnectionDistributionChoices.SAME_SWITCH,
             'target_zone': self.zone.pk,
             'speed': 200,
+            'transceiver_module_type': self.xcvr_mt.pk,  # Required (DIET-466)
         }
 
         response = self.client.post(url, data, follow=False)
@@ -704,6 +709,7 @@ class PlanServerConnectionFormValidationTestCase(TestCase):
             'target_zone': self.zone.pk,
             'speed': 400,
             'rail': 0,
+            'transceiver_module_type': self.xcvr_mt.pk,  # Required (DIET-466)
         }
 
         response_success = self.client.post(url, data_with_rail, follow=False)
@@ -730,6 +736,7 @@ class PlanServerConnectionFormValidationTestCase(TestCase):
             'target_zone': self.zone.pk,
             'speed': 200,
             # rail is omitted
+            'transceiver_module_type': self.xcvr_mt.pk,  # Required (DIET-466)
         }
 
         response = self.client.post(url, data, follow=False)

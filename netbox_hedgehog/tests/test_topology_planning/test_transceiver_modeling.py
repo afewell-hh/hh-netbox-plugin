@@ -207,9 +207,11 @@ class TransceiverFKOnConnectionTestCase(TestCase):
             psc.full_clean()
         self.assertIn('medium', ctx.exception.message_dict)
 
-    def test_existing_psc_without_fk_unchanged(self):
-        """Pre-existing PSC with no transceiver FK validates cleanly (backward compat)."""
-        self.base_psc.full_clean()  # must not raise
+    def test_existing_psc_without_fk_rejected(self):
+        """DIET-466: PSC with no transceiver FK fails full_clean()."""
+        with self.assertRaises(ValidationError) as ctx:
+            self.base_psc.full_clean()
+        self.assertIn('transceiver_module_type', ctx.exception.message_dict)
 
 
 # =============================================================================
@@ -390,24 +392,26 @@ class CrossEndCompatibilityTestCase(TestCase):
         )
         psc.full_clean()  # must not raise
 
-    def test_flat_cage_type_vs_zone_fk_mismatch(self):
-        """PSC null FK but cage_type='OSFP' flat + zone QSFP112: raises ValidationError."""
+    def test_flat_cage_type_vs_xcvr_fk_mismatch(self):
+        """DIET-450: cage_type='OSFP' flat conflicts with xcvr FK QSFP112: raises ValidationError."""
         psc = _make_base_connection(
             self.server_class, self.nic, self.zone_qsfp112,
             connection_id='fe-c7',
+            transceiver_module_type=self.xcvr_qsfp112_mmf,  # DIET-466: required
         )
-        psc.cage_type = 'OSFP'
+        psc.cage_type = 'OSFP'  # conflicts with transceiver_module_type.attribute_data['cage_type']='QSFP112'
         with self.assertRaises(ValidationError) as ctx:
             psc.full_clean()
         self.assertIn('cage_type', ctx.exception.message_dict)
 
-    def test_flat_medium_vs_zone_fk_mismatch(self):
-        """PSC null FK but medium='DAC' flat + zone MMF: raises ValidationError."""
+    def test_flat_medium_vs_xcvr_fk_mismatch(self):
+        """DIET-450: medium='DAC' flat conflicts with xcvr FK medium='MMF': raises ValidationError."""
         psc = _make_base_connection(
             self.server_class, self.nic, self.zone_qsfp112,
             connection_id='fe-c8',
+            transceiver_module_type=self.xcvr_qsfp112_mmf,  # DIET-466: required
         )
-        psc.medium = 'DAC'
+        psc.medium = 'DAC'  # conflicts with transceiver_module_type.attribute_data['medium']='MMF'
         with self.assertRaises(ValidationError) as ctx:
             psc.full_clean()
         self.assertIn('medium', ctx.exception.message_dict)

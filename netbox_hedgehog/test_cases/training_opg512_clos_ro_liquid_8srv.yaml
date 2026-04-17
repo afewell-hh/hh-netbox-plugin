@@ -212,6 +212,10 @@ reference_data:
         - name: port0
           type: other
 
+    - id: xcvr_generic_200g
+      manufacturer: generic
+      model: QSFP112-200GBASE-SR2
+
 plan:
   name: Training OPG-512 Clos RO Liquid 8srv
   status: draft
@@ -250,6 +254,7 @@ switch_classes:
 switch_port_zones:
   - switch_class: fe-leaf
     zone_name: fe-server-ports
+    transceiver_module_type: xcvr_generic_200g
     zone_type: server
     port_spec: 1-63:2
     breakout_option: b_4x200
@@ -257,6 +262,7 @@ switch_port_zones:
     priority: 10
   - switch_class: fe-leaf
     zone_name: fe-uplinks
+    transceiver_module_type: xcvr_generic_200g
     zone_type: uplink
     port_spec: 2-64:2
     breakout_option: b_1x800
@@ -264,6 +270,7 @@ switch_port_zones:
     priority: 20
   - switch_class: fe-spine
     zone_name: fe-fabric-downlinks
+    transceiver_module_type: xcvr_generic_200g
     zone_type: fabric
     port_spec: 1-64
     breakout_option: b_1x800
@@ -271,6 +278,7 @@ switch_port_zones:
     priority: 10
   - switch_class: be-rail-leaf
     zone_name: be-server-ports
+    transceiver_module_type: xcvr_generic_200g
     zone_type: server
     port_spec: 1-32
     breakout_option: b_2x400
@@ -278,6 +286,7 @@ switch_port_zones:
     priority: 10
   - switch_class: be-rail-leaf
     zone_name: be-uplinks
+    transceiver_module_type: xcvr_generic_200g
     zone_type: uplink
     port_spec: 33-64
     breakout_option: b_1x800
@@ -285,6 +294,7 @@ switch_port_zones:
     priority: 20
   - switch_class: be-spine
     zone_name: be-fabric-downlinks
+    transceiver_module_type: xcvr_generic_200g
     zone_type: fabric
     port_spec: 1-64
     breakout_option: b_1x800
@@ -331,6 +341,7 @@ server_nics:
 server_connections:
   - server_class: compute
     connection_id: fe
+    transceiver_module_type: xcvr_generic_200g
     connection_name: frontend
     nic: fe
     port_index: 0
@@ -342,6 +353,7 @@ server_connections:
     port_type: data
   - server_class: compute
     connection_id: be-rail-0
+    transceiver_module_type: xcvr_generic_200g
     connection_name: backend-rail-0
     nic: be0
     port_index: 0
@@ -354,6 +366,7 @@ server_connections:
     port_type: data
   - server_class: compute
     connection_id: be-rail-1
+    transceiver_module_type: xcvr_generic_200g
     connection_name: backend-rail-1
     nic: be1
     port_index: 0
@@ -366,6 +379,7 @@ server_connections:
     port_type: data
   - server_class: compute
     connection_id: be-rail-2
+    transceiver_module_type: xcvr_generic_200g
     connection_name: backend-rail-2
     nic: be2
     port_index: 0
@@ -378,6 +392,7 @@ server_connections:
     port_type: data
   - server_class: compute
     connection_id: be-rail-3
+    transceiver_module_type: xcvr_generic_200g
     connection_name: backend-rail-3
     nic: be3
     port_index: 0
@@ -390,6 +405,7 @@ server_connections:
     port_type: data
   - server_class: compute
     connection_id: be-rail-4
+    transceiver_module_type: xcvr_generic_200g
     connection_name: backend-rail-4
     nic: be4
     port_index: 0
@@ -402,6 +418,7 @@ server_connections:
     port_type: data
   - server_class: compute
     connection_id: be-rail-5
+    transceiver_module_type: xcvr_generic_200g
     connection_name: backend-rail-5
     nic: be5
     port_index: 0
@@ -414,6 +431,7 @@ server_connections:
     port_type: data
   - server_class: compute
     connection_id: be-rail-6
+    transceiver_module_type: xcvr_generic_200g
     connection_name: backend-rail-6
     nic: be6
     port_index: 0
@@ -426,6 +444,7 @@ server_connections:
     port_type: data
   - server_class: compute
     connection_id: be-rail-7
+    transceiver_module_type: xcvr_generic_200g
     connection_name: backend-rail-7
     nic: be7
     port_index: 0

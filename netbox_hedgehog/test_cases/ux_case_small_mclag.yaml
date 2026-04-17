@@ -8,6 +8,9 @@ meta:
 
 reference_data:
   manufacturers:
+    - id: generic
+      name: Generic
+      slug: generic
     - id: test_mfg
       name: Test Mfg
       slug: test-mfg
@@ -68,6 +71,10 @@ reference_data:
         - name: p1
           type: other
 
+    - id: xcvr_generic_200g
+      manufacturer: generic
+      model: QSFP112-200GBASE-SR2
+
 plan:
   name: UX Case Small MCLAG
   status: draft
@@ -93,6 +100,7 @@ switch_classes:
 switch_port_zones:
   - switch_class: fe-leaf
     zone_name: server-downlinks
+    transceiver_module_type: xcvr_generic_200g
     zone_type: server
     port_spec: 1-16
     breakout_option: b_4x200
@@ -100,6 +108,7 @@ switch_port_zones:
     priority: 100
   - switch_class: fe-leaf
     zone_name: uplinks
+    transceiver_module_type: xcvr_generic_200g
     zone_type: uplink
     port_spec: 17-24
     breakout_option: b_1x800
@@ -107,6 +116,7 @@ switch_port_zones:
     priority: 100
   - switch_class: fe-spine
     zone_name: leaf-downlinks
+    transceiver_module_type: xcvr_generic_200g
     zone_type: fabric
     port_spec: 1-24
     breakout_option: b_1x800
@@ -121,11 +131,17 @@ server_classes:
     gpus_per_server: 8
     server_device_type: test_server
 
+server_nics:
+  - server_class: gpu-small
+    nic_id: fe
+    module_type: nic_bf3
+
 server_connections:
   - server_class: gpu-small
     connection_id: fe
+    transceiver_module_type: xcvr_generic_200g
     connection_name: frontend
-    nic_module_type: nic_bf3
+    nic: fe
     port_index: 0
     ports_per_connection: 2
     hedgehog_conn_type: unbundled

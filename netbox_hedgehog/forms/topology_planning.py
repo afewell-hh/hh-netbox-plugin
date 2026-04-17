@@ -474,10 +474,16 @@ class PlanServerConnectionForm(NetBoxModelForm):
             self.fields['transceiver_module_type'].label_from_instance = _make_xcvr_label_fn(xcvr_qs)
         else:
             self.fields['transceiver_module_type'].queryset = ModuleType.objects.none()
+        # DIET-466: transceiver_module_type is required.
+        self.fields['transceiver_module_type'].required = True
+        self.fields['transceiver_module_type'].error_messages['required'] = (
+            'A transceiver ModuleType is required for every server connection.'
+        )
         # Help text: tell user switch-side optic is on the zone (DIET-460)
         self.fields['transceiver_module_type'].help_text = (
             'Server-side transceiver for this port. '
-            'The switch-side transceiver is set on the zone — edit it via the Switch Port Zone form.'
+            'The switch-side transceiver is set on the zone — edit it via the Switch Port Zone form. '
+            'Required.'
         )
 
     def clean(self):
@@ -603,3 +609,8 @@ class SwitchPortZoneForm(NetBoxModelForm):
             self.fields['transceiver_module_type'].label_from_instance = _make_xcvr_label_fn(xcvr_qs)
         else:
             self.fields['transceiver_module_type'].queryset = ModuleType.objects.none()
+        # DIET-466: transceiver_module_type is required.
+        self.fields['transceiver_module_type'].required = True
+        self.fields['transceiver_module_type'].error_messages['required'] = (
+            'A transceiver ModuleType is required for every switch port zone.'
+        )

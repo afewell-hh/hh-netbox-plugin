@@ -4,9 +4,12 @@ Device generation service for topology planning.
 Creates NetBox Devices, Interfaces, and Cables from a TopologyPlan.
 """
 
+import logging
 import math
 from dataclasses import dataclass
 from typing import Iterable
+
+logger = logging.getLogger(__name__)
 
 from django.core.exceptions import ValidationError
 from django.db import transaction
@@ -1330,6 +1333,11 @@ class DeviceGenerator:
         """
         xcvr_mt = getattr(connection, 'transceiver_module_type', None)
         if xcvr_mt is None:
+            logger.warning(
+                'BUG: transceiver_module_type is null on connection %s — '
+                'preflight should have blocked this. Skipping transceiver placement.',
+                getattr(connection, 'pk', '?'),
+            )
             return None
 
         from dcim.models import ModuleBay, Module
@@ -1409,6 +1417,11 @@ class DeviceGenerator:
         """
         xcvr_mt = getattr(zone, 'transceiver_module_type', None)
         if xcvr_mt is None:
+            logger.warning(
+                'BUG: transceiver_module_type is null on zone %s — '
+                'preflight should have blocked this. Skipping transceiver placement.',
+                getattr(zone, 'zone_name', '?'),
+            )
             return None
 
         # #445: resolve breakout child port name to parent physical cage name.

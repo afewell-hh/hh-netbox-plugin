@@ -867,6 +867,12 @@ class PlanServerConnection(NetBoxModel):
                 'nic': 'NIC is required.'
             })
 
+        # DIET-466: transceiver_module_type is required on every server connection.
+        if not self.transceiver_module_type_id:
+            raise ValidationError({
+                'transceiver_module_type': 'A transceiver ModuleType is required for every server connection.'
+            })
+
         # DIET-334 Stage 1: transceiver_module_type validation.
         self._validate_transceiver_module_type()
 

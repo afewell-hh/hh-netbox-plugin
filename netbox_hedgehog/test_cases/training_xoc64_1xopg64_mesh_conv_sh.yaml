@@ -416,9 +416,24 @@ reference_data:
     - id: osfp_400g_dr4
       manufacturer: generic
       model: OSFP-400G-DR4
-    - id: osfp_200g_dr4
+    - id: qsfp112_200gbase_sr2
       manufacturer: generic
-      model: OSFP-200G-DR4
+      model: QSFP112-200GBASE-SR2
+    - id: sfp28_25gbase_sr
+      manufacturer: generic
+      model: SFP28-25GBASE-SR
+    - id: sfp_plus_10gbase_sr
+      manufacturer: generic
+      model: SFP+-10GBASE-SR
+    - id: rj45_1000base_t
+      manufacturer: generic
+      model: RJ45-1000BASE-T
+    - id: r4113_a9221_dr
+      manufacturer: celestica
+      model: R4113-A9221-DR
+    - id: r4113_a9220_vr
+      manufacturer: celestica
+      model: R4113-A9220-VR
 
 plan:
   name: Training XOC-64 1x OPG-64 Mesh Converged SH
@@ -463,6 +478,7 @@ switch_port_zones:
     zone_type: uplink
     port_spec: 26,28,30,32,34,36,38-63
     breakout_option: b_1x800
+    transceiver_module_type: r4113_a9220_vr
     allocation_strategy: sequential
     priority: 10
   - switch_class: soc_storage_scale_out_leaf
@@ -470,6 +486,7 @@ switch_port_zones:
     zone_type: server
     port_spec: 1-16
     breakout_option: brk_2x400_osfp
+    transceiver_module_type: osfp_400g_dr4
     allocation_strategy: sequential
     priority: 20
   - switch_class: soc_storage_scale_out_leaf
@@ -477,6 +494,7 @@ switch_port_zones:
     zone_type: server
     port_spec: 27,29,31,33,35,37
     breakout_option: brk_4x200_osfp
+    transceiver_module_type: r4113_a9220_vr
     allocation_strategy: sequential
     priority: 30
   - switch_class: soc_storage_scale_out_leaf
@@ -484,6 +502,7 @@ switch_port_zones:
     zone_type: mesh
     port_spec: 26,28
     breakout_option: b_1x800
+    transceiver_module_type: r4113_a9220_vr
     allocation_strategy: sequential
     priority: 40
   - switch_class: inb_mgmt_leaf
@@ -491,6 +510,7 @@ switch_port_zones:
     zone_type: server
     port_spec: 1-24
     breakout_option: b_1x25
+    transceiver_module_type: sfp28_25gbase_sr
     allocation_strategy: sequential
     priority: 10
   - switch_class: oob_leaf
@@ -498,6 +518,7 @@ switch_port_zones:
     zone_type: oob
     port_spec: 1-48
     breakout_option: b_1x1
+    transceiver_module_type: rj45_1000base_t
     allocation_strategy: sequential
     priority: 10
   - switch_class: oob_leaf
@@ -505,6 +526,7 @@ switch_port_zones:
     zone_type: oob
     port_spec: 49-56
     breakout_option: b_1x10
+    transceiver_module_type: sfp_plus_10gbase_sr
     allocation_strategy: sequential
     priority: 20
 
@@ -608,7 +630,7 @@ server_connections:
     target_zone: soc_storage_scale_out_leaf/soc_storage_server_4x200
     speed: 200
     port_type: data
-    transceiver_module_type: osfp_200g_dr4
+    transceiver_module_type: qsfp112_200gbase_sr2
   - server_class: compute_xpu
     connection_id: inb-mgmt
     connection_name: inb-mgmt
@@ -620,6 +642,7 @@ server_connections:
     target_zone: inb_mgmt_leaf/inb_mgmt_server_25g
     speed: 25
     port_type: data
+    transceiver_module_type: sfp28_25gbase_sr
   - server_class: compute_xpu
     connection_id: oob-mgmt
     connection_name: oob-mgmt
@@ -631,6 +654,7 @@ server_connections:
     target_zone: oob_leaf/oob_server_1g
     speed: 1
     port_type: ipmi
+    transceiver_module_type: rj45_1000base_t
   - server_class: storage_srv
     connection_id: soc-storage
     connection_name: soc-storage
@@ -642,7 +666,7 @@ server_connections:
     target_zone: soc_storage_scale_out_leaf/soc_storage_server_4x200
     speed: 200
     port_type: data
-    transceiver_module_type: osfp_200g_dr4
+    transceiver_module_type: qsfp112_200gbase_sr2
   - server_class: storage_srv
     connection_id: inb-mgmt
     connection_name: inb-mgmt
@@ -654,6 +678,7 @@ server_connections:
     target_zone: inb_mgmt_leaf/inb_mgmt_server_25g
     speed: 25
     port_type: data
+    transceiver_module_type: sfp28_25gbase_sr
   - server_class: storage_srv
     connection_id: oob-mgmt
     connection_name: oob-mgmt
@@ -665,6 +690,7 @@ server_connections:
     target_zone: oob_leaf/oob_server_1g
     speed: 1
     port_type: ipmi
+    transceiver_module_type: rj45_1000base_t
   - server_class: metadata_srv
     connection_id: soc-storage
     connection_name: soc-storage
@@ -676,7 +702,7 @@ server_connections:
     target_zone: soc_storage_scale_out_leaf/soc_storage_server_4x200
     speed: 200
     port_type: data
-    transceiver_module_type: osfp_200g_dr4
+    transceiver_module_type: qsfp112_200gbase_sr2
   - server_class: metadata_srv
     connection_id: inb-mgmt
     connection_name: inb-mgmt
@@ -688,6 +714,7 @@ server_connections:
     target_zone: inb_mgmt_leaf/inb_mgmt_server_25g
     speed: 25
     port_type: data
+    transceiver_module_type: sfp28_25gbase_sr
   - server_class: metadata_srv
     connection_id: oob-mgmt
     connection_name: oob-mgmt
@@ -699,6 +726,7 @@ server_connections:
     target_zone: oob_leaf/oob_server_1g
     speed: 1
     port_type: ipmi
+    transceiver_module_type: rj45_1000base_t
   - server_class: hh_gateway
     connection_id: inb-mgmt
     connection_name: inb-mgmt
@@ -710,6 +738,7 @@ server_connections:
     target_zone: inb_mgmt_leaf/inb_mgmt_server_25g
     speed: 25
     port_type: data
+    transceiver_module_type: sfp28_25gbase_sr
   - server_class: hh_gateway
     connection_id: oob-mgmt
     connection_name: oob-mgmt
@@ -721,6 +750,7 @@ server_connections:
     target_zone: oob_leaf/oob_server_1g
     speed: 1
     port_type: ipmi
+    transceiver_module_type: rj45_1000base_t
   - server_class: hh_controller
     connection_id: inb-mgmt
     connection_name: inb-mgmt
@@ -732,6 +762,7 @@ server_connections:
     target_zone: inb_mgmt_leaf/inb_mgmt_server_25g
     speed: 25
     port_type: data
+    transceiver_module_type: sfp28_25gbase_sr
   - server_class: hh_controller
     connection_id: oob-mgmt
     connection_name: oob-mgmt
@@ -743,6 +774,7 @@ server_connections:
     target_zone: oob_leaf/oob_server_1g
     speed: 1
     port_type: ipmi
+    transceiver_module_type: rj45_1000base_t
 
 expected:
   counts:

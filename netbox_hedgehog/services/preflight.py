@@ -83,28 +83,59 @@ def check_transceiver_bay_readiness(plan: "TopologyPlan") -> TransceiverBayReadi
 
     Returns a TransceiverBayReadinessResult. Never raises.
     """
-    # Check 1 — PlanServerConnection transceiver FK presence (fast gate)
+    # Phase 0 — DIET-466: required transceiver intent check (always runs).
+    # Counts null-transceiver connections and zones; if any are missing, blocks
+    # generation immediately.  An empty plan (0 connections + 0 zones) has counts
+    # of zero and passes this check (PF7).
+    missing = []
+    null_conn_count = PlanServerConnection.objects.filter(
+        server_class__plan=plan,
+        transceiver_module_type__isnull=True,
+    ).count()
+    null_zone_count = SwitchPortZone.objects.filter(
+        switch_class__plan=plan,
+        transceiver_module_type__isnull=True,
+    ).count()
+    if null_conn_count > 0:
+        missing.append({
+            'entity_type': 'missing_transceiver_connections',
+            'entity_id': None,
+            'entity_name': 'Server Connections',
+            'missing_count': null_conn_count,
+            'hint': 'Set transceiver_module_type on all server connections.',
+        })
+    if null_zone_count > 0:
+        missing.append({
+            'entity_type': 'missing_transceiver_zones',
+            'entity_id': None,
+            'entity_name': 'Switch Port Zones',
+            'missing_count': null_zone_count,
+            'hint': 'Set transceiver_module_type on all switch port zones.',
+        })
+
+    # Check 1 — PlanServerConnection transceiver FK presence (Phase 2 scope gate)
     connection_fk_set = PlanServerConnection.objects.filter(
         server_class__plan=plan,
         transceiver_module_type__isnull=False,
     ).exists()
 
-    # Check 2 — SwitchPortZone transceiver FK presence (fast gate)
+    # Check 2 — SwitchPortZone transceiver FK presence (Phase 2 scope gate)
     zone_fk_set = SwitchPortZone.objects.filter(
         switch_class__plan=plan,
         transceiver_module_type__isnull=False,
     ).exists()
 
-    # Early exit: no transceiver FKs set anywhere in this plan.
-    if not connection_fk_set and not zone_fk_set:
+    has_transceiver_fks = connection_fk_set or zone_fk_set
+
+    if not has_transceiver_fks:
+        # No non-null FKs: Phase 2 bay checks have no scope; return current missing[].
         return TransceiverBayReadinessResult(
-            is_ready=True,
+            is_ready=len(missing) == 0,
             has_transceiver_fks=False,
-            missing=[],
+            missing=missing,
         )
 
-    # At least one FK is set — run bay presence checks.
-    missing = []
+    # Phase 2 — bay presence checks (only when at least one FK is set).
 
     # Check 3 — NIC ModuleType bay presence (at-least-one-bay check)
     # Scope: only NIC module types actually referenced by PlanServerConnection rows
@@ -169,56 +200,85 @@ def check_transceiver_bay_readiness(plan: "TopologyPlan") -> TransceiverBayReadi
 
     return TransceiverBayReadinessResult(
         is_ready=len(missing) == 0,
-        has_transceiver_fks=True,
+        has_transceiver_fks=has_transceiver_fks,
         missing=missing,
     )
+
+
+def _entry_kind_label(entry: dict) -> str:
+    """Human-readable label for a missing[] entry."""
+    etype = entry.get('entity_type', '')
+    if etype == 'missing_transceiver_connections':
+        return 'Server Connections (missing transceiver intent)'
+    if etype == 'missing_transceiver_zones':
+        return 'Switch Port Zones (missing transceiver intent)'
+    if etype == 'switch_device_type':
+        return 'Switch DeviceType'
+    return 'NIC ModuleType'
 
 
 def user_message(result: TransceiverBayReadinessResult) -> str:
     """Short operator-facing string for django.contrib.messages.error()."""
     if not result.missing:
         return (
-            "Transceiver bay pre-flight check failed. "
-            "Run populate_transceiver_bays and retry."
+            "Transceiver pre-flight check failed. "
+            "Set transceiver_module_type on all zones and connections, then retry."
         )
-    if len(result.missing) == 1:
-        entry = result.missing[0]
-        return (
-            f"Cannot generate devices: transceiver bays are missing for "
-            f"'{entry['entity_name']}'. "
-            "Run the populate_transceiver_bays management command and retry."
+    # Check if the blockers are missing-intent (Phase 0) vs missing-bay (Phase 2)
+    intent_entries = [
+        e for e in result.missing
+        if e['entity_type'] in ('missing_transceiver_connections', 'missing_transceiver_zones')
+    ]
+    bay_entries = [
+        e for e in result.missing
+        if e['entity_type'] not in ('missing_transceiver_connections', 'missing_transceiver_zones')
+    ]
+    parts = []
+    if intent_entries:
+        total_missing = sum(e['missing_count'] for e in intent_entries)
+        parts.append(
+            f"{total_missing} zone(s)/connection(s) are missing transceiver_module_type"
         )
-    names = ', '.join(e['entity_name'] for e in result.missing)
-    return (
-        f"Cannot generate devices: transceiver bays are missing for "
-        f"{len(result.missing)} entities ({names}). "
-        "Run the populate_transceiver_bays management command and retry."
-    )
+    if bay_entries:
+        names = ', '.join(e['entity_name'] for e in bay_entries)
+        parts.append(
+            f"transceiver bays are missing for {names} "
+            f"(run populate_transceiver_bays to fix)"
+        )
+    return f"Cannot generate devices: {'; '.join(parts)}. Fix the issues and retry."
 
 
 def cli_message(result: TransceiverBayReadinessResult) -> str:
     """Multi-line operator-facing string for CommandError or stdout in the CLI."""
     if not result.missing:
         return (
-            "Transceiver bay pre-flight check failed. "
-            "Run populate_transceiver_bays and retry."
+            "Transceiver pre-flight check failed. "
+            "Set transceiver_module_type on all zones and connections, then retry."
         )
-    lines = [
-        "Generation blocked: transceiver ModuleBayTemplates are missing.",
-        "Run the following command and retry:",
-        "  python manage.py populate_transceiver_bays",
-        "",
-        "Affected entities:",
-    ]
+    lines = ["Generation blocked: transceiver pre-flight check failed.", ""]
     for entry in result.missing:
-        kind = "Switch DeviceType" if entry['entity_type'] == 'switch_device_type' else "NIC ModuleType"
-        if entry['missing_count']:
+        etype = entry.get('entity_type', '')
+        if etype == 'missing_transceiver_connections':
             lines.append(
-                f"  - [{kind}] {entry['entity_name']} "
-                f"(missing {entry['missing_count']} ModuleBayTemplate(s))"
+                f"  - {entry['missing_count']} server connection(s) are missing "
+                f"transceiver_module_type. {entry['hint']}"
+            )
+        elif etype == 'missing_transceiver_zones':
+            lines.append(
+                f"  - {entry['missing_count']} switch port zone(s) are missing "
+                f"transceiver_module_type. {entry['hint']}"
             )
         else:
-            lines.append(
-                f"  - [{kind}] {entry['entity_name']} (no ModuleBayTemplates found)"
-            )
+            kind = _entry_kind_label(entry)
+            if entry['missing_count']:
+                lines.append(
+                    f"  - [{kind}] {entry['entity_name']} "
+                    f"(missing {entry['missing_count']} ModuleBayTemplate(s))"
+                )
+            else:
+                lines.append(
+                    f"  - [{kind}] {entry['entity_name']} (no ModuleBayTemplates found)"
+                )
+    lines.append("")
+    lines.append("Run populate_transceiver_bays after setting all transceiver intents.")
     return '\n'.join(lines)

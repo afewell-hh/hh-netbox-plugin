@@ -8,6 +8,9 @@ meta:
 
 reference_data:
   manufacturers:
+    - id: generic
+      name: Generic
+      slug: generic
     - id: test_mfg
       name: Test Mfg
       slug: test-mfg
@@ -82,6 +85,10 @@ reference_data:
         - name: port0
           type: other
 
+    - id: xcvr_generic_200g
+      manufacturer: generic
+      model: QSFP112-200GBASE-SR2
+
 plan:
   name: UX Case Small Rail
   status: draft
@@ -107,6 +114,7 @@ switch_classes:
 switch_port_zones:
   - switch_class: fe-leaf
     zone_name: server-downlinks
+    transceiver_module_type: xcvr_generic_200g
     zone_type: server
     port_spec: 1-16
     breakout_option: b_4x200
@@ -114,6 +122,7 @@ switch_port_zones:
     priority: 100
   - switch_class: be-rail-leaf
     zone_name: server-downlinks
+    transceiver_module_type: xcvr_generic_200g
     zone_type: server
     port_spec: 1-16
     breakout_option: b_2x400
@@ -128,11 +137,23 @@ server_classes:
     gpus_per_server: 8
     server_device_type: test_server_be
 
+server_nics:
+  - server_class: gpu-with-backend-small
+    nic_id: fe
+    module_type: nic_bf3
+  - server_class: gpu-with-backend-small
+    nic_id: be-rail-0
+    module_type: nic_cx7_single
+  - server_class: gpu-with-backend-small
+    nic_id: be-rail-1
+    module_type: nic_cx7_single
+
 server_connections:
   - server_class: gpu-with-backend-small
     connection_id: fe
+    transceiver_module_type: xcvr_generic_200g
     connection_name: frontend
-    nic_module_type: nic_bf3
+    nic: fe
     port_index: 0
     ports_per_connection: 1
     hedgehog_conn_type: unbundled
@@ -142,8 +163,9 @@ server_connections:
     port_type: data
   - server_class: gpu-with-backend-small
     connection_id: be-rail-0
+    transceiver_module_type: xcvr_generic_200g
     connection_name: backend-rail-0
-    nic_module_type: nic_cx7_single
+    nic: be-rail-0
     port_index: 0
     ports_per_connection: 1
     hedgehog_conn_type: unbundled
@@ -154,8 +176,9 @@ server_connections:
     port_type: data
   - server_class: gpu-with-backend-small
     connection_id: be-rail-1
+    transceiver_module_type: xcvr_generic_200g
     connection_name: backend-rail-1
-    nic_module_type: nic_cx7_single
+    nic: be-rail-1
     port_index: 0
     ports_per_connection: 1
     hedgehog_conn_type: unbundled

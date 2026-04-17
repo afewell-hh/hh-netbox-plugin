@@ -244,13 +244,13 @@ class TestServerLinkReviewService(TestCase):
         from netbox_hedgehog.services.connection_review import build_server_link_review
         return build_server_link_review(self.plan)
 
-    # SLR-1: both null, breakout set → match
+    # SLR-1: DIET-466: both null → blocked (transceiver required)
     def test_slr1_both_null_with_breakout_is_match(self):
         zone = _make_zone(self.sw, self.bo_1x)
         _make_connection(self.sc, zone, speed=800)
         summary = self._build()
         self.assertEqual(len(summary.rows), 1)
-        self.assertEqual(summary.rows[0].outcome, 'match')
+        self.assertEqual(summary.rows[0].outcome, 'blocked')
 
     # SLR-2: both null, NO breakout → blocked
     def test_slr2_no_breakout_is_blocked(self):
@@ -282,13 +282,13 @@ class TestServerLinkReviewService(TestCase):
         summary = self._build()
         self.assertEqual(summary.rows[0].outcome, 'blocked')
 
-    # SLR-5: conn xcvr set, zone null → needs_review
+    # SLR-5: DIET-466: conn xcvr set, zone null → blocked (null gate fires)
     def test_slr5_conn_xcvr_zone_null_is_needs_review(self):
         xcvr = get_test_transceiver_module_type()
         zone = _make_zone(self.sw, self.bo_4x, xcvr=None)
         _make_connection(self.sc, zone, xcvr=xcvr)
         summary = self._build()
-        self.assertEqual(summary.rows[0].outcome, 'needs_review')
+        self.assertEqual(summary.rows[0].outcome, 'blocked')
 
     # SLR-6: approved asymmetric pair → match
     def test_slr6_approved_asymmetric_pair_is_match(self):
@@ -312,13 +312,13 @@ class TestServerLinkReviewService(TestCase):
         summary = self._build()
         self.assertEqual(summary.rows[0].outcome, 'needs_review')
 
-    # SLR-8: breakout logical_ports>1, both null → needs_review (splitter advisory)
+    # SLR-8: DIET-466: both null, 4x breakout → blocked (null gate fires before splitter advisory)
     def test_slr8_breakout_no_xcvr_is_needs_review(self):
         zone = _make_zone(self.sw, self.bo_4x, xcvr=None)   # logical_ports=4
         _make_connection(self.sc, zone, xcvr=None)
         summary = self._build()
-        self.assertEqual(summary.rows[0].outcome, 'needs_review')
-        self.assertIn('splitter', summary.rows[0].reason.lower())
+        self.assertEqual(summary.rows[0].outcome, 'blocked')
+        self.assertIn('transceiver', summary.rows[0].reason.lower())
 
     # SLR-9: two connections targeting same zone → two rows, same edit_zone_url
     def test_slr9_two_connections_same_zone_give_two_rows(self):
@@ -381,11 +381,12 @@ class TestServerLinkReviewService(TestCase):
         self.assertIn('SLR 200G Test Optic', row.zone_xcvr_label)
 
     def test_row_xcvr_labels_dash_when_null(self):
+        """DIET-466: null xcvr label is '⚠ Missing (required)' not '—'."""
         zone = _make_zone(self.sw, self.bo_1x, xcvr=None)
         _make_connection(self.sc, zone, xcvr=None, speed=800)
         summary = self._build()
-        self.assertEqual(summary.rows[0].server_xcvr_label, '—')
-        self.assertEqual(summary.rows[0].zone_xcvr_label, '—')
+        self.assertEqual(summary.rows[0].server_xcvr_label, '⚠ Missing (required)')
+        self.assertEqual(summary.rows[0].zone_xcvr_label, '⚠ Missing (required)')
 
     def test_summary_totals_are_consistent(self):
         zone = _make_zone(self.sw, self.bo_4x)
@@ -518,8 +519,10 @@ class TestServerLinkReviewIntegration(TestCase):
         self.assertContains(resp, expected_url)
 
     def test_match_row_has_success_class(self):
-        zone = _make_zone(self.sw, self.bo_1x, name='slr-match-row')
-        _make_connection(self.sc, zone, speed=800)
+        """DIET-466: both xcvr set and matching → 'match' → table-success row class."""
+        xcvr = get_test_transceiver_module_type()
+        zone = _make_zone(self.sw, self.bo_1x, name='slr-match-row', xcvr=xcvr)
+        _make_connection(self.sc, zone, speed=800, xcvr=xcvr)
         resp = self.client.get(self._url())
         self.assertContains(resp, 'table-success')
 

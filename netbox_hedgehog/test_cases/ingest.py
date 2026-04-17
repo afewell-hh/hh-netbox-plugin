@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from django.db import transaction
+from django.db import IntegrityError, transaction
 from dcim.models import DeviceType, InterfaceTemplate, Manufacturer, ModuleType
 
 from netbox_hedgehog.models.topology_planning import (
@@ -136,6 +136,12 @@ def _ensure_reference_data(case: dict, reference_mode: str) -> dict:
             continue
 
         obj = DeviceType.objects.filter(manufacturer=manufacturer, model=model).first()
+        if not obj and slug:
+            # Dirty local DBs may already have the canonical DeviceType under the
+            # same slug but a different model string (for example DS2000/DS1000
+            # rows seeded by load_diet_reference_data). Reuse that row instead of
+            # attempting a duplicate create that collides on the unique slug.
+            obj = DeviceType.objects.filter(manufacturer=manufacturer, slug=slug).first()
         if reference_mode == "require":
             if not obj:
                 errors.append(
@@ -148,15 +154,25 @@ def _ensure_reference_data(case: dict, reference_mode: str) -> dict:
                 )
                 continue
         else:
-            obj, _ = DeviceType.objects.get_or_create(
-                manufacturer=manufacturer,
-                model=model,
-                defaults={
-                    "slug": slug or model.lower().replace(" ", "-"),
-                    "u_height": item.get("u_height", 1),
-                    "is_full_depth": item.get("is_full_depth", False),
-                },
-            )
+            try:
+                obj, _ = DeviceType.objects.get_or_create(
+                    manufacturer=manufacturer,
+                    model=model,
+                    defaults={
+                        "slug": slug or model.lower().replace(" ", "-"),
+                        "u_height": item.get("u_height", 1),
+                        "is_full_depth": item.get("is_full_depth", False),
+                    },
+                )
+            except IntegrityError:
+                if not slug:
+                    raise
+                obj = DeviceType.objects.filter(
+                    manufacturer=manufacturer,
+                    slug=slug,
+                ).first()
+                if obj is None:
+                    raise
         for iface in item.get("interface_templates", []):
             InterfaceTemplate.objects.get_or_create(
                 device_type=obj,
@@ -491,6 +507,29 @@ def apply_case(
             },
         )
         switch_map[switch_id] = sw
+
+    # DIET-466: Pre-pass — collect all missing transceiver_module_type errors before any DB writes.
+    _required_errors = []
+    for item in case.get("switch_port_zones", []):
+        zone_name = item.get("zone_name", "?")
+        if item.get("transceiver_module_type") is None:
+            _required_errors.append({
+                "severity": "error",
+                "code": "missing_required",
+                "path": f"switch_port_zones[{zone_name}].transceiver_module_type",
+                "message": "transceiver_module_type is required for every switch port zone.",
+            })
+    for item in case.get("server_connections", []):
+        conn_id = item.get("connection_id", "?")
+        if item.get("transceiver_module_type") is None:
+            _required_errors.append({
+                "severity": "error",
+                "code": "missing_required",
+                "path": f"server_connections[{conn_id}].transceiver_module_type",
+                "message": "transceiver_module_type is required for every server connection.",
+            })
+    if _required_errors:
+        raise TestCaseValidationError(_required_errors)
 
     # Upsert port zones.
     declared_zone_keys = set()

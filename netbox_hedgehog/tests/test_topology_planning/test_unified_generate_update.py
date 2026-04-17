@@ -21,11 +21,15 @@ from django.contrib.auth import get_user_model
 from django.contrib.auth.models import Permission
 from django.contrib.contenttypes.models import ContentType
 
-from dcim.models import DeviceType, Manufacturer, Site, Device, Cable
+from dcim.models import DeviceType, InterfaceTemplate, Manufacturer, ModuleBayTemplate, Site, Device, Cable
 from extras.models import Tag
 from users.models import ObjectPermission
 
-from netbox_hedgehog.tests.test_topology_planning import get_test_server_nic
+from netbox_hedgehog.tests.test_topology_planning import (
+    get_test_nic_module_type,
+    get_test_server_nic,
+    get_test_transceiver_module_type,
+)
 
 from netbox_hedgehog.models.topology_planning import (
     TopologyPlan,
@@ -101,6 +105,24 @@ class UnifiedGenerateUpdateIntegrationTestCase(TestCase):
             name='Test Site',
             defaults={'slug': 'test-site'}
         )
+
+        # DIET-466: transceiver intent is mandatory; set up xcvr + bay templates
+        cls.xcvr_mt = get_test_transceiver_module_type()
+        nic_mt = get_test_nic_module_type()
+        # NIC cage bays: connection uses port_index=0 + ports_per_connection=2,
+        # so actual_port_index cycles 0..1 → need cage-0 and cage-1.
+        ModuleBayTemplate.objects.get_or_create(module_type=nic_mt, name='cage-0')
+        ModuleBayTemplate.objects.get_or_create(module_type=nic_mt, name='cage-1')
+        # Switch interface templates + bay parity (needed for transceiver placement during generation)
+        # Port allocator uses names like E1/1, E1/2, ... based on port_spec '1-48'.
+        for port_num in range(1, 49):
+            InterfaceTemplate.objects.get_or_create(
+                device_type=cls.switch_type, name=f'E1/{port_num}',
+                defaults={'type': 'other'}
+            )
+        # Switch device type bay parity (Phase 2 preflight check 4 + Stage 2 placement)
+        for it in InterfaceTemplate.objects.filter(device_type=cls.switch_type):
+            ModuleBayTemplate.objects.get_or_create(device_type=cls.switch_type, name=it.name)
 
     def setUp(self):
         """Set up test user and clean environment before each test"""
@@ -202,7 +224,8 @@ class UnifiedGenerateUpdateIntegrationTestCase(TestCase):
             port_spec='1-48',
             breakout_option=self.breakout_4x200g,
             allocation_strategy=AllocationStrategyChoices.SEQUENTIAL,
-            priority=100
+            priority=100,
+            transceiver_module_type=self.xcvr_mt,  # DIET-466: required
         )
 
         # Create connection targeting the properly configured zone
@@ -216,7 +239,8 @@ class UnifiedGenerateUpdateIntegrationTestCase(TestCase):
             hedgehog_conn_type=ConnectionTypeChoices.UNBUNDLED,
             distribution=ConnectionDistributionChoices.ALTERNATING,
             speed=200,
-            port_type='data'
+            port_type='data',
+            transceiver_module_type=self.xcvr_mt,  # DIET-466: required
         )
 
         return plan
@@ -256,11 +280,12 @@ class UnifiedGenerateUpdateIntegrationTestCase(TestCase):
             override_quantity=None
         )
 
-        # Create connection but NO port zone (causes calc error)
+        # Create connection but NO port zone (causes calc error — no breakout_option)
         invalid_zone = SwitchPortZone.objects.create(
             switch_class=switch_class,
             zone_name='server-downlinks',
             zone_type='server',
+            transceiver_module_type=self.xcvr_mt,  # DIET-466: required (so preflight passes)
         )
         PlanServerConnection.objects.create(
             server_class=server_class,
@@ -272,6 +297,7 @@ class UnifiedGenerateUpdateIntegrationTestCase(TestCase):
             hedgehog_conn_type=ConnectionTypeChoices.UNBUNDLED,
             distribution=ConnectionDistributionChoices.ALTERNATING,
             speed=200,
+            transceiver_module_type=self.xcvr_mt,  # DIET-466: required
             port_type='data'
         )
 
@@ -1075,6 +1101,21 @@ class ObjectPermissionRBACTestCase(TestCase):
             defaults={'slug': 'test-site'}
         )
 
+        # DIET-466: transceiver intent is mandatory; set up xcvr + bay templates
+        cls.xcvr_mt = get_test_transceiver_module_type()
+        nic_mt = get_test_nic_module_type()
+        # NIC cage bays: port_index=0 + ports_per_connection=2 → cage-0 and cage-1
+        ModuleBayTemplate.objects.get_or_create(module_type=nic_mt, name='cage-0')
+        ModuleBayTemplate.objects.get_or_create(module_type=nic_mt, name='cage-1')
+        # Switch interface templates + bay parity (needed for transceiver placement during generation)
+        for port_num in range(1, 49):
+            InterfaceTemplate.objects.get_or_create(
+                device_type=cls.switch_type, name=f'E1/{port_num}',
+                defaults={'type': 'other'}
+            )
+        for it in InterfaceTemplate.objects.filter(device_type=cls.switch_type):
+            ModuleBayTemplate.objects.get_or_create(device_type=cls.switch_type, name=it.name)
+
     def setUp(self):
         """Set up clean environment before each test"""
         # Track plan IDs created in this test for scoped cleanup
@@ -1205,7 +1246,8 @@ class ObjectPermissionRBACTestCase(TestCase):
             port_spec='1-48',
             breakout_option=self.breakout_4x200g,
             allocation_strategy=AllocationStrategyChoices.SEQUENTIAL,
-            priority=100
+            priority=100,
+            transceiver_module_type=self.xcvr_mt,  # DIET-466: required
         )
 
         PlanServerConnection.objects.create(
@@ -1218,7 +1260,8 @@ class ObjectPermissionRBACTestCase(TestCase):
             hedgehog_conn_type=ConnectionTypeChoices.UNBUNDLED,
             distribution=ConnectionDistributionChoices.ALTERNATING,
             speed=200,
-            port_type='data'
+            port_type='data',
+            transceiver_module_type=self.xcvr_mt,  # DIET-466: required
         )
 
         return plan

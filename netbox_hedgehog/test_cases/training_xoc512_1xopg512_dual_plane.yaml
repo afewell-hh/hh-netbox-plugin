@@ -212,6 +212,10 @@ reference_data:
         - name: port1
           type: other
 
+    - id: xcvr_generic_200g
+      manufacturer: generic
+      model: QSFP112-200GBASE-SR2
+
 plan:
   name: Training XOC-512 1x OPG-512 Dual Plane
   status: draft
@@ -267,6 +271,7 @@ switch_classes:
 switch_port_zones:
   - switch_class: fe-leaf
     zone_name: fe-server-ports
+    transceiver_module_type: xcvr_generic_200g
     zone_type: server
     port_spec: 1-63:2
     breakout_option: b_4x200
@@ -274,6 +279,7 @@ switch_port_zones:
     priority: 10
   - switch_class: fe-leaf
     zone_name: fe-uplinks
+    transceiver_module_type: xcvr_generic_200g
     zone_type: uplink
     port_spec: 2-64:2
     breakout_option: b_1x800
@@ -281,6 +287,7 @@ switch_port_zones:
     priority: 20
   - switch_class: fe-spine
     zone_name: fe-fabric-downlinks
+    transceiver_module_type: xcvr_generic_200g
     zone_type: fabric
     port_spec: 1-64
     breakout_option: b_1x800
@@ -288,6 +295,7 @@ switch_port_zones:
     priority: 10
   - switch_class: be-plane-a-leaf
     zone_name: be-plane-a-server-ports
+    transceiver_module_type: xcvr_generic_200g
     zone_type: server
     port_spec: 1-32
     breakout_option: b_2x400
@@ -295,6 +303,7 @@ switch_port_zones:
     priority: 10
   - switch_class: be-plane-a-leaf
     zone_name: be-plane-a-uplinks
+    transceiver_module_type: xcvr_generic_200g
     zone_type: uplink
     port_spec: 33-64
     breakout_option: b_1x800
@@ -302,6 +311,7 @@ switch_port_zones:
     priority: 20
   - switch_class: be-plane-a-spine
     zone_name: be-plane-a-fabric-downlinks
+    transceiver_module_type: xcvr_generic_200g
     zone_type: fabric
     port_spec: 1-64
     breakout_option: b_1x800
@@ -309,6 +319,7 @@ switch_port_zones:
     priority: 10
   - switch_class: be-plane-b-leaf
     zone_name: be-plane-b-server-ports
+    transceiver_module_type: xcvr_generic_200g
     zone_type: server
     port_spec: 1-32
     breakout_option: b_2x400
@@ -316,6 +327,7 @@ switch_port_zones:
     priority: 10
   - switch_class: be-plane-b-leaf
     zone_name: be-plane-b-uplinks
+    transceiver_module_type: xcvr_generic_200g
     zone_type: uplink
     port_spec: 33-64
     breakout_option: b_1x800
@@ -323,6 +335,7 @@ switch_port_zones:
     priority: 20
   - switch_class: be-plane-b-spine
     zone_name: be-plane-b-fabric-downlinks
+    transceiver_module_type: xcvr_generic_200g
     zone_type: fabric
     port_spec: 1-64
     breakout_option: b_1x800
@@ -369,6 +382,7 @@ server_nics:
 server_connections:
   - server_class: compute
     connection_id: fe
+    transceiver_module_type: xcvr_generic_200g
     connection_name: frontend
     nic: fe
     port_index: 0
@@ -381,6 +395,7 @@ server_connections:
   # Plane A: port0 of each CX8 GPU NIC → backend-plane-a
   - server_class: compute
     connection_id: be-gpu0-plane-a
+    transceiver_module_type: xcvr_generic_200g
     connection_name: backend-gpu0-plane-a
     nic: be-gpu0
     port_index: 0
@@ -393,6 +408,7 @@ server_connections:
     port_type: data
   - server_class: compute
     connection_id: be-gpu1-plane-a
+    transceiver_module_type: xcvr_generic_200g
     connection_name: backend-gpu1-plane-a
     nic: be-gpu1
     port_index: 0
@@ -405,6 +421,7 @@ server_connections:
     port_type: data
   - server_class: compute
     connection_id: be-gpu2-plane-a
+    transceiver_module_type: xcvr_generic_200g
     connection_name: backend-gpu2-plane-a
     nic: be-gpu2
     port_index: 0
@@ -417,6 +434,7 @@ server_connections:
     port_type: data
   - server_class: compute
     connection_id: be-gpu3-plane-a
+    transceiver_module_type: xcvr_generic_200g
     connection_name: backend-gpu3-plane-a
     nic: be-gpu3
     port_index: 0
@@ -429,6 +447,7 @@ server_connections:
     port_type: data
   - server_class: compute
     connection_id: be-gpu4-plane-a
+    transceiver_module_type: xcvr_generic_200g
     connection_name: backend-gpu4-plane-a
     nic: be-gpu4
     port_index: 0
@@ -441,6 +460,7 @@ server_connections:
     port_type: data
   - server_class: compute
     connection_id: be-gpu5-plane-a
+    transceiver_module_type: xcvr_generic_200g
     connection_name: backend-gpu5-plane-a
     nic: be-gpu5
     port_index: 0
@@ -453,6 +473,7 @@ server_connections:
     port_type: data
   - server_class: compute
     connection_id: be-gpu6-plane-a
+    transceiver_module_type: xcvr_generic_200g
     connection_name: backend-gpu6-plane-a
     nic: be-gpu6
     port_index: 0
@@ -465,6 +486,7 @@ server_connections:
     port_type: data
   - server_class: compute
     connection_id: be-gpu7-plane-a
+    transceiver_module_type: xcvr_generic_200g
     connection_name: backend-gpu7-plane-a
     nic: be-gpu7
     port_index: 0
@@ -478,6 +500,7 @@ server_connections:
   # Plane B: port1 of each CX8 GPU NIC → backend-plane-b
   - server_class: compute
     connection_id: be-gpu0-plane-b
+    transceiver_module_type: xcvr_generic_200g
     connection_name: backend-gpu0-plane-b
     nic: be-gpu0
     port_index: 1
@@ -490,6 +513,7 @@ server_connections:
     port_type: data
   - server_class: compute
     connection_id: be-gpu1-plane-b
+    transceiver_module_type: xcvr_generic_200g
     connection_name: backend-gpu1-plane-b
     nic: be-gpu1
     port_index: 1
@@ -502,6 +526,7 @@ server_connections:
     port_type: data
   - server_class: compute
     connection_id: be-gpu2-plane-b
+    transceiver_module_type: xcvr_generic_200g
     connection_name: backend-gpu2-plane-b
     nic: be-gpu2
     port_index: 1
@@ -514,6 +539,7 @@ server_connections:
     port_type: data
   - server_class: compute
     connection_id: be-gpu3-plane-b
+    transceiver_module_type: xcvr_generic_200g
     connection_name: backend-gpu3-plane-b
     nic: be-gpu3
     port_index: 1
@@ -526,6 +552,7 @@ server_connections:
     port_type: data
   - server_class: compute
     connection_id: be-gpu4-plane-b
+    transceiver_module_type: xcvr_generic_200g
     connection_name: backend-gpu4-plane-b
     nic: be-gpu4
     port_index: 1
@@ -538,6 +565,7 @@ server_connections:
     port_type: data
   - server_class: compute
     connection_id: be-gpu5-plane-b
+    transceiver_module_type: xcvr_generic_200g
     connection_name: backend-gpu5-plane-b
     nic: be-gpu5
     port_index: 1
@@ -550,6 +578,7 @@ server_connections:
     port_type: data
   - server_class: compute
     connection_id: be-gpu6-plane-b
+    transceiver_module_type: xcvr_generic_200g
     connection_name: backend-gpu6-plane-b
     nic: be-gpu6
     port_index: 1
@@ -562,6 +591,7 @@ server_connections:
     port_type: data
   - server_class: compute
     connection_id: be-gpu7-plane-b
+    transceiver_module_type: xcvr_generic_200g
     connection_name: backend-gpu7-plane-b
     nic: be-gpu7
     port_index: 1

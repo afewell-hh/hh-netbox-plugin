@@ -120,7 +120,7 @@
         <div class="card">
             <h5 class="card-header">Actions</h5>
             <div class="card-body">
-                {% if transceiver_bay_readiness.has_transceiver_fks and not transceiver_bay_readiness.is_ready %}
+                {% if not transceiver_bay_readiness.is_ready %}
                 <div class="alert alert-danger mb-3" role="alert">
                     <h6 class="alert-heading">
                         <i class="mdi mdi-alert-circle"></i>

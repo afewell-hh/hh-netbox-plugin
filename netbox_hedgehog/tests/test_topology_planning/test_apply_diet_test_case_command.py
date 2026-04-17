@@ -10,7 +10,13 @@ from django.core.management import call_command
 from django.core.management.base import CommandError
 from django.test import TestCase
 
-from netbox_hedgehog.models.topology_planning import TopologyPlan
+from dcim.models import DeviceType
+
+from netbox_hedgehog.models.topology_planning import (
+    PlanServerConnection,
+    SwitchPortZone,
+    TopologyPlan,
+)
 
 
 class ApplyDietTestCaseCommandRedTestCase(TestCase):
@@ -79,3 +85,67 @@ class ApplyDietTestCaseCommandRedTestCase(TestCase):
                 stdout=StringIO(),
                 stderr=StringIO(),
             )
+
+    def test_xoc64_case_reuses_seeded_device_types_by_slug(self):
+        """
+        XOC-64 case apply must converge on pre-seeded DS2000/DS1000/DS5000
+        device types even when the case YAML uses different model strings for
+        the same manufacturer+slug pair.
+        """
+        call_command("load_diet_reference_data", stdout=StringIO(), stderr=StringIO())
+
+        self.assertTrue(
+            DeviceType.objects.filter(slug="celestica-ds2000").exists(),
+            "Precondition: seeded celestica-ds2000 DeviceType must exist",
+        )
+
+        out = StringIO()
+        call_command(
+            "apply_diet_test_case",
+            "--case",
+            "training_xoc64_1xopg64_mesh_conv_sh",
+            "--clean",
+            "--prune",
+            stdout=out,
+            stderr=StringIO(),
+        )
+
+        plan = TopologyPlan.objects.get(
+            custom_field_data__yaml_case_id="training_xoc64_1xopg64_mesh_conv_sh"
+        )
+        self.assertEqual(plan.name, "Training XOC-64 1x OPG-64 Mesh Converged SH")
+
+        nonnull_conn_xcvrs = PlanServerConnection.objects.filter(
+            server_class__plan=plan,
+            transceiver_module_type__isnull=False,
+        )
+        self.assertEqual(
+            nonnull_conn_xcvrs.count(),
+            14,
+            "XOC-64 SH case should define transceiver ModuleTypes for every server connection",
+        )
+
+        nonnull_zone_xcvrs = SwitchPortZone.objects.filter(
+            switch_class__plan=plan,
+            transceiver_module_type__isnull=False,
+        )
+        self.assertEqual(
+            nonnull_zone_xcvrs.count(),
+            7,
+            "XOC-64 SH case should define switch-side transceiver ModuleTypes for all active connection zones",
+        )
+
+        self.assertTrue(
+            nonnull_conn_xcvrs.filter(
+                connection_id="soc-storage",
+                transceiver_module_type__model="QSFP112-200GBASE-SR2",
+            ).exists(),
+            "soc-storage server connections must use the approved QSFP112 host optic",
+        )
+        self.assertTrue(
+            nonnull_zone_xcvrs.filter(
+                zone_name="soc_storage_server_4x200",
+                transceiver_module_type__model="R4113-A9220-VR",
+            ).exists(),
+            "soc-storage zone must use the approved DS5000 asymmetric switch optic",
+        )

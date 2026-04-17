@@ -3,6 +3,7 @@ Topology Planning Views (DIET Module)
 CRUD views for BreakoutOption, DeviceTypeExtension, and Topology Plan models.
 """
 
+import logging
 import re
 from django.conf import settings
 from django.contrib import messages
@@ -22,6 +23,8 @@ from ..utils.topology_calculations import update_plan_calculations
 from ..services.yaml_generator import generate_yaml_for_plan
 from ..jobs.device_generation import DeviceGenerationJob
 from ..services.preflight import check_transceiver_bay_readiness, user_message
+
+logger = logging.getLogger(__name__)
 
 
 def _require_topologyplan_change_permission(request, plan=None):
@@ -333,6 +336,10 @@ class TopologyPlanGenerateView(PermissionRequiredMixin, View):
 
         readiness = check_transceiver_bay_readiness(plan)
         if not readiness.is_ready:
+            logger.warning(
+                'Generation blocked by transceiver pre-flight for plan %s (%s): %d blocker(s)',
+                plan.pk, plan.name, len(readiness.missing),
+            )
             messages.error(request, user_message(readiness))
             return redirect('plugins:netbox_hedgehog:topologyplan_generate', pk=plan.pk)
 
@@ -449,6 +456,10 @@ class TopologyPlanGenerateUpdateView(View):
         # so the error is visible to plan editors even without device-creation perms.
         readiness = check_transceiver_bay_readiness(plan)
         if not readiness.is_ready:
+            logger.warning(
+                'Generation blocked by transceiver pre-flight for plan %s (%s): %d blocker(s)',
+                plan.pk, plan.name, len(readiness.missing),
+            )
             messages.error(request, user_message(readiness))
             return redirect('plugins:netbox_hedgehog:topologyplan_detail', pk=plan.pk)
 

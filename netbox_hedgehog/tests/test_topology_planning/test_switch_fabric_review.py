@@ -146,7 +146,7 @@ class TestSwitchFabricReviewService(TestCase):
         from netbox_hedgehog.services.switch_fabric_review import build_switch_fabric_review
         return build_switch_fabric_review(self.plan)
 
-    # SFR-1: paired zone (peer_zone set), both xcvr null → match R_NULL
+    # SFR-1: DIET-466: paired zone, both null → blocked (transceiver required)
     def test_sfr1_paired_both_null_is_match(self):
         sw2 = _make_switch_class(self.plan, self.ext, sc_id='sfr-spine')
         far = _make_uplink_zone(sw2, name='sfr-spine-dl', zone_type=PortZoneTypeChoices.FABRIC)
@@ -154,7 +154,7 @@ class TestSwitchFabricReviewService(TestCase):
         summary = self._build()
         paired = [r for r in summary.rows if r.is_paired]
         self.assertEqual(len(paired), 1)
-        self.assertEqual(paired[0].outcome, 'match')
+        self.assertEqual(paired[0].outcome, 'blocked')
 
     # SFR-2: paired, both xcvr set with matching attrs → match
     def test_sfr2_paired_matching_xcvr_is_match(self):
@@ -179,7 +179,7 @@ class TestSwitchFabricReviewService(TestCase):
         paired = [r for r in summary.rows if r.is_paired]
         self.assertEqual(paired[0].outcome, 'blocked')
 
-    # SFR-4: paired, near xcvr set, far null → needs_review
+    # SFR-4: DIET-466: paired, near xcvr set, far null → blocked (null gate fires)
     def test_sfr4_paired_one_null_is_needs_review(self):
         xcvr = _get_mmf_xcvr('SFR-ASYM-4')
         sw2 = _make_switch_class(self.plan, self.ext, sc_id='sfr-spine-4')
@@ -188,7 +188,7 @@ class TestSwitchFabricReviewService(TestCase):
         near = _make_uplink_zone(self.sw, name='sfr-lf4-ul', xcvr=xcvr, peer_zone=far)
         summary = self._build()
         paired = [r for r in summary.rows if r.is_paired]
-        self.assertEqual(paired[0].outcome, 'needs_review')
+        self.assertEqual(paired[0].outcome, 'blocked')
 
     # SFR-5: UPLINK zone, no peer_zone → unpaired row, outcome None
     def test_sfr5_unpaired_uplink_zone_has_none_outcome(self):
@@ -313,12 +313,12 @@ class TestSwitchFabricReviewService(TestCase):
         self.assertIn('SFR MMF Optic SFR-LABEL-TEST', row.near_xcvr_label)
         self.assertIn('SFR-LABEL-TEST', row.near_xcvr_label)
 
-    # near_xcvr_label is '—' when null
+    # DIET-466: near_xcvr_label is '⚠ Missing (required)' when null
     def test_near_xcvr_label_dash_when_null(self):
         _make_uplink_zone(self.sw, name='sfr-null-ul',
                           zone_type=PortZoneTypeChoices.UPLINK, xcvr=None)
         summary = self._build()
-        self.assertEqual(summary.rows[0].near_xcvr_label, '—')
+        self.assertEqual(summary.rows[0].near_xcvr_label, '⚠ Missing (required)')
 
     # Summary counters (paired/unpaired/match/needs_review/blocked)
     def test_summary_counters_are_consistent(self):

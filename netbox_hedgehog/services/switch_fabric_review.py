@@ -23,7 +23,7 @@ _FABRIC_ZONE_TYPES = {'uplink', 'mclag', 'peer', 'session', 'fabric', 'mesh'}
 def _xcvr_label(mt) -> str:
     """Description-first label for a ModuleType (used in review rows)."""
     if mt is None:
-        return '—'
+        return '⚠ Missing (required)'
     desc = (mt.description or '').strip()
     if desc:
         return f'{desc} ({mt.model})'
@@ -134,12 +134,12 @@ def build_switch_fabric_review(plan: "TopologyPlan") -> SwitchFabricReviewSummar
             near_attrs = near_xcvr_mt.attribute_data if near_xcvr_mt else None
             far_attrs = far_xcvr_mt.attribute_data if far_xcvr_mt else None
 
-            # Use the rule engine: treat near as "server" side, far as "zone" side
-            xcvr_result = evaluate_xcvr_pair(near_attrs, far_attrs)
-
-            if xcvr_result.reason_code == R_NULL:
-                outcome, reason = 'match', 'Connection intent is consistent'
+            # DIET-466: null-transceiver gate — blocked when either end is missing.
+            if near_xcvr_mt is None or far_xcvr_mt is None:
+                outcome, reason = 'blocked', 'Transceiver intent missing — required on both zones'
             else:
+                # Use the rule engine: treat near as "server" side, far as "zone" side
+                xcvr_result = evaluate_xcvr_pair(near_attrs, far_attrs)
                 outcome, reason = xcvr_result.outcome, xcvr_result.reason
 
             rows.append(SwitchFabricRow(

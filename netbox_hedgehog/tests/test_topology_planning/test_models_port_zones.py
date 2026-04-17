@@ -15,6 +15,7 @@ from netbox_hedgehog.models.topology_planning import (
     TopologyPlan,
     SwitchPortZone,
 )
+from netbox_hedgehog.tests.test_topology_planning import get_test_transceiver_module_type
 
 
 class SwitchPortZoneModelTestCase(TestCase):
@@ -66,6 +67,8 @@ class SwitchPortZoneModelTestCase(TestCase):
             device_type_extension=cls.device_type_extension,
             uplink_ports_per_switch=4,
         )
+        # DIET-466: transceiver required on all zones; pre-create for clean() tests
+        cls.xcvr_mt = get_test_transceiver_module_type()
 
     def test_create_port_zone_minimal(self):
         """Test creating port zone with minimal required fields"""
@@ -129,6 +132,7 @@ class SwitchPortZoneModelTestCase(TestCase):
             zone_type='server',
             port_spec='invalid-spec',
             allocation_strategy='sequential',
+            transceiver_module_type=self.xcvr_mt,  # DIET-466: required
         )
 
         with self.assertRaises(ValidationError) as cm:
@@ -145,6 +149,7 @@ class SwitchPortZoneModelTestCase(TestCase):
             port_spec='49-64',
             allocation_strategy='custom',
             allocation_order=None,
+            transceiver_module_type=self.xcvr_mt,  # DIET-466: required
         )
 
         with self.assertRaises(ValidationError) as cm:
@@ -161,6 +166,7 @@ class SwitchPortZoneModelTestCase(TestCase):
             port_spec='49-64',
             allocation_strategy='sequential',
             allocation_order=[49, 50, 51, 52],
+            transceiver_module_type=self.xcvr_mt,  # DIET-466: required
         )
 
         zone.full_clean()
@@ -274,6 +280,7 @@ class SwitchPortZoneModelTestCase(TestCase):
             zone_type='server',
             port_spec='1-4, 6, 8-10',  # Spaces around commas
             allocation_strategy='sequential',
+            transceiver_module_type=self.xcvr_mt,  # DIET-466: required
         )
         zone.full_clean()  # Should succeed (whitespace stripped)
 
@@ -285,6 +292,7 @@ class SwitchPortZoneModelTestCase(TestCase):
             zone_type='server',
             port_spec='4-1',  # Invalid: reversed
             allocation_strategy='sequential',
+            transceiver_module_type=self.xcvr_mt,
         )
 
         with self.assertRaises(ValidationError) as cm:
@@ -302,6 +310,7 @@ class SwitchPortZoneModelTestCase(TestCase):
             zone_type='server',
             port_spec='0-5',
             allocation_strategy='sequential',
+            transceiver_module_type=self.xcvr_mt,
         )
 
         with self.assertRaises(ValidationError) as cm:
@@ -319,6 +328,7 @@ class SwitchPortZoneModelTestCase(TestCase):
             zone_type='server',
             port_spec='-1-3',
             allocation_strategy='sequential',
+            transceiver_module_type=self.xcvr_mt,
         )
 
         with self.assertRaises(ValidationError) as cm:
@@ -334,6 +344,7 @@ class SwitchPortZoneModelTestCase(TestCase):
             zone_type='server',
             port_spec='1-9999',  # Unrealistic
             allocation_strategy='sequential',
+            transceiver_module_type=self.xcvr_mt,
         )
 
         with self.assertRaises(ValidationError) as cm:
@@ -351,6 +362,7 @@ class SwitchPortZoneModelTestCase(TestCase):
             zone_type='server',
             port_spec='1-16:0',  # Invalid: step=0
             allocation_strategy='sequential',
+            transceiver_module_type=self.xcvr_mt,
         )
 
         with self.assertRaises(ValidationError) as cm:
@@ -368,6 +380,7 @@ class SwitchPortZoneModelTestCase(TestCase):
             zone_type='server',
             port_spec='1-16:-2',
             allocation_strategy='sequential',
+            transceiver_module_type=self.xcvr_mt,
         )
 
         with self.assertRaises(ValidationError) as cm:
@@ -386,6 +399,7 @@ class SwitchPortZoneModelTestCase(TestCase):
             port_spec='1-4',  # Ports: [1,2,3,4]
             allocation_strategy='custom',
             allocation_order=[1, 2, 5, 6],  # Wrong ports! (5,6 not in spec; missing 3,4)
+            transceiver_module_type=self.xcvr_mt,  # DIET-466: required
         )
 
         with self.assertRaises(ValidationError) as cm:
@@ -404,6 +418,7 @@ class SwitchPortZoneModelTestCase(TestCase):
             port_spec='1-4',
             allocation_strategy='custom',
             allocation_order=[1, 2, 3, 3],  # Duplicate 3
+            transceiver_module_type=self.xcvr_mt,  # DIET-466: required
         )
 
         with self.assertRaises(ValidationError) as cm:
@@ -422,6 +437,7 @@ class SwitchPortZoneModelTestCase(TestCase):
             port_spec='1-16',  # 16 ports
             allocation_strategy='custom',
             allocation_order=[1, 2, 3],  # Only 3 entries (mismatch)
+            transceiver_module_type=self.xcvr_mt,  # DIET-466: required
         )
 
         with self.assertRaises(ValidationError) as cm:
@@ -662,6 +678,7 @@ class SwitchPortZoneModelTestCase(TestCase):
             zone_type='server',
             port_spec='1-48',
             allocation_strategy='sequential',
+            transceiver_module_type=self.xcvr_mt,  # DIET-466: required
         )
 
         zone.full_clean()  # Should not raise
@@ -674,6 +691,7 @@ class SwitchPortZoneModelTestCase(TestCase):
             zone_type='server',
             port_spec='1,3,5,7,9',
             allocation_strategy='sequential',
+            transceiver_module_type=self.xcvr_mt,  # DIET-466: required
         )
 
         zone.full_clean()  # Should not raise
@@ -686,6 +704,7 @@ class SwitchPortZoneModelTestCase(TestCase):
             zone_type='server',
             port_spec='1-64:2',
             allocation_strategy='sequential',
+            transceiver_module_type=self.xcvr_mt,  # DIET-466: required
         )
 
         zone.full_clean()  # Should not raise
