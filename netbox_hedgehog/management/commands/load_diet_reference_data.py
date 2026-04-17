@@ -43,14 +43,28 @@ class Command(BaseCommand):
             action="store_true",
             help="Skip bundled Hedgehog switch profile import",
         )
+        parser.add_argument(
+            "--retire-legacy",
+            action="store_true",
+            help=(
+                "Hard-delete retired DeviceTypes (celestica-ds5000-leaf/-spine) and all "
+                "dependent plan data before seeding canonical ones.  NOT safe to run on "
+                "shared environments — only pass this from reset_local_dev.sh or "
+                "equivalent local-reset scripts."
+            ),
+        )
 
     def handle(self, *args, **options):
         """Load seed data for DIET reference data models"""
 
         self.stdout.write(self.style.WARNING('Loading DIET reference data...'))
 
-        # Remove retired legacy DeviceTypes before seeding canonical ones
-        retired_count = self.retire_legacy_device_types()
+        # Remove retired legacy DeviceTypes only when explicitly requested.
+        # retire_legacy_device_types() hard-deletes plan data; it must NOT run
+        # unconditionally in a command described as "safe to run multiple times."
+        retired_count = 0
+        if options.get("retire_legacy"):
+            retired_count = self.retire_legacy_device_types()
 
         # Load BreakoutOption seed data
         breakout_count = self.load_breakout_options()

@@ -5,7 +5,8 @@ Produces one row per switch-fabric zone (zone_type not in SERVER/OOB).
 Paired rows (peer_zone set) are emitted once using the lower-pk zone as
 "near", avoiding double-emission when both ends carry the peer_zone FK.
 Unpaired zones (standard leaf→spine uplinks with no static peer linkage)
-appear as honest one-sided rows with outcome=None.
+appear as one-sided rows: outcome=None when xcvr is set, outcome='blocked'
+when transceiver_module_type is null (DIET-466).
 """
 
 from __future__ import annotations
@@ -45,7 +46,7 @@ class SwitchFabricRow:
     far_fabric_name: str | None    # None for unpaired rows
     far_xcvr_label: str | None     # None for unpaired rows
     is_paired: bool
-    outcome: str | None            # None for unpaired; 'match'|'needs_review'|'blocked' for paired
+    outcome: str | None            # None for unpaired+xcvr-ok; 'blocked' for null-xcvr (paired or unpaired); 'match'|'needs_review' for fully-populated paired
     reason: str
     edit_near_zone_url: str
     edit_far_zone_url: str | None  # None for unpaired rows
@@ -166,7 +167,14 @@ def build_switch_fabric_review(plan: "TopologyPlan") -> SwitchFabricReviewSummar
             # covered as the far end of an earlier paired row.
             if zone.pk in far_end_pks or zone.pk in seen_paired_pks:
                 continue
-            # Unpaired: honest one-sided row
+            # Unpaired: one-sided row.
+            # DIET-466: a null transceiver is always invalid — even on unpaired zones.
+            if zone.transceiver_module_type is None:
+                unpaired_outcome = 'blocked'
+                unpaired_reason = 'Transceiver intent missing — required on every zone'
+            else:
+                unpaired_outcome = None
+                unpaired_reason = 'No peer_zone configured — standard leaf→spine zones are unpaired'
             rows.append(SwitchFabricRow(
                 near_zone_name=zone.zone_name,
                 near_fabric_name=zone.switch_class.fabric_name,
@@ -176,8 +184,8 @@ def build_switch_fabric_review(plan: "TopologyPlan") -> SwitchFabricReviewSummar
                 far_fabric_name=None,
                 far_xcvr_label=None,
                 is_paired=False,
-                outcome=None,
-                reason='No peer_zone configured — standard leaf→spine zones are unpaired',
+                outcome=unpaired_outcome,
+                reason=unpaired_reason,
                 edit_near_zone_url=reverse(
                     'plugins:netbox_hedgehog:switchportzone_edit', args=[zone.pk]
                 ),

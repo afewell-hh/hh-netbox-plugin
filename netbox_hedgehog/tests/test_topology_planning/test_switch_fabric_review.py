@@ -190,14 +190,26 @@ class TestSwitchFabricReviewService(TestCase):
         paired = [r for r in summary.rows if r.is_paired]
         self.assertEqual(paired[0].outcome, 'blocked')
 
-    # SFR-5: UPLINK zone, no peer_zone → unpaired row, outcome None
-    def test_sfr5_unpaired_uplink_zone_has_none_outcome(self):
-        _make_uplink_zone(self.sw, name='sfr-unpaired', zone_type=PortZoneTypeChoices.UPLINK)
+    # SFR-5: UPLINK zone, no peer_zone, xcvr set → unpaired row, outcome None (informational)
+    def test_sfr5_unpaired_uplink_zone_with_xcvr_has_none_outcome(self):
+        xcvr = _get_mmf_xcvr('SFR-XCVR-SFR5')
+        _make_uplink_zone(self.sw, name='sfr-unpaired', zone_type=PortZoneTypeChoices.UPLINK,
+                          xcvr=xcvr)
         summary = self._build()
         unpaired = [r for r in summary.rows if not r.is_paired]
         self.assertEqual(len(unpaired), 1)
         self.assertIsNone(unpaired[0].outcome)
         self.assertIn('peer_zone', unpaired[0].reason.lower())
+
+    # SFR-5b: UPLINK zone, no peer_zone, xcvr null → blocked (DIET-466)
+    def test_sfr5b_unpaired_uplink_zone_without_xcvr_is_blocked(self):
+        _make_uplink_zone(self.sw, name='sfr-unpaired-null', zone_type=PortZoneTypeChoices.UPLINK,
+                          xcvr=None)
+        summary = self._build()
+        unpaired = [r for r in summary.rows if not r.is_paired]
+        self.assertEqual(len(unpaired), 1)
+        self.assertEqual(unpaired[0].outcome, 'blocked')
+        self.assertEqual(unpaired[0].near_xcvr_label, '⚠ Missing (required)')
 
     # Asymmetric dedup: only near has peer_zone set; far is visited first in
     # queryset order → must emit exactly one paired row (not one unpaired + one paired)
@@ -322,12 +334,17 @@ class TestSwitchFabricReviewService(TestCase):
 
     # Summary counters (paired/unpaired/match/needs_review/blocked)
     def test_summary_counters_are_consistent(self):
+        xcvr = _get_mmf_xcvr('SFR-XCVR-CNT')
         sw2 = _make_switch_class(self.plan, self.ext, sc_id='sfr-spine-cnt')
-        far = _make_uplink_zone(sw2, name='sfr-far-cnt', zone_type=PortZoneTypeChoices.FABRIC)
-        _make_uplink_zone(self.sw, name='sfr-near-cnt', peer_zone=far)
-        _make_uplink_zone(self.sw, name='sfr-unp-cnt', zone_type=PortZoneTypeChoices.UPLINK)
+        far = _make_uplink_zone(sw2, name='sfr-far-cnt', zone_type=PortZoneTypeChoices.FABRIC,
+                                xcvr=xcvr)
+        _make_uplink_zone(self.sw, name='sfr-near-cnt', peer_zone=far, xcvr=xcvr)
+        # Unpaired zone with xcvr set → outcome=None (informational, not blocked)
+        _make_uplink_zone(self.sw, name='sfr-unp-cnt', zone_type=PortZoneTypeChoices.UPLINK,
+                          xcvr=xcvr)
         summary = self._build()
         self.assertEqual(summary.paired_count + summary.unpaired_count, len(summary.rows))
+        # Unpaired xcvr-set zones have outcome=None, so blocked_count reflects only paired rows.
         self.assertEqual(
             summary.match_count + summary.needs_review_count + summary.blocked_count,
             summary.paired_count,

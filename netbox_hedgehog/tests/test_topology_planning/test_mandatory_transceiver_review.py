@@ -26,8 +26,10 @@ Service unit tests:
          outcome='blocked', both xcvr labels '⚠ Missing (required)'
   RV8 — build_switch_fabric_review() paired row, one null:
          outcome='blocked', null-side label '⚠ Missing (required)'
-  RV9 — build_switch_fabric_review() unpaired row: outcome=None regardless
-         of null transceiver (unpaired rows are informational only)
+  RV9 — build_switch_fabric_review() unpaired row with null xcvr:
+         outcome='blocked' (DIET-466: null xcvr is invalid on every zone)
+  RV9b — build_switch_fabric_review() unpaired row with xcvr set:
+         outcome=None (no peer to compare against; informational)
 
 All tests are RED until GREEN updates _xcvr_label(), _determine_outcome(),
 build_switch_fabric_review() null gate, and template alert condition.
@@ -426,11 +428,11 @@ class MandatoryTransceiverSwitchFabricReviewServiceTestCase(TestCase):
         self.assertNotEqual(row.far_xcvr_label, _MISSING_LABEL)
 
     # RV9
-    def test_rv9_unpaired_zone_outcome_is_none_regardless_of_null_xcvr(self):
+    def test_rv9_unpaired_zone_with_null_xcvr_is_blocked(self):
         """
-        RV9: Unpaired zone (no peer_zone) with null transceiver → outcome=None.
-        Unpaired rows are informational; they do not get a blocked outcome.
-        The xcvr label still reflects null as '⚠ Missing (required)'.
+        RV9: Unpaired zone (no peer_zone) with null transceiver → outcome='blocked'.
+        DIET-466: a missing transceiver is invalid on every zone, paired or not.
+        The xcvr label also reflects null as '⚠ Missing (required)'.
         """
         plan = TopologyPlan.objects.create(
             name='MxtRV-SFR-rv9', status=TopologyPlanStatusChoices.DRAFT,
@@ -457,14 +459,50 @@ class MandatoryTransceiverSwitchFabricReviewServiceTestCase(TestCase):
         unpaired = [r for r in review.rows if r.far_zone_name is None]
         self.assertTrue(len(unpaired) > 0, 'Must have unpaired rows')
         row = unpaired[0]
-        self.assertIsNone(
-            row.outcome,
-            f'Unpaired row must have outcome=None; got {row.outcome!r}',
+        self.assertEqual(
+            row.outcome, 'blocked',
+            f'Unpaired null-xcvr zone must be blocked (DIET-466); got {row.outcome!r}',
         )
         # Label still shows missing
         self.assertEqual(
             row.near_xcvr_label, _MISSING_LABEL,
             f'Unpaired null-xcvr zone label must be {_MISSING_LABEL!r}',
+        )
+
+    # RV9b
+    def test_rv9b_unpaired_zone_with_xcvr_set_outcome_is_none(self):
+        """
+        RV9b: Unpaired zone (no peer_zone) WITH transceiver set → outcome=None.
+        When xcvr is present there is no counterpart to compare against, so the
+        row is informational (outcome=None), not blocked.
+        """
+        plan = TopologyPlan.objects.create(
+            name='MxtRV-SFR-rv9b', status=TopologyPlanStatusChoices.DRAFT,
+        )
+        sw = PlanSwitchClass.objects.create(
+            plan=plan, switch_class_id='fe-leaf',
+            fabric_name=FabricTypeChoices.FRONTEND,
+            fabric_class=FabricClassChoices.MANAGED,
+            hedgehog_role=HedgehogRoleChoices.SERVER_LEAF,
+            device_type_extension=self.ext,
+            uplink_ports_per_switch=0, mclag_pair=False,
+            override_quantity=2, redundancy_type='eslag',
+        )
+        SwitchPortZone.objects.create(
+            switch_class=sw, zone_name='fe-leaf-uplinks-with-xcvr',
+            zone_type=PortZoneTypeChoices.UPLINK, port_spec='1-8',
+            breakout_option=self.bo,
+            allocation_strategy=AllocationStrategyChoices.SEQUENTIAL, priority=100,
+            transceiver_module_type=self.xcvr,
+            peer_zone=None,
+        )
+        review = self._build_review(plan)
+        unpaired = [r for r in review.rows if r.far_zone_name is None]
+        self.assertTrue(len(unpaired) > 0, 'Must have unpaired rows')
+        row = unpaired[0]
+        self.assertIsNone(
+            row.outcome,
+            f'Unpaired xcvr-set zone must have outcome=None; got {row.outcome!r}',
         )
 
 
