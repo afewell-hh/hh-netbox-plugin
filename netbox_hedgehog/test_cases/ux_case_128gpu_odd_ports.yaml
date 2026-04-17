@@ -447,6 +447,16 @@ reference_data:
         - name: bmc0
           type: other
 
+    - id: xcvr_generic_200g
+      manufacturer: generic
+      model: QSFP112-200GBASE-SR2
+    - id: xcvr_generic_25g
+      manufacturer: generic
+      model: SFP28-25GBASE-SR
+    - id: xcvr_generic_1g
+      manufacturer: generic
+      model: RJ45-1000BASE-T
+
 plan:
   name: UX Case 128GPU Odd Ports
   status: draft
@@ -515,6 +525,7 @@ switch_classes:
 switch_port_zones:
   - switch_class: fe-gpu-leaf
     zone_name: fe-gpu-leaf-downlinks
+    transceiver_module_type: xcvr_generic_200g
     zone_type: server
     port_spec: 1-63:2
     breakout_option: b_4x200
@@ -522,6 +533,7 @@ switch_port_zones:
     priority: 100
   - switch_class: fe-gpu-leaf
     zone_name: fe-gpu-leaf-uplinks
+    transceiver_module_type: xcvr_generic_200g
     zone_type: uplink
     port_spec: 2-64:2
     breakout_option: b_1x800
@@ -529,6 +541,7 @@ switch_port_zones:
     priority: 100
   - switch_class: fe-storage-leaf
     zone_name: fe-storage-leaf-downlinks
+    transceiver_module_type: xcvr_generic_200g
     zone_type: server
     port_spec: 1-63:2
     breakout_option: b_4x200
@@ -536,6 +549,7 @@ switch_port_zones:
     priority: 100
   - switch_class: fe-storage-leaf
     zone_name: fe-storage-leaf-uplinks
+    transceiver_module_type: xcvr_generic_200g
     zone_type: uplink
     port_spec: 2-64:2
     breakout_option: b_1x800
@@ -543,6 +557,7 @@ switch_port_zones:
     priority: 100
   - switch_class: fe-spine
     zone_name: fe-spine-downlinks
+    transceiver_module_type: xcvr_generic_200g
     zone_type: fabric
     port_spec: 2-63
     breakout_option: b_1x800
@@ -550,6 +565,7 @@ switch_port_zones:
     priority: 100
   - switch_class: fe-spine
     zone_name: fe-spine-200G-downlinks
+    transceiver_module_type: xcvr_generic_200g
     zone_type: server
     port_spec: 1
     breakout_option: b_4x200
@@ -557,6 +573,7 @@ switch_port_zones:
     priority: 100
   - switch_class: fe-spine
     zone_name: fe-spine-100G-downlinks
+    transceiver_module_type: xcvr_generic_200g
     zone_type: server
     port_spec: 64
     breakout_option: b_8x100
@@ -564,6 +581,7 @@ switch_port_zones:
     priority: 100
   - switch_class: be-rail-leaf
     zone_name: be-leaf-downlinks
+    transceiver_module_type: xcvr_generic_200g
     zone_type: server
     port_spec: 1-33
     breakout_option: b_2x400
@@ -571,6 +589,7 @@ switch_port_zones:
     priority: 100
   - switch_class: be-rail-leaf
     zone_name: backend-uplinks
+    transceiver_module_type: xcvr_generic_200g
     zone_type: uplink
     port_spec: 33-64
     breakout_option: b_1x800
@@ -578,6 +597,7 @@ switch_port_zones:
     priority: 100
   - switch_class: be-spine
     zone_name: be-spine-downlinks
+    transceiver_module_type: xcvr_generic_200g
     zone_type: fabric
     port_spec: 1-64
     breakout_option: b_1x800
@@ -585,6 +605,7 @@ switch_port_zones:
     priority: 100
   - switch_class: fe-border-leaf
     zone_name: fe-border-100g-downlinks
+    transceiver_module_type: xcvr_generic_200g
     zone_type: server
     port_spec: 1-13
     breakout_option: b_1x100
@@ -592,6 +613,7 @@ switch_port_zones:
     priority: 100
   - switch_class: fe-border-leaf
     zone_name: fe-border-25g-shared
+    transceiver_module_type: xcvr_generic_25g
     zone_type: server
     port_spec: 14-16
     breakout_option: b_4x25
@@ -599,6 +621,7 @@ switch_port_zones:
     priority: 100
   - switch_class: fe-border-leaf
     zone_name: fe-border-uplinks
+    transceiver_module_type: xcvr_generic_200g
     zone_type: uplink
     port_spec: 17-32
     breakout_option: b_1x100
@@ -607,6 +630,7 @@ switch_port_zones:
     peer_zone: fe-spine/fe-spine-100G-downlinks
   - switch_class: oob-mgmt-leaf
     zone_name: oob-mgmt-downlinks
+    transceiver_module_type: xcvr_generic_1g
     zone_type: oob
     port_spec: 1-48
     breakout_option: b_1x1g
@@ -614,6 +638,7 @@ switch_port_zones:
     priority: 100
   - switch_class: oob-mgmt-leaf
     zone_name: oob-mgmt-uplinks
+    transceiver_module_type: xcvr_generic_25g
     zone_type: oob
     port_spec: 49-50
     breakout_option: b_1x25
@@ -677,11 +702,93 @@ server_classes:
     gpus_per_server: 0
     server_device_type: exo_kube_dt
 
+server_nics:
+  - server_class: gpu-fe-only
+    nic_id: fe
+    module_type: nic_bf3
+  - server_class: gpu-fe-only
+    nic_id: bmc
+    module_type: bmc_module
+  - server_class: gpu-with-backend
+    nic_id: fe
+    module_type: nic_bf3
+  - server_class: gpu-with-backend
+    nic_id: be-rail-0
+    module_type: nic_cx7_single
+  - server_class: gpu-with-backend
+    nic_id: be-rail-1
+    module_type: nic_cx7_single
+  - server_class: gpu-with-backend
+    nic_id: be-rail-2
+    module_type: nic_cx7_single
+  - server_class: gpu-with-backend
+    nic_id: be-rail-3
+    module_type: nic_cx7_single
+  - server_class: gpu-with-backend
+    nic_id: be-rail-4
+    module_type: nic_cx7_single
+  - server_class: gpu-with-backend
+    nic_id: be-rail-5
+    module_type: nic_cx7_single
+  - server_class: gpu-with-backend
+    nic_id: be-rail-6
+    module_type: nic_cx7_single
+  - server_class: gpu-with-backend
+    nic_id: be-rail-7
+    module_type: nic_cx7_single
+  - server_class: gpu-with-backend
+    nic_id: bmc
+    module_type: bmc_module
+  - server_class: storage
+    nic_id: fe
+    module_type: nic_bf3
+  - server_class: storage
+    nic_id: bmc
+    module_type: bmc_module
+  - server_class: admin-node
+    nic_id: fe
+    module_type: nic_aiom_2x25g
+  - server_class: admin-node
+    nic_id: bmc
+    module_type: bmc_module
+  - server_class: host-lfm-ctrl
+    nic_id: fe
+    module_type: nic_cx7_dual_100g
+  - server_class: host-lfm-ctrl
+    nic_id: bmc
+    module_type: bmc_module
+  - server_class: hh-fe-ctrl
+    nic_id: fe
+    module_type: nic_cx7_dual_100g
+  - server_class: hh-fe-ctrl
+    nic_id: bmc
+    module_type: bmc_module
+  - server_class: hh-be-ctrl
+    nic_id: fe
+    module_type: nic_cx7_dual_100g
+  - server_class: hh-be-ctrl
+    nic_id: bmc
+    module_type: bmc_module
+  - server_class: hhg
+    nic_id: fe
+    module_type: nic_cx7_dual_200g
+  - server_class: hhg
+    nic_id: bmc
+    module_type: bmc_module
+  - server_class: exo-kube
+    nic_id: fe
+    module_type: nic_dual_100g
+  - server_class: exo-kube
+    nic_id: bmc
+    module_type: bmc_module
+
+
 server_connections:
   - server_class: gpu-fe-only
     connection_id: fe
+    transceiver_module_type: xcvr_generic_200g
     connection_name: frontend
-    nic_module_type: nic_bf3
+    nic: fe
     port_index: 0
     ports_per_connection: 2
     hedgehog_conn_type: unbundled
@@ -691,8 +798,9 @@ server_connections:
     port_type: data
   - server_class: gpu-with-backend
     connection_id: fe
+    transceiver_module_type: xcvr_generic_200g
     connection_name: frontend
-    nic_module_type: nic_bf3
+    nic: fe
     port_index: 0
     ports_per_connection: 2
     hedgehog_conn_type: unbundled
@@ -702,8 +810,9 @@ server_connections:
     port_type: data
   - server_class: gpu-with-backend
     connection_id: be-rail-0
+    transceiver_module_type: xcvr_generic_200g
     connection_name: backend-rail-0
-    nic_module_type: nic_cx7_single
+    nic: be-rail-0
     port_index: 0
     ports_per_connection: 1
     hedgehog_conn_type: unbundled
@@ -714,8 +823,9 @@ server_connections:
     port_type: data
   - server_class: gpu-with-backend
     connection_id: be-rail-1
+    transceiver_module_type: xcvr_generic_200g
     connection_name: backend-rail-1
-    nic_module_type: nic_cx7_single
+    nic: be-rail-1
     port_index: 0
     ports_per_connection: 1
     hedgehog_conn_type: unbundled
@@ -726,8 +836,9 @@ server_connections:
     port_type: data
   - server_class: gpu-with-backend
     connection_id: be-rail-2
+    transceiver_module_type: xcvr_generic_200g
     connection_name: backend-rail-2
-    nic_module_type: nic_cx7_single
+    nic: be-rail-2
     port_index: 0
     ports_per_connection: 1
     hedgehog_conn_type: unbundled
@@ -738,8 +849,9 @@ server_connections:
     port_type: data
   - server_class: gpu-with-backend
     connection_id: be-rail-3
+    transceiver_module_type: xcvr_generic_200g
     connection_name: backend-rail-3
-    nic_module_type: nic_cx7_single
+    nic: be-rail-3
     port_index: 0
     ports_per_connection: 1
     hedgehog_conn_type: unbundled
@@ -750,8 +862,9 @@ server_connections:
     port_type: data
   - server_class: gpu-with-backend
     connection_id: be-rail-4
+    transceiver_module_type: xcvr_generic_200g
     connection_name: backend-rail-4
-    nic_module_type: nic_cx7_single
+    nic: be-rail-4
     port_index: 0
     ports_per_connection: 1
     hedgehog_conn_type: unbundled
@@ -762,8 +875,9 @@ server_connections:
     port_type: data
   - server_class: gpu-with-backend
     connection_id: be-rail-5
+    transceiver_module_type: xcvr_generic_200g
     connection_name: backend-rail-5
-    nic_module_type: nic_cx7_single
+    nic: be-rail-5
     port_index: 0
     ports_per_connection: 1
     hedgehog_conn_type: unbundled
@@ -774,8 +888,9 @@ server_connections:
     port_type: data
   - server_class: gpu-with-backend
     connection_id: be-rail-6
+    transceiver_module_type: xcvr_generic_200g
     connection_name: backend-rail-6
-    nic_module_type: nic_cx7_single
+    nic: be-rail-6
     port_index: 0
     ports_per_connection: 1
     hedgehog_conn_type: unbundled
@@ -786,8 +901,9 @@ server_connections:
     port_type: data
   - server_class: gpu-with-backend
     connection_id: be-rail-7
+    transceiver_module_type: xcvr_generic_200g
     connection_name: backend-rail-7
-    nic_module_type: nic_cx7_single
+    nic: be-rail-7
     port_index: 0
     ports_per_connection: 1
     hedgehog_conn_type: unbundled
@@ -798,8 +914,9 @@ server_connections:
     port_type: data
   - server_class: storage
     connection_id: fe-storage
+    transceiver_module_type: xcvr_generic_200g
     connection_name: storage-frontend
-    nic_module_type: nic_bf3
+    nic: fe
     port_index: 0
     ports_per_connection: 2
     hedgehog_conn_type: unbundled
@@ -809,8 +926,9 @@ server_connections:
     port_type: data
   - server_class: admin-node
     connection_id: fe-border
+    transceiver_module_type: xcvr_generic_25g
     connection_name: border-frontend
-    nic_module_type: nic_aiom_2x25g
+    nic: fe
     port_index: 0
     ports_per_connection: 2
     hedgehog_conn_type: unbundled
@@ -820,8 +938,9 @@ server_connections:
     port_type: data
   - server_class: host-lfm-ctrl
     connection_id: fe-border
+    transceiver_module_type: xcvr_generic_200g
     connection_name: border-frontend
-    nic_module_type: nic_cx7_dual_100g
+    nic: fe
     port_index: 0
     ports_per_connection: 2
     hedgehog_conn_type: unbundled
@@ -831,8 +950,9 @@ server_connections:
     port_type: data
   - server_class: hh-fe-ctrl
     connection_id: fe-border
+    transceiver_module_type: xcvr_generic_200g
     connection_name: border-frontend
-    nic_module_type: nic_cx7_dual_100g
+    nic: fe
     port_index: 0
     ports_per_connection: 2
     hedgehog_conn_type: unbundled
@@ -842,8 +962,9 @@ server_connections:
     port_type: data
   - server_class: hh-be-ctrl
     connection_id: fe-border
+    transceiver_module_type: xcvr_generic_200g
     connection_name: border-frontend
-    nic_module_type: nic_cx7_dual_100g
+    nic: fe
     port_index: 0
     ports_per_connection: 2
     hedgehog_conn_type: unbundled
@@ -853,8 +974,9 @@ server_connections:
     port_type: data
   - server_class: exo-kube
     connection_id: fe-border
+    transceiver_module_type: xcvr_generic_200g
     connection_name: border-frontend
-    nic_module_type: nic_dual_100g
+    nic: fe
     port_index: 0
     ports_per_connection: 2
     hedgehog_conn_type: unbundled
@@ -864,8 +986,9 @@ server_connections:
     port_type: data
   - server_class: gpu-fe-only
     connection_id: bmc
+    transceiver_module_type: xcvr_generic_1g
     connection_name: bmc-oob
-    nic_module_type: bmc_module
+    nic: bmc
     port_index: 0
     ports_per_connection: 1
     hedgehog_conn_type: unbundled
@@ -875,8 +998,9 @@ server_connections:
     port_type: ipmi
   - server_class: gpu-with-backend
     connection_id: bmc
+    transceiver_module_type: xcvr_generic_1g
     connection_name: bmc-oob
-    nic_module_type: bmc_module
+    nic: bmc
     port_index: 0
     ports_per_connection: 1
     hedgehog_conn_type: unbundled
@@ -886,8 +1010,9 @@ server_connections:
     port_type: ipmi
   - server_class: storage
     connection_id: bmc
+    transceiver_module_type: xcvr_generic_1g
     connection_name: bmc-oob
-    nic_module_type: bmc_module
+    nic: bmc
     port_index: 0
     ports_per_connection: 1
     hedgehog_conn_type: unbundled
@@ -897,8 +1022,9 @@ server_connections:
     port_type: ipmi
   - server_class: admin-node
     connection_id: bmc
+    transceiver_module_type: xcvr_generic_1g
     connection_name: bmc-oob
-    nic_module_type: bmc_module
+    nic: bmc
     port_index: 0
     ports_per_connection: 1
     hedgehog_conn_type: unbundled
@@ -908,8 +1034,9 @@ server_connections:
     port_type: ipmi
   - server_class: host-lfm-ctrl
     connection_id: bmc
+    transceiver_module_type: xcvr_generic_1g
     connection_name: bmc-oob
-    nic_module_type: bmc_module
+    nic: bmc
     port_index: 0
     ports_per_connection: 1
     hedgehog_conn_type: unbundled
@@ -919,8 +1046,9 @@ server_connections:
     port_type: ipmi
   - server_class: hh-fe-ctrl
     connection_id: bmc
+    transceiver_module_type: xcvr_generic_1g
     connection_name: bmc-oob
-    nic_module_type: bmc_module
+    nic: bmc
     port_index: 0
     ports_per_connection: 1
     hedgehog_conn_type: unbundled
@@ -930,8 +1058,9 @@ server_connections:
     port_type: ipmi
   - server_class: hh-be-ctrl
     connection_id: bmc
+    transceiver_module_type: xcvr_generic_1g
     connection_name: bmc-oob
-    nic_module_type: bmc_module
+    nic: bmc
     port_index: 0
     ports_per_connection: 1
     hedgehog_conn_type: unbundled
@@ -941,8 +1070,9 @@ server_connections:
     port_type: ipmi
   - server_class: hhg
     connection_id: fe-spine
+    transceiver_module_type: xcvr_generic_200g
     connection_name: spine-frontend
-    nic_module_type: nic_cx7_dual_200g
+    nic: fe
     port_index: 0
     ports_per_connection: 2
     hedgehog_conn_type: unbundled
@@ -952,8 +1082,9 @@ server_connections:
     port_type: data
   - server_class: hhg
     connection_id: bmc
+    transceiver_module_type: xcvr_generic_1g
     connection_name: bmc-oob
-    nic_module_type: bmc_module
+    nic: bmc
     port_index: 0
     ports_per_connection: 1
     hedgehog_conn_type: unbundled
@@ -963,8 +1094,9 @@ server_connections:
     port_type: ipmi
   - server_class: exo-kube
     connection_id: bmc
+    transceiver_module_type: xcvr_generic_1g
     connection_name: bmc-oob
-    nic_module_type: bmc_module
+    nic: bmc
     port_index: 0
     ports_per_connection: 1
     hedgehog_conn_type: unbundled

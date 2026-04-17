@@ -12,7 +12,7 @@ from django.contrib.contenttypes.models import ContentType
 
 from dcim.models import DeviceType, Manufacturer, ModuleType
 
-from netbox_hedgehog.tests.test_topology_planning import get_test_server_nic
+from netbox_hedgehog.tests.test_topology_planning import get_test_server_nic, get_test_transceiver_module_type
 from netbox_hedgehog.models.topology_planning import (
     TopologyPlan,
     PlanServerClass,
@@ -560,6 +560,8 @@ class ServerConnectionIntegrationTestCase(TestCase):
             zone_name='server-downlinks',
             zone_type='server',
         )
+        # DIET-466: transceiver_module_type required for connection form validation
+        cls.xcvr_mt = get_test_transceiver_module_type()
 
     def setUp(self):
         """Login before each test"""
@@ -597,6 +599,7 @@ class ServerConnectionIntegrationTestCase(TestCase):
             'port_type': PortTypeChoices.DATA,
             'nic': get_test_server_nic(self.server_class).pk,
             'port_index': 0,
+            'transceiver_module_type': self.xcvr_mt.pk,  # DIET-466: required
         }
         response = self.client.post(url, data, follow=True)
 
@@ -662,6 +665,7 @@ class ServerConnectionIntegrationTestCase(TestCase):
             'speed': 400,  # Changed from 200
             'nic': get_test_server_nic(self.server_class).pk,
             'port_index': 0,
+            'transceiver_module_type': self.xcvr_mt.pk,  # DIET-466: required
         }
         post_response = self.client.post(edit_url, data, follow=True)
         self.assertEqual(post_response.status_code, 200)
@@ -770,6 +774,8 @@ class ServerConnectionValidationTestCase(TestCase):
             zone_name='server-downlinks',
             zone_type='server',
         )
+        # DIET-466: transceiver_module_type required for connection form validation
+        cls.xcvr_mt = get_test_transceiver_module_type()
 
     def setUp(self):
         """Login before each test"""
@@ -817,6 +823,7 @@ class ServerConnectionValidationTestCase(TestCase):
             'speed': 200,
             'nic': get_test_server_nic(self.server_class).pk,
             'port_index': 0,
+            'transceiver_module_type': self.xcvr_mt.pk,  # DIET-466: required
             # rail is NOT provided - should be OK for same-switch
         }
         response = self.client.post(url, data, follow=True)
@@ -843,6 +850,7 @@ class ServerConnectionValidationTestCase(TestCase):
             'rail': 0,  # Provided - should work
             'nic': get_test_server_nic(self.server_class).pk,
             'port_index': 0,
+            'transceiver_module_type': self.xcvr_mt.pk,  # DIET-466: required
         }
         response = self.client.post(url, data, follow=True)
 
@@ -946,6 +954,8 @@ class ServerConnectionFilteringTestCase(TestCase):
             zone_name='server-downlinks',
             zone_type='server',
         )
+        # DIET-466: transceiver_module_type required for connection form validation
+        cls.xcvr_mt = get_test_transceiver_module_type()
 
     def setUp(self):
         """Login before each test"""
@@ -992,6 +1002,7 @@ class ServerConnectionFilteringTestCase(TestCase):
             'speed': 200,
             'nic': get_test_server_nic(self.server_class_plan1).pk,
             'port_index': 0,
+            'transceiver_module_type': self.xcvr_mt.pk,  # DIET-466: required
         }
         response = self.client.post(url, data, follow=True)
 
@@ -1085,6 +1096,8 @@ class ServerConnectionPermissionTestCase(TestCase):
             zone_name='server-downlinks',
             zone_type='server',
         )
+        # DIET-466: transceiver_module_type required for connection form validation
+        cls.xcvr_mt = get_test_transceiver_module_type()
 
     def setUp(self):
         """Create fresh client for each test"""
@@ -1146,6 +1159,7 @@ class ServerConnectionPermissionTestCase(TestCase):
             'speed': 200,
             'nic': get_test_server_nic(self.server_class).pk,
             'port_index': 0,
+            'transceiver_module_type': self.xcvr_mt.pk,  # DIET-466: required
         }
         response = self.client.post(url, data, follow=False)
 

@@ -169,8 +169,8 @@ class PSCTransceiverUITestCase(TestCase):
             msg_prefix="Detail must render transceiver ModuleType model name",
         )
 
-    def test_edit_clears_transceiver_fk(self):
-        """Edit POST with empty transceiver_module_type clears the FK."""
+    def test_edit_clearing_transceiver_fk_is_blocked(self):
+        """DIET-466: Edit POST with empty transceiver_module_type is rejected (required field)."""
         psc = PlanServerConnection.objects.create(
             server_class=self.server_class, connection_id='fe-ui-edit',
             nic=self.nic, port_index=0, ports_per_connection=1,
@@ -191,12 +191,14 @@ class PSCTransceiverUITestCase(TestCase):
             'target_zone': self.zone.pk,
             'speed': 200,
             'port_type': 'data',
-            'transceiver_module_type': '',
+            'transceiver_module_type': '',  # DIET-466: required → form must reject this
         }
         response = self.client.post(url, post_data)
-        self.assertEqual(response.status_code, 302)
+        # DIET-466: transceiver_module_type is required; form re-renders with error
+        self.assertEqual(response.status_code, 200)
         psc.refresh_from_db()
-        self.assertIsNone(psc.transceiver_module_type)
+        # Original value unchanged (edit was rejected)
+        self.assertEqual(psc.transceiver_module_type, self.xcvr_mt)
 
     def test_delete_removes_psc(self):
         """Delete removes the PSC record."""
@@ -308,7 +310,7 @@ class SPZTransceiverUITestCase(TestCase):
         )
 
     def test_spz_edit_clears_transceiver_fk(self):
-        """Edit POST with empty transceiver_module_type clears the FK."""
+        """DIET-466: Edit POST with empty transceiver_module_type is rejected (required field)."""
         zone = SwitchPortZone.objects.create(
             switch_class=self.switch_class, zone_name='zone-h-edit',
             zone_type=PortZoneTypeChoices.SERVER, port_spec='49-56',
@@ -325,12 +327,16 @@ class SPZTransceiverUITestCase(TestCase):
             'breakout_option': self.breakout.pk,
             'allocation_strategy': AllocationStrategyChoices.SEQUENTIAL,
             'priority': 400,
-            'transceiver_module_type': '',
+            'transceiver_module_type': '',  # Attempting to clear — must be rejected
         }
         response = self.client.post(url, post_data)
-        self.assertEqual(response.status_code, 302)
+        # DIET-466: form rejects null transceiver — returns 200 with form errors, not 302
+        self.assertEqual(response.status_code, 200,
+                         "Clearing transceiver_module_type must be rejected by form validation")
         zone.refresh_from_db()
-        self.assertIsNone(zone.transceiver_module_type)
+        # Zone must NOT have been updated (transceiver should still be set)
+        self.assertIsNotNone(zone.transceiver_module_type,
+                             "Zone transceiver must remain set after failed edit")
 
     def test_spz_delete_removes_zone(self):
         """Delete removes the SwitchPortZone."""

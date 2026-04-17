@@ -22,7 +22,7 @@ from netbox_hedgehog.models.topology_planning import (
     TopologyPlan, PlanServerClass, PlanSwitchClass, PlanServerConnection,
     DeviceTypeExtension, BreakoutOption
 )
-from netbox_hedgehog.tests.test_topology_planning import get_test_server_nic
+from netbox_hedgehog.tests.test_topology_planning import get_test_server_nic, get_test_transceiver_module_type
 from netbox_hedgehog.services.device_generator import DeviceGenerator
 from netbox_hedgehog.choices import (
     TopologyPlanStatusChoices,
@@ -350,7 +350,8 @@ class ModuleInstantiationTestCase(TestCase):
             port_index=2,  # INVALID: bf3 only has 2 ports (0, 1)
             ports_per_connection=1,
             target_zone=zone,
-            speed=200
+            speed=200,
+            transceiver_module_type=get_test_transceiver_module_type(),
         )
 
         # Validation should fail

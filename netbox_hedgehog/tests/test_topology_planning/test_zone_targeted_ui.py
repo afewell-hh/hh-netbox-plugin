@@ -13,6 +13,7 @@ from netbox_hedgehog.models.topology_planning import (
     DeviceTypeExtension, GenerationState, PlanServerClass,
     PlanServerConnection, PlanServerNIC, PlanSwitchClass, SwitchPortZone, TopologyPlan,
 )
+from netbox_hedgehog.tests.test_topology_planning import get_test_transceiver_module_type
 from netbox_hedgehog.choices import (
     FabricTypeChoices, HedgehogRoleChoices, ServerClassCategoryChoices,
     ConnectionTypeChoices, ConnectionDistributionChoices,
@@ -68,6 +69,8 @@ class ZoneTargetedCRUDTestCase(TestCase):
         cls.plan_nic, _ = PlanServerNIC.objects.get_or_create(
             server_class=cls.sc, nic_id='nic-crud-test',
             defaults={'module_type': cls.nic})
+        # DIET-466: transceiver required on connections
+        cls.xcvr_mt = get_test_transceiver_module_type()
 
     def setUp(self):
         self.client = Client()
@@ -99,8 +102,9 @@ class ZoneTargetedCRUDTestCase(TestCase):
             "nic": self.plan_nic.pk, "port_index": 0,
             "ports_per_connection": 1, "hedgehog_conn_type": "unbundled",
             "distribution": "same-switch",
-            "target_zone": self.zone.pk,  # FAILS RED: form field doesn't exist
+            "target_zone": self.zone.pk,
             "speed": 100,
+            "transceiver_module_type": self.xcvr_mt.pk,  # DIET-466: required
         }
         resp = self.client.post(url, data, follow=False)
         self.assertEqual(resp.status_code, 302)
@@ -134,8 +138,9 @@ class ZoneTargetedCRUDTestCase(TestCase):
             "nic": self.plan_nic.pk, "port_index": 0,
             "ports_per_connection": 2, "hedgehog_conn_type": "unbundled",
             "distribution": "same-switch",
-            "target_zone": self.zone.pk,  # FAILS RED: form field absent
+            "target_zone": self.zone.pk,
             "speed": 100,
+            "transceiver_module_type": self.xcvr_mt.pk,  # DIET-466: required
         }
         resp = self.client.post(url, data, follow=False)
         self.assertEqual(resp.status_code, 302)

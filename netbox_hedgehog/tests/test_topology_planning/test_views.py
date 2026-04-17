@@ -547,13 +547,16 @@ class GenerateUpdateRailCalculationTestCase(TestCase):
         from netbox_hedgehog.models.topology_planning import SwitchPortZone
         from netbox_hedgehog.choices import PortZoneTypeChoices
 
+        from netbox_hedgehog.tests.test_topology_planning import get_test_transceiver_module_type as _get_xcvr
+        _xcvr = _get_xcvr()
         cls.zone_be_rail_server = SwitchPortZone.objects.create(
             switch_class=cls.be_rail_leaf,
             zone_name='server-ports',
             zone_type=PortZoneTypeChoices.SERVER,
             port_spec='1-32',
             breakout_option=cls.breakout_2x400,
-            priority=10
+            priority=10,
+            transceiver_module_type=_xcvr,  # Required (DIET-466)
         )
 
         SwitchPortZone.objects.create(
@@ -562,7 +565,8 @@ class GenerateUpdateRailCalculationTestCase(TestCase):
             zone_type=PortZoneTypeChoices.UPLINK,
             port_spec='33-64',
             breakout_option=cls.breakout_2x400,
-            priority=20
+            priority=20,
+            transceiver_module_type=_xcvr,  # Required (DIET-466)
         )
 
         # Create server class: 32 servers
@@ -578,6 +582,12 @@ class GenerateUpdateRailCalculationTestCase(TestCase):
         # Create 8 rail-optimized connections (1 per rail), each with its own NIC
         from netbox_hedgehog.models.topology_planning import PlanServerConnection
         from netbox_hedgehog.choices import ConnectionTypeChoices
+        from netbox_hedgehog.tests.test_topology_planning import get_test_transceiver_module_type
+        from dcim.models import ModuleBayTemplate as _MBT
+        from netbox_hedgehog.tests.test_topology_planning import get_test_nic_module_type as _get_nic_mt
+        xcvr_mt = get_test_transceiver_module_type()
+        # Add ModuleBayTemplate to the NIC ModuleType so preflight Phase 2 passes.
+        _MBT.objects.get_or_create(module_type=_get_nic_mt(), name='cage-0')
         for rail_num in range(8):
             nic = get_test_server_nic(cls.server_class, nic_id=f'be-rail-{rail_num}')
             PlanServerConnection.objects.create(
@@ -590,7 +600,8 @@ class GenerateUpdateRailCalculationTestCase(TestCase):
                 speed=400,
                 hedgehog_conn_type=ConnectionTypeChoices.UNBUNDLED,
                 distribution='rail-optimized',
-                rail=rail_num
+                rail=rail_num,
+                transceiver_module_type=xcvr_mt,  # Required (DIET-466)
             )
 
     def setUp(self):

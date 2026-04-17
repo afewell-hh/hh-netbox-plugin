@@ -23,6 +23,7 @@ from users.models import ObjectPermission
 
 from dcim.models import DeviceType, Manufacturer, ModuleType, InterfaceTemplate
 
+from netbox_hedgehog.tests.test_topology_planning import get_test_transceiver_module_type
 from netbox_hedgehog.models.topology_planning import (
     TopologyPlan,
     PlanServerClass,
@@ -1125,6 +1126,8 @@ class PlanServerConnectionUITestCase(TestCase):
             defaults={'module_type': cls.nic_module},
         )
 
+        cls.xcvr_mt = get_test_transceiver_module_type()  # DIET-466: required for PSC form POSTs
+
         cls.connection = PlanServerConnection.objects.create(
             server_class=cls.server_class,
             connection_id='fe-001',
@@ -1223,6 +1226,7 @@ class PlanServerConnectionUITestCase(TestCase):
             'hedgehog_conn_type': 'bundled',
             'distribution': 'same-switch',
             'port_type': 'data',
+            'transceiver_module_type': self.xcvr_mt.pk,  # DIET-466: required
         }
 
         response = self.client.post(url, data, follow=False)
@@ -1285,6 +1289,7 @@ class PlanServerConnectionUITestCase(TestCase):
             'hedgehog_conn_type': 'bundled',  # Changed
             'distribution': 'same-switch',
             'port_type': 'data',
+            'transceiver_module_type': self.xcvr_mt.pk,  # DIET-466: required
         }
 
         response = self.client.post(url, data)

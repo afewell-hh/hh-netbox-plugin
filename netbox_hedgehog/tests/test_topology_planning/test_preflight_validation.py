@@ -269,8 +269,9 @@ class TransceiverBayReadinessServiceTestCase(TestCase):
 
     def test_noop_when_no_transceiver_fks(self):
         """
-        S5.5 — Plan with no transceiver FKs: fast early-exit, is_ready=True,
-        has_transceiver_fks=False.
+        DIET-466: Plan with NO transceiver FKs is blocked by Phase 0 (not is_ready).
+        has_transceiver_fks=False (no non-null FKs), but missing[] is non-empty because
+        Phase 0 requires all zones/connections to have transceiver intent set.
         """
         from netbox_hedgehog.services.preflight import (
             check_transceiver_bay_readiness,
@@ -280,9 +281,16 @@ class TransceiverBayReadinessServiceTestCase(TestCase):
         result = check_transceiver_bay_readiness(plan)
 
         self.assertIsInstance(result, TransceiverBayReadinessResult)
-        self.assertTrue(result.is_ready)
+        # Phase 0 blocks: connections and zones without transceiver are listed in missing[]
+        self.assertFalse(result.is_ready)
         self.assertFalse(result.has_transceiver_fks)
-        self.assertEqual(result.missing, [])
+        self.assertGreater(len(result.missing), 0)
+        # Missing entries must be the DIET-466 transceiver-intent blockers
+        codes = {e.get('entity_type') for e in result.missing}
+        self.assertTrue(
+            codes & {'missing_transceiver_connections', 'missing_transceiver_zones'},
+            f"Expected transceiver-intent entries in missing, got: {result.missing}",
+        )
 
     def test_not_ready_when_fk_set_but_bays_absent(self):
         """
@@ -371,7 +379,9 @@ class TransceiverBayReadinessServiceTestCase(TestCase):
         msg = cli_message(result)
 
         self.assertIn('populate_transceiver_bays', msg)
-        self.assertIn('Affected', msg)
+        # DIET-466: new format uses entity type labels, not "Affected entities:".
+        # Verify the message contains a bay-related term instead.
+        self.assertIn('ModuleBayTemplate', msg)
 
 
 # ---------------------------------------------------------------------------
@@ -803,11 +813,15 @@ class MixedPlanPreflightTestCase(TestCase):
 
         result = check_transceiver_bay_readiness(plan)
 
-        self.assertTrue(
+        # DIET-466: Phase 0 blocks when ANY connection has null transceiver intent.
+        # The unrelated connection (no transceiver FK) triggers Phase 0 blocking.
+        self.assertFalse(
             result.is_ready,
-            'Mixed-NIC plan must be ready when only the FK-bearing NIC type has bays; '
-            'unrelated NIC type (no FK, no bays) must not cause blocking.',
+            'DIET-466: Phase 0 blocks when any connection has null transceiver intent. '
+            'Mixed-NIC plan with one FK-less connection must be blocked.',
         )
+        codes = {e.get('entity_type') for e in result.missing}
+        self.assertIn('missing_transceiver_connections', codes)
 
     # ------------------------------------------------------------------
     # Service-level mixed-switch test
@@ -852,28 +866,34 @@ class MixedPlanPreflightTestCase(TestCase):
 
         result = check_transceiver_bay_readiness(plan)
 
-        self.assertTrue(
+        # DIET-466: Phase 0 blocks when ANY zone has null transceiver intent.
+        # The unrelated zone (no transceiver FK) triggers Phase 0 blocking.
+        self.assertFalse(
             result.is_ready,
-            'Mixed-switch plan must be ready when only the FK-bearing zone\'s device '
-            'type has bays; unrelated switch class (no FK, no bays) must not block.',
+            'DIET-466: Phase 0 blocks when any zone has null transceiver intent. '
+            'Mixed-switch plan with one FK-less zone must be blocked.',
         )
+        codes = {e.get('entity_type') for e in result.missing}
+        self.assertIn('missing_transceiver_zones', codes)
 
     # ------------------------------------------------------------------
     # Integration-level view test: mixed-NIC plan is not over-blocked
     # ------------------------------------------------------------------
 
-    def test_generate_update_view_not_blocked_by_unrelated_nic(self):
+    def test_generate_update_view_blocked_by_unrelated_nic_without_xcvr(self):
         """
-        POST to generate-update on a mixed-NIC plan (FK-bearing NIC has bays,
-        unrelated NIC has no bays) must NOT be blocked by pre-flight.
+        DIET-466: POST to generate-update on a mixed-NIC plan (one connection with
+        xcvr FK, one without) MUST be blocked by Phase 0 of the pre-flight check.
 
-        The pre-flight passes, so the view proceeds to dispatch generation
-        (a GenerationState is created).
+        Phase 0 requires ALL connections to have transceiver_module_type set.
+        An unrelated connection with a null FK triggers Phase 0 blocking, so
+        generation is never dispatched and no GenerationState is created.
         """
         from netbox_hedgehog.models.topology_planning import PlanServerNIC
         from netbox_hedgehog.models.topology_planning import SwitchPortZone as SPZ
 
         plan, switch_dt = _build_plan_with_transceiver_fk(with_bays=True)
+        initial_gs_count = GenerationState.objects.filter(plan=plan).count()
 
         # Add the unrelated server class + connection with no transceiver FK.
         srv_dt = _get_or_create_server_fixtures()
@@ -905,7 +925,7 @@ class MixedPlanPreflightTestCase(TestCase):
             distribution=ConnectionDistributionChoices.ALTERNATING,
             speed=200,
             port_type='data',
-            # transceiver_module_type intentionally NOT set
+            # transceiver_module_type intentionally NOT set — triggers Phase 0 block
         )
 
         self.client.login(username='pf-mixed-superuser', password='testpass123')
@@ -915,9 +935,10 @@ class MixedPlanPreflightTestCase(TestCase):
         )
         self.client.post(url, follow=True)
 
-        # Pre-flight passed → generation was dispatched → GenerationState exists
-        self.assertTrue(
-            GenerationState.objects.filter(plan=plan).exists(),
-            'GenerationState must be created; pre-flight must not block mixed-NIC plan '
-            'when only the FK-bearing NIC type has bays.',
+        # DIET-466 Phase 0 blocks → generation is never dispatched → no new GenerationState
+        new_gs_count = GenerationState.objects.filter(plan=plan).count()
+        self.assertEqual(
+            new_gs_count, initial_gs_count,
+            'DIET-466: Phase 0 must block generation when any connection lacks '
+            'transceiver_module_type. GenerationState must not be created.',
         )

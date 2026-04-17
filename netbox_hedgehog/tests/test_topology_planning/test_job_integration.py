@@ -13,11 +13,15 @@ from django.contrib.auth import get_user_model
 from django.contrib.contenttypes.models import ContentType
 from unittest.mock import patch
 
-from dcim.models import DeviceType, Manufacturer, Device, Interface, Cable
+from dcim.models import DeviceType, InterfaceTemplate, Manufacturer, ModuleBayTemplate, Device, Interface, Cable
 from users.models import ObjectPermission
 from core.models import Job
 
-from netbox_hedgehog.tests.test_topology_planning import get_test_server_nic
+from netbox_hedgehog.tests.test_topology_planning import (
+    get_test_nic_module_type,
+    get_test_server_nic,
+    get_test_transceiver_module_type,
+)
 
 from netbox_hedgehog.models.topology_planning import (
     TopologyPlan,
@@ -108,6 +112,22 @@ class DeviceGenerationJobIntegrationTestCase(TestCase):
             hedgehog_roles=['spine', 'server-leaf']
         )
 
+        # DIET-466: transceiver intent is mandatory; set up xcvr + bay templates
+        cls.xcvr_mt = get_test_transceiver_module_type()
+        nic_mt = get_test_nic_module_type()
+        # NIC cage bays: port_index=0 + ports_per_connection=2 → cage-0 and cage-1
+        ModuleBayTemplate.objects.get_or_create(module_type=nic_mt, name='cage-0')
+        ModuleBayTemplate.objects.get_or_create(module_type=nic_mt, name='cage-1')
+        # Switch interface templates + bay parity (port_spec='1-32' used in setUp)
+        # cls.breakout is 2x400g (logical_ports=2) → port names E1/N/lane → cage 'E1/N'
+        for port_num in range(1, 33):
+            InterfaceTemplate.objects.get_or_create(
+                device_type=cls.switch_type, name=f'E1/{port_num}',
+                defaults={'type': 'other'}
+            )
+        for it in InterfaceTemplate.objects.filter(device_type=cls.switch_type):
+            ModuleBayTemplate.objects.get_or_create(device_type=cls.switch_type, name=it.name)
+
     def setUp(self):
         """Setup run before each test"""
         self.client = Client()
@@ -131,14 +151,15 @@ class DeviceGenerationJobIntegrationTestCase(TestCase):
             override_quantity=2  # Set quantity so device generator can create switches
         )
 
-        # Create port zone
+        # Create port zone (capacity zone, not targeted by connections)
         SwitchPortZone.objects.create(
             switch_class=self.switch_class,
             zone_name='server-zone',
             zone_type=PortZoneTypeChoices.SERVER,
             port_spec='1-32',
             breakout_option=self.breakout,
-            priority=10
+            priority=10,
+            transceiver_module_type=self.xcvr_mt,  # DIET-466: required
         )
 
         # Create server class
@@ -151,11 +172,18 @@ class DeviceGenerationJobIntegrationTestCase(TestCase):
             category=ServerClassCategoryChoices.GPU
         )
 
-        # Create server connection
+        # Create server connection zone + connection
+        # DIET-466: zone needs port_spec + breakout + xcvr; connection needs xcvr
+        from netbox_hedgehog.choices import AllocationStrategyChoices
         self.server_zone = SwitchPortZone.objects.create(
             switch_class=self.switch_class,
             zone_name='server-downlinks',
             zone_type=PortZoneTypeChoices.SERVER,
+            port_spec='1-32',
+            breakout_option=self.breakout,
+            allocation_strategy=AllocationStrategyChoices.SEQUENTIAL,
+            priority=5,
+            transceiver_module_type=self.xcvr_mt,  # DIET-466: required
         )
         PlanServerConnection.objects.create(
             connection_id='FE-001',
@@ -166,7 +194,8 @@ class DeviceGenerationJobIntegrationTestCase(TestCase):
             ports_per_connection=2,
             speed=400,
             hedgehog_conn_type=ConnectionTypeChoices.UNBUNDLED,
-            distribution=ConnectionDistributionChoices.ALTERNATING
+            distribution=ConnectionDistributionChoices.ALTERNATING,
+            transceiver_module_type=self.xcvr_mt,  # DIET-466: required
         )
 
     # =========================================================================
@@ -358,14 +387,33 @@ class DeviceGenerationJobIntegrationTestCase(TestCase):
         state.job = job
         state.save()
 
-        # Mock DeviceGenerator to verify status before generation
-        with patch('netbox_hedgehog.jobs.device_generation.DeviceGenerator') as MockGen:
-            mock_instance = MockGen.return_value
-            mock_instance.generate_all.return_value = type('obj', (object,), {
+        # Mock DeviceGenerator to verify status before generation.
+        # The mock must also simulate _upsert_generation_state (delete+recreate)
+        # since that's how the job runner learns the final status (commit 4962c02).
+        plan_ref = self.plan
+
+        def fake_generate_all():
+            # Simulate what DeviceGenerator._upsert_generation_state() does:
+            # delete old state and create new GENERATED one.
+            from netbox_hedgehog.models.topology_planning import GenerationState
+            GenerationState.objects.filter(plan=plan_ref).delete()
+            GenerationState.objects.create(
+                plan=plan_ref,
+                status=GenerationStatusChoices.GENERATED,
+                device_count=5,
+                interface_count=10,
+                cable_count=10,
+                snapshot={},
+            )
+            return type('obj', (object,), {
                 'device_count': 5,
                 'interface_count': 10,
-                'cable_count': 10
+                'cable_count': 10,
             })()
+
+        with patch('netbox_hedgehog.jobs.device_generation.DeviceGenerator') as MockGen:
+            mock_instance = MockGen.return_value
+            mock_instance.generate_all.side_effect = fake_generate_all
 
             # When: Execute job
             job_runner = DeviceGenerationJob(job=job)
@@ -374,8 +422,9 @@ class DeviceGenerationJobIntegrationTestCase(TestCase):
             # DeviceGenerator should have been called (verifies flow reached it)
             mock_instance.generate_all.assert_called_once()
 
-        # Status should be GENERATED after completion
-        state.refresh_from_db()
+        # Status should be GENERATED after completion.
+        # fake_generate_all() deletes+recreates GenerationState, so re-fetch by plan.
+        state = GenerationState.objects.get(plan=self.plan)
         self.assertEqual(state.status, GenerationStatusChoices.GENERATED)
 
     # =========================================================================
@@ -920,7 +969,8 @@ class DeviceGenerationJobIntegrationTestCase(TestCase):
             zone_type=PortZoneTypeChoices.SERVER,
             port_spec='1-32',
             breakout_option=self.breakout,
-            priority=10
+            priority=10,
+            transceiver_module_type=self.xcvr_mt,  # DIET-466: required
         )
 
         reg_server = PlanServerClass.objects.create(
@@ -941,7 +991,8 @@ class DeviceGenerationJobIntegrationTestCase(TestCase):
             ports_per_connection=2,
             speed=400,
             hedgehog_conn_type=ConnectionTypeChoices.UNBUNDLED,
-            distribution=ConnectionDistributionChoices.ALTERNATING
+            distribution=ConnectionDistributionChoices.ALTERNATING,
+            transceiver_module_type=self.xcvr_mt,  # DIET-466: required
         )
 
         # Grant TopologyPlan permissions (with explicit constraints=None for all objects)

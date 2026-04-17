@@ -197,13 +197,13 @@ class TransceiverYAMLIntakeTestCase(TestCase):
         """
         T1: switch_port_zones[*].transceiver_module_type resolves and is persisted
         on SwitchPortZone.transceiver_module_type.
-
-        RED: fails before implementation because ingest.py does not read this key.
         """
         from netbox_hedgehog.test_cases.ingest import apply_case
 
         case = self._base_case("t1_zone_fk")
         case["switch_port_zones"][0]["transceiver_module_type"] = "xcvr_qsfp_mmf"
+        # DIET-466: connection also required so pre-pass doesn't block
+        case["server_connections"][0]["transceiver_module_type"] = "xcvr_qsfp_mmf"
 
         plan = apply_case(case, clean=True, reference_mode="ensure")
 
@@ -230,13 +230,13 @@ class TransceiverYAMLIntakeTestCase(TestCase):
         """
         T2: server_connections[*].transceiver_module_type resolves and is persisted
         on PlanServerConnection.transceiver_module_type.
-
-        RED: fails before implementation because ingest.py does not read this key.
         """
         from netbox_hedgehog.test_cases.ingest import apply_case
 
         case = self._base_case("t2_conn_fk")
         case["server_connections"][0]["transceiver_module_type"] = "xcvr_qsfp_mmf"
+        # DIET-466: zone also required so pre-pass doesn't block
+        case["switch_port_zones"][0]["transceiver_module_type"] = "xcvr_qsfp_mmf"
 
         apply_case(case, clean=True, reference_mode="ensure")
 
@@ -256,55 +256,58 @@ class TransceiverYAMLIntakeTestCase(TestCase):
     # T3: Zone FK absent → stays null (pre-green, backward compat)
     # ------------------------------------------------------------------
 
-    def test_zone_transceiver_fk_absent_stays_null(self):
+    def test_zone_transceiver_fk_absent_raises_missing_required(self):
         """
-        T3: When transceiver_module_type key is absent from switch_port_zones entry,
-        the FK stays null and import succeeds.
-
-        Pre-green: this already passes before implementation because the FK defaults
-        to null and the key is not present. Verifies backward compat is preserved
-        after implementation.
+        T3 (DIET-466 update): When transceiver_module_type key is absent from
+        switch_port_zones, the DIET-466 mandatory pre-pass raises missing_required.
+        The old backward-compat "stays null" behavior is superseded by mandatory enforcement.
         """
         from netbox_hedgehog.test_cases.ingest import apply_case
 
         case = self._base_case("t3_zone_absent")
-        # No transceiver_module_type key on zone entry
+        # No transceiver_module_type on zone — mandatory enforcement must block ingest
+        case["server_connections"][0]["transceiver_module_type"] = "xcvr_qsfp_mmf"
 
-        plan = apply_case(case, clean=True, reference_mode="ensure")
+        with self.assertRaises(Exception) as ctx:
+            apply_case(case, clean=True, reference_mode="ensure")
 
-        zone = SwitchPortZone.objects.filter(
-            switch_class__plan=plan,
-            zone_name="server-ports",
-        ).first()
-        self.assertIsNotNone(zone, "SwitchPortZone must exist after ingest")
-        self.assertIsNone(
-            zone.transceiver_module_type,
-            "SwitchPortZone.transceiver_module_type must stay null when key is absent",
+        errors = ctx.exception.errors
+        self.assertTrue(
+            any(e.get("code") == "missing_required" for e in errors),
+            f"Expected missing_required when zone xcvr absent, got: {errors}",
+        )
+        self.assertTrue(
+            any("switch_port_zones" in e.get("path", "") for e in errors),
+            f"Expected path to reference 'switch_port_zones', got: {errors}",
         )
 
     # ------------------------------------------------------------------
     # T4: Connection FK absent → stays null (pre-green, backward compat)
     # ------------------------------------------------------------------
 
-    def test_connection_transceiver_fk_absent_stays_null(self):
+    def test_connection_transceiver_fk_absent_raises_missing_required(self):
         """
-        T4: When transceiver_module_type key is absent from server_connections entry,
-        the FK stays null and import succeeds.
-
-        Pre-green: same as T3. Verifies backward compat after implementation.
+        T4 (DIET-466 update): When transceiver_module_type key is absent from
+        server_connections, the DIET-466 mandatory pre-pass raises missing_required.
+        The old backward-compat "stays null" behavior is superseded by mandatory enforcement.
         """
         from netbox_hedgehog.test_cases.ingest import apply_case
 
         case = self._base_case("t4_conn_absent")
-        # No transceiver_module_type key on connection entry
+        # No transceiver_module_type on connection — mandatory enforcement must block ingest
+        case["switch_port_zones"][0]["transceiver_module_type"] = "xcvr_qsfp_mmf"
 
-        apply_case(case, clean=True, reference_mode="ensure")
+        with self.assertRaises(Exception) as ctx:
+            apply_case(case, clean=True, reference_mode="ensure")
 
-        conn = PlanServerConnection.objects.filter(connection_id="fe-conn").first()
-        self.assertIsNotNone(conn, "PlanServerConnection must exist after ingest")
-        self.assertIsNone(
-            conn.transceiver_module_type,
-            "PlanServerConnection.transceiver_module_type must stay null when key is absent",
+        errors = ctx.exception.errors
+        self.assertTrue(
+            any(e.get("code") == "missing_required" for e in errors),
+            f"Expected missing_required when connection xcvr absent, got: {errors}",
+        )
+        self.assertTrue(
+            any("server_connections" in e.get("path", "") for e in errors),
+            f"Expected path to reference 'server_connections', got: {errors}",
         )
 
     # ------------------------------------------------------------------
@@ -324,6 +327,8 @@ class TransceiverYAMLIntakeTestCase(TestCase):
 
         case = self._base_case("t5_zone_unknown")
         case["switch_port_zones"][0]["transceiver_module_type"] = "does_not_exist"
+        # DIET-466: connection needs valid xcvr so pre-pass passes for connections
+        case["server_connections"][0]["transceiver_module_type"] = "xcvr_qsfp_mmf"
 
         with self.assertRaises(TestCaseValidationError) as ctx:
             apply_case(case, clean=True, reference_mode="ensure")
@@ -354,6 +359,8 @@ class TransceiverYAMLIntakeTestCase(TestCase):
 
         case = self._base_case("t6_conn_unknown")
         case["server_connections"][0]["transceiver_module_type"] = "does_not_exist"
+        # DIET-466: zone needs valid xcvr so pre-pass passes for zones
+        case["switch_port_zones"][0]["transceiver_module_type"] = "xcvr_qsfp_mmf"
 
         with self.assertRaises(TestCaseValidationError) as ctx:
             apply_case(case, clean=True, reference_mode="ensure")
@@ -386,6 +393,8 @@ class TransceiverYAMLIntakeTestCase(TestCase):
         case = self._base_case("t7_zone_bad_profile")
         # nic_non_xcvr resolves to NON-XCVR-NIC-TEST — no Network Transceiver profile
         case["switch_port_zones"][0]["transceiver_module_type"] = "nic_non_xcvr"
+        # DIET-466: connection needs valid xcvr so pre-pass passes for connections
+        case["server_connections"][0]["transceiver_module_type"] = "xcvr_qsfp_mmf"
 
         with self.assertRaises(TestCaseValidationError) as ctx:
             apply_case(case, clean=True, reference_mode="ensure")
@@ -421,6 +430,8 @@ class TransceiverYAMLIntakeTestCase(TestCase):
 
         case = self._base_case("t8_conn_bad_profile")
         case["server_connections"][0]["transceiver_module_type"] = "nic_non_xcvr"
+        # DIET-466: zone needs valid xcvr so pre-pass passes for zones
+        case["switch_port_zones"][0]["transceiver_module_type"] = "xcvr_qsfp_mmf"
 
         with self.assertRaises(TestCaseValidationError) as ctx:
             apply_case(case, clean=True, reference_mode="ensure")

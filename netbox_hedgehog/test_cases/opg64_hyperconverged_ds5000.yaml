@@ -157,6 +157,10 @@ reference_data:
         - name: bmc0
           type: other
 
+    - id: xcvr_generic_200g
+      manufacturer: generic
+      model: QSFP112-200GBASE-SR2
+
 plan:
   name: OPG-64 Hyperconverged DS5000
   status: draft
@@ -194,6 +198,7 @@ switch_classes:
 switch_port_zones:
   - switch_class: conv_leaf
     zone_name: uplink_800
+    transceiver_module_type: xcvr_generic_200g
     zone_type: uplink
     port_spec: 26,28,30,32,34,36,38-63
     breakout_option: b_1x800
@@ -201,6 +206,7 @@ switch_port_zones:
     priority: 10
   - switch_class: conv_leaf
     zone_name: server_be_2x400
+    transceiver_module_type: xcvr_generic_200g
     zone_type: server
     port_spec: 1-16
     breakout_option: brk_2x400_osfp
@@ -208,6 +214,7 @@ switch_port_zones:
     priority: 20
   - switch_class: conv_leaf
     zone_name: server_conv_4x200
+    transceiver_module_type: xcvr_generic_200g
     zone_type: server
     port_spec: 27,29,31,33,35,37
     breakout_option: brk_4x200_osfp
@@ -215,6 +222,7 @@ switch_port_zones:
     priority: 30
   - switch_class: conv_spine
     zone_name: spine_uplink_800
+    transceiver_module_type: xcvr_generic_200g
     zone_type: fabric
     port_spec: 1-64
     breakout_option: b_1x800
@@ -222,6 +230,7 @@ switch_port_zones:
     priority: 10
   - switch_class: conv_spine
     zone_name: spine_oob_10g
+    transceiver_module_type: xcvr_generic_200g
     zone_type: oob
     port_spec: 65-66
     breakout_option: brk_1x10_sfpplus
@@ -229,6 +238,7 @@ switch_port_zones:
     priority: 20
   - switch_class: oob_leaf
     zone_name: oob_server_1g
+    transceiver_module_type: xcvr_generic_200g
     zone_type: oob
     port_spec: 1-32
     breakout_option: b_1x1g
@@ -236,6 +246,7 @@ switch_port_zones:
     priority: 10
   - switch_class: oob_leaf
     zone_name: oob_uplink_10g
+    transceiver_module_type: xcvr_generic_200g
     zone_type: oob
     port_spec: 49-50
     breakout_option: brk_1x10_sfpplus
@@ -313,6 +324,7 @@ server_nics:
 server_connections:
   - server_class: compute_xpu
     connection_id: be
+    transceiver_module_type: xcvr_generic_200g
     connection_name: converged-backend
     nic: be
     port_index: 0
@@ -324,6 +336,7 @@ server_connections:
     port_type: data
   - server_class: compute_xpu
     connection_id: fe
+    transceiver_module_type: xcvr_generic_200g
     connection_name: converged-frontend
     nic: fe
     port_index: 0
@@ -335,6 +348,7 @@ server_connections:
     port_type: data
   - server_class: compute_xpu
     connection_id: bmc
+    transceiver_module_type: xcvr_generic_200g
     connection_name: bmc-oob
     nic: bmc
     port_index: 0
@@ -346,6 +360,7 @@ server_connections:
     port_type: ipmi
   - server_class: storage_srv
     connection_id: fe
+    transceiver_module_type: xcvr_generic_200g
     connection_name: converged-storage
     nic: fe
     port_index: 0
@@ -357,6 +372,7 @@ server_connections:
     port_type: data
   - server_class: storage_srv
     connection_id: bmc
+    transceiver_module_type: xcvr_generic_200g
     connection_name: bmc-oob
     nic: bmc
     port_index: 0
@@ -368,6 +384,7 @@ server_connections:
     port_type: ipmi
   - server_class: metadata_srv
     connection_id: fe
+    transceiver_module_type: xcvr_generic_200g
     connection_name: converged-metadata
     nic: fe
     port_index: 0
@@ -379,6 +396,7 @@ server_connections:
     port_type: data
   - server_class: metadata_srv
     connection_id: bmc
+    transceiver_module_type: xcvr_generic_200g
     connection_name: bmc-oob
     nic: bmc
     port_index: 0
@@ -390,6 +408,7 @@ server_connections:
     port_type: ipmi
   - server_class: hh_gateway
     connection_id: fe
+    transceiver_module_type: xcvr_generic_200g
     connection_name: converged-gateway
     nic: fe
     port_index: 0
@@ -401,6 +420,7 @@ server_connections:
     port_type: data
   - server_class: hh_gateway
     connection_id: bmc
+    transceiver_module_type: xcvr_generic_200g
     connection_name: bmc-oob
     nic: bmc
     port_index: 0
@@ -412,6 +432,7 @@ server_connections:
     port_type: ipmi
   - server_class: hh_controller
     connection_id: fe
+    transceiver_module_type: xcvr_generic_200g
     connection_name: converged-controller
     nic: fe
     port_index: 0
@@ -423,6 +444,7 @@ server_connections:
     port_type: data
   - server_class: hh_controller
     connection_id: bmc
+    transceiver_module_type: xcvr_generic_200g
     connection_name: bmc-oob
     nic: bmc
     port_index: 0

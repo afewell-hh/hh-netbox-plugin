@@ -15,6 +15,7 @@ from netbox_hedgehog.models.topology_planning import (
 )
 from netbox_hedgehog.services.device_generator import DeviceGenerator
 from netbox_hedgehog.test_cases.exceptions import TestCaseValidationError
+from netbox_hedgehog.tests.test_topology_planning import get_test_transceiver_module_type
 from netbox_hedgehog.choices import (
     FabricTypeChoices, HedgehogRoleChoices, ServerClassCategoryChoices,
     ConnectionDistributionChoices,
@@ -244,6 +245,10 @@ class ZoneTargetedIngestTestCase(TestCase):
     @classmethod
     def setUpTestData(cls):
         _gen_fixtures(cls)
+        # DIET-466: pre-create xcvr with Network Transceiver profile so ingest
+        # validation passes when the YAML references it.
+        cls.xcvr_mt = get_test_transceiver_module_type()
+        # xcvr_mt: model='XCVR-QSFP112-MMF-TEST', mfr slug='xcvr-test-vendor'
 
     def _minimal_case(self, connections):
         """Build a minimal but valid case dict with the given connections list."""
@@ -258,6 +263,8 @@ class ZoneTargetedIngestTestCase(TestCase):
             "reference_data": {
                 "manufacturers": [
                     {"id": "mfr_zt_ingest", "name": "ZT-Ingest-Mfr", "slug": "zt-ingest-mfr"},
+                    # DIET-466: xcvr manufacturer — pre-created by setUpTestData with profile
+                    {"id": "mfr_xcvr", "name": "XCVR-Test-Vendor", "slug": "xcvr-test-vendor"},
                 ],
                 "device_types": [
                     {"id": "dt_sw_ingest", "manufacturer": "mfr_zt_ingest",
@@ -273,7 +280,11 @@ class ZoneTargetedIngestTestCase(TestCase):
                 ],
                 "module_types": [
                     {"id": "nic_cx7_ingest", "manufacturer": "mfr_zt_ingest",
-                     "model": "CX7-INGEST-TEST"},
+                     "model": "CX7-INGEST-TEST",
+                     "interface_templates": [{"name": "{module}p0", "type": "other"}]},
+                    # DIET-466: references pre-seeded xcvr with Network Transceiver profile
+                    {"id": "xcvr_zt_ingest", "manufacturer": "mfr_xcvr",
+                     "model": "XCVR-QSFP112-MMF-TEST"},
                 ],
                 "breakout_options": [
                     {"id": "bo_1x100g_ingest", "breakout_id": "1x100g-zt-ingest",
@@ -291,11 +302,18 @@ class ZoneTargetedIngestTestCase(TestCase):
                 "zone_type": "server", "port_spec": "1-4",
                 "breakout_option": "bo_1x100g_ingest",
                 "allocation_strategy": "sequential", "priority": 100,
+                # DIET-466: transceiver required on all zones
+                "transceiver_module_type": "xcvr_zt_ingest",
             }],
             "server_classes": [{
                 "server_class_id": "srv-ingest", "category": "gpu",
                 "quantity": 1, "gpus_per_server": 0,
                 "server_device_type": "dt_srv_ingest",
+            }],
+            "server_nics": [{
+                "server_class": "srv-ingest",
+                "nic_id": "fe",
+                "module_type": "nic_cx7_ingest",
             }],
             "server_connections": connections,
         }
@@ -306,13 +324,14 @@ class ZoneTargetedIngestTestCase(TestCase):
         case = self._minimal_case([{
             "server_class": "srv-ingest",
             "connection_id": "ingest-01",
-            "nic_module_type": "nic_cx7_ingest",
+            "nic": "fe",
             "port_index": 0,
             "ports_per_connection": 1,
             "hedgehog_conn_type": "unbundled",
             "distribution": "same-switch",
             "target_zone": "sw-ingest/server-ingest",  # NEW key format
             "speed": 100,
+            "transceiver_module_type": "xcvr_zt_ingest",  # DIET-466: required
         }])
         try:
             plan = apply_case(case, clean=True, reference_mode="ensure")
@@ -329,13 +348,14 @@ class ZoneTargetedIngestTestCase(TestCase):
         case = self._minimal_case([{
             "server_class": "srv-ingest",
             "connection_id": "ingest-02",
-            "nic_module_type": "nic_cx7_ingest",
+            "nic": "fe",
             "port_index": 0,
             "ports_per_connection": 1,
             "hedgehog_conn_type": "unbundled",
             "distribution": "same-switch",
             "target_switch_class": "sw-ingest",  # OLD deprecated key
             "speed": 100,
+            "transceiver_module_type": "xcvr_zt_ingest",  # DIET-466: required
         }])
         try:
             apply_case(case, clean=True, reference_mode="ensure")
@@ -351,12 +371,13 @@ class ZoneTargetedIngestTestCase(TestCase):
         case = self._minimal_case([{
             "server_class": "srv-ingest",
             "connection_id": "ingest-03",
-            "nic_module_type": "nic_cx7_ingest",
+            "nic": "fe",
             "port_index": 0,
             "ports_per_connection": 1,
             "hedgehog_conn_type": "unbundled",
             "distribution": "same-switch",
             "speed": 100,
+            "transceiver_module_type": "xcvr_zt_ingest",  # DIET-466: required
             # Neither target_zone nor target_switch_class
         }])
         with self.assertRaises(TestCaseValidationError) as ctx:
@@ -370,13 +391,14 @@ class ZoneTargetedIngestTestCase(TestCase):
         case = self._minimal_case([{
             "server_class": "srv-ingest",
             "connection_id": "ingest-04",
-            "nic_module_type": "nic_cx7_ingest",
+            "nic": "fe",
             "port_index": 0,
             "ports_per_connection": 1,
             "hedgehog_conn_type": "unbundled",
             "distribution": "same-switch",
             "target_zone": "nonexistent/no-such-zone",
             "speed": 100,
+            "transceiver_module_type": "xcvr_zt_ingest",  # DIET-466: required
         }])
         with self.assertRaises(TestCaseValidationError) as ctx:
             apply_case(case, clean=True, reference_mode="ensure")

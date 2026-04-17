@@ -120,7 +120,7 @@
         <div class="card">
             <h5 class="card-header">Actions</h5>
             <div class="card-body">
-                {% if transceiver_bay_readiness.has_transceiver_fks and not transceiver_bay_readiness.is_ready %}
+                {% if not transceiver_bay_readiness.is_ready %}
                 <div class="alert alert-danger mb-3" role="alert">
                     <h6 class="alert-heading">
                         <i class="mdi mdi-alert-circle"></i>
@@ -644,64 +644,147 @@
 </div>
 
 {# ------------------------------------------------------------------ #}
-{# Connection Review panel (DIET-449) #}
+{# Server-Link Review panel (DIET-460) #}
 {# ------------------------------------------------------------------ #}
 <div class="row mb-3">
     <div class="col">
         <div class="card">
             <h5 class="card-header d-flex align-items-center gap-2">
-                Connection Review
-                {% if connection_review.match_count %}
-                    <span class="badge bg-success">{{ connection_review.match_count }} match</span>
+                Server-Link Review
+                {% if server_link_review.match_count %}
+                    <span class="badge bg-success">{{ server_link_review.match_count }} match</span>
                 {% endif %}
-                {% if connection_review.needs_review_count %}
-                    <span class="badge bg-warning text-dark">{{ connection_review.needs_review_count }} needs review</span>
+                {% if server_link_review.needs_review_count %}
+                    <span class="badge bg-warning text-dark">{{ server_link_review.needs_review_count }} needs review</span>
                 {% endif %}
-                {% if connection_review.blocked_count %}
-                    <span class="badge bg-danger">{{ connection_review.blocked_count }} blocked</span>
+                {% if server_link_review.blocked_count %}
+                    <span class="badge bg-danger">{{ server_link_review.blocked_count }} blocked</span>
                 {% endif %}
-                <small class="text-muted ms-auto">{{ connection_review.total_connections }} connection{{ connection_review.total_connections|pluralize }}</small>
+                <small class="text-muted ms-auto">{{ server_link_review.total_connections }} connection{{ server_link_review.total_connections|pluralize }}</small>
             </h5>
             <div class="card-body table-responsive">
-                {% if connection_review.groups %}
+                {% if server_link_review.rows %}
                     <table class="table table-hover table-sm">
                         <thead>
                             <tr>
+                                <th>Server Class</th>
+                                <th>Connection</th>
                                 <th>Speed</th>
                                 <th>Type</th>
-                                <th>Breakout</th>
-                                <th>Connection Transceiver</th>
+                                <th>Server Transceiver</th>
                                 <th>Zone Transceiver</th>
                                 <th>Count</th>
                                 <th>Outcome</th>
                                 <th>Note</th>
+                                <th>Actions</th>
                             </tr>
                         </thead>
                         <tbody>
-                            {% for group in connection_review.groups %}
-                            <tr class="{% if group.outcome == 'blocked' %}table-danger{% elif group.outcome == 'needs_review' %}table-warning{% else %}table-success{% endif %}">
-                                <td>{{ group.speed }}G</td>
-                                <td>{{ group.conn_type_display }}</td>
-                                <td>{{ group.breakout_id|default:"—" }}</td>
-                                <td>{{ group.connection_xcvr|default:"—" }}</td>
-                                <td>{{ group.zone_xcvr|default:"—" }}</td>
-                                <td>{{ group.count }}</td>
+                            {% for row in server_link_review.rows %}
+                            <tr class="{% if row.outcome == 'blocked' %}table-danger{% elif row.outcome == 'needs_review' %}table-warning{% else %}table-success{% endif %}">
+                                <td>{{ row.server_class_id }}</td>
+                                <td>{{ row.connection_id }}</td>
+                                <td>{{ row.speed }}G</td>
+                                <td>{{ row.conn_type_display }}</td>
+                                <td>{{ row.server_xcvr_label }}</td>
+                                <td>{{ row.zone_xcvr_label }}</td>
+                                <td>{{ row.physical_count }}</td>
                                 <td>
-                                    {% if group.outcome == 'match' %}
+                                    {% if row.outcome == 'match' %}
                                         <span class="badge bg-success">match</span>
-                                    {% elif group.outcome == 'needs_review' %}
+                                    {% elif row.outcome == 'needs_review' %}
                                         <span class="badge bg-warning text-dark">needs review</span>
                                     {% else %}
                                         <span class="badge bg-danger">blocked</span>
                                     {% endif %}
                                 </td>
-                                <td><small class="text-muted">{{ group.reason }}</small></td>
+                                <td><small class="text-muted">{{ row.reason }}</small></td>
+                                <td class="text-nowrap">
+                                    <a href="{{ row.edit_connection_url }}" class="btn btn-sm btn-outline-primary">Edit conn</a>
+                                    <a href="{{ row.edit_zone_url }}" class="btn btn-sm btn-outline-secondary">Edit zone</a>
+                                </td>
                             </tr>
                             {% endfor %}
                         </tbody>
                     </table>
                 {% else %}
-                    <p class="text-muted mb-0">No server connections defined yet. Add connections to see the review summary.</p>
+                    <p class="text-muted mb-0">No server connections defined yet.</p>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+
+{# ------------------------------------------------------------------ #}
+{# Switch-Fabric Link Review panel (DIET-460) #}
+{# ------------------------------------------------------------------ #}
+<div class="row mb-3">
+    <div class="col">
+        <div class="card">
+            <h5 class="card-header d-flex align-items-center gap-2">
+                Switch-Fabric Link Review
+                {% if switch_fabric_review.match_count %}
+                    <span class="badge bg-success">{{ switch_fabric_review.match_count }} match</span>
+                {% endif %}
+                {% if switch_fabric_review.needs_review_count %}
+                    <span class="badge bg-warning text-dark">{{ switch_fabric_review.needs_review_count }} needs review</span>
+                {% endif %}
+                {% if switch_fabric_review.blocked_count %}
+                    <span class="badge bg-danger">{{ switch_fabric_review.blocked_count }} blocked</span>
+                {% endif %}
+                {% if switch_fabric_review.unpaired_count %}
+                    <span class="badge bg-secondary">{{ switch_fabric_review.unpaired_count }} one-sided</span>
+                {% endif %}
+            </h5>
+            <div class="card-body table-responsive">
+                {% if switch_fabric_review.rows %}
+                    <table class="table table-hover table-sm">
+                        <thead>
+                            <tr>
+                                <th>Near Zone</th>
+                                <th>Near Fabric</th>
+                                <th>Near Transceiver</th>
+                                <th>Far Zone</th>
+                                <th>Far Fabric</th>
+                                <th>Far Transceiver</th>
+                                <th>Outcome</th>
+                                <th>Note</th>
+                                <th>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for row in switch_fabric_review.rows %}
+                            <tr class="{% if row.outcome == 'blocked' %}table-danger{% elif row.outcome == 'needs_review' %}table-warning{% elif row.outcome == 'match' %}table-success{% else %}table-secondary{% endif %}">
+                                <td>{{ row.near_zone_name }}</td>
+                                <td>{{ row.near_fabric_name }}</td>
+                                <td>{{ row.near_xcvr_label }}</td>
+                                <td>{{ row.far_zone_name|default:"—" }}</td>
+                                <td>{{ row.far_fabric_name|default:"—" }}</td>
+                                <td>{{ row.far_xcvr_label|default:"—" }}</td>
+                                <td>
+                                    {% if row.outcome == 'match' %}
+                                        <span class="badge bg-success">match</span>
+                                    {% elif row.outcome == 'needs_review' %}
+                                        <span class="badge bg-warning text-dark">needs review</span>
+                                    {% elif row.outcome == 'blocked' %}
+                                        <span class="badge bg-danger">blocked</span>
+                                    {% else %}
+                                        <span class="badge bg-secondary">one-sided</span>
+                                    {% endif %}
+                                </td>
+                                <td><small class="text-muted">{{ row.reason }}</small></td>
+                                <td class="text-nowrap">
+                                    <a href="{{ row.edit_near_zone_url }}" class="btn btn-sm btn-outline-primary">Edit near</a>
+                                    {% if row.edit_far_zone_url %}
+                                        <a href="{{ row.edit_far_zone_url }}" class="btn btn-sm btn-outline-secondary">Edit far</a>
+                                    {% endif %}
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                {% else %}
+                    <p class="text-muted mb-0">No switch-fabric zones defined.</p>
                 {% endif %}
             </div>
         </div>

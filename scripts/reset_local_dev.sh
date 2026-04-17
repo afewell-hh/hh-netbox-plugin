@@ -82,6 +82,6 @@ if [[ "$PURGE_INVENTORY" == "true" ]]; then
   docker compose exec -T netbox python manage.py shell -c "from dcim.models import Manufacturer, DeviceType, ModuleType, ModuleTypeProfile; ModuleTypeProfile.objects.all().delete(); ModuleType.objects.all().delete(); DeviceType.objects.all().delete(); Manufacturer.objects.all().delete();"
 fi
 
-docker compose exec -T netbox python manage.py load_diet_reference_data
+docker compose exec -T netbox python manage.py load_diet_reference_data --retire-legacy
 
 echo "Done."

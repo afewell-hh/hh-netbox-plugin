@@ -3,6 +3,7 @@ Topology Planning Views (DIET Module)
 CRUD views for BreakoutOption, DeviceTypeExtension, and Topology Plan models.
 """
 
+import logging
 import re
 from django.conf import settings
 from django.contrib import messages
@@ -22,6 +23,8 @@ from ..utils.topology_calculations import update_plan_calculations
 from ..services.yaml_generator import generate_yaml_for_plan
 from ..jobs.device_generation import DeviceGenerationJob
 from ..services.preflight import check_transceiver_bay_readiness, user_message
+
+logger = logging.getLogger(__name__)
 
 
 def _require_topologyplan_change_permission(request, plan=None):
@@ -231,9 +234,11 @@ class TopologyPlanView(generic.ObjectView):
         else:
             plan_bom_comparison = None
 
-        # Connection review summary (#449) — always available, no GenerationState needed
-        from netbox_hedgehog.services.connection_review import build_connection_review_summary
-        connection_review = build_connection_review_summary(instance)
+        # Server-Link Review + Switch-Fabric Link Review (#460)
+        from netbox_hedgehog.services.connection_review import build_server_link_review
+        from netbox_hedgehog.services.switch_fabric_review import build_switch_fabric_review
+        server_link_review = build_server_link_review(instance)
+        switch_fabric_review = build_switch_fabric_review(instance)
 
         return {
             'server_classes': instance.server_classes.all(),
@@ -251,7 +256,8 @@ class TopologyPlanView(generic.ObjectView):
             'bay_error_rows': bay_error_rows,
             'plan_bom': plan_bom,
             'plan_bom_comparison': plan_bom_comparison,
-            'connection_review': connection_review,
+            'server_link_review': server_link_review,
+            'switch_fabric_review': switch_fabric_review,
         }
 
     def _can_user_generate_devices(self, request, instance):
@@ -330,6 +336,10 @@ class TopologyPlanGenerateView(PermissionRequiredMixin, View):
 
         readiness = check_transceiver_bay_readiness(plan)
         if not readiness.is_ready:
+            logger.warning(
+                'Generation blocked by transceiver pre-flight for plan %s (%s): %d blocker(s)',
+                plan.pk, plan.name, len(readiness.missing),
+            )
             messages.error(request, user_message(readiness))
             return redirect('plugins:netbox_hedgehog:topologyplan_generate', pk=plan.pk)
 
@@ -446,6 +456,10 @@ class TopologyPlanGenerateUpdateView(View):
         # so the error is visible to plan editors even without device-creation perms.
         readiness = check_transceiver_bay_readiness(plan)
         if not readiness.is_ready:
+            logger.warning(
+                'Generation blocked by transceiver pre-flight for plan %s (%s): %d blocker(s)',
+                plan.pk, plan.name, len(readiness.missing),
+            )
             messages.error(request, user_message(readiness))
             return redirect('plugins:netbox_hedgehog:topologyplan_detail', pk=plan.pk)
 

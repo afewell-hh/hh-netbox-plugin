@@ -234,6 +234,25 @@ class SeedDataCommandTestCase(TestCase):
         self.assertEqual(optic.attribute_data.get('reach_class'), 'DR')
         self.assertEqual(optic.interfacetemplates.count(), 0)
 
+    def test_command_seeds_management_transceiver_module_inventory(self):
+        """load_diet_reference_data should ensure 25G/10G/1G management optics exist."""
+        call_command('load_diet_reference_data', stdout=StringIO())
+
+        sfp28 = ModuleType.objects.filter(model='SFP28-25GBASE-SR').first()
+        self.assertIsNotNone(sfp28, "Expected generic 25G SFP28 SR ModuleType")
+        self.assertEqual(sfp28.profile.name, 'Network Transceiver')
+        self.assertEqual(sfp28.attribute_data.get('cage_type'), 'SFP28')
+        self.assertEqual(sfp28.attribute_data.get('medium'), 'MMF')
+
+        sfp_plus = ModuleType.objects.filter(model='SFP+-10GBASE-SR').first()
+        self.assertIsNotNone(sfp_plus, "Expected generic 10G SFP+ SR ModuleType")
+        self.assertEqual(sfp_plus.attribute_data.get('cage_type'), 'SFP+')
+
+        rj45 = ModuleType.objects.filter(model='RJ45-1000BASE-T').first()
+        self.assertIsNotNone(rj45, "Expected generic 1G copper RJ45 ModuleType")
+        self.assertEqual(rj45.attribute_data.get('cage_type'), 'RJ45')
+        self.assertEqual(rj45.attribute_data.get('standard'), '1000BASE-T')
+
     def test_command_seeds_static_nic_module_inventory(self):
         """load_diet_reference_data should ensure static NIC ModuleTypes exist."""
         call_command('load_diet_reference_data', stdout=StringIO())

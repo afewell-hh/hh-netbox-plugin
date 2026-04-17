@@ -15,11 +15,15 @@ from django.contrib.auth import get_user_model
 from django.contrib.auth.models import Permission
 from django.contrib.contenttypes.models import ContentType
 
-from dcim.models import DeviceType, Manufacturer, Site, Device, Interface
+from dcim.models import DeviceType, InterfaceTemplate, Manufacturer, ModuleBayTemplate, Site, Device, Interface
 from extras.models import Tag
 from dcim.choices import InterfaceTypeChoices
 
-from netbox_hedgehog.tests.test_topology_planning import get_test_server_nic
+from netbox_hedgehog.tests.test_topology_planning import (
+    get_test_nic_module_type,
+    get_test_server_nic,
+    get_test_transceiver_module_type,
+)
 
 from netbox_hedgehog.models.topology_planning import (
     TopologyPlan,
@@ -113,6 +117,21 @@ class TopologyPlanGenerateIntegrationTestCase(TestCase):
             }
         )
 
+        # DIET-466: transceiver intent is mandatory; set up xcvr + bay templates
+        cls.xcvr_mt = get_test_transceiver_module_type()
+        nic_mt = get_test_nic_module_type()
+        # NIC cage bays: port_index=0 + ports_per_connection=2 → cage-0 and cage-1
+        ModuleBayTemplate.objects.get_or_create(module_type=nic_mt, name='cage-0')
+        ModuleBayTemplate.objects.get_or_create(module_type=nic_mt, name='cage-1')
+        # Switch interface templates + bay parity (port_spec '1-60' used in setUp)
+        for port_num in range(1, 61):
+            InterfaceTemplate.objects.get_or_create(
+                device_type=cls.switch_type, name=f'E1/{port_num}',
+                defaults={'type': 'other'}
+            )
+        for it in InterfaceTemplate.objects.filter(device_type=cls.switch_type):
+            ModuleBayTemplate.objects.get_or_create(device_type=cls.switch_type, name=it.name)
+
     def setUp(self):
         """Login as admin before each test"""
         # Clean up any generated objects from previous test runs
@@ -157,7 +176,8 @@ class TopologyPlanGenerateIntegrationTestCase(TestCase):
             port_spec='1-60',
             breakout_option=self.breakout_4x200g,
             allocation_strategy=AllocationStrategyChoices.SEQUENTIAL,
-            priority=100
+            priority=100,
+            transceiver_module_type=self.xcvr_mt,  # DIET-466: required
         )
 
         self.connection = PlanServerConnection.objects.create(
@@ -170,7 +190,8 @@ class TopologyPlanGenerateIntegrationTestCase(TestCase):
             hedgehog_conn_type=ConnectionTypeChoices.UNBUNDLED,
             distribution=ConnectionDistributionChoices.ALTERNATING,
             target_zone=self.port_zone,
-            speed=200
+            speed=200,
+            transceiver_module_type=self.xcvr_mt,  # DIET-466: required
         )
 
     def tearDown(self):
@@ -571,11 +592,13 @@ class TopologyPlanGenerateIntegrationTestCase(TestCase):
             mclag_pair=False,
             calculated_quantity=1
         )
-        # Connection with port zone configured (but no allocation strategy set)
+        # Zone with no breakout_option/allocation_strategy (causes generation error)
+        # transceiver_module_type is set so preflight passes; the missing breakout causes failure
         invalid_zone = SwitchPortZone.objects.create(
             switch_class=switch_class,
             zone_name='server-downlinks',
             zone_type=PortZoneTypeChoices.SERVER,
+            transceiver_module_type=self.xcvr_mt,  # DIET-466: set so preflight passes
         )
         PlanServerConnection.objects.create(
             server_class=server_class,
@@ -587,7 +610,8 @@ class TopologyPlanGenerateIntegrationTestCase(TestCase):
             hedgehog_conn_type=ConnectionTypeChoices.UNBUNDLED,
             distribution=ConnectionDistributionChoices.SAME_SWITCH,
             target_zone=invalid_zone,
-            speed=200
+            speed=200,
+            transceiver_module_type=self.xcvr_mt,  # DIET-466: set so preflight passes
         )
 
         url = reverse('plugins:netbox_hedgehog:topologyplan_generate', args=[plan.pk])
@@ -753,7 +777,8 @@ class TopologyPlanGenerateIntegrationTestCase(TestCase):
             port_spec='1-60',
             breakout_option=self.breakout_4x200g,
             allocation_strategy=AllocationStrategyChoices.SEQUENTIAL,
-            priority=100
+            priority=100,
+            transceiver_module_type=self.xcvr_mt,  # DIET-466: required
         )
         connection2 = PlanServerConnection.objects.create(
             server_class=server_class2,
@@ -765,7 +790,8 @@ class TopologyPlanGenerateIntegrationTestCase(TestCase):
             hedgehog_conn_type=ConnectionTypeChoices.UNBUNDLED,
             distribution=ConnectionDistributionChoices.SAME_SWITCH,
             target_zone=port_zone2,
-            speed=200
+            speed=200,
+            transceiver_module_type=self.xcvr_mt,  # DIET-466: required
         )
 
         # Generate devices for BOTH plans

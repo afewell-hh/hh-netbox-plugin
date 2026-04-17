@@ -25,7 +25,7 @@
           <tr>
             <th scope="row">Target Zone</th>
             <td>
-              <a href="{% url 'plugins:netbox_hedgehog:planswitchclass_detail' pk=object.target_zone.switch_class.pk %}">
+              <a href="{% url 'plugins:netbox_hedgehog:switchportzone' pk=object.target_zone.pk %}">
                 {{ object.target_zone }}
               </a>
             </td>
@@ -51,6 +51,19 @@
               {% if object.transceiver_module_type %}
                 {{ object.transceiver_module_type.manufacturer }} {{ object.transceiver_module_type.model }}
               {% else %}&mdash;{% endif %}
+            </td>
+          </tr>
+          <tr>
+            <th scope="row">Switch-Side Transceiver</th>
+            <td>
+              {% if object.target_zone.transceiver_module_type %}
+                {% with zt=object.target_zone.transceiver_module_type %}
+                  {% if zt.description %}{{ zt.description }} ({{ zt.model }}){% else %}{{ zt.manufacturer }} {{ zt.model }}{% endif %}
+                {% endwith %}
+              {% else %}&mdash;{% endif %}
+              &nbsp;
+              <a href="{% url 'plugins:netbox_hedgehog:switchportzone_edit' pk=object.target_zone.pk %}"
+                 class="btn btn-sm btn-outline-secondary">Edit zone transceiver</a>
             </td>
           </tr>
           {% if object.cage_type or object.medium or object.connector or object.standard %}

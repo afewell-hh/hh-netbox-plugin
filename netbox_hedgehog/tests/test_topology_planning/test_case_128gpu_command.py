@@ -95,9 +95,17 @@ class Case128GpuCommandTestCase(TestCase):
             )
             return GenerationResult(164, 1096, 548)
 
+        from netbox_hedgehog.services.preflight import TransceiverBayReadinessResult
+        fake_readiness = TransceiverBayReadinessResult(is_ready=True, has_transceiver_fks=True)
+
         with patch(
             "netbox_hedgehog.views.topology_planning.DeviceGenerator.generate_all",
             new=fake_generate,
+        ), patch(
+            # DIET-466: bypass bay-readiness preflight so this test focuses on the
+            # generate-POST→GenerationState flow rather than populate_transceiver_bays.
+            "netbox_hedgehog.views.topology_planning.check_transceiver_bay_readiness",
+            return_value=fake_readiness,
         ):
             response = self.client.post(url)
         self.assertEqual(response.status_code, 302)

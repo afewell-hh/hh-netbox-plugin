@@ -14,6 +14,8 @@ Following UX-accurate TDD approach per AGENTS.md:
 Issue: https://github.com/afewell-hh/hh-netbox-plugin/issues/137
 """
 
+from unittest.mock import patch
+
 from django.test import TestCase, Client
 from django.urls import reverse
 from django.contrib.auth import get_user_model
@@ -22,6 +24,7 @@ from dcim.models import DeviceType, Manufacturer
 
 from netbox_hedgehog.tests.test_topology_planning import get_test_server_nic
 from core.models import Job
+from netbox_hedgehog.services.preflight import TransceiverBayReadinessResult
 
 from netbox_hedgehog.models.topology_planning import (
     TopologyPlan,
@@ -106,6 +109,18 @@ class OrphanedJobHandlingTestCase(TestCase):
         """Setup run before each test"""
         self.client = Client()
         self.client.login(username='admin', password='testpass123')
+
+        # DIET-466: orphaned-job tests exercise job lifecycle, not transceiver readiness.
+        # Patch the preflight so Phase 0/Phase 2 checks don't gate these tests.
+        # The preflight is exercised in test_preflight_validation.py and
+        # test_mandatory_transceiver_preflight.py.
+        _ready = TransceiverBayReadinessResult(is_ready=True, has_transceiver_fks=False)
+        patcher = patch(
+            'netbox_hedgehog.views.topology_planning.check_transceiver_bay_readiness',
+            return_value=_ready,
+        )
+        patcher.start()
+        self.addCleanup(patcher.stop)
 
         # Create fresh plan for each test
         self.plan = TopologyPlan.objects.create(

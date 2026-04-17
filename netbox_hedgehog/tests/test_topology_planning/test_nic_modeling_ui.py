@@ -16,6 +16,7 @@ from users.models import ObjectPermission
 
 from dcim.models import DeviceType, Manufacturer, ModuleType, InterfaceTemplate
 
+from netbox_hedgehog.tests.test_topology_planning import get_test_transceiver_module_type
 from netbox_hedgehog.models.topology_planning import (
     TopologyPlan, PlanServerClass, PlanSwitchClass, PlanServerConnection,
     PlanServerNIC, DeviceTypeExtension, BreakoutOption, SwitchPortZone,
@@ -93,6 +94,7 @@ class NICModelingUITestCase(TestCase):
             breakout_option=cls.breakout,
             allocation_strategy=AllocationStrategyChoices.SEQUENTIAL, priority=100,
         )
+        cls.xcvr_mt = get_test_transceiver_module_type()
         cls.nic = PlanServerNIC.objects.create(
             server_class=cls.server_class, nic_id='nic-fe', module_type=cls.bf3_type,
         )
@@ -137,6 +139,7 @@ class NICModelingUITestCase(TestCase):
             'target_zone': self.zone.pk,
             'speed': 200,
             'port_type': 'data',
+            'transceiver_module_type': self.xcvr_mt.pk,
             'tags': [],
         }
         response = self.client.post(url, data)
@@ -209,6 +212,8 @@ class NICModelingUITestCase(TestCase):
 
     def test_edit_workflow_updates_nic_and_transceiver_fields(self):
         url = reverse('plugins:netbox_hedgehog:planserverconnection_edit', args=[self.connection.pk])
+        # DIET-450: cage_type must match transceiver_module_type attribute_data.
+        # xcvr_mt is XCVR-QSFP112-MMF-TEST → cage_type='QSFP112', medium='MMF'.
         data = {
             'server_class': self.server_class.pk,
             'connection_id': 'fe',
@@ -220,16 +225,17 @@ class NICModelingUITestCase(TestCase):
             'target_zone': self.zone.pk,
             'speed': 200,
             'port_type': 'data',
-            'cage_type': 'OSFP',
-            'medium': 'SMF',
+            'cage_type': 'QSFP112',
+            'medium': 'MMF',
             'connector': '',
             'standard': '',
+            'transceiver_module_type': self.xcvr_mt.pk,
             'tags': [],
         }
         response = self.client.post(url, data)
         self.assertEqual(response.status_code, 302)
         self.connection.refresh_from_db()
-        self.assertEqual(self.connection.cage_type, 'OSFP')
+        self.assertEqual(self.connection.cage_type, 'QSFP112')
 
     def test_delete_workflow_removes_connection(self):
         conn = PlanServerConnection.objects.create(
