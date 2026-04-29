@@ -470,3 +470,156 @@ class PlanDetailNullTransceiverTestCase(TestCase):
             'R9b: null-transceiver plan must not show required-transceiver banner '
             '(has_transceiver_fks=False after Phase 0 removal)',
         )
+
+
+# ---------------------------------------------------------------------------
+# Gap 3: edit affordances in rendered review panels
+# ---------------------------------------------------------------------------
+
+class ReviewEditAffordancesTestCase(TestCase):
+    """
+    Gap 3 fill: plan detail page must render edit URLs for connections and zones
+    in the Server-Link Review and Switch-Fabric Review panels.
+
+    GREEN could preserve outcome logic but drop navigation affordances (edit links).
+    These tests guard that the rendered HTML contains the actual edit URLs so users
+    can navigate to fix transceiver intent directly from the review card.
+
+    These tests use a plan with null transceivers on both the connection and zone
+    to match the simplified-transceiver post-GREEN steady state.
+    """
+
+    @classmethod
+    def setUpTestData(cls):
+        _make_rv_fixtures(cls)
+
+        from netbox_hedgehog.tests.test_topology_planning import get_test_nic_module_type
+
+        plan = TopologyPlan.objects.create(
+            name='MxtRV2-EditUrls',
+            status=TopologyPlanStatusChoices.DRAFT,
+        )
+        sc = PlanServerClass.objects.create(
+            plan=plan, server_class_id='gpu-eu',
+            server_device_type=cls.server_dt, quantity=1,
+        )
+        sw = PlanSwitchClass.objects.create(
+            plan=plan, switch_class_id='fe-leaf-eu',
+            fabric_name=FabricTypeChoices.FRONTEND,
+            fabric_class=FabricClassChoices.MANAGED,
+            hedgehog_role=HedgehogRoleChoices.SERVER_LEAF,
+            device_type_extension=cls.ext,
+            uplink_ports_per_switch=0, mclag_pair=False,
+            override_quantity=2, redundancy_type='eslag',
+        )
+        cls.zone = SwitchPortZone.objects.create(
+            switch_class=sw, zone_name='server-downlinks',
+            zone_type=PortZoneTypeChoices.SERVER, port_spec='1-4',
+            breakout_option=cls.bo,
+            allocation_strategy=AllocationStrategyChoices.SEQUENTIAL, priority=100,
+            transceiver_module_type=None,
+        )
+        nic_mt = get_test_nic_module_type()
+        nic = PlanServerNIC.objects.create(
+            server_class=sc, nic_id='nic-eu', module_type=nic_mt,
+        )
+        cls.conn = PlanServerConnection.objects.create(
+            server_class=sc, connection_id='fe',
+            nic=nic, port_index=0, ports_per_connection=1,
+            hedgehog_conn_type=ConnectionTypeChoices.UNBUNDLED,
+            distribution=ConnectionDistributionChoices.ALTERNATING,
+            target_zone=cls.zone, speed=200, port_type='data',
+            transceiver_module_type=None,
+        )
+        cls.plan = plan
+
+        # Paired uplink zones for Switch-Fabric Review edit-URL assertions
+        far_sw = PlanSwitchClass.objects.create(
+            plan=plan, switch_class_id='fe-spine-eu',
+            fabric_name=FabricTypeChoices.FRONTEND,
+            fabric_class=FabricClassChoices.MANAGED,
+            hedgehog_role=HedgehogRoleChoices.SERVER_LEAF,
+            device_type_extension=cls.ext,
+            uplink_ports_per_switch=0, mclag_pair=False,
+            override_quantity=2, redundancy_type='eslag',
+        )
+        cls.far_zone = SwitchPortZone.objects.create(
+            switch_class=far_sw, zone_name='downlinks',
+            zone_type=PortZoneTypeChoices.UPLINK, port_spec='1-4',
+            breakout_option=cls.bo,
+            allocation_strategy=AllocationStrategyChoices.SEQUENTIAL, priority=100,
+            transceiver_module_type=None,
+        )
+        cls.near_zone = SwitchPortZone.objects.create(
+            switch_class=sw, zone_name='uplinks',
+            zone_type=PortZoneTypeChoices.UPLINK, port_spec='5-8',
+            breakout_option=cls.bo,
+            allocation_strategy=AllocationStrategyChoices.SEQUENTIAL, priority=90,
+            transceiver_module_type=None,
+            peer_zone=cls.far_zone,
+        )
+
+    def setUp(self):
+        self.client = Client()
+        self.client.force_login(self.superuser)
+
+    def _get_plan_html(self):
+        url = reverse(
+            'plugins:netbox_hedgehog:topologyplan_detail',
+            kwargs={'pk': self.plan.pk},
+        )
+        response = self.client.get(url)
+        self.assertEqual(response.status_code, 200)
+        return response.content.decode()
+
+    def test_r10_server_link_review_shows_connection_edit_url(self):
+        """Gap 3a: plan detail HTML must contain the PSC edit URL in Server-Link Review."""
+        html = self._get_plan_html()
+        edit_conn_url = reverse(
+            'plugins:netbox_hedgehog:planserverconnection_edit',
+            kwargs={'pk': self.conn.pk},
+        )
+        self.assertIn(
+            edit_conn_url, html,
+            'Gap 3a: edit_connection_url must appear in rendered plan detail — '
+            'GREEN must not drop Server-Link Review navigation affordances',
+        )
+
+    def test_r10_server_link_review_shows_zone_edit_url(self):
+        """Gap 3b: plan detail HTML must contain the zone edit URL in Server-Link Review."""
+        html = self._get_plan_html()
+        edit_zone_url = reverse(
+            'plugins:netbox_hedgehog:switchportzone_edit',
+            kwargs={'pk': self.zone.pk},
+        )
+        self.assertIn(
+            edit_zone_url, html,
+            'Gap 3b: edit_zone_url must appear in rendered plan detail — '
+            'GREEN must not drop Server-Link Review navigation affordances',
+        )
+
+    def test_r10_switch_fabric_review_shows_near_zone_edit_url(self):
+        """Gap 3c: plan detail HTML must contain the near-zone edit URL in Switch-Fabric Review."""
+        html = self._get_plan_html()
+        edit_near_url = reverse(
+            'plugins:netbox_hedgehog:switchportzone_edit',
+            kwargs={'pk': self.near_zone.pk},
+        )
+        self.assertIn(
+            edit_near_url, html,
+            'Gap 3c: edit_near_zone_url must appear in rendered plan detail — '
+            'GREEN must not drop Switch-Fabric Review navigation affordances',
+        )
+
+    def test_r10_switch_fabric_review_shows_far_zone_edit_url(self):
+        """Gap 3d: plan detail HTML must contain the far-zone edit URL in Switch-Fabric Review."""
+        html = self._get_plan_html()
+        edit_far_url = reverse(
+            'plugins:netbox_hedgehog:switchportzone_edit',
+            kwargs={'pk': self.far_zone.pk},
+        )
+        self.assertIn(
+            edit_far_url, html,
+            'Gap 3d: edit_far_zone_url must appear in rendered plan detail — '
+            'GREEN must not drop Switch-Fabric Review navigation affordances',
+        )

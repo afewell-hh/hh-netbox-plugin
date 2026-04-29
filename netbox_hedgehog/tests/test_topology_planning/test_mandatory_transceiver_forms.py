@@ -543,3 +543,270 @@ class NullTransceiverPermissionTestCase(TestCase):
             response.status_code, 302,
             'Unpermissioned user must not be able to create connection',
         )
+
+
+# ---------------------------------------------------------------------------
+# Gap 1: permission coverage for PSC edit, zone add, zone edit
+# ---------------------------------------------------------------------------
+
+class NullTransceiverEditZonePermissionTestCase(TestCase):
+    """
+    Gap 1 fill: RBAC enforcement for planserverconnection_edit, switchportzone_add,
+    and switchportzone_edit with null transceiver.
+
+    The original NullTransceiverPermissionTestCase only covered PSC add.
+    These tests pin that the permission gate remains active for edit/zone flows
+    after GREEN removes the DIET-466 null-blocking.
+    """
+
+    @classmethod
+    def setUpTestData(cls):
+        _make_form_fixtures(cls)
+        cls.plan, cls.sc, cls.sw, cls.zone, cls.nic = _make_minimal_plan(cls)
+
+        # Pre-existing connection for PSC edit tests
+        cls.conn = PlanServerConnection.objects.create(
+            server_class=cls.sc,
+            connection_id='fe-edit-perm-test',
+            nic=cls.nic,
+            port_index=0,
+            ports_per_connection=1,
+            hedgehog_conn_type=ConnectionTypeChoices.UNBUNDLED,
+            distribution=ConnectionDistributionChoices.ALTERNATING,
+            target_zone=cls.zone,
+            speed=200,
+            port_type='data',
+            transceiver_module_type=None,
+        )
+
+        cls.noperm_user, _ = User.objects.get_or_create(
+            username='mxtfm-ep-noperm',
+            defaults={'is_staff': True, 'is_superuser': False},
+        )
+        cls.noperm_user.set_password('pass')
+        cls.noperm_user.save()
+
+        cls.perm_user, _ = User.objects.get_or_create(
+            username='mxtfm-ep-perm',
+            defaults={'is_staff': True, 'is_superuser': False},
+        )
+        cls.perm_user.set_password('pass')
+        cls.perm_user.save()
+
+        perm = ObjectPermission.objects.create(
+            name='mxtfm-edit-psc-zone',
+            actions=['add', 'change'],
+        )
+        perm.object_types.set([
+            ContentType.objects.get_for_model(PlanServerConnection),
+            ContentType.objects.get_for_model(SwitchPortZone),
+        ])
+        perm.users.add(cls.perm_user)
+
+    def setUp(self):
+        self.client = Client()
+
+    def _psc_edit_data(self):
+        return {
+            'server_class': self.sc.pk,
+            'connection_id': self.conn.connection_id,
+            'nic': self.nic.pk,
+            'port_index': 0,
+            'ports_per_connection': 1,
+            'hedgehog_conn_type': ConnectionTypeChoices.UNBUNDLED,
+            'distribution': ConnectionDistributionChoices.ALTERNATING,
+            'target_zone': self.zone.pk,
+            'speed': 200,
+            'port_type': 'data',
+            # transceiver intentionally absent (null)
+        }
+
+    def _zone_post_data(self, zone_name):
+        return {
+            'switch_class': self.sw.pk,
+            'zone_name': zone_name,
+            'zone_type': PortZoneTypeChoices.SERVER,
+            'port_spec': '5-8',
+            'breakout_option': self.breakout.pk,
+            'allocation_strategy': AllocationStrategyChoices.SEQUENTIAL,
+            'priority': 99,
+            # transceiver intentionally absent (null)
+        }
+
+    def _zone_edit_data(self):
+        return {
+            'switch_class': self.sw.pk,
+            'zone_name': self.zone.zone_name,
+            'zone_type': self.zone.zone_type,
+            'port_spec': self.zone.port_spec,
+            'breakout_option': self.breakout.pk,
+            'allocation_strategy': self.zone.allocation_strategy,
+            'priority': self.zone.priority,
+            # transceiver intentionally absent (null)
+        }
+
+    # --- PSC edit ---
+
+    def test_psc_edit_perm_user_can_clear_transceiver(self):
+        """PSC edit: permissioned user with null transceiver → 302."""
+        self.client.force_login(self.perm_user)
+        url = reverse(
+            'plugins:netbox_hedgehog:planserverconnection_edit',
+            kwargs={'pk': self.conn.pk},
+        )
+        response = self.client.post(url, self._psc_edit_data())
+        self.assertEqual(
+            response.status_code, 302,
+            'Permissioned user must be able to edit PSC with null transceiver (Gap 1)',
+        )
+
+    def test_psc_edit_noperm_user_cannot_edit(self):
+        """PSC edit: unpermissioned user → not 302."""
+        self.client.force_login(self.noperm_user)
+        url = reverse(
+            'plugins:netbox_hedgehog:planserverconnection_edit',
+            kwargs={'pk': self.conn.pk},
+        )
+        response = self.client.post(url, self._psc_edit_data())
+        self.assertNotEqual(
+            response.status_code, 302,
+            'Unpermissioned user must not be able to edit PSC (Gap 1)',
+        )
+
+    # --- Zone add ---
+
+    def test_zone_add_perm_user_can_add_without_transceiver(self):
+        """Zone add: permissioned user with null transceiver → 302."""
+        self.client.force_login(self.perm_user)
+        url = reverse('plugins:netbox_hedgehog:switchportzone_add')
+        response = self.client.post(url, self._zone_post_data('zone-gap1-add'))
+        self.assertEqual(
+            response.status_code, 302,
+            'Permissioned user must be able to add zone with null transceiver (Gap 1)',
+        )
+
+    def test_zone_add_noperm_user_cannot_add(self):
+        """Zone add: unpermissioned user → not 302."""
+        self.client.force_login(self.noperm_user)
+        url = reverse('plugins:netbox_hedgehog:switchportzone_add')
+        response = self.client.post(url, self._zone_post_data('zone-gap1-noperm'))
+        self.assertNotEqual(
+            response.status_code, 302,
+            'Unpermissioned user must not be able to add zone (Gap 1)',
+        )
+
+    # --- Zone edit ---
+
+    def test_zone_edit_perm_user_can_clear_transceiver(self):
+        """Zone edit: permissioned user clearing transceiver → 302."""
+        self.client.force_login(self.perm_user)
+        url = reverse(
+            'plugins:netbox_hedgehog:switchportzone_edit',
+            kwargs={'pk': self.zone.pk},
+        )
+        response = self.client.post(url, self._zone_edit_data())
+        self.assertEqual(
+            response.status_code, 302,
+            'Permissioned user must be able to edit zone with null transceiver (Gap 1)',
+        )
+
+    def test_zone_edit_noperm_user_cannot_edit(self):
+        """Zone edit: unpermissioned user → not 302."""
+        self.client.force_login(self.noperm_user)
+        url = reverse(
+            'plugins:netbox_hedgehog:switchportzone_edit',
+            kwargs={'pk': self.zone.pk},
+        )
+        response = self.client.post(url, self._zone_edit_data())
+        self.assertNotEqual(
+            response.status_code, 302,
+            'Unpermissioned user must not be able to edit zone (Gap 1)',
+        )
+
+
+# ---------------------------------------------------------------------------
+# Gap 2: rendered-page assertions for form field state
+# ---------------------------------------------------------------------------
+
+class PlanServerConnectionFormRenderedTestCase(TestCase):
+    """
+    Gap 2 fill: GET rendered add/edit pages and assert form HTML state.
+
+    Direct form instantiation (F5b/F5c/F5d) does not catch template-layer or
+    view-layer issues. These tests go through the real HTTP pipeline and check
+    the response body and view-instantiated form context.
+
+    RED: currently the rendered page shows required markers and flat fields.
+    """
+
+    @classmethod
+    def setUpTestData(cls):
+        _make_form_fixtures(cls)
+
+    def setUp(self):
+        self.client = Client()
+        self.client.force_login(self.superuser)
+
+    def test_f5_rendered_psc_add_loads_200(self):
+        """F5-r0: GET planserverconnection_add → 200."""
+        url = reverse('plugins:netbox_hedgehog:planserverconnection_add')
+        response = self.client.get(url)
+        self.assertEqual(response.status_code, 200)
+
+    def test_f5_rendered_flat_fields_absent_from_psc_add_html(self):
+        """F5-r1: cage_type/medium/connector/standard must not appear in rendered PSC add HTML.
+
+        RED: currently Meta.fields includes these fields → they are rendered.
+        After GREEN: migration removes the columns; Meta.fields excludes them.
+        """
+        url = reverse('plugins:netbox_hedgehog:planserverconnection_add')
+        response = self.client.get(url)
+        html = response.content.decode()
+        for field_id in ('id_cage_type', 'id_medium', 'id_connector', 'id_standard'):
+            self.assertNotIn(
+                field_id, html,
+                f'F5-r1: {field_id} must not appear in rendered PSC add form '
+                f'(field removed by migration in GREEN)',
+            )
+
+    def test_f5_rendered_psc_add_transceiver_not_required_in_view_form(self):
+        """F5-r2: view-instantiated form must not mark transceiver_module_type required.
+
+        Uses response.context['form'] — the form object created by the view —
+        not a directly-instantiated form. Catches view-level overrides that
+        direct instantiation misses.
+
+        RED: view's form has required=True on the field currently.
+        """
+        url = reverse('plugins:netbox_hedgehog:planserverconnection_add')
+        response = self.client.get(url)
+        form = response.context.get('form')
+        self.assertIsNotNone(form, 'F5-r2: context must contain form')
+        transceiver_field = form.fields.get('transceiver_module_type')
+        self.assertIsNotNone(transceiver_field, 'F5-r2: form must have transceiver_module_type')
+        self.assertFalse(
+            transceiver_field.required,
+            'F5-r2: view-instantiated PSC form must not mark transceiver required',
+        )
+
+    def test_f5_rendered_zone_add_loads_200(self):
+        """F5-r3: GET switchportzone_add → 200."""
+        url = reverse('plugins:netbox_hedgehog:switchportzone_add')
+        response = self.client.get(url)
+        self.assertEqual(response.status_code, 200)
+
+    def test_f5_rendered_zone_add_transceiver_not_required_in_view_form(self):
+        """F5-r4: view-instantiated zone form must not mark transceiver required.
+
+        RED: view's SwitchPortZoneForm has required=True currently.
+        """
+        url = reverse('plugins:netbox_hedgehog:switchportzone_add')
+        response = self.client.get(url)
+        form = response.context.get('form')
+        self.assertIsNotNone(form, 'F5-r4: context must contain form')
+        transceiver_field = form.fields.get('transceiver_module_type')
+        self.assertIsNotNone(transceiver_field, 'F5-r4: zone form must have transceiver_module_type')
+        self.assertFalse(
+            transceiver_field.required,
+            'F5-r4: view-instantiated zone form must not mark transceiver required',
+        )
