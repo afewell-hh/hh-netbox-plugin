@@ -1,38 +1,28 @@
 """
-RED tests for #465 — mandatory transceiver enforcement in review and detail UX.
+RED tests for #475 — simplified transceiver UX: review-pane behavior.
 
-Acceptance cases covered:
-  A13 — Plan detail page for null-transceiver plan → alert block visible;
-         Server-Link Review shows blocked rows with '⚠ Missing (required)' labels
-  A14 — Plan detail page for fully-populated plan → alert block hidden;
-         Server-Link Review shows match/needs_review rows only
-  A15 — Switch-Fabric Review for paired zones, both null → outcome='blocked',
-         xcvr labels '⚠ Missing (required)'
-  A16 — Switch-Fabric Review for paired zones, one null → outcome='blocked',
-         null side '⚠ Missing (required)'
+Replaces DIET-466 mandatory-transceiver review tests with tests that pin the
+approved target behavior from #474 §9.3 (R1–R10).
 
-Service unit tests:
-  RV1 — _xcvr_label(None) returns '⚠ Missing (required)'
-  RV2 — _xcvr_label(mt) returns the description-first label unchanged
-  RV3 — build_server_link_review() row for null-connection transceiver:
-         outcome='blocked', server_xcvr_label='⚠ Missing (required)'
-  RV4 — build_server_link_review() row for null-zone transceiver:
-         outcome='blocked', zone_xcvr_label='⚠ Missing (required)'
-  RV5 — build_server_link_review() row for both-null transceiver:
-         outcome='blocked', both xcvr labels '⚠ Missing (required)'
-  RV6 — build_server_link_review() row for both-set, compatible transceiver:
-         outcome='match' (unchanged; no regression)
-  RV7 — build_switch_fabric_review() paired row, both null:
-         outcome='blocked', both xcvr labels '⚠ Missing (required)'
-  RV8 — build_switch_fabric_review() paired row, one null:
-         outcome='blocked', null-side label '⚠ Missing (required)'
-  RV9 — build_switch_fabric_review() unpaired row with null xcvr:
-         outcome='blocked' (DIET-466: null xcvr is invalid on every zone)
-  RV9b — build_switch_fabric_review() unpaired row with xcvr set:
-         outcome=None (no peer to compare against; informational)
+Target behavior (not yet implemented):
+  R1  — both server and zone FK null → outcome='match', reason_code=R_NULL
+  R2  — server FK set, zone FK null → outcome='needs_review', R_INTENT_ASYMMETRY
+  R3  — server FK null, zone FK set → outcome='needs_review', R_INTENT_ASYMMETRY
+  R4  — medium mismatch → outcome='blocked', R_MEDIUM_MISMATCH  (preserved)
+  R5  — cage mismatch (non-approved) → outcome='needs_review', R_CAGE_MISMATCH
+  R6  — paired switch-fabric, one FK null → outcome='needs_review' (not 'blocked')
+  R7  — unpaired switch-fabric zone, FK null → outcome='needs_review' (not 'blocked')
+  R8  — unpaired switch-fabric zone, FK set → outcome=None (no peer to compare)
+  R9  — plan detail GET, all null transceivers → HTTP 200, no error banner
+  R10 — _xcvr_label(None) → '—' or 'Not specified', not '⚠ Missing (required)'
 
-All tests are RED until GREEN updates _xcvr_label(), _determine_outcome(),
-build_switch_fabric_review() null gate, and template alert condition.
+RED tests: R1, R2, R3, R6, R7, R10
+Regression guards (already correct or should stay correct): R4, R5, R8
+
+All RED tests fail until GREEN removes the DIET-466 null gate from
+_determine_outcome() (connection_review.py:161-163), build_switch_fabric_review()
+paired/unpaired null handling (switch_fabric_review.py:138-140, 172-174), and
+changes _xcvr_label(None) from '⚠ Missing (required)' to '—'.
 """
 
 from __future__ import annotations
@@ -41,7 +31,7 @@ from django.contrib.auth import get_user_model
 from django.test import Client, TestCase
 from django.urls import reverse
 
-from dcim.models import DeviceType, Manufacturer, ModuleBayTemplate
+from dcim.models import DeviceType, Manufacturer, ModuleType, ModuleTypeProfile
 
 from netbox_hedgehog.choices import (
     AllocationStrategyChoices,
@@ -70,187 +60,367 @@ from netbox_hedgehog.tests.test_topology_planning import (
 
 User = get_user_model()
 
-_MISSING_LABEL = '⚠ Missing (required)'
+_APPROVED_NULL_LABEL_OPTIONS = ('—', 'Not specified')
+_OLD_MISSING_LABEL = '⚠ Missing (required)'
 
 
 # ---------------------------------------------------------------------------
 # Fixture helpers
 # ---------------------------------------------------------------------------
 
-def _make_review_fixtures():
-    """Return (mfr, switch_dt, ext, bo_1x) for review tests."""
-    mfr, _ = Manufacturer.objects.get_or_create(
-        name='MxtRV-Vendor', defaults={'slug': 'mxtrv-vendor'}
+def _make_rv_fixtures(cls):
+    cls.mfr, _ = Manufacturer.objects.get_or_create(
+        name='MxtRV2-Vendor', defaults={'slug': 'mxtrv2-vendor'}
     )
-    switch_dt, _ = DeviceType.objects.get_or_create(
-        manufacturer=mfr, model='MxtRV-Switch', defaults={'slug': 'mxtrv-switch'}
+    cls.switch_dt, _ = DeviceType.objects.get_or_create(
+        manufacturer=cls.mfr, model='MxtRV2-Switch', defaults={'slug': 'mxtrv2-switch'}
     )
-    ext, _ = DeviceTypeExtension.objects.update_or_create(
-        device_type=switch_dt,
+    cls.server_dt, _ = DeviceType.objects.get_or_create(
+        manufacturer=cls.mfr, model='MxtRV2-SRV', defaults={'slug': 'mxtrv2-srv'}
+    )
+    cls.ext, _ = DeviceTypeExtension.objects.update_or_create(
+        device_type=cls.switch_dt,
         defaults={
-            'native_speed': 200,
-            'supported_breakouts': ['1x200g'],
-            'mclag_capable': False,
-            'hedgehog_roles': ['server-leaf'],
+            'native_speed': 200, 'supported_breakouts': ['1x200g'],
+            'mclag_capable': False, 'hedgehog_roles': ['server-leaf'],
         },
     )
-    bo, _ = BreakoutOption.objects.get_or_create(
-        breakout_id='1x200g-mxtrv',
+    cls.bo, _ = BreakoutOption.objects.get_or_create(
+        breakout_id='1x200g-mxtrv2',
         defaults={'from_speed': 200, 'logical_ports': 1, 'logical_speed': 200},
     )
-    srv_dt, _ = DeviceType.objects.get_or_create(
-        manufacturer=mfr, model='MxtRV-SRV', defaults={'slug': 'mxtrv-srv'}
+    cls.xcvr_mt = get_test_transceiver_module_type()
+    cls.superuser, _ = User.objects.get_or_create(
+        username='mxtrv2-admin',
+        defaults={'is_staff': True, 'is_superuser': True},
     )
-    return mfr, switch_dt, ext, bo, srv_dt
+    cls.superuser.set_password('pass')
+    cls.superuser.save()
 
 
-def _make_plan_with_null_conn_and_zone():
-    """Build a plan with one null-transceiver connection and one null zone."""
-    mfr, switch_dt, ext, bo, srv_dt = _make_review_fixtures()
+def _make_server_plan(cls, suffix, server_xcvr=None, zone_xcvr=None):
     plan = TopologyPlan.objects.create(
-        name='MxtRV-NullPlan', status=TopologyPlanStatusChoices.DRAFT,
+        name=f'MxtRV2-Plan-{suffix}',
+        status=TopologyPlanStatusChoices.DRAFT,
     )
     sc = PlanServerClass.objects.create(
-        plan=plan, server_class_id='gpu', server_device_type=srv_dt, quantity=2,
+        plan=plan, server_class_id='gpu',
+        server_device_type=cls.server_dt, quantity=1,
     )
     sw = PlanSwitchClass.objects.create(
         plan=plan, switch_class_id='fe-leaf',
         fabric_name=FabricTypeChoices.FRONTEND,
         fabric_class=FabricClassChoices.MANAGED,
         hedgehog_role=HedgehogRoleChoices.SERVER_LEAF,
-        device_type_extension=ext,
+        device_type_extension=cls.ext,
         uplink_ports_per_switch=0, mclag_pair=False,
         override_quantity=2, redundancy_type='eslag',
     )
     zone = SwitchPortZone.objects.create(
-        switch_class=sw, zone_name='server-dl',
-        zone_type=PortZoneTypeChoices.SERVER, port_spec='1-48',
-        breakout_option=bo,
+        switch_class=sw, zone_name='server-downlinks',
+        zone_type=PortZoneTypeChoices.SERVER, port_spec='1-4',
+        breakout_option=cls.bo,
         allocation_strategy=AllocationStrategyChoices.SEQUENTIAL, priority=100,
-        transceiver_module_type=None,
+        transceiver_module_type=zone_xcvr,
     )
-    nic = get_test_server_nic(sc, nic_id='nic-rv')
+    nic = get_test_server_nic(sc, nic_id=f'nic-{suffix}')
     PlanServerConnection.objects.create(
         server_class=sc, connection_id='fe',
         nic=nic, port_index=0, ports_per_connection=1,
         hedgehog_conn_type=ConnectionTypeChoices.UNBUNDLED,
         distribution=ConnectionDistributionChoices.ALTERNATING,
         target_zone=zone, speed=200, port_type='data',
-        transceiver_module_type=None,
+        transceiver_module_type=server_xcvr,
     )
-    return plan
-
-
-def _make_plan_with_full_xcvr():
-    """Build a plan with all transceivers set (valid state)."""
-    mfr, switch_dt, ext, bo, srv_dt = _make_review_fixtures()
-    xcvr = get_test_transceiver_module_type()
-    plan = TopologyPlan.objects.create(
-        name='MxtRV-FullPlan', status=TopologyPlanStatusChoices.DRAFT,
-    )
-    sc = PlanServerClass.objects.create(
-        plan=plan, server_class_id='gpu', server_device_type=srv_dt, quantity=2,
-    )
-    sw = PlanSwitchClass.objects.create(
-        plan=plan, switch_class_id='fe-leaf',
-        fabric_name=FabricTypeChoices.FRONTEND,
-        fabric_class=FabricClassChoices.MANAGED,
-        hedgehog_role=HedgehogRoleChoices.SERVER_LEAF,
-        device_type_extension=ext,
-        uplink_ports_per_switch=0, mclag_pair=False,
-        override_quantity=2, redundancy_type='eslag',
-    )
-    zone = SwitchPortZone.objects.create(
-        switch_class=sw, zone_name='server-dl',
-        zone_type=PortZoneTypeChoices.SERVER, port_spec='1-48',
-        breakout_option=bo,
-        allocation_strategy=AllocationStrategyChoices.SEQUENTIAL, priority=100,
-        transceiver_module_type=xcvr,
-    )
-    nic = get_test_server_nic(sc, nic_id='nic-rv-full')
-    # Ensure the NIC ModuleType has a ModuleBayTemplate so Phase 2 (NIC bay check) passes.
-    ModuleBayTemplate.objects.get_or_create(module_type=nic.module_type, name='cage-0')
-    PlanServerConnection.objects.create(
-        server_class=sc, connection_id='fe',
-        nic=nic, port_index=0, ports_per_connection=1,
-        hedgehog_conn_type=ConnectionTypeChoices.UNBUNDLED,
-        distribution=ConnectionDistributionChoices.ALTERNATING,
-        target_zone=zone, speed=200, port_type='data',
-        transceiver_module_type=xcvr,
-    )
-    return plan
+    return plan, sc, sw, zone
 
 
 # ---------------------------------------------------------------------------
-# Group RV — service-level unit tests
+# R10 — _xcvr_label(None) returns neutral label
 # ---------------------------------------------------------------------------
 
-class MandatoryTransceiverLabelTestCase(TestCase):
-    """RV1–RV2: _xcvr_label() null and non-null behaviour."""
+class XcvrLabelNullTestCase(TestCase):
+    """R10: _xcvr_label(None) must not return '⚠ Missing (required)'."""
 
-    def _xcvr_label(self, mt):
+    def test_r10_connection_review_xcvr_label_none(self):
+        """R10a: connection_review._xcvr_label(None) → neutral label."""
         from netbox_hedgehog.services.connection_review import _xcvr_label
-        return _xcvr_label(mt)
-
-    def test_rv1_null_returns_missing_required(self):
-        """RV1: _xcvr_label(None) must return '⚠ Missing (required)'."""
-        label = self._xcvr_label(None)
-        self.assertEqual(
-            label, _MISSING_LABEL,
-            f'_xcvr_label(None) must return {_MISSING_LABEL!r}; got {label!r}',
-        )
-
-    def test_rv2_set_returns_description_model_format(self):
-        """RV2: _xcvr_label(mt) returns description-first label when mt is set."""
-        mt = get_test_transceiver_module_type()
-        label = self._xcvr_label(mt)
-        # Must not be the missing label
+        label = _xcvr_label(None)
         self.assertNotEqual(
-            label, _MISSING_LABEL,
-            '_xcvr_label(mt) must not return the missing label for a non-null mt',
+            label, _OLD_MISSING_LABEL,
+            f'R10a: must not return the alarming required label; got: {label!r}',
         )
-        # Must contain the model name somewhere
         self.assertIn(
-            mt.model, label,
-            f'_xcvr_label(mt) must include ModuleType.model in label; got {label!r}',
+            label, _APPROVED_NULL_LABEL_OPTIONS,
+            f'R10a: must return one of {_APPROVED_NULL_LABEL_OPTIONS}; got: {label!r}',
         )
 
-
-class MandatoryTransceiverSwitchFabricLabelTestCase(TestCase):
-    """RV1 for switch_fabric_review._xcvr_label() — must have same contract."""
-
-    def _xcvr_label(self, mt):
+    def test_r10_switch_fabric_review_xcvr_label_none(self):
+        """R10b: switch_fabric_review._xcvr_label(None) → neutral label."""
         from netbox_hedgehog.services.switch_fabric_review import _xcvr_label
-        return _xcvr_label(mt)
-
-    def test_null_returns_missing_required(self):
-        """switch_fabric_review._xcvr_label(None) returns '⚠ Missing (required)'."""
-        label = self._xcvr_label(None)
-        self.assertEqual(
-            label, _MISSING_LABEL,
-            f'switch_fabric_review._xcvr_label(None) must return {_MISSING_LABEL!r}; '
-            f'got {label!r}',
+        label = _xcvr_label(None)
+        self.assertNotEqual(
+            label, _OLD_MISSING_LABEL,
+            f'R10b: must not return the alarming required label; got: {label!r}',
+        )
+        self.assertIn(
+            label, _APPROVED_NULL_LABEL_OPTIONS,
+            f'R10b: must return one of {_APPROVED_NULL_LABEL_OPTIONS}; got: {label!r}',
         )
 
 
-class MandatoryTransceiverServerLinkReviewServiceTestCase(TestCase):
-    """RV3–RV6: build_server_link_review() outcome for null/non-null transceivers."""
+# ---------------------------------------------------------------------------
+# R1–R5 — Server-Link Review: outcome per transceiver combination
+# ---------------------------------------------------------------------------
+
+class ServerLinkReviewOutcomeTestCase(TestCase):
+    """R1–R5: build_server_link_review() row outcomes."""
 
     @classmethod
     def setUpTestData(cls):
-        cls.mfr, cls.switch_dt, cls.ext, cls.bo, cls.srv_dt = _make_review_fixtures()
-        cls.xcvr = get_test_transceiver_module_type()
+        _make_rv_fixtures(cls)
+        profile = ModuleTypeProfile.objects.filter(name='Network Transceiver').first()
+        cls.dac_mt, _ = ModuleType.objects.get_or_create(
+            manufacturer=cls.mfr, model='RV2-DAC-Test',
+            defaults={
+                'profile': profile,
+                'attribute_data': {'cage_type': 'QSFP112', 'medium': 'DAC', 'reach_class': 'DAC'},
+            },
+        )
+        cls.osfp_mt, _ = ModuleType.objects.get_or_create(
+            manufacturer=cls.mfr, model='RV2-OSFP-Test',
+            defaults={
+                'profile': profile,
+                'attribute_data': {'cage_type': 'OSFP', 'medium': 'MMF', 'reach_class': 'SR'},
+            },
+        )
 
-    def _build_review(self, plan):
+    def test_r1_both_null_outcome_is_match(self):
+        """R1: both server and zone FK null → outcome='match'."""
         from netbox_hedgehog.services.connection_review import build_server_link_review
-        return build_server_link_review(plan)
+        plan, sc, sw, zone = _make_server_plan(self, 'r1', server_xcvr=None, zone_xcvr=None)
+        summary = build_server_link_review(plan)
+        self.assertEqual(len(summary.rows), 1)
+        self.assertEqual(
+            summary.rows[0].outcome, 'match',
+            f'R1: both-null → must be "match"; got {summary.rows[0].outcome!r}',
+        )
 
-    def _make_plan(self, conn_xcvr=None, zone_xcvr=None, suffix=''):
+    def test_r1_determine_outcome_both_null_returns_match(self):
+        """R1b: _determine_outcome directly: both None attrs → match."""
+        from netbox_hedgehog.services.connection_review import _determine_outcome
+        outcome, reason = _determine_outcome('1x200g', 1, None, None)
+        self.assertEqual(outcome, 'match',
+            f'R1b: _determine_outcome both-null → "match"; got {outcome!r}')
+
+    def test_r2_server_set_zone_null_needs_review(self):
+        """R2: server FK set, zone FK null → outcome='needs_review'."""
+        from netbox_hedgehog.services.connection_review import build_server_link_review
+        plan, sc, sw, zone = _make_server_plan(
+            self, 'r2', server_xcvr=self.xcvr_mt, zone_xcvr=None
+        )
+        summary = build_server_link_review(plan)
+        self.assertEqual(len(summary.rows), 1)
+        self.assertEqual(
+            summary.rows[0].outcome, 'needs_review',
+            f'R2: server set + zone null → "needs_review"; got {summary.rows[0].outcome!r}',
+        )
+
+    def test_r3_server_null_zone_set_needs_review(self):
+        """R3: server FK null, zone FK set → outcome='needs_review'."""
+        from netbox_hedgehog.services.connection_review import build_server_link_review
+        plan, sc, sw, zone = _make_server_plan(
+            self, 'r3', server_xcvr=None, zone_xcvr=self.xcvr_mt
+        )
+        summary = build_server_link_review(plan)
+        self.assertEqual(len(summary.rows), 1)
+        self.assertEqual(
+            summary.rows[0].outcome, 'needs_review',
+            f'R3: server null + zone set → "needs_review"; got {summary.rows[0].outcome!r}',
+        )
+
+    def test_r4_medium_mismatch_is_blocked(self):
+        """R4 (regression): medium mismatch → 'blocked'. Must stay blocked."""
+        from netbox_hedgehog.services.connection_review import build_server_link_review
+        mmf_mt = self.xcvr_mt  # has medium='MMF'
+        plan, sc, sw, zone = _make_server_plan(
+            self, 'r4', server_xcvr=self.dac_mt, zone_xcvr=mmf_mt
+        )
+        summary = build_server_link_review(plan)
+        self.assertEqual(len(summary.rows), 1)
+        self.assertEqual(
+            summary.rows[0].outcome, 'blocked',
+            f'R4: medium mismatch must remain "blocked"; got {summary.rows[0].outcome!r}',
+        )
+
+    def test_r5_cage_mismatch_is_needs_review(self):
+        """R5: cage mismatch → outcome='needs_review' (not blocked, not match)."""
+        from netbox_hedgehog.services.connection_review import build_server_link_review
+        # xcvr_mt has cage_type=QSFP112; osfp_mt has cage_type=OSFP → cage mismatch
+        plan, sc, sw, zone = _make_server_plan(
+            self, 'r5', server_xcvr=self.xcvr_mt, zone_xcvr=self.osfp_mt
+        )
+        summary = build_server_link_review(plan)
+        self.assertEqual(len(summary.rows), 1)
+        self.assertEqual(
+            summary.rows[0].outcome, 'needs_review',
+            f'R5: cage mismatch → "needs_review"; got {summary.rows[0].outcome!r}',
+        )
+
+
+# ---------------------------------------------------------------------------
+# R6 / R7 / R8 — Switch-Fabric Review null outcomes
+# ---------------------------------------------------------------------------
+
+class SwitchFabricReviewNullTestCase(TestCase):
+    """
+    R6: paired zones, one null → needs_review (not blocked).
+    R7: unpaired zone, null → needs_review (not blocked).
+    R8: unpaired zone, FK set → outcome=None (regression guard).
+    """
+
+    @classmethod
+    def setUpTestData(cls):
+        _make_rv_fixtures(cls)
+
+    def _paired_plan(self, suffix, near_xcvr, far_xcvr):
         plan = TopologyPlan.objects.create(
-            name=f'MxtRV-SLR-{suffix}', status=TopologyPlanStatusChoices.DRAFT,
+            name=f'MxtRV2-PairedPlan-{suffix}',
+            status=TopologyPlanStatusChoices.DRAFT,
+        )
+        near_sw = PlanSwitchClass.objects.create(
+            plan=plan, switch_class_id='fe-leaf',
+            fabric_name=FabricTypeChoices.FRONTEND,
+            fabric_class=FabricClassChoices.MANAGED,
+            hedgehog_role=HedgehogRoleChoices.SERVER_LEAF,
+            device_type_extension=self.ext,
+            uplink_ports_per_switch=0, mclag_pair=False,
+            override_quantity=2, redundancy_type='eslag',
+        )
+        far_sw = PlanSwitchClass.objects.create(
+            plan=plan, switch_class_id='fe-spine',
+            fabric_name=FabricTypeChoices.FRONTEND,
+            fabric_class=FabricClassChoices.MANAGED,
+            hedgehog_role=HedgehogRoleChoices.SPINE,
+            device_type_extension=self.ext,
+            uplink_ports_per_switch=0, mclag_pair=False,
+            override_quantity=2, redundancy_type='eslag',
+        )
+        far_zone = SwitchPortZone.objects.create(
+            switch_class=far_sw, zone_name='leaf-downlinks',
+            zone_type=PortZoneTypeChoices.UPLINK, port_spec='1-4',
+            breakout_option=self.bo,
+            allocation_strategy=AllocationStrategyChoices.SEQUENTIAL, priority=100,
+            transceiver_module_type=far_xcvr,
+        )
+        SwitchPortZone.objects.create(
+            switch_class=near_sw, zone_name='uplinks',
+            zone_type=PortZoneTypeChoices.UPLINK, port_spec='1-4',
+            breakout_option=self.bo,
+            allocation_strategy=AllocationStrategyChoices.SEQUENTIAL, priority=100,
+            transceiver_module_type=near_xcvr,
+            peer_zone=far_zone,
+        )
+        return plan
+
+    def _unpaired_plan(self, suffix, zone_xcvr):
+        plan = TopologyPlan.objects.create(
+            name=f'MxtRV2-UnpairedPlan-{suffix}',
+            status=TopologyPlanStatusChoices.DRAFT,
+        )
+        sw = PlanSwitchClass.objects.create(
+            plan=plan, switch_class_id='fe-leaf-up',
+            fabric_name=FabricTypeChoices.FRONTEND,
+            fabric_class=FabricClassChoices.MANAGED,
+            hedgehog_role=HedgehogRoleChoices.SERVER_LEAF,
+            device_type_extension=self.ext,
+            uplink_ports_per_switch=0, mclag_pair=False,
+            override_quantity=1, redundancy_type='eslag',
+        )
+        SwitchPortZone.objects.create(
+            switch_class=sw, zone_name='uplinks',
+            zone_type=PortZoneTypeChoices.UPLINK, port_spec='1-4',
+            breakout_option=self.bo,
+            allocation_strategy=AllocationStrategyChoices.SEQUENTIAL, priority=100,
+            transceiver_module_type=zone_xcvr,
+        )
+        return plan
+
+    def test_r6_paired_one_null_needs_review(self):
+        """R6: paired zones, near null → needs_review."""
+        from netbox_hedgehog.services.switch_fabric_review import build_switch_fabric_review
+        plan = self._paired_plan('r6', near_xcvr=None, far_xcvr=self.xcvr_mt)
+        summary = build_switch_fabric_review(plan)
+        paired = [r for r in summary.rows if r.is_paired]
+        self.assertEqual(len(paired), 1)
+        self.assertEqual(
+            paired[0].outcome, 'needs_review',
+            f'R6: paired near-null → "needs_review"; got {paired[0].outcome!r}',
+        )
+
+    def test_r6b_paired_both_null_needs_review(self):
+        """R6b: paired zones, both null → needs_review."""
+        from netbox_hedgehog.services.switch_fabric_review import build_switch_fabric_review
+        plan = self._paired_plan('r6b', near_xcvr=None, far_xcvr=None)
+        summary = build_switch_fabric_review(plan)
+        paired = [r for r in summary.rows if r.is_paired]
+        self.assertEqual(len(paired), 1)
+        self.assertEqual(
+            paired[0].outcome, 'needs_review',
+            f'R6b: paired both-null → "needs_review"; got {paired[0].outcome!r}',
+        )
+
+    def test_r7_unpaired_null_needs_review(self):
+        """R7: unpaired zone, null FK → needs_review."""
+        from netbox_hedgehog.services.switch_fabric_review import build_switch_fabric_review
+        plan = self._unpaired_plan('r7', zone_xcvr=None)
+        summary = build_switch_fabric_review(plan)
+        unpaired = [r for r in summary.rows if not r.is_paired]
+        self.assertEqual(len(unpaired), 1)
+        self.assertEqual(
+            unpaired[0].outcome, 'needs_review',
+            f'R7: unpaired null → "needs_review"; got {unpaired[0].outcome!r}',
+        )
+
+    def test_r8_unpaired_xcvr_set_outcome_none(self):
+        """R8 (regression): unpaired zone, FK set → outcome=None."""
+        from netbox_hedgehog.services.switch_fabric_review import build_switch_fabric_review
+        plan = self._unpaired_plan('r8', zone_xcvr=self.xcvr_mt)
+        summary = build_switch_fabric_review(plan)
+        unpaired = [r for r in summary.rows if not r.is_paired]
+        self.assertEqual(len(unpaired), 1)
+        self.assertIsNone(
+            unpaired[0].outcome,
+            f'R8: unpaired set → outcome must be None; got {unpaired[0].outcome!r}',
+        )
+
+
+# ---------------------------------------------------------------------------
+# R9 — plan detail page for null-transceiver plan
+# ---------------------------------------------------------------------------
+
+class PlanDetailNullTransceiverTestCase(TestCase):
+    """
+    R9: GET plan detail page for null-transceiver plan → 200, no error banner.
+    """
+
+    @classmethod
+    def setUpTestData(cls):
+        _make_rv_fixtures(cls)
+
+    def setUp(self):
+        self.client = Client()
+        self.client.force_login(self.superuser)
+
+    def _null_plan(self, suffix):
+        from netbox_hedgehog.tests.test_topology_planning import get_test_nic_module_type
+        plan = TopologyPlan.objects.create(
+            name=f'MxtRV2-NullPlan-{suffix}',
+            status=TopologyPlanStatusChoices.DRAFT,
         )
         sc = PlanServerClass.objects.create(
-            plan=plan, server_class_id='gpu', server_device_type=self.srv_dt, quantity=1,
+            plan=plan, server_class_id='gpu',
+            server_device_type=self.server_dt, quantity=1,
         )
         sw = PlanSwitchClass.objects.create(
             plan=plan, switch_class_id='fe-leaf',
@@ -262,324 +432,41 @@ class MandatoryTransceiverServerLinkReviewServiceTestCase(TestCase):
             override_quantity=2, redundancy_type='eslag',
         )
         zone = SwitchPortZone.objects.create(
-            switch_class=sw, zone_name='server-dl',
-            zone_type=PortZoneTypeChoices.SERVER, port_spec='1-48',
+            switch_class=sw, zone_name='server-downlinks',
+            zone_type=PortZoneTypeChoices.SERVER, port_spec='1-4',
             breakout_option=self.bo,
             allocation_strategy=AllocationStrategyChoices.SEQUENTIAL, priority=100,
-            transceiver_module_type=zone_xcvr,
+            transceiver_module_type=None,
         )
-        nic = get_test_server_nic(sc, nic_id=f'nic-rv-{suffix}')
+        nic_mt = get_test_nic_module_type()
+        nic = PlanServerNIC.objects.create(
+            server_class=sc, nic_id=f'nic-{suffix}', module_type=nic_mt,
+        )
         PlanServerConnection.objects.create(
             server_class=sc, connection_id='fe',
             nic=nic, port_index=0, ports_per_connection=1,
             hedgehog_conn_type=ConnectionTypeChoices.UNBUNDLED,
             distribution=ConnectionDistributionChoices.ALTERNATING,
             target_zone=zone, speed=200, port_type='data',
-            transceiver_module_type=conn_xcvr,
+            transceiver_module_type=None,
         )
         return plan
 
-    # RV3
-    def test_rv3_null_connection_xcvr_row_is_blocked(self):
-        """RV3: Row where connection transceiver is null → outcome='blocked'."""
-        plan = self._make_plan(conn_xcvr=None, zone_xcvr=self.xcvr, suffix='rv3')
-        review = self._build_review(plan)
-        self.assertTrue(len(review.rows) > 0, 'Must have at least one row')
-        row = review.rows[0]
-        self.assertEqual(
-            row.outcome, 'blocked',
-            f'Row with null connection transceiver must be blocked; got {row.outcome!r}',
-        )
-        self.assertEqual(
-            row.server_xcvr_label, _MISSING_LABEL,
-            f'server_xcvr_label must be {_MISSING_LABEL!r}; got {row.server_xcvr_label!r}',
-        )
-
-    # RV4
-    def test_rv4_null_zone_xcvr_row_is_blocked(self):
-        """RV4: Row where zone transceiver is null → outcome='blocked'."""
-        plan = self._make_plan(conn_xcvr=self.xcvr, zone_xcvr=None, suffix='rv4')
-        review = self._build_review(plan)
-        row = review.rows[0]
-        self.assertEqual(
-            row.outcome, 'blocked',
-            f'Row with null zone transceiver must be blocked; got {row.outcome!r}',
-        )
-        self.assertEqual(
-            row.zone_xcvr_label, _MISSING_LABEL,
-            f'zone_xcvr_label must be {_MISSING_LABEL!r}; got {row.zone_xcvr_label!r}',
-        )
-
-    # RV5
-    def test_rv5_both_null_xcvr_row_is_blocked(self):
-        """RV5: Row where both connection and zone transceivers are null → outcome='blocked'."""
-        plan = self._make_plan(conn_xcvr=None, zone_xcvr=None, suffix='rv5')
-        review = self._build_review(plan)
-        row = review.rows[0]
-        self.assertEqual(
-            row.outcome, 'blocked',
-            f'Row with both null transceivers must be blocked; got {row.outcome!r}',
-        )
-        self.assertEqual(row.server_xcvr_label, _MISSING_LABEL)
-        self.assertEqual(row.zone_xcvr_label, _MISSING_LABEL)
-        self.assertGreater(
-            review.blocked_count, 0,
-            'blocked_count must be > 0 when rows are blocked',
-        )
-
-    # RV6
-    def test_rv6_both_set_compatible_row_is_match(self):
-        """RV6: Row with both transceivers set and compatible → outcome='match' (no regression)."""
-        plan = self._make_plan(conn_xcvr=self.xcvr, zone_xcvr=self.xcvr, suffix='rv6')
-        review = self._build_review(plan)
-        row = review.rows[0]
-        self.assertEqual(
-            row.outcome, 'match',
-            f'Row with compatible transceivers must remain match; got {row.outcome!r}',
-        )
-        self.assertNotEqual(row.server_xcvr_label, _MISSING_LABEL)
-        self.assertNotEqual(row.zone_xcvr_label, _MISSING_LABEL)
-
-
-class MandatoryTransceiverSwitchFabricReviewServiceTestCase(TestCase):
-    """RV7–RV9: build_switch_fabric_review() outcome for null paired zones."""
-
-    @classmethod
-    def setUpTestData(cls):
-        cls.mfr, cls.switch_dt, cls.ext, cls.bo, cls.srv_dt = _make_review_fixtures()
-        cls.xcvr = get_test_transceiver_module_type()
-
-    def _build_review(self, plan):
-        from netbox_hedgehog.services.switch_fabric_review import build_switch_fabric_review
-        return build_switch_fabric_review(plan)
-
-    def _make_plan_with_paired_zones(self, near_xcvr=None, far_xcvr=None, suffix=''):
-        """Build a plan with two zones connected via peer_zone FK."""
-        plan = TopologyPlan.objects.create(
-            name=f'MxtRV-SFR-{suffix}', status=TopologyPlanStatusChoices.DRAFT,
-        )
-        sw_near = PlanSwitchClass.objects.create(
-            plan=plan, switch_class_id='fe-leaf',
-            fabric_name=FabricTypeChoices.FRONTEND,
-            fabric_class=FabricClassChoices.MANAGED,
-            hedgehog_role=HedgehogRoleChoices.SERVER_LEAF,
-            device_type_extension=self.ext,
-            uplink_ports_per_switch=0, mclag_pair=False,
-            override_quantity=2, redundancy_type='eslag',
-        )
-        sw_far = PlanSwitchClass.objects.create(
-            plan=plan, switch_class_id='fe-spine',
-            fabric_name=FabricTypeChoices.FRONTEND,
-            fabric_class=FabricClassChoices.MANAGED,
-            hedgehog_role=HedgehogRoleChoices.SPINE,
-            device_type_extension=self.ext,
-            uplink_ports_per_switch=0, mclag_pair=False,
-            override_quantity=2, redundancy_type='eslag',
-        )
-        zone_far = SwitchPortZone.objects.create(
-            switch_class=sw_far, zone_name='fe-spine-downlinks',
-            zone_type=PortZoneTypeChoices.FABRIC, port_spec='1-32',
-            breakout_option=self.bo,
-            allocation_strategy=AllocationStrategyChoices.SEQUENTIAL, priority=100,
-            transceiver_module_type=far_xcvr,
-        )
-        zone_near = SwitchPortZone.objects.create(
-            switch_class=sw_near, zone_name='fe-leaf-uplinks',
-            zone_type=PortZoneTypeChoices.UPLINK, port_spec='1-8',
-            breakout_option=self.bo,
-            allocation_strategy=AllocationStrategyChoices.SEQUENTIAL, priority=100,
-            transceiver_module_type=near_xcvr,
-            peer_zone=zone_far,
-        )
-        return plan, zone_near, zone_far
-
-    # RV7
-    def test_rv7_paired_both_null_is_blocked(self):
-        """RV7: Paired zones with both null transceiver → outcome='blocked'."""
-        plan, zone_near, _ = self._make_plan_with_paired_zones(
-            near_xcvr=None, far_xcvr=None, suffix='rv7'
-        )
-        review = self._build_review(plan)
-        paired_rows = [r for r in review.rows if r.far_zone_name is not None]
-        self.assertTrue(len(paired_rows) > 0, 'Must have at least one paired row')
-        row = paired_rows[0]
-        self.assertEqual(
-            row.outcome, 'blocked',
-            f'Paired row with both null xcvr must be blocked; got {row.outcome!r}',
-        )
-        self.assertEqual(row.near_xcvr_label, _MISSING_LABEL)
-        self.assertEqual(row.far_xcvr_label, _MISSING_LABEL)
-
-    # RV8
-    def test_rv8_paired_one_null_is_blocked(self):
-        """RV8: Paired zones with one null transceiver → outcome='blocked'."""
-        plan, _, _ = self._make_plan_with_paired_zones(
-            near_xcvr=None, far_xcvr=self.xcvr, suffix='rv8'
-        )
-        review = self._build_review(plan)
-        paired_rows = [r for r in review.rows if r.far_zone_name is not None]
-        row = paired_rows[0]
-        self.assertEqual(
-            row.outcome, 'blocked',
-            f'Paired row with one null xcvr must be blocked; got {row.outcome!r}',
-        )
-        # Near is null; far is set
-        self.assertEqual(row.near_xcvr_label, _MISSING_LABEL)
-        self.assertNotEqual(row.far_xcvr_label, _MISSING_LABEL)
-
-    # RV9
-    def test_rv9_unpaired_zone_with_null_xcvr_is_blocked(self):
-        """
-        RV9: Unpaired zone (no peer_zone) with null transceiver → outcome='blocked'.
-        DIET-466: a missing transceiver is invalid on every zone, paired or not.
-        The xcvr label also reflects null as '⚠ Missing (required)'.
-        """
-        plan = TopologyPlan.objects.create(
-            name='MxtRV-SFR-rv9', status=TopologyPlanStatusChoices.DRAFT,
-        )
-        sw = PlanSwitchClass.objects.create(
-            plan=plan, switch_class_id='fe-leaf',
-            fabric_name=FabricTypeChoices.FRONTEND,
-            fabric_class=FabricClassChoices.MANAGED,
-            hedgehog_role=HedgehogRoleChoices.SERVER_LEAF,
-            device_type_extension=self.ext,
-            uplink_ports_per_switch=0, mclag_pair=False,
-            override_quantity=2, redundancy_type='eslag',
-        )
-        # Uplink zone with no peer_zone — intentionally no transceiver
-        SwitchPortZone.objects.create(
-            switch_class=sw, zone_name='fe-leaf-uplinks-unpaired',
-            zone_type=PortZoneTypeChoices.UPLINK, port_spec='1-8',
-            breakout_option=self.bo,
-            allocation_strategy=AllocationStrategyChoices.SEQUENTIAL, priority=100,
-            transceiver_module_type=None,
-            peer_zone=None,
-        )
-        review = self._build_review(plan)
-        unpaired = [r for r in review.rows if r.far_zone_name is None]
-        self.assertTrue(len(unpaired) > 0, 'Must have unpaired rows')
-        row = unpaired[0]
-        self.assertEqual(
-            row.outcome, 'blocked',
-            f'Unpaired null-xcvr zone must be blocked (DIET-466); got {row.outcome!r}',
-        )
-        # Label still shows missing
-        self.assertEqual(
-            row.near_xcvr_label, _MISSING_LABEL,
-            f'Unpaired null-xcvr zone label must be {_MISSING_LABEL!r}',
-        )
-
-    # RV9b
-    def test_rv9b_unpaired_zone_with_xcvr_set_outcome_is_none(self):
-        """
-        RV9b: Unpaired zone (no peer_zone) WITH transceiver set → outcome=None.
-        When xcvr is present there is no counterpart to compare against, so the
-        row is informational (outcome=None), not blocked.
-        """
-        plan = TopologyPlan.objects.create(
-            name='MxtRV-SFR-rv9b', status=TopologyPlanStatusChoices.DRAFT,
-        )
-        sw = PlanSwitchClass.objects.create(
-            plan=plan, switch_class_id='fe-leaf',
-            fabric_name=FabricTypeChoices.FRONTEND,
-            fabric_class=FabricClassChoices.MANAGED,
-            hedgehog_role=HedgehogRoleChoices.SERVER_LEAF,
-            device_type_extension=self.ext,
-            uplink_ports_per_switch=0, mclag_pair=False,
-            override_quantity=2, redundancy_type='eslag',
-        )
-        SwitchPortZone.objects.create(
-            switch_class=sw, zone_name='fe-leaf-uplinks-with-xcvr',
-            zone_type=PortZoneTypeChoices.UPLINK, port_spec='1-8',
-            breakout_option=self.bo,
-            allocation_strategy=AllocationStrategyChoices.SEQUENTIAL, priority=100,
-            transceiver_module_type=self.xcvr,
-            peer_zone=None,
-        )
-        review = self._build_review(plan)
-        unpaired = [r for r in review.rows if r.far_zone_name is None]
-        self.assertTrue(len(unpaired) > 0, 'Must have unpaired rows')
-        row = unpaired[0]
-        self.assertIsNone(
-            row.outcome,
-            f'Unpaired xcvr-set zone must have outcome=None; got {row.outcome!r}',
-        )
-
-
-# ---------------------------------------------------------------------------
-# Group A13/A14 — plan detail page view integration
-# ---------------------------------------------------------------------------
-
-class MandatoryTransceiverPlanDetailViewTestCase(TestCase):
-    """
-    A13: Plan detail page for null-transceiver plan → alert visible, blocked rows.
-    A14: Plan detail page for fully-populated plan → alert hidden, clean rows.
-    """
-
-    @classmethod
-    def setUpTestData(cls):
-        cls.superuser = User.objects.create_user(
-            username='mxt-detail-admin', password='pass',
-            is_staff=True, is_superuser=True,
-        )
-
-    def setUp(self):
-        self.client = Client()
-        self.client.force_login(self.superuser)
-
-    # A13
-    def test_a13_plan_detail_shows_alert_and_blocked_for_null_xcvr_plan(self):
-        """
-        A13: GET plan detail for a null-transceiver plan → 200;
-        alert block is visible; Server-Link Review shows blocked rows
-        with '⚠ Missing (required)' labels.
-        """
-        plan = _make_plan_with_null_conn_and_zone()
+    def test_r9_plan_detail_200_for_null_transceiver_plan(self):
+        """R9: GET plan detail → 200 for null-transceiver plan."""
+        plan = self._null_plan('r9a')
         url = reverse('plugins:netbox_hedgehog:topologyplan_detail', kwargs={'pk': plan.pk})
         response = self.client.get(url)
         self.assertEqual(response.status_code, 200)
 
-        content = response.content.decode()
-
-        # The transceiver prerequisite alert must be visible.
-        self.assertIn(
-            'Transceiver Bay Prerequisite Missing', content,
-            'Prerequisite alert block must be visible for null-transceiver plan',
-        )
-
-        # The '⚠ Missing (required)' label must appear in the Server-Link Review.
-        self.assertIn(
-            _MISSING_LABEL, content,
-            f'{_MISSING_LABEL!r} must appear in the rendered plan detail page',
-        )
-
-        # The blocked row indicator must appear (table-danger class or 'blocked' outcome).
-        self.assertIn(
-            'table-danger', content,
-            'Server-Link Review must render blocked rows with table-danger style',
-        )
-
-    # A14
-    def test_a14_plan_detail_hides_alert_for_fully_populated_plan(self):
-        """
-        A14: GET plan detail for a fully-populated plan → 200;
-        alert block not rendered; Server-Link Review shows no missing labels.
-        """
-        plan = _make_plan_with_full_xcvr()
+    def test_r9_no_prerequisite_missing_banner(self):
+        """R9b: plan detail must not show 'Transceiver Bay Prerequisite Missing' banner."""
+        plan = self._null_plan('r9b')
         url = reverse('plugins:netbox_hedgehog:topologyplan_detail', kwargs={'pk': plan.pk})
         response = self.client.get(url)
-        self.assertEqual(response.status_code, 200)
-
-        content = response.content.decode()
-
-        # The prerequisite alert must NOT appear.
         self.assertNotIn(
-            'Transceiver Bay Prerequisite Missing', content,
-            'Alert must not appear for a fully-populated plan',
-        )
-
-        # The missing label must not appear in any review row.
-        self.assertNotIn(
-            _MISSING_LABEL, content,
-            f'{_MISSING_LABEL!r} must not appear for a fully-populated plan',
+            'Transceiver Bay Prerequisite Missing',
+            response.content.decode(),
+            'R9b: null-transceiver plan must not show required-transceiver banner '
+            '(has_transceiver_fks=False after Phase 0 removal)',
         )

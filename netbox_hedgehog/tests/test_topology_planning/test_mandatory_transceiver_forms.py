@@ -1,36 +1,31 @@
 """
-RED tests for #465 — mandatory transceiver enforcement on forms and models.
+RED tests for #475 — simplified transceiver UX: form behavior.
 
-Acceptance cases covered:
-  A1  — POST PSC add-form, transceiver blank → 200, required-field error
-  A2  — POST PSC add-form, valid transceiver → 302
-  A3  — POST SwitchPortZone add-form, transceiver blank → 200, required-field error
-  A4  — POST SwitchPortZone add-form, valid transceiver → 302
-  A5  — GET legacy null-transceiver PSC detail → 200 (readable)
-  A6  — POST PSC edit-form, existing null row, no transceiver → 200, error
-  A7  — POST PSC edit-form, existing null row, valid transceiver → 302
-  A8  — POST SwitchPortZone edit-form, existing null row, no transceiver → 200, error
-  A17 — Permission enforcement on add/edit is unchanged under tightened validation
+Replaces the old DIET-466 mandatory-transceiver form tests with tests that
+pin the approved target behavior from #474 §9.2 (F1–F5).
 
-Model clean() enforcement:
-  MC1 — SwitchPortZone.full_clean() raises ValidationError when FK null
-  MC2 — PlanServerConnection.full_clean() raises ValidationError when FK null
-  MC3 — SwitchPortZone.full_clean() passes when FK set
-  MC4 — PlanServerConnection.full_clean() passes when FK set
+Target behavior (not yet implemented):
+  - transceiver_module_type is OPTIONAL on both add and edit forms
+  - POST with blank transceiver → 302 redirect (connection/zone created)
+  - POST clearing transceiver → 302 redirect (updated to null)
+  - GET add form → transceiver field not marked required; no flat fields present
 
-All tests in this file are RED until GREEN adds required=True to both forms
-and the required-check to both model clean() methods.
+Acceptance matrix IDs covered: F1, F2, F3, F4, F5
+Also covers: permission enforcement with null transceiver (all operations
+  require ObjectPermission; the null transceiver must not break that contract).
+
+All tests are RED until GREEN removes required=True from both form fields and
+removes flat fields (cage_type, medium, connector, standard) from Meta.fields.
 """
 
 from __future__ import annotations
 
 from django.contrib.auth import get_user_model
 from django.contrib.contenttypes.models import ContentType
-from django.core.exceptions import ValidationError
 from django.test import Client, TestCase
 from django.urls import reverse
 
-from dcim.models import DeviceType, Manufacturer
+from dcim.models import DeviceType, InterfaceTemplate, Manufacturer, ModuleBayTemplate
 from users.models import ObjectPermission
 
 from netbox_hedgehog.choices import (
@@ -53,60 +48,69 @@ from netbox_hedgehog.models.topology_planning import (
     SwitchPortZone,
     TopologyPlan,
 )
-from netbox_hedgehog.tests.test_topology_planning import (
-    get_test_nic_module_type,
-    get_test_server_nic,
-    get_test_transceiver_module_type,
-)
+from netbox_hedgehog.tests.test_topology_planning import get_test_nic_module_type
 
 User = get_user_model()
-
-# ---------------------------------------------------------------------------
-# Exact validation messages from the spec
-# ---------------------------------------------------------------------------
-
-_CONN_REQUIRED_MSG = 'A transceiver ModuleType is required for every server connection.'
-_ZONE_REQUIRED_MSG = 'A transceiver ModuleType is required for every switch port zone.'
 
 
 # ---------------------------------------------------------------------------
 # Shared fixture helpers
 # ---------------------------------------------------------------------------
 
-def _make_fixtures(cls):
-    """Create manufacturer, switch/server device types, plan, classes, zone, NIC."""
+def _make_form_fixtures(cls):
+    """Set up shared DB fixtures for form tests."""
     cls.mfr, _ = Manufacturer.objects.get_or_create(
-        name='MandXcvr-Vendor', defaults={'slug': 'mandxcvr-vendor'}
+        name='MxtFm-Vendor', defaults={'slug': 'mxtfm-vendor'}
     )
     cls.server_dt, _ = DeviceType.objects.get_or_create(
-        manufacturer=cls.mfr, model='MandXcvr-SRV', defaults={'slug': 'mandxcvr-srv'}
+        manufacturer=cls.mfr, model='MxtFm-SRV', defaults={'slug': 'mxtfm-srv'}
     )
     cls.switch_dt, _ = DeviceType.objects.get_or_create(
-        manufacturer=cls.mfr, model='MandXcvr-SW', defaults={'slug': 'mandxcvr-sw'}
+        manufacturer=cls.mfr, model='MxtFm-SW', defaults={'slug': 'mxtfm-sw'}
     )
+    for n in range(1, 5):
+        InterfaceTemplate.objects.get_or_create(
+            device_type=cls.switch_dt, name=f'E1/{n}',
+            defaults={'type': '200gbase-x-qsfp112'},
+        )
+        ModuleBayTemplate.objects.get_or_create(
+            device_type=cls.switch_dt, name=f'E1/{n}',
+        )
     cls.device_ext, _ = DeviceTypeExtension.objects.update_or_create(
         device_type=cls.switch_dt,
         defaults={
-            'native_speed': 200,
-            'uplink_ports': 0,
-            'supported_breakouts': ['1x200g'],
-            'mclag_capable': False,
+            'native_speed': 200, 'uplink_ports': 0,
+            'supported_breakouts': ['1x200g'], 'mclag_capable': False,
             'hedgehog_roles': ['server-leaf'],
         },
     )
     cls.breakout, _ = BreakoutOption.objects.get_or_create(
-        breakout_id='1x200g-mandxcvr',
+        breakout_id='1x200g-mxtfm',
         defaults={'from_speed': 200, 'logical_ports': 1, 'logical_speed': 200},
     )
-    cls.plan = TopologyPlan.objects.create(
-        name='MandXcvr-Plan', status=TopologyPlanStatusChoices.DRAFT,
+    cls.nic_mt = get_test_nic_module_type()
+
+    # Superuser for all form tests
+    cls.superuser, _ = User.objects.get_or_create(
+        username='mxtfm-admin',
+        defaults={'is_staff': True, 'is_superuser': True},
     )
-    cls.server_class = PlanServerClass.objects.create(
-        plan=cls.plan, server_class_id='gpu',
-        server_device_type=cls.server_dt, quantity=2,
+    cls.superuser.set_password('pass')
+    cls.superuser.save()
+
+
+def _make_minimal_plan(cls):
+    """Build a plan + switch class + zone + server class + NIC for form tests."""
+    plan = TopologyPlan.objects.create(
+        name=f'MxtFm-Plan-{id(cls)}',
+        status=TopologyPlanStatusChoices.DRAFT,
     )
-    cls.switch_class = PlanSwitchClass.objects.create(
-        plan=cls.plan, switch_class_id='fe-leaf',
+    sc = PlanServerClass.objects.create(
+        plan=plan, server_class_id='gpu',
+        server_device_type=cls.server_dt, quantity=1,
+    )
+    sw = PlanSwitchClass.objects.create(
+        plan=plan, switch_class_id='fe-leaf',
         fabric_name=FabricTypeChoices.FRONTEND,
         fabric_class=FabricClassChoices.MANAGED,
         hedgehog_role=HedgehogRoleChoices.SERVER_LEAF,
@@ -114,558 +118,428 @@ def _make_fixtures(cls):
         uplink_ports_per_switch=0, mclag_pair=False,
         override_quantity=2, redundancy_type='eslag',
     )
-    # Zone created WITHOUT transceiver (tests null-bearing legacy row)
-    cls.null_zone = SwitchPortZone.objects.create(
-        switch_class=cls.switch_class, zone_name='server-downlinks',
-        zone_type=PortZoneTypeChoices.SERVER, port_spec='1-64',
+    # Zone created without transceiver to support F2/F4 re-use
+    zone = SwitchPortZone.objects.create(
+        switch_class=sw, zone_name='server-downlinks',
+        zone_type=PortZoneTypeChoices.SERVER, port_spec='1-4',
         breakout_option=cls.breakout,
         allocation_strategy=AllocationStrategyChoices.SEQUENTIAL, priority=100,
+        transceiver_module_type=None,
     )
-    cls.nic = PlanServerNIC.objects.create(
-        server_class=cls.server_class, nic_id='nic-fe',
-        module_type=get_test_nic_module_type(),
+    nic = PlanServerNIC.objects.create(
+        server_class=sc, nic_id='nic-fe', module_type=cls.nic_mt,
     )
-    # PSC created WITHOUT transceiver (tests null-bearing legacy row)
-    cls.null_conn = PlanServerConnection.objects.create(
-        server_class=cls.server_class, connection_id='fe-null',
-        nic=cls.nic, port_index=0, ports_per_connection=1,
-        hedgehog_conn_type=ConnectionTypeChoices.UNBUNDLED,
-        distribution=ConnectionDistributionChoices.ALTERNATING,
-        target_zone=cls.null_zone, speed=200, port_type='data',
-    )
-    cls.xcvr_mt = get_test_transceiver_module_type()
-
-
-def _grant_full_permission(user):
-    """Grant view+add+change+delete on all relevant models via ObjectPermission."""
-    from netbox_hedgehog.models.topology_planning import (
-        SwitchPortZone, PlanServerConnection, TopologyPlan,
-    )
-    for model in (TopologyPlan, SwitchPortZone, PlanServerConnection):
-        ct = ContentType.objects.get_for_model(model)
-        perm, _ = ObjectPermission.objects.get_or_create(
-            name=f'mxt-perm-{model.__name__}',
-            defaults={'actions': ['view', 'add', 'change', 'delete']},
-        )
-        perm.object_types.add(ct)
-        perm.users.add(user)
+    return plan, sc, sw, zone, nic
 
 
 # ---------------------------------------------------------------------------
-# Group MC — model clean() enforcement
+# F1 — POST PSC add with blank transceiver → 302
 # ---------------------------------------------------------------------------
 
-class MandatoryTransceiverModelCleanTestCase(TestCase):
+class PlanServerConnectionAddNullTransceiverTestCase(TestCase):
     """
-    MC1–MC4: full_clean() raises ValidationError when transceiver FK is null.
+    F1: POST to planserverconnection_add with transceiver_module_type omitted
+    must return HTTP 302 (connection created successfully).
 
-    These are the innermost contract tests — they validate the model-layer
-    enforcement independent of any form or view path.
-
-    RED until SwitchPortZone.clean() and PlanServerConnection.clean()
-    add the required-FK check.
+    RED: currently returns 200 with 'A transceiver ModuleType is required'
+    because PlanServerConnectionForm sets required=True on the field and
+    PlanServerConnection.clean() raises ValidationError when FK is null.
     """
 
     @classmethod
     def setUpTestData(cls):
-        _make_fixtures(cls)
+        _make_form_fixtures(cls)
+        cls.plan, cls.sc, cls.sw, cls.zone, cls.nic = _make_minimal_plan(cls)
 
-    # ------------------------------------------------------------------
-    # MC1 — SwitchPortZone.full_clean() rejects null transceiver
-    # ------------------------------------------------------------------
+    def setUp(self):
+        self.client = Client()
+        self.client.force_login(self.superuser)
 
-    def test_zone_clean_rejects_null_transceiver(self):
-        """
-        MC1: SwitchPortZone.full_clean() must raise ValidationError with the
-        exact required-field message when transceiver_module_type is null.
-        """
-        zone = SwitchPortZone(
-            switch_class=self.switch_class,
-            zone_name='clean-test-zone',
-            zone_type=PortZoneTypeChoices.SERVER,
-            port_spec='1-10',
-            breakout_option=self.breakout,
-            allocation_strategy=AllocationStrategyChoices.SEQUENTIAL,
-            priority=50,
-            transceiver_module_type=None,
+    def test_f1_post_add_without_transceiver_creates_connection(self):
+        """F1: omitting transceiver_module_type → 302, connection saved with null FK."""
+        url = reverse('plugins:netbox_hedgehog:planserverconnection_add')
+        data = {
+            'server_class': self.sc.pk,
+            'connection_id': 'fe-f1',
+            'nic': self.nic.pk,
+            'port_index': 0,
+            'ports_per_connection': 1,
+            'hedgehog_conn_type': ConnectionTypeChoices.UNBUNDLED,
+            'distribution': ConnectionDistributionChoices.ALTERNATING,
+            'target_zone': self.zone.pk,
+            'speed': 200,
+            'port_type': 'data',
+            # transceiver_module_type intentionally omitted
+        }
+        response = self.client.post(url, data)
+        self.assertEqual(
+            response.status_code, 302,
+            f'F1: POST with no transceiver must redirect (302); got {response.status_code}. '
+            f'Form errors: {response.context["form"].errors if response.context else "(no context)"}',
         )
-        with self.assertRaises(ValidationError) as ctx:
-            zone.full_clean()
-        errors = ctx.exception.message_dict
-        self.assertIn(
-            'transceiver_module_type', errors,
-            'ValidationError must be keyed on transceiver_module_type',
-        )
-        self.assertIn(
-            _ZONE_REQUIRED_MSG,
-            errors['transceiver_module_type'],
-            f'Error message must be exactly: {_ZONE_REQUIRED_MSG!r}',
-        )
-
-    # ------------------------------------------------------------------
-    # MC2 — PlanServerConnection.full_clean() rejects null transceiver
-    # ------------------------------------------------------------------
-
-    def test_connection_clean_rejects_null_transceiver(self):
-        """
-        MC2: PlanServerConnection.full_clean() must raise ValidationError with the
-        exact required-field message when transceiver_module_type is null.
-        """
-        conn = PlanServerConnection(
-            server_class=self.server_class,
-            connection_id='clean-test-conn',
-            nic=self.nic,
-            port_index=0,
-            ports_per_connection=1,
-            hedgehog_conn_type=ConnectionTypeChoices.UNBUNDLED,
-            distribution=ConnectionDistributionChoices.ALTERNATING,
-            target_zone=self.null_zone,
-            speed=200,
-            port_type='data',
-            transceiver_module_type=None,
-        )
-        with self.assertRaises(ValidationError) as ctx:
-            conn.full_clean()
-        errors = ctx.exception.message_dict
-        self.assertIn(
-            'transceiver_module_type', errors,
-            'ValidationError must be keyed on transceiver_module_type',
-        )
-        self.assertIn(
-            _CONN_REQUIRED_MSG,
-            errors['transceiver_module_type'],
-            f'Error message must be exactly: {_CONN_REQUIRED_MSG!r}',
+        conn = PlanServerConnection.objects.filter(
+            server_class=self.sc, connection_id='fe-f1'
+        ).first()
+        self.assertIsNotNone(conn, 'F1: PlanServerConnection must be created')
+        self.assertIsNone(
+            conn.transceiver_module_type_id,
+            'F1: transceiver_module_type must be null on saved connection',
         )
 
-    # ------------------------------------------------------------------
-    # MC3 — SwitchPortZone.full_clean() passes when FK is set
-    # ------------------------------------------------------------------
-
-    def test_zone_clean_passes_with_transceiver(self):
-        """
-        MC3: SwitchPortZone.full_clean() must not raise when transceiver_module_type
-        is set to a valid Network Transceiver ModuleType.
-        """
-        zone = SwitchPortZone(
-            switch_class=self.switch_class,
-            zone_name='clean-pass-zone',
-            zone_type=PortZoneTypeChoices.SERVER,
-            port_spec='1-10',
-            breakout_option=self.breakout,
-            allocation_strategy=AllocationStrategyChoices.SEQUENTIAL,
-            priority=60,
-            transceiver_module_type=self.xcvr_mt,
+    def test_f1_null_transceiver_does_not_appear_as_required_error(self):
+        """F1b: blank transceiver must not produce 'required' form error message."""
+        url = reverse('plugins:netbox_hedgehog:planserverconnection_add')
+        data = {
+            'server_class': self.sc.pk,
+            'connection_id': 'fe-f1b',
+            'nic': self.nic.pk,
+            'port_index': 0,
+            'ports_per_connection': 1,
+            'hedgehog_conn_type': ConnectionTypeChoices.UNBUNDLED,
+            'distribution': ConnectionDistributionChoices.ALTERNATING,
+            'target_zone': self.zone.pk,
+            'speed': 200,
+            'port_type': 'data',
+        }
+        response = self.client.post(url, data, follow=True)
+        content = response.content.decode()
+        self.assertNotIn(
+            'A transceiver ModuleType is required',
+            content,
+            'F1b: Required-transceiver error must not appear when transceiver is optional',
         )
-        try:
-            zone.full_clean()
-        except ValidationError as exc:
-            if 'transceiver_module_type' in exc.message_dict:
-                self.fail(
-                    f'full_clean() raised transceiver_module_type error unexpectedly: '
-                    f'{exc.message_dict["transceiver_module_type"]}'
-                )
-
-    # ------------------------------------------------------------------
-    # MC4 — PlanServerConnection.full_clean() passes when FK is set
-    # ------------------------------------------------------------------
-
-    def test_connection_clean_passes_with_transceiver(self):
-        """
-        MC4: PlanServerConnection.full_clean() must not raise the required-field
-        error when transceiver_module_type is set.
-        """
-        conn = PlanServerConnection(
-            server_class=self.server_class,
-            connection_id='clean-pass-conn',
-            nic=self.nic,
-            port_index=1,
-            ports_per_connection=1,
-            hedgehog_conn_type=ConnectionTypeChoices.UNBUNDLED,
-            distribution=ConnectionDistributionChoices.ALTERNATING,
-            target_zone=self.null_zone,
-            speed=200,
-            port_type='data',
-            transceiver_module_type=self.xcvr_mt,
-        )
-        try:
-            conn.full_clean()
-        except ValidationError as exc:
-            errors = exc.message_dict
-            if 'transceiver_module_type' in errors and _CONN_REQUIRED_MSG in errors.get(
-                'transceiver_module_type', []
-            ):
-                self.fail(
-                    f'full_clean() raised required-field error unexpectedly: '
-                    f'{errors["transceiver_module_type"]}'
-                )
 
 
 # ---------------------------------------------------------------------------
-# Group A-form — ServerConnection add/edit form enforcement
+# F2 — POST SwitchPortZone add with blank transceiver → 302
 # ---------------------------------------------------------------------------
 
-class MandatoryTransceiverConnectionFormTestCase(TestCase):
+class SwitchPortZoneAddNullTransceiverTestCase(TestCase):
     """
-    A1, A2, A5, A6, A7: PlanServerConnection add/edit form enforcement.
+    F2: POST to switchportzone_add with transceiver_module_type omitted
+    must return HTTP 302 (zone created successfully).
 
-    A1 — POST add without transceiver → 200, required-field error in rendered HTML
-    A2 — POST add with valid transceiver → 302 redirect
-    A5 — GET detail of legacy null-transceiver row → 200 (readable, not blocked)
-    A6 — POST edit of legacy null row without transceiver → 200, error
-    A7 — POST edit of legacy null row with valid transceiver → 302
-
-    RED until PlanServerConnectionForm gets required=True on transceiver_module_type.
+    RED: currently returns 200 with required-field error because
+    SwitchPortZoneForm sets required=True and SwitchPortZone.clean() raises
+    when FK is null.
     """
 
     @classmethod
     def setUpTestData(cls):
-        _make_fixtures(cls)
-        cls.superuser = User.objects.create_user(
-            username='mxt-conn-admin', password='pass',
-            is_staff=True, is_superuser=True,
+        _make_form_fixtures(cls)
+        cls.plan, cls.sc, cls.sw, cls.zone, cls.nic = _make_minimal_plan(cls)
+
+    def setUp(self):
+        self.client = Client()
+        self.client.force_login(self.superuser)
+
+    def test_f2_post_zone_add_without_transceiver_creates_zone(self):
+        """F2: omitting transceiver_module_type on zone add → 302, zone saved with null FK."""
+        url = reverse('plugins:netbox_hedgehog:switchportzone_add')
+        data = {
+            'switch_class': self.sw.pk,
+            'zone_name': 'f2-zone',
+            'zone_type': PortZoneTypeChoices.SERVER,
+            'port_spec': '5-8',
+            'breakout_option': self.breakout.pk,
+            'allocation_strategy': AllocationStrategyChoices.SEQUENTIAL,
+            'priority': 200,
+            # transceiver_module_type intentionally omitted
+        }
+        response = self.client.post(url, data)
+        self.assertEqual(
+            response.status_code, 302,
+            f'F2: POST with no transceiver must redirect (302); got {response.status_code}. '
+            f'Form errors: {response.context["form"].errors if response.context else "(no context)"}',
+        )
+        zone = SwitchPortZone.objects.filter(
+            switch_class=self.sw, zone_name='f2-zone'
+        ).first()
+        self.assertIsNotNone(zone, 'F2: SwitchPortZone must be created')
+        self.assertIsNone(
+            zone.transceiver_module_type_id,
+            'F2: transceiver_module_type must be null on saved zone',
+        )
+
+
+# ---------------------------------------------------------------------------
+# F3 — POST PSC edit clearing transceiver → 302
+# ---------------------------------------------------------------------------
+
+class PlanServerConnectionEditClearTransceiverTestCase(TestCase):
+    """
+    F3: POST to planserverconnection_edit with transceiver_module_type cleared
+    must return HTTP 302 (connection updated to null transceiver).
+
+    RED: currently the form's required=True means clearing → 200 + error.
+    """
+
+    @classmethod
+    def setUpTestData(cls):
+        _make_form_fixtures(cls)
+        cls.plan, cls.sc, cls.sw, cls.zone, cls.nic = _make_minimal_plan(cls)
+        from netbox_hedgehog.tests.test_topology_planning import get_test_transceiver_module_type
+        xcvr = get_test_transceiver_module_type()
+        # Create connection with transceiver set; we'll clear it in the test.
+        cls.conn = PlanServerConnection.objects.create(
+            server_class=cls.sc, connection_id='fe-f3',
+            nic=cls.nic, port_index=0, ports_per_connection=1,
+            hedgehog_conn_type=ConnectionTypeChoices.UNBUNDLED,
+            distribution=ConnectionDistributionChoices.ALTERNATING,
+            target_zone=cls.zone, speed=200, port_type='data',
+            transceiver_module_type=xcvr,
         )
 
     def setUp(self):
         self.client = Client()
         self.client.force_login(self.superuser)
 
-    def _valid_post_data(self, connection_id='fe-new', transceiver_pk=None):
+    def test_f3_edit_clearing_transceiver_redirects(self):
+        """F3: POST edit with blank transceiver → 302, connection updated to null FK."""
+        url = reverse(
+            'plugins:netbox_hedgehog:planserverconnection_edit',
+            kwargs={'pk': self.conn.pk},
+        )
         data = {
-            'server_class': self.server_class.pk,
-            'connection_id': connection_id,
+            'server_class': self.sc.pk,
+            'connection_id': 'fe-f3',
             'nic': self.nic.pk,
-            'port_index': 1,
+            'port_index': 0,
             'ports_per_connection': 1,
             'hedgehog_conn_type': ConnectionTypeChoices.UNBUNDLED,
             'distribution': ConnectionDistributionChoices.ALTERNATING,
-            'target_zone': self.null_zone.pk,
+            'target_zone': self.zone.pk,
             'speed': 200,
             'port_type': 'data',
+            # transceiver_module_type cleared (omitted from POST data)
         }
-        if transceiver_pk:
-            data['transceiver_module_type'] = transceiver_pk
-        return data
-
-    # A1
-    def test_add_form_rejects_missing_transceiver(self):
-        """
-        A1: POST PSC add form without transceiver_module_type → 200, error
-        containing the required-field message.
-        """
-        url = reverse('plugins:netbox_hedgehog:planserverconnection_add')
-        response = self.client.post(url, self._valid_post_data())
-        self.assertEqual(
-            response.status_code, 200,
-            'Form must re-render (200) when transceiver_module_type is blank',
-        )
-        self.assertContains(
-            response, _CONN_REQUIRED_MSG,
-            msg_prefix='Required-field error message must appear in rendered HTML',
-        )
-        self.assertFalse(
-            PlanServerConnection.objects.filter(connection_id='fe-new').exists(),
-            'No PSC must be created when transceiver is missing',
-        )
-
-    # A2
-    def test_add_form_accepts_valid_transceiver(self):
-        """A2: POST PSC add form with valid transceiver → 302 redirect."""
-        url = reverse('plugins:netbox_hedgehog:planserverconnection_add')
-        response = self.client.post(
-            url, self._valid_post_data(transceiver_pk=self.xcvr_mt.pk)
-        )
+        response = self.client.post(url, data)
         self.assertEqual(
             response.status_code, 302,
-            f'Expected 302 redirect on valid submission; got {response.status_code}',
+            f'F3: Clearing transceiver must redirect (302); got {response.status_code}. '
+            f'Form errors: {response.context["form"].errors if response.context else "(no context)"}',
         )
-        self.assertTrue(
-            PlanServerConnection.objects.filter(
-                connection_id='fe-new',
-                transceiver_module_type=self.xcvr_mt,
-            ).exists(),
-            'Created PSC must have transceiver_module_type set',
+        self.conn.refresh_from_db()
+        self.assertIsNone(
+            self.conn.transceiver_module_type_id,
+            'F3: transceiver_module_type must be null after clearing',
         )
 
-    # A5
-    def test_detail_view_readable_for_null_transceiver_row(self):
-        """
-        A5: GET detail of a legacy null-transceiver PSC → 200.
-        Legacy rows must remain readable even though they are now invalid state.
-        """
-        url = reverse(
-            'plugins:netbox_hedgehog:planserverconnection_detail',
-            args=[self.null_conn.pk],
+
+# ---------------------------------------------------------------------------
+# F4 — POST SwitchPortZone edit clearing transceiver → 302
+# ---------------------------------------------------------------------------
+
+class SwitchPortZoneEditClearTransceiverTestCase(TestCase):
+    """
+    F4: POST to switchportzone_edit clearing transceiver_module_type → 302.
+
+    RED: currently returns 200 + required-field error.
+    """
+
+    @classmethod
+    def setUpTestData(cls):
+        _make_form_fixtures(cls)
+        cls.plan, cls.sc, cls.sw, _, cls.nic = _make_minimal_plan(cls)
+        from netbox_hedgehog.tests.test_topology_planning import get_test_transceiver_module_type
+        xcvr = get_test_transceiver_module_type()
+        # Zone with transceiver set; we'll clear it.
+        cls.zone_edit = SwitchPortZone.objects.create(
+            switch_class=cls.sw, zone_name='f4-zone-edit',
+            zone_type=PortZoneTypeChoices.SERVER, port_spec='9-12',
+            breakout_option=cls.breakout,
+            allocation_strategy=AllocationStrategyChoices.SEQUENTIAL, priority=300,
+            transceiver_module_type=xcvr,
         )
+
+    def setUp(self):
+        self.client = Client()
+        self.client.force_login(self.superuser)
+
+    def test_f4_edit_zone_clearing_transceiver_redirects(self):
+        """F4: POST zone edit with blank transceiver → 302, zone updated to null FK."""
+        url = reverse(
+            'plugins:netbox_hedgehog:switchportzone_edit',
+            kwargs={'pk': self.zone_edit.pk},
+        )
+        data = {
+            'switch_class': self.sw.pk,
+            'zone_name': 'f4-zone-edit',
+            'zone_type': PortZoneTypeChoices.SERVER,
+            'port_spec': '9-12',
+            'breakout_option': self.breakout.pk,
+            'allocation_strategy': AllocationStrategyChoices.SEQUENTIAL,
+            'priority': 300,
+            # transceiver_module_type cleared
+        }
+        response = self.client.post(url, data)
+        self.assertEqual(
+            response.status_code, 302,
+            f'F4: Clearing zone transceiver must redirect (302); got {response.status_code}. '
+            f'Form errors: {response.context["form"].errors if response.context else "(no context)"}',
+        )
+        self.zone_edit.refresh_from_db()
+        self.assertIsNone(
+            self.zone_edit.transceiver_module_type_id,
+            'F4: zone transceiver_module_type must be null after clearing',
+        )
+
+
+# ---------------------------------------------------------------------------
+# F5 — GET add form: transceiver not required; no flat fields present
+# ---------------------------------------------------------------------------
+
+class PlanServerConnectionFormGetTestCase(TestCase):
+    """
+    F5: GET planserverconnection_add must return:
+      - HTTP 200
+      - transceiver_module_type field not marked required (no asterisk / required attr)
+      - no cage_type / medium / connector / standard fields (removed by migration)
+
+    RED:
+      - Currently transceiver_module_type.required = True → asterisk present
+      - Currently flat fields are in Meta.fields → rendered in the form
+    """
+
+    @classmethod
+    def setUpTestData(cls):
+        _make_form_fixtures(cls)
+
+    def setUp(self):
+        self.client = Client()
+        self.client.force_login(self.superuser)
+
+    def test_f5_add_form_loads(self):
+        """F5a: GET planserverconnection_add → 200."""
+        url = reverse('plugins:netbox_hedgehog:planserverconnection_add')
         response = self.client.get(url)
         self.assertEqual(response.status_code, 200)
 
-    # A6
-    def test_edit_form_rejects_missing_transceiver_on_null_row(self):
+    def test_f5_transceiver_field_not_required_in_form(self):
+        """F5b: transceiver_module_type must not be marked required on the rendered form.
+
+        After GREEN: form field required=False → no required marker in HTML.
+        Currently: required=True → the form HTML will contain required attributes.
         """
-        A6: POST edit form for a legacy null-transceiver PSC without providing
-        transceiver → 200, required-field error. The row is not saved.
-        """
-        url = reverse(
-            'plugins:netbox_hedgehog:planserverconnection_edit',
-            args=[self.null_conn.pk],
-        )
-        post_data = {
-            'server_class': self.server_class.pk,
-            'connection_id': self.null_conn.connection_id,
-            'nic': self.nic.pk,
-            'port_index': 0,
-            'ports_per_connection': 1,
-            'hedgehog_conn_type': ConnectionTypeChoices.UNBUNDLED,
-            'distribution': ConnectionDistributionChoices.ALTERNATING,
-            'target_zone': self.null_zone.pk,
-            'speed': 200,
-            'port_type': 'data',
-            # transceiver_module_type intentionally omitted
-        }
-        response = self.client.post(url, post_data)
-        self.assertEqual(
-            response.status_code, 200,
-            'Edit form must re-render (200) when transceiver_module_type is blank',
-        )
-        self.assertContains(
-            response, _CONN_REQUIRED_MSG,
-            msg_prefix='Required-field error message must appear in edit form response',
-        )
-        self.null_conn.refresh_from_db()
-        self.assertIsNone(
-            self.null_conn.transceiver_module_type,
-            'Row must not be modified when validation fails',
+        from netbox_hedgehog.forms.topology_planning import PlanServerConnectionForm
+        form = PlanServerConnectionForm()
+        transceiver_field = form.fields.get('transceiver_module_type')
+        self.assertIsNotNone(transceiver_field, 'transceiver_module_type must be a form field')
+        self.assertFalse(
+            transceiver_field.required,
+            'F5b: transceiver_module_type must not be required — '
+            'null is valid after simplified-transceiver GREEN implementation',
         )
 
-    # A7
-    def test_edit_form_accepts_valid_transceiver_for_null_row(self):
-        """
-        A7: POST edit form for legacy null-transceiver PSC with valid transceiver
-        → 302 redirect, row updated.
-        """
-        url = reverse(
-            'plugins:netbox_hedgehog:planserverconnection_edit',
-            args=[self.null_conn.pk],
+    def test_f5_zone_form_transceiver_not_required(self):
+        """F5c: SwitchPortZoneForm.transceiver_module_type must not be required."""
+        from netbox_hedgehog.forms.topology_planning import SwitchPortZoneForm
+        form = SwitchPortZoneForm()
+        transceiver_field = form.fields.get('transceiver_module_type')
+        self.assertIsNotNone(transceiver_field, 'transceiver_module_type must be a form field')
+        self.assertFalse(
+            transceiver_field.required,
+            'F5c: zone transceiver_module_type must not be required — '
+            'null is valid after simplified-transceiver GREEN implementation',
         )
-        post_data = {
-            'server_class': self.server_class.pk,
-            'connection_id': self.null_conn.connection_id,
-            'nic': self.nic.pk,
-            'port_index': 0,
-            'ports_per_connection': 1,
-            'hedgehog_conn_type': ConnectionTypeChoices.UNBUNDLED,
-            'distribution': ConnectionDistributionChoices.ALTERNATING,
-            'target_zone': self.null_zone.pk,
-            'speed': 200,
-            'port_type': 'data',
-            'transceiver_module_type': self.xcvr_mt.pk,
-        }
-        response = self.client.post(url, post_data)
+
+    def test_f5_flat_fields_absent_from_psc_form(self):
+        """F5d: cage_type, medium, connector, standard must not be present in PSC form.
+
+        These fields are removed by migration in the GREEN phase (#474 §1.2).
+        After GREEN: Meta.fields excludes them; they do not exist on the model.
+        Currently: Meta.fields still includes them.
+        """
+        from netbox_hedgehog.forms.topology_planning import PlanServerConnectionForm
+        form = PlanServerConnectionForm()
+        flat_fields = ['cage_type', 'medium', 'connector', 'standard']
+        present = [f for f in flat_fields if f in form.fields]
         self.assertEqual(
-            response.status_code, 302,
-            f'Expected redirect after successful edit; got {response.status_code}',
-        )
-        self.null_conn.refresh_from_db()
-        self.assertEqual(
-            self.null_conn.transceiver_module_type_id, self.xcvr_mt.pk,
-            'PSC must have transceiver_module_type updated after valid edit',
+            present, [],
+            f'F5d: flat fields {present} must not be present in PlanServerConnectionForm '
+            f'after migration removes them from the model',
         )
 
 
 # ---------------------------------------------------------------------------
-# Group A-zone — SwitchPortZone add/edit form enforcement
+# Permission enforcement — null transceiver must not break RBAC
 # ---------------------------------------------------------------------------
 
-class MandatoryTransceiverZoneFormTestCase(TestCase):
+class NullTransceiverPermissionTestCase(TestCase):
     """
-    A3, A4, A8: SwitchPortZone add/edit form enforcement.
+    Permission enforcement: add/edit with null transceiver still requires
+    ObjectPermission. Null is now valid but the permission gate must remain.
 
-    A3 — POST add without transceiver → 200, required-field error
-    A4 — POST add with valid transceiver → 302
-    A8 — POST edit of legacy null zone without transceiver → 200, error
-
-    RED until SwitchPortZoneForm gets required=True on transceiver_module_type.
+    This is a regression guard — the DIET-466 null-blocking was not part of
+    the permission system, but removing it must not accidentally open the form
+    to unauthenticated or unpermissioned users.
     """
 
     @classmethod
     def setUpTestData(cls):
-        _make_fixtures(cls)
-        cls.superuser = User.objects.create_user(
-            username='mxt-zone-admin', password='pass',
-            is_staff=True, is_superuser=True,
+        _make_form_fixtures(cls)
+        cls.plan, cls.sc, cls.sw, cls.zone, cls.nic = _make_minimal_plan(cls)
+
+        # Unpermissioned user — should see 403 or redirect on add attempt
+        cls.noperm_user, _ = User.objects.get_or_create(
+            username='mxtfm-noperm',
+            defaults={'is_staff': True, 'is_superuser': False},
         )
+        cls.noperm_user.set_password('pass')
+        cls.noperm_user.save()
+
+        # Permissioned user
+        cls.perm_user, _ = User.objects.get_or_create(
+            username='mxtfm-perm',
+            defaults={'is_staff': True, 'is_superuser': False},
+        )
+        cls.perm_user.set_password('pass')
+        cls.perm_user.save()
+
+        perm = ObjectPermission.objects.create(
+            name='mxtfm-add-psc',
+            actions=['add', 'change'],
+        )
+        perm.object_types.set([
+            ContentType.objects.get_for_model(PlanServerConnection),
+            ContentType.objects.get_for_model(SwitchPortZone),
+        ])
+        perm.users.add(cls.perm_user)
 
     def setUp(self):
         self.client = Client()
-        self.client.force_login(self.superuser)
 
-    def _valid_post_data(self, zone_name='new-zone', transceiver_pk=None):
-        data = {
-            'switch_class': self.switch_class.pk,
-            'zone_name': zone_name,
-            'zone_type': PortZoneTypeChoices.SERVER,
-            'port_spec': '1-16',
-            'breakout_option': self.breakout.pk,
-            'allocation_strategy': AllocationStrategyChoices.SEQUENTIAL,
-            'priority': 50,
+    def _psc_post_data(self, conn_id):
+        return {
+            'server_class': self.sc.pk,
+            'connection_id': conn_id,
+            'nic': self.nic.pk,
+            'port_index': 0,
+            'ports_per_connection': 1,
+            'hedgehog_conn_type': ConnectionTypeChoices.UNBUNDLED,
+            'distribution': ConnectionDistributionChoices.ALTERNATING,
+            'target_zone': self.zone.pk,
+            'speed': 200,
+            'port_type': 'data',
+            # no transceiver
         }
-        if transceiver_pk:
-            data['transceiver_module_type'] = transceiver_pk
-        return data
 
-    # A3
-    def test_add_form_rejects_missing_transceiver(self):
-        """
-        A3: POST SwitchPortZone add form without transceiver_module_type
-        → 200, required-field error message in rendered HTML.
-        """
-        url = reverse('plugins:netbox_hedgehog:switchportzone_add')
-        response = self.client.post(url, self._valid_post_data())
-        self.assertEqual(
-            response.status_code, 200,
-            'Zone add form must re-render (200) when transceiver_module_type is blank',
-        )
-        self.assertContains(
-            response, _ZONE_REQUIRED_MSG,
-            msg_prefix='Required-field error message must appear in rendered HTML',
-        )
-        self.assertFalse(
-            SwitchPortZone.objects.filter(zone_name='new-zone').exists(),
-            'No zone must be created when transceiver is missing',
-        )
-
-    # A4
-    def test_add_form_accepts_valid_transceiver(self):
-        """A4: POST SwitchPortZone add form with valid transceiver → 302."""
-        url = reverse('plugins:netbox_hedgehog:switchportzone_add')
-        response = self.client.post(
-            url, self._valid_post_data(transceiver_pk=self.xcvr_mt.pk)
-        )
+    def test_perm_user_can_add_without_transceiver(self):
+        """Permissioned user with null transceiver → 302 (after GREEN)."""
+        self.client.force_login(self.perm_user)
+        url = reverse('plugins:netbox_hedgehog:planserverconnection_add')
+        response = self.client.post(url, self._psc_post_data('fe-perm'))
         self.assertEqual(
             response.status_code, 302,
-            f'Expected redirect on valid submission; got {response.status_code}',
-        )
-        self.assertTrue(
-            SwitchPortZone.objects.filter(
-                zone_name='new-zone',
-                transceiver_module_type=self.xcvr_mt,
-            ).exists(),
-            'Created zone must have transceiver_module_type set',
+            'Permissioned user must create connection with null transceiver',
         )
 
-    # A8
-    def test_edit_form_rejects_missing_transceiver_on_null_zone(self):
-        """
-        A8: POST edit form for a legacy null-transceiver zone without transceiver
-        → 200, required-field error.
-        """
-        url = reverse(
-            'plugins:netbox_hedgehog:switchportzone_edit',
-            args=[self.null_zone.pk],
-        )
-        post_data = {
-            'switch_class': self.switch_class.pk,
-            'zone_name': self.null_zone.zone_name,
-            'zone_type': self.null_zone.zone_type,
-            'port_spec': self.null_zone.port_spec,
-            'breakout_option': self.breakout.pk,
-            'allocation_strategy': AllocationStrategyChoices.SEQUENTIAL,
-            'priority': 100,
-            # transceiver_module_type intentionally omitted
-        }
-        response = self.client.post(url, post_data)
-        self.assertEqual(
-            response.status_code, 200,
-            'Zone edit form must re-render (200) when transceiver is omitted',
-        )
-        self.assertContains(
-            response, _ZONE_REQUIRED_MSG,
-            msg_prefix='Required-field error must appear in zone edit response',
-        )
-        self.null_zone.refresh_from_db()
-        self.assertIsNone(
-            self.null_zone.transceiver_module_type,
-            'Zone must not be modified when validation fails',
-        )
-
-
-# ---------------------------------------------------------------------------
-# Group A17 — Permission enforcement (no regression)
-# ---------------------------------------------------------------------------
-
-class MandatoryTransceiverPermissionTestCase(TestCase):
-    """
-    A17: Permission enforcement is unchanged under tightened validation.
-
-    An unpermissioned user receives 403 on add/edit endpoints regardless of
-    whether they supply a transceiver or not.
-    """
-
-    @classmethod
-    def setUpTestData(cls):
-        _make_fixtures(cls)
-        # User with no permissions at all
-        cls.noperm_user = User.objects.create_user(
-            username='mxt-noperm', password='pass', is_staff=True,
-        )
-        # User with view-only permission
-        cls.viewonly_user = User.objects.create_user(
-            username='mxt-viewonly', password='pass', is_staff=True,
-        )
-        ct_psc = ContentType.objects.get_for_model(PlanServerConnection)
-        ct_zone = ContentType.objects.get_for_model(SwitchPortZone)
-        view_perm, _ = ObjectPermission.objects.get_or_create(
-            name='mxt-viewonly-perm',
-            defaults={'actions': ['view']},
-        )
-        view_perm.object_types.add(ct_psc, ct_zone)
-        view_perm.users.add(cls.viewonly_user)
-
-    def _login(self, username):
-        self.client = Client()
-        self.client.login(username=username, password='pass')
-
-    def test_connection_add_denied_without_add_permission(self):
-        """A17a: POST add PSC without add permission → 403."""
-        self._login('mxt-viewonly')
+    def test_noperm_user_cannot_add(self):
+        """Unpermissioned user → not 302 (access denied)."""
+        self.client.force_login(self.noperm_user)
         url = reverse('plugins:netbox_hedgehog:planserverconnection_add')
-        response = self.client.post(url, {
-            'server_class': self.server_class.pk,
-            'connection_id': 'perm-test',
-            'transceiver_module_type': self.xcvr_mt.pk,
-        })
-        self.assertIn(
-            response.status_code, (403, 302),
-            'View-only user must not be able to add a server connection',
-        )
-        if response.status_code == 302:
-            self.assertIn('login', response['Location'])
-
-    def test_zone_add_denied_without_add_permission(self):
-        """A17b: POST add SwitchPortZone without add permission → 403."""
-        self._login('mxt-viewonly')
-        url = reverse('plugins:netbox_hedgehog:switchportzone_add')
-        response = self.client.post(url, {
-            'switch_class': self.switch_class.pk,
-            'zone_name': 'perm-zone',
-            'transceiver_module_type': self.xcvr_mt.pk,
-        })
-        self.assertIn(
-            response.status_code, (403, 302),
-            'View-only user must not be able to add a switch port zone',
-        )
-
-    def test_connection_edit_denied_without_change_permission(self):
-        """A17c: POST edit PSC without change permission → 403."""
-        self._login('mxt-viewonly')
-        url = reverse(
-            'plugins:netbox_hedgehog:planserverconnection_edit',
-            args=[self.null_conn.pk],
-        )
-        response = self.client.post(url, {
-            'transceiver_module_type': self.xcvr_mt.pk,
-        })
-        self.assertIn(
-            response.status_code, (403, 302),
-            'View-only user must not be able to edit a server connection',
+        response = self.client.post(url, self._psc_post_data('fe-noperm'))
+        self.assertNotEqual(
+            response.status_code, 302,
+            'Unpermissioned user must not be able to create connection',
         )
