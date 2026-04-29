@@ -677,6 +677,112 @@ class MissingBayHardFailTestCase(TestCase):
         )
         return plan, sc, sw, zone, nic
 
+    def _make_virtual_plan_missing_switch_bays(self, name_suffix):
+        """Build a YAML-managed virtual-switch plan with switch xcvr intent but no switch bays."""
+        virtual_dt, _ = DeviceType.objects.get_or_create(
+            manufacturer=self.mfr,
+            model='Virtual F-SW-NOBAY',
+            defaults={'slug': 'virtual-f-sw-nobay'},
+        )
+        for port_n in range(1, 5):
+            InterfaceTemplate.objects.get_or_create(
+                device_type=virtual_dt, name=f'E1/{port_n}',
+                defaults={'type': '200gbase-x-qsfp112'},
+            )
+        virtual_ext, _ = DeviceTypeExtension.objects.update_or_create(
+            device_type=virtual_dt,
+            defaults={
+                'native_speed': 200, 'uplink_ports': 0,
+                'supported_breakouts': ['1x200g-f'], 'mclag_capable': False,
+                'hedgehog_roles': ['server-leaf'],
+            },
+        )
+        plan = TopologyPlan.objects.create(
+            name=f'S2FPlan-Virtual-{name_suffix}-{id(self)}',
+            status=TopologyPlanStatusChoices.DRAFT,
+            custom_field_data={'managed_by': 'yaml', 'yaml_case_id': f's2f_virtual_{name_suffix}'},
+        )
+        sc = PlanServerClass.objects.create(
+            plan=plan, server_class_id='gpu-v',
+            server_device_type=self.server_dt, quantity=1,
+        )
+        sw = PlanSwitchClass.objects.create(
+            plan=plan, switch_class_id='fe-leaf-v',
+            fabric_name=FabricTypeChoices.FRONTEND,
+            fabric_class=FabricClassChoices.MANAGED,
+            hedgehog_role=HedgehogRoleChoices.SERVER_LEAF,
+            device_type_extension=virtual_ext,
+            uplink_ports_per_switch=0, mclag_pair=False,
+            override_quantity=2, redundancy_type='eslag',
+        )
+        zone = SwitchPortZone.objects.create(
+            switch_class=sw, zone_name='server-downlinks',
+            zone_type=PortZoneTypeChoices.SERVER, port_spec='1-4',
+            breakout_option=self.breakout,
+            allocation_strategy=AllocationStrategyChoices.SEQUENTIAL, priority=100,
+            transceiver_module_type=self.xcvr_mt,
+        )
+        nic = PlanServerNIC.objects.create(
+            server_class=sc, nic_id='nic-fe-v', module_type=self.nic_mt_fresh,
+        )
+        PlanServerConnection.objects.create(
+            server_class=sc, connection_id='fe-v',
+            nic=nic, port_index=0, ports_per_connection=1,
+            hedgehog_conn_type=ConnectionTypeChoices.UNBUNDLED,
+            distribution=ConnectionDistributionChoices.ALTERNATING,
+            target_zone=zone, speed=200, port_type='data',
+        )
+        return plan, sc, sw, zone, nic
+
+    def _make_virtual_plan_missing_nested_bays(self, name_suffix):
+        """Build a YAML-managed plan with a virtual NIC module type and no nested cage bays."""
+        virtual_nic_mt, _ = ModuleType.objects.get_or_create(
+            manufacturer=self.mfr,
+            model='Virtual F-NIC-NOBAY',
+            defaults={},
+        )
+        from dcim.models import InterfaceTemplate as IfaceTemplate
+        IfaceTemplate.objects.get_or_create(
+            module_type=virtual_nic_mt, name='p0',
+            defaults={'type': '200gbase-x-qsfp112'},
+        )
+        plan = TopologyPlan.objects.create(
+            name=f'S2FPlan-VirtualNIC-{name_suffix}-{id(self)}',
+            status=TopologyPlanStatusChoices.DRAFT,
+            custom_field_data={'managed_by': 'yaml', 'yaml_case_id': f's2f_virtual_nic_{name_suffix}'},
+        )
+        sc = PlanServerClass.objects.create(
+            plan=plan, server_class_id='gpu-vn',
+            server_device_type=self.server_dt, quantity=1,
+        )
+        sw = PlanSwitchClass.objects.create(
+            plan=plan, switch_class_id='fe-leaf-vn',
+            fabric_name=FabricTypeChoices.FRONTEND,
+            fabric_class=FabricClassChoices.MANAGED,
+            hedgehog_role=HedgehogRoleChoices.SERVER_LEAF,
+            device_type_extension=self.device_ext,
+            uplink_ports_per_switch=0, mclag_pair=False,
+            override_quantity=2, redundancy_type='eslag',
+        )
+        zone = SwitchPortZone.objects.create(
+            switch_class=sw, zone_name='server-downlinks',
+            zone_type=PortZoneTypeChoices.SERVER, port_spec='1-64',
+            breakout_option=self.breakout,
+            allocation_strategy=AllocationStrategyChoices.SEQUENTIAL, priority=100,
+        )
+        nic = PlanServerNIC.objects.create(
+            server_class=sc, nic_id='nic-fe-vn', module_type=virtual_nic_mt,
+        )
+        PlanServerConnection.objects.create(
+            server_class=sc, connection_id='fe-vn',
+            nic=nic, port_index=0, ports_per_connection=1,
+            hedgehog_conn_type=ConnectionTypeChoices.UNBUNDLED,
+            distribution=ConnectionDistributionChoices.ALTERNATING,
+            target_zone=zone, speed=200, port_type='data',
+            transceiver_module_type=self.xcvr_mt,
+        )
+        return plan, sc, sw, zone, nic
+
     def tearDown(self):
         for p in list(TopologyPlan.objects.filter(name__startswith='S2FPlan-')):
             _cleanup(p.pk)
@@ -743,6 +849,42 @@ class MissingBayHardFailTestCase(TestCase):
         first = bay_errors[0]
         self.assertEqual(first.get('error_type'), 'missing_nested_bay',
             "bay_error entry must have error_type='missing_nested_bay'")
+
+    def test_virtual_yaml_switch_missing_bay_does_not_fail_generation(self):
+        """Virtual placeholder switch types skip switch-side bay enforcement during generation."""
+        plan, sc, sw, zone, nic = self._make_virtual_plan_missing_switch_bays('F5')
+        result = _generate(plan)
+        gs = GenerationState.objects.filter(plan=plan).first()
+
+        self.assertIsNotNone(gs, "GenerationState must exist after generation")
+        self.assertEqual(
+            gs.status, GenerationStatusChoices.GENERATED,
+            "Virtual placeholder switch types must not fail on missing switch ModuleBays",
+        )
+        report = getattr(gs, 'mismatch_report', None) or {}
+        bay_errors = report.get('bay_errors', [])
+        self.assertEqual(
+            bay_errors, [],
+            "Virtual placeholder switch types must not emit missing_switch_bay errors",
+        )
+        self.assertGreater(result.device_count, 0)
+
+    def test_virtual_yaml_nic_missing_nested_bay_does_not_fail_generation(self):
+        """Virtual placeholder NIC types skip nested bay enforcement during generation."""
+        plan, sc, sw, zone, nic = self._make_virtual_plan_missing_nested_bays('F6')
+        result = _generate(plan)
+        gs = GenerationState.objects.filter(plan=plan).first()
+
+        self.assertIsNotNone(gs, "GenerationState must exist after generation")
+        self.assertEqual(
+            gs.status, GenerationStatusChoices.GENERATED,
+            "Virtual placeholder NIC types must not fail on missing nested ModuleBays",
+        )
+        report = getattr(gs, 'mismatch_report', None) or {}
+        bay_errors = report.get('bay_errors', [])
+        nested_errors = [e for e in bay_errors if e.get('error_type') == 'missing_nested_bay']
+        self.assertEqual(nested_errors, [])
+        self.assertGreater(result.device_count, 0)
 
 
 # ---------------------------------------------------------------------------
@@ -902,25 +1044,27 @@ class FailedStatusPropagationTestCase(TestCase):
     def test_sync_view_shows_error_on_failed_generation(self):
         """H.3: Sync view must redirect to plan detail and show FAILED when sweep finds mismatch.
 
-        Uses a mismatched connection transceiver (SFP28) vs zone (QSFP112) so the
-        compatibility sweep fails.  populate_transceiver_bays is called first so
-        the preflight check passes and generate_all() actually runs.
+        Uses a medium mismatch (SMF server vs MMF zone) so the compatibility sweep
+        produces OUTCOME_BLOCKED → FAILED status.  After DIET-475, cage/connector
+        mismatches produce NEEDS_REVIEW (not BLOCKED), so a medium mismatch is required
+        to reliably trigger FAILED in this test.
+        populate_transceiver_bays is called first so the preflight check passes.
         """
         from django.urls import reverse
 
         plan = self._make_failed_plan('H3')
 
-        # Add a mismatching server-side transceiver (SFP28 cage vs zone's QSFP112).
-        # This ensures the preflight check passes (bays will exist) but the sweep fails.
+        # Add a medium-mismatching server-side transceiver (SMF vs zone's QSFP112/MMF).
+        # cage_type mismatch alone would only produce NEEDS_REVIEW after DIET-475.
         mfr, _ = Manufacturer.objects.get_or_create(
             name='H-Test-Mfg', defaults={'slug': 'h-test-mfg'}
         )
         profile = ModuleTypeProfile.objects.filter(name='Network Transceiver').first()
-        mismatch_mt, _ = ModuleType.objects.get_or_create(
+        mismatch_mt, _ = ModuleType.objects.update_or_create(
             manufacturer=mfr, model='H-XCVR-MISMATCH-H3',
             defaults={
                 'profile': profile,
-                'attribute_data': {'cage_type': 'SFP28', 'medium': 'MMF'},
+                'attribute_data': {'cage_type': 'SFP28', 'medium': 'SMF'},
             },
         )
         conn = PlanServerConnection.objects.filter(server_class__plan=plan).first()
@@ -1285,28 +1429,19 @@ class ConnectorPlanSaveValidationTestCase(TestCase):
                                                model_suffix='std-b')
 
     def test_c1_v2c_flat_connector_conflicts_with_fk_raises(self):
-        """C.1: V2c — flat connector='LC' conflicts with FK attribute_data connector='MPO-12' → ValidationError.
+        """C.1 (updated for DIET-475): flat connector field removed — no V2c validation.
 
-        RED until V2c is added to _validate_transceiver_module_type().
+        After DIET-475 removes legacy flat fields (cage_type, medium, connector, standard)
+        from PlanServerConnection, setting a Python attribute 'connector' is silently
+        ignored by full_clean(); V2c validation was removed along with the field.
         """
         psc = _make_350_base_connection(
             self.sc350, self.nic350, self.zone_no_xcvr,
             connection_id='c1-conn',
             transceiver_module_type=self.mt_mpo12,
         )
-        psc.connector = 'LC'  # flat field conflicts with FK attribute_data connector='MPO-12'
-        with self.assertRaises(Exception) as ctx:
-            psc.full_clean()
-        from django.core.exceptions import ValidationError as DjangoVE
-        self.assertIsInstance(ctx.exception, DjangoVE,
-            "V2c: flat connector conflicting with FK attribute_data must raise ValidationError")
-        self.assertIn('connector', ctx.exception.message_dict,
-            "ValidationError must be on 'connector' field")
-        self.assertIn(
-            "conflicts with transceiver_module_type",
-            str(ctx.exception),
-            "Error message must mention 'conflicts with transceiver_module_type'",
-        )
+        psc.connector = 'LC'  # Python attribute only — no longer a model field after DIET-475
+        psc.full_clean()  # must not raise (V2c removed with flat fields)
 
     def test_c2_v2c_flat_connector_matches_fk_ok(self):
         """C.2: V2c — flat connector='MPO-12' matches FK attribute_data connector='MPO-12' → no error."""
@@ -1329,13 +1464,11 @@ class ConnectorPlanSaveValidationTestCase(TestCase):
         psc.full_clean()  # null-skip: must not raise
 
     def test_c4_v6_cross_end_connector_mismatch_raises(self):
-        """C.4: V6 — cross-end connector mismatch (MPO-12 server, LC zone) → ValidationError.
+        """C.4 (updated for DIET-475): V6 cross-end connector check removed — no ValidationError.
 
-        Uses mt_lc_mmf for the zone: same cage_type/medium as mt_mpo12 (QSFP112/MMF) so V4/V5
-        do not fire, isolating V6 (connector). RED until V6 added to
-        _validate_transceiver_module_type().
+        After DIET-475, cross-end connector mismatch is surfaced in the review panel
+        (as 'needs_review'), not at plan-save time. psc.full_clean() must not raise.
         """
-        # Zone uses LC connector (same medium=MMF so V5 doesn't fire first)
         zone_with_xcvr = SwitchPortZone.objects.create(
             switch_class=self.sw350, zone_name='c4-zone-lc',
             zone_type=PortZoneTypeChoices.SERVER, port_spec='33-48',
@@ -1348,16 +1481,7 @@ class ConnectorPlanSaveValidationTestCase(TestCase):
             connection_id='c4-conn',
             transceiver_module_type=self.mt_mpo12,  # MPO-12 server vs LC zone
         )
-        from django.core.exceptions import ValidationError as DjangoVE
-        with self.assertRaises(DjangoVE) as ctx:
-            psc.full_clean()
-        exc_str = str(ctx.exception)
-        self.assertIn("Server-side connector", exc_str,
-            "V6: error message must mention 'Server-side connector'")
-        self.assertIn("does not match zone transceiver connector", exc_str,
-            "V6: error message must mention 'does not match zone transceiver connector'")
-        self.assertIn("MPO-12", exc_str, "V6: server_end value must appear in error message")
-        self.assertIn("LC", exc_str, "V6: zone connector value must appear in error message")
+        psc.full_clean()  # must not raise — connector mismatch → needs_review at review time
 
     def test_c5_v6_cross_end_connector_match_ok(self):
         """C.5: V6 — cross-end connector match (MPO-12 both ends) → no error."""
@@ -1536,31 +1660,18 @@ class ConnectorStandardSweepTestCase(TestCase):
                 "E.5: no connector mismatch entries expected when connectors match")
 
     def test_e6_connector_mismatch_sets_failed_status(self):
-        """E.6: connector mismatch (MPO-12 server vs LC zone, same cage+medium) → FAILED + connector entry.
+        """E.6 (updated for DIET-475): connector mismatch → GENERATED, not FAILED.
 
-        Uses mt_qsfp112_mmf_lc (QSFP112/MMF/LC) as zone so only connector differs.
-        The rule engine fires R_CONNECTOR_MISMATCH → mismatch_type='connector'.
+        After DIET-475, R_CONNECTOR_MISMATCH → OUTCOME_NEEDS_REVIEW which does NOT
+        block generation. Connector mismatches are surfaced in the review panel only.
         """
         plan = self._make_sweep_plan('E6', self.mt_mpo12_sr4, self.mt_qsfp112_mmf_lc)
         call_command('populate_transceiver_bays')
         _generate(plan)
         gs = GenerationState.objects.filter(plan=plan).first()
         self.assertIsNotNone(gs)
-        self.assertEqual(gs.status, GenerationStatusChoices.FAILED,
-            "E.6: connector mismatch must set status=FAILED")
-        self.assertIsNotNone(gs.mismatch_report,
-            "E.6: mismatch_report must be populated on connector mismatch")
-        connector_entries = [
-            e for e in gs.mismatch_report.get('mismatches', [])
-            if e.get('mismatch_type') == 'connector'
-        ]
-        self.assertGreater(len(connector_entries), 0,
-            "E.6: mismatch_report must contain a 'connector' mismatch entry")
-        entry = connector_entries[0]
-        self.assertEqual(entry.get('server_end'), 'MPO-12',
-            "E.6: server_end must be 'MPO-12'")
-        self.assertEqual(entry.get('switch_end'), 'LC',
-            "E.6: switch_end must be 'LC'")
+        self.assertEqual(gs.status, GenerationStatusChoices.GENERATED,
+            "E.6: connector mismatch must produce GENERATED (not FAILED) after DIET-475")
 
     def test_e7_standard_match_generation_succeeds(self):
         """E.7: standard match (200GBASE-SR4 both ends) → GENERATED, no standard entry."""
@@ -1647,21 +1758,19 @@ class ConnectorStandardSweepTestCase(TestCase):
             "_SWEEP_DIMS must include 'standard' (new in DIET-350)")
 
     def test_e12_regression_cage_type_mismatch_still_fires(self):
-        """E.12: existing cage_type sweep check still fires after _SWEEP_DIMS change."""
-        # mt_osfp has cage_type='OSFP'; default xcvr_mt has cage_type='QSFP112' → mismatch
+        """E.12 (updated for DIET-475): cage_type mismatch → GENERATED, not FAILED.
+
+        After DIET-475, R_CAGE_MISMATCH → OUTCOME_NEEDS_REVIEW which does NOT
+        block generation. Cage-type mismatches are surfaced in the review panel only.
+        """
+        # mt_osfp has cage_type='OSFP'; default xcvr_mt has cage_type='QSFP112'
         plan = self._make_sweep_plan('E12', self.mt_mpo12_sr4, self.mt_osfp)
         call_command('populate_transceiver_bays')
         _generate(plan)
         gs = GenerationState.objects.filter(plan=plan).first()
         self.assertIsNotNone(gs)
-        self.assertEqual(gs.status, GenerationStatusChoices.FAILED,
-            "E.12: cage_type regression — mismatch must still produce FAILED")
-        cage_entries = [
-            e for e in (gs.mismatch_report or {}).get('mismatches', [])
-            if e.get('mismatch_type') == 'cage_type'
-        ]
-        self.assertGreater(len(cage_entries), 0,
-            "E.12: cage_type mismatch entry must still appear after _SWEEP_DIMS refactor")
+        self.assertEqual(gs.status, GenerationStatusChoices.GENERATED,
+            "E.12: cage_type mismatch must produce GENERATED (not FAILED) after DIET-475")
 
 
 # ---------------------------------------------------------------------------
@@ -1952,23 +2061,19 @@ class ReachClassPlanSaveValidationTestCase(TestCase):
     # -------------------------------------------------------------------------
 
     def test_r13_v7_dac_reach_class_fallback_medium_mmf_raises(self):
-        """R.13: V7 — reach_class='DAC', no medium in attribute_data, flat self.medium='MMF' → raises.
+        """R.13 (updated for DIET-475): flat medium field removed — V7 no longer uses it as fallback.
 
-        resolved_medium = xcvr_ad.get('medium') or self.medium = None or 'MMF' = 'MMF'.
-        'MMF' ∈ optical_mediums, reach_class='DAC' → ValidationError.
-        RED until V7 is added to _validate_transceiver_module_type().
+        After DIET-475, 'medium' is not a PSC model field. Setting psc.medium='MMF' as a
+        Python attribute is silently ignored. V7 reads only xcvr_ad.get('medium'); if that
+        is None (as in mt_dac_rc_no_med), V7 null-skips and does not raise.
         """
         psc = _make_350_base_connection(
             self.sc_r, self.nic_r, self.zone_no_xcvr_r,
             connection_id='r13-conn',
             transceiver_module_type=self.mt_dac_rc_no_med,  # reach_class='DAC', no medium in attrs
         )
-        psc.medium = 'MMF'  # flat medium; V3 null-skips (no attr_data medium); V7 uses as fallback
-        from django.core.exceptions import ValidationError as DjangoVE
-        with self.assertRaises(DjangoVE) as ctx:
-            psc.full_clean()
-        self.assertIn('transceiver_module_type', ctx.exception.message_dict,
-            "V7: fallback medium path — error must be on 'transceiver_module_type' field")
+        psc.medium = 'MMF'  # Python attribute only — no longer a PSC model field after DIET-475
+        psc.full_clean()  # must not raise — V7 null-skips when xcvr_ad has no 'medium' key
 
     def test_r14_v7_sr_reach_class_fallback_medium_mmf_ok(self):
         """R.14: V7 — reach_class='SR', no medium in attribute_data, flat self.medium='MMF' → no error.

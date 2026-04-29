@@ -508,29 +508,6 @@ def apply_case(
         )
         switch_map[switch_id] = sw
 
-    # DIET-466: Pre-pass — collect all missing transceiver_module_type errors before any DB writes.
-    _required_errors = []
-    for item in case.get("switch_port_zones", []):
-        zone_name = item.get("zone_name", "?")
-        if item.get("transceiver_module_type") is None:
-            _required_errors.append({
-                "severity": "error",
-                "code": "missing_required",
-                "path": f"switch_port_zones[{zone_name}].transceiver_module_type",
-                "message": "transceiver_module_type is required for every switch port zone.",
-            })
-    for item in case.get("server_connections", []):
-        conn_id = item.get("connection_id", "?")
-        if item.get("transceiver_module_type") is None:
-            _required_errors.append({
-                "severity": "error",
-                "code": "missing_required",
-                "path": f"server_connections[{conn_id}].transceiver_module_type",
-                "message": "transceiver_module_type is required for every server connection.",
-            })
-    if _required_errors:
-        raise TestCaseValidationError(_required_errors)
-
     # Upsert port zones.
     declared_zone_keys = set()
     for item in case.get("switch_port_zones", []):
@@ -844,10 +821,6 @@ def apply_case(
             "speed": item["speed"],
             "rail": item.get("rail"),
             "port_type": item.get("port_type", ""),
-            "cage_type": item.get("cage_type", ""),
-            "medium": item.get("medium", ""),
-            "connector": item.get("connector", ""),
-            "standard": item.get("standard", ""),
             "transceiver_module_type": xcvr_conn_mt,
         }
         try:

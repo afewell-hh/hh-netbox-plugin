@@ -191,13 +191,13 @@ class TestConnectionReviewService(TestCase):
     # ------------------------------------------------------------------
 
     def test_single_connection_no_transceiver_is_match(self):
-        """DIET-466: both null → blocked (transceiver required on both sides)."""
+        """Both null + 1x breakout → outcome='match' (R_NULL, no breakout advisory)."""
         zone = _make_zone(self.switch_class, self.bo_1x800g)
         _make_connection(self.server_class, zone, speed=800)
         summary = self._build()
         self.assertEqual(len(summary.groups), 1)
-        self.assertEqual(summary.groups[0].outcome, 'blocked')
-        self.assertEqual(summary.blocked_count, 1)
+        self.assertEqual(summary.groups[0].outcome, 'match')
+        self.assertEqual(summary.blocked_count, 0)
 
     def test_connection_with_matching_transceiver_fks_is_match(self):
         """Connection and zone both have the same transceiver FK → match."""
@@ -208,40 +208,40 @@ class TestConnectionReviewService(TestCase):
         self.assertEqual(summary.groups[0].outcome, 'match')
 
     def test_no_breakout_and_no_transceiver_1x_is_match(self):
-        """DIET-466: both null, 1x800g → blocked (transceiver required regardless of breakout)."""
+        """Both null + 1x800g → outcome='match' (R_NULL, no breakout advisory)."""
         zone = _make_zone(self.switch_class, self.bo_1x800g)
         _make_connection(self.server_class, zone, speed=800)
         summary = self._build()
-        self.assertEqual(summary.groups[0].outcome, 'blocked')
+        self.assertEqual(summary.groups[0].outcome, 'match')
 
     # ------------------------------------------------------------------
     # S1.3 — Outcome: needs_review
     # ------------------------------------------------------------------
 
     def test_conn_xcvr_without_zone_xcvr_is_needs_review(self):
-        """DIET-466: zone null → blocked (null gate fires; both ends required)."""
+        """Conn FK set, zone null → needs_review (R_INTENT_ASYMMETRY)."""
         xcvr = get_test_transceiver_module_type()
         zone = _make_zone(self.switch_class, self.bo_4x200g, xcvr_mt=None)
         _make_connection(self.server_class, zone, xcvr_mt=xcvr)
         summary = self._build()
-        self.assertEqual(summary.groups[0].outcome, 'blocked')
+        self.assertEqual(summary.groups[0].outcome, 'needs_review')
         self.assertIn('transceiver', summary.groups[0].reason.lower())
 
     def test_zone_xcvr_without_conn_xcvr_is_needs_review(self):
-        """DIET-466: conn null → blocked (null gate fires; both ends required)."""
+        """Zone FK set, conn null → needs_review (R_INTENT_ASYMMETRY)."""
         xcvr = get_test_transceiver_module_type()
         zone = _make_zone(self.switch_class, self.bo_4x200g, xcvr_mt=xcvr)
         _make_connection(self.server_class, zone, xcvr_mt=None)
         summary = self._build()
-        self.assertEqual(summary.groups[0].outcome, 'blocked')
+        self.assertEqual(summary.groups[0].outcome, 'needs_review')
         self.assertIn('transceiver', summary.groups[0].reason.lower())
 
     def test_breakout_without_transceiver_is_needs_review(self):
-        """DIET-466: both null, 4x200g breakout → blocked (null gate fires before breakout advisory)."""
+        """Both null + 4x200g breakout → needs_review (breakout advisory fires)."""
         zone = _make_zone(self.switch_class, self.bo_4x200g, xcvr_mt=None)
         _make_connection(self.server_class, zone, xcvr_mt=None, speed=200)
         summary = self._build()
-        self.assertEqual(summary.groups[0].outcome, 'blocked')
+        self.assertEqual(summary.groups[0].outcome, 'needs_review')
         self.assertIn('transceiver', summary.groups[0].reason.lower())
 
     def test_mismatched_transceiver_fks_is_needs_review(self):

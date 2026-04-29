@@ -506,6 +506,19 @@ class NullTransceiverPermissionTestCase(TestCase):
         ])
         perm.users.add(cls.perm_user)
 
+        # view permission on related models so NetBox's restrict_form_fields
+        # does not blank the FK querysets for non-superusers
+        view_perm = ObjectPermission.objects.create(
+            name='mxtfm-view-related',
+            actions=['view'],
+        )
+        view_perm.object_types.set([
+            ContentType.objects.get_for_model(PlanServerClass),
+            ContentType.objects.get_for_model(PlanServerNIC),
+            ContentType.objects.get_for_model(SwitchPortZone),
+        ])
+        view_perm.users.add(cls.perm_user)
+
     def setUp(self):
         self.client = Client()
 
@@ -602,6 +615,21 @@ class NullTransceiverEditZonePermissionTestCase(TestCase):
             ContentType.objects.get_for_model(SwitchPortZone),
         ])
         perm.users.add(cls.perm_user)
+
+        # view permission on related models so NetBox's restrict_form_fields
+        # does not blank FK querysets for non-superusers
+        view_perm = ObjectPermission.objects.create(
+            name='mxtfm-ep-view-related',
+            actions=['view'],
+        )
+        view_perm.object_types.set([
+            ContentType.objects.get_for_model(PlanServerClass),
+            ContentType.objects.get_for_model(PlanServerNIC),
+            ContentType.objects.get_for_model(SwitchPortZone),
+            ContentType.objects.get_for_model(PlanSwitchClass),
+            ContentType.objects.get_for_model(BreakoutOption),
+        ])
+        view_perm.users.add(cls.perm_user)
 
     def setUp(self):
         self.client = Client()

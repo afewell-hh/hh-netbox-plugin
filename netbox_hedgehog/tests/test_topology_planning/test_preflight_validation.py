@@ -196,6 +196,206 @@ def _build_plan_with_transceiver_fk(with_bays=False):
     return plan, switch_dt
 
 
+def _build_virtual_yaml_plan_with_transceiver_fk():
+    """
+    Build a YAML-managed virtual-switch plan with transceiver FKs set.
+
+    The virtual switch DeviceType intentionally has no ModuleBayTemplates.
+    NIC-side bays are present so only the switch-side policy is under test.
+    """
+    mfr, _ = Manufacturer.objects.get_or_create(
+        name='Generic',
+        defaults={'slug': 'generic'},
+    )
+    switch_dt, _ = DeviceType.objects.get_or_create(
+        manufacturer=mfr,
+        model='Virtual PF-Switch-100',
+        defaults={'slug': 'virtual-pf-switch-100'},
+    )
+    bo, _ = BreakoutOption.objects.get_or_create(
+        breakout_id='1x100g-pf-virtual',
+        defaults={'from_speed': 100, 'logical_ports': 1, 'logical_speed': 100},
+    )
+    ext, _ = DeviceTypeExtension.objects.update_or_create(
+        device_type=switch_dt,
+        defaults={
+            'native_speed': 100,
+            'supported_breakouts': ['1x100g'],
+            'mclag_capable': False,
+            'hedgehog_roles': ['server-leaf'],
+        },
+    )
+    InterfaceTemplate.objects.get_or_create(
+        device_type=switch_dt,
+        name='E1/1',
+        defaults={'type': '100gbase-x-qsfp28'},
+    )
+    srv_dt = _get_or_create_server_fixtures()
+
+    plan = TopologyPlan.objects.create(
+        name='Preflight-Virtual-YAML-FK-Plan',
+        customer_name='Preflight Test Customer',
+        status=TopologyPlanStatusChoices.DRAFT,
+        custom_field_data={'managed_by': 'yaml', 'yaml_case_id': 'pf_virtual_yaml'},
+    )
+
+    server_class = PlanServerClass.objects.create(
+        plan=plan,
+        server_class_id='pf-gpu-virtual',
+        category=ServerClassCategoryChoices.GPU,
+        quantity=1,
+        gpus_per_server=8,
+        server_device_type=srv_dt,
+    )
+
+    switch_class = PlanSwitchClass.objects.create(
+        plan=plan,
+        switch_class_id='pf-virtual-leaf',
+        fabric=FabricTypeChoices.FRONTEND,
+        hedgehog_role=HedgehogRoleChoices.SERVER_LEAF,
+        device_type_extension=ext,
+        uplink_ports_per_switch=0,
+        mclag_pair=False,
+    )
+
+    xcvr_mt = get_test_transceiver_module_type()
+    zone = SwitchPortZone.objects.create(
+        switch_class=switch_class,
+        zone_name='pf-virtual-server-ports',
+        zone_type=PortZoneTypeChoices.SERVER,
+        port_spec='1',
+        breakout_option=bo,
+        allocation_strategy=AllocationStrategyChoices.SEQUENTIAL,
+        priority=100,
+        transceiver_module_type=xcvr_mt,
+    )
+
+    nic = get_test_server_nic(server_class, nic_id='pf-virtual-nic-0')
+    ModuleBayTemplate.objects.get_or_create(
+        module_type=nic.module_type,
+        name='cage-0',
+        defaults={'label': 'Transceiver cage 0'},
+    )
+    PlanServerConnection.objects.create(
+        server_class=server_class,
+        connection_id='PF-VIRTUAL-FE-001',
+        nic=nic,
+        port_index=0,
+        target_zone=zone,
+        ports_per_connection=1,
+        hedgehog_conn_type=ConnectionTypeChoices.UNBUNDLED,
+        distribution=ConnectionDistributionChoices.ALTERNATING,
+        speed=100,
+        port_type='data',
+        transceiver_module_type=xcvr_mt,
+    )
+
+    return plan, switch_dt
+
+
+def _build_virtual_yaml_plan_with_virtual_nic_missing_bays():
+    """
+    Build a YAML-managed virtual-switch + virtual-NIC plan with no NIC cage bays.
+    """
+    mfr, _ = Manufacturer.objects.get_or_create(
+        name='Generic',
+        defaults={'slug': 'generic'},
+    )
+    switch_dt, _ = DeviceType.objects.get_or_create(
+        manufacturer=mfr,
+        model='Virtual PF-Switch-200',
+        defaults={'slug': 'virtual-pf-switch-200'},
+    )
+    InterfaceTemplate.objects.get_or_create(
+        device_type=switch_dt,
+        name='E1/1',
+        defaults={'type': '100gbase-x-qsfp28'},
+    )
+    bo, _ = BreakoutOption.objects.get_or_create(
+        breakout_id='1x100g-pf-virtual-nic',
+        defaults={'from_speed': 100, 'logical_ports': 1, 'logical_speed': 100},
+    )
+    ext, _ = DeviceTypeExtension.objects.update_or_create(
+        device_type=switch_dt,
+        defaults={
+            'native_speed': 100,
+            'supported_breakouts': ['1x100g'],
+            'mclag_capable': False,
+            'hedgehog_roles': ['server-leaf'],
+        },
+    )
+    srv_dt = _get_or_create_server_fixtures()
+    nic_mfr, _ = Manufacturer.objects.get_or_create(
+        name='Generic',
+        defaults={'slug': 'generic'},
+    )
+    nic_mt, _ = ModuleType.objects.get_or_create(
+        manufacturer=nic_mfr,
+        model='Virtual PF-NIC-100',
+        defaults={},
+    )
+    InterfaceTemplate.objects.get_or_create(
+        module_type=nic_mt,
+        name='p0',
+        defaults={'type': '100gbase-x-qsfp28'},
+    )
+
+    plan = TopologyPlan.objects.create(
+        name='Preflight-Virtual-YAML-NIC-Plan',
+        customer_name='Preflight Test Customer',
+        status=TopologyPlanStatusChoices.DRAFT,
+        custom_field_data={'managed_by': 'yaml', 'yaml_case_id': 'pf_virtual_yaml_nic'},
+    )
+    server_class = PlanServerClass.objects.create(
+        plan=plan,
+        server_class_id='pf-gpu-virtual-nic',
+        category=ServerClassCategoryChoices.GPU,
+        quantity=1,
+        gpus_per_server=8,
+        server_device_type=srv_dt,
+    )
+    switch_class = PlanSwitchClass.objects.create(
+        plan=plan,
+        switch_class_id='pf-virtual-leaf-nic',
+        fabric=FabricTypeChoices.FRONTEND,
+        hedgehog_role=HedgehogRoleChoices.SERVER_LEAF,
+        device_type_extension=ext,
+        uplink_ports_per_switch=0,
+        mclag_pair=False,
+    )
+    xcvr_mt = get_test_transceiver_module_type()
+    zone = SwitchPortZone.objects.create(
+        switch_class=switch_class,
+        zone_name='pf-virtual-server-ports-nic',
+        zone_type=PortZoneTypeChoices.SERVER,
+        port_spec='1',
+        breakout_option=bo,
+        allocation_strategy=AllocationStrategyChoices.SEQUENTIAL,
+        priority=100,
+        transceiver_module_type=xcvr_mt,
+    )
+    from netbox_hedgehog.models.topology_planning import PlanServerNIC
+    nic = PlanServerNIC.objects.create(
+        server_class=server_class,
+        nic_id='pf-virtual-nic',
+        module_type=nic_mt,
+    )
+    PlanServerConnection.objects.create(
+        server_class=server_class,
+        connection_id='PF-VIRTUAL-NIC-001',
+        nic=nic,
+        port_index=0,
+        target_zone=zone,
+        ports_per_connection=1,
+        hedgehog_conn_type=ConnectionTypeChoices.UNBUNDLED,
+        distribution=ConnectionDistributionChoices.ALTERNATING,
+        speed=100,
+        port_type='data',
+        transceiver_module_type=xcvr_mt,
+    )
+    return plan, nic_mt
+
+
 def _build_plan_without_transceiver_fk():
     """Build a minimal TopologyPlan with NO transceiver_module_type FK set."""
     _mfr, _switch_dt, ext, bo, _site = _get_or_create_switch_fixtures()
@@ -269,9 +469,8 @@ class TransceiverBayReadinessServiceTestCase(TestCase):
 
     def test_noop_when_no_transceiver_fks(self):
         """
-        DIET-466: Plan with NO transceiver FKs is blocked by Phase 0 (not is_ready).
-        has_transceiver_fks=False (no non-null FKs), but missing[] is non-empty because
-        Phase 0 requires all zones/connections to have transceiver intent set.
+        Plan with NO transceiver FKs: Phase 0 is removed; null intent is not a blocker.
+        has_transceiver_fks=False, is_ready=True, missing=[].
         """
         from netbox_hedgehog.services.preflight import (
             check_transceiver_bay_readiness,
@@ -281,16 +480,10 @@ class TransceiverBayReadinessServiceTestCase(TestCase):
         result = check_transceiver_bay_readiness(plan)
 
         self.assertIsInstance(result, TransceiverBayReadinessResult)
-        # Phase 0 blocks: connections and zones without transceiver are listed in missing[]
-        self.assertFalse(result.is_ready)
+        # Phase 0 removed: null-transceiver plans pass preflight (no bay checks needed).
+        self.assertTrue(result.is_ready)
         self.assertFalse(result.has_transceiver_fks)
-        self.assertGreater(len(result.missing), 0)
-        # Missing entries must be the DIET-466 transceiver-intent blockers
-        codes = {e.get('entity_type') for e in result.missing}
-        self.assertTrue(
-            codes & {'missing_transceiver_connections', 'missing_transceiver_zones'},
-            f"Expected transceiver-intent entries in missing, got: {result.missing}",
-        )
+        self.assertEqual(result.missing, [])
 
     def test_not_ready_when_fk_set_but_bays_absent(self):
         """
@@ -351,6 +544,43 @@ class TransceiverBayReadinessServiceTestCase(TestCase):
             self.assertIn('entity_name', entry)
             self.assertIn('missing_count', entry)
             self.assertIn('hint', entry)
+
+    def test_virtual_yaml_switch_device_type_skips_switch_bay_requirement(self):
+        """Virtual placeholder switch DeviceTypes should not block preflight on missing switch bays."""
+        from netbox_hedgehog.services.preflight import check_transceiver_bay_readiness
+        plan, switch_dt = _build_virtual_yaml_plan_with_transceiver_fk()
+        ModuleBayTemplate.objects.filter(device_type=switch_dt).delete()
+
+        result = check_transceiver_bay_readiness(plan)
+
+        self.assertTrue(result.is_ready)
+        self.assertTrue(result.has_transceiver_fks)
+        switch_entries = [
+            entry for entry in result.missing
+            if entry.get('entity_type') == 'switch_device_type'
+        ]
+        self.assertEqual(
+            switch_entries, [],
+            'Virtual placeholder switch DeviceTypes must not require switch ModuleBayTemplates',
+        )
+
+    def test_virtual_yaml_nic_module_type_skips_nested_bay_requirement(self):
+        """Virtual placeholder NIC ModuleTypes should not block preflight on missing cage bays."""
+        from netbox_hedgehog.services.preflight import check_transceiver_bay_readiness
+        plan, nic_mt = _build_virtual_yaml_plan_with_virtual_nic_missing_bays()
+        ModuleBayTemplate.objects.filter(module_type=nic_mt).delete()
+
+        result = check_transceiver_bay_readiness(plan)
+
+        self.assertTrue(result.is_ready)
+        nic_entries = [
+            entry for entry in result.missing
+            if entry.get('entity_type') == 'nic_module_type'
+        ]
+        self.assertEqual(
+            nic_entries, [],
+            'Virtual placeholder NIC ModuleTypes must not require nested ModuleBayTemplates',
+        )
 
     def test_user_message_contains_expected_text(self):
         """user_message() must reference populate_transceiver_bays."""
@@ -813,15 +1043,15 @@ class MixedPlanPreflightTestCase(TestCase):
 
         result = check_transceiver_bay_readiness(plan)
 
-        # DIET-466: Phase 0 blocks when ANY connection has null transceiver intent.
-        # The unrelated connection (no transceiver FK) triggers Phase 0 blocking.
-        self.assertFalse(
+        # Phase 0 removed: the FK-less connection is ignored by Phase 2.
+        # Only the FK-bearing connection's NIC type is checked; bays present → pass.
+        self.assertTrue(
             result.is_ready,
-            'DIET-466: Phase 0 blocks when any connection has null transceiver intent. '
-            'Mixed-NIC plan with one FK-less connection must be blocked.',
+            'Mixed-NIC plan: FK-less connection must NOT block preflight after Phase 0 removal. '
+            f'missing: {result.missing}',
         )
         codes = {e.get('entity_type') for e in result.missing}
-        self.assertIn('missing_transceiver_connections', codes)
+        self.assertNotIn('missing_transceiver_connections', codes)
 
     # ------------------------------------------------------------------
     # Service-level mixed-switch test
@@ -866,28 +1096,27 @@ class MixedPlanPreflightTestCase(TestCase):
 
         result = check_transceiver_bay_readiness(plan)
 
-        # DIET-466: Phase 0 blocks when ANY zone has null transceiver intent.
-        # The unrelated zone (no transceiver FK) triggers Phase 0 blocking.
-        self.assertFalse(
+        # Phase 0 removed: the FK-less zone is ignored by Phase 2.
+        # Only the FK-bearing zone's device type is checked; bays present → pass.
+        self.assertTrue(
             result.is_ready,
-            'DIET-466: Phase 0 blocks when any zone has null transceiver intent. '
-            'Mixed-switch plan with one FK-less zone must be blocked.',
+            'Mixed-switch plan: FK-less zone must NOT block preflight after Phase 0 removal. '
+            f'missing: {result.missing}',
         )
         codes = {e.get('entity_type') for e in result.missing}
-        self.assertIn('missing_transceiver_zones', codes)
+        self.assertNotIn('missing_transceiver_zones', codes)
 
     # ------------------------------------------------------------------
     # Integration-level view test: mixed-NIC plan is not over-blocked
     # ------------------------------------------------------------------
 
-    def test_generate_update_view_blocked_by_unrelated_nic_without_xcvr(self):
+    def test_generate_update_view_proceeds_for_mixed_nic_plan(self):
         """
-        DIET-466: POST to generate-update on a mixed-NIC plan (one connection with
-        xcvr FK, one without) MUST be blocked by Phase 0 of the pre-flight check.
+        POST to generate-update on a mixed-NIC plan (one connection with FK, one without)
+        must NOT be blocked by preflight after Phase 0 removal.
 
-        Phase 0 requires ALL connections to have transceiver_module_type set.
-        An unrelated connection with a null FK triggers Phase 0 blocking, so
-        generation is never dispatched and no GenerationState is created.
+        Phase 2 only checks FK-bearing rows; the FK-less connection is ignored.
+        Generation proceeds and a GenerationState is created.
         """
         from netbox_hedgehog.models.topology_planning import PlanServerNIC
         from netbox_hedgehog.models.topology_planning import SwitchPortZone as SPZ
@@ -925,7 +1154,7 @@ class MixedPlanPreflightTestCase(TestCase):
             distribution=ConnectionDistributionChoices.ALTERNATING,
             speed=200,
             port_type='data',
-            # transceiver_module_type intentionally NOT set — triggers Phase 0 block
+            # transceiver_module_type intentionally NOT set
         )
 
         self.client.login(username='pf-mixed-superuser', password='testpass123')
@@ -935,10 +1164,9 @@ class MixedPlanPreflightTestCase(TestCase):
         )
         self.client.post(url, follow=True)
 
-        # DIET-466 Phase 0 blocks → generation is never dispatched → no new GenerationState
+        # Phase 0 removed: mixed plan should proceed to generation.
         new_gs_count = GenerationState.objects.filter(plan=plan).count()
-        self.assertEqual(
+        self.assertGreater(
             new_gs_count, initial_gs_count,
-            'DIET-466: Phase 0 must block generation when any connection lacks '
-            'transceiver_module_type. GenerationState must not be created.',
+            'Phase 0 removed: mixed-NIC plan must proceed to generation and create GenerationState.',
         )

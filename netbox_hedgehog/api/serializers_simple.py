@@ -54,7 +54,7 @@ class PlanServerConnectionSerializer(serializers.ModelSerializer):
         fields = ['id', 'server_class', 'connection_id', 'nic', 'port_index',
                   'connection_name', 'ports_per_connection',
                   'hedgehog_conn_type', 'distribution', 'target_zone', 'speed',
-                  'rail', 'port_type', 'cage_type', 'medium', 'connector', 'standard']
+                  'rail', 'port_type']
 
     def validate(self, attrs):
         """

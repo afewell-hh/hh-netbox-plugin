@@ -394,10 +394,6 @@ class PlanServerConnectionForm(NetBoxModelForm):
             'rail',
             'port_type',
             'transceiver_module_type',
-            'cage_type',
-            'medium',
-            'connector',
-            'standard',
             'tags',
         ]
         widgets = {
@@ -413,14 +409,9 @@ class PlanServerConnectionForm(NetBoxModelForm):
                 'Used to select which physical port on the NIC to use for this connection.'
             ),
             'transceiver_module_type': (
-                'Transceiver or DAC/AOC SKU to install in this port cage. '
-                'Must have the Network Transceiver profile. '
-                'Leave blank to use flat fields for spec only.'
+                'Server-side transceiver for this port. '
+                'Must have the Network Transceiver profile. Optional — null means no module placed.'
             ),
-            'cage_type': 'Transceiver cage/port form factor (leave blank if not specified).',
-            'medium': 'Physical transmission medium (leave blank if not specified).',
-            'connector': 'Fiber connector type (leave blank for DAC or if not specified).',
-            'standard': 'Optical/electrical standard (e.g., 200GBASE-SR4). Optional.',
         }
 
     def __init__(self, *args, **kwargs):
@@ -474,16 +465,12 @@ class PlanServerConnectionForm(NetBoxModelForm):
             self.fields['transceiver_module_type'].label_from_instance = _make_xcvr_label_fn(xcvr_qs)
         else:
             self.fields['transceiver_module_type'].queryset = ModuleType.objects.none()
-        # DIET-466: transceiver_module_type is required.
-        self.fields['transceiver_module_type'].required = True
-        self.fields['transceiver_module_type'].error_messages['required'] = (
-            'A transceiver ModuleType is required for every server connection.'
-        )
-        # Help text: tell user switch-side optic is on the zone (DIET-460)
+        # transceiver_module_type is optional — null means no module placed.
+        self.fields['transceiver_module_type'].required = False
         self.fields['transceiver_module_type'].help_text = (
-            'Server-side transceiver for this port. '
-            'The switch-side transceiver is set on the zone — edit it via the Switch Port Zone form. '
-            'Required.'
+            'Server-side transceiver for this port (optional). '
+            'The switch-side transceiver is set on the zone. '
+            'Leave blank if transceiver intent is not yet specified.'
         )
 
     def clean(self):
@@ -609,8 +596,5 @@ class SwitchPortZoneForm(NetBoxModelForm):
             self.fields['transceiver_module_type'].label_from_instance = _make_xcvr_label_fn(xcvr_qs)
         else:
             self.fields['transceiver_module_type'].queryset = ModuleType.objects.none()
-        # DIET-466: transceiver_module_type is required.
-        self.fields['transceiver_module_type'].required = True
-        self.fields['transceiver_module_type'].error_messages['required'] = (
-            'A transceiver ModuleType is required for every switch port zone.'
-        )
+        # transceiver_module_type is optional — null means no module placed.
+        self.fields['transceiver_module_type'].required = False
