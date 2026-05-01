@@ -318,6 +318,163 @@ class PopulateTransceiverBaysCommandTestCase(TestCase):
         sc.delete()
         plan.delete()
 
+    def test_virtual_switch_device_type_skips_bay_creation(self):
+        """B.5: Command does not create ModuleBayTemplates for virtual placeholder switch DeviceTypes."""
+        mfr, _ = Manufacturer.objects.get_or_create(
+            name='B5TestMfg', defaults={'slug': 'b5testmfg'}
+        )
+        virtual_dt, _ = DeviceType.objects.get_or_create(
+            manufacturer=mfr, model='Virtual B5-SW', defaults={'slug': 'virtual-b5-sw'}
+        )
+        for port_n in range(1, 5):
+            InterfaceTemplate.objects.get_or_create(
+                device_type=virtual_dt, name=f'E1/{port_n}',
+                defaults={'type': '200gbase-x-qsfp112'},
+            )
+        DeviceTypeExtension.objects.update_or_create(
+            device_type=virtual_dt,
+            defaults={
+                'native_speed': 200, 'uplink_ports': 0,
+                'supported_breakouts': ['1x200g'], 'mclag_capable': False,
+                'hedgehog_roles': ['server-leaf'],
+            },
+        )
+        call_command('populate_transceiver_bays')
+        count = ModuleBayTemplate.objects.filter(device_type=virtual_dt).count()
+        self.assertEqual(count, 0,
+            "Command must not create ModuleBayTemplates for virtual placeholder switch DeviceTypes")
+
+    def test_stale_virtual_switch_bays_removed_on_rerun(self):
+        """B.6: Command removes stale ModuleBayTemplates from virtual placeholder switch DeviceTypes."""
+        mfr, _ = Manufacturer.objects.get_or_create(
+            name='B6TestMfg', defaults={'slug': 'b6testmfg'}
+        )
+        virtual_dt, _ = DeviceType.objects.get_or_create(
+            manufacturer=mfr, model='Virtual B6-SW', defaults={'slug': 'virtual-b6-sw'}
+        )
+        InterfaceTemplate.objects.get_or_create(
+            device_type=virtual_dt, name='E1/1',
+            defaults={'type': '200gbase-x-qsfp112'},
+        )
+        DeviceTypeExtension.objects.update_or_create(
+            device_type=virtual_dt,
+            defaults={
+                'native_speed': 200, 'uplink_ports': 0,
+                'supported_breakouts': ['1x200g'], 'mclag_capable': False,
+                'hedgehog_roles': ['server-leaf'],
+            },
+        )
+        # Inject a stale bay simulating a run before the virtual-placeholder policy existed.
+        ModuleBayTemplate.objects.get_or_create(
+            device_type=virtual_dt, name='E1/1',
+            defaults={'label': 'Stale bay from before virtual-placeholder policy'},
+        )
+        self.assertEqual(ModuleBayTemplate.objects.filter(device_type=virtual_dt).count(), 1,
+            "Precondition: stale bay must exist before command run")
+        call_command('populate_transceiver_bays')
+        count = ModuleBayTemplate.objects.filter(device_type=virtual_dt).count()
+        self.assertEqual(count, 0,
+            "Command must remove stale ModuleBayTemplates from virtual placeholder switch DeviceTypes")
+
+    def test_virtual_nic_module_type_skips_bay_creation(self):
+        """B.7: Command does not create nested bays for virtual placeholder NIC ModuleTypes."""
+        mfr, _ = Manufacturer.objects.get_or_create(
+            name='B7TestMfg', defaults={'slug': 'b7testmfg'}
+        )
+        virtual_nic_mt, _ = ModuleType.objects.get_or_create(
+            manufacturer=mfr, model='Virtual B7-NIC', defaults={}
+        )
+        InterfaceTemplate.objects.get_or_create(
+            module_type=virtual_nic_mt, name='p0',
+            defaults={'type': '200gbase-x-qsfp112'},
+        )
+        dt, _ = DeviceType.objects.get_or_create(
+            manufacturer=mfr, model='B7SRV', defaults={'slug': 'b7srv'}
+        )
+        plan = TopologyPlan.objects.create(
+            name='B7Plan', status=TopologyPlanStatusChoices.DRAFT,
+        )
+        sc = PlanServerClass.objects.create(
+            plan=plan, server_class_id='b7', server_device_type=dt, quantity=1,
+        )
+        nic = PlanServerNIC.objects.create(
+            server_class=sc, nic_id='nic-b7', module_type=virtual_nic_mt,
+        )
+        call_command('populate_transceiver_bays')
+        count = ModuleBayTemplate.objects.filter(module_type=virtual_nic_mt).count()
+        self.assertEqual(count, 0,
+            "Command must not create nested ModuleBayTemplates for virtual placeholder NIC ModuleTypes")
+        # Cleanup
+        nic.delete()
+        sc.delete()
+        plan.delete()
+
+    def test_stale_virtual_nic_bays_removed_on_rerun(self):
+        """B.8: Command removes stale nested bays from virtual placeholder NIC ModuleTypes."""
+        mfr, _ = Manufacturer.objects.get_or_create(
+            name='B8TestMfg', defaults={'slug': 'b8testmfg'}
+        )
+        virtual_nic_mt, _ = ModuleType.objects.get_or_create(
+            manufacturer=mfr, model='Virtual B8-NIC', defaults={}
+        )
+        InterfaceTemplate.objects.get_or_create(
+            module_type=virtual_nic_mt, name='p0',
+            defaults={'type': '200gbase-x-qsfp112'},
+        )
+        dt, _ = DeviceType.objects.get_or_create(
+            manufacturer=mfr, model='B8SRV', defaults={'slug': 'b8srv'}
+        )
+        plan = TopologyPlan.objects.create(
+            name='B8Plan', status=TopologyPlanStatusChoices.DRAFT,
+        )
+        sc = PlanServerClass.objects.create(
+            plan=plan, server_class_id='b8', server_device_type=dt, quantity=1,
+        )
+        nic = PlanServerNIC.objects.create(
+            server_class=sc, nic_id='nic-b8', module_type=virtual_nic_mt,
+        )
+        # Inject a stale nested bay.
+        ModuleBayTemplate.objects.get_or_create(
+            module_type=virtual_nic_mt, name='cage-0',
+            defaults={'label': 'Stale cage from before virtual-placeholder policy'},
+        )
+        self.assertEqual(ModuleBayTemplate.objects.filter(module_type=virtual_nic_mt).count(), 1,
+            "Precondition: stale nested bay must exist before command run")
+        call_command('populate_transceiver_bays')
+        count = ModuleBayTemplate.objects.filter(module_type=virtual_nic_mt).count()
+        self.assertEqual(count, 0,
+            "Command must remove stale nested bays from virtual placeholder NIC ModuleTypes")
+        # Cleanup
+        nic.delete()
+        sc.delete()
+        plan.delete()
+
+    def test_non_virtual_switch_device_type_still_populates(self):
+        """B.9: Non-virtual hardware-backed switch DeviceTypes still get ModuleBayTemplates."""
+        mfr, _ = Manufacturer.objects.get_or_create(
+            name='B9TestMfg', defaults={'slug': 'b9testmfg'}
+        )
+        hw_dt, _ = DeviceType.objects.get_or_create(
+            manufacturer=mfr, model='HW-B9-SW', defaults={'slug': 'hw-b9-sw'}
+        )
+        for port_n in range(1, 3):
+            InterfaceTemplate.objects.get_or_create(
+                device_type=hw_dt, name=f'E1/{port_n}',
+                defaults={'type': '200gbase-x-qsfp112'},
+            )
+        DeviceTypeExtension.objects.update_or_create(
+            device_type=hw_dt,
+            defaults={
+                'native_speed': 200, 'uplink_ports': 0,
+                'supported_breakouts': ['1x200g'], 'mclag_capable': False,
+                'hedgehog_roles': ['server-leaf'],
+            },
+        )
+        call_command('populate_transceiver_bays')
+        count = ModuleBayTemplate.objects.filter(device_type=hw_dt).count()
+        self.assertGreaterEqual(count, 2,
+            "Non-virtual switch DeviceTypes must still receive ModuleBayTemplates on every port")
+
 
 # ---------------------------------------------------------------------------
 # Group C: Generator — switch-side transceiver Module placement
