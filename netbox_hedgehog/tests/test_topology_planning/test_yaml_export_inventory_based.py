@@ -1351,6 +1351,119 @@ class YAMLExportRedundancyCRDsTestCase(YAMLExportTestBase):
         links = bundled_crds[0]['spec']['bundled']['links']
         self.assertEqual(len(links), 2)
 
+    def test_switchgroup_emitted_without_plan_mclag_domain(self):
+        """SwitchGroup CRD emitted even when no PlanMCLAGDomain exists (issue #330).
+
+        Ingest-created plans (DS5000 L3MH variants) set redundancy_group on
+        PlanSwitchClass but never create PlanMCLAGDomain rows. The prior
+        implementation raised ValidationError in this case; the fix emits the
+        SwitchGroup CRD using the group name from the Switch spec.groups directly.
+        """
+        plan = TopologyPlan.objects.create(name='#330 No-Domain SwitchGroup Plan',
+                                           created_by=self.user)
+        PlanSwitchClass.objects.create(
+            plan=plan,
+            switch_class_id='fe-leaf-330a',
+            fabric=FabricTypeChoices.FRONTEND,
+            hedgehog_role=HedgehogRoleChoices.SERVER_LEAF,
+            device_type_extension=self.device_ext,
+            calculated_quantity=2,
+            groups=['fe-mclag'],
+            redundancy_type='eslag',
+            redundancy_group='fe-mclag',
+        )
+        leaf_01 = self._create_switch_device(plan, 'sg330-leaf-01', 'fe-leaf-330a')
+        leaf_02 = self._create_switch_device(plan, 'sg330-leaf-02', 'fe-leaf-330a')
+        # One peer-link cable satisfies the export precondition (cable_count > 0).
+        a = self._create_interface(leaf_01, 'E1/1')
+        b = self._create_interface(leaf_02, 'E1/1')
+        self._create_cable(plan, a, b, zone=PortZoneTypeChoices.PEER)
+        self._create_generation_state(plan, device_count=2, interface_count=2, cable_count=1)
+
+        url = reverse('plugins:netbox_hedgehog:topologyplan_export', args=[plan.pk])
+        response = self.client.get(url)
+        self.assertEqual(response.status_code, 200,
+                         "Export must succeed even without a PlanMCLAGDomain row")
+
+        documents = list(yaml.safe_load_all(response.content.decode('utf-8')))
+        switchgroups = [d for d in documents if d and d.get('kind') == 'SwitchGroup']
+        self.assertEqual(len(switchgroups), 1,
+                         "Exactly one SwitchGroup CRD must be emitted for 'fe-mclag'")
+        self.assertEqual(switchgroups[0]['metadata']['name'], 'fe-mclag')
+        self.assertEqual(switchgroups[0]['spec'], {},
+                         "SwitchGroup spec must be empty per authoritative Hedgehog schema")
+
+    def test_switchgroup_absent_when_no_groups_referenced(self):
+        """No SwitchGroup CRDs when switch class has no redundancy_group set."""
+        plan = TopologyPlan.objects.create(name='#330 No-SG Plan', created_by=self.user)
+        PlanSwitchClass.objects.create(
+            plan=plan,
+            switch_class_id='fe-leaf-nosg-330',
+            fabric=FabricTypeChoices.FRONTEND,
+            hedgehog_role=HedgehogRoleChoices.SERVER_LEAF,
+            device_type_extension=self.device_ext,
+            calculated_quantity=2,
+        )
+        leaf_01 = self._create_switch_device(plan, 'nosg330-leaf-01', 'fe-leaf-nosg-330')
+        leaf_02 = self._create_switch_device(plan, 'nosg330-leaf-02', 'fe-leaf-nosg-330')
+        a = self._create_interface(leaf_01, 'E1/1')
+        b = self._create_interface(leaf_02, 'E1/1')
+        self._create_cable(plan, a, b, zone=PortZoneTypeChoices.PEER)
+        self._create_generation_state(plan, device_count=2, interface_count=2, cable_count=1)
+
+        url = reverse('plugins:netbox_hedgehog:topologyplan_export', args=[plan.pk])
+        response = self.client.get(url)
+        self.assertEqual(response.status_code, 200)
+
+        documents = list(yaml.safe_load_all(response.content.decode('utf-8')))
+        switchgroups = [d for d in documents if d and d.get('kind') == 'SwitchGroup']
+        self.assertEqual(switchgroups, [],
+                         "No SwitchGroup CRDs should be emitted when no groups are referenced")
+
+    def test_switchgroup_domain_backed_path_regression(self):
+        """Domain-backed path (PlanMCLAGDomain exists) still emits SwitchGroup correctly."""
+        plan = TopologyPlan.objects.create(name='#330 Domain-Backed Regression Plan',
+                                           created_by=self.user)
+        switch_class = PlanSwitchClass.objects.create(
+            plan=plan,
+            switch_class_id='fe-leaf-reg-330',
+            fabric=FabricTypeChoices.FRONTEND,
+            hedgehog_role=HedgehogRoleChoices.SERVER_LEAF,
+            device_type_extension=self.device_ext,
+            calculated_quantity=2,
+            groups=['reg-group'],
+            redundancy_type='mclag',
+            redundancy_group='reg-group',
+        )
+        PlanMCLAGDomain.objects.create(
+            plan=plan,
+            domain_id='reg-domain',
+            switch_class=switch_class,
+            peer_link_count=2,
+            session_link_count=2,
+            peer_start_port=1,
+            session_start_port=1,
+            switch_group_name='reg-group',
+            redundancy_type='mclag',
+        )
+        leaf_01 = self._create_switch_device(plan, 'reg330-leaf-01', 'fe-leaf-reg-330')
+        leaf_02 = self._create_switch_device(plan, 'reg330-leaf-02', 'fe-leaf-reg-330')
+        a = self._create_interface(leaf_01, 'E1/1')
+        b = self._create_interface(leaf_02, 'E1/1')
+        self._create_cable(plan, a, b, zone=PortZoneTypeChoices.PEER)
+        self._create_generation_state(plan, device_count=2, interface_count=2, cable_count=1)
+
+        url = reverse('plugins:netbox_hedgehog:topologyplan_export', args=[plan.pk])
+        response = self.client.get(url)
+        self.assertEqual(response.status_code, 200)
+
+        documents = list(yaml.safe_load_all(response.content.decode('utf-8')))
+        switchgroups = [d for d in documents if d and d.get('kind') == 'SwitchGroup']
+        self.assertEqual(len(switchgroups), 1,
+                         "Domain-backed SwitchGroup must still be emitted correctly")
+        self.assertEqual(switchgroups[0]['metadata']['name'], 'reg-group')
+        self.assertEqual(switchgroups[0]['spec'], {})
+
 
 class YAMLExportUITestCase(YAMLExportTestBase):
     """
