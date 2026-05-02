@@ -498,43 +498,40 @@ class AsymmetricSaveTimeValidationTestCase(TestCase):
         except ValidationError as e:
             self.fail(f"Symmetric QSFP112 pair must pass: {e.message_dict}")
 
-    def test_mismatched_cage_type_still_rejected(self):
-        """B3 GREEN: Non-approved cage mismatch (SFP+ vs QSFP112) must still raise."""
+    def test_mismatched_cage_type_no_save_time_error(self):
+        """B3: DIET-475: Non-approved cage mismatch (SFP+ vs QSFP112) is valid at save-time.
+        Cross-end cage check removed; mismatch surfaces in the connection review panel."""
         conn, plan = self._make_conn_with_xcvr(
             server_xcvr=self.sfp_plus_mt,
             zone_xcvr=self.qsfp112_sym_mt,
         )
-        with self.assertRaises(ValidationError, msg="Non-approved cage mismatch must raise ValidationError"):
-            conn.full_clean()
+        conn.full_clean()  # must not raise
 
-    def test_mismatched_medium_still_rejected(self):
-        """B4 GREEN: Same cage different medium (MMF vs SMF QSFP112) must raise."""
+    def test_mismatched_medium_no_save_time_error(self):
+        """B4: DIET-475: Same-cage medium mismatch (MMF vs SMF) is valid at save-time.
+        Cross-end medium check removed; medium mismatch blocks at generation (sweep), not save."""
         conn, plan = self._make_conn_with_xcvr(
             server_xcvr=self.qsfp112_sym_mt,   # MMF
             zone_xcvr=self.qsfp112_smf_mt,     # SMF
         )
-        with self.assertRaises(ValidationError, msg="Medium mismatch must raise ValidationError"):
-            conn.full_clean()
+        conn.full_clean()  # must not raise
 
-    def test_mismatched_connector_still_rejected(self):
-        """B5 GREEN: Non-approved connector mismatch (LC vs MPO-12, both QSFP28) must raise."""
+    def test_mismatched_connector_no_save_time_error(self):
+        """B5: DIET-475: Connector mismatch (LC vs MPO-12, both QSFP28) is valid at save-time.
+        Cross-end connector check removed; surfaced in the connection review panel."""
         conn, plan = self._make_conn_with_xcvr(
             server_xcvr=self.qsfp28_lc_mt,    # LC
             zone_xcvr=self.qsfp28_mpo_mt,     # MPO-12
         )
-        with self.assertRaises(ValidationError, msg="Non-approved connector mismatch must raise ValidationError"):
-            conn.full_clean()
+        conn.full_clean()  # must not raise
 
-    def test_no_transceiver_fks_passes_validation(self):
-        """DIET-466: Both null → full_clean() raises ValidationError (transceiver required)."""
+    def test_null_transceiver_fks_valid(self):
+        """DIET-475: Both FKs null → full_clean() passes; mandatory gate removed."""
         conn, plan = self._make_conn_with_xcvr(
             server_xcvr=None,
             zone_xcvr=None,
         )
-        with self.assertRaises(ValidationError) as ctx:
-            conn.full_clean()
-        # Must be the transceiver_module_type field that triggered the error
-        self.assertIn('transceiver_module_type', ctx.exception.message_dict)
+        conn.full_clean()  # must not raise
 
 
 # ---------------------------------------------------------------------------
@@ -653,13 +650,13 @@ class AsymmetricCompatSweepTestCase(TestCase):
             "Approved asymmetric pair must NOT produce FAILED generation status",
         )
 
-    def test_non_approved_asymmetric_pair_produces_mismatch_entries(self):
+    def test_non_approved_cage_mismatch_produces_needs_review(self):
         """
-        C3 GREEN: Non-approved cage mismatch (QSFP28 server vs QSFP-DD zone) must
-        produce structured mismatch entries in mismatch_report.
+        C3: DIET-475: Non-approved cage mismatch (QSFP28 server vs QSFP-DD zone) must
+        surface as needs_review in the connection review panel.
 
-        This verifies the sweep still catches genuinely incompatible pairs after
-        Phase 4 adds the approved-pair gate.
+        Cage mismatches are no longer generation blockers (DIET-475 removed that gate).
+        Generation succeeds with GENERATED status; the review panel flags the mismatch.
         """
         plan, sc, sw, zone, nic, conn = _make_asym_plan(
             self, 'C3',
@@ -672,24 +669,20 @@ class AsymmetricCompatSweepTestCase(TestCase):
         gs = GenerationState.objects.filter(plan=plan).first()
         self.assertIsNotNone(gs)
         self.assertEqual(
-            gs.status, GenerationStatusChoices.FAILED,
-            "Non-approved cage mismatch must produce FAILED status",
+            gs.status, GenerationStatusChoices.GENERATED,
+            "Cage mismatch must not set FAILED status (DIET-475: surfaced via review panel)",
         )
-        report = getattr(gs, 'mismatch_report', None)
-        self.assertIsNotNone(report, "mismatch_report must be populated for non-approved pair")
-        mismatches = report.get('mismatches', [])
-        self.assertGreater(len(mismatches), 0, "mismatches list must be non-empty")
-        entry = mismatches[0]
-        self.assertIn('mismatch_type', entry, "Entry must have mismatch_type")
-        self.assertIn('server_end', entry, "Entry must have server_end")
-        self.assertIn('switch_end', entry, "Entry must have switch_end")
+        from netbox_hedgehog.services.connection_review import build_connection_review_summary
+        summary = build_connection_review_summary(plan)
+        self.assertGreater(
+            summary.needs_review_count, 0,
+            "Review panel must have needs_review entries for the cage mismatch",
+        )
 
-    def test_non_approved_sweep_entry_has_required_keys(self):
+    def test_non_approved_review_entry_has_required_fields(self):
         """
-        C4 GREEN: Mismatch entry dict structure is stable — all 6 required keys present.
-
-        Regression guard: the dict schema must not change between Stage 2 and
-        the asymmetric-compat Phase 4 patch.
+        C4: DIET-475: Connection review entry for a non-approved cage mismatch must
+        have stable ConnectionGroup fields (regression guard for review-panel contract).
         """
         plan, sc, sw, zone, nic, conn = _make_asym_plan(
             self, 'C4',
@@ -699,16 +692,16 @@ class AsymmetricCompatSweepTestCase(TestCase):
         )
         call_command('populate_transceiver_bays')
         _generate(plan)
-        gs = GenerationState.objects.filter(plan=plan).first()
-        report = getattr(gs, 'mismatch_report', None)
-        self.assertIsNotNone(report)
-        mismatches = report.get('mismatches', [])
-        self.assertGreater(len(mismatches), 0)
-        entry = mismatches[0]
-        required_keys = {'connection_id', 'server_device', 'switch_port',
-                         'mismatch_type', 'server_end', 'switch_end'}
-        for key in required_keys:
-            self.assertIn(key, entry, f"Mismatch entry must contain key '{key}'")
+        from netbox_hedgehog.services.connection_review import build_connection_review_summary
+        summary = build_connection_review_summary(plan)
+        review_entries = [g for g in summary.groups if g.outcome == 'needs_review']
+        self.assertGreater(len(review_entries), 0, "Must have at least one needs_review entry")
+        entry = review_entries[0]
+        self.assertIsNotNone(entry.conn_type, "Entry must have conn_type")
+        self.assertIsNotNone(entry.connection_xcvr, "Entry must have connection_xcvr")
+        self.assertIsNotNone(entry.zone_xcvr, "Entry must have zone_xcvr")
+        self.assertIsNotNone(entry.reason, "Entry must have reason")
+        self.assertEqual(entry.outcome, 'needs_review')
 
 
 # ---------------------------------------------------------------------------

@@ -176,42 +176,9 @@ class TransceiverFKOnConnectionTestCase(TestCase):
         psc.refresh_from_db()
         self.assertIsNone(psc.transceiver_module_type)
 
-    def test_psc_flat_cage_type_mismatch_with_fk(self):
-        """cage_type flat field conflicting with FK attribute_data raises ValidationError."""
-        psc = _make_base_connection(
-            self.server_class, self.nic, self.zone, connection_id='fe-a5'
-        )
-        psc.transceiver_module_type = self.xcvr_mt  # QSFP112
-        psc.cage_type = 'OSFP'
-        with self.assertRaises(ValidationError) as ctx:
-            psc.full_clean()
-        self.assertIn('cage_type', ctx.exception.message_dict)
-
-    def test_psc_flat_cage_type_matches_fk_ok(self):
-        """cage_type flat field matching FK attribute_data passes full_clean()."""
-        psc = _make_base_connection(
-            self.server_class, self.nic, self.zone, connection_id='fe-a6'
-        )
-        psc.transceiver_module_type = self.xcvr_mt  # QSFP112
-        psc.cage_type = 'QSFP112'
-        psc.full_clean()  # must not raise
-
-    def test_psc_flat_medium_mismatch_with_fk(self):
-        """medium flat field conflicting with FK attribute_data raises ValidationError."""
-        psc = _make_base_connection(
-            self.server_class, self.nic, self.zone, connection_id='fe-a7'
-        )
-        psc.transceiver_module_type = self.xcvr_mt  # medium=MMF
-        psc.medium = 'DAC'
-        with self.assertRaises(ValidationError) as ctx:
-            psc.full_clean()
-        self.assertIn('medium', ctx.exception.message_dict)
-
-    def test_existing_psc_without_fk_rejected(self):
-        """DIET-466: PSC with no transceiver FK fails full_clean()."""
-        with self.assertRaises(ValidationError) as ctx:
-            self.base_psc.full_clean()
-        self.assertIn('transceiver_module_type', ctx.exception.message_dict)
+    def test_existing_psc_without_fk_valid(self):
+        """DIET-475: Null transceiver FK is valid; no mandatory gate at save-time."""
+        self.base_psc.full_clean()  # must not raise
 
 
 # =============================================================================
@@ -344,15 +311,14 @@ class CrossEndCompatibilityTestCase(TestCase):
         )
         psc.full_clean()
 
-    def test_mismatched_cage_type_raises(self):
-        """PSC OSFP FK + zone QSFP112 FK: raises ValidationError."""
+    def test_mismatched_cage_type_no_save_time_error(self):
+        """DIET-475: PSC OSFP FK + zone QSFP112 FK: no save-time error; surfaced via review panel."""
         psc = _make_base_connection(
             self.server_class, self.nic, self.zone_qsfp112,
             connection_id='fe-c2',
             transceiver_module_type=self.xcvr_osfp_mmf,
         )
-        with self.assertRaises(ValidationError):
-            psc.full_clean()
+        psc.full_clean()  # must not raise
 
     def test_dac_both_ends_ok(self):
         """PSC DAC FK + zone DAC FK: full_clean() passes."""
@@ -363,25 +329,23 @@ class CrossEndCompatibilityTestCase(TestCase):
         )
         psc.full_clean()
 
-    def test_dac_server_fiber_zone_error(self):
-        """PSC DAC medium + zone MMF medium: raises ValidationError."""
+    def test_dac_server_fiber_zone_no_save_time_error(self):
+        """DIET-475: PSC DAC medium + zone MMF medium: no save-time error; cross-end check removed."""
         psc = _make_base_connection(
             self.server_class, self.nic, self.zone_qsfp112,
             connection_id='fe-c4',
             transceiver_module_type=self.xcvr_dac,
         )
-        with self.assertRaises(ValidationError):
-            psc.full_clean()
+        psc.full_clean()  # must not raise
 
-    def test_fiber_server_dac_zone_error(self):
-        """PSC MMF medium + zone DAC medium: raises ValidationError."""
+    def test_fiber_server_dac_zone_no_save_time_error(self):
+        """DIET-475: PSC MMF medium + zone DAC medium: no save-time error; cross-end check removed."""
         psc = _make_base_connection(
             self.server_class, self.nic, self.zone_dac,
             connection_id='fe-c5',
             transceiver_module_type=self.xcvr_qsfp112_mmf,
         )
-        with self.assertRaises(ValidationError):
-            psc.full_clean()
+        psc.full_clean()  # must not raise
 
     def test_no_zone_transceiver_skips_cross_end_check(self):
         """Zone without transceiver FK: no cross-end check runs."""
@@ -392,29 +356,6 @@ class CrossEndCompatibilityTestCase(TestCase):
         )
         psc.full_clean()  # must not raise
 
-    def test_flat_cage_type_vs_xcvr_fk_mismatch(self):
-        """DIET-450: cage_type='OSFP' flat conflicts with xcvr FK QSFP112: raises ValidationError."""
-        psc = _make_base_connection(
-            self.server_class, self.nic, self.zone_qsfp112,
-            connection_id='fe-c7',
-            transceiver_module_type=self.xcvr_qsfp112_mmf,  # DIET-466: required
-        )
-        psc.cage_type = 'OSFP'  # conflicts with transceiver_module_type.attribute_data['cage_type']='QSFP112'
-        with self.assertRaises(ValidationError) as ctx:
-            psc.full_clean()
-        self.assertIn('cage_type', ctx.exception.message_dict)
-
-    def test_flat_medium_vs_xcvr_fk_mismatch(self):
-        """DIET-450: medium='DAC' flat conflicts with xcvr FK medium='MMF': raises ValidationError."""
-        psc = _make_base_connection(
-            self.server_class, self.nic, self.zone_qsfp112,
-            connection_id='fe-c8',
-            transceiver_module_type=self.xcvr_qsfp112_mmf,  # DIET-466: required
-        )
-        psc.medium = 'DAC'  # conflicts with transceiver_module_type.attribute_data['medium']='MMF'
-        with self.assertRaises(ValidationError) as ctx:
-            psc.full_clean()
-        self.assertIn('medium', ctx.exception.message_dict)
 
 
 # =============================================================================
