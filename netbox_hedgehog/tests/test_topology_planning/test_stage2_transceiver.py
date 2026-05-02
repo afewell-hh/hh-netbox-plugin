@@ -2272,3 +2272,182 @@ class ReachClassPlanSaveValidationTestCase(TestCase):
             transceiver_module_type=self.mt_reg_copper,
         )
         psc.full_clean()  # must not raise
+
+
+# ---------------------------------------------------------------------------
+# Group G: Non-server connection transceiver placement (#457)
+# ---------------------------------------------------------------------------
+# Regression guard: mesh and fabric connections must place switch-side
+# transceiver Modules when the zone has transceiver_module_type set.
+# Prior to the #457 fix, only server connections triggered placement.
+# ---------------------------------------------------------------------------
+
+def _make_mesh_xcvr_plan(cls, name_suffix=''):
+    """
+    Build a minimal 2-switch mesh plan with transceiver FK on the MESH zone.
+    Returns (plan, mesh_sc, mesh_zone, server_sc, server_zone, nic).
+    """
+    plan = TopologyPlan.objects.create(
+        name=f'S2MeshPlan-{name_suffix}-{id(cls)}',
+    )
+    mesh_bo, _ = BreakoutOption.objects.get_or_create(
+        breakout_id='1x400g-g457',
+        defaults={'from_speed': 400, 'logical_ports': 1, 'logical_speed': 400},
+    )
+    mfr, _ = Manufacturer.objects.get_or_create(
+        name='G457Mfg', defaults={'slug': 'g457-mfg'},
+    )
+    sw_dt, _ = DeviceType.objects.get_or_create(
+        manufacturer=mfr, model='G457SW', defaults={'slug': 'g457-sw'},
+    )
+    for port_n in range(1, 9):
+        InterfaceTemplate.objects.get_or_create(
+            device_type=sw_dt, name=f'E1/{port_n}',
+            defaults={'type': '200gbase-x-qsfp112'},
+        )
+    srv_dt, _ = DeviceType.objects.get_or_create(
+        manufacturer=mfr, model='G457SRV', defaults={'slug': 'g457-srv'},
+    )
+    ext, _ = DeviceTypeExtension.objects.update_or_create(
+        device_type=sw_dt,
+        defaults={
+            'native_speed': 400, 'uplink_ports': 0,
+            'supported_breakouts': ['1x400g'], 'mclag_capable': False,
+            'hedgehog_roles': ['server-leaf'],
+        },
+    )
+    mesh_sc = PlanSwitchClass.objects.create(
+        plan=plan, switch_class_id='mesh-leaf',
+        fabric_name=FabricTypeChoices.FRONTEND,
+        fabric_class=FabricClassChoices.MANAGED,
+        hedgehog_role=HedgehogRoleChoices.SERVER_LEAF,
+        device_type_extension=ext,
+        uplink_ports_per_switch=0, mclag_pair=False,
+        topology_mode='mesh', override_quantity=2,
+    )
+    mesh_zone = SwitchPortZone.objects.create(
+        switch_class=mesh_sc, zone_name='mesh-ports',
+        zone_type=PortZoneTypeChoices.MESH, port_spec='1-2',
+        breakout_option=mesh_bo,
+        allocation_strategy=AllocationStrategyChoices.SEQUENTIAL, priority=10,
+        transceiver_module_type=cls.xcvr_mt,
+    )
+    server_zone = SwitchPortZone.objects.create(
+        switch_class=mesh_sc, zone_name='srv-ports',
+        zone_type=PortZoneTypeChoices.SERVER, port_spec='3-8',
+        breakout_option=mesh_bo,
+        allocation_strategy=AllocationStrategyChoices.SEQUENTIAL, priority=20,
+    )
+    nic_mt = get_test_nic_module_type()
+    server_sc = PlanServerClass.objects.create(
+        plan=plan, server_class_id='srv', server_device_type=srv_dt, quantity=2,
+    )
+    nic = PlanServerNIC.objects.create(
+        server_class=server_sc, nic_id='nic-fe', module_type=nic_mt,
+    )
+    PlanServerConnection.objects.create(
+        server_class=server_sc, connection_id='fe',
+        nic=nic, port_index=0, ports_per_connection=1,
+        hedgehog_conn_type=ConnectionTypeChoices.UNBUNDLED,
+        distribution=ConnectionDistributionChoices.ALTERNATING,
+        target_zone=server_zone, speed=400, port_type='data',
+    )
+    return plan, mesh_sc, mesh_zone, server_sc, server_zone, nic
+
+
+class NonServerConnectionTransceiverTestCase(TestCase):
+    """
+    G.1–G.3: Transceiver modules must be placed for mesh connections when the
+    zone has transceiver_module_type set (#457 fix).
+
+    Prior to the fix, _create_switch_transceiver_module was only called inside
+    _create_connections (server path). Mesh, fabric, and uplink paths had no
+    transceiver placement even when the zone FK was set.
+    """
+
+    @classmethod
+    def setUpTestData(cls):
+        _make_s2_fixtures(cls)
+
+    def tearDown(self):
+        for p in list(TopologyPlan.objects.filter(name__startswith='S2MeshPlan-')):
+            _cleanup(p.pk)
+            _delete_plan(p)
+
+    def test_mesh_zone_port_receives_transceiver_module(self):
+        """G.1: After generation, mesh zone cabled ports have switch-side transceiver Modules."""
+        plan, mesh_sc, mesh_zone, *_ = _make_mesh_xcvr_plan(self, 'G1')
+        call_command('populate_transceiver_bays')
+        _generate(plan)
+
+        from dcim.models import CableTermination
+        sw_devices = Device.objects.filter(
+            custom_field_data__hedgehog_plan_id=str(plan.pk),
+        )
+        self.assertGreater(sw_devices.count(), 0)
+
+        for sw in sw_devices:
+            from dcim.models import Interface
+            mesh_ifaces = Interface.objects.filter(
+                device=sw,
+                custom_field_data__hedgehog_zone=mesh_zone.zone_name,
+            )
+            for iface in mesh_ifaces:
+                if not CableTermination.objects.filter(
+                    termination_type__model='interface',
+                    termination_id=iface.pk,
+                ).exists():
+                    continue
+                port_name = iface.name
+                parts = port_name.split('/')
+                cage = '/'.join(parts[:-1]) if len(parts) >= 3 else port_name
+                from dcim.models import ModuleBay
+                bay = ModuleBay.objects.filter(device=sw, name=cage).first()
+                self.assertIsNotNone(
+                    bay, f"ModuleBay '{cage}' must exist on {sw.name}",
+                )
+                xcvr_module = Module.objects.filter(device=sw, module_bay=bay).first()
+                self.assertIsNotNone(
+                    xcvr_module,
+                    f"Mesh port {sw.name}:{cage} must have a transceiver Module after generation (#457 fix)",
+                )
+                self.assertEqual(
+                    xcvr_module.module_type, self.xcvr_mt,
+                    "Mesh port transceiver must match zone.transceiver_module_type",
+                )
+
+    def test_mesh_zone_no_xcvr_fk_no_module(self):
+        """G.2: Mesh ports do NOT get transceiver modules when zone FK is null."""
+        plan, mesh_sc, mesh_zone, *_ = _make_mesh_xcvr_plan(self, 'G2')
+        mesh_zone.transceiver_module_type = None
+        mesh_zone.save()
+        call_command('populate_transceiver_bays')
+        _generate(plan)
+
+        sw_modules = Module.objects.filter(
+            device__custom_field_data__hedgehog_plan_id=str(plan.pk),
+            module_type=self.xcvr_mt,
+        )
+        self.assertEqual(
+            sw_modules.count(), 0,
+            "No transceiver Modules must be created when mesh zone FK is null",
+        )
+
+    def test_mesh_transceiver_idempotent_on_regeneration(self):
+        """G.3: Mesh port transceiver count does not increase on re-generation."""
+        plan, mesh_sc, mesh_zone, *_ = _make_mesh_xcvr_plan(self, 'G3')
+        call_command('populate_transceiver_bays')
+        _generate(plan)
+        count_first = Module.objects.filter(
+            device__custom_field_data__hedgehog_plan_id=str(plan.pk),
+            module_type=self.xcvr_mt,
+        ).count()
+        _generate(plan)
+        count_second = Module.objects.filter(
+            device__custom_field_data__hedgehog_plan_id=str(plan.pk),
+            module_type=self.xcvr_mt,
+        ).count()
+        self.assertEqual(
+            count_first, count_second,
+            "Re-generation must not create duplicate transceiver Modules on mesh ports",
+        )

@@ -632,6 +632,7 @@ class DeviceGenerator:
                             },
                             interface_type=self._interface_type_for_zone(leaf_zone),
                         )
+                        self._create_switch_transceiver_module(leaf, leaf_port.name, leaf_zone)
 
                         spine_interface = self._get_or_create_interface(
                             device=spine,
@@ -645,6 +646,7 @@ class DeviceGenerator:
                             },
                             interface_type=self._interface_type_for_zone(spine_zone),
                         )
+                        self._create_switch_transceiver_module(spine, spine_port.name, spine_zone)
 
                         cable = Cable(
                             a_terminations=[leaf_interface],
@@ -750,6 +752,9 @@ class DeviceGenerator:
                             },
                             interface_type=self._interface_type_for_zone(uplink_zone),
                         )
+                        # Surrogate switches are virtual placeholders; the guard inside
+                        # _create_switch_transceiver_module skips them automatically.
+                        self._create_switch_transceiver_module(surrogate_device, surr_port.name, uplink_zone)
 
                         mgmt_iface = self._get_or_create_interface(
                             device=managed_device,
@@ -763,6 +768,7 @@ class DeviceGenerator:
                             },
                             interface_type=self._interface_type_for_zone(peer_zone),
                         )
+                        self._create_switch_transceiver_module(managed_device, mgmt_port.name, peer_zone)
 
                         cable = Cable(
                             a_terminations=[surr_iface],
@@ -891,6 +897,8 @@ class DeviceGenerator:
                                 },
                                 interface_type=self._interface_type_for_zone(leaf_zone),
                             )
+                            self._create_switch_transceiver_module(leaf, leaf_port.name, leaf_zone)
+
                             spine_iface = self._get_or_create_interface(
                                 device=target_device,
                                 name=spine_port.name,
@@ -903,6 +911,8 @@ class DeviceGenerator:
                                 },
                                 interface_type=self._interface_type_for_zone(peer_zone),
                             )
+                            self._create_switch_transceiver_module(target_device, spine_port.name, peer_zone)
+
                             cable = Cable(
                                 a_terminations=[leaf_iface],
                                 b_terminations=[spine_iface],
@@ -1704,7 +1714,7 @@ class DeviceGenerator:
                         )
 
                     zone, port = ports[0]
-                    return self._get_or_create_interface(
+                    iface = self._get_or_create_interface(
                         device=device,
                         name=port.name,
                         interfaces=mesh_interfaces,
@@ -1716,6 +1726,8 @@ class DeviceGenerator:
                         },
                         interface_type=self._interface_type_for_zone(zone),
                     )
+                    self._create_switch_transceiver_module(device, port.name, zone)
+                    return iface
 
                 iface_a = _pick_mesh_interface(device_a, switch_class_a)
                 iface_b = _pick_mesh_interface(device_b, switch_class_b)
