@@ -6,6 +6,7 @@ Creates NetBox Devices, Interfaces, and Cables from a TopologyPlan.
 
 import logging
 import math
+from contextlib import contextmanager
 from dataclasses import dataclass
 from typing import Iterable
 
@@ -38,6 +39,10 @@ from netbox_hedgehog.models.topology_planning import (
 )
 from netbox_hedgehog.services.port_allocator import PortAllocatorV2
 from netbox_hedgehog.services.port_specification import PortSpecification
+from netbox_hedgehog.services.transceiver_bay_policy import (
+    is_virtual_placeholder_module_type,
+    is_virtual_placeholder_switch_device_type,
+)
 from netbox_hedgehog.services._fabric_utils import _is_managed_device
 from netbox_hedgehog.utils.snapshot_builder import build_plan_snapshot
 
@@ -113,112 +118,167 @@ class DeviceGenerator:
         if device_count > 0:
             devices_to_delete.delete()
 
+    @contextmanager
+    def _cached_custom_field_defaults(self):
+        """
+        Memoize NetBox CustomField default lookups for the duration of generation.
+
+        NetBox's component instantiation path calls
+        ``CustomField.objects.get_defaults_for_model(model)`` repeatedly for the
+        same component models. That helper traverses ObjectType resolution and
+        schema introspection on each call, which becomes a major cost multiplier
+        for large virtual plans. Cache by model class within this run only.
+        """
+        from extras.models.customfields import CustomField
+        from core.models import ObjectType
+        from django.db import connection
+
+        cf_manager_cls = type(CustomField.objects)
+        original_cf = cf_manager_cls.get_defaults_for_model
+        cf_cache: dict[type, dict] = {}
+
+        ot_manager_cls = type(ObjectType.objects)
+        original_ot = ot_manager_cls.get_for_model
+        ot_cache: dict[tuple[type, bool], object] = {}
+
+        introspection = connection.introspection
+        original_table_names = introspection.table_names
+        table_names_cache = None
+
+        def cached_cf(manager_self, model):
+            if model not in cf_cache:
+                cf_cache[model] = original_cf(manager_self, model)
+            return cf_cache[model]
+
+        def cached_ot(manager_self, model, for_concrete_model=True):
+            key = (model if isinstance(model, type) else model.__class__, for_concrete_model)
+            if key not in ot_cache:
+                ot_cache[key] = original_ot(manager_self, model, for_concrete_model=for_concrete_model)
+            return ot_cache[key]
+
+        def cached_table_names(cursor=None, include_views=False):
+            nonlocal table_names_cache
+            if table_names_cache is None:
+                table_names_cache = original_table_names(cursor=cursor, include_views=include_views)
+            return table_names_cache
+
+        cf_manager_cls.get_defaults_for_model = cached_cf
+        ot_manager_cls.get_for_model = cached_ot
+        introspection.table_names = cached_table_names
+        try:
+            yield
+        finally:
+            cf_manager_cls.get_defaults_for_model = original_cf
+            ot_manager_cls.get_for_model = original_ot
+            introspection.table_names = original_table_names
+
     @transaction.atomic
     def generate_all(self) -> GenerationResult:
         """
         Generate devices, interfaces, and cables for the plan.
         Deletes any previously generated objects before creating new ones.
         """
-        # Milestone 1: Starting device generation
-        if self.logger:
-            self.logger.info(f"Starting device generation for plan: {self.plan.name}")
+        with self._cached_custom_field_defaults():
+            # Milestone 1: Starting device generation
+            if self.logger:
+                self.logger.info(f"Starting device generation for plan: {self.plan.name}")
 
-        # Milestone 2: Cleaning up old objects
-        if self.logger:
-            self.logger.info("Cleaning up previously generated objects")
-        self._cleanup_generated_objects()
+            # Milestone 2: Cleaning up old objects
+            if self.logger:
+                self.logger.info("Cleaning up previously generated objects")
+            self._cleanup_generated_objects()
 
-        devices = []
-        interfaces = []
-        cables = []
+            devices = []
+            interfaces = []
+            cables = []
 
-        # Stage 2: missing-bay error accumulator.  Populated by
-        # _create_nested_transceiver_module() and _create_switch_transceiver_module()
-        # when a transceiver FK is set but the required ModuleBay is absent.
-        self._bay_placement_errors: list = []
+            # Stage 2: missing-bay error accumulator.  Populated by
+            # _create_nested_transceiver_module() and _create_switch_transceiver_module()
+            # when a transceiver FK is set but the required ModuleBay is absent.
+            self._bay_placement_errors: list = []
 
-        # #445: Deduplication set for switch-side transceiver placement.
-        # Keyed by (device.pk, cage_name) so that breakout child ports that
-        # share a parent cage (e.g. E1/27/1 and E1/27/2 → cage E1/27) only
-        # trigger one Module placement per physical cage per generation run.
-        self._placed_switch_xcvr_bays: set[tuple[int, str]] = set()
+            # #445: Deduplication set for switch-side transceiver placement.
+            # Keyed by (device.pk, cage_name) so that breakout child ports that
+            # share a parent cage (e.g. E1/27/1 and E1/27/2 → cage E1/27) only
+            # trigger one Module placement per physical cage per generation run.
+            self._placed_switch_xcvr_bays: set[tuple[int, str]] = set()
 
-        # Milestone 3: Creating switch devices
-        if self.logger:
-            self.logger.info("Creating switch devices")
-        switch_devices = self._create_switch_devices(devices)
+            # Milestone 3: Creating switch devices
+            if self.logger:
+                self.logger.info("Creating switch devices")
+            switch_devices = self._create_switch_devices(devices)
 
-        # Milestone 4: Creating server devices
-        if self.logger:
-            self.logger.info("Creating server devices")
-        server_devices = self._create_server_devices(devices)
+            # Milestone 4: Creating server devices
+            if self.logger:
+                self.logger.info("Creating server devices")
+            server_devices = self._create_server_devices(devices)
 
-        # Milestone 5: Creating connections (interfaces and cables)
-        if self.logger:
-            self.logger.info("Creating connections (interfaces and cables)")
-        interfaces, cables = self._create_connections(
-            switch_devices,
-            server_devices,
-        )
+            # Milestone 5: Creating connections (interfaces and cables)
+            if self.logger:
+                self.logger.info("Creating connections (interfaces and cables)")
+            interfaces, cables = self._create_connections(
+                switch_devices,
+                server_devices,
+            )
 
-        # Milestone 5b: Creating mesh connections (explicit mesh fabrics)
-        if self.logger:
-            self.logger.info("Creating mesh connections (if any mesh-mode fabrics)")
-        mesh_ifaces, mesh_cables = self._create_mesh_connections(self.plan, switch_devices)
-        interfaces.extend(mesh_ifaces)
-        cables.extend(mesh_cables)
+            # Milestone 5b: Creating mesh connections (explicit mesh fabrics)
+            if self.logger:
+                self.logger.info("Creating mesh connections (if any mesh-mode fabrics)")
+            mesh_ifaces, mesh_cables = self._create_mesh_connections(self.plan, switch_devices)
+            interfaces.extend(mesh_ifaces)
+            cables.extend(mesh_cables)
 
-        # Milestone 6: Tagging and finalizing
-        if self.logger:
-            self.logger.info("Tagging objects and finalizing generation")
-        self._tag_objects(devices, interfaces, cables)
+            # Milestone 6: Tagging and finalizing
+            if self.logger:
+                self.logger.info("Tagging objects and finalizing generation")
+            self._tag_objects(devices, interfaces, cables)
 
-        # Milestone 7a: Bay-placement hard-fail check (Stage 2, #345).
-        # If any transceiver FK was set but the required ModuleBay was absent,
-        # generation must not succeed.  Collected by placement helpers above.
-        if self._bay_placement_errors:
+            # Milestone 7a: Bay-placement hard-fail check (Stage 2, #345).
+            # If any transceiver FK was set but the required ModuleBay was absent,
+            # generation must not succeed.  Collected by placement helpers above.
+            if self._bay_placement_errors:
+                self._upsert_generation_state(
+                    device_count=len(devices),
+                    interface_count=len(interfaces),
+                    cable_count=len(cables),
+                    status=GenerationStatusChoices.FAILED,
+                    mismatch_report={'bay_errors': self._bay_placement_errors},
+                )
+                return GenerationResult(
+                    device_count=len(devices),
+                    interface_count=len(interfaces),
+                    cable_count=len(cables),
+                )
+
+            # Milestone 7b: Post-generation pairwise transceiver compatibility sweep (Stage 2).
+            # Runs after all objects are created; collects all mismatches before failing.
+            mismatches = self._run_compatibility_sweep()
+            if mismatches:
+                self._upsert_generation_state(
+                    device_count=len(devices),
+                    interface_count=len(interfaces),
+                    cable_count=len(cables),
+                    status=GenerationStatusChoices.FAILED,
+                    mismatch_report={'mismatches': mismatches},
+                )
+                # Return result anyway so callers can inspect counts; status signals failure.
+                return GenerationResult(
+                    device_count=len(devices),
+                    interface_count=len(interfaces),
+                    cable_count=len(cables),
+                )
+
             self._upsert_generation_state(
                 device_count=len(devices),
                 interface_count=len(interfaces),
                 cable_count=len(cables),
-                status=GenerationStatusChoices.FAILED,
-                mismatch_report={'bay_errors': self._bay_placement_errors},
             )
+
             return GenerationResult(
                 device_count=len(devices),
                 interface_count=len(interfaces),
                 cable_count=len(cables),
             )
-
-        # Milestone 7b: Post-generation pairwise transceiver compatibility sweep (Stage 2).
-        # Runs after all objects are created; collects all mismatches before failing.
-        mismatches = self._run_compatibility_sweep()
-        if mismatches:
-            self._upsert_generation_state(
-                device_count=len(devices),
-                interface_count=len(interfaces),
-                cable_count=len(cables),
-                status=GenerationStatusChoices.FAILED,
-                mismatch_report={'mismatches': mismatches},
-            )
-            # Return result anyway so callers can inspect counts; status signals failure.
-            return GenerationResult(
-                device_count=len(devices),
-                interface_count=len(interfaces),
-                cable_count=len(cables),
-            )
-
-        self._upsert_generation_state(
-            device_count=len(devices),
-            interface_count=len(interfaces),
-            cable_count=len(cables),
-        )
-
-        return GenerationResult(
-            device_count=len(devices),
-            interface_count=len(interfaces),
-            cable_count=len(cables),
-        )
 
     def _ensure_default_site(self) -> Site:
         site, _ = Site.objects.get_or_create(
@@ -1027,7 +1087,7 @@ class DeviceGenerator:
         Returns a list of mismatch dicts (empty list = all compatible).
         """
         from netbox_hedgehog.models.topology_planning import PlanServerConnection
-        from netbox_hedgehog.services.transceiver_rules import OUTCOME_MATCH, evaluate_xcvr_pair
+        from netbox_hedgehog.services.transceiver_rules import OUTCOME_BLOCKED, evaluate_xcvr_pair
 
         mismatches = []
         connections = PlanServerConnection.objects.filter(
@@ -1048,7 +1108,9 @@ class DeviceGenerator:
             z_attrs = zone_mt.attribute_data or {}
 
             result = evaluate_xcvr_pair(s_attrs, z_attrs)
-            if result.outcome == OUTCOME_MATCH:
+            # Only true structural blockers (e.g. medium mismatch) fail generation.
+            # needs_review outcomes (cage/connector mismatch) are allowed through.
+            if result.outcome != OUTCOME_BLOCKED:
                 continue
 
             # Map rule reason code to the attribute dimension name used in mismatch_type.
@@ -1331,13 +1393,14 @@ class DeviceGenerator:
 
         Returns the created/existing transceiver Module, or None if FK is null.
         """
+        if is_virtual_placeholder_module_type(getattr(nic_module, 'module_type', None)):
+            # Virtual placeholder NIC ModuleTypes intentionally skip nested
+            # transceiver cage/module instantiation. The plan still retains
+            # transceiver intent for review and compatibility checks.
+            return None
+
         xcvr_mt = getattr(connection, 'transceiver_module_type', None)
         if xcvr_mt is None:
-            logger.warning(
-                'BUG: transceiver_module_type is null on connection %s — '
-                'preflight should have blocked this. Skipping transceiver placement.',
-                getattr(connection, 'pk', '?'),
-            )
             return None
 
         from dcim.models import ModuleBay, Module
@@ -1415,13 +1478,14 @@ class DeviceGenerator:
 
         Returns the created/existing transceiver Module, or None if zone FK is null.
         """
+        if is_virtual_placeholder_switch_device_type(device.device_type):
+            # Virtual placeholder switch types intentionally skip switch-side
+            # transceiver bay/module instantiation. The plan still retains
+            # transceiver intent for review and compatibility checks.
+            return None
+
         xcvr_mt = getattr(zone, 'transceiver_module_type', None)
         if xcvr_mt is None:
-            logger.warning(
-                'BUG: transceiver_module_type is null on zone %s — '
-                'preflight should have blocked this. Skipping transceiver placement.',
-                getattr(zone, 'zone_name', '?'),
-            )
             return None
 
         # #445: resolve breakout child port name to parent physical cage name.

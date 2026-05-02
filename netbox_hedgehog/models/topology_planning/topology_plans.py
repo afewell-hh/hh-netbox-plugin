@@ -23,9 +23,6 @@ from netbox_hedgehog.choices import (
     ConnectionDistributionChoices,
     ConnectionTypeChoices,
     PortTypeChoices,
-    CageTypeChoices,
-    MediumChoices,
-    ConnectorChoices,
     TopologyModeChoices,
 )
 from netbox_hedgehog.services._fabric_utils import _legacy_fabric_name_to_class
@@ -730,38 +727,6 @@ class PlanServerConnection(NetBoxModel):
         help_text="Port type (data, ipmi, pxe)"
     )
 
-    # Transceiver review fields (DIET-294) – flat attributes for engineer review.
-    # These fields are UI-only metadata after Stage 3 (#347) removed the legacy
-    # hedgehog_transceiver_spec write path. Transceiver generation uses the
-    # Module-based model via transceiver_module_type FK (DIET-334 Stage 2).
-
-    cage_type = models.CharField(
-        max_length=20,
-        choices=CageTypeChoices,
-        blank=True,
-        help_text="Transceiver cage/port form factor (e.g., QSFP112, OSFP)",
-    )
-
-    medium = models.CharField(
-        max_length=10,
-        choices=MediumChoices,
-        blank=True,
-        help_text="Physical transmission medium (e.g., MMF, DAC)",
-    )
-
-    connector = models.CharField(
-        max_length=10,
-        choices=ConnectorChoices,
-        blank=True,
-        help_text="Fiber connector type (e.g., LC, MPO-12); blank for DAC/direct-attach",
-    )
-
-    standard = models.CharField(
-        max_length=50,
-        blank=True,
-        help_text="Optical/electrical standard (e.g., 200GBASE-SR4, 400GAUI-8 C2M)",
-    )
-
     # DIET-334 Stage 1: authoritative transceiver ModuleType FK.
     # When set, the generator installs a transceiver Module in a device-level
     # ModuleBay named '{nic_id}-cage-{port_index}' on the server Device.
@@ -867,125 +832,44 @@ class PlanServerConnection(NetBoxModel):
                 'nic': 'NIC is required.'
             })
 
-        # DIET-466: transceiver_module_type is required on every server connection.
-        if not self.transceiver_module_type_id:
-            raise ValidationError({
-                'transceiver_module_type': 'A transceiver ModuleType is required for every server connection.'
-            })
-
         # DIET-334 Stage 1: transceiver_module_type validation.
         self._validate_transceiver_module_type()
 
     def _validate_transceiver_module_type(self):
-        """Validate transceiver_module_type FK and cross-end compatibility."""
-        xcvr_mt = None
-        if self.transceiver_module_type_id:
-            from dcim.models import ModuleTypeProfile
-            xcvr_mt = self.transceiver_module_type
-            # V1: FK must reference a Network Transceiver ModuleType.
-            if not (xcvr_mt.profile_id and xcvr_mt.profile.name == 'Network Transceiver'):
+        """Validate transceiver_module_type FK local invariants (V1, V7)."""
+        if not self.transceiver_module_type_id:
+            return
+        xcvr_mt = self.transceiver_module_type
+        # V1: FK must reference a Network Transceiver ModuleType.
+        if not (xcvr_mt.profile_id and xcvr_mt.profile.name == 'Network Transceiver'):
+            raise ValidationError({
+                'transceiver_module_type': (
+                    "Must reference a ModuleType with the 'Network Transceiver' profile. "
+                    f"'{xcvr_mt.model}' does not have this profile."
+                )
+            })
+        xcvr_ad = xcvr_mt.attribute_data or {}
+        # V7: reach_class must be compatible with medium (copper vs. optical invariant).
+        rc = xcvr_ad.get('reach_class')
+        resolved_medium = xcvr_ad.get('medium')
+        if rc and resolved_medium:
+            _copper_mediums = {'DAC', 'ACC'}
+            _optical_mediums = {'MMF', 'SMF'}
+            _optical_reach_classes = {'SR', 'LR', 'DR'}
+            if rc == 'DAC' and resolved_medium in _optical_mediums:
                 raise ValidationError({
                     'transceiver_module_type': (
-                        "Must reference a ModuleType with the 'Network Transceiver' profile. "
-                        f"'{xcvr_mt.model}' does not have this profile."
+                        f"reach_class 'DAC' is incompatible with medium '{resolved_medium}': "
+                        f"DAC reach class requires a copper medium (DAC or ACC)."
                     )
                 })
-            xcvr_ad = xcvr_mt.attribute_data or {}
-            # V2: flat cage_type must match FK attribute_data if both set.
-            if self.cage_type and xcvr_ad.get('cage_type') and self.cage_type != xcvr_ad['cage_type']:
+            elif rc in _optical_reach_classes and resolved_medium in _copper_mediums:
                 raise ValidationError({
-                    'cage_type': (
-                        f"cage_type '{self.cage_type}' conflicts with transceiver_module_type "
-                        f"attribute_data cage_type '{xcvr_ad['cage_type']}'."
+                    'transceiver_module_type': (
+                        f"reach_class '{rc}' is incompatible with medium '{resolved_medium}': "
+                        f"optical reach classes (SR, LR, DR) require a fiber medium (MMF or SMF)."
                     )
                 })
-            # V3: flat medium must match FK attribute_data if both set.
-            if self.medium and xcvr_ad.get('medium') and self.medium != xcvr_ad['medium']:
-                raise ValidationError({
-                    'medium': (
-                        f"medium '{self.medium}' conflicts with transceiver_module_type "
-                        f"attribute_data medium '{xcvr_ad['medium']}'."
-                    )
-                })
-            # V2c: flat connector must match FK attribute_data connector if both set.
-            if self.connector and xcvr_ad.get('connector') and self.connector != xcvr_ad['connector']:
-                raise ValidationError({
-                    'connector': (
-                        f"connector '{self.connector}' conflicts with transceiver_module_type "
-                        f"attribute_data connector '{xcvr_ad['connector']}'."
-                    )
-                })
-            # V7: reach_class must be compatible with resolved medium (copper vs. optical invariant).
-            rc = xcvr_ad.get('reach_class')
-            resolved_medium = xcvr_ad.get('medium') or self.medium
-            if rc and resolved_medium:
-                _copper_mediums = {'DAC', 'ACC'}
-                _optical_mediums = {'MMF', 'SMF'}
-                _optical_reach_classes = {'SR', 'LR', 'DR'}
-                if rc == 'DAC' and resolved_medium in _optical_mediums:
-                    raise ValidationError({
-                        'transceiver_module_type': (
-                            f"reach_class 'DAC' is incompatible with medium '{resolved_medium}': "
-                            f"DAC reach class requires a copper medium (DAC or ACC)."
-                        )
-                    })
-                elif rc in _optical_reach_classes and resolved_medium in _copper_mediums:
-                    raise ValidationError({
-                        'transceiver_module_type': (
-                            f"reach_class '{rc}' is incompatible with medium '{resolved_medium}': "
-                            f"optical reach classes (SR, LR, DR) require a fiber medium (MMF or SMF)."
-                        )
-                    })
-                # Unknown reach_class values not in either group → null-skip (forward-compatible).
-
-        # Cross-end compatibility against target zone's transceiver FK (V4, V5, V6).
-        if self.target_zone_id:
-            zone_mt = getattr(self.target_zone, 'transceiver_module_type', None)
-            if zone_mt is not None:
-                zone_ad = zone_mt.attribute_data or {}
-                # Resolve all cross-end fields up front (FK takes precedence over flat fields).
-                srv_cage = (xcvr_mt.attribute_data or {}).get('cage_type') if xcvr_mt else self.cage_type
-                srv_medium = (xcvr_mt.attribute_data or {}).get('medium') if xcvr_mt else self.medium
-                srv_connector = (xcvr_mt.attribute_data or {}).get('connector') if xcvr_mt else self.connector
-                zone_cage = zone_ad.get('cage_type')
-                zone_medium = zone_ad.get('medium')
-                zone_connector = zone_ad.get('connector')
-                zone_breakout_topology = zone_ad.get('breakout_topology')
-                # Consult approved-asymmetric-pair registry before cage/connector checks.
-                # Medium (V5/V8) is always enforced independently of this registry.
-                from netbox_hedgehog.transceiver_compat import is_approved_asymmetric_pair
-                _approved = is_approved_asymmetric_pair(
-                    zone_cage, zone_connector, zone_medium, zone_breakout_topology,
-                    srv_cage, srv_connector,
-                )
-                # V4/V6: cage_type must match (unless approved asymmetric pair).
-                if not _approved and srv_cage and zone_cage and srv_cage != zone_cage:
-                    field = 'transceiver_module_type' if xcvr_mt else 'cage_type'
-                    raise ValidationError({
-                        field: (
-                            f"Server-side cage_type '{srv_cage}' does not match "
-                            f"zone transceiver cage_type '{zone_cage}'."
-                        )
-                    })
-                # V5/V8: medium must be compatible (DAC↔DAC, ACC↔ACC, MMF↔MMF, SMF↔SMF).
-                # Always enforced — approved asymmetric pairs do not bypass medium strictness.
-                if srv_medium and zone_medium and srv_medium != zone_medium:
-                    field = 'transceiver_module_type' if xcvr_mt else 'medium'
-                    raise ValidationError({
-                        field: (
-                            f"Server-side medium '{srv_medium}' is incompatible with "
-                            f"zone transceiver medium '{zone_medium}'. Both ends must use the same medium."
-                        )
-                    })
-                # V6: connector must match (unless approved asymmetric pair).
-                if not _approved and srv_connector and zone_connector and srv_connector != zone_connector:
-                    field = 'transceiver_module_type' if xcvr_mt else 'connector'
-                    raise ValidationError({
-                        field: (
-                            f"Server-side connector '{srv_connector}' does not match "
-                            f"zone transceiver connector '{zone_connector}'."
-                        )
-                    })
 
         # Validate nic belongs to the same server_class (not cross-plan, not cross-server-class)
         if self.nic_id and self.server_class_id:

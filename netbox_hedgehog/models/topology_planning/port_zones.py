@@ -117,13 +117,7 @@ class SwitchPortZone(NetBoxModel):
     def clean(self):
         super().clean()
 
-        # DIET-466: transceiver_module_type is required on every zone.
-        if not self.transceiver_module_type_id:
-            raise ValidationError({
-                'transceiver_module_type': 'A transceiver ModuleType is required for every switch port zone.'
-            })
-
-        # DIET-334 V7: transceiver_module_type must have Network Transceiver profile.
+        # DIET-334 V1: transceiver_module_type must have Network Transceiver profile (when set).
         if self.transceiver_module_type_id:
             mt = self.transceiver_module_type
             if not (mt.profile_id and mt.profile.name == 'Network Transceiver'):

@@ -5,8 +5,8 @@ Produces one row per switch-fabric zone (zone_type not in SERVER/OOB).
 Paired rows (peer_zone set) are emitted once using the lower-pk zone as
 "near", avoiding double-emission when both ends carry the peer_zone FK.
 Unpaired zones (standard leaf→spine uplinks with no static peer linkage)
-appear as one-sided rows: outcome=None when xcvr is set, outcome='blocked'
-when transceiver_module_type is null (DIET-466).
+appear as one-sided rows: outcome=None when xcvr is set, outcome='needs_review'
+when transceiver_module_type is null.
 """
 
 from __future__ import annotations
@@ -24,7 +24,7 @@ _FABRIC_ZONE_TYPES = {'uplink', 'mclag', 'peer', 'session', 'fabric', 'mesh'}
 def _xcvr_label(mt) -> str:
     """Description-first label for a ModuleType (used in review rows)."""
     if mt is None:
-        return '⚠ Missing (required)'
+        return '—'
     desc = (mt.description or '').strip()
     if desc:
         return f'{desc} ({mt.model})'
@@ -46,7 +46,7 @@ class SwitchFabricRow:
     far_fabric_name: str | None    # None for unpaired rows
     far_xcvr_label: str | None     # None for unpaired rows
     is_paired: bool
-    outcome: str | None            # None for unpaired+xcvr-ok; 'blocked' for null-xcvr (paired or unpaired); 'match'|'needs_review' for fully-populated paired
+    outcome: str | None            # None for unpaired+xcvr-ok; 'needs_review' for null-xcvr; 'match'|'needs_review'|'blocked' for paired
     reason: str
     edit_near_zone_url: str
     edit_far_zone_url: str | None  # None for unpaired rows
@@ -135,9 +135,9 @@ def build_switch_fabric_review(plan: "TopologyPlan") -> SwitchFabricReviewSummar
             near_attrs = near_xcvr_mt.attribute_data if near_xcvr_mt else None
             far_attrs = far_xcvr_mt.attribute_data if far_xcvr_mt else None
 
-            # DIET-466: null-transceiver gate — blocked when either end is missing.
+            # Null on either end is a review concern, not a generation blocker.
             if near_xcvr_mt is None or far_xcvr_mt is None:
-                outcome, reason = 'blocked', 'Transceiver intent missing — required on both zones'
+                outcome, reason = 'needs_review', 'Transceiver intent missing on one or both zones'
             else:
                 # Use the rule engine: treat near as "server" side, far as "zone" side
                 xcvr_result = evaluate_xcvr_pair(near_attrs, far_attrs)
@@ -168,10 +168,10 @@ def build_switch_fabric_review(plan: "TopologyPlan") -> SwitchFabricReviewSummar
             if zone.pk in far_end_pks or zone.pk in seen_paired_pks:
                 continue
             # Unpaired: one-sided row.
-            # DIET-466: a null transceiver is always invalid — even on unpaired zones.
+            # Null transceiver on an unpaired zone is a review concern, not a blocker.
             if zone.transceiver_module_type is None:
-                unpaired_outcome = 'blocked'
-                unpaired_reason = 'Transceiver intent missing — required on every zone'
+                unpaired_outcome = 'needs_review'
+                unpaired_reason = 'Transceiver intent not specified on this zone'
             else:
                 unpaired_outcome = None
                 unpaired_reason = 'No peer_zone configured — standard leaf→spine zones are unpaired'

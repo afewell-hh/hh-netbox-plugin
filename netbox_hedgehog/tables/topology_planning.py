@@ -404,7 +404,6 @@ class PlanServerConnectionTable(NetBoxTable):
             'nic', 'port_index', 'ports_per_connection', 'hedgehog_conn_type',
             'distribution', 'target_zone', 'speed', 'rail',
             'port_type', 'transceiver_module_type',
-            'cage_type', 'medium', 'connector', 'standard',
             'tags', 'created', 'last_updated',
         )
         default_columns = (

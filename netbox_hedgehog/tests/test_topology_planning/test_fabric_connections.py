@@ -33,6 +33,7 @@ from netbox_hedgehog.choices import (
     PortZoneTypeChoices,
     AllocationStrategyChoices,
 )
+from netbox_hedgehog.tests.test_topology_planning import get_test_server_nic
 
 User = get_user_model()
 
@@ -217,6 +218,8 @@ class FabricConnectionGenerationTestCase(TestCase):
         return PlanServerConnection.objects.create(
             server_class=server_class,
             connection_id='fe',
+            nic=get_test_server_nic(server_class),
+            port_index=0,
             ports_per_connection=1,
             hedgehog_conn_type=ConnectionTypeChoices.UNBUNDLED,
             distribution=ConnectionDistributionChoices.SAME_SWITCH,

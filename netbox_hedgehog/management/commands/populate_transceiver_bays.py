@@ -21,6 +21,10 @@ from django.core.management.base import BaseCommand
 from dcim.models import DeviceType, InterfaceTemplate, ModuleBayTemplate, ModuleType
 
 from netbox_hedgehog.models.topology_planning import DeviceTypeExtension, PlanServerNIC
+from netbox_hedgehog.services.transceiver_bay_policy import (
+    is_virtual_placeholder_module_type,
+    is_virtual_placeholder_switch_device_type,
+)
 
 
 class Command(BaseCommand):
@@ -32,11 +36,21 @@ class Command(BaseCommand):
     def handle(self, *args, **options):
         switch_bays_added = 0
         nic_bays_added = 0
+        switch_bays_removed = 0
+        nic_bays_removed = 0
 
         # --- 1. Switch DeviceTypes ---
         # All DeviceTypes that have a DeviceTypeExtension (HNP-registered switches).
         switch_dt_ids = DeviceTypeExtension.objects.values_list('device_type_id', flat=True)
         for dt in DeviceType.objects.filter(pk__in=switch_dt_ids):
+            if is_virtual_placeholder_switch_device_type(dt):
+                # Virtual placeholder switch types intentionally do not get
+                # switch-side ModuleBayTemplates. Remove any stale bays that
+                # may have been created before this policy existed so future
+                # Device.save() calls avoid the per-port module-bay cost.
+                switch_bays_removed += ModuleBayTemplate.objects.filter(device_type=dt).count()
+                ModuleBayTemplate.objects.filter(device_type=dt).delete()
+                continue
             for it in InterfaceTemplate.objects.filter(device_type=dt):
                 _, created = ModuleBayTemplate.objects.get_or_create(
                     device_type=dt,
@@ -50,6 +64,10 @@ class Command(BaseCommand):
         # All ModuleTypes referenced by at least one PlanServerNIC.
         nic_mt_ids = PlanServerNIC.objects.values_list('module_type_id', flat=True).distinct()
         for mt in ModuleType.objects.filter(pk__in=nic_mt_ids):
+            if is_virtual_placeholder_module_type(mt):
+                nic_bays_removed += ModuleBayTemplate.objects.filter(module_type=mt).count()
+                ModuleBayTemplate.objects.filter(module_type=mt).delete()
+                continue
             # Use natural sort (matching _get_module_interface_by_port_index) so that
             # cage-N indices align correctly for multi-digit port names (p0…p10, etc.).
             def _natural_key(it):
@@ -73,6 +91,8 @@ class Command(BaseCommand):
             self.style.SUCCESS(
                 f'populate_transceiver_bays: '
                 f'{switch_bays_added} switch bay(s) added, '
-                f'{nic_bays_added} NIC cage(s) added.'
+                f'{switch_bays_removed} switch bay(s) removed, '
+                f'{nic_bays_added} NIC cage(s) added, '
+                f'{nic_bays_removed} NIC cage(s) removed.'
             )
         )
