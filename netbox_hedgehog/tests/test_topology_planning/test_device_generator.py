@@ -356,3 +356,225 @@ class RailDomainAllocationTestCase(TestCase):
                 device=sw, tags__slug='hedgehog-generated'
             ).count()
             self.assertEqual(iface_count, 4, f"{sw.name} expected 4 interfaces")
+
+
+# =============================================================================
+# DIET-322: same-switch grouped-per-leaf allocation
+# =============================================================================
+
+class SameSwitchGroupingUnitTestCase(TestCase):
+    """Unit tests for _select_switch_instance() same-switch grouped placement.
+
+    Uses plain Python objects as stand-ins for Device instances — the method
+    only indexes into the list, so no ORM is involved.
+
+    Before DIET-460 the method used server_index % num_switches (round-robin).
+    It must now use contiguous grouped allocation so that single-homed
+    scale-out variants cable correctly (issue #322).
+
+    Current algorithm (base_group_size / extra_servers loop):
+    - extra servers are distributed one at a time to the *first* switches only
+    - 7/2 → sw0 gets 4 (0-3), sw1 gets 3 (4-6)
+    - 3/2 → sw0 gets 2 (0-1), sw1 gets 1 (2)
+    """
+
+    def setUp(self):
+        self.gen = DeviceGenerator.__new__(DeviceGenerator)
+        self.gen.plan = TopologyPlan(name='unit-test-322')
+
+    def _sel(self, switches, server_index, distribution='same-switch',
+             port_index=0, total_servers=None):
+        return self.gen._select_switch_instance(
+            switch_instances=switches,
+            distribution=distribution,
+            server_index=server_index,
+            port_index=port_index,
+            total_servers=total_servers,
+        )
+
+    # --- even split: 8 servers / 2 leaves → 4/4 ---
+
+    def test_8_servers_2_leaves_first_four_on_leaf_a(self):
+        """Servers 0-3 must all land on leaf-a with 8 servers / 2 leaves."""
+        leaves = ['leaf-a', 'leaf-b']
+        for idx in range(4):
+            self.assertEqual(
+                self._sel(leaves, idx, total_servers=8), 'leaf-a',
+                f'server_index={idx} expected leaf-a',
+            )
+
+    def test_8_servers_2_leaves_last_four_on_leaf_b(self):
+        """Servers 4-7 must all land on leaf-b with 8 servers / 2 leaves."""
+        leaves = ['leaf-a', 'leaf-b']
+        for idx in range(4, 8):
+            self.assertEqual(
+                self._sel(leaves, idx, total_servers=8), 'leaf-b',
+                f'server_index={idx} expected leaf-b',
+            )
+
+    # --- odd split: 7 servers / 2 leaves → 4/3 ---
+
+    def test_7_servers_2_leaves_first_switch_gets_extra(self):
+        """7/2: base=3, extra=1 → sw0 gets 4 (0-3), sw1 gets 3 (4-6)."""
+        leaves = ['leaf-a', 'leaf-b']
+        expected = ['leaf-a'] * 4 + ['leaf-b'] * 3
+        for idx, exp in enumerate(expected):
+            self.assertEqual(
+                self._sel(leaves, idx, total_servers=7), exp,
+                f'server_index={idx} expected {exp}',
+            )
+
+    # --- odd split: 3 servers / 2 leaves → 2/1 ---
+
+    def test_3_servers_2_leaves_split_2_1(self):
+        """3/2: base=1, extra=1 → sw0 gets 2 (0-1), sw1 gets 1 (2)."""
+        leaves = ['leaf-a', 'leaf-b']
+        self.assertEqual(self._sel(leaves, 0, total_servers=3), 'leaf-a')
+        self.assertEqual(self._sel(leaves, 1, total_servers=3), 'leaf-a')
+        self.assertEqual(self._sel(leaves, 2, total_servers=3), 'leaf-b')
+
+    # --- single switch always returned ---
+
+    def test_single_switch_always_returned(self):
+        """With one leaf, every server lands there regardless of total_servers."""
+        leaves = ['only-leaf']
+        for idx in range(8):
+            self.assertEqual(self._sel(leaves, idx, total_servers=8), 'only-leaf')
+
+    # --- multi-port same server stays on same leaf ---
+
+    def test_multi_port_same_server_stays_on_same_leaf(self):
+        """port_index does not affect same-switch selection; all ports of server 0 → leaf-a."""
+        leaves = ['leaf-a', 'leaf-b']
+        for port_idx in range(4):
+            self.assertEqual(
+                self._sel(leaves, 0, port_index=port_idx, total_servers=8), 'leaf-a',
+            )
+
+    # --- fallback when total_servers not provided ---
+
+    def test_total_servers_none_falls_back_to_modulo(self):
+        """When total_servers is None the fallback uses server_index % num_switches."""
+        leaves = ['leaf-a', 'leaf-b']
+        # modulo: 0 → a, 1 → b, 2 → a, 3 → b
+        self.assertEqual(self._sel(leaves, 0, total_servers=None), 'leaf-a')
+        self.assertEqual(self._sel(leaves, 1, total_servers=None), 'leaf-b')
+        self.assertEqual(self._sel(leaves, 2, total_servers=None), 'leaf-a')
+        self.assertEqual(self._sel(leaves, 3, total_servers=None), 'leaf-b')
+
+    # --- alternating unchanged (regression guard) ---
+
+    def test_alternating_still_rotates_by_port_index(self):
+        """alternating must rotate by port_index regardless of server_index (regression guard)."""
+        leaves = ['leaf-a', 'leaf-b']
+        self.assertEqual(self._sel(leaves, 0, 'alternating', port_index=0), 'leaf-a')
+        self.assertEqual(self._sel(leaves, 0, 'alternating', port_index=1), 'leaf-b')
+        self.assertEqual(self._sel(leaves, 0, 'alternating', port_index=2), 'leaf-a')
+        # server_index must not affect alternating
+        self.assertEqual(self._sel(leaves, 5, 'alternating', port_index=0), 'leaf-a')
+        self.assertEqual(self._sel(leaves, 5, 'alternating', port_index=1), 'leaf-b')
+
+
+class SameSwitchGroupingIntegrationTestCase(TestCase):
+    """Integration test: generator groups servers per leaf for same-switch (issue #322).
+
+    2 leaf instances, 8 servers, same-switch distribution.
+    Expected: servers 001-004 (sorted) → leaf 01, servers 005-008 → leaf 02.
+    If the algorithm were still round-robin each leaf would get 4 servers
+    interleaved (001,003,005,007 vs 002,004,006,008) — the test would fail.
+    """
+
+    @classmethod
+    def setUpTestData(cls):
+        cls.manufacturer, _ = Manufacturer.objects.get_or_create(
+            name='Celestica-322',
+            defaults={'slug': 'celestica-322'},
+        )
+        cls.server_type, _ = DeviceType.objects.get_or_create(
+            manufacturer=cls.manufacturer,
+            model='SRV-322',
+            defaults={'slug': 'srv-322', 'u_height': 2, 'is_full_depth': True},
+        )
+        cls.switch_type, _ = DeviceType.objects.get_or_create(
+            manufacturer=cls.manufacturer,
+            model='DS5000-322',
+            defaults={'slug': 'ds5000-322', 'u_height': 1, 'is_full_depth': True},
+        )
+        cls.ext, _ = DeviceTypeExtension.objects.get_or_create(
+            device_type=cls.switch_type,
+            defaults={
+                'mclag_capable': False,
+                'hedgehog_roles': ['server-leaf'],
+                'supported_breakouts': [],
+                'native_speed': 400,
+                'uplink_ports': 0,
+            },
+        )
+        cls.plan = TopologyPlan.objects.create(name='SH-Grouping-322')
+        cls.switch_class = PlanSwitchClass.objects.create(
+            plan=cls.plan,
+            switch_class_id='sh-leaf-322',
+            fabric='frontend',
+            hedgehog_role='server-leaf',
+            device_type_extension=cls.ext,
+            uplink_ports_per_switch=0,
+            calculated_quantity=2,
+        )
+        cls.zone = SwitchPortZone.objects.create(
+            switch_class=cls.switch_class,
+            zone_name='sh-server',
+            zone_type='server',
+            port_spec='1-8',
+            allocation_strategy='sequential',
+        )
+        cls.server_class = PlanServerClass.objects.create(
+            plan=cls.plan,
+            server_class_id='sh-compute-322',
+            server_device_type=cls.server_type,
+            quantity=8,
+        )
+        PlanServerConnection.objects.create(
+            server_class=cls.server_class,
+            connection_id='SH-01',
+            nic=get_test_server_nic(cls.server_class),
+            port_index=0,
+            ports_per_connection=1,
+            hedgehog_conn_type='unbundled',
+            distribution='same-switch',
+            target_zone=cls.zone,
+            speed=400,
+        )
+
+    def test_same_switch_groups_servers_per_leaf(self):
+        """8 servers × same-switch × 2 leaves must produce 4/4 grouped cabling, not interleaved."""
+        DeviceGenerator(self.plan).generate_all()
+
+        # Switch interfaces have hedgehog_plan_id set; use that to scope to this plan.
+        # Server interfaces are created via Module instantiation and are not tagged,
+        # so we traverse: plan-scoped switch interface → cable → server interface.
+        plan_id = str(self.plan.pk)
+        server_to_switch: dict[str, str] = {}
+        for sw_iface in Interface.objects.filter(
+            custom_field_data__hedgehog_plan_id=plan_id,
+            device__role__slug='leaf',
+            cable__isnull=False,
+        ).select_related('device'):
+            server_iface = Interface.objects.filter(
+                cable=sw_iface.cable,
+                device__role__slug='server',
+            ).select_related('device').first()
+            if server_iface:
+                server_to_switch[server_iface.device.name] = sw_iface.device.name
+
+        self.assertEqual(len(server_to_switch), 8, 'Expected 8 server→leaf cable mappings')
+
+        servers_sorted = sorted(server_to_switch)
+        group_a = {server_to_switch[s] for s in servers_sorted[:4]}
+        group_b = {server_to_switch[s] for s in servers_sorted[4:]}
+
+        self.assertEqual(len(group_a), 1,
+                         f'Servers 001-004 must all be on one leaf, got {group_a}')
+        self.assertEqual(len(group_b), 1,
+                         f'Servers 005-008 must all be on one leaf, got {group_b}')
+        self.assertNotEqual(group_a, group_b,
+                            'The two server groups must be on different leaves')
