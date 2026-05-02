@@ -576,9 +576,11 @@ class SwitchPortZoneForm(NetBoxModelForm):
             'port_spec': "Port specification (e.g., '1-48', '1-32:2', '1,3,5')",
             'allocation_order': 'JSON list of port numbers used when strategy is custom',
             'transceiver_module_type': (
-                'Intended transceiver/DAC SKU for all ports in this zone. '
+                'Switch-side transceiver for ports in this zone (optional). '
                 'Must have the Network Transceiver profile. '
-                'Used for plan-save compatibility validation (Stage 2: switch-side Module generation).'
+                'For server zones: the server-side pairing transceiver is set on the server connection. '
+                'For uplink/fabric zones: controls switch-to-switch transceivers '
+                '(visible in Switch-Fabric Link Review).'
             ),
         }
 
