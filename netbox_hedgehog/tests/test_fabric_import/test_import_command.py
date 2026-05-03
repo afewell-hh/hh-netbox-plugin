@@ -274,3 +274,138 @@ class ImportFabricProfilesCommandTestCase(TestCase):
         self.assertIn("Extensions created:", output)
         self.assertIn("Interface templates created:", output)
         self.assertIn("Import Complete", output)
+
+
+class ImportFabricProfilesIdempotencyTestCase(TestCase):
+    """
+    Regression tests for DIET-325: import_fabric_profiles must be idempotent when a
+    logically equivalent DeviceType already exists with a human-readable model name.
+
+    The bug: get_or_create(model=profile_name) misses a pre-seeded DeviceType whose
+    model field is "Celestica DS5000" (human-readable) rather than "celestica-ds5000"
+    (profile slug), then tries to INSERT a duplicate slug and hits a UniqueViolation.
+
+    The fix: slug-first lookup — filter(slug=profile_name).first() before get_or_create.
+    """
+
+    def setUp(self):
+        self.fixtures_dir = Path(__file__).parent / "fixtures"
+        self.manufacturer, _ = Manufacturer.objects.get_or_create(
+            name="Celestica",
+            defaults={"slug": "celestica"},
+        )
+
+    def _pre_seed(self, slug, human_readable_model):
+        """
+        Ensure a DeviceType exists with the given slug and human-readable model,
+        simulating pre-seeded data from a different tool/fixture.
+        Uses update to force the model name even if the record already exists
+        (e.g. seeded by load_diet_reference_data with a different model string).
+        """
+        dt, _ = DeviceType.objects.get_or_create(
+            manufacturer=self.manufacturer,
+            slug=slug,
+            defaults={"model": human_readable_model},
+        )
+        if dt.model != human_readable_model:
+            dt.model = human_readable_model
+            dt.save(update_fields=["model"])
+        return dt
+
+    def test_import_reuses_pre_seeded_device_type_with_human_readable_model(self):
+        """
+        DIET-325 root case: pre-seeded DeviceType with human-readable model and matching
+        slug must be reused without IntegrityError.
+        """
+        dt = self._pre_seed("celestica-ds5000", "Celestica DS5000")
+        original_pk = dt.pk
+
+        out = StringIO()
+        # Must not raise UniqueViolation
+        call_command(
+            "import_fabric_profiles",
+            source_dir=str(self.fixtures_dir),
+            profiles="celestica-ds5000",
+            stdout=out,
+        )
+
+        output = out.getvalue()
+        self.assertIn("Import Complete", output)
+        # Original record preserved — no duplicate created
+        self.assertEqual(DeviceType.objects.filter(slug="celestica-ds5000").count(), 1)
+        dt.refresh_from_db()
+        self.assertEqual(dt.pk, original_pk, "Pre-seeded record must be reused, not replaced")
+
+    def test_import_pre_seeded_reports_updated_not_created(self):
+        """Re-using a pre-seeded DeviceType must count as 'updated', not 'created'."""
+        self._pre_seed("celestica-ds5000", "Celestica DS5000")
+
+        out = StringIO()
+        call_command(
+            "import_fabric_profiles",
+            source_dir=str(self.fixtures_dir),
+            profiles="celestica-ds5000",
+            stdout=out,
+        )
+
+        output = out.getvalue()
+        self.assertIn("Device types created: 0", output)
+        self.assertIn("Device types updated: 1", output)
+
+    def test_import_is_idempotent_on_repeated_runs(self):
+        """Running import twice must not create duplicates or raise errors."""
+        self._pre_seed("celestica-ds5000", "Celestica DS5000")
+
+        for _ in range(2):
+            out = StringIO()
+            call_command(
+                "import_fabric_profiles",
+                source_dir=str(self.fixtures_dir),
+                profiles="celestica-ds5000",
+                stdout=out,
+            )
+            self.assertIn("Import Complete", out.getvalue())
+
+        self.assertEqual(DeviceType.objects.filter(slug="celestica-ds5000").count(), 1)
+
+    def test_fresh_import_still_creates_correctly(self):
+        """Normal fresh import (no pre-seeded record) must still create the DeviceType."""
+        DeviceType.objects.filter(
+            manufacturer=self.manufacturer, slug="celestica-ds3000"
+        ).delete()
+
+        out = StringIO()
+        call_command(
+            "import_fabric_profiles",
+            source_dir=str(self.fixtures_dir),
+            profiles="celestica-ds3000",
+            stdout=out,
+        )
+
+        self.assertTrue(
+            DeviceType.objects.filter(
+                manufacturer=self.manufacturer, slug="celestica-ds3000"
+            ).exists()
+        )
+        self.assertIn("Device types created: 1", out.getvalue())
+
+    def test_pre_seeded_human_readable_model_name_preserved(self):
+        """
+        The fix must not silently rename a pre-seeded human-readable model.
+        If "Celestica DS5000" was the pre-existing model name, it stays unchanged.
+        """
+        dt = self._pre_seed("celestica-ds5000", "Celestica DS5000")
+
+        out = StringIO()
+        call_command(
+            "import_fabric_profiles",
+            source_dir=str(self.fixtures_dir),
+            profiles="celestica-ds5000",
+            stdout=out,
+        )
+
+        dt.refresh_from_db()
+        self.assertEqual(
+            dt.model, "Celestica DS5000",
+            "Human-readable model name must not be overwritten by profile slug",
+        )
