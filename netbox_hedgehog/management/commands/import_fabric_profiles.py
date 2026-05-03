@@ -383,12 +383,22 @@ class Command(BaseCommand):
             defaults={"slug": manufacturer_name.lower()}
         )
 
-        # Get or create device type
-        device_type, device_type_created = DeviceType.objects.get_or_create(
-            manufacturer=manufacturer,
-            model=profile_name,
-            defaults={"slug": profile_name}
-        )
+        # Get or create device type.
+        # Slug-first lookup handles pre-seeded DeviceTypes whose model field uses a
+        # human-readable name (e.g. "Celestica DS1000") rather than the profile slug
+        # ("celestica-ds1000").  Without this, get_or_create(model=profile_name) misses
+        # the existing record and the INSERT hits the unique-slug constraint.
+        device_type = DeviceType.objects.filter(
+            manufacturer=manufacturer, slug=profile_name
+        ).first()
+        if device_type:
+            device_type_created = False
+        else:
+            device_type, device_type_created = DeviceType.objects.get_or_create(
+                manufacturer=manufacturer,
+                model=profile_name,
+                defaults={"slug": profile_name}
+            )
 
         # Create or update extension (only fills empty fields)
         # Check if extension already exists to determine created vs updated
