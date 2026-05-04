@@ -361,6 +361,351 @@ def _delete_plan_graph(plan: TopologyPlan) -> None:
     plan.delete()
 
 
+def _apply_test_fixtures(fixtures: dict) -> None:
+    """Bootstrap test-isolation objects from test_fixtures block (v2 only)."""
+    from dcim.models import InterfaceTemplate
+
+    for mfr_slug in {
+        item.get("manufacturer")
+        for section in (fixtures.get("device_types", []) or [])
+        for item in [section]
+        if item.get("manufacturer")
+    } | {
+        item.get("manufacturer")
+        for item in (fixtures.get("module_types", []) or [])
+        if item.get("manufacturer")
+    }:
+        from dcim.models import Manufacturer
+        Manufacturer.objects.get_or_create(
+            slug=mfr_slug,
+            defaults={"name": mfr_slug},
+        )
+
+    from dcim.models import DeviceType, Manufacturer
+    from netbox_hedgehog.models.topology_planning import DeviceTypeExtension
+
+    for item in fixtures.get("device_types", []) or []:
+        mfr_slug = item["manufacturer"]
+        mfr = Manufacturer.objects.get(slug=mfr_slug)
+        dt, _ = DeviceType.objects.get_or_create(
+            slug=item["slug"],
+            defaults={"manufacturer": mfr, "model": item["model"]},
+        )
+        for tpl in item.get("interface_templates", []) or []:
+            InterfaceTemplate.objects.get_or_create(
+                device_type=dt,
+                name=tpl["name"],
+                defaults={"type": tpl.get("type", "other")},
+            )
+        dte_data = item.get("device_type_extension")
+        if dte_data:
+            DeviceTypeExtension.objects.get_or_create(
+                device_type=dt,
+                defaults={
+                    "hedgehog_roles": dte_data.get("hedgehog_roles", []),
+                    "uplink_ports": dte_data.get("uplink_ports"),
+                    "native_speed": dte_data.get("native_speed"),
+                    "supported_breakouts": dte_data.get("supported_breakouts", []),
+                },
+            )
+
+    from dcim.models import ModuleType, Manufacturer
+    for item in fixtures.get("module_types", []) or []:
+        mfr_slug = item["manufacturer"]
+        mfr = Manufacturer.objects.get(slug=mfr_slug)
+        ModuleType.objects.get_or_create(
+            manufacturer=mfr,
+            model=item["model"],
+        )
+
+    from netbox_hedgehog.models.topology_planning import BreakoutOption
+    for item in fixtures.get("breakout_options", []) or []:
+        BreakoutOption.objects.get_or_create(
+            breakout_id=item["breakout_id"],
+            defaults={
+                "from_speed": item.get("from_speed", 0),
+                "logical_ports": item.get("logical_ports", 1),
+                "logical_speed": item.get("logical_speed", 0),
+            },
+        )
+
+
+def _resolve_v2_switch_refs(spec: dict) -> tuple[dict, dict, list[dict]]:
+    """
+    Resolve slug-based references for v2 switch classes and zones.
+    Returns (switch_type_map, breakout_map, errors).
+    switch_type_map: switch_class_id -> (DeviceTypeExtension, fabric_class)
+    breakout_map: breakout_id_str -> BreakoutOption
+    """
+    from dcim.models import DeviceType
+    from netbox_hedgehog.models.topology_planning import BreakoutOption, DeviceTypeExtension
+
+    errors: list[dict] = []
+    dte_map: dict[str, object] = {}
+
+    for item in spec.get("switch_classes", []) or []:
+        sc_id = item.get("switch_class_id", "?")
+        slug = item.get("device_type")
+        if not slug:
+            continue
+        try:
+            dt = DeviceType.objects.get(slug=slug)
+        except DeviceType.DoesNotExist:
+            errors.append({
+                "severity": "error", "code": "missing_reference",
+                "path": f"spec.switch_classes[{sc_id}].device_type",
+                "message": f"DeviceType with slug '{slug}' not found",
+            })
+            continue
+        try:
+            dte = DeviceTypeExtension.objects.get(device_type=dt)
+        except DeviceTypeExtension.DoesNotExist:
+            errors.append({
+                "severity": "error", "code": "missing_dte",
+                "path": f"spec.switch_classes[{sc_id}].device_type",
+                "message": f"No DeviceTypeExtension for DeviceType '{slug}'",
+            })
+            continue
+        dte_map[sc_id] = dte
+
+    breakout_map: dict[str, object] = {}
+    for item in spec.get("switch_port_zones", []) or []:
+        bo_id = item.get("breakout_option")
+        if not bo_id or bo_id in breakout_map:
+            continue
+        try:
+            bo = BreakoutOption.objects.get(breakout_id=bo_id)
+            breakout_map[bo_id] = bo
+        except BreakoutOption.DoesNotExist:
+            zone_name = item.get("zone_name", "?")
+            errors.append({
+                "severity": "error", "code": "missing_reference",
+                "path": f"spec.switch_port_zones[{zone_name}].breakout_option",
+                "message": f"BreakoutOption with breakout_id '{bo_id}' not found",
+            })
+
+    return dte_map, breakout_map, errors
+
+
+def _resolve_v2_server_refs(spec: dict) -> tuple[dict, dict, list[dict]]:
+    """
+    Resolve slug-based references for v2 server classes and NICs.
+    Returns (server_dt_map, module_type_map, errors).
+    """
+    from dcim.models import DeviceType, Manufacturer, ModuleType
+
+    errors: list[dict] = []
+    server_dt_map: dict[str, object] = {}
+
+    for item in spec.get("server_classes", []) or []:
+        sc_id = item.get("server_class_id", "?")
+        slug = item.get("server_device_type")
+        if not slug:
+            continue
+        try:
+            dt = DeviceType.objects.get(slug=slug)
+            server_dt_map[sc_id] = dt
+        except DeviceType.DoesNotExist:
+            errors.append({
+                "severity": "error", "code": "missing_reference",
+                "path": f"spec.server_classes[{sc_id}].server_device_type",
+                "message": f"DeviceType with slug '{slug}' not found",
+            })
+
+    module_type_map: dict[tuple, object] = {}
+    for item in spec.get("server_nics", []) or []:
+        mt_ref = item.get("module_type")
+        if not isinstance(mt_ref, dict):
+            continue
+        mfr_slug = mt_ref.get("manufacturer")
+        model = mt_ref.get("model")
+        key = (mfr_slug, model)
+        if key in module_type_map:
+            continue
+        try:
+            mfr = Manufacturer.objects.get(slug=mfr_slug)
+        except Manufacturer.DoesNotExist:
+            errors.append({
+                "severity": "error", "code": "missing_reference",
+                "path": f"spec.server_nics.module_type.manufacturer",
+                "message": f"Manufacturer with slug '{mfr_slug}' not found",
+            })
+            continue
+        try:
+            mt = ModuleType.objects.get(manufacturer=mfr, model=model)
+            module_type_map[key] = mt
+        except ModuleType.DoesNotExist:
+            errors.append({
+                "severity": "error", "code": "missing_reference",
+                "path": f"spec.server_nics.module_type",
+                "message": f"ModuleType '{model}' for manufacturer '{mfr_slug}' not found",
+            })
+
+    return server_dt_map, module_type_map, errors
+
+
+@transaction.atomic
+def _apply_v2_case(case: dict, *, clean: bool = False, prune: bool = False) -> TopologyPlan:
+    """Apply a validated v2-format case dict."""
+    from netbox_hedgehog.services._fabric_utils import _legacy_fabric_name_to_class
+
+    metadata = case["metadata"]
+    case_id = metadata["case_id"]
+    spec = case["spec"]
+    plan_cfg = spec.get("plan", {})
+    plan_name = plan_cfg["name"]
+    plan_status = plan_cfg.get("status", "draft")
+    plan_description = plan_cfg.get("description", "")
+
+    # Bootstrap test fixtures before reference resolution
+    fixtures = case.get("test_fixtures")
+    if fixtures:
+        _apply_test_fixtures(fixtures)
+
+    # Resolve all slug-based references; raise on first batch of errors
+    dte_map, breakout_map, sw_errors = _resolve_v2_switch_refs(spec)
+    server_dt_map, module_type_map, srv_errors = _resolve_v2_server_refs(spec)
+    all_errors = sw_errors + srv_errors
+    if all_errors:
+        raise TestCaseValidationError(all_errors)
+
+    owned_plans = list(_owned_case_filter(case_id).order_by("id"))
+    if clean and owned_plans:
+        for old in owned_plans:
+            _delete_plan_graph(old)
+        owned_plans = []
+
+    name_match = TopologyPlan.objects.filter(name=plan_name).first()
+    if name_match and (
+        name_match.custom_field_data.get("managed_by") != "yaml"
+        or name_match.custom_field_data.get("yaml_case_id") != case_id
+    ):
+        raise TestCaseValidationError([{
+            "severity": "error", "code": "ownership_conflict",
+            "path": "spec.plan.name",
+            "message": f"Plan name '{plan_name}' is already used by non-YAML-managed data.",
+        }])
+
+    if owned_plans:
+        plan = owned_plans[0]
+        plan.name = plan_name
+        plan.status = plan_status
+        plan.description = plan_description
+    else:
+        plan = TopologyPlan(name=plan_name, status=plan_status, description=plan_description)
+
+    cf = dict(plan.custom_field_data or {})
+    cf["managed_by"] = "yaml"
+    cf["yaml_case_id"] = case_id
+    plan.custom_field_data = cf
+    plan.save()
+
+    # Upsert switch classes
+    switch_map = {}
+    declared_switch_ids = set()
+    for item in spec.get("switch_classes", []) or []:
+        sc_id = item["switch_class_id"]
+        declared_switch_ids.add(sc_id)
+        dte = dte_map.get(sc_id)
+        fabric_name = item.get("fabric_name", "")
+        fabric_class = item.get("fabric_class") or _legacy_fabric_name_to_class(fabric_name)
+        sw, _ = PlanSwitchClass.objects.update_or_create(
+            plan=plan, switch_class_id=sc_id,
+            defaults={
+                "fabric_name": fabric_name,
+                "fabric_class": fabric_class,
+                "hedgehog_role": item.get("hedgehog_role", ""),
+                "device_type_extension": dte,
+                "uplink_ports_per_switch": item.get("uplink_ports_per_switch"),
+                "mclag_pair": item.get("mclag_pair", False),
+                "override_quantity": item.get("override_quantity"),
+                "topology_mode": item.get("topology_mode", ""),
+                "redundancy_type": item.get("redundancy_type", ""),
+                "redundancy_group": item.get("redundancy_group", ""),
+            },
+        )
+        switch_map[sc_id] = sw
+
+    # Upsert port zones
+    declared_zone_keys = set()
+    for item in spec.get("switch_port_zones", []) or []:
+        sc_id = item["switch_class"]
+        zone_name = item["zone_name"]
+        declared_zone_keys.add((sc_id, zone_name))
+        switch = switch_map.get(sc_id)
+        if not switch:
+            raise TestCaseValidationError([{
+                "severity": "error", "code": "unknown_reference",
+                "path": f"spec.switch_port_zones[{zone_name}].switch_class",
+                "message": f"Unknown switch_class ref '{sc_id}'",
+            }])
+        bo_id = item.get("breakout_option")
+        breakout = breakout_map.get(bo_id) if bo_id else None
+        SwitchPortZone.objects.update_or_create(
+            switch_class=switch, zone_name=zone_name,
+            defaults={
+                "zone_type": item["zone_type"],
+                "port_spec": item.get("port_spec", ""),
+                "breakout_option": breakout,
+                "allocation_strategy": item.get("allocation_strategy", "sequential"),
+                "priority": item.get("priority", 100),
+            },
+        )
+
+    # Build zone_map for connection resolution
+    zone_map = {
+        f"{z.switch_class.switch_class_id}/{z.zone_name}": z
+        for z in SwitchPortZone.objects.filter(
+            switch_class__in=list(switch_map.values())
+        ).select_related("switch_class")
+    }
+
+    # Upsert server classes
+    server_map = {}
+    declared_server_ids = set()
+    for item in spec.get("server_classes", []) or []:
+        sc_id = item["server_class_id"]
+        declared_server_ids.add(sc_id)
+        dt = server_dt_map.get(sc_id)
+        sc, _ = PlanServerClass.objects.update_or_create(
+            plan=plan, server_class_id=sc_id,
+            defaults={
+                "description": item.get("description", ""),
+                "category": item.get("category", ""),
+                "quantity": item.get("quantity", 0),
+                "gpus_per_server": item.get("gpus_per_server", 0),
+                "server_device_type": dt,
+            },
+        )
+        server_map[sc_id] = sc
+
+    # Upsert server NICs
+    nic_map: dict[tuple[str, str], PlanServerNIC] = {}
+    for item in spec.get("server_nics", []) or []:
+        sc_id = item["server_class"]
+        nic_id = item["nic_id"]
+        server = server_map.get(sc_id)
+        if not server:
+            raise TestCaseValidationError([{
+                "severity": "error", "code": "unknown_reference",
+                "path": f"spec.server_nics[{nic_id}].server_class",
+                "message": f"Unknown server_class ref '{sc_id}'",
+            }])
+        mt_ref = item.get("module_type")
+        mt = module_type_map.get((mt_ref.get("manufacturer"), mt_ref.get("model"))) if isinstance(mt_ref, dict) else None
+        nic_obj, _ = PlanServerNIC.objects.update_or_create(
+            server_class=server, nic_id=nic_id,
+            defaults={"module_type": mt, "description": item.get("description", "")},
+        )
+        nic_map[(sc_id, nic_id)] = nic_obj
+
+    if prune and len(owned_plans) > 1:
+        for old in owned_plans[1:]:
+            _delete_plan_graph(old)
+
+    return plan
+
+
 @transaction.atomic
 def apply_case(
     case: dict,
@@ -373,6 +718,10 @@ def apply_case(
     Apply one validated YAML case into DIET planning models.
     """
     case = validate_case_dict(case)
+
+    if case.get("apiVersion") == "diet/v2":
+        return _apply_v2_case(case, clean=clean, prune=prune)
+
     case_id = case["meta"]["case_id"]
     plan_name = case["plan"]["name"]
     plan_status = case["plan"]["status"]
