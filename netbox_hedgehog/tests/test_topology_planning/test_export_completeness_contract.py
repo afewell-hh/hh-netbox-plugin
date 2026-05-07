@@ -308,7 +308,6 @@ class ExportCompletenessContractTestCase(TestCase):
                 'from_speed': 800,
                 'logical_ports': 4,
                 'logical_speed': 200,
-                'optic_type': 'QSFP-DD',
             }
         )
         cls.breakout_1x800, _ = BreakoutOption.objects.get_or_create(
@@ -317,7 +316,6 @@ class ExportCompletenessContractTestCase(TestCase):
                 'from_speed': 800,
                 'logical_ports': 1,
                 'logical_speed': 800,
-                'optic_type': 'QSFP-DD',
             }
         )
 

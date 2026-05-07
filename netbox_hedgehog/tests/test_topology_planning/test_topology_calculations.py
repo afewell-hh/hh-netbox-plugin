@@ -1561,7 +1561,6 @@ class UpdatePlanCalculationsErrorHandlingTestCase(TestCase):
                 'from_speed': 800,
                 'logical_ports': 1,
                 'logical_speed': 800,
-                'optic_type': 'QSFP-DD'
             }
         )
         self.breakout_2x400, _ = BreakoutOption.objects.get_or_create(
@@ -1570,7 +1569,6 @@ class UpdatePlanCalculationsErrorHandlingTestCase(TestCase):
                 'from_speed': 800,
                 'logical_ports': 2,
                 'logical_speed': 400,
-                'optic_type': 'QSFP-DD'
             }
         )
         self.breakout_4x200, _ = BreakoutOption.objects.get_or_create(
@@ -1579,7 +1577,6 @@ class UpdatePlanCalculationsErrorHandlingTestCase(TestCase):
                 'from_speed': 800,
                 'logical_ports': 4,
                 'logical_speed': 200,
-                'optic_type': 'QSFP-DD'
             }
         )
 

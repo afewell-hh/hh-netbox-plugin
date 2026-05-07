@@ -67,14 +67,12 @@ class BreakoutOptionUITestCase(TestCase):
             from_speed=800,
             logical_ports=2,
             logical_speed=400,
-            optic_type='QSFP-DD'
         )
         cls.breakout2 = BreakoutOption.objects.create(
             breakout_id='test-4x200g',
             from_speed=800,
             logical_ports=4,
             logical_speed=200,
-            optic_type='QSFP-DD'
         )
 
     def setUp(self):
@@ -102,6 +100,8 @@ class BreakoutOptionUITestCase(TestCase):
 
         self.assertContains(response, 'test-2x400g')
         self.assertContains(response, 'test-4x200g')
+        # RED: Optic Type column must be absent from the list view
+        self.assertNotContains(response, 'Optic Type')
 
     # =========================================================================
     # Detail View Tests
@@ -126,7 +126,8 @@ class BreakoutOptionUITestCase(TestCase):
         self.assertContains(response, '800')  # from_speed
         self.assertContains(response, '2')    # logical_ports
         self.assertContains(response, '400')  # logical_speed
-        self.assertContains(response, 'QSFP-DD')
+        # RED: optic_type must no longer appear in the detail view
+        self.assertNotContains(response, 'Optic Type')
 
     # =========================================================================
     # Add Form Tests
@@ -152,6 +153,8 @@ class BreakoutOptionUITestCase(TestCase):
         self.assertContains(response, 'name="from_speed"')
         self.assertContains(response, 'name="logical_ports"')
         self.assertContains(response, 'name="logical_speed"')
+        # RED: optic_type field must be absent from the form
+        self.assertNotContains(response, 'name="optic_type"')
 
     # =========================================================================
     # Create (POST) Tests
@@ -167,7 +170,6 @@ class BreakoutOptionUITestCase(TestCase):
             'from_speed': 800,
             'logical_ports': 8,
             'logical_speed': 100,
-            'optic_type': 'QSFP-DD',
         }
 
         response = self.client.post(url, data, follow=False)
@@ -272,7 +274,6 @@ class BreakoutOptionUITestCase(TestCase):
             'from_speed': 800,
             'logical_ports': 2,
             'logical_speed': 400,
-            'optic_type': 'QSFP112',  # Changed from QSFP-DD
         }
 
         response = self.client.post(url, data)
@@ -280,9 +281,10 @@ class BreakoutOptionUITestCase(TestCase):
         # Should redirect after successful update
         self.assertEqual(response.status_code, 302)
 
-        # Verify object was updated
+        # Verify object was updated and optic_type field is gone
         self.breakout1.refresh_from_db()
-        self.assertEqual(self.breakout1.optic_type, 'QSFP112')
+        # RED: optic_type field must be removed from BreakoutOption
+        self.assertFalse(hasattr(self.breakout1, 'optic_type'), "BreakoutOption.optic_type field must be removed")
 
     # =========================================================================
     # Delete Tests
@@ -421,14 +423,14 @@ class BreakoutOptionUITestCase(TestCase):
             'from_speed': 800,
             'logical_ports': 2,
             'logical_speed': 400,
-            'optic_type': 'QSFP-UPDATED',  # Changed value
         }
         response = self.client.post(url, data)
         # Should redirect after successful update (302)
         self.assertEqual(response.status_code, 302)
-        # Verify object was updated
+        # Verify object was updated and optic_type field is gone
         self.breakout1.refresh_from_db()
-        self.assertEqual(self.breakout1.optic_type, 'QSFP-UPDATED')
+        # RED: optic_type field must be removed from BreakoutOption
+        self.assertFalse(hasattr(self.breakout1, 'optic_type'), "BreakoutOption.optic_type field must be removed")
 
         # Test delete operation (POST)
         # Create a temp object to delete
@@ -883,7 +885,6 @@ class SwitchPortZoneUITestCase(TestCase):
                 'from_speed': 800,
                 'logical_ports': 4,
                 'logical_speed': 200,
-                'optic_type': 'QSFP-DD',
             }
         )
 

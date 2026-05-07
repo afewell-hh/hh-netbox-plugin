@@ -95,7 +95,6 @@ class OrphanedJobHandlingTestCase(TestCase):
             from_speed=800,
             logical_ports=4,
             logical_speed=200,
-            optic_type='QSFP-DD'
         )
 
         # Create DeviceTypeExtension for switch

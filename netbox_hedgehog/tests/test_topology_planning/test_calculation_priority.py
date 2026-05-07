@@ -65,7 +65,6 @@ class UplinkPortCalculationPriorityTestCase(TestCase):
             from_speed=800,
             logical_ports=1,
             logical_speed=800,
-            optic_type='QSFP-DD'
         )
 
         cls.device_ext = DeviceTypeExtension.objects.create(
@@ -191,7 +190,6 @@ class SwitchQuantityRedundancyRoundingTestCase(TestCase):
             from_speed=800,
             logical_ports=1,
             logical_speed=800,
-            optic_type='QSFP-DD'
         )
 
         cls.device_ext = DeviceTypeExtension.objects.create(
