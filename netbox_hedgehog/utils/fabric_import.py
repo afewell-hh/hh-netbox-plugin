@@ -935,9 +935,6 @@ class FabricProfileImporter:
                 # Parse mode name
                 parsed = self.parse_breakout_mode_name(mode_name)
 
-                # Infer optic type from from_speed
-                optic_type = self._infer_optic_type(parsed["from_speed"])
-
                 # Create if doesn't exist
                 _, created = BreakoutOption.objects.get_or_create(
                     breakout_id=mode_name,
@@ -945,7 +942,6 @@ class FabricProfileImporter:
                         "from_speed": parsed["from_speed"],
                         "logical_ports": parsed["logical_ports"],
                         "logical_speed": parsed["logical_speed"],
-                        "optic_type": optic_type,
                     }
                 )
 
@@ -954,23 +950,3 @@ class FabricProfileImporter:
 
         return created_count
 
-    def _infer_optic_type(self, from_speed: int) -> str:
-        """
-        Infer optic type from native speed.
-
-        Args:
-            from_speed: Native port speed in Gbps
-
-        Returns:
-            Optic type string
-        """
-        if from_speed >= 800:
-            return "QSFP-DD"
-        elif from_speed >= 400:
-            return "QSFP-DD"
-        elif from_speed >= 100:
-            return "QSFP28"
-        elif from_speed >= 40:
-            return "QSFP+"
-        else:
-            return "SFP28"

@@ -108,7 +108,6 @@ class YAMLExportTestBase(TestCase):
                 'from_speed': 800,
                 'logical_ports': 4,
                 'logical_speed': 200,
-                'optic_type': 'QSFP-DD',
             }
         )
         cls.breakout_2x400, _ = BreakoutOption.objects.get_or_create(
@@ -117,7 +116,6 @@ class YAMLExportTestBase(TestCase):
                 'from_speed': 800,
                 'logical_ports': 2,
                 'logical_speed': 400,
-                'optic_type': 'QSFP-DD',
             }
         )
         cls.breakout_1x800, _ = BreakoutOption.objects.get_or_create(
@@ -126,7 +124,6 @@ class YAMLExportTestBase(TestCase):
                 'from_speed': 800,
                 'logical_ports': 1,
                 'logical_speed': 800,
-                'optic_type': 'QSFP-DD',
             }
         )
 

@@ -132,7 +132,6 @@ class ManagedFabricTestBase(TestCase):
                 'from_speed': 800,
                 'logical_ports': 1,
                 'logical_speed': 800,
-                'optic_type': 'QSFP-DD',
             },
         )
 

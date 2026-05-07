@@ -84,7 +84,6 @@ def create_test_breakout_option():
             'from_speed': 800,
             'logical_ports': 4,
             'logical_speed': 200,
-            'optic_type': 'QSFP-DD'
         }
     )
     return breakout

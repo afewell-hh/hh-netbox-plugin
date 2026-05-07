@@ -102,7 +102,6 @@ class DeviceGenerationJobIntegrationTestCase(TestCase):
             from_speed=800,
             logical_ports=2,
             logical_speed=400,
-            optic_type='QSFP-DD'
         )
 
         # Create DeviceTypeExtension for switch

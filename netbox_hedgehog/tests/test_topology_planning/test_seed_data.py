@@ -94,19 +94,18 @@ class SeedDataCommandTestCase(TestCase):
             from_speed=800,
             logical_ports=1,
             logical_speed=800,
-            optic_type='OLD_VALUE'
         )
 
         # Run command - should update the record
         call_command('load_diet_reference_data', stdout=StringIO())
 
-        # Verify the record was updated (optic_type should change to expected value)
+        # Verify the record was updated
         breakout = BreakoutOption.objects.get(breakout_id='1x800g')
         self.assertEqual(breakout.from_speed, 800)
         self.assertEqual(breakout.logical_ports, 1)
         self.assertEqual(breakout.logical_speed, 800)
-        # Command should set optic_type to expected value (QSFP-DD for 800G)
-        self.assertIn('QSFP', breakout.optic_type.upper())
+        # RED: optic_type field must be removed from BreakoutOption
+        self.assertFalse(hasattr(breakout, 'optic_type'), "BreakoutOption.optic_type field must be removed")
 
     def test_command_provides_feedback(self):
         """Test that command prints useful feedback about what it did"""
@@ -303,38 +302,29 @@ class SeedDataRecordTestCase(TestCase):
         call_command('load_diet_reference_data', stdout=StringIO())
 
     def test_seeded_data_count_matches_expected(self):
-        """Test that baseline records were seeded with correct IDs and optic types"""
+        """Test that baseline records were seeded with correct IDs"""
         count = BreakoutOption.objects.count()
         self.assertGreaterEqual(count, 14,
                                 "Should have at least 14 BreakoutOption records")
 
-        # Validate all 14 expected breakout IDs and their optic types
-        expected_breakouts = [
-            ('1x800g', 'QSFP-DD'),
-            ('2x400g', 'QSFP-DD'),
-            ('4x200g', 'QSFP-DD'),
-            ('8x100g', 'QSFP-DD'),
-            ('1x400g', 'QSFP-DD'),
-            ('2x200g', 'QSFP-DD'),
-            ('4x100g', 'QSFP-DD'),
-            ('1x100g', 'QSFP28'),
-            ('1x40g', 'QSFP28'),
-            ('2x50g', 'QSFP28'),
-            ('4x25g', 'QSFP28'),
-            ('4x10g', 'QSFP28'),
-            ('1x10g', 'SFP+'),
-            ('1x1g', 'RJ45'),
+        # Validate all 14 expected breakout IDs exist
+        expected_breakout_ids = [
+            '1x800g', '2x400g', '4x200g', '8x100g',
+            '1x400g', '2x200g', '4x100g',
+            '1x100g', '1x40g', '2x50g', '4x25g', '4x10g',
+            '1x10g', '1x1g',
         ]
 
-        for breakout_id, expected_optic in expected_breakouts:
+        for breakout_id in expected_breakout_ids:
             breakout = BreakoutOption.objects.filter(breakout_id=breakout_id).first()
             self.assertIsNotNone(
                 breakout,
                 f"BreakoutOption '{breakout_id}' should exist"
             )
-            self.assertEqual(
-                breakout.optic_type, expected_optic,
-                f"BreakoutOption '{breakout_id}' should have optic_type '{expected_optic}'"
+            # RED: optic_type field must be removed from BreakoutOption
+            self.assertFalse(
+                hasattr(breakout, 'optic_type'),
+                f"BreakoutOption.optic_type field must be removed (found on '{breakout_id}')"
             )
 
     def test_breakout_options_ordered_correctly(self):

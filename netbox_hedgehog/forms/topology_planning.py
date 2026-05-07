@@ -84,7 +84,6 @@ class BreakoutOptionForm(NetBoxModelForm):
             'from_speed',
             'logical_ports',
             'logical_speed',
-            'optic_type',
             'tags',
         ]
         help_texts = {
@@ -92,7 +91,6 @@ class BreakoutOptionForm(NetBoxModelForm):
             'from_speed': "Native port speed in Gbps (e.g., 800 for 800G)",
             'logical_ports': "Number of logical ports after breakout",
             'logical_speed': "Speed per logical port in Gbps",
-            'optic_type': "Optic type (e.g., 'QSFP-DD', 'QSFP28')",
         }
 
 

@@ -42,18 +42,14 @@ class BreakoutOptionTable(NetBoxTable):
         verbose_name='Port Speed (Gbps)'
     )
 
-    optic_type = tables.Column(
-        verbose_name='Optic Type'
-    )
-
     class Meta(NetBoxTable.Meta):
         model = BreakoutOption
         fields = (
             'pk', 'id', 'breakout_id', 'from_speed', 'logical_ports',
-            'logical_speed', 'optic_type', 'tags', 'created', 'last_updated'
+            'logical_speed', 'tags', 'created', 'last_updated'
         )
         default_columns = (
-            'breakout_id', 'from_speed', 'logical_ports', 'logical_speed', 'optic_type'
+            'breakout_id', 'from_speed', 'logical_ports', 'logical_speed'
         )
 
 
