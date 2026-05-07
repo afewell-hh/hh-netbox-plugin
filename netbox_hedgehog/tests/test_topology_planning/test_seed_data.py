@@ -238,6 +238,22 @@ class SeedDataCommandTestCase(TestCase):
         """load_diet_reference_data should ensure 25G/10G/1G management optics exist."""
         call_command('load_diet_reference_data', stdout=StringIO())
 
+        eps_200g = ModuleType.objects.filter(model='T1-QSFP112-200G-SR2').first()
+        self.assertIsNotNone(eps_200g, "Expected EPS Global 200G QSFP112 SR2 ModuleType")
+        self.assertEqual(eps_200g.profile.name, 'Network Transceiver')
+        self.assertEqual(eps_200g.attribute_data.get('cage_type'), 'QSFP112')
+        self.assertEqual(eps_200g.attribute_data.get('standard'), '200GBASE-SR2')
+
+        eps_400g = ModuleType.objects.filter(model='T1-OSFP112-400G-SR4').first()
+        self.assertIsNotNone(eps_400g, "Expected EPS Global 400G OSFP SR4 ModuleType")
+        self.assertEqual(eps_400g.attribute_data.get('cage_type'), 'OSFP')
+        self.assertEqual(eps_400g.attribute_data.get('standard'), '400GBASE-SR4')
+
+        eps_100g = ModuleType.objects.filter(model='T1-QSFP28-100G-SR4').first()
+        self.assertIsNotNone(eps_100g, "Expected EPS Global 100G QSFP28 SR4 ModuleType")
+        self.assertEqual(eps_100g.attribute_data.get('cage_type'), 'QSFP28')
+        self.assertEqual(eps_100g.attribute_data.get('standard'), '100GBASE-SR4')
+
         sfp28 = ModuleType.objects.filter(model='SFP28-25GBASE-SR').first()
         self.assertIsNotNone(sfp28, "Expected generic 25G SFP28 SR ModuleType")
         self.assertEqual(sfp28.profile.name, 'Network Transceiver')

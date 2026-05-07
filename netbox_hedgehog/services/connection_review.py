@@ -29,6 +29,7 @@ share all of:
 
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
@@ -304,9 +305,21 @@ class ServerLinkRow:
     server_xcvr_label: str   # '—' when null
     zone_xcvr_label: str     # '—' when null
     physical_count: int      # server_class.quantity × ports_per_connection
+    server_transceiver_count: int
     outcome: str             # 'match' | 'needs_review' | 'blocked'
     reason: str
     edit_connection_url: str
+    edit_zone_url: str
+
+
+@dataclass(frozen=True)
+class ZoneOpticAggregate:
+    """Aggregate switch-side optic estimate for one SwitchPortZone."""
+    zone_name: str
+    breakout_id: str | None
+    xcvr_label: str
+    total_logical_links: int
+    required_switch_optics: int
     edit_zone_url: str
 
 
@@ -314,10 +327,89 @@ class ServerLinkRow:
 class ServerLinkReviewSummary:
     """Full Server-Link Review for one TopologyPlan."""
     rows: list = field(default_factory=list)
+    zone_aggregates: list = field(default_factory=list)
     total_connections: int = 0
     match_count: int = 0
     needs_review_count: int = 0
     blocked_count: int = 0
+
+
+def _ceil_div(numerator: int, denominator: int) -> int:
+    if denominator <= 0:
+        return numerator
+    return math.ceil(numerator / denominator)
+
+
+def _select_switch_index(
+    num_switches: int,
+    distribution: str,
+    server_index: int,
+    port_index: int,
+    rail: int | None = None,
+    total_rails: int | None = None,
+    servers_per_domain: int | None = None,
+    total_servers: int | None = None,
+) -> int:
+    """Mirror DeviceGenerator._select_switch_instance() using indices only."""
+    from netbox_hedgehog.choices import ConnectionDistributionChoices
+
+    if num_switches <= 1:
+        return 0
+
+    if distribution == ConnectionDistributionChoices.ALTERNATING:
+        return port_index % num_switches
+
+    if distribution == ConnectionDistributionChoices.SAME_SWITCH:
+        if total_servers is None or total_servers <= 0:
+            return server_index % num_switches
+
+        base_group_size = total_servers // num_switches
+        extra_servers = total_servers % num_switches
+        lower_bound = 0
+
+        for switch_index in range(num_switches):
+            group_size = base_group_size + (1 if switch_index < extra_servers else 0)
+            upper_bound = lower_bound + group_size
+            if server_index < upper_bound:
+                return switch_index
+            lower_bound = upper_bound
+
+        return num_switches - 1
+
+    if distribution == ConnectionDistributionChoices.RAIL_OPTIMIZED:
+        if rail is None or total_rails is None or total_rails <= 0:
+            return 0
+
+        if num_switches >= total_rails:
+            if servers_per_domain is None or servers_per_domain <= 0:
+                return min(rail, num_switches - 1)
+            domain_index = server_index // servers_per_domain
+            switch_index = domain_index * total_rails + rail
+        else:
+            rails_per_switch = math.ceil(total_rails / num_switches)
+            switch_index = rail // rails_per_switch
+
+        return min(switch_index, num_switches - 1)
+
+    return server_index % num_switches
+
+
+def _rail_params(conn, zone, num_switches: int) -> tuple[int | None, int | None]:
+    """Return (total_rails, servers_per_domain) for a rail-optimized connection."""
+    rail_qs = conn.server_class.connections.filter(
+        distribution='rail-optimized',
+        target_zone=zone,
+        rail__isnull=False,
+    )
+    distinct_rails = rail_qs.values_list('rail', flat=True).distinct()
+    total_rails = len(distinct_rails)
+    servers_per_domain = None
+    if total_rails and num_switches >= total_rails:
+        from netbox_hedgehog.services.port_allocator import PortAllocatorV2
+        zone_capacity = PortAllocatorV2().capacity_for_zone(zone)
+        ppc = conn.ports_per_connection or 1
+        servers_per_domain = max(1, zone_capacity // ppc)
+    return total_rails or None, servers_per_domain
 
 
 def build_server_link_review(plan: "TopologyPlan") -> ServerLinkReviewSummary:
@@ -337,6 +429,7 @@ def build_server_link_review(plan: "TopologyPlan") -> ServerLinkReviewSummary:
             'server_class',
             'target_zone',
             'target_zone__breakout_option',
+            'target_zone__switch_class',
             'target_zone__transceiver_module_type',
             'target_zone__transceiver_module_type__manufacturer',
             'transceiver_module_type',
@@ -346,6 +439,11 @@ def build_server_link_review(plan: "TopologyPlan") -> ServerLinkReviewSummary:
     )
 
     rows = []
+    # (zone_pk, switch_index) → logical link count
+    zone_buckets: dict[tuple[int, int], int] = {}
+    # zone_pk → zone metadata for aggregate construction
+    zone_meta: dict[int, dict] = {}
+
     for conn in connections:
         zone = conn.target_zone
         bo = zone.breakout_option if zone else None
@@ -380,11 +478,75 @@ def build_server_link_review(plan: "TopologyPlan") -> ServerLinkReviewSummary:
             server_xcvr_label=_xcvr_label(conn_xcvr_mt),
             zone_xcvr_label=_xcvr_label(zone_xcvr_mt),
             physical_count=conn.server_class.quantity * conn.ports_per_connection,
+            server_transceiver_count=(
+                conn.server_class.quantity * conn.ports_per_connection
+                if conn_xcvr_mt is not None else 0
+            ),
             outcome=outcome,
             reason=reason,
             edit_connection_url=edit_conn_url,
             edit_zone_url=edit_zone_url,
         ))
+
+        # Accumulate zone bucket data for the aggregate table
+        if zone is not None:
+            zone_pk = zone.pk
+            if zone_pk not in zone_meta:
+                zone_meta[zone_pk] = {
+                    'zone_name': zone.zone_name,
+                    'breakout_id': breakout_id,
+                    'logical_ports': bo.logical_ports if bo else 1,
+                    'xcvr_mt': zone_xcvr_mt,
+                    'edit_zone_url': edit_zone_url,
+                }
+
+            num_switches = max(zone.switch_class.effective_quantity, 1)
+            total_rails = None
+            servers_per_domain = None
+            if conn.distribution == 'rail-optimized':
+                total_rails, servers_per_domain = _rail_params(conn, zone, num_switches)
+
+            for server_index in range(conn.server_class.quantity):
+                for port_index in range(conn.ports_per_connection):
+                    switch_index = _select_switch_index(
+                        num_switches=num_switches,
+                        distribution=conn.distribution,
+                        server_index=server_index,
+                        port_index=port_index,
+                        rail=conn.rail,
+                        total_rails=total_rails,
+                        servers_per_domain=servers_per_domain,
+                        total_servers=conn.server_class.quantity,
+                    )
+                    key = (zone_pk, switch_index)
+                    zone_buckets[key] = zone_buckets.get(key, 0) + 1
+
+    # Build one ZoneOpticAggregate per zone, sorted by zone_name
+    zone_aggregates = []
+    for zone_pk, meta in zone_meta.items():
+        logical_ports = max(meta['logical_ports'], 1)
+        xcvr_mt = meta['xcvr_mt']
+        sw_links = {
+            switch_idx: cnt
+            for (zpk, switch_idx), cnt in zone_buckets.items()
+            if zpk == zone_pk
+        }
+        total_logical_links = sum(sw_links.values())
+        if xcvr_mt is None:
+            required_switch_optics = 0
+        else:
+            required_switch_optics = sum(
+                _ceil_div(cnt, logical_ports) for cnt in sw_links.values()
+            )
+        zone_aggregates.append(ZoneOpticAggregate(
+            zone_name=meta['zone_name'],
+            breakout_id=meta['breakout_id'],
+            xcvr_label=_xcvr_label(xcvr_mt),
+            total_logical_links=total_logical_links,
+            required_switch_optics=required_switch_optics,
+            edit_zone_url=meta['edit_zone_url'],
+        ))
+    zone_aggregates.sort(key=lambda a: a.zone_name)
 
     total = len(rows)
     match_count = sum(1 for r in rows if r.outcome == 'match')
@@ -393,6 +555,7 @@ def build_server_link_review(plan: "TopologyPlan") -> ServerLinkReviewSummary:
 
     return ServerLinkReviewSummary(
         rows=rows,
+        zone_aggregates=zone_aggregates,
         total_connections=total,
         match_count=match_count,
         needs_review_count=needs_review_count,

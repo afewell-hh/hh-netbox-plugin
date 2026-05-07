@@ -418,6 +418,13 @@ class TestSwitchFabricReviewIntegration(TestCase):
         resp = self.client.get(self._url())
         self.assertContains(resp, 'one-sided')
 
+    def test_rendered_review_table_uses_standard_table_styling(self):
+        _make_uplink_zone(self.sw, name='sfr-table-style', zone_type=PortZoneTypeChoices.UPLINK)
+        resp = self.client.get(self._url())
+        content = resp.content.decode()
+        self.assertIn('<table class="table table-hover">', content)
+        self.assertNotIn('table-sm', content)
+
     def test_rendered_edit_near_zone_link_in_html(self):
         zone = _make_uplink_zone(self.sw, name='sfr-lnk-ul', zone_type=PortZoneTypeChoices.UPLINK)
         expected = reverse('plugins:netbox_hedgehog:switchportzone_edit', args=[zone.pk])
