@@ -164,44 +164,43 @@ class Command(BaseCommand):
         """
 
         # Breakout configurations from PRD #83
-        # Format: (breakout_id, from_speed, logical_ports, logical_speed, optic_type)
+        # Format: (breakout_id, from_speed, logical_ports, logical_speed)
         breakout_data = [
-            # 800G breakouts (QSFP-DD)
-            ('1x800g', 800, 1, 800, 'QSFP-DD'),
-            ('2x400g', 800, 2, 400, 'QSFP-DD'),
-            ('4x200g', 800, 4, 200, 'QSFP-DD'),
-            ('8x100g', 800, 8, 100, 'QSFP-DD'),
+            # 800G breakouts
+            ('1x800g', 800, 1, 800),
+            ('2x400g', 800, 2, 400),
+            ('4x200g', 800, 4, 200),
+            ('8x100g', 800, 8, 100),
 
-            # 400G breakouts (QSFP-DD)
-            ('1x400g', 400, 1, 400, 'QSFP-DD'),
-            ('2x200g', 400, 2, 200, 'QSFP-DD'),
-            ('4x100g', 400, 4, 100, 'QSFP-DD'),
+            # 400G breakouts
+            ('1x400g', 400, 1, 400),
+            ('2x200g', 400, 2, 200),
+            ('4x100g', 400, 4, 100),
 
-            # 100G breakouts (QSFP28)
-            ('1x100g', 100, 1, 100, 'QSFP28'),
-            ('1x40g', 100, 1, 40, 'QSFP28'),
-            ('4x25g', 100, 4, 25, 'QSFP28'),
-            ('4x10g', 100, 4, 10, 'QSFP28'),
-            ('2x50g', 100, 2, 50, 'QSFP28'),
+            # 100G breakouts
+            ('1x100g', 100, 1, 100),
+            ('1x40g', 100, 1, 40),
+            ('4x25g', 100, 4, 25),
+            ('4x10g', 100, 4, 10),
+            ('2x50g', 100, 2, 50),
 
-            # 1G (RJ45 / SFP)
-            ('1x1g', 1, 1, 1, 'RJ45'),
+            # 1G
+            ('1x1g', 1, 1, 1),
 
-            # 10G (SFP+)
-            ('1x10g', 10, 1, 10, 'SFP+'),
+            # 10G
+            ('1x10g', 10, 1, 10),
         ]
 
         created_count = 0
         updated_count = 0
 
-        for breakout_id, from_speed, logical_ports, logical_speed, optic_type in breakout_data:
+        for breakout_id, from_speed, logical_ports, logical_speed in breakout_data:
             breakout, created = BreakoutOption.objects.update_or_create(
                 breakout_id=breakout_id,
                 defaults={
                     'from_speed': from_speed,
                     'logical_ports': logical_ports,
                     'logical_speed': logical_speed,
-                    'optic_type': optic_type,
                 }
             )
 

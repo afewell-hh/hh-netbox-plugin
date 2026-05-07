@@ -50,12 +50,6 @@ class BreakoutOption(NetBoxModel):
         validators=[MinValueValidator(1)],
         help_text="Speed per logical port in Gbps (e.g., 200 for 4x200G)"
     )
-    optic_type = models.CharField(
-        max_length=50,
-        blank=True,
-        help_text="Optic type for this breakout (e.g., 'QSFP-DD', 'QSFP28')"
-    )
-
     class Meta:
         ordering = ['-from_speed', 'logical_ports']
         verbose_name = "Breakout Option"

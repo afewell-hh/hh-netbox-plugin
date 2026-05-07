@@ -12,7 +12,7 @@ from .. import models
 class BreakoutOptionSerializer(serializers.ModelSerializer):
     class Meta:
         model = models.BreakoutOption
-        fields = ['id', 'breakout_id', 'from_speed', 'logical_ports', 'logical_speed', 'optic_type']
+        fields = ['id', 'breakout_id', 'from_speed', 'logical_ports', 'logical_speed']
 
 
 class DeviceTypeExtensionSerializer(serializers.ModelSerializer):

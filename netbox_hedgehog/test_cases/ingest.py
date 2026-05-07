@@ -249,7 +249,6 @@ def _ensure_reference_data(case: dict, reference_mode: str) -> dict:
             "from_speed": item.get("from_speed", 0),
             "logical_ports": item.get("logical_ports", 1),
             "logical_speed": item.get("logical_speed", 0),
-            "optic_type": item.get("optic_type", ""),
         }
         if reference_mode == "require":
             obj = BreakoutOption.objects.filter(breakout_id=breakout_id).first()
