@@ -83,6 +83,14 @@ class _BOMFixtureMixin:
             manufacturer=cls.mfr_xcvr, model='BOM-XCVR-SPARSE',
             defaults={'attribute_data': {}},
         )
+        cls.xcvr_mt_rj45, _ = ModuleType.objects.get_or_create(
+            manufacturer=cls.mfr_xcvr, model='BOM-XCVR-RJ45',
+            defaults={'attribute_data': {
+                'cage_type': 'RJ45', 'medium': 'Copper',
+                'connector': 'RJ45', 'standard': '1000BASE-T',
+                'reach_class': 'Copper', 'cable_assembly_type': 'none',
+            }},
+        )
         # slug='server' is required — _classify_module checks role.slug == 'server'
         cls.server_role, _ = DeviceRole.objects.get_or_create(
             name='Server', defaults={'slug': 'server', 'color': 'aa1409'},
@@ -240,6 +248,19 @@ class BOMServiceTestCase(_BOMFixtureMixin, TestCase):
         sw_items = [i for i in bom.line_items if i.section == 'switch_transceiver']
         self.assertEqual(sw_items, [])
         self.assertEqual(bom.suppressed_switch_cable_assembly_count, 1)
+
+    # T7b
+    def test_rj45_switch_side_not_suppressed(self):
+        plan = self._make_plan_generated('T7b-rj45-sw')
+        sw = self._switch(plan, 'T7b-sw')
+        self._install_switch_xcvr(sw, 'mgmt0', self.xcvr_mt_rj45)
+        bom = get_plan_bom(plan)
+        sw_items = [i for i in bom.line_items if i.section == 'switch_transceiver']
+        self.assertEqual(len(sw_items), 1)
+        self.assertEqual(sw_items[0].module_type_model, self.xcvr_mt_rj45.model)
+        self.assertEqual(sw_items[0].quantity, 1)
+        self.assertFalse(sw_items[0].is_cable_assembly)
+        self.assertEqual(bom.suppressed_switch_cable_assembly_count, 0)
 
     # T8
     def test_multiple_servers_same_nic_aggregated(self):

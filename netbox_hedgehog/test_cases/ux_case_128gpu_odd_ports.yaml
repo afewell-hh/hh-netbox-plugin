@@ -459,9 +459,21 @@ reference_data:
     - id: xcvr_eps_100g_sr4
       manufacturer: eps_global
       model: T1-QSFP28-100G-SR4
+    - id: xcvr_celestica_100g_dr1
+      manufacturer: celestica
+      model: R4113-75111-DR
+    - id: xcvr_celestica_100g_sr4
+      manufacturer: celestica
+      model: R4113-75210-SR
+    - id: xcvr_celestica_100g_4x25_dac
+      manufacturer: celestica
+      model: R4113-75C41-03
     - id: xcvr_celestica_vr
       manufacturer: celestica
       model: R4113-A9220-VR
+    - id: xcvr_celestica_dr
+      manufacturer: celestica
+      model: R4113-A9221-DR
     - id: xcvr_generic_25g
       manufacturer: generic
       model: SFP28-25GBASE-SR
@@ -585,7 +597,7 @@ switch_port_zones:
     priority: 100
   - switch_class: fe-spine
     zone_name: fe-spine-100G-downlinks
-    transceiver_module_type: xcvr_celestica_vr
+    transceiver_module_type: xcvr_celestica_dr
     zone_type: server
     port_spec: 64
     breakout_option: b_8x100
@@ -617,7 +629,7 @@ switch_port_zones:
     priority: 100
   - switch_class: fe-border-leaf
     zone_name: fe-border-100g-downlinks
-    transceiver_module_type: xcvr_eps_100g_sr4
+    transceiver_module_type: xcvr_celestica_100g_sr4
     zone_type: server
     port_spec: 1-13
     breakout_option: b_1x100
@@ -625,7 +637,7 @@ switch_port_zones:
     priority: 100
   - switch_class: fe-border-leaf
     zone_name: fe-border-25g-shared
-    transceiver_module_type: xcvr_generic_25g
+    transceiver_module_type: xcvr_celestica_100g_4x25_dac
     zone_type: server
     port_spec: 14-16
     breakout_option: b_4x25
@@ -633,7 +645,7 @@ switch_port_zones:
     priority: 100
   - switch_class: fe-border-leaf
     zone_name: fe-border-uplinks
-    transceiver_module_type: xcvr_eps_100g_sr4
+    transceiver_module_type: xcvr_celestica_100g_dr1
     zone_type: uplink
     port_spec: 17-32
     breakout_option: b_1x100

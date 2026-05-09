@@ -253,6 +253,22 @@ class SeedDataCommandTestCase(TestCase):
         self.assertEqual(eps_100g.attribute_data.get('cage_type'), 'QSFP28')
         self.assertEqual(eps_100g.attribute_data.get('standard'), '100GBASE-SR4')
 
+        celestica_100g_dr = ModuleType.objects.filter(model='R4113-75111-DR').first()
+        self.assertIsNotNone(celestica_100g_dr, "Expected Celestica 100G QSFP28 DR1 ModuleType")
+        self.assertEqual(celestica_100g_dr.attribute_data.get('cage_type'), 'QSFP28')
+        self.assertEqual(celestica_100g_dr.attribute_data.get('standard'), '100GBASE-DR')
+
+        celestica_100g_sr = ModuleType.objects.filter(model='R4113-75210-SR').first()
+        self.assertIsNotNone(celestica_100g_sr, "Expected Celestica 100G QSFP28 SR4 ModuleType")
+        self.assertEqual(celestica_100g_sr.attribute_data.get('cage_type'), 'QSFP28')
+        self.assertEqual(celestica_100g_sr.attribute_data.get('standard'), '100GBASE-SR4')
+
+        celestica_100g_4x25_dac = ModuleType.objects.filter(model='R4113-75C41-03').first()
+        self.assertIsNotNone(celestica_100g_4x25_dac, "Expected Celestica 100G -> 4x25G breakout DAC ModuleType")
+        self.assertEqual(celestica_100g_4x25_dac.attribute_data.get('cage_type'), 'QSFP28')
+        self.assertEqual(celestica_100g_4x25_dac.attribute_data.get('standard'), '100GBASE-CR4')
+        self.assertEqual(celestica_100g_4x25_dac.attribute_data.get('breakout_topology'), '4x25g')
+
         sfp28 = ModuleType.objects.filter(model='SFP28-25GBASE-SR').first()
         self.assertIsNotNone(sfp28, "Expected generic 25G SFP28 SR ModuleType")
         self.assertEqual(sfp28.profile.name, 'Network Transceiver')
@@ -266,7 +282,11 @@ class SeedDataCommandTestCase(TestCase):
         rj45 = ModuleType.objects.filter(model='RJ45-1000BASE-T').first()
         self.assertIsNotNone(rj45, "Expected generic 1G copper RJ45 ModuleType")
         self.assertEqual(rj45.attribute_data.get('cage_type'), 'RJ45')
+        self.assertEqual(rj45.attribute_data.get('medium'), 'Copper')
+        self.assertEqual(rj45.attribute_data.get('connector'), 'RJ45')
         self.assertEqual(rj45.attribute_data.get('standard'), '1000BASE-T')
+        self.assertEqual(rj45.attribute_data.get('reach_class'), 'Copper')
+        self.assertEqual(rj45.attribute_data.get('cable_assembly_type'), 'none')
 
     def test_command_seeds_static_nic_module_inventory(self):
         """load_diet_reference_data should ensure static NIC ModuleTypes exist."""
