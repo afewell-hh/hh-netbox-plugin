@@ -20,6 +20,8 @@ Rule evaluation order
 ---------------------
 1. Both None               → match  / R_NULL
 2. One None (asymmetry)    → needs_review / R_INTENT_ASYMMETRY
+2.5 Attached cable assembly (DAC/AOC/ACC) with far-end metadata → compare far-end vs server;
+    returns CABLE_ASSEMBLY_MATCH, CABLE_ASSEMBLY_FAR_END_CAGE_MISMATCH, or MEDIUM_MISMATCH
 3. Medium mismatch         → blocked / R_MEDIUM_MISMATCH   (always enforced)
 4. Approved asymmetric pair → match / R_APPROVED_ASYMMETRIC
 5. Cage type mismatch       → needs_review / R_CAGE_MISMATCH
@@ -82,6 +84,23 @@ R_INTENT_ASYMMETRY = 'R_INTENT_ASYMMETRY'
 R_MEDIUM_MISMATCH = 'R_MEDIUM_MISMATCH'
 R_CAGE_MISMATCH = 'R_CAGE_MISMATCH'
 R_CONNECTOR_MISMATCH = 'R_CONNECTOR_MISMATCH'
+R_CABLE_ASSEMBLY_MATCH = 'R_CABLE_ASSEMBLY_MATCH'
+R_CABLE_ASSEMBLY_FAR_END_CAGE_MISMATCH = 'R_CABLE_ASSEMBLY_FAR_END_CAGE_MISMATCH'
+
+# ---------------------------------------------------------------------------
+# Internal helpers
+# ---------------------------------------------------------------------------
+
+_ATTACHED_ASSEMBLY_TYPES = frozenset(['DAC', 'AOC', 'ACC'])
+
+
+def _is_attached_assembly(zone_attrs: dict) -> bool:
+    """Return True when zone_attrs represents a cable assembly with complete far-end metadata."""
+    return (
+        zone_attrs.get('cable_assembly_type') in _ATTACHED_ASSEMBLY_TYPES
+        and zone_attrs.get('far_end_medium') is not None
+        and zone_attrs.get('far_end_cage_type') is not None
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -172,6 +191,27 @@ def evaluate_xcvr_pair(
         return _RESULT_SERVER_ONLY
 
     # Both sides have attribute data from here on.
+
+    # Rule 2.5: attached cable assembly — compare far-end semantics, not host-side medium.
+    if _is_attached_assembly(zone_attrs):
+        far_medium = zone_attrs['far_end_medium']
+        far_cage = zone_attrs['far_end_cage_type']
+        srv_medium = server_attrs.get('medium')
+        if srv_medium and srv_medium != far_medium:
+            return XcvrRuleResult(
+                OUTCOME_BLOCKED, R_MEDIUM_MISMATCH,
+                f'Medium mismatch: server uses {srv_medium}, cable assembly far-end uses {far_medium}',
+            )
+        srv_cage = server_attrs.get('cage_type')
+        if srv_cage and srv_cage != far_cage:
+            return XcvrRuleResult(
+                OUTCOME_NEEDS_REVIEW, R_CABLE_ASSEMBLY_FAR_END_CAGE_MISMATCH,
+                f'Cage mismatch: server uses {srv_cage}, cable assembly far-end uses {far_cage}',
+            )
+        return XcvrRuleResult(
+            OUTCOME_MATCH, R_CABLE_ASSEMBLY_MATCH,
+            'Cable assembly far-end is compatible with server transceiver',
+        )
 
     # Rule 3: medium mismatch — physically impossible; always blocked.
     srv_medium = server_attrs.get('medium')
