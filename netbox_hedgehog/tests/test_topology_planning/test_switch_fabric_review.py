@@ -1,12 +1,10 @@
 """
-RED tests for DIET-460: Switch-Fabric Link Review service and plan detail panel.
+RED tests for DIET-460 / DIET-505 (Phase 3): Switch-Fabric Link Review service and plan detail panel.
 
-Tests reference build_switch_fabric_review() and SwitchFabricReviewSummary
-from services/switch_fabric_review.py which does not exist yet.
-All tests must fail until Phase 4 GREEN.
+DIET-460 tests (SFR-1 through SFR-14) are GREEN after Phase 4.
+DIET-505 Phase 3 tests (categories A–I) are RED until Phase 4 GREEN implementation.
 
-Acceptance cases from #461 spec:
-  SFR-1  through SFR-14
+Spec source: GitHub issue #508 (Phase 2 tech spec) and #509 (Phase 3 RED).
 """
 
 from django.test import TestCase, Client
@@ -199,7 +197,8 @@ class TestSwitchFabricReviewService(TestCase):
         unpaired = [r for r in summary.rows if not r.is_paired]
         self.assertEqual(len(unpaired), 1)
         self.assertIsNone(unpaired[0].outcome)
-        self.assertIn('peer_zone', unpaired[0].reason.lower())
+        # Eligible managed uplink with no spine candidate now gives inference-aware reason.
+        self.assertIn('frontend', unpaired[0].reason)
 
     # SFR-5b: UPLINK zone, no peer_zone, xcvr null → needs_review (null intent is review concern)
     def test_sfr5b_unpaired_uplink_zone_without_xcvr_is_needs_review(self):
@@ -236,6 +235,38 @@ class TestSwitchFabricReviewService(TestCase):
         summary = self._build()
         paired = [r for r in summary.rows if r.is_paired]
         self.assertEqual(len(paired), 1, 'Expected exactly one paired row (A<B dedup)')
+
+    def test_multiple_near_zones_can_share_one_far_zone(self):
+        sw_gpu = _make_switch_class(self.plan, self.ext, sc_id='sfr-fe-gpu-leaf')
+        sw_storage = _make_switch_class(self.plan, self.ext, sc_id='sfr-fe-storage-leaf')
+        sw_spine = _make_switch_class(self.plan, self.ext, sc_id='sfr-fe-spine')
+
+        far = _make_uplink_zone(
+            sw_spine,
+            name='fe-spine-downlinks',
+            zone_type=PortZoneTypeChoices.FABRIC,
+        )
+        _make_uplink_zone(
+            sw_gpu,
+            name='fe-gpu-leaf-uplinks',
+            zone_type=PortZoneTypeChoices.UPLINK,
+            peer_zone=far,
+        )
+        _make_uplink_zone(
+            sw_storage,
+            name='fe-storage-leaf-uplinks',
+            zone_type=PortZoneTypeChoices.UPLINK,
+            peer_zone=far,
+        )
+
+        summary = self._build()
+        paired = [r for r in summary.rows if r.is_paired]
+        self.assertEqual(len(paired), 2)
+        self.assertCountEqual(
+            [r.near_zone_name for r in paired],
+            ['fe-gpu-leaf-uplinks', 'fe-storage-leaf-uplinks'],
+        )
+        self.assertTrue(all(r.far_zone_name == 'fe-spine-downlinks' for r in paired))
 
     # SFR-7: zones from two fabrics → rows sorted by fabric_name
     def test_sfr7_rows_sorted_by_fabric_name(self):
@@ -457,3 +488,493 @@ class TestSwitchFabricReviewIntegration(TestCase):
         url = reverse('plugins:netbox_hedgehog:switchportzone_edit', args=[zone.pk])
         resp = self.client.get(url)
         self.assertEqual(resp.status_code, 403)
+
+
+# ---------------------------------------------------------------------------
+# DIET-505 Phase 3 RED tests — inferred managed-fabric far-side pairing
+# ---------------------------------------------------------------------------
+
+def _make_spine_class(plan, ext, sc_id='sfr509-spine', fabric=FabricTypeChoices.FRONTEND):
+    """Spine switch class: role=SPINE, uplink_ports_per_switch=0, same managed fabric."""
+    return PlanSwitchClass.objects.create(
+        plan=plan,
+        switch_class_id=sc_id,
+        fabric=fabric,
+        hedgehog_role=HedgehogRoleChoices.SPINE,
+        device_type_extension=ext,
+        uplink_ports_per_switch=0,
+    )
+
+
+def _make_fabric_zone(sw, name='sfr509-fabric-dl', xcvr=None):
+    """FABRIC zone (spine downlinks)."""
+    bo, _ = BreakoutOption.objects.get_or_create(
+        breakout_id='sfr509-1x400g',
+        defaults={'from_speed': 400, 'logical_ports': 1, 'logical_speed': 400},
+    )
+    return SwitchPortZone.objects.create(
+        switch_class=sw,
+        zone_name=name,
+        zone_type=PortZoneTypeChoices.FABRIC,
+        port_spec='1-16',
+        breakout_option=bo,
+        allocation_strategy=AllocationStrategyChoices.SEQUENTIAL,
+        priority=100,
+        transceiver_module_type=xcvr,
+    )
+
+
+def _make_leaf_uplink(sw, name='sfr509-leaf-ul', xcvr=None):
+    """UPLINK zone on a leaf (no peer_zone)."""
+    return _make_uplink_zone(sw, name=name, xcvr=xcvr,
+                             zone_type=PortZoneTypeChoices.UPLINK, peer_zone=None)
+
+
+class TestSwitchFabricInferenceService(TestCase):
+    """
+    RED tests for DIET-505 Phase 3: inferred managed-fabric far-side pairing.
+    All tests must fail until Phase 4 GREEN implementation.
+    Failure mechanisms noted inline.
+    """
+
+    @classmethod
+    def setUpTestData(cls):
+        cls.ext = _make_switch_ext()
+
+    def setUp(self):
+        self.plan = _make_plan(f'SFR509-{self._testMethodName}')
+        self.leaf = _make_switch_class(
+            self.plan, self.ext, sc_id='sfr509-fe-leaf',
+            role=HedgehogRoleChoices.SERVER_LEAF,
+        )
+
+    def _build(self):
+        from netbox_hedgehog.services.switch_fabric_review import build_switch_fabric_review
+        return build_switch_fabric_review(self.plan)
+
+    # --- Category A: explicit rows stay non-inferred ---
+
+    def test_a1_explicit_peer_zone_row_is_not_inferred(self):
+        # FAIL: SwitchFabricRow has no is_inferred field → AttributeError
+        spine = _make_spine_class(self.plan, self.ext, sc_id='sfr509-sp-a1')
+        far = _make_fabric_zone(spine, name='sfr509-sp-a1-dl')
+        _make_uplink_zone(self.leaf, name='sfr509-lf-a1-ul', peer_zone=far)
+        summary = self._build()
+        paired = [r for r in summary.rows if r.is_paired]
+        self.assertEqual(len(paired), 1)
+        self.assertFalse(paired[0].is_inferred)
+
+    def test_a2_inferred_count_present_on_summary(self):
+        # FAIL: SwitchFabricReviewSummary has no inferred_count field → AttributeError
+        summary = self._build()
+        self.assertEqual(summary.inferred_count, 0)
+
+    # --- Category B: single-candidate inferred pairing ---
+
+    def test_b1_single_spine_candidate_produces_inferred_row(self):
+        # FAIL: no inference logic → leaf uplink stays unpaired, is_inferred doesn't exist
+        spine = _make_spine_class(self.plan, self.ext, sc_id='sfr509-sp-b1')
+        _make_fabric_zone(spine, name='sfr509-sp-b1-dl')
+        _make_leaf_uplink(self.leaf, name='sfr509-lf-b1-ul')
+        summary = self._build()
+        inferred = [r for r in summary.rows if getattr(r, 'is_inferred', False)]
+        self.assertEqual(len(inferred), 1)
+        self.assertTrue(inferred[0].is_paired)
+
+    def test_b2_inferred_row_is_inferred_true(self):
+        # FAIL: field doesn't exist → AttributeError when accessing row.is_inferred
+        spine = _make_spine_class(self.plan, self.ext, sc_id='sfr509-sp-b2')
+        _make_fabric_zone(spine, name='sfr509-sp-b2-dl')
+        _make_leaf_uplink(self.leaf, name='sfr509-lf-b2-ul')
+        summary = self._build()
+        rows = summary.rows
+        self.assertEqual(len(rows), 1)
+        self.assertTrue(rows[0].is_inferred)
+
+    def test_b3_spine_fabric_zone_suppressed_when_inferred(self):
+        # FAIL: currently spine FABRIC zone emitted as unpaired row → len(rows)==2 not 1
+        spine = _make_spine_class(self.plan, self.ext, sc_id='sfr509-sp-b3')
+        _make_fabric_zone(spine, name='sfr509-sp-b3-dl')
+        _make_leaf_uplink(self.leaf, name='sfr509-lf-b3-ul')
+        summary = self._build()
+        zone_names = [r.near_zone_name for r in summary.rows]
+        self.assertNotIn('sfr509-sp-b3-dl', zone_names)
+
+    def test_b4_inferred_near_xcvr_null_is_needs_review(self):
+        # FAIL: no inference → leaf stays unpaired; if it were inferred, null xcvr → needs_review
+        xcvr = _get_mmf_xcvr('SFR509-MMF-B4')
+        spine = _make_spine_class(self.plan, self.ext, sc_id='sfr509-sp-b4')
+        _make_fabric_zone(spine, name='sfr509-sp-b4-dl', xcvr=xcvr)
+        _make_leaf_uplink(self.leaf, name='sfr509-lf-b4-ul', xcvr=None)
+        summary = self._build()
+        rows = summary.rows
+        self.assertEqual(len(rows), 1)
+        self.assertEqual(rows[0].outcome, 'needs_review')
+        self.assertTrue(rows[0].is_inferred)
+
+    def test_b5_inferred_far_xcvr_null_is_needs_review(self):
+        # FAIL: no inference
+        xcvr = _get_mmf_xcvr('SFR509-MMF-B5')
+        spine = _make_spine_class(self.plan, self.ext, sc_id='sfr509-sp-b5')
+        _make_fabric_zone(spine, name='sfr509-sp-b5-dl', xcvr=None)
+        _make_leaf_uplink(self.leaf, name='sfr509-lf-b5-ul', xcvr=xcvr)
+        summary = self._build()
+        rows = summary.rows
+        self.assertEqual(len(rows), 1)
+        self.assertEqual(rows[0].outcome, 'needs_review')
+
+    def test_b6_inferred_both_xcvr_match(self):
+        # FAIL: no inference
+        xcvr = _get_mmf_xcvr('SFR509-MMF-B6')
+        spine = _make_spine_class(self.plan, self.ext, sc_id='sfr509-sp-b6')
+        _make_fabric_zone(spine, name='sfr509-sp-b6-dl', xcvr=xcvr)
+        _make_leaf_uplink(self.leaf, name='sfr509-lf-b6-ul', xcvr=xcvr)
+        summary = self._build()
+        rows = summary.rows
+        self.assertEqual(len(rows), 1)
+        self.assertEqual(rows[0].outcome, 'match')
+
+    def test_b7_inferred_row_edit_far_zone_url_set(self):
+        # FAIL: no inference → row is unpaired, edit_far_zone_url=None
+        spine = _make_spine_class(self.plan, self.ext, sc_id='sfr509-sp-b7')
+        spine_zone = _make_fabric_zone(spine, name='sfr509-sp-b7-dl')
+        _make_leaf_uplink(self.leaf, name='sfr509-lf-b7-ul')
+        summary = self._build()
+        rows = summary.rows
+        self.assertEqual(len(rows), 1)
+        expected_url = reverse(
+            'plugins:netbox_hedgehog:switchportzone_edit', args=[spine_zone.pk]
+        )
+        self.assertEqual(rows[0].edit_far_zone_url, expected_url)
+
+    def test_b8_inferred_row_counters(self):
+        # FAIL: inferred_count field missing + paired_count wrong
+        spine = _make_spine_class(self.plan, self.ext, sc_id='sfr509-sp-b8')
+        _make_fabric_zone(spine, name='sfr509-sp-b8-dl')
+        _make_leaf_uplink(self.leaf, name='sfr509-lf-b8-ul')
+        summary = self._build()
+        self.assertEqual(summary.paired_count, 1)
+        self.assertEqual(summary.inferred_count, 1)
+        self.assertEqual(summary.unpaired_count, 0)
+
+    # --- Category C: multi-candidate pool ---
+
+    def test_c1_two_spine_candidates_produce_one_row(self):
+        # FAIL: currently emits 2 unpaired spine rows + 1 unpaired leaf row = 3 rows total
+        sp1 = _make_spine_class(self.plan, self.ext, sc_id='sfr509-sp1-c1')
+        sp2 = _make_spine_class(self.plan, self.ext, sc_id='sfr509-sp2-c1')
+        _make_fabric_zone(sp1, name='sfr509-sp1-c1-dl')
+        _make_fabric_zone(sp2, name='sfr509-sp2-c1-dl')
+        _make_leaf_uplink(self.leaf, name='sfr509-lf-c1-ul')
+        summary = self._build()
+        self.assertEqual(len(summary.rows), 1)
+
+    def test_c2_pool_far_zone_name(self):
+        # FAIL: no inference → far_zone_name is None
+        sp1 = _make_spine_class(self.plan, self.ext, sc_id='sfr509-sp1-c2')
+        sp2 = _make_spine_class(self.plan, self.ext, sc_id='sfr509-sp2-c2')
+        _make_fabric_zone(sp1, name='sfr509-sp1-c2-dl')
+        _make_fabric_zone(sp2, name='sfr509-sp2-c2-dl')
+        _make_leaf_uplink(self.leaf, name='sfr509-lf-c2-ul')
+        summary = self._build()
+        self.assertEqual(len(summary.rows), 1)
+        self.assertEqual(summary.rows[0].far_zone_name, 'managed spine pool (2 zones)')
+
+    def test_c3_pool_edit_far_zone_url_is_none(self):
+        # FAIL: accessing row.is_inferred → AttributeError (also validates pool behavior)
+        sp1 = _make_spine_class(self.plan, self.ext, sc_id='sfr509-sp1-c3')
+        sp2 = _make_spine_class(self.plan, self.ext, sc_id='sfr509-sp2-c3')
+        _make_fabric_zone(sp1, name='sfr509-sp1-c3-dl')
+        _make_fabric_zone(sp2, name='sfr509-sp2-c3-dl')
+        _make_leaf_uplink(self.leaf, name='sfr509-lf-c3-ul')
+        summary = self._build()
+        self.assertEqual(len(summary.rows), 1)
+        row = summary.rows[0]
+        self.assertIsNone(row.edit_far_zone_url)
+        self.assertTrue(row.is_inferred)
+
+    def test_c4_pool_spine_zones_suppressed(self):
+        # FAIL: currently both spine zones appear as unpaired rows
+        sp1 = _make_spine_class(self.plan, self.ext, sc_id='sfr509-sp1-c4')
+        sp2 = _make_spine_class(self.plan, self.ext, sc_id='sfr509-sp2-c4')
+        _make_fabric_zone(sp1, name='sfr509-sp1-c4-dl')
+        _make_fabric_zone(sp2, name='sfr509-sp2-c4-dl')
+        _make_leaf_uplink(self.leaf, name='sfr509-lf-c4-ul')
+        summary = self._build()
+        zone_names = [r.near_zone_name for r in summary.rows]
+        self.assertNotIn('sfr509-sp1-c4-dl', zone_names)
+        self.assertNotIn('sfr509-sp2-c4-dl', zone_names)
+
+    def test_c5_pool_uniform_xcvr_evaluates_normally(self):
+        # FAIL: no inference
+        xcvr = _get_mmf_xcvr('SFR509-C5')
+        sp1 = _make_spine_class(self.plan, self.ext, sc_id='sfr509-sp1-c5')
+        sp2 = _make_spine_class(self.plan, self.ext, sc_id='sfr509-sp2-c5')
+        _make_fabric_zone(sp1, name='sfr509-sp1-c5-dl', xcvr=xcvr)
+        _make_fabric_zone(sp2, name='sfr509-sp2-c5-dl', xcvr=xcvr)
+        _make_leaf_uplink(self.leaf, name='sfr509-lf-c5-ul', xcvr=xcvr)
+        summary = self._build()
+        self.assertEqual(len(summary.rows), 1)
+        self.assertEqual(summary.rows[0].outcome, 'match')
+
+    def test_c6_pool_mixed_xcvr_is_needs_review(self):
+        # FAIL: no inference
+        mmf = _get_mmf_xcvr('SFR509-C6-MMF')
+        smf = _get_smf_xcvr()
+        sp1 = _make_spine_class(self.plan, self.ext, sc_id='sfr509-sp1-c6')
+        sp2 = _make_spine_class(self.plan, self.ext, sc_id='sfr509-sp2-c6')
+        _make_fabric_zone(sp1, name='sfr509-sp1-c6-dl', xcvr=mmf)
+        _make_fabric_zone(sp2, name='sfr509-sp2-c6-dl', xcvr=smf)
+        _make_leaf_uplink(self.leaf, name='sfr509-lf-c6-ul', xcvr=mmf)
+        summary = self._build()
+        self.assertEqual(len(summary.rows), 1)
+        row = summary.rows[0]
+        self.assertEqual(row.outcome, 'needs_review')
+        self.assertIn('transceiver specifications differ', row.reason)
+
+    # --- Category D: genuinely unpaired (no spine candidate) ---
+
+    def test_d1_no_spine_candidate_stays_unpaired(self):
+        # FAIL: is_inferred field doesn't exist → AttributeError
+        _make_leaf_uplink(self.leaf, name='sfr509-lf-d1-ul')
+        summary = self._build()
+        self.assertEqual(len(summary.rows), 1)
+        row = summary.rows[0]
+        self.assertFalse(row.is_paired)
+        self.assertFalse(row.is_inferred)
+
+    def test_d2_no_spine_xcvr_set_reason(self):
+        # FAIL: current reason is 'No peer_zone configured...' not the new fabric-aware string
+        xcvr = _get_mmf_xcvr('SFR509-D2')
+        _make_leaf_uplink(self.leaf, name='sfr509-lf-d2-ul', xcvr=xcvr)
+        summary = self._build()
+        row = summary.rows[0]
+        self.assertIsNone(row.outcome)
+        self.assertIn('No managed spine FABRIC zone found in fabric', row.reason)
+        self.assertIn('frontend', row.reason)
+
+    def test_d3_no_spine_xcvr_null_reason_contains_fabric(self):
+        # FAIL: current reason 'Transceiver intent not specified on this zone' has no fabric name
+        _make_leaf_uplink(self.leaf, name='sfr509-lf-d3-ul', xcvr=None)
+        summary = self._build()
+        row = summary.rows[0]
+        self.assertEqual(row.outcome, 'needs_review')
+        self.assertIn('frontend', row.reason)
+
+    # --- Category E: ineligible zones stay uninferred ---
+
+    def test_e1_zero_uplink_ports_not_inferred(self):
+        # FAIL: is_inferred field doesn't exist → AttributeError
+        leaf0 = PlanSwitchClass.objects.create(
+            plan=self.plan, switch_class_id='sfr509-leaf0-e1',
+            fabric=FabricTypeChoices.FRONTEND,
+            hedgehog_role=HedgehogRoleChoices.SERVER_LEAF,
+            device_type_extension=self.ext,
+            uplink_ports_per_switch=0,
+        )
+        sp = _make_spine_class(self.plan, self.ext, sc_id='sfr509-sp-e1')
+        _make_fabric_zone(sp, name='sfr509-sp-e1-dl')
+        _make_leaf_uplink(leaf0, name='sfr509-leaf0-e1-ul')
+        summary = self._build()
+        leaf_rows = [r for r in summary.rows if r.near_zone_name == 'sfr509-leaf0-e1-ul']
+        self.assertEqual(len(leaf_rows), 1)
+        self.assertFalse(leaf_rows[0].is_paired)
+        self.assertFalse(leaf_rows[0].is_inferred)
+
+    def test_e2_zero_uplink_ports_xcvr_set_reason(self):
+        # FAIL: current reason is 'No peer_zone configured...' not the new string
+        xcvr = _get_mmf_xcvr('SFR509-E2')
+        leaf0 = PlanSwitchClass.objects.create(
+            plan=self.plan, switch_class_id='sfr509-leaf0-e2',
+            fabric=FabricTypeChoices.FRONTEND,
+            hedgehog_role=HedgehogRoleChoices.SERVER_LEAF,
+            device_type_extension=self.ext,
+            uplink_ports_per_switch=0,
+        )
+        _make_leaf_uplink(leaf0, name='sfr509-leaf0-e2-ul', xcvr=xcvr)
+        summary = self._build()
+        row = [r for r in summary.rows if r.near_zone_name == 'sfr509-leaf0-e2-ul'][0]
+        self.assertIn('uplink_ports_per_switch is 0', row.reason)
+
+    def test_e3_zero_uplink_ports_xcvr_null_reason(self):
+        # FAIL: current reason has no 'non-standard uplink' text
+        leaf0 = PlanSwitchClass.objects.create(
+            plan=self.plan, switch_class_id='sfr509-leaf0-e3',
+            fabric=FabricTypeChoices.FRONTEND,
+            hedgehog_role=HedgehogRoleChoices.SERVER_LEAF,
+            device_type_extension=self.ext,
+            uplink_ports_per_switch=0,
+        )
+        _make_leaf_uplink(leaf0, name='sfr509-leaf0-e3-ul', xcvr=None)
+        summary = self._build()
+        row = [r for r in summary.rows if r.near_zone_name == 'sfr509-leaf0-e3-ul'][0]
+        self.assertIn('non-standard uplink', row.reason.lower())
+        self.assertIn('uplink_ports_per_switch is 0', row.reason)
+
+    def test_e4_unmanaged_fabric_not_inferred(self):
+        # FAIL: is_inferred field doesn't exist → AttributeError
+        # OOB_MGMT fabric → fabric_class='unmanaged'
+        unmanaged_leaf = PlanSwitchClass.objects.create(
+            plan=self.plan, switch_class_id='sfr509-oob-leaf-e4',
+            fabric=FabricTypeChoices.OOB_MGMT,
+            hedgehog_role=HedgehogRoleChoices.SERVER_LEAF,
+            device_type_extension=self.ext,
+            uplink_ports_per_switch=4,
+        )
+        _make_leaf_uplink(unmanaged_leaf, name='sfr509-oob-e4-ul')
+        summary = self._build()
+        oob_rows = [r for r in summary.rows if r.near_zone_name == 'sfr509-oob-e4-ul']
+        self.assertEqual(len(oob_rows), 1)
+        self.assertFalse(oob_rows[0].is_inferred)
+
+    # --- Category F: far-end suppression ---
+
+    def test_f1_single_inferred_pair_total_rows_is_one(self):
+        # FAIL: currently emits 2 rows (leaf unpaired + spine unpaired)
+        sp = _make_spine_class(self.plan, self.ext, sc_id='sfr509-sp-f1')
+        _make_fabric_zone(sp, name='sfr509-sp-f1-dl')
+        _make_leaf_uplink(self.leaf, name='sfr509-lf-f1-ul')
+        summary = self._build()
+        self.assertEqual(len(summary.rows), 1)
+
+    def test_f2_two_leaf_uplinks_spine_not_standalone(self):
+        # FAIL: currently 3 rows (2 unpaired leaves + 1 unpaired spine)
+        leaf2 = _make_switch_class(self.plan, self.ext, sc_id='sfr509-leaf2-f2')
+        sp = _make_spine_class(self.plan, self.ext, sc_id='sfr509-sp-f2')
+        _make_fabric_zone(sp, name='sfr509-sp-f2-dl')
+        _make_leaf_uplink(self.leaf, name='sfr509-lf1-f2-ul')
+        _make_leaf_uplink(leaf2, name='sfr509-lf2-f2-ul')
+        summary = self._build()
+        zone_names = [r.near_zone_name for r in summary.rows]
+        self.assertNotIn('sfr509-sp-f2-dl', zone_names)
+        self.assertEqual(len(summary.rows), 2)
+
+    def test_f3_inferred_far_end_not_counted_as_unpaired(self):
+        # FAIL: currently spine zone emitted as unpaired → unpaired_count >= 1
+        sp = _make_spine_class(self.plan, self.ext, sc_id='sfr509-sp-f3')
+        _make_fabric_zone(sp, name='sfr509-sp-f3-dl')
+        _make_leaf_uplink(self.leaf, name='sfr509-lf-f3-ul')
+        summary = self._build()
+        self.assertEqual(summary.unpaired_count, 0)
+
+    # --- Category G: counter semantics ---
+
+    def test_g1_inferred_count_increments_per_row(self):
+        # FAIL: inferred_count field missing
+        leaf2 = _make_switch_class(self.plan, self.ext, sc_id='sfr509-leaf2-g1')
+        sp = _make_spine_class(self.plan, self.ext, sc_id='sfr509-sp-g1')
+        _make_fabric_zone(sp, name='sfr509-sp-g1-dl')
+        _make_leaf_uplink(self.leaf, name='sfr509-lf1-g1-ul')
+        _make_leaf_uplink(leaf2, name='sfr509-lf2-g1-ul')
+        summary = self._build()
+        self.assertEqual(summary.inferred_count, 2)
+
+    def test_g2_inferred_rows_count_in_paired_count(self):
+        # FAIL: currently leaf zone is unpaired → paired_count=0
+        sp = _make_spine_class(self.plan, self.ext, sc_id='sfr509-sp-g2')
+        _make_fabric_zone(sp, name='sfr509-sp-g2-dl')
+        _make_leaf_uplink(self.leaf, name='sfr509-lf-g2-ul')
+        summary = self._build()
+        self.assertEqual(summary.paired_count, 1)
+        self.assertEqual(summary.inferred_count, 1)
+
+    def test_g3_inferred_count_subset_of_paired_count(self):
+        # FAIL: inferred_count field missing
+        sp = _make_spine_class(self.plan, self.ext, sc_id='sfr509-sp-g3')
+        far_explicit = _make_fabric_zone(sp, name='sfr509-sp-g3-explicit')
+        leaf2 = _make_switch_class(self.plan, self.ext, sc_id='sfr509-leaf2-g3')
+        sp2 = _make_spine_class(self.plan, self.ext, sc_id='sfr509-sp2-g3')
+        _make_fabric_zone(sp2, name='sfr509-sp2-g3-inferred')
+        # leaf2 has explicit peer_zone; self.leaf gets inferred pairing with sp2
+        _make_uplink_zone(leaf2, name='sfr509-lf2-g3-ul', peer_zone=far_explicit)
+        _make_leaf_uplink(self.leaf, name='sfr509-lf-g3-ul')
+        summary = self._build()
+        self.assertLessEqual(summary.inferred_count, summary.paired_count)
+        self.assertEqual(summary.inferred_count, 1)
+        self.assertEqual(summary.paired_count, 2)
+
+    # --- Category I: no generator coupling ---
+
+    def test_i1_inference_does_not_modify_peer_zone_fk(self):
+        # Inference is review-only: peer_zone FK on zones must remain unchanged after build.
+        sp = _make_spine_class(self.plan, self.ext, sc_id='sfr509-sp-i1')
+        _make_fabric_zone(sp, name='sfr509-sp-i1-dl')
+        leaf_zone = _make_leaf_uplink(self.leaf, name='sfr509-lf-i1-ul')
+        self._build()
+        leaf_zone.refresh_from_db()
+        self.assertIsNone(leaf_zone.peer_zone)
+
+
+class TestSwitchFabricInferenceUI(TestCase):
+    """
+    RED tests for DIET-505 Phase 3: template badge and pool label rendering.
+    All tests fail until Phase 4 GREEN (template not yet updated).
+    """
+
+    @classmethod
+    def setUpTestData(cls):
+        cls.ext = _make_switch_ext()
+        cls.superuser = User.objects.create_user(
+            username='sfr509-su', password='pass', is_staff=True, is_superuser=True
+        )
+
+    def setUp(self):
+        self.client = Client()
+        self.client.login(username='sfr509-su', password='pass')
+        self.plan = _make_plan(f'SFR509-UI-{self._testMethodName}')
+        self.leaf = _make_switch_class(self.plan, self.ext, sc_id='sfr509-ui-leaf')
+
+    def _url(self):
+        return reverse('plugins:netbox_hedgehog:topologyplan_detail',
+                       kwargs={'pk': self.plan.pk})
+
+    def test_h1_inferred_badge_present_for_inferred_row(self):
+        # FAIL: summary.inferred_count field missing → AttributeError;
+        # also secondary check that the badge text appears in the cell
+        sp = _make_spine_class(self.plan, self.ext, sc_id='sfr509-ui-sp-h1')
+        _make_fabric_zone(sp, name='sfr509-ui-sp-h1-dl')
+        _make_leaf_uplink(self.leaf, name='sfr509-ui-lf-h1-ul')
+        resp = self.client.get(self._url())
+        self.assertEqual(resp.status_code, 200)
+        summary = resp.context['switch_fabric_review']
+        self.assertEqual(summary.inferred_count, 1)
+
+    def test_h2_explicit_only_plan_inferred_count_zero(self):
+        # FAIL: summary.inferred_count field doesn't exist → AttributeError in context access
+        sp = _make_spine_class(self.plan, self.ext, sc_id='sfr509-ui-sp-h2')
+        far = _make_fabric_zone(sp, name='sfr509-ui-sp-h2-dl')
+        _make_uplink_zone(self.leaf, name='sfr509-ui-lf-h2-ul', peer_zone=far)
+        resp = self.client.get(self._url())
+        self.assertEqual(resp.status_code, 200)
+        summary = resp.context['switch_fabric_review']
+        self.assertEqual(summary.inferred_count, 0)
+
+    def test_h3_header_inferred_count_badge_when_nonzero(self):
+        # FAIL: summary.inferred_count field missing → AttributeError;
+        # once field exists, also verify >0 so the header badge would render
+        sp = _make_spine_class(self.plan, self.ext, sc_id='sfr509-ui-sp-h3')
+        _make_fabric_zone(sp, name='sfr509-ui-sp-h3-dl')
+        _make_leaf_uplink(self.leaf, name='sfr509-ui-lf-h3-ul')
+        resp = self.client.get(self._url())
+        self.assertEqual(resp.status_code, 200)
+        summary = resp.context['switch_fabric_review']
+        self.assertGreater(summary.inferred_count, 0)
+
+    def test_h4_explicit_only_no_inferred_badge_in_header(self):
+        # FAIL: inferred_count field missing → AttributeError
+        sp = _make_spine_class(self.plan, self.ext, sc_id='sfr509-ui-sp-h4')
+        far = _make_fabric_zone(sp, name='sfr509-ui-sp-h4-dl')
+        _make_uplink_zone(self.leaf, name='sfr509-ui-lf-h4-ul', peer_zone=far)
+        resp = self.client.get(self._url())
+        summary = resp.context['switch_fabric_review']
+        self.assertEqual(summary.inferred_count, 0)
+
+    def test_h5_pool_label_in_html(self):
+        # FAIL: no inference → pool label never rendered
+        sp1 = _make_spine_class(self.plan, self.ext, sc_id='sfr509-ui-sp1-h5')
+        sp2 = _make_spine_class(self.plan, self.ext, sc_id='sfr509-ui-sp2-h5')
+        _make_fabric_zone(sp1, name='sfr509-ui-sp1-h5-dl')
+        _make_fabric_zone(sp2, name='sfr509-ui-sp2-h5-dl')
+        _make_leaf_uplink(self.leaf, name='sfr509-ui-lf-h5-ul')
+        resp = self.client.get(self._url())
+        self.assertContains(resp, 'managed spine pool')
