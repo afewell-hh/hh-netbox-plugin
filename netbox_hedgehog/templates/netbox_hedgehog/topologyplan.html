@@ -424,17 +424,16 @@
                 </div>
                 {% endif %}
                 <p class="text-muted">
-                    <strong>Note:</strong> Change detection does not cover transceiver module type
-                    assignments made after the last generation run. Treat mismatch counts as the
-                    authoritative freshness signal.
+                    <strong>Note:</strong> This comparison is structural only. It highlights
+                    missing planned modules and generated modules that are no longer represented
+                    in the current plan. It does not attempt to judge module type correctness.
                 </p>
                 <div class="d-flex gap-2 mb-3 flex-wrap">
                     <span class="badge badge-success">{{ plan_bom_comparison.total_matched }} Matched</span>
-                    <span class="badge badge-warning">{{ plan_bom_comparison.total_mismatched }} Type Mismatches</span>
                     <span class="badge badge-danger">{{ plan_bom_comparison.total_expected_not_generated }} Expected Not Generated</span>
                     <span class="badge badge-info">{{ plan_bom_comparison.total_generated_not_in_plan }} Generated Not in Plan</span>
                 </div>
-                {% if plan_bom_comparison.total_mismatched == 0 and plan_bom_comparison.total_expected_not_generated == 0 and plan_bom_comparison.total_generated_not_in_plan == 0 %}
+                {% if plan_bom_comparison.total_expected_not_generated == 0 and plan_bom_comparison.total_generated_not_in_plan == 0 %}
                     <p class="text-success">No mismatches found. All planned modules match generated inventory.</p>
                 {% else %}
                     <div class="table-responsive">
@@ -461,7 +460,7 @@
                                             <td>{{ item.section }}</td>
                                             <td>{{ item.plan_module_type|default:"—" }}</td>
                                             <td>{{ item.generated_module_type|default:"—" }}</td>
-                                            <td><span class="badge {% if item.status == 'type_mismatch' %}badge-warning{% elif item.status == 'expected_not_generated' %}badge-danger{% else %}badge-info{% endif %}">{{ item.status }}</span></td>
+                                            <td><span class="badge {% if item.status == 'expected_not_generated' %}badge-danger{% else %}badge-info{% endif %}">{{ item.status }}</span></td>
                                         </tr>
                                         {% endif %}
                                     {% endfor %}
@@ -785,6 +784,9 @@
                 {% if switch_fabric_review.unpaired_count %}
                     <span class="badge bg-secondary">{{ switch_fabric_review.unpaired_count }} one-sided</span>
                 {% endif %}
+                {% if switch_fabric_review.inferred_count %}
+                    <span class="badge bg-info text-dark">{{ switch_fabric_review.inferred_count }} inferred</span>
+                {% endif %}
             </h5>
             <div class="card-body table-responsive">
                 {% if switch_fabric_review.rows %}
@@ -805,7 +807,7 @@
                         <tbody>
                             {% for row in switch_fabric_review.rows %}
                             <tr>
-                                <td>{{ row.near_zone_name }}</td>
+                                <td>{{ row.near_zone_name }}{% if row.is_inferred %} <span class="badge bg-info text-dark ms-1">inferred</span>{% endif %}</td>
                                 <td>{{ row.near_fabric_name }}</td>
                                 <td>{{ row.near_xcvr_label }}</td>
                                 <td>{{ row.far_zone_name|default:"—" }}</td>
