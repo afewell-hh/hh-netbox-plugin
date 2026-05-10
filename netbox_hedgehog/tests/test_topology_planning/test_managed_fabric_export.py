@@ -1304,3 +1304,256 @@ class TestServerExportScopeConstraint3(ManagedFabricTestBase):
             "server-202c (surrogate only) must NOT appear in Server CRDs "
             "per DIET-254 constraint #3",
         )
+
+
+# =============================================================================
+# DIET-539 RED: MCLAG/ESLAG typing guard for zone='server' dispatch
+# =============================================================================
+
+class MCLAGTypingGuardTestCase(ManagedFabricTestBase):
+    """
+    DIET-539: RED tests for the MCLAG/ESLAG redundancy-type guard.
+
+    The latent bug: _generate_connection_crds dispatch at lines 1415-1436 of
+    yaml_generator.py unconditionally emits spec.mclag / spec.eslag for the
+    'else' (different-switch) arms of the 2-link and 3+-link paths when cables
+    have hedgehog_zone='server'.
+
+    The fix adds _get_switch_redundancy_type() which gates spec.mclag/eslag
+    on actual PlanSwitchClass.redundancy_type intent, falling back to
+    N x spec.unbundled when the type is absent or the lookup fails.
+
+    T1/T3 are GREEN guards (coincidentally correct today, must stay green after fix).
+    T2/T4/T5/T6 are RED (fail today due to the missing guard).
+    """
+
+    def setUp(self):
+        self.client = Client()
+        self.client.force_login(self.user)
+
+    def _make_switch_class(self, plan, switch_device, redundancy_type=None):
+        """Create a PlanSwitchClass with switch_class_id == switch_device.name.
+
+        switch_class_id must equal the device's hedgehog_class CF so the
+        _get_switch_redundancy_type helper can look up the class by name.
+        objects.create() bypasses clean(), so redundancy_group=None is allowed
+        even when redundancy_type is set.
+        """
+        return PlanSwitchClass.objects.create(
+            plan=plan,
+            switch_class_id=switch_device.name,
+            fabric='frontend',
+            hedgehog_role='server-leaf',
+            device_type_extension=self.frontend_ext,
+            calculated_quantity=None,
+            override_quantity=1,
+            uplink_ports_per_switch=0,
+            mclag_pair=False,
+            redundancy_type=redundancy_type,
+        )
+
+    def _get_conn_crds(self, plan):
+        docs = self._get_export_docs(plan)
+        return [d for d in docs if d and d.get('kind') == 'Connection']
+
+    # ------------------------------------------------------------------
+    # T1: True MCLAG 2-link — GREEN guard (must stay green after fix)
+    # ------------------------------------------------------------------
+
+    def test_t1_true_mclag_2link_emits_spec_mclag(self):
+        """T1: 2 zone='server' cables to different switches, both with redundancy_type='mclag'.
+
+        Expected: 1 spec.mclag CRD with 2 links.
+        GREEN today (unconditional mclag path fires); must remain green after fix so the
+        guard does not break the legitimate MCLAG case.
+        """
+        plan = self._make_plan_with_generation_state('T539-T1-MCLAG-2link')
+        sw1 = self._make_switch_device(plan, 'fe-sw-539-t1a', 'frontend')
+        sw2 = self._make_switch_device(plan, 'fe-sw-539-t1b', 'frontend')
+        srv = self._make_server_device(plan, 'srv-539-t1')
+        self._make_switch_class(plan, sw1, redundancy_type='mclag')
+        self._make_switch_class(plan, sw2, redundancy_type='mclag')
+        self._make_cable(plan, self._make_interface(srv, 'eth0'),
+                         self._make_interface(sw1, 'E1/1'))
+        self._make_cable(plan, self._make_interface(srv, 'eth1'),
+                         self._make_interface(sw2, 'E1/1'))
+
+        conns = self._get_conn_crds(plan)
+        mclag_conns = [c for c in conns if 'mclag' in c.get('spec', {})]
+        self.assertEqual(len(mclag_conns), 1,
+            f"True MCLAG 2-link must emit exactly 1 spec.mclag CRD; got {len(mclag_conns)}")
+        self.assertEqual(len(mclag_conns[0]['spec']['mclag']['links']), 2,
+            "spec.mclag.links must have exactly 2 entries")
+
+    # ------------------------------------------------------------------
+    # T2: Non-MCLAG 2-link — RED (must emit 2 x spec.unbundled, not spec.mclag)
+    # ------------------------------------------------------------------
+
+    def test_t2_non_mclag_2link_emits_unbundled(self):
+        """T2: 2 zone='server' cables to different switches, redundancy_type=None.
+
+        Expected: 2 spec.unbundled CRDs, 0 spec.mclag CRDs.
+        RED today: current code unconditionally emits spec.mclag for the 2-link
+        different-switch arm regardless of PlanSwitchClass.redundancy_type.
+        Implementation seam: _get_switch_redundancy_type(switch1) must return ''
+        when redundancy_type is None, causing the else arm to emit unbundled.
+        """
+        plan = self._make_plan_with_generation_state('T539-T2-NonMCLAG-2link')
+        sw1 = self._make_switch_device(plan, 'fe-sw-539-t2a', 'frontend')
+        sw2 = self._make_switch_device(plan, 'fe-sw-539-t2b', 'frontend')
+        srv = self._make_server_device(plan, 'srv-539-t2')
+        self._make_switch_class(plan, sw1, redundancy_type=None)
+        self._make_switch_class(plan, sw2, redundancy_type=None)
+        self._make_cable(plan, self._make_interface(srv, 'eth0'),
+                         self._make_interface(sw1, 'E1/1'))
+        self._make_cable(plan, self._make_interface(srv, 'eth1'),
+                         self._make_interface(sw2, 'E1/1'))
+
+        conns = self._get_conn_crds(plan)
+        mclag_conns = [c for c in conns if 'mclag' in c.get('spec', {})]
+        unbundled_conns = [c for c in conns if 'unbundled' in c.get('spec', {})]
+
+        self.assertEqual(len(mclag_conns), 0,
+            f"Non-MCLAG 2-link must emit 0 spec.mclag CRDs; got {len(mclag_conns)}")
+        self.assertEqual(len(unbundled_conns), 2,
+            f"Non-MCLAG 2-link must emit 2 spec.unbundled CRDs; got {len(unbundled_conns)}")
+        for crd in unbundled_conns:
+            self.assertIn('--unbundled--', crd['metadata']['name'],
+                "'--unbundled--' must appear in each fallback CRD name")
+
+    # ------------------------------------------------------------------
+    # T3: True ESLAG 3+-link — GREEN guard (must stay green after fix)
+    # ------------------------------------------------------------------
+
+    def test_t3_true_eslag_multilink_emits_spec_eslag(self):
+        """T3: 4 zone='server' cables to 2 switches, both with redundancy_type='eslag'.
+
+        Expected: 1 spec.eslag CRD with 4 links.
+        GREEN today (unconditional eslag path fires); must remain green after fix so
+        the guard does not break the legitimate ESLAG case.
+        """
+        plan = self._make_plan_with_generation_state('T539-T3-ESLAG-multi')
+        sw1 = self._make_switch_device(plan, 'fe-sw-539-t3a', 'frontend')
+        sw2 = self._make_switch_device(plan, 'fe-sw-539-t3b', 'frontend')
+        srv = self._make_server_device(plan, 'srv-539-t3')
+        self._make_switch_class(plan, sw1, redundancy_type='eslag')
+        self._make_switch_class(plan, sw2, redundancy_type='eslag')
+        # 2 cables to sw1, 2 cables to sw2
+        self._make_cable(plan, self._make_interface(srv, 'eth0'),
+                         self._make_interface(sw1, 'E1/1'))
+        self._make_cable(plan, self._make_interface(srv, 'eth1'),
+                         self._make_interface(sw1, 'E1/2'))
+        self._make_cable(plan, self._make_interface(srv, 'eth2'),
+                         self._make_interface(sw2, 'E1/1'))
+        self._make_cable(plan, self._make_interface(srv, 'eth3'),
+                         self._make_interface(sw2, 'E1/2'))
+
+        conns = self._get_conn_crds(plan)
+        eslag_conns = [c for c in conns if 'eslag' in c.get('spec', {})]
+        self.assertEqual(len(eslag_conns), 1,
+            f"True ESLAG multi-link must emit exactly 1 spec.eslag CRD; got {len(eslag_conns)}")
+        self.assertEqual(len(eslag_conns[0]['spec']['eslag']['links']), 4,
+            "spec.eslag.links must have exactly 4 entries")
+
+    # ------------------------------------------------------------------
+    # T4: Non-ESLAG 3+-link — RED (must emit N x spec.unbundled, not spec.eslag)
+    # ------------------------------------------------------------------
+
+    def test_t4_non_eslag_multilink_emits_unbundled(self):
+        """T4: 4 zone='server' cables to 2 switches, redundancy_type=None.
+
+        Expected: 4 spec.unbundled CRDs, 0 spec.eslag CRDs.
+        RED today: current code unconditionally emits spec.eslag for the 3+-link
+        multiple-switch arm regardless of PlanSwitchClass.redundancy_type.
+        Implementation seam: _get_switch_redundancy_type(first_switch) must return ''
+        when redundancy_type is None, causing the else arm to emit unbundled per link.
+        """
+        plan = self._make_plan_with_generation_state('T539-T4-NonESLAG-multi')
+        sw1 = self._make_switch_device(plan, 'fe-sw-539-t4a', 'frontend')
+        sw2 = self._make_switch_device(plan, 'fe-sw-539-t4b', 'frontend')
+        srv = self._make_server_device(plan, 'srv-539-t4')
+        self._make_switch_class(plan, sw1, redundancy_type=None)
+        self._make_switch_class(plan, sw2, redundancy_type=None)
+        self._make_cable(plan, self._make_interface(srv, 'eth0'),
+                         self._make_interface(sw1, 'E1/1'))
+        self._make_cable(plan, self._make_interface(srv, 'eth1'),
+                         self._make_interface(sw1, 'E1/2'))
+        self._make_cable(plan, self._make_interface(srv, 'eth2'),
+                         self._make_interface(sw2, 'E1/1'))
+        self._make_cable(plan, self._make_interface(srv, 'eth3'),
+                         self._make_interface(sw2, 'E1/2'))
+
+        conns = self._get_conn_crds(plan)
+        eslag_conns = [c for c in conns if 'eslag' in c.get('spec', {})]
+        unbundled_conns = [c for c in conns if 'unbundled' in c.get('spec', {})]
+
+        self.assertEqual(len(eslag_conns), 0,
+            f"Non-ESLAG multi-link must emit 0 spec.eslag CRDs; got {len(eslag_conns)}")
+        self.assertEqual(len(unbundled_conns), 4,
+            f"Non-ESLAG multi-link must emit 4 spec.unbundled CRDs; got {len(unbundled_conns)}")
+        for crd in unbundled_conns:
+            self.assertIn('--unbundled--', crd['metadata']['name'],
+                "'--unbundled--' must appear in each fallback CRD name")
+
+    # ------------------------------------------------------------------
+    # T5: Missing PlanSwitchClass — fallback to unbundled (RED)
+    # ------------------------------------------------------------------
+
+    def test_t5_missing_switch_class_fallback_to_unbundled(self):
+        """T5: 2 zone='server' cables to different switches with NO PlanSwitchClass.
+
+        Expected: 2 spec.unbundled CRDs, 0 spec.mclag CRDs; no exception raised.
+        RED today: current code emits spec.mclag regardless of switch class existence.
+        Implementation seam: _get_switch_redundancy_type must catch DoesNotExist
+        and return '' so the caller falls back to unbundled.
+        """
+        plan = self._make_plan_with_generation_state('T539-T5-NoClass')
+        sw1 = self._make_switch_device(plan, 'fe-sw-539-t5a', 'frontend')
+        sw2 = self._make_switch_device(plan, 'fe-sw-539-t5b', 'frontend')
+        srv = self._make_server_device(plan, 'srv-539-t5')
+        # Intentionally NO PlanSwitchClass for either switch.
+        self._make_cable(plan, self._make_interface(srv, 'eth0'),
+                         self._make_interface(sw1, 'E1/1'))
+        self._make_cable(plan, self._make_interface(srv, 'eth1'),
+                         self._make_interface(sw2, 'E1/1'))
+
+        conns = self._get_conn_crds(plan)
+        mclag_conns = [c for c in conns if 'mclag' in c.get('spec', {})]
+        unbundled_conns = [c for c in conns if 'unbundled' in c.get('spec', {})]
+
+        self.assertEqual(len(mclag_conns), 0,
+            f"Missing PlanSwitchClass must fall back to unbundled, not mclag; "
+            f"got {len(mclag_conns)} spec.mclag CRDs")
+        self.assertEqual(len(unbundled_conns), 2,
+            f"Missing PlanSwitchClass must emit 2 spec.unbundled CRDs; "
+            f"got {len(unbundled_conns)}")
+
+    # ------------------------------------------------------------------
+    # T6: Helper returns '' when plan is None (RED — helper doesn't exist yet)
+    # ------------------------------------------------------------------
+
+    def test_t6_helper_returns_empty_string_when_plan_is_none(self):
+        """T6: _get_switch_redundancy_type returns '' when self.plan is None.
+
+        RED today: _get_switch_redundancy_type does not exist on YAMLGenerator;
+        calling it raises AttributeError.
+        Implementation seam: helper must guard self.plan is None before any DB
+        lookup and return '' to signal 'not mclag/eslag'.
+
+        Note: YAMLGenerator.__init__ requires a non-None plan to resolve managed
+        fabrics; we construct with a real plan then null it out post-construction
+        to exercise the helper's null-plan guard in isolation.
+        """
+        from netbox_hedgehog.services.yaml_generator import YAMLGenerator
+        from unittest.mock import MagicMock
+        plan = self._make_plan_with_generation_state('T539-T6-PlanNone')
+        sw = self._make_switch_device(plan, 'fe-sw-539-t6', 'frontend')
+        self._make_cable(plan, self._make_interface(
+            self._make_server_device(plan, 'srv-539-t6'), 'eth0'),
+            self._make_interface(sw, 'E1/1'))
+        generator = YAMLGenerator(plan=plan)
+        generator.plan = None  # simulate the plan-less code path
+        device = MagicMock()
+        result = generator._get_switch_redundancy_type(device)
+        self.assertEqual(result, '',
+            "_get_switch_redundancy_type must return '' when plan is None")

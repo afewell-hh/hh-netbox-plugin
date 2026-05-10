@@ -349,11 +349,14 @@ class YAMLGenerator:
         switch_device = link_data['switch_device']
         switch_iface = link_data['switch_iface']
 
-        # Generate CRD name (based on real-world example: server-03-fe-nic-1--unbundled--leaf-01)
-        # MUST include server interface name to ensure uniqueness when multiple ports connect to same switch
-        crd_name = self._sanitize_name(
-            f"{server_device.name}-{server_iface.name}--unbundled--{switch_device.name}"
-        )
+        # Sanitize each segment separately so the '--unbundled--' separator survives.
+        # _sanitize_name collapses consecutive hyphens, which would destroy the separator.
+        # Real-world example: server-03-fe-nic-1--unbundled--leaf-01
+        server_part = self._sanitize_name(f"{server_device.name}-{server_iface.name}")
+        switch_part = self._sanitize_name(switch_device.name)
+        crd_name = f"{server_part}--unbundled--{switch_part}"
+        if len(crd_name) > 63:
+            crd_name = crd_name[:63].rstrip('-')
 
         return {
             'apiVersion': 'wiring.githedgehog.com/v1beta1',
@@ -551,6 +554,29 @@ class YAMLGenerator:
                 }
             }
         }
+
+    def _get_switch_redundancy_type(self, switch_device: Device) -> str:
+        """Return the redundancy_type string for a switch, or '' on any lookup failure.
+
+        Falls back to '' (not mclag/eslag) when:
+        - self.plan is None
+        - hedgehog_class custom field is absent
+        - no matching PlanSwitchClass exists in the DB
+        """
+        if self.plan is None:
+            return ''
+        hedgehog_class_id = switch_device.custom_field_data.get('hedgehog_class', '')
+        if not hedgehog_class_id:
+            return ''
+        from ..models.topology_planning import PlanSwitchClass
+        try:
+            switch_class = PlanSwitchClass.objects.get(
+                plan=self.plan,
+                switch_class_id=hedgehog_class_id,
+            )
+            return switch_class.redundancy_type or ''
+        except PlanSwitchClass.DoesNotExist:
+            return ''
 
     def _create_mclag_crd(
         self,
@@ -1421,8 +1447,17 @@ class YAMLGenerator:
                     # Same switch → bundled
                     server_conn_crds.append(self._create_bundled_crd(server_device, switch1, links))
                 else:
-                    # Different switches → mclag
-                    server_conn_crds.append(self._create_mclag_crd(server_device, switch1, switch2, links))
+                    # Different switches → mclag only when switch class declares mclag intent
+                    if self._get_switch_redundancy_type(switch1) == 'mclag':
+                        server_conn_crds.append(self._create_mclag_crd(server_device, switch1, switch2, links))
+                    else:
+                        for ld in links:
+                            server_conn_crds.append(self._create_unbundled_crd({
+                                'server_device': server_device,
+                                'server_iface': ld['server_iface'],
+                                'switch_device': ld['switch_device'],
+                                'switch_iface': ld['switch_iface'],
+                            }))
 
             elif len(links) > 2:
                 # 3+ links → check if same switch (bundled) or multiple switches (eslag)
@@ -1432,8 +1467,17 @@ class YAMLGenerator:
                     # All same switch → bundled
                     server_conn_crds.append(self._create_bundled_crd(server_device, links[0]['switch_device'], links))
                 else:
-                    # Multiple switches → eslag
-                    server_conn_crds.append(self._create_eslag_crd(server_device, links))
+                    # Multiple switches → eslag only when switch class declares eslag intent
+                    if self._get_switch_redundancy_type(links[0]['switch_device']) == 'eslag':
+                        server_conn_crds.append(self._create_eslag_crd(server_device, links))
+                    else:
+                        for ld in links:
+                            server_conn_crds.append(self._create_unbundled_crd({
+                                'server_device': server_device,
+                                'server_iface': ld['server_iface'],
+                                'switch_device': ld['switch_device'],
+                                'switch_iface': ld['switch_iface'],
+                            }))
 
         # Generate fabric CRDs
         fabric_crds = []
