@@ -11,7 +11,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from dcim.models import Module
+from dcim.models import Device, Module
 
 _CABLE_ASSEMBLY_MEDIUMS = frozenset({'DAC', 'ACC'})
 _CABLE_ASSEMBLY_TYPES = frozenset({'DAC', 'ACC', 'AOC'})
@@ -24,6 +24,7 @@ def _render_gearbox(value) -> str:
     return 'true' if value else 'false'
 
 _SECTION_ORDER = {'nic': 0, 'server_transceiver': 1, 'switch_transceiver': 2}
+_DEVICE_SECTION_ORDER = {'server': 0, 'switch': 1}
 
 
 @dataclass(frozen=True)
@@ -31,6 +32,7 @@ class BOMLineItem:
     section: str
     module_type_id: int
     module_type_model: str
+    module_type_description: str
     manufacturer: str
     quantity: int
     cage_type: str | None
@@ -49,12 +51,31 @@ class BOMLineItem:
 
 
 @dataclass(frozen=True)
+class BaseDeviceBOMLineItem:
+    section: str
+    role: str
+    hedgehog_class: str
+    manufacturer_name: str
+    device_type_model: str
+    quantity: int
+
+
+@dataclass(frozen=True)
 class PlanBOM:
     plan_id: int
     plan_name: str
     generated_at: str
     line_items: tuple
+    base_device_items: tuple
     suppressed_switch_cable_assembly_count: int
+
+    @property
+    def base_device_total_qty(self) -> int:
+        return sum(item.quantity for item in self.base_device_items)
+
+    @property
+    def module_total_qty(self) -> int:
+        return sum(item.quantity for item in self.line_items)
 
 
 def get_plan_bom(plan) -> PlanBOM:
@@ -96,6 +117,7 @@ def get_plan_bom(plan) -> PlanBOM:
             mfr_obj = module.module_type.manufacturer
             meta[key] = {
                 'module_type_model': module.module_type.model,
+                'module_type_description': (module.module_type.description or '').strip(),
                 'manufacturer': mfr_obj.name if mfr_obj else '',
                 'cage_type': attrs.get('cage_type'),
                 'medium': medium,
@@ -127,6 +149,8 @@ def get_plan_bom(plan) -> PlanBOM:
         for (section, mt_id) in sorted(counts.keys(), key=_sort_key)
     )
 
+    base_device_items = _aggregate_base_devices(plan)
+
     gs = getattr(plan, 'generation_state', None)
     generated_at = gs.generated_at.isoformat() if gs else ''
 
@@ -135,15 +159,64 @@ def get_plan_bom(plan) -> PlanBOM:
         plan_name=plan.name,
         generated_at=generated_at,
         line_items=line_items,
+        base_device_items=base_device_items,
         suppressed_switch_cable_assembly_count=suppressed,
+    )
+
+
+def _aggregate_base_devices(plan) -> tuple:
+    """Aggregate generated devices by (section, role_slug, hedgehog_class, manufacturer, device_type_model)."""
+    plan_id = str(plan.pk)
+    devices = Device.objects.filter(
+        custom_field_data__hedgehog_plan_id=plan_id,
+    ).select_related('role', 'device_type', 'device_type__manufacturer')
+
+    counts: dict[tuple, int] = {}
+    meta: dict[tuple, dict] = {}
+
+    for device in devices:
+        role_slug = device.role.slug
+        section = 'server' if role_slug == 'server' else 'switch'
+        hedgehog_class = device.custom_field_data.get('hedgehog_class', '') or ''
+        mfr_obj = device.device_type.manufacturer
+        manufacturer_name = mfr_obj.name if mfr_obj else ''
+        device_type_model = device.device_type.model
+
+        key = (section, role_slug, hedgehog_class, manufacturer_name, device_type_model)
+        counts[key] = counts.get(key, 0) + 1
+        if key not in meta:
+            meta[key] = {
+                'role': role_slug,
+                'hedgehog_class': hedgehog_class,
+                'manufacturer_name': manufacturer_name,
+                'device_type_model': device_type_model,
+            }
+
+    def _sort_key(item):
+        section, role_slug, hedgehog_class, manufacturer_name, device_type_model = item
+        return (
+            _DEVICE_SECTION_ORDER.get(section, 99),
+            hedgehog_class,
+            manufacturer_name,
+            device_type_model,
+        )
+
+    return tuple(
+        BaseDeviceBOMLineItem(
+            section=key[0],
+            quantity=counts[key],
+            **meta[key],
+        )
+        for key in sorted(counts.keys(), key=_sort_key)
     )
 
 
 def render_bom_csv(bom: PlanBOM) -> str:
     """Return a CSV string for the given BOM, including the suppressed-count footer.
 
-    Field order: section, module_type_model, manufacturer, quantity,
-                 cage_type, medium, connector, standard, is_cable_assembly
+    Field order: section, module_type_model, hedgehog_class, manufacturer, quantity,
+                 cage_type, medium, connector, standard, ...transceiver cols..., is_cable_assembly
+    Base-device rows are prepended before module rows.
     Footer: # suppressed_switch_cable_assembly_count,N
     """
     import csv
@@ -151,7 +224,7 @@ def render_bom_csv(bom: PlanBOM) -> str:
 
     buf = io.StringIO()
     fieldnames = [
-        'section', 'module_type_model', 'manufacturer', 'quantity',
+        'section', 'module_type_model', 'hedgehog_class', 'manufacturer', 'quantity',
         'cage_type', 'medium', 'connector', 'standard',
         'reach_class', 'wavelength_nm', 'host_lane_count', 'host_serdes_gbps_per_lane',
         'optical_lane_pattern', 'gearbox_present', 'cable_assembly_type', 'breakout_topology',
@@ -159,10 +232,24 @@ def render_bom_csv(bom: PlanBOM) -> str:
     ]
     writer = csv.DictWriter(buf, fieldnames=fieldnames, lineterminator='\n')
     writer.writeheader()
+    for item in bom.base_device_items:
+        writer.writerow({
+            'section': item.section,
+            'module_type_model': item.device_type_model,
+            'hedgehog_class': item.hedgehog_class,
+            'manufacturer': item.manufacturer_name,
+            'quantity': item.quantity,
+            'cage_type': '', 'medium': '', 'connector': '', 'standard': '',
+            'reach_class': '', 'wavelength_nm': '', 'host_lane_count': '',
+            'host_serdes_gbps_per_lane': '', 'optical_lane_pattern': '',
+            'gearbox_present': '', 'cable_assembly_type': '', 'breakout_topology': '',
+            'is_cable_assembly': 'false',
+        })
     for item in bom.line_items:
         writer.writerow({
             'section': item.section,
             'module_type_model': item.module_type_model,
+            'hedgehog_class': '',
             'manufacturer': item.manufacturer,
             'quantity': item.quantity,
             'cage_type': item.cage_type or '',

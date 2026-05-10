@@ -351,9 +351,37 @@
         <div class="card">
             <h5 class="card-header">
                 Bill of Materials (Generated)
-                <span class="badge badge-secondary">{{ plan_bom.line_items|length }}</span>
+                <span class="badge badge-secondary">{{ plan_bom.base_device_total_qty }} devices &middot; {{ plan_bom.module_total_qty }} modules</span>
             </h5>
             <div class="card-body table-responsive">
+                <h6 class="mt-0 mb-2">Base Devices</h6>
+                {% if plan_bom.base_device_items %}
+                <table class="table table-hover table-sm mb-3">
+                    <thead>
+                        <tr>
+                            <th>Section</th>
+                            <th>Hedgehog Class</th>
+                            <th>Manufacturer</th>
+                            <th>Device Type</th>
+                            <th>Qty</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for item in plan_bom.base_device_items %}
+                        <tr>
+                            <td>{{ item.section|capfirst }}</td>
+                            <td>{{ item.hedgehog_class|default:'' }}</td>
+                            <td>{{ item.manufacturer_name }}</td>
+                            <td>{{ item.device_type_model }}</td>
+                            <td>{{ item.quantity }}</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+                {% else %}
+                <p class="text-muted">No base devices generated for this plan.</p>
+                {% endif %}
+                <h6 class="mt-3 mb-2">Modules / Pluggables</h6>
                 {% if plan_bom.line_items %}
                 <table class="table table-hover table-sm">
                     <thead>
@@ -382,7 +410,12 @@
                                 {% else %}{{ item.section }}{% endif %}
                             </td>
                             <td>{{ item.manufacturer }}</td>
-                            <td>{{ item.module_type_model }}</td>
+                            <td>
+                                <div>{{ item.module_type_model }}</div>
+                                {% if item.module_type_description %}
+                                <small class="text-muted">{{ item.module_type_description }}</small>
+                                {% endif %}
+                            </td>
                             <td>{{ item.quantity }}</td>
                             <td>{{ item.cage_type|default:'' }}</td>
                             <td>{{ item.medium|default:'' }}</td>
@@ -651,7 +684,7 @@
             <h5 class="card-header d-flex align-items-center gap-2">
                 Server-Link Review
                 {% if server_link_review.match_count %}
-                    <span class="badge bg-success">{{ server_link_review.match_count }} match</span>
+                    <span class="badge bg-success text-white">{{ server_link_review.match_count }} match</span>
                 {% endif %}
                 {% if server_link_review.needs_review_count %}
                     <span class="badge bg-warning text-dark">{{ server_link_review.needs_review_count }} needs review</span>
@@ -695,7 +728,7 @@
                                 <td>{{ row.server_transceiver_count }}</td>
                                 <td>
                                     {% if row.outcome == 'match' %}
-                                        <span class="badge bg-success">match</span>
+                                        <span class="badge bg-success text-white">match</span>
                                     {% elif row.outcome == 'needs_review' %}
                                         <span class="badge bg-warning text-dark">needs review</span>
                                     {% else %}
@@ -773,7 +806,7 @@
             <h5 class="card-header d-flex align-items-center gap-2">
                 Switch-Fabric Link Review
                 {% if switch_fabric_review.match_count %}
-                    <span class="badge bg-success">{{ switch_fabric_review.match_count }} match</span>
+                    <span class="badge bg-success text-white">{{ switch_fabric_review.match_count }} match</span>
                 {% endif %}
                 {% if switch_fabric_review.needs_review_count %}
                     <span class="badge bg-warning text-dark">{{ switch_fabric_review.needs_review_count }} needs review</span>
@@ -815,7 +848,7 @@
                                 <td>{{ row.far_xcvr_label|default:"—" }}</td>
                                 <td>
                                     {% if row.outcome == 'match' %}
-                                        <span class="badge bg-success">match</span>
+                                        <span class="badge bg-success text-white">match</span>
                                     {% elif row.outcome == 'needs_review' %}
                                         <span class="badge bg-warning text-dark">needs review</span>
                                     {% elif row.outcome == 'blocked' %}

@@ -106,6 +106,17 @@ class Command(BaseCommand):
                 'bom_exported_at': exported_at,
                 'suppressed_switch_cable_assembly_count': bom.suppressed_switch_cable_assembly_count,
             },
+            'base_devices': [
+                {
+                    'section': item.section,
+                    'role': item.role,
+                    'hedgehog_class': item.hedgehog_class,
+                    'manufacturer': item.manufacturer_name,
+                    'device_type_model': item.device_type_model,
+                    'quantity': item.quantity,
+                }
+                for item in bom.base_device_items
+            ],
             'bom': [
                 {
                     'section': item.section,
