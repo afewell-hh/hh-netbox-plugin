@@ -296,6 +296,28 @@ class UCCase128PerFabricContractTestCase(TestCase):
         self.assertEqual(foreign, set(),
             f"BE Connections reference non-BE switches (fabric=backend): {foreign}")
 
+    # T-mclag-absent: canonical zero-mclag regression guard ----------------
+    def test_fe_export_contains_zero_mclag_connection_crds(self):
+        """T-mclag-absent: FE wiring artifact must emit 0 spec.mclag Connection CRDs.
+
+        FE dual-homed hosts use host-BGP (not MCLAG bonding), so spec.mclag must never
+        appear in the FE artifact. Today this passes because device-generated cables
+        travel the no-zone path (unbundled_crds), not the zone='server' server_links
+        path that gates mclag emission. This test is a regression guard: it will catch
+        any future change that accidentally routes FE cables into a mclag CRD.
+        """
+        mclag_conns = [
+            doc for doc in yaml.safe_load_all(self._fe_content)
+            if isinstance(doc, dict)
+            and doc.get('kind') == 'Connection'
+            and 'mclag' in doc.get('spec', {})
+        ]
+        self.assertEqual(
+            len(mclag_conns), 0,
+            f"FE artifact must emit 0 spec.mclag Connection CRDs; "
+            f"found {len(mclag_conns)} — FE dual-homed hosts use host-BGP, not MCLAG bonding"
+        )
+
 
 # ---------------------------------------------------------------------------
 # hhfab validation subclass — T18-T19, skips cleanly when hhfab absent
