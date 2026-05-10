@@ -37,6 +37,15 @@ User = get_user_model()
 # Fixtures
 # ---------------------------------------------------------------------------
 
+def _make_xcvr(mfr, model, cage='OSFP', medium='MMF'):
+    from dcim.models import ModuleType
+    xcvr, _ = ModuleType.objects.get_or_create(
+        manufacturer=mfr, model=model,
+        defaults={'attribute_data': {'cage_type': cage, 'medium': medium}},
+    )
+    return xcvr
+
+
 def _make_switch_ext():
     mfr, _ = Manufacturer.objects.get_or_create(
         name='SFR-Vendor', defaults={'slug': 'sfr-vendor'}
@@ -448,6 +457,19 @@ class TestSwitchFabricReviewIntegration(TestCase):
         _make_uplink_zone(self.sw, name='sfr-unp-badge', zone_type=PortZoneTypeChoices.UPLINK)
         resp = self.client.get(self._url())
         self.assertContains(resp, 'one-sided')
+
+    def test_rendered_match_badges_use_readable_contrast(self):
+        from dcim.models import Manufacturer
+        mfr, _ = Manufacturer.objects.get_or_create(
+            name='SFR-Badge-Vendor', defaults={'slug': 'sfr-badge-vendor'},
+        )
+        xcvr = _make_xcvr(mfr, 'sfr-match-badge-xcvr', cage='OSFP', medium='MMF')
+        sw2 = _make_switch_class(self.plan, self.ext, sc_id='sfr-match-badge-sp')
+        far = _make_uplink_zone(sw2, name='sfr-match-badge-dl', zone_type=PortZoneTypeChoices.FABRIC, xcvr=xcvr)
+        _make_uplink_zone(self.sw, name='sfr-match-badge-ul', peer_zone=far, xcvr=xcvr)
+        resp = self.client.get(self._url())
+        self.assertContains(resp, '<span class="badge bg-success text-white">match</span>', html=True)
+        self.assertContains(resp, 'class="badge bg-success text-white"', html=False)
 
     def test_rendered_review_table_uses_standard_table_styling(self):
         _make_uplink_zone(self.sw, name='sfr-table-style', zone_type=PortZoneTypeChoices.UPLINK)
