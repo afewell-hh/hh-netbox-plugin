@@ -5,8 +5,8 @@ Locks in the invariant that the canonical 128-GPU plan produces exactly two
 managed-fabric artifacts (frontend, backend) with exact CRD counts, and that
 each artifact is independently complete and switch-isolated.
 
-Live count verification (2026-05-10, pk=206, branch diet-517-green):
-  frontend: VLANNamespace=1 IPv4Namespace=1 SwitchGroup=4 Switch=10 Server=159 Connection=342
+Live count verification (2026-05-10, pk=207, branch diet-517-green):
+  frontend: VLANNamespace=1 IPv4Namespace=1 SwitchGroup=0 Switch=10 Server=159 Connection=342
   backend:  VLANNamespace=1 IPv4Namespace=1 SwitchGroup=0 Switch=6  Server=32  Connection=264
 
 RED matrix: 19 tests (T1-T17 run without hhfab; T18-T19 skip when hhfab absent).
@@ -109,7 +109,7 @@ class UCCase128PerFabricContractTestCase(TestCase):
 
     EXPECTED_FE = {
         'VLANNamespace': 1, 'IPv4Namespace': 1,
-        'SwitchGroup': 4, 'Switch': 10, 'Server': 159, 'Connection': 342,
+        'SwitchGroup': 0, 'Switch': 10, 'Server': 159, 'Connection': 342,
     }
     EXPECTED_BE = {
         'VLANNamespace': 1, 'IPv4Namespace': 1,
@@ -227,7 +227,7 @@ class UCCase128PerFabricContractTestCase(TestCase):
 
     # T8-T9: switch group counts -------------------------------------------
     def test_fe_switch_group_count(self):
-        """T8: FE has exactly 4 SwitchGroup CRDs."""
+        """T8: FE has exactly 0 SwitchGroup CRDs (no ESLAG/MCLAG redundancy protocol on FE)."""
         actual = _count_kinds(self._fe_content).get('SwitchGroup', 0)
         self.assertEqual(actual, self.EXPECTED_FE['SwitchGroup'],
             f"FE SwitchGroup: expected {self.EXPECTED_FE['SwitchGroup']}, got {actual} "
