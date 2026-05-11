@@ -340,7 +340,7 @@ class BOMCSVEndpointTestCase(_BOMUIFixtureMixin, TestCase):
             line for line in content.splitlines() if line.strip()
         )
         expected_header = (
-            'section,module_type_model,hedgehog_class,manufacturer,quantity,'
+            'section,module_type_model,module_type_description,hedgehog_class,manufacturer,quantity,'
             'cage_type,medium,connector,standard,'
             'reach_class,wavelength_nm,host_lane_count,host_serdes_gbps_per_lane,'
             'optical_lane_pattern,gearbox_present,cable_assembly_type,breakout_topology,'
@@ -367,6 +367,25 @@ class BOMCSVEndpointTestCase(_BOMUIFixtureMixin, TestCase):
         nic_rows = [r for r in rows if r.get('section') == 'nic']
         self.assertGreater(len(nic_rows), 0,
                            "CSV must contain at least one row with section='nic'")
+
+    def test_t13b_csv_body_contains_module_description_when_present(self):
+        """T13b: CSV body includes module_type_description for module rows when present."""
+        self.nic_mt.description = 'Built-in/native RJ45 port placeholder - no transceiver needed'
+        self.nic_mt.save(update_fields=['description'])
+        plan = self._make_generated_plan('T13b-csv-desc')
+        self._add_nic_module(plan)
+        response = self.client.get(self._csv_url(plan.pk))
+        self.assertEqual(response.status_code, 200)
+        data_lines = [
+            line for line in response.content.decode('utf-8').splitlines()
+            if line.strip() and not line.startswith('#')
+        ]
+        rows = list(csv.DictReader(iter(data_lines)))
+        nic_rows = [r for r in rows if r.get('section') == 'nic']
+        self.assertEqual(
+            nic_rows[0].get('module_type_description'),
+            'Built-in/native RJ45 port placeholder - no transceiver needed',
+        )
 
     # T14 — 400 when no GenerationState
     def test_t14_csv_returns_400_when_no_generation_state(self):
@@ -657,7 +676,7 @@ class BOMBaseDeviceCSVTestCase(_BOMUIFixtureMixin, TestCase):
         content = response.content.decode('utf-8')
         first_line = next(line for line in content.splitlines() if line.strip())
         expected_header = (
-            'section,module_type_model,hedgehog_class,manufacturer,quantity,'
+            'section,module_type_model,module_type_description,hedgehog_class,manufacturer,quantity,'
             'cage_type,medium,connector,standard,'
             'reach_class,wavelength_nm,host_lane_count,host_serdes_gbps_per_lane,'
             'optical_lane_pattern,gearbox_present,cable_assembly_type,breakout_topology,'

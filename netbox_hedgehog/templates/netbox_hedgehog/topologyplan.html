@@ -235,24 +235,6 @@
                         <i class="mdi mdi-download"></i> Download BOM (CSV)
                     </button>
                 {% endif %}
-                {% if object.generation_state and object.generation_state.status == 'generated' %}
-                    <a href="{% url 'plugins:netbox_hedgehog:topologyplan_bom_per_device_csv' pk=object.pk %}" class="btn btn-info">
-                        <i class="mdi mdi-download"></i> Download Per-Device BOM (CSV)
-                    </a>
-                {% else %}
-                    <button class="btn btn-secondary" disabled title="Device generation must be completed before downloading BOM">
-                        <i class="mdi mdi-download"></i> Download Per-Device BOM (CSV)
-                    </button>
-                {% endif %}
-                {% if object.generation_state and object.generation_state.status == 'generated' %}
-                    <a href="{% url 'plugins:netbox_hedgehog:topologyplan_bom_comparison_csv' pk=object.pk %}" class="btn btn-info">
-                        <i class="mdi mdi-download"></i> Download Comparison CSV
-                    </a>
-                {% else %}
-                    <button class="btn btn-secondary" disabled title="Device generation must be completed before downloading comparison">
-                        <i class="mdi mdi-download"></i> Download Comparison CSV
-                    </button>
-                {% endif %}
             </div>
         </div>
     </div>

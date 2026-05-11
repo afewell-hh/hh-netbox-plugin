@@ -494,7 +494,7 @@ class BOMExportCommandTestCase(_BOMFixtureMixin, TestCase):
             reader = csv.DictReader(f)
             fieldnames = reader.fieldnames
         expected = [
-            'section', 'module_type_model', 'hedgehog_class', 'manufacturer', 'quantity',
+            'section', 'module_type_model', 'module_type_description', 'hedgehog_class', 'manufacturer', 'quantity',
             'cage_type', 'medium', 'connector', 'standard',
             'reach_class', 'wavelength_nm', 'host_lane_count', 'host_serdes_gbps_per_lane',
             'optical_lane_pattern', 'gearbox_present', 'cable_assembly_type', 'breakout_topology',
@@ -513,6 +513,17 @@ class BOMExportCommandTestCase(_BOMFixtureMixin, TestCase):
         nic_rows = [r for r in rows if r['section'] == 'nic']
         self.assertGreater(len(nic_rows), 0)
         self.assertEqual(nic_rows[0]['module_type_model'], self.nic_mt.model)
+        self.assertEqual(nic_rows[0]['module_type_description'], '')
+
+    def test_csv_format_includes_module_type_description_when_present(self):
+        self.nic_mt.description = 'BOM CSV description'
+        self.nic_mt.save(update_fields=['description'])
+        path = self._out_path('bom-desc.csv')
+        call_command('export_plan_bom', str(self.plan.pk), '--output', path, '--format', 'csv')
+        with open(path, newline='') as f:
+            rows = [r for r in csv.DictReader(f) if not r['section'].startswith('#')]
+        nic_rows = [r for r in rows if r['section'] == 'nic']
+        self.assertEqual(nic_rows[0]['module_type_description'], 'BOM CSV description')
 
     # T28
     def test_csv_suppressed_count_footer(self):

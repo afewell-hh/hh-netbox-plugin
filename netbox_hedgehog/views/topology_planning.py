@@ -3,8 +3,10 @@ Topology Planning Views (DIET Module)
 CRUD views for BreakoutOption, DeviceTypeExtension, and Topology Plan models.
 """
 
+import io
 import logging
 import re
+import zipfile
 from django.conf import settings
 from django.contrib import messages
 from django.contrib.auth.mixins import LoginRequiredMixin, PermissionRequiredMixin
@@ -20,7 +22,7 @@ from netbox.views import generic
 from .. import models, tables, forms, choices
 from ..services.device_generator import DeviceGenerator
 from ..utils.topology_calculations import update_plan_calculations
-from ..services.yaml_generator import generate_yaml_for_plan
+from ..services.yaml_generator import YAMLGenerator, generate_yaml_for_plan
 from ..jobs.device_generation import DeviceGenerationJob
 from ..services.preflight import check_transceiver_bay_readiness, user_message
 
@@ -625,6 +627,12 @@ class TopologyPlanExportView(PermissionRequiredMixin, View):
     permission_required = 'netbox_hedgehog.change_topologyplan'
     raise_exception = True
 
+    @staticmethod
+    def _export_filename_base(plan):
+        filename = re.sub(r'[^a-z0-9-]', '-', plan.name.lower())
+        filename = re.sub(r'-+', '-', filename)
+        return filename.strip('-') or f'plan-{plan.pk}'
+
     def get(self, request, pk):
         """Handle export GET request with precondition validation (DIET-139)"""
         _require_topologyplan_change_permission(request)
@@ -670,26 +678,46 @@ class TopologyPlanExportView(PermissionRequiredMixin, View):
             )
 
         # ===== GENERATE YAML FROM INVENTORY (DIET-139) =====
-        # Do NOT call update_plan_calculations - export is read-only
-
-        # Generate YAML from NetBox inventory (not from plan allocation)
+        # Do NOT call update_plan_calculations - export is read-only.
+        # Multi-fabric managed plans should download one artifact per fabric.
         try:
-            yaml_content = generate_yaml_for_plan(plan)
+            generator = YAMLGenerator(plan)
+            managed_fabrics = (
+                generator._managed_fabric_names_from_inventory()
+                or generator._managed_fabric_names_from_plan()
+            )
+            filename_base = self._export_filename_base(plan)
+
+            if len(managed_fabrics) > 1:
+                archive_buffer = io.BytesIO()
+                with zipfile.ZipFile(archive_buffer, mode='w', compression=zipfile.ZIP_DEFLATED) as archive:
+                    for fabric in managed_fabrics:
+                        yaml_content = generate_yaml_for_plan(plan, fabric=fabric)
+                        archive.writestr(f"{filename_base}-{fabric}.yaml", yaml_content)
+
+                response = HttpResponse(
+                    archive_buffer.getvalue(),
+                    content_type='application/zip',
+                )
+                response['Content-Disposition'] = (
+                    f'attachment; filename="{filename_base}-by-fabric.zip"'
+                )
+                return response
+
+            if len(managed_fabrics) == 1:
+                fabric = managed_fabrics[0]
+                yaml_content = generate_yaml_for_plan(plan, fabric=fabric)
+                filename = f"{filename_base}-{fabric}.yaml"
+            else:
+                yaml_content = generate_yaml_for_plan(plan)
+                filename = f"{filename_base}.yaml"
         except Exception as e:
             return HttpResponseBadRequest(
                 f"YAML generation failed: {str(e)}"
             )
 
-        # Create filename from plan name (sanitize for filesystem)
-        filename = re.sub(r'[^a-z0-9-]', '-', plan.name.lower())
-        filename = re.sub(r'-+', '-', filename)  # Collapse multiple dashes
-        filename = filename.strip('-')  # Remove leading/trailing dashes
-        filename = f"{filename}.yaml"
-
-        # Create HTTP response with YAML content
         response = HttpResponse(yaml_content, content_type='text/yaml; charset=utf-8')
         response['Content-Disposition'] = f'attachment; filename="{filename}"'
-
         return response
 
 

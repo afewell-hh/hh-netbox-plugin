@@ -25,7 +25,7 @@ class HedgehogPluginConfig(PluginConfig):
     name = 'netbox_hedgehog'
     verbose_name = 'Hedgehog Fabric Manager'
     description = 'Manage Hedgehog fabric CRDs with self-service catalog'
-    version = '0.1.0'
+    version = '0.2.0'
     author = 'Hedgehog'
     author_email = 'support@hedgehog.cloud'
     base_url = 'hedgehog'
