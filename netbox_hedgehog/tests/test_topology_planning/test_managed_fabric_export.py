@@ -4,6 +4,8 @@ Integration and unit tests for managed-fabric export scoping (DIET-192 Phase 4 R
 All tests in this file are expected to FAIL until Phase 5 (GREEN) is implemented.
 """
 
+import io
+import zipfile
 import yaml
 from django.test import TestCase, Client
 from django.urls import reverse
@@ -126,14 +128,7 @@ class ManagedFabricTestBase(TestCase):
             },
         )
 
-        cls.breakout_1x800, _ = BreakoutOption.objects.get_or_create(
-            breakout_id='mf-1x800g',
-            defaults={
-                'from_speed': 800,
-                'logical_ports': 1,
-                'logical_speed': 800,
-            },
-        )
+        cls.breakout_1x800 = BreakoutOption.objects.get(breakout_id='1x800g')
 
         # Use slug='server' so _generate_servers() (which filters role__slug='server') finds them.
         cls.server_role, _ = DeviceRole.objects.get_or_create(
@@ -242,12 +237,80 @@ class ManagedFabricTestBase(TestCase):
         self.assertEqual(response.status_code, 200)
         return [d for d in yaml.safe_load_all(response.content.decode()) if d]
 
+    @staticmethod
+    def _yaml_docs(content_bytes):
+        return [d for d in yaml.safe_load_all(content_bytes.decode()) if d]
+
     def _anchor_cable(self, plan, switch, suffix='anc'):
         """Add a minimal server+cable so the export view passes the cables-exist check."""
         server = self._make_server_device(plan, f'{switch.name}-{suffix}-srv')
         sw_iface = self._make_interface(switch, f'E1/1/{suffix}')
         srv_iface = self._make_interface(server, f'eth-{suffix}')
         return self._make_cable(plan, srv_iface, sw_iface)
+
+
+class TestManagedFabricExportDownloads(ManagedFabricTestBase):
+    """Export view must return dedicated artifacts per managed fabric."""
+
+    def setUp(self):
+        self.client = Client()
+        self.client.force_login(self.user)
+
+    def test_multi_fabric_export_downloads_zip_with_one_yaml_per_fabric(self):
+        plan = self._make_plan_with_generation_state('MF Zip Export Plan')
+        fe = self._make_switch_device(plan, 'fe-leaf-zip-01', 'frontend', 'server-leaf')
+        be = self._make_switch_device(plan, 'be-leaf-zip-01', 'backend', 'server-leaf')
+        self._anchor_cable(plan, fe, suffix='fe')
+        self._anchor_cable(plan, be, suffix='be')
+
+        response = self.client.get(self._export_url(plan))
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response['Content-Type'], 'application/zip')
+        self.assertIn('mf-zip-export-plan-by-fabric.zip', response['Content-Disposition'])
+
+        archive = zipfile.ZipFile(io.BytesIO(response.content))
+        names = sorted(archive.namelist())
+        self.assertEqual(
+            names,
+            ['mf-zip-export-plan-backend.yaml', 'mf-zip-export-plan-frontend.yaml'],
+        )
+
+        fe_docs = self._yaml_docs(archive.read('mf-zip-export-plan-frontend.yaml'))
+        be_docs = self._yaml_docs(archive.read('mf-zip-export-plan-backend.yaml'))
+
+        fe_switches = {
+            doc['metadata']['name']
+            for doc in fe_docs
+            if doc.get('kind') == 'Switch'
+        }
+        be_switches = {
+            doc['metadata']['name']
+            for doc in be_docs
+            if doc.get('kind') == 'Switch'
+        }
+
+        self.assertIn('fe-leaf-zip-01', fe_switches)
+        self.assertNotIn('be-leaf-zip-01', fe_switches)
+        self.assertIn('be-leaf-zip-01', be_switches)
+        self.assertNotIn('fe-leaf-zip-01', be_switches)
+
+    def test_single_managed_fabric_export_downloads_dedicated_yaml(self):
+        plan = self._make_plan_with_generation_state('Single Fabric Export Plan')
+        fe = self._make_switch_device(plan, 'fe-leaf-yaml-01', 'frontend', 'server-leaf')
+        self._anchor_cable(plan, fe, suffix='only')
+
+        response = self.client.get(self._export_url(plan))
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response['Content-Type'], 'text/yaml; charset=utf-8')
+        self.assertIn('single-fabric-export-plan-frontend.yaml', response['Content-Disposition'])
+
+        docs = self._yaml_docs(response.content)
+        switches = {
+            doc['metadata']['name']
+            for doc in docs
+            if doc.get('kind') == 'Switch'
+        }
+        self.assertEqual(switches, {'fe-leaf-yaml-01'})
 
 
 # =============================================================================

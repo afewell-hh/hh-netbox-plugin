@@ -214,7 +214,7 @@ def _aggregate_base_devices(plan) -> tuple:
 def render_bom_csv(bom: PlanBOM) -> str:
     """Return a CSV string for the given BOM, including the suppressed-count footer.
 
-    Field order: section, module_type_model, hedgehog_class, manufacturer, quantity,
+    Field order: section, module_type_model, module_type_description, hedgehog_class, manufacturer, quantity,
                  cage_type, medium, connector, standard, ...transceiver cols..., is_cable_assembly
     Base-device rows are prepended before module rows.
     Footer: # suppressed_switch_cable_assembly_count,N
@@ -224,7 +224,7 @@ def render_bom_csv(bom: PlanBOM) -> str:
 
     buf = io.StringIO()
     fieldnames = [
-        'section', 'module_type_model', 'hedgehog_class', 'manufacturer', 'quantity',
+        'section', 'module_type_model', 'module_type_description', 'hedgehog_class', 'manufacturer', 'quantity',
         'cage_type', 'medium', 'connector', 'standard',
         'reach_class', 'wavelength_nm', 'host_lane_count', 'host_serdes_gbps_per_lane',
         'optical_lane_pattern', 'gearbox_present', 'cable_assembly_type', 'breakout_topology',
@@ -236,6 +236,7 @@ def render_bom_csv(bom: PlanBOM) -> str:
         writer.writerow({
             'section': item.section,
             'module_type_model': item.device_type_model,
+            'module_type_description': '',
             'hedgehog_class': item.hedgehog_class,
             'manufacturer': item.manufacturer_name,
             'quantity': item.quantity,
@@ -249,6 +250,7 @@ def render_bom_csv(bom: PlanBOM) -> str:
         writer.writerow({
             'section': item.section,
             'module_type_model': item.module_type_model,
+            'module_type_description': item.module_type_description,
             'hedgehog_class': '',
             'manufacturer': item.manufacturer,
             'quantity': item.quantity,

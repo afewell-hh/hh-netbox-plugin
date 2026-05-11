@@ -322,35 +322,35 @@ class BOMPerDeviceRBACTestCase(_BOMPerDeviceUIFixtureMixin, TestCase):
 # ---------------------------------------------------------------------------
 
 class BOMPerDeviceButtonTestCase(_BOMPerDeviceUIFixtureMixin, TestCase):
-    """Tests that the per-device download button appears correctly on the plan detail page."""
+    """Top action bar should not expose the per-device download button."""
 
     def setUp(self):
         self.client = Client()
         self.client.login(username='bom-pd-admin', password='testpass123')
 
     # U12
-    def test_u12_per_device_button_active_when_generated(self):
-        """U12: 'Download Per-Device BOM (CSV)' button is an active <a> link when GENERATED."""
+    def test_u12_per_device_button_absent_when_generated(self):
+        """U12: 'Download Per-Device BOM (CSV)' is absent from the top action bar when GENERATED."""
         plan = self._make_generated_plan('U12-pd-btn')
         response = self.client.get(_detail_url(plan.pk))
         self.assertEqual(response.status_code, 200)
         content = response.content.decode()
-        self.assertIn(_PER_DEVICE_BUTTON_TEXT, content,
-                      f"'{_PER_DEVICE_BUTTON_TEXT}' must be present when GENERATED")
-        self.assertIn(_PER_DEVICE_CSV_FILENAME_FRAGMENT, content,
-                      f"'{_PER_DEVICE_CSV_FILENAME_FRAGMENT}' must appear in active button href")
+        self.assertNotIn(_PER_DEVICE_BUTTON_TEXT, content,
+                         f"'{_PER_DEVICE_BUTTON_TEXT}' must not be shown in the top action bar")
+        self.assertNotIn(_PER_DEVICE_CSV_FILENAME_FRAGMENT, content,
+                         f"'{_PER_DEVICE_CSV_FILENAME_FRAGMENT}' must not appear in the detail page action links")
 
     # U13
-    def test_u13_per_device_button_disabled_when_not_generated(self):
-        """U13: 'Download Per-Device BOM (CSV)' button is disabled when not GENERATED."""
+    def test_u13_per_device_button_absent_when_not_generated(self):
+        """U13: 'Download Per-Device BOM (CSV)' is absent from the top action bar when not GENERATED."""
         plan = self._make_plan_with_status('U13-pd-disabled', GenerationStatusChoices.FAILED)
         response = self.client.get(_detail_url(plan.pk))
         self.assertEqual(response.status_code, 200)
         content = response.content.decode()
-        self.assertIn(_PER_DEVICE_BUTTON_TEXT, content,
-                      f"'{_PER_DEVICE_BUTTON_TEXT}' must still appear (disabled) when not GENERATED")
-        self.assertIn('disabled', content,
-                      "Button must have disabled attribute when status is not GENERATED")
+        self.assertNotIn(_PER_DEVICE_BUTTON_TEXT, content,
+                         f"'{_PER_DEVICE_BUTTON_TEXT}' must not be shown when not GENERATED")
+        self.assertNotIn(_PER_DEVICE_CSV_FILENAME_FRAGMENT, content,
+                         f"'{_PER_DEVICE_CSV_FILENAME_FRAGMENT}' must not appear when not GENERATED")
 
 
 # ---------------------------------------------------------------------------
