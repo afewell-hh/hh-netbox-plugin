@@ -1,6 +1,8 @@
 """
 Management command to seed DIET DeviceTypes and related objects.
 
+# DEPRECATED. See management/commands/README.md for the canonical bootstrap command.
+
 DEPRECATED (DIET-448) — do NOT call from bootstrap or reset scripts.
 
 All DeviceType seeds previously handled by this command are now managed

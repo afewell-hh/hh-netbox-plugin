@@ -87,6 +87,18 @@ class TopologyPlan(NetBoxModel):
     def get_absolute_url(self):
         return reverse('plugins:netbox_hedgehog:topologyplan_detail', args=[self.pk])
 
+    def delete(self, *args, **kwargs):
+        """
+        Delete plan-owned connections before invoking the default collector.
+
+        A populated plan owns PlanServerConnection rows through server classes,
+        but those connections also PROTECT their target zones/NICs. Django's
+        deletion collector raises ProtectedError when deleting the plan tree
+        unless the connections are removed first.
+        """
+        PlanServerConnection.objects.filter(server_class__plan=self).delete()
+        return super().delete(*args, **kwargs)
+
     @property
     def last_generated_at(self):
         """

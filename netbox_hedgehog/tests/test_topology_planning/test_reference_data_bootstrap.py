@@ -17,7 +17,7 @@ from django.test import TestCase
 
 from dcim.models import DeviceType, InterfaceTemplate, Manufacturer, ModuleBayTemplate, ModuleType, ModuleTypeProfile
 
-from netbox_hedgehog.models.topology_planning import DeviceTypeExtension
+from netbox_hedgehog.models.topology_planning import BreakoutOption, DeviceTypeExtension
 
 
 class CanonicalSwitchInventoryTestCase(TestCase):
@@ -390,3 +390,92 @@ class LegacyMigrationCoexistenceTestCase(TestCase):
                 DeviceType.objects.filter(slug=slug).exists(),
                 f"Required canonical slug '{slug}' must exist after double load_diet_reference_data",
             )
+
+
+class BootstrapInventoryContractTestCase(TestCase):
+    """
+    DIET-563: Complete bootstrap inventory contract.
+
+    Exact post-seed state that load_diet_reference_data must produce:
+      required slugs = 5
+      forbidden slugs = 5 (must be absent)
+      BreakoutOption count = 16 (14 canonical + 2 from DS5000 profile)
+      ModuleType count = 33 (23 transceivers + 10 NICs)
+      celestica-ds5000 OSFP interface templates = 64
+
+    Most assertions are green regression guards in RED state.
+    The primary RED failures are in test_source_of_truth_docs.py
+    (README presence and pointer docstrings).
+    """
+
+    def setUp(self):
+        # Clear count-sensitive models so --keepdb residue from other tests does
+        # not skew assertEqual-count assertions.
+        BreakoutOption.objects.all().delete()
+        ModuleType.objects.all().delete()
+
+    def _seed(self):
+        call_command("load_diet_reference_data", stdout=StringIO())
+
+    def test_required_slugs_all_present(self):
+        """All 5 required DeviceType slugs must exist after bootstrap."""
+        self._seed()
+        required = [
+            "celestica-ds5000",
+            "celestica-es1000",
+            "gpu-server-fe",
+            "gpu-server-fe-be",
+            "storage-server-200g",
+        ]
+        for slug in required:
+            self.assertTrue(
+                DeviceType.objects.filter(slug=slug).exists(),
+                f"Required slug '{slug}' missing after load_diet_reference_data",
+            )
+
+    def test_forbidden_slugs_all_absent(self):
+        """All 5 forbidden DeviceType slugs must be absent after bootstrap."""
+        self._seed()
+        forbidden = [
+            "ds5000",
+            "ds3000",
+            "es1000-48",
+            "celestica-ds5000-leaf",
+            "celestica-ds5000-spine",
+        ]
+        for slug in forbidden:
+            self.assertFalse(
+                DeviceType.objects.filter(slug=slug).exists(),
+                f"Forbidden slug '{slug}' present after load_diet_reference_data",
+            )
+
+    def test_breakout_option_count_is_exact(self):
+        """
+        load_diet_reference_data must produce exactly 16 BreakoutOptions.
+
+        14 canonical ones from load_breakout_options plus 2 added by the DS5000
+        profile (1x50g, 2x100g).  The spec (#564) stated 14; the actual value
+        is 16 — corrected here based on observed bootstrap output.
+        """
+        self._seed()
+        count = BreakoutOption.objects.count()
+        self.assertEqual(count, 16, f"Expected 16 BreakoutOptions (14 canonical + 2 from DS5000 profile); got {count}")
+
+    def test_module_type_count_is_exact(self):
+        """load_diet_reference_data must produce exactly 33 ModuleTypes."""
+        self._seed()
+        count = ModuleType.objects.count()
+        self.assertEqual(
+            count,
+            33,
+            f"Expected exactly 33 ModuleTypes (23 transceivers + 10 NICs); got {count}",
+        )
+
+    def test_ds5000_osfp_interface_template_count(self):
+        """celestica-ds5000 must have exactly 64 OSFP interface templates."""
+        self._seed()
+        dt = DeviceType.objects.get(slug="celestica-ds5000")
+        count = InterfaceTemplate.objects.filter(
+            device_type=dt, type="800gbase-x-osfp"
+        ).count()
+        self.assertEqual(count, 64, f"Expected 64 OSFP templates on celestica-ds5000; got {count}")
