@@ -59,6 +59,12 @@ class Command(BaseCommand):
 
         self.stdout.write(self.style.WARNING('Loading DIET reference data...'))
 
+        # Always purge the 4 forbidden legacy slugs from migration 0009.
+        # These rows (ds5000, ds3000, sn5600, es1000-48) are never valid and
+        # must not exist after any correct bootstrap, including backup-restore
+        # scenarios where migration 0053 may have run before the restore.
+        self._purge_forbidden_0009_slugs()
+
         # Remove retired legacy DeviceTypes only when explicitly requested.
         # retire_legacy_device_types() hard-deletes plan data; it must NOT run
         # unconditionally in a command described as "safe to run multiple times."
@@ -100,14 +106,52 @@ class Command(BaseCommand):
             ))
 
     @transaction.atomic
+    def _purge_forbidden_0009_slugs(self) -> None:
+        """
+        Unconditionally remove the 4 forbidden DeviceTypes created by migration 0009.
+
+        These slugs must never exist after a correct bootstrap, including
+        backup-restore scenarios where migration 0053 ran before the restore.
+        Cascade order matches retire_legacy_device_types(); no-op when absent.
+        """
+        from netbox_hedgehog.models.topology_planning import (
+            PlanServerConnection,
+            PlanSwitchClass,
+            SwitchPortZone,
+        )
+
+        # sn5600 is intentionally absent: neutral slug, not forbidden.
+        FORBIDDEN_SLUGS = ['ds5000', 'ds3000', 'es1000-48']
+        for slug in FORBIDDEN_SLUGS:
+            try:
+                dt = DeviceType.objects.get(slug=slug)
+            except DeviceType.DoesNotExist:
+                continue
+            ext_qs = DeviceTypeExtension.objects.filter(device_type=dt)
+            sc_qs = PlanSwitchClass.objects.filter(device_type_extension__in=ext_qs)
+            zone_qs = SwitchPortZone.objects.filter(switch_class__in=sc_qs)
+            PlanServerConnection.objects.filter(target_zone__in=zone_qs).delete()
+            zone_qs.delete()
+            sc_qs.delete()
+            ext_qs.delete()
+            dt.delete()
+
+    @transaction.atomic
     def retire_legacy_device_types(self) -> int:
         """
-        Remove DeviceTypes that were retired in favour of the canonical
-        celestica-ds5000 profile-backed type.
+        Remove all DeviceTypes that must not exist in a correct bootstrap.
 
-        Previously, some case files created separate leaf/spine clones:
-          - celestica-ds5000-leaf  (replaced by celestica-ds5000)
-          - celestica-ds5000-spine (replaced by celestica-ds5000)
+        Belt-and-suspenders companion to migration 0053 for pre-0053 backup
+        restore scenarios.  All five forbidden slugs and why they are retired:
+
+          - celestica-ds5000-leaf  — retired clone; replaced by celestica-ds5000
+          - celestica-ds5000-spine — retired clone; replaced by celestica-ds5000
+          - ds5000                 — wrong slug; replaced by celestica-ds5000 (0009 stale)
+          - ds3000                 — stale; requires --fabric-ref import (0009 stale)
+          - es1000-48              — wrong manufacturer/slug; should be celestica-es1000 (0009 stale)
+
+        sn5600 is intentionally absent: it is not currently required but
+        must not be actively purged — it may be added when NVIDIA support lands.
 
         This method is safe to run on clean DBs (no-op) and on dirty dev
         environments that still carry the stale types.  Cascade order:
@@ -121,7 +165,13 @@ class Command(BaseCommand):
             SwitchPortZone,
         )
 
-        RETIRED_SLUGS = ['celestica-ds5000-leaf', 'celestica-ds5000-spine']
+        RETIRED_SLUGS = [
+            'celestica-ds5000-leaf',
+            'celestica-ds5000-spine',
+            'ds5000',
+            'ds3000',
+            'es1000-48',
+        ]
         removed = 0
 
         for slug in RETIRED_SLUGS:
