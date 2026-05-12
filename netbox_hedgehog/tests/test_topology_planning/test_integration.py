@@ -167,6 +167,94 @@ class TopologyPlanIntegrationTestCase(TestCase):
         # Verify deletion
         self.assertFalse(TopologyPlan.objects.filter(pk=plan.pk).exists())
 
+    def test_plan_delete_workflow_with_attached_connections(self):
+        """Deleting a populated plan must cascade through plan-owned connections."""
+        from netbox_hedgehog.models.topology_planning import BreakoutOption
+
+        plan = TopologyPlan.objects.create(
+            name='Plan To Delete With Dependencies',
+            created_by=self.user,
+        )
+        server_mfr, _ = Manufacturer.objects.get_or_create(
+            name='DeleteTest Server Mfr',
+            defaults={'slug': 'deletetest-server-mfr'},
+        )
+        switch_mfr, _ = Manufacturer.objects.get_or_create(
+            name='DeleteTest Switch Mfr',
+            defaults={'slug': 'deletetest-switch-mfr'},
+        )
+        server_dt, _ = DeviceType.objects.get_or_create(
+            manufacturer=server_mfr,
+            model='DeleteTest Server',
+            defaults={'slug': 'deletetest-server'},
+        )
+        switch_dt, _ = DeviceType.objects.get_or_create(
+            manufacturer=switch_mfr,
+            model='DeleteTest Switch',
+            defaults={'slug': 'deletetest-switch'},
+        )
+        device_ext, _ = DeviceTypeExtension.objects.get_or_create(
+            device_type=switch_dt,
+            defaults={
+                'mclag_capable': False,
+                'hedgehog_roles': ['server-leaf'],
+                'native_speed': 200,
+                'uplink_ports': 0,
+                'supported_breakouts': ['1x200g'],
+            },
+        )
+        breakout, _ = BreakoutOption.objects.get_or_create(
+            breakout_id='1x200g',
+            defaults={
+                'from_speed': 200,
+                'logical_ports': 1,
+                'logical_speed': 200,
+            },
+        )
+
+        server_class = PlanServerClass.objects.create(
+            plan=plan,
+            server_class_id='delete-srv',
+            quantity=1,
+            server_device_type=server_dt,
+        )
+        switch_class = PlanSwitchClass.objects.create(
+            plan=plan,
+            switch_class_id='delete-leaf',
+            fabric=FabricTypeChoices.FRONTEND,
+            hedgehog_role=HedgehogRoleChoices.SERVER_LEAF,
+            device_type_extension=device_ext,
+            uplink_ports_per_switch=0,
+        )
+        zone = SwitchPortZone.objects.create(
+            switch_class=switch_class,
+            zone_name='delete-zone',
+            zone_type='server',
+            port_spec='1',
+            breakout_option=breakout,
+        )
+        PlanServerConnection.objects.create(
+            server_class=server_class,
+            connection_id='delete-conn',
+            nic=get_test_server_nic(server_class),
+            port_index=0,
+            ports_per_connection=1,
+            hedgehog_conn_type=ConnectionTypeChoices.UNBUNDLED,
+            distribution=ConnectionDistributionChoices.SAME_SWITCH,
+            target_zone=zone,
+            speed=200,
+            port_type=PortTypeChoices.DATA,
+        )
+
+        delete_url = reverse('plugins:netbox_hedgehog:topologyplan_delete', args=[plan.pk])
+        post_response = self.client.post(delete_url, {'confirm': True}, follow=True)
+
+        self.assertEqual(post_response.status_code, 200)
+        self.assertFalse(TopologyPlan.objects.filter(pk=plan.pk).exists())
+        self.assertFalse(PlanServerClass.objects.filter(plan=plan).exists())
+        self.assertFalse(PlanSwitchClass.objects.filter(plan=plan).exists())
+        self.assertFalse(PlanServerConnection.objects.filter(server_class=server_class).exists())
+
 
 class ServerClassIntegrationTestCase(TestCase):
     """Integration tests for Server Class UI workflow"""

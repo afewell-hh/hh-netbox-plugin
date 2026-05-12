@@ -275,9 +275,28 @@ class SeedDataCommandTestCase(TestCase):
         self.assertEqual(sfp28.attribute_data.get('cage_type'), 'SFP28')
         self.assertEqual(sfp28.attribute_data.get('medium'), 'MMF')
 
+        celestica_sfp28 = ModuleType.objects.filter(
+            model='Celestica-SFP28-25GBASE-SR-PLACEHOLDER'
+        ).first()
+        self.assertIsNotNone(
+            celestica_sfp28,
+            "Expected Celestica 25G SFP28 SR placeholder ModuleType",
+        )
+        self.assertEqual(celestica_sfp28.profile.name, 'Network Transceiver')
+        self.assertEqual(celestica_sfp28.attribute_data.get('cage_type'), 'SFP28')
+
         sfp_plus = ModuleType.objects.filter(model='SFP+-10GBASE-SR').first()
         self.assertIsNotNone(sfp_plus, "Expected generic 10G SFP+ SR ModuleType")
         self.assertEqual(sfp_plus.attribute_data.get('cage_type'), 'SFP+')
+
+        celestica_sfp_plus = ModuleType.objects.filter(
+            model='Celestica-SFP+-10GBASE-SR-PLACEHOLDER'
+        ).first()
+        self.assertIsNotNone(
+            celestica_sfp_plus,
+            "Expected Celestica 10G SFP+ SR placeholder ModuleType",
+        )
+        self.assertEqual(celestica_sfp_plus.attribute_data.get('cage_type'), 'SFP+')
 
         rj45 = ModuleType.objects.filter(model='RJ45-1000BASE-T').first()
         self.assertIsNotNone(rj45, "Expected generic 1G copper RJ45 ModuleType")
@@ -287,6 +306,15 @@ class SeedDataCommandTestCase(TestCase):
         self.assertEqual(rj45.attribute_data.get('standard'), '1000BASE-T')
         self.assertEqual(rj45.attribute_data.get('reach_class'), 'Copper')
         self.assertEqual(rj45.attribute_data.get('cable_assembly_type'), 'none')
+
+        celestica_rj45 = ModuleType.objects.filter(
+            model='Built-in-RJ45'
+        ).first()
+        self.assertIsNotNone(
+            celestica_rj45,
+            "Expected built-in RJ45 placeholder ModuleType",
+        )
+        self.assertEqual(celestica_rj45.attribute_data.get('cage_type'), 'RJ45')
 
     def test_command_seeds_static_nic_module_inventory(self):
         """load_diet_reference_data should ensure static NIC ModuleTypes exist."""

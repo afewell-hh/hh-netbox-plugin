@@ -1,6 +1,8 @@
 """
 Static reference inventory catalog for HNP-managed NetBox seeds.
 
+# Repo-owned static inventory only. For ownership rules see fabric_profiles/README.md.
+
 This covers repo-owned, deterministic inventory that should be recreated by
 management commands after a local inventory purge/reset.
 """
@@ -465,12 +467,62 @@ STATIC_TRANSCEIVER_MODULE_TYPES = [
         },
     },
     {
+        "manufacturer": "Celestica",
+        "manufacturer_slug": "celestica",
+        "model": "Celestica-SFP28-25GBASE-SR-PLACEHOLDER",
+        "part_number": "Celestica-SFP28-25GBASE-SR-PLACEHOLDER",
+        "description": "25G SFP28 SR optic (LC) — Celestica switch-side placeholder",
+        "comments": (
+            "Placeholder for Celestica-qualified 25GbE switch-side optics in compositions "
+            "where switch optics must be vendor-branded while the exact SKU is still pending."
+        ),
+        "attribute_data": {
+            "cage_type": "SFP28",
+            "medium": "MMF",
+            "connector": "LC",
+            "wavelength_nm": 850,
+            "standard": "25GBASE-SR",
+            "reach_class": "SR",
+            "lane_count": 1,
+            "host_serdes_gbps_per_lane": 25,
+            "optical_lane_pattern": "SR",
+            "gearbox_present": False,
+            "cable_assembly_type": "none",
+            "breakout_topology": "1x",
+        },
+    },
+    {
         "manufacturer": "Generic",
         "manufacturer_slug": "generic",
         "model": "SFP+-10GBASE-SR",
         "part_number": "SFP+-10GBASE-SR",
         "description": "10G SFP+ SR optic (LC)",
         "comments": "Generic placeholder for symmetric 10GbE uplink optics.",
+        "attribute_data": {
+            "cage_type": "SFP+",
+            "medium": "MMF",
+            "connector": "LC",
+            "wavelength_nm": 850,
+            "standard": "10GBASE-SR",
+            "reach_class": "SR",
+            "lane_count": 1,
+            "host_serdes_gbps_per_lane": 10,
+            "optical_lane_pattern": "SR",
+            "gearbox_present": False,
+            "cable_assembly_type": "none",
+            "breakout_topology": "1x",
+        },
+    },
+    {
+        "manufacturer": "Celestica",
+        "manufacturer_slug": "celestica",
+        "model": "Celestica-SFP+-10GBASE-SR-PLACEHOLDER",
+        "part_number": "Celestica-SFP+-10GBASE-SR-PLACEHOLDER",
+        "description": "10G SFP+ SR optic (LC) — Celestica switch-side placeholder",
+        "comments": (
+            "Placeholder for Celestica-qualified 10GbE switch-side optics in compositions "
+            "where switch optics must be vendor-branded while the exact SKU is still pending."
+        ),
         "attribute_data": {
             "cage_type": "SFP+",
             "medium": "MMF",
@@ -495,6 +547,29 @@ STATIC_TRANSCEIVER_MODULE_TYPES = [
         "comments": (
             "Generic placeholder for 1GbE copper management links where DIET "
             "must model a transceiver on both ends of the connection."
+        ),
+        "attribute_data": {
+            "cage_type": "RJ45",
+            "medium": "Copper",
+            "connector": "RJ45",
+            "standard": "1000BASE-T",
+            "reach_class": "Copper",
+            "lane_count": 1,
+            "host_serdes_gbps_per_lane": 1,
+            "gearbox_present": False,
+            "cable_assembly_type": "none",
+            "breakout_topology": "1x",
+        },
+    },
+    {
+        "manufacturer": "Celestica",
+        "manufacturer_slug": "celestica",
+        "model": "Built-in-RJ45",
+        "part_number": "Built-in-RJ45",
+        "description": "Built-in/native RJ45 port placeholder — no removable transceiver required",
+        "comments": (
+            "Placeholder for a built-in Celestica switch RJ45 management port. "
+            "This is not an external pluggable transceiver and should not be interpreted as a removable optic."
         ),
         "attribute_data": {
             "cage_type": "RJ45",
