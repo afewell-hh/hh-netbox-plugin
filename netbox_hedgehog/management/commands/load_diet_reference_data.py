@@ -1,6 +1,9 @@
 """
 Management command to load DIET reference data (seed data).
 
+# Canonical bootstrap command. See management/commands/README.md for the full
+# command taxonomy and ownership boundaries.
+
 This command is idempotent - safe to run multiple times.
 It uses update_or_create to avoid duplicating records.
 
