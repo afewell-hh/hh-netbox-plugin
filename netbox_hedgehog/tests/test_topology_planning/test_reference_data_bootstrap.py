@@ -1,5 +1,5 @@
 """
-Regression tests for DIET-448: canonical switch inventory bootstrap.
+Regression tests for DIET-448 and DIET-556: canonical switch inventory bootstrap.
 
 Verifies that load_diet_reference_data (without --skip-switch-profile-import)
 deterministically produces the correct Hedgehog switch inventory and that
@@ -15,7 +15,9 @@ from io import StringIO
 from django.core.management import call_command
 from django.test import TestCase
 
-from dcim.models import DeviceType, InterfaceTemplate, ModuleBayTemplate, ModuleType, ModuleTypeProfile
+from dcim.models import DeviceType, InterfaceTemplate, Manufacturer, ModuleBayTemplate, ModuleType, ModuleTypeProfile
+
+from netbox_hedgehog.models.topology_planning import DeviceTypeExtension
 
 
 class CanonicalSwitchInventoryTestCase(TestCase):
@@ -103,12 +105,13 @@ class CanonicalSwitchInventoryTestCase(TestCase):
     def test_legacy_ds5000_slug_is_not_created_by_reference_data(self):
         """
         The legacy 'ds5000' slug (from seed_diet_device_types) must NOT be
-        created by load_diet_reference_data.  This ensures only one canonical
-        DS5000 model exists after a clean bootstrap.
-        Purge all DeviceTypes first so the test is independent of pre-existing
-        test-DB state (e.g. from previous seed_diet_device_types runs).
+        created by load_diet_reference_data.
+
+        Django TestCase already provides a clean DB per test — the previous
+        pre-purge (DeviceType.objects.all().delete()) was masking the real
+        coexistence scenario.  See LegacyMigrationCoexistenceTestCase for
+        tests that exercise the real path where stale rows exist beforehand.
         """
-        DeviceType.objects.all().delete()
         self._seed()
         self.assertFalse(
             DeviceType.objects.filter(slug="ds5000").exists(),
@@ -222,3 +225,168 @@ class PurgeAndReseedRoundTripTestCase(TestCase):
             "Full purge→reseed→populate round trip must produce 66 bays "
             "(64 OSFP + 2 SFP28) on celestica-ds5000",
         )
+
+
+class LegacyMigrationCoexistenceTestCase(TestCase):
+    """
+    DIET-556: Regression contract for the coexistence bug from migration 0009.
+
+    Migration 0009 created 4 invalid DeviceTypes (ds5000, ds3000, sn5600,
+    es1000-48) that must not exist after a correct bootstrap. These tests
+    simulate the real pre-0053 path where those stale rows are present
+    before load_diet_reference_data is called.
+
+    No pre-purge is performed. Each test creates the 4 stale rows directly,
+    then asserts the post-bootstrap contract.
+
+    Expected RED failures and their implementation seams:
+    - test_stale_slugs_absent_after_load_without_prepurge
+      → migration 0053 not yet written; stale rows survive load
+    - test_retire_legacy_removes_all_six_forbidden_slugs
+      → RETIRED_SLUGS in retire_legacy_device_types() missing the 4 new slugs
+    - test_coexistence_is_idempotent
+      → same root as first; double load still does not purge stale rows
+    """
+
+    # sn5600 is intentionally absent: neutral slug, not forbidden — must not
+    # be purged so future NVIDIA support can add it without a migration.
+    FORBIDDEN_SLUGS = ['ds5000', 'ds3000', 'es1000-48']
+    REQUIRED_SLUGS = ['celestica-ds5000', 'celestica-es1000']
+
+    def _create_stale_0009_rows(self):
+        """
+        Reproduce the 4 DeviceTypes + DeviceTypeExtensions that migration 0009
+        creates, without any prior delete. Matches as-migrated state for
+        environments that ran 0009 before migration 0053 is applied.
+        """
+        celestica, _ = Manufacturer.objects.get_or_create(
+            name='Celestica', defaults={'slug': 'celestica'}
+        )
+        edgecore, _ = Manufacturer.objects.get_or_create(
+            name='Edge-Core', defaults={'slug': 'edge-core'}
+        )
+
+        stale_specs = [
+            (celestica, 'DS5000',    'ds5000',    False, ['spine', 'server-leaf']),
+            (celestica, 'DS3000',    'ds3000',    False, ['server-leaf', 'border-leaf']),
+            (edgecore,  'ES1000-48', 'es1000-48', False, ['virtual']),
+        ]
+        for mfr, model, slug, mclag, roles in stale_specs:
+            dt, _ = DeviceType.objects.get_or_create(
+                manufacturer=mfr,
+                model=model,
+                defaults={'slug': slug, 'u_height': 1, 'is_full_depth': False},
+            )
+            DeviceTypeExtension.objects.get_or_create(
+                device_type=dt,
+                defaults={'mclag_capable': mclag, 'hedgehog_roles': roles},
+            )
+
+    def test_stale_slugs_absent_after_load_without_prepurge(self):
+        """
+        After creating the 4 stale rows then running load_diet_reference_data
+        (no --retire-legacy), all 4 forbidden slugs must be absent.
+
+        RED: fails because load_diet_reference_data does not remove stale rows.
+        GREEN: migration 0053 purges them during migrate before this command runs.
+        """
+        self._create_stale_0009_rows()
+        call_command("load_diet_reference_data", stdout=StringIO())
+        for slug in self.FORBIDDEN_SLUGS:
+            self.assertFalse(
+                DeviceType.objects.filter(slug=slug).exists(),
+                f"Forbidden legacy slug '{slug}' must be absent after load_diet_reference_data "
+                f"(seam: migration 0053 missing)",
+            )
+
+    def test_required_slugs_present_after_load_without_prepurge(self):
+        """
+        After creating stale rows then running load_diet_reference_data,
+        the required canonical slugs must be present.
+
+        Expected GREEN in RED state — canonical seeds are slug-keyed and
+        independent of the stale rows. Guards against regressions where
+        coexistence breaks seed logic.
+        """
+        self._create_stale_0009_rows()
+        call_command("load_diet_reference_data", stdout=StringIO())
+        for slug in self.REQUIRED_SLUGS:
+            self.assertTrue(
+                DeviceType.objects.filter(slug=slug).exists(),
+                f"Required canonical slug '{slug}' must exist after load_diet_reference_data",
+            )
+
+    def test_canonical_ds5000_correct_after_coexistence(self):
+        """
+        celestica-ds5000 must have exactly 64 OSFP templates and 0 qsfpdd
+        templates even when the stale ds5000 DeviceType was present before load.
+
+        Proves template-type drift does not propagate from the legacy row.
+        Expected GREEN in RED state — profile import is slug-keyed.
+        """
+        self._create_stale_0009_rows()
+        call_command("load_diet_reference_data", stdout=StringIO())
+        dt = DeviceType.objects.get(slug="celestica-ds5000")
+        osfp_count = InterfaceTemplate.objects.filter(
+            device_type=dt, type="800gbase-x-osfp"
+        ).count()
+        qsfpdd_count = InterfaceTemplate.objects.filter(
+            device_type=dt, type="800gbase-x-qsfpdd"
+        ).count()
+        self.assertEqual(
+            osfp_count,
+            64,
+            f"celestica-ds5000 must have 64 OSFP templates after coexistence load; got {osfp_count}",
+        )
+        self.assertEqual(
+            qsfpdd_count,
+            0,
+            f"celestica-ds5000 must have 0 qsfpdd templates; got {qsfpdd_count}",
+        )
+
+    def test_retire_legacy_removes_all_five_forbidden_slugs(self):
+        """
+        load_diet_reference_data --retire-legacy must remove all 5 forbidden slugs:
+        the 3 migration-0009 stale rows (ds5000, ds3000, es1000-48) plus
+        celestica-ds5000-leaf/-spine.
+
+        sn5600 is intentionally absent from RETIRED_SLUGS — it is a neutral slug
+        that must not be actively purged so future NVIDIA support can add it.
+
+        Note: celestica-ds5000-leaf/-spine are absent by default in a clean test DB;
+        the command must not error when they are missing.
+        """
+        self._create_stale_0009_rows()
+        all_five_slugs = self.FORBIDDEN_SLUGS + ['celestica-ds5000-leaf', 'celestica-ds5000-spine']
+        call_command("load_diet_reference_data", "--retire-legacy", stdout=StringIO())
+        for slug in all_five_slugs:
+            self.assertFalse(
+                DeviceType.objects.filter(slug=slug).exists(),
+                f"Forbidden slug '{slug}' must be absent after --retire-legacy "
+                f"(seam: RETIRED_SLUGS missing this slug)",
+            )
+
+    def test_coexistence_is_idempotent(self):
+        """
+        Running load_diet_reference_data twice with stale rows on the first run
+        must produce the same final state: forbidden slugs absent, required slugs present.
+
+        RED: fails on the forbidden-absent assertion (same root as
+        test_stale_slugs_absent_after_load_without_prepurge — two loads still
+        do not purge what migration 0053 should have removed).
+        GREEN: idempotency is inherent once migration 0053 removes rows on migrate.
+        """
+        self._create_stale_0009_rows()
+        call_command("load_diet_reference_data", stdout=StringIO())
+        call_command("load_diet_reference_data", stdout=StringIO())
+        for slug in self.FORBIDDEN_SLUGS:
+            self.assertFalse(
+                DeviceType.objects.filter(slug=slug).exists(),
+                f"Forbidden slug '{slug}' must be absent after double load_diet_reference_data "
+                f"(seam: migration 0053 missing)",
+            )
+        for slug in self.REQUIRED_SLUGS:
+            self.assertTrue(
+                DeviceType.objects.filter(slug=slug).exists(),
+                f"Required canonical slug '{slug}' must exist after double load_diet_reference_data",
+            )
