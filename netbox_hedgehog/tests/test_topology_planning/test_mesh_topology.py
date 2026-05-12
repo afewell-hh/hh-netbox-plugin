@@ -622,3 +622,248 @@ class Mesh317ViewsPermissionsTests(TestCase):
         r = self.client.get(reverse(
             'plugins:netbox_hedgehog:planswitchclass_add'))
         self.assertIn(r.status_code, (403, 302))
+
+
+# ---------------------------------------------------------------------------
+# 10. Full-capacity multi-link mesh generation (#548 RED)
+#
+# Fails until GREEN (#546): _compute_cables_per_pair doesn't exist and
+# current _create_mesh_connections() allocates count=1 per PlanMeshLink.
+# ---------------------------------------------------------------------------
+
+class Mesh544FullCapacityTests(TestCase):
+    """
+    RED tests for #548: full-capacity parallel link generation for explicit mesh fabrics.
+
+    Current bottleneck: _create_mesh_connections() calls
+    _allocate_ports_for_zones(..., count=1) per PlanMeshLink, producing
+    exactly one cable per switch pair regardless of mesh zone port count.
+
+    These tests will all be RED until GREEN (#546) implements:
+    - _compute_cables_per_pair() helper
+    - batch allocation (count=cables_per_pair)
+    - zip-loop cable creation
+    """
+
+    @classmethod
+    def setUpTestData(cls):
+        _, _, cls.ext = _mfr_dt_ext()
+        cls.site = _site()
+
+    def _gen(self, plan):
+        from netbox_hedgehog.services.device_generator import DeviceGenerator
+        return DeviceGenerator(plan, site=self.site).generate_all()
+
+    def _make_gen(self, plan):
+        """Return a DeviceGenerator instance without running generate_all()."""
+        from netbox_hedgehog.services.device_generator import DeviceGenerator
+        return DeviceGenerator(plan, site=self.site)
+
+    def _cable_count(self, plan):
+        from dcim.models import Cable
+        return Cable.objects.filter(
+            custom_field_data__hedgehog_plan_id=str(plan.pk)
+        ).count()
+
+    # -------------------------------------------------------------------
+    # Section 1: _compute_cables_per_pair helper unit tests
+    # All RED via AttributeError — method does not exist yet.
+    # -------------------------------------------------------------------
+
+    def test_helper_2switch_full_capacity_returns_N(self):
+        """_compute_cables_per_pair: 2-switch, 4-port zone → 4."""
+        plan = _plan('M544 Helper 2sw')
+        sc = _mesh_sc(plan, self.ext, sc_id='h2sw-leaf', qty=2)
+        _mesh_zone(sc, port_spec='1-4')
+        gen = self._make_gen(plan)
+        mesh_classes = list(plan.switch_classes.filter(fabric_name='backend'))
+        result = gen._compute_cables_per_pair('backend', 2, mesh_classes)
+        self.assertEqual(result, 4)
+
+    def test_helper_3switch_divisible_capacity_returns_half(self):
+        """_compute_cables_per_pair: 3-switch, 4-port zone → 4 // 2 = 2."""
+        plan = _plan('M544 Helper 3sw')
+        sc = _mesh_sc(plan, self.ext, sc_id='h3sw-leaf', qty=3)
+        _mesh_zone(sc, port_spec='1-4')
+        gen = self._make_gen(plan)
+        mesh_classes = list(plan.switch_classes.filter(fabric_name='backend'))
+        result = gen._compute_cables_per_pair('backend', 3, mesh_classes)
+        self.assertEqual(result, 2)
+
+    def test_helper_asymmetric_capacity_raises_validation_error(self):
+        """_compute_cables_per_pair: class A (2 ports) vs class B (4 ports) → ValidationError."""
+        plan = _plan('M544 Helper Asym')
+        sc_a = _mesh_sc(plan, self.ext, sc_id='hasym-leaf-a', qty=1, fabric='hasym-fab')
+        sc_b = _mesh_sc(plan, self.ext, sc_id='hasym-leaf-b', qty=1, fabric='hasym-fab')
+        _mesh_zone(sc_a, zone_name='mesh-a', port_spec='1-2')
+        _mesh_zone(sc_b, zone_name='mesh-b', port_spec='1-4')
+        gen = self._make_gen(plan)
+        mesh_classes = list(plan.switch_classes.filter(fabric_name='hasym-fab'))
+        with self.assertRaises(ValidationError) as ctx:
+            gen._compute_cables_per_pair('hasym-fab', 2, mesh_classes)
+        self.assertIn('asymmetric', str(ctx.exception).lower())
+
+    def test_helper_3switch_non_divisible_capacity_raises_validation_error(self):
+        """_compute_cables_per_pair: 3-switch, 3-port zone (odd) → ValidationError."""
+        plan = _plan('M544 Helper Odd')
+        sc = _mesh_sc(plan, self.ext, sc_id='hodd-leaf', qty=3)
+        _mesh_zone(sc, port_spec='1-3')
+        gen = self._make_gen(plan)
+        mesh_classes = list(plan.switch_classes.filter(fabric_name='backend'))
+        with self.assertRaises(ValidationError) as ctx:
+            gen._compute_cables_per_pair('backend', 3, mesh_classes)
+        self.assertIn('divisible', str(ctx.exception).lower())
+
+    # -------------------------------------------------------------------
+    # Section 2: Generation behavior
+    # T1, T2 fail RED (cable count wrong). T5/T6/T7 pass RED and GREEN.
+    # -------------------------------------------------------------------
+
+    def test_2switch_N_port_zone_creates_N_cables(self):
+        """2-switch, port_spec='1-4' → 4 cables. RED: current code creates 1."""
+        plan = _plan('M544 Gen 2sw 4port')
+        sc = _mesh_sc(plan, self.ext, sc_id='g2n-leaf', qty=2)
+        _mesh_zone(sc, port_spec='1-4')
+        self._gen(plan)
+        self.assertEqual(self._cable_count(plan), 4)
+
+    def test_3switch_even_capacity_splits_evenly(self):
+        """3-switch, port_spec='1-4' (4 ports) → 2 cables/pair, 6 total. RED: current code creates 3."""
+        plan = _plan('M544 Gen 3sw 4port')
+        sc = _mesh_sc(plan, self.ext, sc_id='g3ev-leaf', qty=3)
+        _mesh_zone(sc, port_spec='1-4')
+        self._gen(plan)
+        self.assertEqual(self._cable_count(plan), 6)
+
+    def test_2switch_single_port_still_creates_one_cable(self):
+        """Regression: 2-switch, port_spec='1-1' → 1 cable. Passes RED and GREEN."""
+        plan = _plan('M544 Reg 2sw 1port')
+        sc = _mesh_sc(plan, self.ext, sc_id='g1reg-leaf', qty=2)
+        _mesh_zone(sc, port_spec='1-1')
+        self._gen(plan)
+        self.assertEqual(self._cable_count(plan), 1)
+
+    def test_3switch_2port_creates_1_cable_per_pair(self):
+        """Regression: 3-switch, port_spec='1-2' → 1 cable/pair, 3 total. Passes RED and GREEN."""
+        plan = _plan('M544 Reg 3sw 2port')
+        sc = _mesh_sc(plan, self.ext, sc_id='g3reg-leaf', qty=3)
+        _mesh_zone(sc, port_spec='1-2')
+        self._gen(plan)
+        self.assertEqual(self._cable_count(plan), 3)
+
+    def test_planmeshlink_leaf1_port_is_first_allocated_port(self):
+        """PlanMeshLink.leaf1_port stores the first port from the batch (E1/1 for port_spec='1-4')."""
+        plan = _plan('M544 MeshLink FirstPort')
+        sc = _mesh_sc(plan, self.ext, sc_id='fp4-leaf', qty=2)
+        _mesh_zone(sc, port_spec='1-4')
+        self._gen(plan)
+        link = PlanMeshLink.objects.get(plan=plan)
+        self.assertEqual(link.leaf1_port, 'E1/1')
+        self.assertEqual(link.leaf2_port, 'E1/1')
+
+    # -------------------------------------------------------------------
+    # Section 3: Validation failures (new error substrings)
+    # Both fail RED — current code raises no error for these cases.
+    # -------------------------------------------------------------------
+
+    def test_asymmetric_capacity_raises_before_allocation(self):
+        """
+        Two switch classes with mismatched mesh port counts → ValidationError with 'asymmetric'.
+        RED: current code performs no symmetry check; 1 cable is created silently.
+        Confirmed clean fail: no cables and no devices must exist after the exception.
+        """
+        from dcim.models import Cable, Device
+        plan = _plan('M544 Val Asym')
+        sc_a = _mesh_sc(plan, self.ext, sc_id='va-leaf-a', qty=1, fabric='va-fab')
+        sc_b = _mesh_sc(plan, self.ext, sc_id='va-leaf-b', qty=1, fabric='va-fab')
+        _mesh_zone(sc_a, zone_name='mesh-a', port_spec='1-2')
+        _mesh_zone(sc_b, zone_name='mesh-b', port_spec='1-4')
+        with self.assertRaises(ValidationError) as ctx:
+            self._gen(plan)
+        self.assertIn('asymmetric', str(ctx.exception).lower())
+        self.assertEqual(
+            Cable.objects.filter(
+                custom_field_data__hedgehog_plan_id=str(plan.pk)
+            ).count(), 0,
+            "No cables should be created when asymmetric validation fires",
+        )
+
+    def test_3switch_non_divisible_capacity_raises_before_allocation(self):
+        """
+        3-switch, port_spec='1-3' (odd) → ValidationError mentioning divisibility.
+        RED: current code raises no error; it creates 3 cables (1 per pair).
+        """
+        from dcim.models import Cable
+        plan = _plan('M544 Val Odd3')
+        sc = _mesh_sc(plan, self.ext, sc_id='vodd3-leaf', qty=3)
+        _mesh_zone(sc, port_spec='1-3')
+        with self.assertRaises(ValidationError) as ctx:
+            self._gen(plan)
+        err = str(ctx.exception).lower()
+        self.assertTrue(
+            'divisible' in err,
+            f"Expected 'divisible' in ValidationError message, got: {ctx.exception}",
+        )
+        self.assertEqual(
+            Cable.objects.filter(
+                custom_field_data__hedgehog_plan_id=str(plan.pk)
+            ).count(), 0,
+            "No cables should be created when divisibility validation fires",
+        )
+
+    # -------------------------------------------------------------------
+    # Section 4: Canonical motivating case (XOC-64 style)
+    # -------------------------------------------------------------------
+
+    def test_xoc64_style_32port_2switch_mesh_creates_32_cables(self):
+        """
+        XOC-64 motivating case: 2-switch, 32 odd-numbered mesh ports per switch → 32 cables.
+        port_spec='1-63:2' → [1,3,5,...,63] = 32 ports.
+        RED: current code creates exactly 1 cable.
+        """
+        plan = _plan('M544 XOC64 32port')
+        sc = _mesh_sc(plan, self.ext, sc_id='xoc64-leaf', qty=2, fabric='scale-out')
+        _mesh_zone(sc, zone_name='mesh-800', port_spec='1-63:2')
+        self._gen(plan)
+        self.assertEqual(self._cable_count(plan), 32)
+
+    # -------------------------------------------------------------------
+    # Section 5: Export regression guard
+    # -------------------------------------------------------------------
+
+    def test_mesh_export_crd_aggregates_all_cables_per_pair(self):
+        """
+        Export regression guard: after generating a 2-switch 4-port mesh,
+        _generate_connection_crds() produces exactly 1 mesh CRD with 4 links.
+
+        Verifies that yaml_generator.py already aggregates mesh cables by pair
+        (mesh_links_by_pair dict) and passes the full list to _create_mesh_crd().
+
+        RED: current generation creates 1 cable → CRD has 1 link, not 4.
+        GREEN: 4 cables → 1 CRD with 4 links.
+
+        Stop condition check: if this test fails for a reason other than link count
+        (e.g., 0 mesh CRDs returned), the exporter aggregation is broken and
+        GREEN scope must be reassessed before proceeding.
+        """
+        from netbox_hedgehog.services.yaml_generator import YAMLGenerator
+        plan = _plan('M544 Export 4link')
+        sc = _mesh_sc(plan, self.ext, sc_id='exp4l-leaf', qty=2, fabric='exp4-fab')
+        _mesh_zone(sc, zone_name='mesh-exp', port_spec='1-4')
+        self._gen(plan)
+
+        gen = YAMLGenerator(plan=plan)
+        conn_crds = gen._generate_connection_crds()
+        mesh_crds = [c for c in conn_crds if 'mesh' in c.get('spec', {})]
+
+        self.assertEqual(
+            len(mesh_crds), 1,
+            f"Expected exactly 1 mesh CRD; got {len(mesh_crds)}. "
+            "If 0: exporter aggregation is broken — stop and report before GREEN.",
+        )
+        links = mesh_crds[0]['spec']['mesh']['links']
+        self.assertEqual(
+            len(links), 4,
+            f"Expected 4 links in mesh CRD (one per cable), got {len(links)}. "
+            "With current code this is 1 (RED). After GREEN it should be 4.",
+        )

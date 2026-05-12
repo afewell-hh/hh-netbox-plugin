@@ -1606,6 +1606,56 @@ class DeviceGenerator:
             role=switch_class.hedgehog_role or "",
         )
 
+    def _compute_cables_per_pair(self, fabric_name: str, total_switches: int, mesh_classes: list) -> int:
+        """
+        Return how many parallel cables to create per switch pair in a mesh fabric.
+
+        2-switch mesh: cables_per_pair = total mesh ports per switch (all ports connect
+        to the single peer).
+
+        3-switch mesh: cables_per_pair = total mesh ports // 2 (ports split evenly across
+        the two peer connections each switch participates in).
+
+        Raises ValidationError if:
+        - mesh zone port counts differ across switch classes (asymmetric capacity)
+        - 3-switch capacity is not divisible by 2
+        """
+        from netbox_hedgehog.choices import PortZoneTypeChoices
+        from netbox_hedgehog.services.port_specification import PortSpecification
+
+        port_counts = []
+        for sc in mesh_classes:
+            mesh_zones = list(sc.port_zones.filter(
+                zone_type=PortZoneTypeChoices.MESH
+            ).order_by('priority', 'zone_name'))
+            total = sum(
+                len(PortSpecification(z.port_spec).parse())
+                * ((z.breakout_option.logical_ports or 1) if z.breakout_option else 1)
+                for z in mesh_zones
+            )
+            port_counts.append(total)
+
+        if len(set(port_counts)) > 1:
+            raise ValidationError(
+                f"Mesh fabric '{fabric_name}' has asymmetric mesh zone capacity across "
+                f"switch classes: {port_counts}. All switch classes must contribute the "
+                f"same number of mesh ports."
+            )
+
+        port_count = port_counts[0] if port_counts else 0
+
+        if total_switches == 2:
+            return port_count
+
+        # 3-switch: ports must split evenly across 2 peer connections
+        if port_count % 2 != 0:
+            raise ValidationError(
+                f"Mesh fabric '{fabric_name}' has {port_count} mesh port(s) per switch, "
+                f"which is not divisible by 2. A 3-switch mesh requires an even number "
+                f"of mesh ports so they can be split evenly across both peer connections."
+            )
+        return port_count // 2
+
     def _create_mesh_connections(self, plan, switch_devices: dict[str, Device]):
         """
         Allocate mesh links for all explicit mesh fabrics and create NetBox cables.
@@ -1675,6 +1725,10 @@ class DeviceGenerator:
                         f"{ports_needed_per_switch} (for a {total_switches}-switch mesh)."
                     )
 
+            cables_per_pair = self._compute_cables_per_pair(
+                fabric_name, total_switches, mesh_classes
+            )
+
             mesh_links = allocate_mesh_links(
                 plan,
                 fabric_name,
@@ -1693,8 +1747,8 @@ class DeviceGenerator:
                 switch_class_a = mesh_link.switch_class_a
                 switch_class_b = mesh_link.switch_class_b
 
-                def _pick_mesh_interface(device, switch_class):
-                    """Allocate one port from a MESH zone; raises if none available."""
+                def _pick_mesh_interfaces(device, switch_class, count):
+                    """Allocate count ports from MESH zones; returns list of Interface."""
                     mesh_zones = list(switch_class.port_zones.filter(
                         zone_type=PortZoneTypeChoices.MESH
                     ).order_by('priority', 'zone_name')) if switch_class else []
@@ -1705,7 +1759,7 @@ class DeviceGenerator:
                             f"has no MESH-type port zones."
                         )
 
-                    ports = self._allocate_ports_for_zones(device.name, mesh_zones, count=1)
+                    ports = self._allocate_ports_for_zones(device.name, mesh_zones, count=count)
                     if not ports:
                         raise ValidationError(
                             f"Device '{device.name}': no available ports in MESH zones of "
@@ -1713,44 +1767,53 @@ class DeviceGenerator:
                             f"Add more ports to the MESH zone for this fabric size."
                         )
 
-                    zone, port = ports[0]
-                    iface = self._get_or_create_interface(
-                        device=device,
-                        name=port.name,
-                        interfaces=mesh_interfaces,
-                        custom_fields={
-                            'hedgehog_plan_id': str(plan.pk),
-                            'hedgehog_zone': zone.zone_name,
-                            'hedgehog_physical_port': port.physical_port,
-                            'hedgehog_breakout_index': port.breakout_index,
-                        },
-                        interface_type=self._interface_type_for_zone(zone),
+                    ifaces = []
+                    for zone, port in ports:
+                        iface = self._get_or_create_interface(
+                            device=device,
+                            name=port.name,
+                            interfaces=mesh_interfaces,
+                            custom_fields={
+                                'hedgehog_plan_id': str(plan.pk),
+                                'hedgehog_zone': zone.zone_name,
+                                'hedgehog_physical_port': port.physical_port,
+                                'hedgehog_breakout_index': port.breakout_index,
+                            },
+                            interface_type=self._interface_type_for_zone(zone),
+                        )
+                        self._create_switch_transceiver_module(device, port.name, zone)
+                        ifaces.append(iface)
+                    return ifaces
+
+                ifaces_a = _pick_mesh_interfaces(device_a, switch_class_a, cables_per_pair)
+                ifaces_b = _pick_mesh_interfaces(device_b, switch_class_b, cables_per_pair)
+
+                first_iface_a = None
+                first_iface_b = None
+                for iface_a, iface_b in zip(ifaces_a, ifaces_b):
+                    cable = Cable(
+                        a_terminations=[iface_a],
+                        b_terminations=[iface_b],
                     )
-                    self._create_switch_transceiver_module(device, port.name, zone)
-                    return iface
+                    cable.custom_field_data = {
+                        'hedgehog_plan_id': str(plan.pk),
+                    }
+                    cable.save()
+                    mesh_cables.append(cable)
+                    if first_iface_a is None:
+                        first_iface_a = iface_a
+                        first_iface_b = iface_b
 
-                iface_a = _pick_mesh_interface(device_a, switch_class_a)
-                iface_b = _pick_mesh_interface(device_b, switch_class_b)
-
-                cable = Cable(
-                    a_terminations=[iface_a],
-                    b_terminations=[iface_b],
-                )
-                cable.custom_field_data = {
-                    'hedgehog_plan_id': str(plan.pk),
-                }
-                cable.save()
-                mesh_cables.append(cable)
-
-                # Store chosen port names back on PlanMeshLink
-                mesh_link.leaf1_port = iface_a.name
-                mesh_link.leaf2_port = iface_b.name
+                # Store first allocated port names back on PlanMeshLink
+                mesh_link.leaf1_port = first_iface_a.name
+                mesh_link.leaf2_port = first_iface_b.name
                 mesh_link.save(update_fields=['leaf1_port', 'leaf2_port'])
 
                 if self.logger:
                     self.logger.info(
-                        f"Mesh cable created: {mesh_link.leaf1_name}/{iface_a.name} ↔ "
-                        f"{mesh_link.leaf2_name}/{iface_b.name}"
+                        f"Mesh cables created ({cables_per_pair}): "
+                        f"{mesh_link.leaf1_name}/{first_iface_a.name} ↔ "
+                        f"{mesh_link.leaf2_name}/{first_iface_b.name} (first port)"
                     )
 
         return mesh_interfaces, mesh_cables
