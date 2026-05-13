@@ -11,6 +11,7 @@ Gate 3 — seeded-catalog tests are green.
 """
 
 from io import StringIO
+from pathlib import Path
 
 from django.core.management import call_command
 from django.test import TestCase
@@ -18,6 +19,71 @@ from django.test import TestCase
 from dcim.models import DeviceType, InterfaceTemplate, Manufacturer, ModuleBayTemplate, ModuleType, ModuleTypeProfile
 
 from netbox_hedgehog.models.topology_planning import BreakoutOption, DeviceTypeExtension
+
+# ── DIET-569: Complete supported-switch library contract ─────────────────────
+#
+# REQUIRED_SWITCH_SLUGS is the exact set of 21 switch DeviceType slugs that
+# load_diet_reference_data must produce.  Tests assert membership (all 21 present)
+# and count (== 21); extras tolerated.
+#
+# Slug sources:
+#   BCM hardware   — parsed from p_bcm_*.go files in fabric_profiles/
+#   CLSP hardware  — parsed from p_clsp_*.go files in fabric_profiles/
+#   alias          — supermicro-sse-c4632sb defined in ALIAS_PROFILES, source file
+#                    p_bcm_supermicro_sse_c4632.go
+#   virtual        — vs, vs-clsp from FabricProfileImporter.VIRTUAL_SWITCH_PROFILES
+#   static mgmt    — celestica-es1000 from seed_management_switch_device_types()
+REQUIRED_SWITCH_SLUGS = frozenset([
+    # BCM hardware (13)
+    "celestica-ds2000",
+    "celestica-ds3000",
+    "celestica-ds4000",
+    "celestica-ds4101",
+    "celestica-ds5000",
+    "dell-s5232f-on",
+    "dell-s5248f-on",
+    "dell-z9332f-on",
+    "edgecore-dcs203",
+    "edgecore-dcs204",
+    "edgecore-dcs501",
+    "edgecore-eps203",
+    "supermicro-sse-c4632sb",
+    # CLSP hardware (5)
+    "celestica-ds2000-clsp",
+    "celestica-ds3000-clsp",
+    "celestica-ds4000-clsp",
+    "celestica-ds4101-clsp",
+    "celestica-ds5000-clsp",
+    # Virtual (2) — seeded via VIRTUAL_SWITCH_PROFILES, not .go files
+    "vs",
+    "vs-clsp",
+    # Static management (1) — seeded via seed_management_switch_device_types()
+    "celestica-es1000",
+])
+
+# All 18 hardware .go files that must be present in fabric_profiles/.
+# p_bcm_vs.go and p_clsp_vs.go are intentionally absent: virtual profiles
+# are defined in VIRTUAL_SWITCH_PROFILES (Python), not parsed from Go files.
+EXPECTED_BUNDLED_PROFILE_FILES = frozenset([
+    "p_bcm_celestica_ds2000.go",
+    "p_bcm_celestica_ds3000.go",
+    "p_bcm_celestica_ds4000.go",
+    "p_bcm_celestica_ds4101.go",
+    "p_bcm_celestica_ds5000.go",
+    "p_bcm_dell_s5232f_on.go",
+    "p_bcm_dell_s5248f_on.go",
+    "p_bcm_dell_z9332f_on.go",
+    "p_bcm_edgecore_dcs203.go",
+    "p_bcm_edgecore_dcs204.go",
+    "p_bcm_edgecore_dcs501.go",
+    "p_bcm_edgecore_eps203.go",
+    "p_bcm_supermicro_sse_c4632.go",
+    "p_clsp_celestica_ds2000.go",
+    "p_clsp_celestica_ds3000.go",
+    "p_clsp_celestica_ds4000.go",
+    "p_clsp_celestica_ds4101.go",
+    "p_clsp_celestica_ds5000.go",
+])
 
 
 class CanonicalSwitchInventoryTestCase(TestCase):
@@ -451,15 +517,17 @@ class BootstrapInventoryContractTestCase(TestCase):
 
     def test_breakout_option_count_is_exact(self):
         """
-        load_diet_reference_data must produce exactly 16 BreakoutOptions.
+        load_diet_reference_data must produce exactly 23 BreakoutOptions.
 
-        14 canonical ones from load_breakout_options plus 2 added by the DS5000
-        profile (1x50g, 2x100g).  The spec (#564) stated 14; the actual value
-        is 16 — corrected here based on observed bootstrap output.
+        14 canonical ones from load_breakout_options plus 9 added by the full
+        hardware profile import (all 18 p_*.go files). The original 16 count
+        reflected only the DS5000 profile (14 canonical + 2 from DS5000: 1x50g,
+        2x100g). After DIET-569 bundled all 18 hardware profiles the observed
+        count is 23 — updated from the verified bootstrap output.
         """
         self._seed()
         count = BreakoutOption.objects.count()
-        self.assertEqual(count, 16, f"Expected 16 BreakoutOptions (14 canonical + 2 from DS5000 profile); got {count}")
+        self.assertEqual(count, 23, f"Expected 23 BreakoutOptions (14 canonical + 9 from full profile import); got {count}")
 
     def test_module_type_count_is_exact(self):
         """load_diet_reference_data must produce exactly 33 ModuleTypes."""
@@ -479,3 +547,121 @@ class BootstrapInventoryContractTestCase(TestCase):
             device_type=dt, type="800gbase-x-osfp"
         ).count()
         self.assertEqual(count, 64, f"Expected 64 OSFP templates on celestica-ds5000; got {count}")
+
+
+class BundledProfileCompletenessTestCase(TestCase):
+    """
+    DIET-569: All 18 hardware Go profile files must exist in fabric_profiles/.
+
+    Tests in this class do NOT call load_diet_reference_data — they verify the
+    presence of the source files on disk, independently of the import path.
+
+    RED: 17 of 18 expected files are missing.  Only p_bcm_celestica_ds5000.go
+    is currently bundled.
+    GREEN: all 17 missing files are copied from fabric v0.98.0.
+
+    Implementation seam: missing .go files in fabric_profiles/.
+    """
+
+    _PROFILE_DIR = Path(__file__).resolve().parents[2] / "fabric_profiles"
+
+    def test_all_expected_profile_files_present(self):
+        """
+        Every filename in EXPECTED_BUNDLED_PROFILE_FILES must exist on disk.
+
+        RED: 17 files are absent; the sorted missing list names the gap explicitly.
+        GREEN: all 18 files are present after the file copy.
+        """
+        missing = sorted(
+            fname for fname in EXPECTED_BUNDLED_PROFILE_FILES
+            if not (self._PROFILE_DIR / fname).is_file()
+        )
+        self.assertEqual(
+            missing,
+            [],
+            f"Missing bundled profile file(s) in fabric_profiles/ "
+            f"(seam: copy 17 files from fabric v0.98.0): {missing}",
+        )
+
+    def test_bundled_profile_file_count(self):
+        """
+        fabric_profiles/ must contain exactly 18 p_*.go files.
+
+        RED: only 1 file is present (p_bcm_celestica_ds5000.go).
+        GREEN: 18 files present after the file copy.
+        """
+        actual = sorted(f.name for f in self._PROFILE_DIR.glob("p_*.go"))
+        self.assertEqual(
+            len(actual),
+            18,
+            f"Expected 18 p_*.go files in fabric_profiles/; "
+            f"found {len(actual)}: {actual}",
+        )
+
+
+class FullSwitchCatalogBootstrapTestCase(TestCase):
+    """
+    DIET-569: load_diet_reference_data must seed all 21 required switch DeviceTypes.
+
+    RED failures in this class are attributable to two implementation seams:
+      (1) 17 bundled profile files are missing from fabric_profiles/
+      (2) import_bundled_switch_profiles() passes profiles="celestica-ds5000" to
+          import_fabric_profiles, filtering out everything except DS5000
+
+    Both seams must be fixed in GREEN before these tests pass.
+
+    Currently 2 of 21 required slugs are produced by bootstrap:
+      celestica-ds5000  (profile import passes the DS5000-only filter)
+      celestica-es1000  (seed_management_switch_device_types — independent path)
+    The DS5000-only filter also blocks vs and vs-clsp (the VIRTUAL_SWITCH_PROFILES
+    loop in import_fabric_profiles respects the profiles= filter too).
+    The remaining 19 slugs are absent until both seams are resolved.
+
+    Extras tolerated: assertions use filter(slug__in=REQUIRED_SWITCH_SLUGS) so
+    operator-added DeviceTypes do not cause false failures.
+    """
+
+    def _seed(self):
+        call_command("load_diet_reference_data", stdout=StringIO())
+
+    def test_all_required_switch_slugs_present_after_bootstrap(self):
+        """
+        Every slug in REQUIRED_SWITCH_SLUGS must exist after load_diet_reference_data.
+
+        RED: 17 slugs are missing (all BCM+CLSP hardware except DS5000).
+        GREEN: all 21 slugs present after file copy + filter removal.
+        """
+        self._seed()
+        missing = sorted(
+            slug for slug in REQUIRED_SWITCH_SLUGS
+            if not DeviceType.objects.filter(slug=slug).exists()
+        )
+        self.assertEqual(
+            missing,
+            [],
+            f"Missing switch slugs after load_diet_reference_data "
+            f"(seam: missing files + DS5000-only filter): {missing}",
+        )
+
+    def test_required_switch_slug_count_is_exact(self):
+        """
+        Exactly 21 of the required switch slugs must be present after bootstrap.
+
+        Uses filter(slug__in=REQUIRED_SWITCH_SLUGS) so operator-added extras are
+        not counted.
+
+        RED: exactly 2 of 21 slugs are present (celestica-ds5000, celestica-es1000).
+        GREEN: all 21 present.
+        """
+        self._seed()
+        present = DeviceType.objects.filter(slug__in=REQUIRED_SWITCH_SLUGS).count()
+        missing = sorted(
+            slug for slug in REQUIRED_SWITCH_SLUGS
+            if not DeviceType.objects.filter(slug=slug).exists()
+        )
+        self.assertEqual(
+            present,
+            21,
+            f"Expected 21 required switch slugs; found {present}. "
+            f"Missing (seam: missing files + DS5000-only filter): {missing}",
+        )

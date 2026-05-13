@@ -297,22 +297,17 @@ class Command(BaseCommand):
             ))
             return 0
 
-        before_exists = DeviceType.objects.filter(model="celestica-ds5000").exists()
+        before_count = DeviceType.objects.count()
 
         call_command(
             "import_fabric_profiles",
             source_dir=str(profile_dir),
-            profiles="celestica-ds5000",
             stdout=self.stdout,
             stderr=self.stderr,
         )
 
-        after_exists = DeviceType.objects.filter(model="celestica-ds5000").exists()
-        if after_exists and not before_exists:
-            return 1
-        if after_exists:
-            return 1
-        return 0
+        after_count = DeviceType.objects.count()
+        return after_count - before_count
 
     @transaction.atomic
     def seed_management_switch_device_types(self) -> int:
