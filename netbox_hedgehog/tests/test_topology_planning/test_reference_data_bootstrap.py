@@ -517,21 +517,17 @@ class BootstrapInventoryContractTestCase(TestCase):
 
     def test_breakout_option_count_is_exact(self):
         """
-        load_diet_reference_data must produce exactly 16 BreakoutOptions.
+        load_diet_reference_data must produce exactly 23 BreakoutOptions.
 
-        14 canonical ones from load_breakout_options plus 2 added by the DS5000
-        profile (1x50g, 2x100g).  The spec (#564) stated 14; the actual value
-        is 16 — corrected here based on observed bootstrap output.
-
-        NOTE (DIET-569): This expected value will increase when GREEN copies the
-        17 missing profile files and removes the DS5000-only filter in
-        import_bundled_switch_profiles().  Discover the new exact count by running
-        load_diet_reference_data after the GREEN file copy and update the assertEqual
-        below to the observed value.
+        14 canonical ones from load_breakout_options plus 9 added by the full
+        hardware profile import (all 18 p_*.go files). The original 16 count
+        reflected only the DS5000 profile (14 canonical + 2 from DS5000: 1x50g,
+        2x100g). After DIET-569 bundled all 18 hardware profiles the observed
+        count is 23 — updated from the verified bootstrap output.
         """
         self._seed()
         count = BreakoutOption.objects.count()
-        self.assertEqual(count, 16, f"Expected 16 BreakoutOptions (14 canonical + 2 from DS5000 profile); got {count}")
+        self.assertEqual(count, 23, f"Expected 23 BreakoutOptions (14 canonical + 9 from full profile import); got {count}")
 
     def test_module_type_count_is_exact(self):
         """load_diet_reference_data must produce exactly 33 ModuleTypes."""
