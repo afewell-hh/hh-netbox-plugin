@@ -185,6 +185,39 @@ class CanonicalSwitchInventoryTestCase(TestCase):
         )
 
 
+class ProfileBackedDeviceTypeNormalizationTestCase(TestCase):
+    """
+    Profile-backed switch DeviceTypes must use the profile slug as their model.
+
+    Historical bootstrap runs preserved some human-readable model values on
+    slug-matched dynamic switch rows. load_diet_reference_data must normalize
+    those rows back to the canonical dynamic-switch naming convention.
+    """
+
+    def test_stale_human_readable_ds2000_model_is_normalized_on_bootstrap(self):
+        """celestica-ds2000 should not remain as 'Celestica DS2000' after bootstrap."""
+        celestica, _ = Manufacturer.objects.get_or_create(
+            name="Celestica", defaults={"slug": "celestica"}
+        )
+        dt, _ = DeviceType.objects.get_or_create(
+            manufacturer=celestica,
+            slug="celestica-ds2000",
+            defaults={"model": "celestica-ds2000"},
+        )
+        dt.model = "Celestica DS2000"
+        dt.save(update_fields=["model"])
+
+        call_command("load_diet_reference_data", stdout=StringIO())
+
+        dt = DeviceType.objects.get(slug="celestica-ds2000")
+        self.assertEqual(
+            dt.model,
+            "celestica-ds2000",
+            "Profile-backed celestica-ds2000 must be normalized to the canonical "
+            "slug-style model name during bootstrap",
+        )
+
+
 class SwitchBayPopulationTestCase(TestCase):
     """
     Gate 3: populate_transceiver_bays works against the seeded DS5000 path.

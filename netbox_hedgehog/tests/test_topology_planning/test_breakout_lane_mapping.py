@@ -30,12 +30,21 @@ def _make_gen():
     return YAMLGenerator.__new__(YAMLGenerator)
 
 
-def _make_zone(breakout_id, logical_ports, logical_speed, port_spec):
-    """Return a mock SwitchPortZone with the given breakout_option."""
+def _make_zone(breakout_id, logical_ports, logical_speed, port_spec, from_speed=800):
+    """Return a mock SwitchPortZone with the given breakout_option.
+
+    from_speed must be set explicitly so the GREEN implementation of
+    _generate_port_configuration() (which gates on from_speed < 100) receives a
+    real integer rather than a MagicMock whose truthiness is non-deterministic.
+
+    Default from_speed=800 keeps all existing high-speed tests correct after GREEN.
+    Pass from_speed=25 (or another sub-100 value) to exercise the portSpeeds path.
+    """
     bo = MagicMock()
     bo.breakout_id = breakout_id
     bo.logical_ports = logical_ports
     bo.logical_speed = logical_speed
+    bo.from_speed = from_speed  # required for GREEN implementation's < 100 gate
 
     zone = MagicMock()
     zone.breakout_option = bo
@@ -140,6 +149,101 @@ class PortSpeedsNotEmittedTestCase(TestCase):
         result = _run_port_config(zones)
         self.assertEqual(result['portSpeeds'], {})
         self.assertEqual(result['portAutoNegs'], {})
+
+
+class LowSpeedPortsEmitPortSpeedsTestCase(TestCase):
+    """
+    RED tests: sub-100G zones (from_speed < 100) must emit portSpeeds, not portBreakouts.
+
+    These tests FAIL in the current state because _generate_port_configuration()
+    unconditionally emits all breakout_option zones into portBreakouts regardless
+    of from_speed.  After GREEN (Fix A), from_speed < 100 routes to portSpeeds.
+
+    The _make_zone from_speed parameter update above is the prerequisite: without
+    an explicit from_speed integer on the mock, the GREEN implementation's
+    `if zone.breakout_option.from_speed < 100:` comparison would receive a
+    MagicMock whose truthiness is non-deterministic, silently breaking the
+    existing high-speed tests.
+    """
+
+    def test_1x25g_zone_absent_from_portBreakouts(self):
+        """from_speed=25 (SFP28) zone must not appear in portBreakouts."""
+        result = _run_port_config([_make_zone('1x25g', 1, 25, '1-24', from_speed=25)])
+        pb = result['portBreakouts']
+        for port_num in range(1, 25):
+            self.assertNotIn(
+                f'E1/{port_num}', pb,
+                f"SFP28-25G port E1/{port_num} must not appear in portBreakouts "
+                f"(from_speed=25 < 100 → portSpeeds). Currently FAILS."
+            )
+
+    def test_1x25g_zone_present_in_portSpeeds(self):
+        """from_speed=25 (SFP28) zone must appear in portSpeeds."""
+        result = _run_port_config([_make_zone('1x25g', 1, 25, '1-24', from_speed=25)])
+        ps = result['portSpeeds']
+        self.assertIn(
+            'E1/1', ps,
+            "SFP28-25G port E1/1 must appear in portSpeeds. "
+            "Currently FAILS because portSpeeds is always {} in the broken generator."
+        )
+
+    def test_1x25g_portSpeeds_value_is_bare_speed_string(self):
+        """portSpeeds value for a 25G zone must be '25G', not '1x25G'."""
+        result = _run_port_config([_make_zone('1x25g', 1, 25, '1-3', from_speed=25)])
+        ps = result['portSpeeds']
+        # First check it's populated (will fail if portSpeeds empty)
+        self.assertNotEqual(ps, {}, "portSpeeds must not be empty for from_speed=25 zone")
+        for port_key in ('E1/1', 'E1/2', 'E1/3'):
+            self.assertEqual(
+                ps.get(port_key), '25G',
+                f"portSpeeds['{port_key}'] must be '25G' (bare speed), "
+                f"not '1x25G' (breakout notation). Got: {ps.get(port_key)!r}"
+            )
+
+    def test_1x10g_zone_present_in_portSpeeds(self):
+        """from_speed=10 (SFP+) zone must also go to portSpeeds."""
+        result = _run_port_config([_make_zone('1x10g', 1, 10, '1-8', from_speed=10)])
+        ps = result['portSpeeds']
+        self.assertIn('E1/1', ps,
+                      "SFP+-10G port E1/1 must appear in portSpeeds (from_speed=10 < 100)")
+
+    def test_mixed_low_and_high_speed_zones(self):
+        """Low-speed zone → portSpeeds; high-speed zone → portBreakouts; no overlap."""
+        zones = [
+            _make_zone('1x25g', 1, 25, '1-8', from_speed=25),    # SFP28 → portSpeeds
+            _make_zone('4x200g', 4, 200, '9-32', from_speed=800), # OSFP → portBreakouts
+        ]
+        result = _run_port_config(zones)
+        ps = result['portSpeeds']
+        pb = result['portBreakouts']
+        # Low-speed ports 1-8 must be in portSpeeds only
+        for n in range(1, 9):
+            self.assertIn(f'E1/{n}', ps,
+                          f"E1/{n} (from_speed=25) must be in portSpeeds")
+            self.assertNotIn(f'E1/{n}', pb,
+                             f"E1/{n} (from_speed=25) must not be in portBreakouts")
+        # High-speed ports 9-32 must be in portBreakouts only
+        for n in range(9, 33):
+            self.assertIn(f'E1/{n}', pb,
+                          f"E1/{n} (from_speed=800) must be in portBreakouts")
+            self.assertNotIn(f'E1/{n}', ps,
+                             f"E1/{n} (from_speed=800) must not be in portSpeeds")
+
+    def test_high_speed_zones_unaffected_portSpeeds_stays_empty(self):
+        """
+        Regression guard: high-speed (from_speed=800) zones must NOT emit portSpeeds.
+
+        This test is GREEN even in the RED state (portSpeeds is currently always empty).
+        It anchors the correct behavior for the GREEN fix: from_speed >= 100 keeps
+        portSpeeds empty and uses portBreakouts as before.
+        """
+        zones = [
+            _make_zone('4x200g', 4, 200, '1-63:2', from_speed=800),
+            _make_zone('1x800g', 1, 800, '2-64:2', from_speed=800),
+        ]
+        result = _run_port_config(zones)
+        self.assertEqual(result['portSpeeds'], {},
+                         "portSpeeds must remain empty for high-speed (from_speed=800) zones")
 
 
 class OddEvenPortSpecTestCase(TestCase):
