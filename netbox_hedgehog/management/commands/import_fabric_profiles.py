@@ -384,10 +384,10 @@ class Command(BaseCommand):
         )
 
         # Get or create device type.
-        # Slug-first lookup handles pre-seeded DeviceTypes whose model field uses a
-        # human-readable name (e.g. "Celestica DS1000") rather than the profile slug
-        # ("celestica-ds1000").  Without this, get_or_create(model=profile_name) misses
-        # the existing record and the INSERT hits the unique-slug constraint.
+        # Slug-first lookup handles historical rows whose model field drifted from
+        # the canonical dynamic-switch convention. Profile-backed switch DeviceTypes
+        # use the Hedgehog profile name as both model and slug, so any reused row is
+        # normalized back to that convention below.
         device_type = DeviceType.objects.filter(
             manufacturer=manufacturer, slug=profile_name
         ).first()
@@ -399,6 +399,13 @@ class Command(BaseCommand):
                 model=profile_name,
                 defaults={"slug": profile_name}
             )
+
+        # Historical imports preserved some human-readable model names
+        # (e.g. "Celestica DS2000") on profile-backed switch DeviceTypes.
+        # Normalize reused rows so the dynamic switch catalog stays consistent.
+        if device_type.model != profile_name:
+            device_type.model = profile_name
+            device_type.save(update_fields=["model"])
 
         # Create or update extension (only fills empty fields)
         # Check if extension already exists to determine created vs updated

@@ -12,6 +12,8 @@ import re
 import hashlib
 from typing import Dict, Any, List
 from collections import defaultdict
+
+_LOW_SPEED_THRESHOLD_GBPS = 100
 from django.core.exceptions import ValidationError
 from dcim.models import Cable, Interface, Device
 
@@ -64,6 +66,7 @@ class YAMLGenerator:
             )
         else:
             self._mesh_switch_class_ids = frozenset()
+        self._device_crd_names: Dict[int, str] = {}
         valid_fabrics = self._managed_fabric_names_from_inventory() or self._managed_fabric_names_from_plan()
         if fabric is not None and fabric not in valid_fabrics:
             raise ValueError(
@@ -369,10 +372,10 @@ class YAMLGenerator:
                 'unbundled': {
                     'link': {
                         'server': {
-                            'port': f"{server_device.name}/{server_iface.name}",
+                            'port': f"{self._device_crd_name(server_device)}/{server_iface.name}",
                         },
                         'switch': {
-                            'port': f"{switch_device.name}/{switch_iface.name}",
+                            'port': f"{self._device_crd_name(switch_device)}/{switch_iface.name}",
                         },
                     },
                 },
@@ -412,12 +415,10 @@ class YAMLGenerator:
         for link_data in links:
             fabric_links.append({
                 'leaf': {
-                    'port': f"{link_data['leaf_device'].name}/{link_data['leaf_iface'].name}",
-                    # 'ip' field omitted - hhfab injects during build
+                    'port': f"{self._device_crd_name(link_data['leaf_device'])}/{link_data['leaf_iface'].name}",
                 },
                 'spine': {
-                    'port': f"{link_data['spine_device'].name}/{link_data['spine_iface'].name}",
-                    # 'ip' field omitted - hhfab injects during build
+                    'port': f"{self._device_crd_name(link_data['spine_device'])}/{link_data['spine_iface'].name}",
                 },
             })
 
@@ -511,13 +512,12 @@ class YAMLGenerator:
         # Build peer links array
         peer_links_list = []
         for link_data in peer_links:
-            # Determine which interface belongs to which switch
             if link_data['device_a'] == switch1_device:
-                port1 = f"{switch1_device.name}/{link_data['iface_a'].name}"
-                port2 = f"{switch2_device.name}/{link_data['iface_b'].name}"
+                port1 = f"{self._device_crd_name(switch1_device)}/{link_data['iface_a'].name}"
+                port2 = f"{self._device_crd_name(switch2_device)}/{link_data['iface_b'].name}"
             else:
-                port1 = f"{switch1_device.name}/{link_data['iface_b'].name}"
-                port2 = f"{switch2_device.name}/{link_data['iface_a'].name}"
+                port1 = f"{self._device_crd_name(switch1_device)}/{link_data['iface_b'].name}"
+                port2 = f"{self._device_crd_name(switch2_device)}/{link_data['iface_a'].name}"
 
             peer_links_list.append({
                 'switch1': {'port': port1},
@@ -527,13 +527,12 @@ class YAMLGenerator:
         # Build session links array
         session_links_list = []
         for link_data in session_links:
-            # Determine which interface belongs to which switch
             if link_data['device_a'] == switch1_device:
-                port1 = f"{switch1_device.name}/{link_data['iface_a'].name}"
-                port2 = f"{switch2_device.name}/{link_data['iface_b'].name}"
+                port1 = f"{self._device_crd_name(switch1_device)}/{link_data['iface_a'].name}"
+                port2 = f"{self._device_crd_name(switch2_device)}/{link_data['iface_b'].name}"
             else:
-                port1 = f"{switch1_device.name}/{link_data['iface_b'].name}"
-                port2 = f"{switch2_device.name}/{link_data['iface_a'].name}"
+                port1 = f"{self._device_crd_name(switch1_device)}/{link_data['iface_b'].name}"
+                port2 = f"{self._device_crd_name(switch2_device)}/{link_data['iface_a'].name}"
 
             session_links_list.append({
                 'switch1': {'port': port1},
@@ -618,10 +617,10 @@ class YAMLGenerator:
 
             mclag_links.append({
                 'server': {
-                    'port': f"{server_device.name}/{server_iface.name}"
+                    'port': f"{self._device_crd_name(server_device)}/{server_iface.name}"
                 },
                 'switch': {
-                    'port': f"{switch_device.name}/{switch_iface.name}"
+                    'port': f"{self._device_crd_name(switch_device)}/{switch_iface.name}"
                 }
             })
 
@@ -671,10 +670,10 @@ class YAMLGenerator:
 
             eslag_links.append({
                 'server': {
-                    'port': f"{server_device.name}/{server_iface.name}"
+                    'port': f"{self._device_crd_name(server_device)}/{server_iface.name}"
                 },
                 'switch': {
-                    'port': f"{switch_device.name}/{switch_iface.name}"
+                    'port': f"{self._device_crd_name(switch_device)}/{switch_iface.name}"
                 }
             })
 
@@ -722,10 +721,10 @@ class YAMLGenerator:
 
             bundled_links.append({
                 'server': {
-                    'port': f"{server_device.name}/{server_iface.name}"
+                    'port': f"{self._device_crd_name(server_device)}/{server_iface.name}"
                 },
                 'switch': {
-                    'port': f"{switch_device.name}/{switch_iface.name}"
+                    'port': f"{self._device_crd_name(switch_device)}/{switch_iface.name}"
                 }
             })
 
@@ -841,6 +840,10 @@ class YAMLGenerator:
 
         return sanitized
 
+    def _device_crd_name(self, device: Device) -> str:
+        """Return the CRD name for a device from the pre-populated map, or fall back to sanitized name."""
+        return self._device_crd_names.get(device.pk, self._sanitize_name(device.name))
+
     def _generate_unique_crd_name(self, device: Device, existing_names: set) -> str:
         """
         Generate unique DNS-1123 compliant name with collision avoidance.
@@ -918,21 +921,27 @@ class YAMLGenerator:
         # Query all port zones for this switch class
         zones = SwitchPortZone.objects.filter(switch_class=switch_class).order_by('priority')
 
+        port_speeds = {}
+
         for zone in zones:
             # Parse port_spec to get list of physical ports
             # Formats: "1-32", "1-63:2" (odds), "2-64:2" (evens)
             ports = self._parse_port_spec(zone.port_spec)
 
             if zone.breakout_option:
-                # Normalise breakout_id to hhfab-canonical form: lowercase 'x', uppercase 'G'
-                # e.g. "2x400g" → "2x400G", "4x200g" → "4x200G", "1x800g" → "1x800G"
-                # hhfab profile matching is case-sensitive on the trailing 'G'.
-                breakout_id = zone.breakout_option.breakout_id.replace('g', 'G')
-
-                # All ports go into portBreakouts with 'E1/<port>' key.
-                # 1x entries (native speed) use the same format as multi-lane breakouts.
-                for port in ports:
-                    port_breakouts[f"E1/{port}"] = breakout_id
+                from_speed = zone.breakout_option.from_speed
+                if from_speed < _LOW_SPEED_THRESHOLD_GBPS:
+                    # Speed-only profile (e.g. SFP28-25G): hhfab uses portSpeeds, not portBreakouts.
+                    # Value is bare speed string: '25G', '10G', not breakout notation '1x25G'.
+                    logical_speed = zone.breakout_option.logical_speed
+                    for port in ports:
+                        port_speeds[f"E1/{port}"] = f"{logical_speed}G"
+                else:
+                    # Normalise breakout_id to hhfab-canonical form: lowercase 'x', uppercase 'G'
+                    # e.g. "2x400g" → "2x400G", "4x200g" → "4x200G", "1x800g" → "1x800G"
+                    breakout_id = zone.breakout_option.breakout_id.replace('g', 'G')
+                    for port in ports:
+                        port_breakouts[f"E1/{port}"] = breakout_id
             else:
                 # No breakout_option configured: emit native speed as 1x<N>G.
                 native_speed = switch_class.device_type_extension.native_speed
@@ -941,7 +950,7 @@ class YAMLGenerator:
 
         return {
             'portBreakouts': port_breakouts,
-            'portSpeeds': {},
+            'portSpeeds': port_speeds,
             'portAutoNegs': {}
         }
 
@@ -1052,6 +1061,7 @@ class YAMLGenerator:
         for switch in switches:
             # Get unique CRD name (collision-safe)
             crd_name = self._generate_unique_crd_name(switch, existing_names)
+            self._device_crd_names[switch.pk] = crd_name
 
             # Get profile name from device type extension
             try:
@@ -1238,6 +1248,7 @@ class YAMLGenerator:
         for server in servers:
             # Get unique CRD name (collision-safe)
             crd_name = self._generate_unique_crd_name(server, existing_names)
+            self._device_crd_names[server.pk] = crd_name
 
             # Build spec with description
             spec = {}
@@ -1492,8 +1503,8 @@ class YAMLGenerator:
             # Pre-format link_data into the mesh CRD link entry format (IPs omitted per DIET-311)
             formatted_links = [
                 {
-                    'leaf1': {'port': f"{ld['leaf1_device'].name}/{ld['leaf1_iface'].name}"},
-                    'leaf2': {'port': f"{ld['leaf2_device'].name}/{ld['leaf2_iface'].name}"},
+                    'leaf1': {'port': f"{self._device_crd_name(ld['leaf1_device'])}/{ld['leaf1_iface'].name}"},
+                    'leaf2': {'port': f"{self._device_crd_name(ld['leaf2_device'])}/{ld['leaf2_iface'].name}"},
                 }
                 for ld in raw_links
             ]
