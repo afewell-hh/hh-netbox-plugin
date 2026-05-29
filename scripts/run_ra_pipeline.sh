@@ -70,12 +70,17 @@ RUN generate_devices "$PLAN_ID" --site "$SITE_SLUG" > "$ARTIFACT_DIR/logs/genera
 DEVICE_COUNT=$(SHELL_QUERY "from dcim.models import Device; print(Device.objects.filter(custom_field_data__hedgehog_plan_id=${PLAN_ID}).count())")
 echo "  Devices: $DEVICE_COUNT"
 
-# 4. Export inventory JSON and CSV
-echo "[3/7] Exporting inventory..."
+# 4. Export inventory JSON, CSV, and BOM
+echo "[3/7] Exporting inventory and BOM..."
 cd "$NETBOX_DIR" && docker compose exec -T netbox sh -c "mkdir -p /tmp/ra_pipeline/${CASE_ID}/netbox" 2>/dev/null || true
 RUN export_plan_inventory_json "$PLAN_ID" --output "${CONTAINER_TMP}/netbox/plan_inventory.json" >> "$ARTIFACT_DIR/logs/generate.log" 2>&1 || echo "  WARN: JSON export failed"
 RUN export_interface_connections_csv "$PLAN_ID" --output "${CONTAINER_TMP}/netbox/interface_connections.csv" >> "$ARTIFACT_DIR/logs/generate.log" 2>&1 || echo "  WARN: CSV export failed"
+RUN export_plan_bom "$PLAN_ID" --format csv --output "${CONTAINER_TMP}/bom.csv" > "$ARTIFACT_DIR/logs/bom.log" 2>&1 || echo "  WARN: BOM export failed"
 cd "$NETBOX_DIR" && docker compose cp "netbox:${CONTAINER_TMP}/netbox/." "$ARTIFACT_DIR/netbox/" 2>/dev/null || echo "  WARN: cp netbox failed"
+cd "$NETBOX_DIR" && docker compose cp "netbox:${CONTAINER_TMP}/bom.csv" "$ARTIFACT_DIR/bom.csv" 2>/dev/null || echo "  WARN: cp bom.csv failed"
+# Publish CR-level assets at artifact root (flat, for publish_ra_assets.sh and verify_ra_artifacts.sh)
+cp "$ARTIFACT_DIR/netbox/interface_connections.csv" "$ARTIFACT_DIR/connectivity-map.csv" 2>/dev/null || echo "  WARN: connectivity-map.csv not available"
+cp "$ARTIFACT_DIR/netbox/plan_inventory.json" "$ARTIFACT_DIR/netbox_inventory.json" 2>/dev/null || echo "  WARN: netbox_inventory.json not available"
 
 # 5. Export wiring YAMLs
 if [[ "$FE_ONLY" == "false" ]]; then

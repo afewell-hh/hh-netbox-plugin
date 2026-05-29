@@ -435,10 +435,21 @@ class Xoc64WiringNamingContractTestCase(unittest.TestCase):
         Regression guard: the script must accept scale-out, soc-storage, and
         inb-mgmt wiring names with matching hhfab validate logs.  This locks in
         the fix from DIET-573/578 and ensures it is not accidentally reverted.
+
+        The artifact root includes all required CR-level assets (added by #586 GREEN)
+        so that the new contract checks also pass.
         """
         xoc64_fabrics = ('scale-out', 'soc-storage', 'inb-mgmt')
         with tempfile.TemporaryDirectory() as tmpdir:
-            _create_valid_artifact_root(tmpdir, fabric_names=xoc64_fabrics)
+            _create_valid_artifact_root(
+                tmpdir,
+                fabric_names=xoc64_fabrics,
+                extra_files={
+                    'connectivity-map.csv': b'device,port,peer\n',
+                    'netbox_inventory.json': b'{"devices": []}\n',
+                    'bom.csv': b'part,qty\n',
+                },
+            )
             result = self._run_verify(tmpdir)
             self.assertEqual(
                 result.returncode, 0,
