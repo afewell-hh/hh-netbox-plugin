@@ -67,7 +67,7 @@ echo "$PLAN_ID" > "$ARTIFACT_DIR/logs/plan_id.txt"
 # 3. Generate devices
 echo "[2/7] Generating devices (plan $PLAN_ID, site $SITE_SLUG)..."
 RUN generate_devices "$PLAN_ID" --site "$SITE_SLUG" > "$ARTIFACT_DIR/logs/generate.log" 2>&1
-DEVICE_COUNT=$(SHELL_QUERY "from dcim.models import Device; print(Device.objects.filter(custom_field_data__hedgehog_plan_id=${PLAN_ID}).count())")
+DEVICE_COUNT=$(SHELL_QUERY "from dcim.models import Device; print(Device.objects.filter(custom_field_data__hedgehog_plan_id='${PLAN_ID}').count())")
 echo "  Devices: $DEVICE_COUNT"
 
 # 4. Export inventory JSON, CSV, and BOM

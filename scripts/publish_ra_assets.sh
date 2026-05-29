@@ -121,6 +121,25 @@ for FILE in "${CR_ASSETS[@]}"; do
   fi
 done
 
+# --- generated/ → <comp>/generated/ (pipeline provenance) ---
+# Publishes: inputs/ (case fixture, translation-notes), logs/ (pipeline run logs).
+# Atomically replaces generated/ so stale data from prior pipeline versions is removed.
+GENERATED_DEST="${COMPOSITION_DIR}/generated"
+rm -rf "$GENERATED_DEST"
+mkdir -p "$GENERATED_DEST"
+PROVENANCE_PUBLISHED=false
+for PROV_DIR in inputs logs; do
+  PROV_SRC="${ARTIFACT_ROOT}/${PROV_DIR}"
+  if [[ -d "$PROV_SRC" ]]; then
+    cp -a "$PROV_SRC" "${GENERATED_DEST}/"
+    PROVENANCE_PUBLISHED=true
+  fi
+done
+if [[ "$PROVENANCE_PUBLISHED" == "true" ]]; then
+  echo "  generated/      →  ${GENERATED_DEST}"
+  PUBLISHED=$((PUBLISHED + 1))
+fi
+
 if [[ "$PUBLISHED" -eq 0 ]]; then
   echo "WARNING: nothing published — wiring/, hhfab/, and CR-level assets all absent from $ARTIFACT_ROOT" >&2
   exit 1

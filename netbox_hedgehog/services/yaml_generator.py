@@ -1427,9 +1427,9 @@ class YAMLGenerator:
         # Generate MCLAG domain CRDs
         mclag_domain_crds = []
         for switch_pair, links in mclag_domain_links.items():
-            # Get switch devices by name (sorted alphabetically)
-            switch1 = Device.objects.get(name=switch_pair[0])
-            switch2 = Device.objects.get(name=switch_pair[1])
+            # Get switch devices by name (sorted alphabetically), scoped to this plan
+            switch1 = self._plan_devices().get(name=switch_pair[0])
+            switch2 = self._plan_devices().get(name=switch_pair[1])
 
             mclag_domain_crds.append(self._create_mclag_domain_crd(
                 switch1, switch2,
@@ -1498,8 +1498,8 @@ class YAMLGenerator:
         # Generate mesh CRDs
         mesh_crds = []
         for switch_pair, raw_links in mesh_links_by_pair.items():
-            switch_a = Device.objects.get(name=switch_pair[0])
-            switch_b = Device.objects.get(name=switch_pair[1])
+            switch_a = self._plan_devices().get(name=switch_pair[0])
+            switch_b = self._plan_devices().get(name=switch_pair[1])
             # Pre-format link_data into the mesh CRD link entry format (IPs omitted per DIET-311)
             formatted_links = [
                 {
