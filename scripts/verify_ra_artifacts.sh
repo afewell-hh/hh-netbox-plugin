@@ -109,6 +109,16 @@ if [[ "$WIRING_COUNT" -gt 1 ]] && [[ -d "$HHFAB_DIR" ]]; then
   fi
 fi
 
+# --- Check 5: required CR-level assets present at artifact root ---
+for ASSET in connectivity-map.csv netbox_inventory.json bom.csv; do
+  if [[ ! -f "${ARTIFACT_ROOT}/${ASSET}" ]]; then
+    echo "FAIL: required CR-level asset missing: ${ASSET}"
+    PASS=false
+  else
+    echo "OK:   ${ASSET} present"
+  fi
+done
+
 echo ""
 if [[ "$PASS" == "true" ]]; then
   echo "=== All checks PASSED ==="

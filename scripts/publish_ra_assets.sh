@@ -82,6 +82,7 @@ fi
 
 WIRING_SRC="${ARTIFACT_ROOT}/wiring"
 HHFAB_SRC="${ARTIFACT_ROOT}/hhfab"
+CR_ASSETS=(connectivity-map.csv netbox_inventory.json bom.csv)
 PUBLISHED=0
 
 # --- wiring/ → <comp>/wiring/ ---
@@ -109,8 +110,19 @@ if [[ -d "$HHFAB_SRC" ]]; then
   PUBLISHED=$((PUBLISHED + 1))
 fi
 
+# --- CR-level assets → <comp>/ (flat at composition root) ---
+for FILE in "${CR_ASSETS[@]}"; do
+  SRC="${ARTIFACT_ROOT}/${FILE}"
+  DEST="${COMPOSITION_DIR}/${FILE}"
+  if [[ -f "$SRC" ]]; then
+    cp "$SRC" "$DEST"
+    echo "  ${FILE}  →  ${DEST}"
+    PUBLISHED=$((PUBLISHED + 1))
+  fi
+done
+
 if [[ "$PUBLISHED" -eq 0 ]]; then
-  echo "WARNING: nothing published — wiring/ and hhfab/ both absent from $ARTIFACT_ROOT" >&2
+  echo "WARNING: nothing published — wiring/, hhfab/, and CR-level assets all absent from $ARTIFACT_ROOT" >&2
   exit 1
 fi
 
