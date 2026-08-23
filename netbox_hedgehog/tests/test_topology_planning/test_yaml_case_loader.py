@@ -65,6 +65,19 @@ class YAMLCaseLoaderRedTestCase(SimpleTestCase):
             case = loader.load_case("ux_case_128gpu_odd_ports", root=root)
             self.assertEqual(case["meta"]["case_id"], "ux_case_128gpu_odd_ports")
 
+    def test_xoc128_mesh_case_reserves_full_mesh_port_range(self):
+        loader = self._import_loader()
+
+        case = loader.load_case("training_xoc128_1xopg128_mesh")
+        zones = {
+            zone["zone_name"]: zone["port_spec"]
+            for zone in case["switch_port_zones"]
+        }
+
+        self.assertEqual(zones["fe-server-ports"], "1-32")
+        self.assertEqual(zones["fe-mesh-links"], "33-64")
+        self.assertEqual(zones["be-mesh-links"], "33-64")
+
     def test_load_case_rejects_missing_required_fields(self):
         loader = self._import_loader()
 
