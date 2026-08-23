@@ -241,14 +241,14 @@ switch_port_zones:
   - switch_class: fe-leaf
     zone_name: fe-server-ports
     zone_type: server
-    port_spec: 1-63:2
+    port_spec: 1-32
     breakout_option: b_4x200
     allocation_strategy: sequential
     priority: 10
   - switch_class: fe-leaf
     zone_name: fe-mesh-links
     zone_type: mesh
-    port_spec: 2,4
+    port_spec: 33-64
     breakout_option: b_1x800
     allocation_strategy: sequential
     priority: 20
@@ -262,7 +262,7 @@ switch_port_zones:
   - switch_class: be-rail-leaf
     zone_name: be-mesh-links
     zone_type: mesh
-    port_spec: 33,34
+    port_spec: 33-64
     breakout_option: b_1x800
     allocation_strategy: sequential
     priority: 20
