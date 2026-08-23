@@ -541,6 +541,30 @@ STATIC_TRANSCEIVER_MODULE_TYPES = [
     {
         "manufacturer": "Generic",
         "manufacturer_slug": "generic",
+        "model": "SFP+-10GBASE-T",
+        "part_number": "SFP+-10GBASE-T",
+        "description": "10GBASE-T RJ45 copper SFP+ adapter",
+        "comments": "Generic active copper SFP+ adapter for 10GBASE-T endpoints.",
+        "attribute_data": {
+            "cage_type": "SFP+",
+            # "Copper" is the physical medium. "ACC" (active copper cable) is the
+            # cable_assembly_type below — it describes the assembly, not the medium.
+            "medium": "Copper",
+            "connector": "Direct",
+            "standard": "10GBASE-T",
+            "reach_class": "DAC",
+            "lane_count": 1,
+            "host_serdes_gbps_per_lane": 10,
+            "gearbox_present": True,
+            "cable_assembly_type": "ACC",
+            "far_end_medium": "Copper",
+            "far_end_cage_type": "RJ45",
+            "breakout_topology": "1x",
+        },
+    },
+    {
+        "manufacturer": "Generic",
+        "manufacturer_slug": "generic",
         "model": "RJ45-1000BASE-T",
         "part_number": "RJ45-1000BASE-T",
         "description": "1G copper RJ45 transceiver/PHY placeholder",

@@ -1,0 +1,848 @@
+meta:
+  case_id: training_opg512_dual_plane_dedicated_fabrics
+  name: Training OPG-512 Dual Plane with Dedicated Fabrics
+  description: OPG-512 dual-plane training RA with dedicated frontend, storage, and converged management fabrics
+  version: 1
+  managed_by: yaml
+  tags:
+    - reference-architecture
+    - training
+    - opg512
+    - dual-plane
+    - dedicated-storage
+    - converged-management
+
+reference_data:
+  manufacturers:
+    - id: generic
+      name: Generic
+      slug: generic
+    - id: celestica
+      name: Celestica
+      slug: celestica
+    - id: nvidia
+      name: NVIDIA
+      slug: nvidia
+    - id: eps_global
+      name: EPS Global
+      slug: eps-global
+
+  device_types:
+    - id: ds5000
+      manufacturer: celestica
+      model: Celestica DS5000
+      slug: celestica-ds5000
+      interface_templates:
+        - name: E1/1
+          type: 800gbase-x-osfp
+        - name: E1/2
+          type: 800gbase-x-osfp
+        - name: E1/3
+          type: 800gbase-x-osfp
+        - name: E1/4
+          type: 800gbase-x-osfp
+        - name: E1/5
+          type: 800gbase-x-osfp
+        - name: E1/6
+          type: 800gbase-x-osfp
+        - name: E1/7
+          type: 800gbase-x-osfp
+        - name: E1/8
+          type: 800gbase-x-osfp
+        - name: E1/9
+          type: 800gbase-x-osfp
+        - name: E1/10
+          type: 800gbase-x-osfp
+        - name: E1/11
+          type: 800gbase-x-osfp
+        - name: E1/12
+          type: 800gbase-x-osfp
+        - name: E1/13
+          type: 800gbase-x-osfp
+        - name: E1/14
+          type: 800gbase-x-osfp
+        - name: E1/15
+          type: 800gbase-x-osfp
+        - name: E1/16
+          type: 800gbase-x-osfp
+        - name: E1/17
+          type: 800gbase-x-osfp
+        - name: E1/18
+          type: 800gbase-x-osfp
+        - name: E1/19
+          type: 800gbase-x-osfp
+        - name: E1/20
+          type: 800gbase-x-osfp
+        - name: E1/21
+          type: 800gbase-x-osfp
+        - name: E1/22
+          type: 800gbase-x-osfp
+        - name: E1/23
+          type: 800gbase-x-osfp
+        - name: E1/24
+          type: 800gbase-x-osfp
+        - name: E1/25
+          type: 800gbase-x-osfp
+        - name: E1/26
+          type: 800gbase-x-osfp
+        - name: E1/27
+          type: 800gbase-x-osfp
+        - name: E1/28
+          type: 800gbase-x-osfp
+        - name: E1/29
+          type: 800gbase-x-osfp
+        - name: E1/30
+          type: 800gbase-x-osfp
+        - name: E1/31
+          type: 800gbase-x-osfp
+        - name: E1/32
+          type: 800gbase-x-osfp
+        - name: E1/33
+          type: 800gbase-x-osfp
+        - name: E1/34
+          type: 800gbase-x-osfp
+        - name: E1/35
+          type: 800gbase-x-osfp
+        - name: E1/36
+          type: 800gbase-x-osfp
+        - name: E1/37
+          type: 800gbase-x-osfp
+        - name: E1/38
+          type: 800gbase-x-osfp
+        - name: E1/39
+          type: 800gbase-x-osfp
+        - name: E1/40
+          type: 800gbase-x-osfp
+        - name: E1/41
+          type: 800gbase-x-osfp
+        - name: E1/42
+          type: 800gbase-x-osfp
+        - name: E1/43
+          type: 800gbase-x-osfp
+        - name: E1/44
+          type: 800gbase-x-osfp
+        - name: E1/45
+          type: 800gbase-x-osfp
+        - name: E1/46
+          type: 800gbase-x-osfp
+        - name: E1/47
+          type: 800gbase-x-osfp
+        - name: E1/48
+          type: 800gbase-x-osfp
+        - name: E1/49
+          type: 800gbase-x-osfp
+        - name: E1/50
+          type: 800gbase-x-osfp
+        - name: E1/51
+          type: 800gbase-x-osfp
+        - name: E1/52
+          type: 800gbase-x-osfp
+        - name: E1/53
+          type: 800gbase-x-osfp
+        - name: E1/54
+          type: 800gbase-x-osfp
+        - name: E1/55
+          type: 800gbase-x-osfp
+        - name: E1/56
+          type: 800gbase-x-osfp
+        - name: E1/57
+          type: 800gbase-x-osfp
+        - name: E1/58
+          type: 800gbase-x-osfp
+        - name: E1/59
+          type: 800gbase-x-osfp
+        - name: E1/60
+          type: 800gbase-x-osfp
+        - name: E1/61
+          type: 800gbase-x-osfp
+        - name: E1/62
+          type: 800gbase-x-osfp
+        - name: E1/63
+          type: 800gbase-x-osfp
+        - name: E1/64
+          type: 800gbase-x-osfp
+    - id: gpu_server_dual_plane
+      manufacturer: generic
+      model: OPG-512 Compute Server Dual Plane
+      slug: opg512-compute-server-dual-plane
+      u_height: 2
+      is_full_depth: true
+    # Profile-backed device types. The full canonical interface inventory is
+    # installed by import_fabric_profiles; these declarations make the fixture
+    # independently ingestible in a prepared DIET environment.
+    - id: ds2000
+      manufacturer: celestica
+      model: Celestica DS2000
+      slug: celestica-ds2000
+    - id: ds3000
+      manufacturer: celestica
+      model: Celestica DS3000
+      slug: celestica-ds3000
+
+  device_type_extensions:
+    - id: ds5000_ext
+      device_type: ds5000
+      mclag_capable: false
+      hedgehog_roles: [spine, server-leaf]
+      supported_breakouts: [1x800g, 2x400g, 4x200g, 8x100g]
+      native_speed: 800
+      uplink_ports: 32
+      hedgehog_profile_name: celestica-ds5000
+      notes: DS5000 profile for OPG-512 dedicated frontend, storage, and backend fabrics
+    - id: ds2000_ext
+      device_type: ds2000
+      mclag_capable: false
+      hedgehog_roles: [server-leaf]
+      supported_breakouts: [1x10g, 1x100g]
+      native_speed: 25
+      uplink_ports: 8
+      hedgehog_profile_name: celestica-ds2000
+      notes: 10G server links use 10GBASE-T SFP+ adapters in DS2000 SFP28 ports.
+    - id: ds3000_ext
+      device_type: ds3000
+      mclag_capable: false
+      hedgehog_roles: [spine]
+      supported_breakouts: [1x100g]
+      native_speed: 100
+      uplink_ports: 0
+      hedgehog_profile_name: celestica-ds3000
+      notes: DS3000 spine tier for the converged-management fabric.
+
+  breakout_options:
+    - id: b_1x800
+      breakout_id: 1x800g
+      from_speed: 800
+      logical_ports: 1
+      logical_speed: 800
+      optic_type: OSFP-800G-DR8
+    - id: b_2x400
+      breakout_id: 2x400g
+      from_speed: 800
+      logical_ports: 2
+      logical_speed: 400
+      optic_type: OSFP-800G-2x400G-DR4
+    - id: b_4x200
+      breakout_id: 4x200g
+      from_speed: 800
+      logical_ports: 4
+      logical_speed: 200
+      optic_type: OSFP-800G-4x200G-DR4
+    - id: b_1x100
+      breakout_id: 1x100g
+      from_speed: 100
+      logical_ports: 1
+      logical_speed: 100
+      optic_type: QSFP28-100G
+    - id: b_1x10
+      breakout_id: 1x10g
+      from_speed: 25
+      logical_ports: 1
+      logical_speed: 10
+      optic_type: SFP+-10GBASE-T
+
+  module_types:
+    - id: nic_bf3_2x200
+      manufacturer: nvidia
+      model: BlueField-3 2x200G
+      interface_templates:
+        - name: p0
+          type: other
+        - name: p1
+          type: other
+    - id: nic_bf3_single_400
+      manufacturer: nvidia
+      model: BlueField-3 1x400G
+      interface_templates:
+        - name: p0
+          type: other
+    - id: nic_cx8_dual_400
+      manufacturer: nvidia
+      model: ConnectX-8 Dual-Port 400G
+      interface_templates:
+        - name: port0
+          type: other
+        - name: port1
+          type: other
+    - id: nic_intel_x550_2x10g
+      manufacturer: generic
+      model: Intel X550 Dual-Port 10GBASE-T
+      interface_templates:
+        - name: port0
+          type: other
+        - name: port1
+          type: other
+    - id: nic_bmc_1x10g
+      manufacturer: generic
+      model: BMC 10GBASE-T
+      interface_templates:
+        - name: bmc0
+          type: other
+
+    - id: xcvr_generic_200g
+      manufacturer: generic
+      model: QSFP112-200GBASE-SR2
+    - id: xcvr_generic_400g
+      manufacturer: eps_global
+      model: T1-OSFP112-400G-SR4
+    - id: xcvr_sfp_plus_10gbase_t
+      manufacturer: generic
+      model: SFP+-10GBASE-T
+    - id: xcvr_celestica_100g_sr4
+      manufacturer: celestica
+      model: R4113-75210-SR
+
+plan:
+  name: Training OPG-512 Dual Plane Dedicated Fabrics
+  status: draft
+  description: >
+    OPG-512 dual-plane training architecture. Two independent backend fabrics
+    carry CX8 2x400G per GPU. Dedicated frontend and storage fabrics each carry
+    two BF3 400G links per server. Converged management carries one BMC and two
+    Intel X550 10GBASE-T links per server via SFP+ copper adapters on DS2000 leaves.
+
+switch_classes:
+  - switch_class_id: fe-leaf
+    fabric_name: frontend
+    fabric_class: managed
+    hedgehog_role: server-leaf
+    device_type_extension: ds5000_ext
+    mclag_pair: false
+    uplink_ports_per_switch: 32
+  - switch_class_id: fe-spine
+    fabric_name: frontend
+    fabric_class: managed
+    hedgehog_role: spine
+    device_type_extension: ds5000_ext
+    uplink_ports_per_switch: 0
+    mclag_pair: false
+  - switch_class_id: be-plane-a-leaf
+    fabric_name: backend-plane-a
+    fabric_class: managed
+    hedgehog_role: server-leaf
+    device_type_extension: ds5000_ext
+    mclag_pair: false
+  - switch_class_id: be-plane-a-spine
+    fabric_name: backend-plane-a
+    fabric_class: managed
+    hedgehog_role: spine
+    device_type_extension: ds5000_ext
+    uplink_ports_per_switch: 0
+    mclag_pair: false
+  - switch_class_id: be-plane-b-leaf
+    fabric_name: backend-plane-b
+    fabric_class: managed
+    hedgehog_role: server-leaf
+    device_type_extension: ds5000_ext
+    mclag_pair: false
+  - switch_class_id: be-plane-b-spine
+    fabric_name: backend-plane-b
+    fabric_class: managed
+    hedgehog_role: spine
+    device_type_extension: ds5000_ext
+    uplink_ports_per_switch: 0
+    mclag_pair: false
+  - switch_class_id: storage-leaf
+    fabric_name: storage
+    fabric_class: managed
+    hedgehog_role: server-leaf
+    device_type_extension: ds5000_ext
+    uplink_ports_per_switch: 32
+    mclag_pair: false
+  - switch_class_id: storage-spine
+    fabric_name: storage
+    fabric_class: managed
+    hedgehog_role: spine
+    device_type_extension: ds5000_ext
+    uplink_ports_per_switch: 0
+    mclag_pair: false
+  - switch_class_id: conv-mgmt-leaf
+    fabric_name: conv-mgmt
+    fabric_class: managed
+    hedgehog_role: server-leaf
+    device_type_extension: ds2000_ext
+    uplink_ports_per_switch: 4
+    mclag_pair: false
+  - switch_class_id: conv-mgmt-spine
+    fabric_name: conv-mgmt
+    fabric_class: managed
+    hedgehog_role: spine
+    device_type_extension: ds3000_ext
+    uplink_ports_per_switch: 0
+    mclag_pair: false
+
+switch_port_zones:
+  - switch_class: fe-leaf
+    zone_name: fe-server-ports
+    transceiver_module_type: xcvr_generic_400g
+    zone_type: server
+    port_spec: 1-32
+    breakout_option: b_2x400
+    allocation_strategy: sequential
+    priority: 10
+  - switch_class: fe-leaf
+    zone_name: fe-uplinks
+    transceiver_module_type: xcvr_generic_400g
+    zone_type: uplink
+    port_spec: 33-64
+    breakout_option: b_1x800
+    allocation_strategy: sequential
+    priority: 20
+  - switch_class: fe-spine
+    zone_name: fe-fabric-downlinks
+    transceiver_module_type: xcvr_generic_400g
+    zone_type: fabric
+    port_spec: 1-64
+    breakout_option: b_1x800
+    allocation_strategy: sequential
+    priority: 10
+  - switch_class: be-plane-a-leaf
+    zone_name: be-plane-a-server-ports
+    transceiver_module_type: xcvr_generic_200g
+    zone_type: server
+    port_spec: 1-32
+    breakout_option: b_2x400
+    allocation_strategy: sequential
+    priority: 10
+  - switch_class: be-plane-a-leaf
+    zone_name: be-plane-a-uplinks
+    transceiver_module_type: xcvr_generic_200g
+    zone_type: uplink
+    port_spec: 33-64
+    breakout_option: b_1x800
+    allocation_strategy: sequential
+    priority: 20
+  - switch_class: be-plane-a-spine
+    zone_name: be-plane-a-fabric-downlinks
+    transceiver_module_type: xcvr_generic_200g
+    zone_type: fabric
+    port_spec: 1-64
+    breakout_option: b_1x800
+    allocation_strategy: sequential
+    priority: 10
+  - switch_class: be-plane-b-leaf
+    zone_name: be-plane-b-server-ports
+    transceiver_module_type: xcvr_generic_200g
+    zone_type: server
+    port_spec: 1-32
+    breakout_option: b_2x400
+    allocation_strategy: sequential
+    priority: 10
+  - switch_class: be-plane-b-leaf
+    zone_name: be-plane-b-uplinks
+    transceiver_module_type: xcvr_generic_200g
+    zone_type: uplink
+    port_spec: 33-64
+    breakout_option: b_1x800
+    allocation_strategy: sequential
+    priority: 20
+  - switch_class: be-plane-b-spine
+    zone_name: be-plane-b-fabric-downlinks
+    transceiver_module_type: xcvr_generic_200g
+    zone_type: fabric
+    port_spec: 1-64
+    breakout_option: b_1x800
+    allocation_strategy: sequential
+    priority: 10
+  - switch_class: storage-leaf
+    zone_name: storage-server-ports
+    transceiver_module_type: xcvr_generic_400g
+    zone_type: server
+    port_spec: 1-32
+    breakout_option: b_2x400
+    allocation_strategy: sequential
+    priority: 10
+  - switch_class: storage-leaf
+    zone_name: storage-uplinks
+    transceiver_module_type: xcvr_generic_400g
+    zone_type: uplink
+    port_spec: 33-64
+    breakout_option: b_1x800
+    allocation_strategy: sequential
+    priority: 20
+  - switch_class: storage-spine
+    zone_name: storage-fabric-downlinks
+    transceiver_module_type: xcvr_generic_400g
+    zone_type: fabric
+    port_spec: 1-64
+    breakout_option: b_1x800
+    allocation_strategy: sequential
+    priority: 10
+  - switch_class: conv-mgmt-leaf
+    zone_name: conv-mgmt-server-ports
+    transceiver_module_type: xcvr_sfp_plus_10gbase_t
+    zone_type: server
+    port_spec: 1-48
+    breakout_option: b_1x10
+    allocation_strategy: sequential
+    priority: 10
+  - switch_class: conv-mgmt-leaf
+    zone_name: conv-mgmt-uplinks
+    transceiver_module_type: xcvr_celestica_100g_sr4
+    zone_type: uplink
+    port_spec: 49-52
+    breakout_option: b_1x100
+    allocation_strategy: sequential
+    priority: 20
+  - switch_class: conv-mgmt-spine
+    zone_name: conv-mgmt-fabric-downlinks
+    transceiver_module_type: xcvr_celestica_100g_sr4
+    zone_type: fabric
+    port_spec: 1-32
+    breakout_option: b_1x100
+    allocation_strategy: sequential
+    priority: 10
+
+server_classes:
+  - server_class_id: compute
+    description: 64 training compute servers, 8 xPUs each, with dedicated frontend, storage, and converged management fabrics
+    category: gpu
+    quantity: 64
+    gpus_per_server: 8
+    server_device_type: gpu_server_dual_plane
+
+server_nics:
+  - server_class: compute
+    nic_id: fe-bf3-0
+    module_type: nic_bf3_single_400
+  - server_class: compute
+    nic_id: fe-bf3-1
+    module_type: nic_bf3_single_400
+  - server_class: compute
+    nic_id: storage-bf3-0
+    module_type: nic_bf3_single_400
+  - server_class: compute
+    nic_id: storage-bf3-1
+    module_type: nic_bf3_single_400
+  - server_class: compute
+    nic_id: bmc
+    module_type: nic_bmc_1x10g
+  - server_class: compute
+    nic_id: x550
+    module_type: nic_intel_x550_2x10g
+  - server_class: compute
+    nic_id: be-gpu0
+    module_type: nic_cx8_dual_400
+  - server_class: compute
+    nic_id: be-gpu1
+    module_type: nic_cx8_dual_400
+  - server_class: compute
+    nic_id: be-gpu2
+    module_type: nic_cx8_dual_400
+  - server_class: compute
+    nic_id: be-gpu3
+    module_type: nic_cx8_dual_400
+  - server_class: compute
+    nic_id: be-gpu4
+    module_type: nic_cx8_dual_400
+  - server_class: compute
+    nic_id: be-gpu5
+    module_type: nic_cx8_dual_400
+  - server_class: compute
+    nic_id: be-gpu6
+    module_type: nic_cx8_dual_400
+  - server_class: compute
+    nic_id: be-gpu7
+    module_type: nic_cx8_dual_400
+
+server_connections:
+  - server_class: compute
+    connection_id: fe-bf3-0
+    transceiver_module_type: xcvr_generic_400g
+    connection_name: frontend
+    nic: fe-bf3-0
+    port_index: 0
+    ports_per_connection: 1
+    hedgehog_conn_type: unbundled
+    # rail-optimized rail 0/1 deterministically spreads each server's two BF3
+    # frontend links across the two fe-leaves (alternating cannot: single-port
+    # connections have port_index==0, so alternating always picks fe-leaf-1).
+    distribution: rail-optimized
+    target_zone: fe-leaf/fe-server-ports
+    speed: 400
+    rail: 0
+    port_type: data
+  - server_class: compute
+    connection_id: fe-bf3-1
+    transceiver_module_type: xcvr_generic_400g
+    connection_name: frontend
+    nic: fe-bf3-1
+    port_index: 0
+    ports_per_connection: 1
+    hedgehog_conn_type: unbundled
+    distribution: rail-optimized
+    target_zone: fe-leaf/fe-server-ports
+    speed: 400
+    rail: 1
+    port_type: data
+  - server_class: compute
+    connection_id: storage-bf3-0
+    transceiver_module_type: xcvr_generic_400g
+    connection_name: storage
+    nic: storage-bf3-0
+    port_index: 0
+    ports_per_connection: 1
+    hedgehog_conn_type: unbundled
+    # rail-optimized rail 0/1: spread each server's two BF3 storage links across
+    # the two storage-leaves (same reason as frontend above).
+    distribution: rail-optimized
+    target_zone: storage-leaf/storage-server-ports
+    speed: 400
+    rail: 0
+    port_type: data
+  - server_class: compute
+    connection_id: storage-bf3-1
+    transceiver_module_type: xcvr_generic_400g
+    connection_name: storage
+    nic: storage-bf3-1
+    port_index: 0
+    ports_per_connection: 1
+    hedgehog_conn_type: unbundled
+    distribution: rail-optimized
+    target_zone: storage-leaf/storage-server-ports
+    speed: 400
+    rail: 1
+    port_type: data
+  - server_class: compute
+    connection_id: bmc-mgmt
+    transceiver_module_type: xcvr_sfp_plus_10gbase_t
+    connection_name: bmc-management
+    nic: bmc
+    port_index: 0
+    ports_per_connection: 1
+    hedgehog_conn_type: unbundled
+    distribution: same-switch
+    target_zone: conv-mgmt-leaf/conv-mgmt-server-ports
+    speed: 10
+    port_type: data
+  - server_class: compute
+    connection_id: x550-mgmt
+    transceiver_module_type: xcvr_sfp_plus_10gbase_t
+    connection_name: x550-management
+    nic: x550
+    port_index: 0
+    ports_per_connection: 2
+    hedgehog_conn_type: unbundled
+    # same-switch (matches bmc-mgmt): keep a server's 3 management links (BMC +
+    # both X550 ports) on one conv-mgmt leaf. same-switch spreads the 64 servers
+    # evenly across the 4 leaves (16 servers -> 48 links per leaf = exact fit).
+    # alternating would use only 2 of the 4 leaves and overload them.
+    distribution: same-switch
+    target_zone: conv-mgmt-leaf/conv-mgmt-server-ports
+    speed: 10
+    port_type: data
+  # Plane A: port0 of each CX8 GPU NIC → backend-plane-a
+  - server_class: compute
+    connection_id: be-gpu0-plane-a
+    transceiver_module_type: xcvr_generic_200g
+    connection_name: backend-gpu0-plane-a
+    nic: be-gpu0
+    port_index: 0
+    ports_per_connection: 1
+    hedgehog_conn_type: unbundled
+    distribution: rail-optimized
+    target_zone: be-plane-a-leaf/be-plane-a-server-ports
+    speed: 400
+    rail: 0
+    port_type: data
+  - server_class: compute
+    connection_id: be-gpu1-plane-a
+    transceiver_module_type: xcvr_generic_200g
+    connection_name: backend-gpu1-plane-a
+    nic: be-gpu1
+    port_index: 0
+    ports_per_connection: 1
+    hedgehog_conn_type: unbundled
+    distribution: rail-optimized
+    target_zone: be-plane-a-leaf/be-plane-a-server-ports
+    speed: 400
+    rail: 1
+    port_type: data
+  - server_class: compute
+    connection_id: be-gpu2-plane-a
+    transceiver_module_type: xcvr_generic_200g
+    connection_name: backend-gpu2-plane-a
+    nic: be-gpu2
+    port_index: 0
+    ports_per_connection: 1
+    hedgehog_conn_type: unbundled
+    distribution: rail-optimized
+    target_zone: be-plane-a-leaf/be-plane-a-server-ports
+    speed: 400
+    rail: 2
+    port_type: data
+  - server_class: compute
+    connection_id: be-gpu3-plane-a
+    transceiver_module_type: xcvr_generic_200g
+    connection_name: backend-gpu3-plane-a
+    nic: be-gpu3
+    port_index: 0
+    ports_per_connection: 1
+    hedgehog_conn_type: unbundled
+    distribution: rail-optimized
+    target_zone: be-plane-a-leaf/be-plane-a-server-ports
+    speed: 400
+    rail: 3
+    port_type: data
+  - server_class: compute
+    connection_id: be-gpu4-plane-a
+    transceiver_module_type: xcvr_generic_200g
+    connection_name: backend-gpu4-plane-a
+    nic: be-gpu4
+    port_index: 0
+    ports_per_connection: 1
+    hedgehog_conn_type: unbundled
+    distribution: rail-optimized
+    target_zone: be-plane-a-leaf/be-plane-a-server-ports
+    speed: 400
+    rail: 4
+    port_type: data
+  - server_class: compute
+    connection_id: be-gpu5-plane-a
+    transceiver_module_type: xcvr_generic_200g
+    connection_name: backend-gpu5-plane-a
+    nic: be-gpu5
+    port_index: 0
+    ports_per_connection: 1
+    hedgehog_conn_type: unbundled
+    distribution: rail-optimized
+    target_zone: be-plane-a-leaf/be-plane-a-server-ports
+    speed: 400
+    rail: 5
+    port_type: data
+  - server_class: compute
+    connection_id: be-gpu6-plane-a
+    transceiver_module_type: xcvr_generic_200g
+    connection_name: backend-gpu6-plane-a
+    nic: be-gpu6
+    port_index: 0
+    ports_per_connection: 1
+    hedgehog_conn_type: unbundled
+    distribution: rail-optimized
+    target_zone: be-plane-a-leaf/be-plane-a-server-ports
+    speed: 400
+    rail: 6
+    port_type: data
+  - server_class: compute
+    connection_id: be-gpu7-plane-a
+    transceiver_module_type: xcvr_generic_200g
+    connection_name: backend-gpu7-plane-a
+    nic: be-gpu7
+    port_index: 0
+    ports_per_connection: 1
+    hedgehog_conn_type: unbundled
+    distribution: rail-optimized
+    target_zone: be-plane-a-leaf/be-plane-a-server-ports
+    speed: 400
+    rail: 7
+    port_type: data
+  # Plane B: port1 of each CX8 GPU NIC → backend-plane-b
+  - server_class: compute
+    connection_id: be-gpu0-plane-b
+    transceiver_module_type: xcvr_generic_200g
+    connection_name: backend-gpu0-plane-b
+    nic: be-gpu0
+    port_index: 1
+    ports_per_connection: 1
+    hedgehog_conn_type: unbundled
+    distribution: rail-optimized
+    target_zone: be-plane-b-leaf/be-plane-b-server-ports
+    speed: 400
+    rail: 0
+    port_type: data
+  - server_class: compute
+    connection_id: be-gpu1-plane-b
+    transceiver_module_type: xcvr_generic_200g
+    connection_name: backend-gpu1-plane-b
+    nic: be-gpu1
+    port_index: 1
+    ports_per_connection: 1
+    hedgehog_conn_type: unbundled
+    distribution: rail-optimized
+    target_zone: be-plane-b-leaf/be-plane-b-server-ports
+    speed: 400
+    rail: 1
+    port_type: data
+  - server_class: compute
+    connection_id: be-gpu2-plane-b
+    transceiver_module_type: xcvr_generic_200g
+    connection_name: backend-gpu2-plane-b
+    nic: be-gpu2
+    port_index: 1
+    ports_per_connection: 1
+    hedgehog_conn_type: unbundled
+    distribution: rail-optimized
+    target_zone: be-plane-b-leaf/be-plane-b-server-ports
+    speed: 400
+    rail: 2
+    port_type: data
+  - server_class: compute
+    connection_id: be-gpu3-plane-b
+    transceiver_module_type: xcvr_generic_200g
+    connection_name: backend-gpu3-plane-b
+    nic: be-gpu3
+    port_index: 1
+    ports_per_connection: 1
+    hedgehog_conn_type: unbundled
+    distribution: rail-optimized
+    target_zone: be-plane-b-leaf/be-plane-b-server-ports
+    speed: 400
+    rail: 3
+    port_type: data
+  - server_class: compute
+    connection_id: be-gpu4-plane-b
+    transceiver_module_type: xcvr_generic_200g
+    connection_name: backend-gpu4-plane-b
+    nic: be-gpu4
+    port_index: 1
+    ports_per_connection: 1
+    hedgehog_conn_type: unbundled
+    distribution: rail-optimized
+    target_zone: be-plane-b-leaf/be-plane-b-server-ports
+    speed: 400
+    rail: 4
+    port_type: data
+  - server_class: compute
+    connection_id: be-gpu5-plane-b
+    transceiver_module_type: xcvr_generic_200g
+    connection_name: backend-gpu5-plane-b
+    nic: be-gpu5
+    port_index: 1
+    ports_per_connection: 1
+    hedgehog_conn_type: unbundled
+    distribution: rail-optimized
+    target_zone: be-plane-b-leaf/be-plane-b-server-ports
+    speed: 400
+    rail: 5
+    port_type: data
+  - server_class: compute
+    connection_id: be-gpu6-plane-b
+    transceiver_module_type: xcvr_generic_200g
+    connection_name: backend-gpu6-plane-b
+    nic: be-gpu6
+    port_index: 1
+    ports_per_connection: 1
+    hedgehog_conn_type: unbundled
+    distribution: rail-optimized
+    target_zone: be-plane-b-leaf/be-plane-b-server-ports
+    speed: 400
+    rail: 6
+    port_type: data
+  - server_class: compute
+    connection_id: be-gpu7-plane-b
+    transceiver_module_type: xcvr_generic_200g
+    connection_name: backend-gpu7-plane-b
+    nic: be-gpu7
+    port_index: 1
+    ports_per_connection: 1
+    hedgehog_conn_type: unbundled
+    distribution: rail-optimized
+    target_zone: be-plane-b-leaf/be-plane-b-server-ports
+    speed: 400
+    rail: 7
+    port_type: data
+
+expected:
+  counts:
+    server_classes: 1
+    switch_classes: 10
+    connections: 22
