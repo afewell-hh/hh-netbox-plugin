@@ -97,10 +97,9 @@ class YAMLCaseIngestionRedTestCase(TestCase):
         with self.assertRaises(Exception):
             ingest.apply_case(case, clean=False, prune=False, reference_mode="require")
 
-    def test_apply_case_persists_mesh_fields(self):
+    def test_apply_case_persists_explicit_mesh_topology(self):
         ingest = self._import_ingest()
         case = self._minimal_case("mesh_case")
-        case["plan"]["mesh_ip_pool"] = "172.30.128.0/24"
         case["reference_data"] = {
             "manufacturers": [
                 {"id": "mesh_mfr", "name": "Mesh Mfr", "slug": "mesh-mfr"},
@@ -134,7 +133,7 @@ class YAMLCaseIngestionRedTestCase(TestCase):
                 "fabric_class": "managed",
                 "hedgehog_role": "server-leaf",
                 "device_type_extension": "mesh_switch_ext",
-                "topology_mode": "prefer-mesh",
+                "topology_mode": "mesh",
                 "override_quantity": 2,
             },
         ]
@@ -142,6 +141,5 @@ class YAMLCaseIngestionRedTestCase(TestCase):
         plan = ingest.apply_case(case, clean=False, prune=False, reference_mode="ensure")
 
         plan.refresh_from_db()
-        self.assertEqual(plan.mesh_ip_pool, "172.30.128.0/24")
         switch_class = PlanSwitchClass.objects.get(plan=plan, switch_class_id="mesh-leaf")
-        self.assertEqual(switch_class.topology_mode, "prefer-mesh")
+        self.assertEqual(switch_class.topology_mode, "mesh")

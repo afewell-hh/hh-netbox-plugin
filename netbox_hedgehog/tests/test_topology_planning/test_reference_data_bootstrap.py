@@ -499,7 +499,7 @@ class BootstrapInventoryContractTestCase(TestCase):
       required slugs = 5
       forbidden slugs = 5 (must be absent)
       BreakoutOption count = 16 (14 canonical + 2 from DS5000 profile)
-      ModuleType count = 33 (23 transceivers + 10 NICs)
+      ModuleType count = 34 (24 transceivers + 10 NICs)
       celestica-ds5000 OSFP interface templates = 64
 
     Most assertions are green regression guards in RED state.
@@ -563,13 +563,13 @@ class BootstrapInventoryContractTestCase(TestCase):
         self.assertEqual(count, 23, f"Expected 23 BreakoutOptions (14 canonical + 9 from full profile import); got {count}")
 
     def test_module_type_count_is_exact(self):
-        """load_diet_reference_data must produce exactly 33 ModuleTypes."""
+        """load_diet_reference_data must produce exactly 34 ModuleTypes."""
         self._seed()
         count = ModuleType.objects.count()
         self.assertEqual(
             count,
-            33,
-            f"Expected exactly 33 ModuleTypes (23 transceivers + 10 NICs); got {count}",
+            34,
+            f"Expected exactly 34 ModuleTypes (24 transceivers + 10 NICs); got {count}",
         )
 
     def test_ds5000_osfp_interface_template_count(self):

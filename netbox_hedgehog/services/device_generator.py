@@ -178,6 +178,12 @@ class DeviceGenerator:
         Generate devices, interfaces, and cables for the plan.
         Deletes any previously generated objects before creating new ones.
         """
+        # Fail fast, before any writes or cleanup, if the plan's connection
+        # distributions would over-subscribe a switch-port zone.  Otherwise the
+        # exhaustion is only discovered deep inside the O(connections) write loop
+        # (minutes in, everything rolled back), which reads as a hang (#598).
+        self._preflight_zone_capacity()
+
         with self._cached_custom_field_defaults():
             # Milestone 1: Starting device generation
             if self.logger:
@@ -1238,6 +1244,92 @@ class DeviceGenerator:
         self._rail_count_cache[cache_key] = total_rails
 
         return total_rails
+
+    def _preflight_zone_capacity(self) -> None:
+        """
+        Fast, pre-write capacity check for server-facing switch-port zones.
+
+        Replays the same per-port switch selection used by _create_connections
+        (via _select_switch_instance) but performs pure arithmetic — no DB
+        writes — to compute how many logical ports each switch instance would
+        need in each target zone.  If any instance's demand exceeds the zone
+        capacity, generation is rejected up front with an actionable message
+        instead of exhausting the zone mid-write and rolling back (#598/#599).
+
+        Raises:
+            ValidationError: listing every over-subscribed (instance, zone) pair.
+        """
+        from collections import defaultdict
+
+        demand: dict[tuple[int, int], int] = defaultdict(int)
+        # zone_pk -> (zone_name, switch_class_id, capacity, num_instances)
+        zone_meta: dict[int, tuple[str, str, int, int]] = {}
+        capacity_cache: dict[int, int] = {}
+
+        for server_class in self.plan.server_classes.all():
+            total_servers = server_class.quantity
+            for connection_def in server_class.connections.select_related(
+                'target_zone', 'target_zone__switch_class'
+            ).all():
+                zone = connection_def.target_zone
+                switch_class = zone.switch_class
+                num_switches = switch_class.effective_quantity
+                if num_switches <= 0:
+                    # No switch instances for this class; the main loop raises a
+                    # clearer "No switch instances available" error.  Skip here.
+                    continue
+
+                if zone.pk not in capacity_cache:
+                    capacity_cache[zone.pk] = self.port_allocator.capacity_for_zone(zone)
+                capacity = capacity_cache[zone.pk]
+                zone_meta[zone.pk] = (
+                    zone.zone_name,
+                    switch_class.switch_class_id,
+                    capacity,
+                    num_switches,
+                )
+
+                # Mirror the rail-optimized pre-calculation in _create_connections.
+                total_rails = None
+                servers_per_domain = None
+                if connection_def.distribution == ConnectionDistributionChoices.RAIL_OPTIMIZED:
+                    total_rails = self._get_total_rails_for_target(server_class, zone)
+                    if total_rails and num_switches >= total_rails:
+                        ppc = connection_def.ports_per_connection or 1
+                        servers_per_domain = max(1, capacity // ppc)
+
+                # instances are placeholder indices; _select_switch_instance only
+                # uses len() and indexes into them, so it returns the int index.
+                instances = list(range(num_switches))
+                for server_index in range(total_servers):
+                    for port_index in range(connection_def.ports_per_connection):
+                        idx = self._select_switch_instance(
+                            instances,
+                            connection_def.distribution,
+                            server_index,
+                            port_index,
+                            rail=connection_def.rail,
+                            total_rails=total_rails,
+                            servers_per_domain=servers_per_domain,
+                            total_servers=total_servers,
+                        )
+                        demand[(zone.pk, idx)] += 1
+
+        errors: list[str] = []
+        for (zone_pk, idx), needed in sorted(demand.items()):
+            zone_name, switch_class_id, capacity, num_switches = zone_meta[zone_pk]
+            if needed > capacity:
+                errors.append(
+                    f"Zone '{zone_name}' on {switch_class_id} instance "
+                    f"{idx + 1}/{num_switches} requires {needed} logical ports "
+                    f"but capacity is {capacity}. Check the connection "
+                    f"distribution or switch quantities for this fabric."
+                )
+        if errors:
+            raise ValidationError(
+                ["Generation blocked: connection distribution over-subscribes "
+                 "switch ports (pre-write capacity check)."] + errors
+            )
 
     def _select_switch_instance(
         self,

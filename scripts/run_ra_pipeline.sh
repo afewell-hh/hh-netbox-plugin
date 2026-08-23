@@ -6,15 +6,16 @@
 #     --case <case_id> \
 #     --site <site_slug> \
 #     --composition-dir <absolute_path> \
-#     [--liquid-clone-of <air_variant_dir>] \
+#     [--liquid-clone-of <air_variant_diagrams_dir>] \
 #     [--fe-only]
 #
 # Options:
 #   --case               DIET case_id (fixture filename without .yaml)
 #   --site               Unique site slug for device generation
 #   --composition-dir    Absolute path to the target RA composition directory
-#   --liquid-clone-of    (optional) If this is a liquid clone, path to the air variant's
-#                        hhfab dir — skips hhfab validate, documents liquid=air equivalence
+#   --liquid-clone-of    (optional) Path to the air variant's diagrams/ directory
+#                        (parent of hhfab/; script appends /hhfab/ internally).
+#                        Skips hhfab validate; clones drawios and validate logs from air.
 #   --fe-only            No backend fabric; skip wiring export / hhfab
 
 set -euo pipefail
