@@ -183,7 +183,7 @@ reference_data:
     - id: ds5000_ext
       device_type: ds5000
       mclag_capable: false
-      hedgehog_roles: [spine, server-leaf]
+      hedgehog_roles: [server-leaf]
       supported_breakouts: [1x800g, 2x400g, 4x200g, 8x100g]
       native_speed: 800
       uplink_ports: 32
@@ -198,15 +198,6 @@ reference_data:
       uplink_ports: 8
       hedgehog_profile_name: celestica-ds2000
       notes: 10G server links use 10GBASE-T SFP+ adapters in DS2000 SFP28 ports.
-    - id: ds3000_ext
-      device_type: ds3000
-      mclag_capable: false
-      hedgehog_roles: [spine]
-      supported_breakouts: [1x100g]
-      native_speed: 100
-      uplink_ports: 0
-      hedgehog_profile_name: celestica-ds3000
-      notes: DS3000 spine tier for the converged-management fabric.
 
   breakout_options:
     - id: b_1x800
@@ -299,6 +290,7 @@ plan:
     carry CX8 2x400G per GPU. Dedicated frontend and storage fabrics each carry
     two BF3 400G links per server. Converged management carries one BMC and two
     Intel X550 10GBASE-T links per server via SFP+ copper adapters on DS2000 leaves.
+    All uplinks are reserved for a future XOC; this OPG contains no spine switches.
 
 switch_classes:
   - switch_class_id: fe-leaf
@@ -308,38 +300,17 @@ switch_classes:
     device_type_extension: ds5000_ext
     mclag_pair: false
     uplink_ports_per_switch: 32
-  - switch_class_id: fe-spine
-    fabric_name: frontend
-    fabric_class: managed
-    hedgehog_role: spine
-    device_type_extension: ds5000_ext
-    uplink_ports_per_switch: 0
-    mclag_pair: false
   - switch_class_id: be-plane-a-leaf
     fabric_name: backend-plane-a
     fabric_class: managed
     hedgehog_role: server-leaf
     device_type_extension: ds5000_ext
     mclag_pair: false
-  - switch_class_id: be-plane-a-spine
-    fabric_name: backend-plane-a
-    fabric_class: managed
-    hedgehog_role: spine
-    device_type_extension: ds5000_ext
-    uplink_ports_per_switch: 0
-    mclag_pair: false
   - switch_class_id: be-plane-b-leaf
     fabric_name: backend-plane-b
     fabric_class: managed
     hedgehog_role: server-leaf
     device_type_extension: ds5000_ext
-    mclag_pair: false
-  - switch_class_id: be-plane-b-spine
-    fabric_name: backend-plane-b
-    fabric_class: managed
-    hedgehog_role: spine
-    device_type_extension: ds5000_ext
-    uplink_ports_per_switch: 0
     mclag_pair: false
   - switch_class_id: storage-leaf
     fabric_name: storage
@@ -348,26 +319,12 @@ switch_classes:
     device_type_extension: ds5000_ext
     uplink_ports_per_switch: 32
     mclag_pair: false
-  - switch_class_id: storage-spine
-    fabric_name: storage
-    fabric_class: managed
-    hedgehog_role: spine
-    device_type_extension: ds5000_ext
-    uplink_ports_per_switch: 0
-    mclag_pair: false
   - switch_class_id: conv-mgmt-leaf
     fabric_name: conv-mgmt
     fabric_class: managed
     hedgehog_role: server-leaf
     device_type_extension: ds2000_ext
     uplink_ports_per_switch: 4
-    mclag_pair: false
-  - switch_class_id: conv-mgmt-spine
-    fabric_name: conv-mgmt
-    fabric_class: managed
-    hedgehog_role: spine
-    device_type_extension: ds3000_ext
-    uplink_ports_per_switch: 0
     mclag_pair: false
 
 switch_port_zones:
@@ -387,14 +344,6 @@ switch_port_zones:
     breakout_option: b_1x800
     allocation_strategy: sequential
     priority: 20
-  - switch_class: fe-spine
-    zone_name: fe-fabric-downlinks
-    transceiver_module_type: xcvr_generic_400g
-    zone_type: fabric
-    port_spec: 1-64
-    breakout_option: b_1x800
-    allocation_strategy: sequential
-    priority: 10
   - switch_class: be-plane-a-leaf
     zone_name: be-plane-a-server-ports
     transceiver_module_type: xcvr_generic_200g
@@ -411,14 +360,6 @@ switch_port_zones:
     breakout_option: b_1x800
     allocation_strategy: sequential
     priority: 20
-  - switch_class: be-plane-a-spine
-    zone_name: be-plane-a-fabric-downlinks
-    transceiver_module_type: xcvr_generic_200g
-    zone_type: fabric
-    port_spec: 1-64
-    breakout_option: b_1x800
-    allocation_strategy: sequential
-    priority: 10
   - switch_class: be-plane-b-leaf
     zone_name: be-plane-b-server-ports
     transceiver_module_type: xcvr_generic_200g
@@ -435,14 +376,6 @@ switch_port_zones:
     breakout_option: b_1x800
     allocation_strategy: sequential
     priority: 20
-  - switch_class: be-plane-b-spine
-    zone_name: be-plane-b-fabric-downlinks
-    transceiver_module_type: xcvr_generic_200g
-    zone_type: fabric
-    port_spec: 1-64
-    breakout_option: b_1x800
-    allocation_strategy: sequential
-    priority: 10
   - switch_class: storage-leaf
     zone_name: storage-server-ports
     transceiver_module_type: xcvr_generic_400g
@@ -459,14 +392,6 @@ switch_port_zones:
     breakout_option: b_1x800
     allocation_strategy: sequential
     priority: 20
-  - switch_class: storage-spine
-    zone_name: storage-fabric-downlinks
-    transceiver_module_type: xcvr_generic_400g
-    zone_type: fabric
-    port_spec: 1-64
-    breakout_option: b_1x800
-    allocation_strategy: sequential
-    priority: 10
   - switch_class: conv-mgmt-leaf
     zone_name: conv-mgmt-server-ports
     transceiver_module_type: xcvr_sfp_plus_10gbase_t
@@ -483,14 +408,6 @@ switch_port_zones:
     breakout_option: b_1x100
     allocation_strategy: sequential
     priority: 20
-  - switch_class: conv-mgmt-spine
-    zone_name: conv-mgmt-fabric-downlinks
-    transceiver_module_type: xcvr_celestica_100g_sr4
-    zone_type: fabric
-    port_spec: 1-32
-    breakout_option: b_1x100
-    allocation_strategy: sequential
-    priority: 10
 
 server_classes:
   - server_class_id: compute
@@ -844,5 +761,5 @@ server_connections:
 expected:
   counts:
     server_classes: 1
-    switch_classes: 10
+    switch_classes: 5
     connections: 22
