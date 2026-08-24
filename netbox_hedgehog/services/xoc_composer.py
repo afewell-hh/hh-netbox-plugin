@@ -46,6 +46,9 @@ class ComposedFabric:
     links: tuple[SpineLink, ...]
 
 
+XOC3712_SHARED_FABRICS = frozenset({"frontend", "backend-plane-a", "backend-plane-b"})
+
+
 def compose_shared_spines(
     leaves: list[LeafProjection],
     *,
@@ -143,3 +146,30 @@ def leaf_projections_from_inventory(
         uplinks = tuple(port for port in reserved_uplink_ports if port in available)
         leaves.append(LeafProjection(domain, device_name, fabric, uplinks))
     return sorted(leaves, key=lambda leaf: leaf.qualified_name)
+
+
+def compose_xoc3712(
+    opg512_devices: list[dict],
+    opg512_interfaces: list[dict],
+    opg640_devices: list[dict],
+    opg640_interfaces: list[dict],
+) -> dict[str, ComposedFabric]:
+    """Compose the approved six-OPG-512 plus one-OPG-640 XOC-3712 topology."""
+    leaves = []
+    for index in range(1, 7):
+        leaves.extend(leaf_projections_from_inventory(
+            opg512_devices, opg512_interfaces,
+            domain=f"opg512-{index}", fabrics=XOC3712_SHARED_FABRICS,
+        ))
+    leaves.extend(leaf_projections_from_inventory(
+        opg640_devices, opg640_interfaces,
+        domain="opg640", fabrics=XOC3712_SHARED_FABRICS,
+    ))
+    fabrics = compose_shared_spines(leaves)
+    expected_leaf_counts = {"frontend": 14, "backend-plane-a": 51, "backend-plane-b": 51}
+    actual_leaf_counts = {name: len(fabric.links) // 32 for name, fabric in fabrics.items()}
+    if actual_leaf_counts != expected_leaf_counts:
+        raise CompositionError(
+            f"XOC-3712 leaf counts must be {expected_leaf_counts}, found {actual_leaf_counts}"
+        )
+    return fabrics

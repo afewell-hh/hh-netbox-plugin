@@ -5,6 +5,7 @@ from django.test import SimpleTestCase
 from netbox_hedgehog.services.xoc_composer import (
     CompositionError,
     LeafProjection,
+    compose_xoc3712,
     compose_shared_spines,
     leaf_projections_from_inventory,
 )
@@ -20,6 +21,24 @@ def _leaf(domain: str, number: int, fabric: str) -> LeafProjection:
 
 
 class XOC3712ComposerTests(SimpleTestCase):
+    def test_composes_from_six_opg512_and_one_opg640_inventory_projections(self):
+        def inventory(leaves):
+            devices, interfaces = [], []
+            for fabric, count in leaves.items():
+                for number in range(1, count + 1):
+                    name = f"{fabric}-leaf-{number:02d}"
+                    devices.append({"name": name, "custom_field_data": {
+                        "hedgehog_role": "server-leaf", "hedgehog_fabric": fabric,
+                    }})
+                    interfaces.extend({"device_name": name, "name": f"E1/{port}"} for port in range(1, 65))
+            return devices, interfaces
+
+        opg512_devices, opg512_interfaces = inventory({"frontend": 2, "backend-plane-a": 8, "backend-plane-b": 8})
+        opg640_devices, opg640_interfaces = inventory({"frontend": 2, "backend-plane-a": 3, "backend-plane-b": 3})
+        fabrics = compose_xoc3712(opg512_devices, opg512_interfaces, opg640_devices, opg640_interfaces)
+
+        self.assertEqual(sum(len(fabric.links) for fabric in fabrics.values()), 3712)
+
     def test_composes_the_3712_shared_spine_links(self):
         leaves = [
             *[_leaf(f"opg512-{domain}", number, "frontend") for domain in range(1, 7) for number in range(1, 3)],
