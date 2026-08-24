@@ -1,0 +1,736 @@
+meta:
+  case_id: training_opg640_dual_plane_dedicated_fabrics
+  name: Experimental OPG-640 Dual Plane (SN40/SN50) Complete Spine-Leaf
+  description: >
+    EXPERIMENTAL (issue #603). Complete spine-leaf HNP source design for the
+    OPG-640 domain: 48 SN40 + 32 SN50 servers, 640 XPUs, split entirely by
+    backend plane. Frontend + two backend planes, each with a local 32x DS5000
+    spine tier pinned as a topology invariant. Leaf ports 33-64 are the 32x800G
+    reserved uplinks that a later composed XOC-3712 restores as shared spines.
+    No SN40/SN50 converged management in this preliminary phase.
+  version: 1
+  managed_by: yaml
+  tags:
+    - reference-architecture
+    - experimental
+    - opg640
+    - dual-plane
+    - xoc-3712
+
+reference_data:
+  manufacturers:
+    - id: generic
+      name: Generic
+      slug: generic
+    - id: celestica
+      name: Celestica
+      slug: celestica
+    - id: nvidia
+      name: NVIDIA
+      slug: nvidia
+    - id: eps_global
+      name: EPS Global
+      slug: eps-global
+    - id: broadcom
+      name: Broadcom
+      slug: broadcom
+
+  device_types:
+    # DS5000 is installed with its full 66-port interface inventory by
+    # load_diet_reference_data / import_fabric_profiles; declared bare here so
+    # this fixture stays compact and ingestible in a prepared DIET environment.
+    - id: ds5000
+      manufacturer: celestica
+      model: Celestica DS5000
+      slug: celestica-ds5000
+    - id: sn40_server
+      manufacturer: generic
+      model: OPG-640 SN40 Server
+      slug: opg640-sn40-server
+      u_height: 2
+      is_full_depth: true
+    - id: sn50_server
+      manufacturer: generic
+      model: OPG-640 SN50 Server
+      slug: opg640-sn50-server
+      u_height: 2
+      is_full_depth: true
+
+  device_type_extensions:
+    - id: ds5000_ext
+      device_type: ds5000
+      mclag_capable: false
+      hedgehog_roles: [spine, server-leaf]
+      supported_breakouts: [1x800g, 2x400g, 4x200g, 8x100g]
+      native_speed: 800
+      uplink_ports: 32
+      hedgehog_profile_name: celestica-ds5000
+      notes: DS5000 leaf/spine profile for OPG-640 frontend and dual backend planes.
+
+  breakout_options:
+    - id: b_1x800
+      breakout_id: 1x800g
+      from_speed: 800
+      logical_ports: 1
+      logical_speed: 800
+      optic_type: OSFP-800G-DR8
+    - id: b_2x400
+      breakout_id: 2x400g
+      from_speed: 800
+      logical_ports: 2
+      logical_speed: 400
+      optic_type: OSFP-800G-2x400G-DR4
+    - id: b_4x200
+      breakout_id: 4x200g
+      from_speed: 800
+      logical_ports: 4
+      logical_speed: 200
+      optic_type: OSFP-800G-4x200G-DR4
+
+  module_types:
+    # SN40 uses Thor-1 1x200G cards: one for frontend, eight for backend.
+    - id: nic_thor1_1x200
+      manufacturer: nvidia
+      model: Thor-1 1x200G
+      interface_templates:
+        - name: p0
+          type: other
+    # SN50 frontend: single Broadcom card with two 400G ports.
+    - id: nic_bcm_2x400
+      manufacturer: broadcom
+      model: Broadcom Dual-Port 400G
+      interface_templates:
+        - name: port0
+          type: other
+        - name: port1
+          type: other
+    # SN50 backend: four separate Broadcom 1x400G cards.
+    - id: nic_bcm_1x400
+      manufacturer: broadcom
+      model: Broadcom 1x400G
+      interface_templates:
+        - name: p0
+          type: other
+
+    - id: xcvr_generic_200g
+      manufacturer: generic
+      model: QSFP112-200GBASE-SR2
+    - id: xcvr_generic_400g
+      manufacturer: eps_global
+      model: T1-OSFP112-400G-SR4
+
+plan:
+  name: Experimental OPG-640 Dual Plane Dedicated Fabrics
+  status: draft
+  description: >
+    Complete spine-leaf OPG-640 (issue #603). SN40 and SN50 servers are split
+    entirely by backend plane. Mixed 200G/400G server links share each DS5000
+    leaf via two disjoint server zones. Leaf ports 33-64 are reserved 32x800G
+    XOC uplinks; each leaf connects once to each of the 32 local spines.
+
+switch_classes:
+  # Frontend: 2 leaves + 32 pinned spines
+  - switch_class_id: fe-leaf
+    fabric_name: frontend
+    fabric_class: managed
+    hedgehog_role: server-leaf
+    device_type_extension: ds5000_ext
+    uplink_ports_per_switch: 32
+    mclag_pair: false
+  - switch_class_id: fe-spine
+    fabric_name: frontend
+    fabric_class: managed
+    hedgehog_role: spine
+    device_type_extension: ds5000_ext
+    uplink_ports_per_switch: 0
+    override_quantity: 32
+    mclag_pair: false
+  # Backend plane A: 3 leaves + 32 pinned spines
+  - switch_class_id: be-plane-a-leaf
+    fabric_name: backend-plane-a
+    fabric_class: managed
+    hedgehog_role: server-leaf
+    device_type_extension: ds5000_ext
+    uplink_ports_per_switch: 32
+    mclag_pair: false
+  - switch_class_id: be-plane-a-spine
+    fabric_name: backend-plane-a
+    fabric_class: managed
+    hedgehog_role: spine
+    device_type_extension: ds5000_ext
+    uplink_ports_per_switch: 0
+    override_quantity: 32
+    mclag_pair: false
+  # Backend plane B: 3 leaves + 32 pinned spines
+  - switch_class_id: be-plane-b-leaf
+    fabric_name: backend-plane-b
+    fabric_class: managed
+    hedgehog_role: server-leaf
+    device_type_extension: ds5000_ext
+    uplink_ports_per_switch: 32
+    mclag_pair: false
+  - switch_class_id: be-plane-b-spine
+    fabric_name: backend-plane-b
+    fabric_class: managed
+    hedgehog_role: spine
+    device_type_extension: ds5000_ext
+    uplink_ports_per_switch: 0
+    override_quantity: 32
+    mclag_pair: false
+
+switch_port_zones:
+  # --- Frontend leaf: SN40 200G zone (1-6), SN50 400G zone (7-22), uplinks (33-64) ---
+  - switch_class: fe-leaf
+    zone_name: fe-sn40-ports
+    transceiver_module_type: xcvr_generic_200g
+    zone_type: server
+    port_spec: 1-6
+    breakout_option: b_4x200
+    allocation_strategy: sequential
+    priority: 10
+  - switch_class: fe-leaf
+    zone_name: fe-sn50-ports
+    transceiver_module_type: xcvr_generic_400g
+    zone_type: server
+    port_spec: 7-22
+    breakout_option: b_2x400
+    allocation_strategy: sequential
+    priority: 20
+  - switch_class: fe-leaf
+    zone_name: fe-uplinks
+    transceiver_module_type: xcvr_generic_400g
+    zone_type: uplink
+    port_spec: 33-64
+    breakout_option: b_1x800
+    allocation_strategy: sequential
+    priority: 30
+  - switch_class: fe-spine
+    zone_name: fe-fabric-downlinks
+    transceiver_module_type: xcvr_generic_400g
+    zone_type: fabric
+    port_spec: 1-64
+    breakout_option: b_1x800
+    allocation_strategy: sequential
+    priority: 10
+  # --- Backend plane A leaf: SN40 200G (1-16), SN50 400G (17-28), uplinks (33-64) ---
+  - switch_class: be-plane-a-leaf
+    zone_name: be-plane-a-sn40-ports
+    transceiver_module_type: xcvr_generic_200g
+    zone_type: server
+    port_spec: 1-16
+    breakout_option: b_4x200
+    allocation_strategy: sequential
+    priority: 10
+  - switch_class: be-plane-a-leaf
+    zone_name: be-plane-a-sn50-ports
+    transceiver_module_type: xcvr_generic_400g
+    zone_type: server
+    port_spec: 17-28
+    breakout_option: b_2x400
+    allocation_strategy: sequential
+    priority: 20
+  - switch_class: be-plane-a-leaf
+    zone_name: be-plane-a-uplinks
+    transceiver_module_type: xcvr_generic_400g
+    zone_type: uplink
+    port_spec: 33-64
+    breakout_option: b_1x800
+    allocation_strategy: sequential
+    priority: 30
+  - switch_class: be-plane-a-spine
+    zone_name: be-plane-a-fabric-downlinks
+    transceiver_module_type: xcvr_generic_400g
+    zone_type: fabric
+    port_spec: 1-64
+    breakout_option: b_1x800
+    allocation_strategy: sequential
+    priority: 10
+  # --- Backend plane B leaf: SN40 200G (1-16), SN50 400G (17-28), uplinks (33-64) ---
+  - switch_class: be-plane-b-leaf
+    zone_name: be-plane-b-sn40-ports
+    transceiver_module_type: xcvr_generic_200g
+    zone_type: server
+    port_spec: 1-16
+    breakout_option: b_4x200
+    allocation_strategy: sequential
+    priority: 10
+  - switch_class: be-plane-b-leaf
+    zone_name: be-plane-b-sn50-ports
+    transceiver_module_type: xcvr_generic_400g
+    zone_type: server
+    port_spec: 17-28
+    breakout_option: b_2x400
+    allocation_strategy: sequential
+    priority: 20
+  - switch_class: be-plane-b-leaf
+    zone_name: be-plane-b-uplinks
+    transceiver_module_type: xcvr_generic_400g
+    zone_type: uplink
+    port_spec: 33-64
+    breakout_option: b_1x800
+    allocation_strategy: sequential
+    priority: 30
+  - switch_class: be-plane-b-spine
+    zone_name: be-plane-b-fabric-downlinks
+    transceiver_module_type: xcvr_generic_400g
+    zone_type: fabric
+    port_spec: 1-64
+    breakout_option: b_1x800
+    allocation_strategy: sequential
+    priority: 10
+
+server_classes:
+  - server_class_id: sn40-plane-a
+    description: 24 SN40 servers, 8 XPUs, backend plane A
+    category: gpu
+    quantity: 24
+    gpus_per_server: 8
+    server_device_type: sn40_server
+  - server_class_id: sn40-plane-b
+    description: 24 SN40 servers, 8 XPUs, backend plane B
+    category: gpu
+    quantity: 24
+    gpus_per_server: 8
+    server_device_type: sn40_server
+  - server_class_id: sn50-plane-a
+    description: 16 SN50 servers, 8 XPUs, backend plane A
+    category: gpu
+    quantity: 16
+    gpus_per_server: 8
+    server_device_type: sn50_server
+  - server_class_id: sn50-plane-b
+    description: 16 SN50 servers, 8 XPUs, backend plane B
+    category: gpu
+    quantity: 16
+    gpus_per_server: 8
+    server_device_type: sn50_server
+
+server_nics:
+  - server_class: sn40-plane-a
+    nic_id: fe-thor
+    module_type: nic_thor1_1x200
+  - server_class: sn40-plane-a
+    nic_id: be0
+    module_type: nic_thor1_1x200
+  - server_class: sn40-plane-a
+    nic_id: be1
+    module_type: nic_thor1_1x200
+  - server_class: sn40-plane-a
+    nic_id: be2
+    module_type: nic_thor1_1x200
+  - server_class: sn40-plane-a
+    nic_id: be3
+    module_type: nic_thor1_1x200
+  - server_class: sn40-plane-a
+    nic_id: be4
+    module_type: nic_thor1_1x200
+  - server_class: sn40-plane-a
+    nic_id: be5
+    module_type: nic_thor1_1x200
+  - server_class: sn40-plane-a
+    nic_id: be6
+    module_type: nic_thor1_1x200
+  - server_class: sn40-plane-a
+    nic_id: be7
+    module_type: nic_thor1_1x200
+  - server_class: sn40-plane-b
+    nic_id: fe-thor
+    module_type: nic_thor1_1x200
+  - server_class: sn40-plane-b
+    nic_id: be0
+    module_type: nic_thor1_1x200
+  - server_class: sn40-plane-b
+    nic_id: be1
+    module_type: nic_thor1_1x200
+  - server_class: sn40-plane-b
+    nic_id: be2
+    module_type: nic_thor1_1x200
+  - server_class: sn40-plane-b
+    nic_id: be3
+    module_type: nic_thor1_1x200
+  - server_class: sn40-plane-b
+    nic_id: be4
+    module_type: nic_thor1_1x200
+  - server_class: sn40-plane-b
+    nic_id: be5
+    module_type: nic_thor1_1x200
+  - server_class: sn40-plane-b
+    nic_id: be6
+    module_type: nic_thor1_1x200
+  - server_class: sn40-plane-b
+    nic_id: be7
+    module_type: nic_thor1_1x200
+  - server_class: sn50-plane-a
+    nic_id: fe-bcm
+    module_type: nic_bcm_2x400
+  - server_class: sn50-plane-a
+    nic_id: be0
+    module_type: nic_bcm_1x400
+  - server_class: sn50-plane-a
+    nic_id: be1
+    module_type: nic_bcm_1x400
+  - server_class: sn50-plane-a
+    nic_id: be2
+    module_type: nic_bcm_1x400
+  - server_class: sn50-plane-a
+    nic_id: be3
+    module_type: nic_bcm_1x400
+  - server_class: sn50-plane-b
+    nic_id: fe-bcm
+    module_type: nic_bcm_2x400
+  - server_class: sn50-plane-b
+    nic_id: be0
+    module_type: nic_bcm_1x400
+  - server_class: sn50-plane-b
+    nic_id: be1
+    module_type: nic_bcm_1x400
+  - server_class: sn50-plane-b
+    nic_id: be2
+    module_type: nic_bcm_1x400
+  - server_class: sn50-plane-b
+    nic_id: be3
+    module_type: nic_bcm_1x400
+
+server_connections:
+  - server_class: sn40-plane-a
+    connection_id: fe
+    transceiver_module_type: xcvr_generic_200g
+    connection_name: frontend
+    nic: fe-thor
+    port_index: 0
+    ports_per_connection: 1
+    hedgehog_conn_type: unbundled
+    distribution: same-switch
+    target_zone: fe-leaf/fe-sn40-ports
+    speed: 200
+    port_type: data
+  - server_class: sn40-plane-a
+    connection_id: be0
+    transceiver_module_type: xcvr_generic_200g
+    connection_name: backend-0
+    nic: be0
+    port_index: 0
+    ports_per_connection: 1
+    hedgehog_conn_type: unbundled
+    distribution: same-switch
+    target_zone: be-plane-a-leaf/be-plane-a-sn40-ports
+    speed: 200
+    port_type: data
+  - server_class: sn40-plane-a
+    connection_id: be1
+    transceiver_module_type: xcvr_generic_200g
+    connection_name: backend-1
+    nic: be1
+    port_index: 0
+    ports_per_connection: 1
+    hedgehog_conn_type: unbundled
+    distribution: same-switch
+    target_zone: be-plane-a-leaf/be-plane-a-sn40-ports
+    speed: 200
+    port_type: data
+  - server_class: sn40-plane-a
+    connection_id: be2
+    transceiver_module_type: xcvr_generic_200g
+    connection_name: backend-2
+    nic: be2
+    port_index: 0
+    ports_per_connection: 1
+    hedgehog_conn_type: unbundled
+    distribution: same-switch
+    target_zone: be-plane-a-leaf/be-plane-a-sn40-ports
+    speed: 200
+    port_type: data
+  - server_class: sn40-plane-a
+    connection_id: be3
+    transceiver_module_type: xcvr_generic_200g
+    connection_name: backend-3
+    nic: be3
+    port_index: 0
+    ports_per_connection: 1
+    hedgehog_conn_type: unbundled
+    distribution: same-switch
+    target_zone: be-plane-a-leaf/be-plane-a-sn40-ports
+    speed: 200
+    port_type: data
+  - server_class: sn40-plane-a
+    connection_id: be4
+    transceiver_module_type: xcvr_generic_200g
+    connection_name: backend-4
+    nic: be4
+    port_index: 0
+    ports_per_connection: 1
+    hedgehog_conn_type: unbundled
+    distribution: same-switch
+    target_zone: be-plane-a-leaf/be-plane-a-sn40-ports
+    speed: 200
+    port_type: data
+  - server_class: sn40-plane-a
+    connection_id: be5
+    transceiver_module_type: xcvr_generic_200g
+    connection_name: backend-5
+    nic: be5
+    port_index: 0
+    ports_per_connection: 1
+    hedgehog_conn_type: unbundled
+    distribution: same-switch
+    target_zone: be-plane-a-leaf/be-plane-a-sn40-ports
+    speed: 200
+    port_type: data
+  - server_class: sn40-plane-a
+    connection_id: be6
+    transceiver_module_type: xcvr_generic_200g
+    connection_name: backend-6
+    nic: be6
+    port_index: 0
+    ports_per_connection: 1
+    hedgehog_conn_type: unbundled
+    distribution: same-switch
+    target_zone: be-plane-a-leaf/be-plane-a-sn40-ports
+    speed: 200
+    port_type: data
+  - server_class: sn40-plane-a
+    connection_id: be7
+    transceiver_module_type: xcvr_generic_200g
+    connection_name: backend-7
+    nic: be7
+    port_index: 0
+    ports_per_connection: 1
+    hedgehog_conn_type: unbundled
+    distribution: same-switch
+    target_zone: be-plane-a-leaf/be-plane-a-sn40-ports
+    speed: 200
+    port_type: data
+  - server_class: sn40-plane-b
+    connection_id: fe
+    transceiver_module_type: xcvr_generic_200g
+    connection_name: frontend
+    nic: fe-thor
+    port_index: 0
+    ports_per_connection: 1
+    hedgehog_conn_type: unbundled
+    distribution: same-switch
+    target_zone: fe-leaf/fe-sn40-ports
+    speed: 200
+    port_type: data
+  - server_class: sn40-plane-b
+    connection_id: be0
+    transceiver_module_type: xcvr_generic_200g
+    connection_name: backend-0
+    nic: be0
+    port_index: 0
+    ports_per_connection: 1
+    hedgehog_conn_type: unbundled
+    distribution: same-switch
+    target_zone: be-plane-b-leaf/be-plane-b-sn40-ports
+    speed: 200
+    port_type: data
+  - server_class: sn40-plane-b
+    connection_id: be1
+    transceiver_module_type: xcvr_generic_200g
+    connection_name: backend-1
+    nic: be1
+    port_index: 0
+    ports_per_connection: 1
+    hedgehog_conn_type: unbundled
+    distribution: same-switch
+    target_zone: be-plane-b-leaf/be-plane-b-sn40-ports
+    speed: 200
+    port_type: data
+  - server_class: sn40-plane-b
+    connection_id: be2
+    transceiver_module_type: xcvr_generic_200g
+    connection_name: backend-2
+    nic: be2
+    port_index: 0
+    ports_per_connection: 1
+    hedgehog_conn_type: unbundled
+    distribution: same-switch
+    target_zone: be-plane-b-leaf/be-plane-b-sn40-ports
+    speed: 200
+    port_type: data
+  - server_class: sn40-plane-b
+    connection_id: be3
+    transceiver_module_type: xcvr_generic_200g
+    connection_name: backend-3
+    nic: be3
+    port_index: 0
+    ports_per_connection: 1
+    hedgehog_conn_type: unbundled
+    distribution: same-switch
+    target_zone: be-plane-b-leaf/be-plane-b-sn40-ports
+    speed: 200
+    port_type: data
+  - server_class: sn40-plane-b
+    connection_id: be4
+    transceiver_module_type: xcvr_generic_200g
+    connection_name: backend-4
+    nic: be4
+    port_index: 0
+    ports_per_connection: 1
+    hedgehog_conn_type: unbundled
+    distribution: same-switch
+    target_zone: be-plane-b-leaf/be-plane-b-sn40-ports
+    speed: 200
+    port_type: data
+  - server_class: sn40-plane-b
+    connection_id: be5
+    transceiver_module_type: xcvr_generic_200g
+    connection_name: backend-5
+    nic: be5
+    port_index: 0
+    ports_per_connection: 1
+    hedgehog_conn_type: unbundled
+    distribution: same-switch
+    target_zone: be-plane-b-leaf/be-plane-b-sn40-ports
+    speed: 200
+    port_type: data
+  - server_class: sn40-plane-b
+    connection_id: be6
+    transceiver_module_type: xcvr_generic_200g
+    connection_name: backend-6
+    nic: be6
+    port_index: 0
+    ports_per_connection: 1
+    hedgehog_conn_type: unbundled
+    distribution: same-switch
+    target_zone: be-plane-b-leaf/be-plane-b-sn40-ports
+    speed: 200
+    port_type: data
+  - server_class: sn40-plane-b
+    connection_id: be7
+    transceiver_module_type: xcvr_generic_200g
+    connection_name: backend-7
+    nic: be7
+    port_index: 0
+    ports_per_connection: 1
+    hedgehog_conn_type: unbundled
+    distribution: same-switch
+    target_zone: be-plane-b-leaf/be-plane-b-sn40-ports
+    speed: 200
+    port_type: data
+  - server_class: sn50-plane-a
+    connection_id: fe
+    transceiver_module_type: xcvr_generic_400g
+    connection_name: frontend
+    nic: fe-bcm
+    port_index: 0
+    ports_per_connection: 2
+    hedgehog_conn_type: unbundled
+    distribution: same-switch
+    target_zone: fe-leaf/fe-sn50-ports
+    speed: 400
+    port_type: data
+  - server_class: sn50-plane-a
+    connection_id: be0
+    transceiver_module_type: xcvr_generic_400g
+    connection_name: backend-0
+    nic: be0
+    port_index: 0
+    ports_per_connection: 1
+    hedgehog_conn_type: unbundled
+    distribution: same-switch
+    target_zone: be-plane-a-leaf/be-plane-a-sn50-ports
+    speed: 400
+    port_type: data
+  - server_class: sn50-plane-a
+    connection_id: be1
+    transceiver_module_type: xcvr_generic_400g
+    connection_name: backend-1
+    nic: be1
+    port_index: 0
+    ports_per_connection: 1
+    hedgehog_conn_type: unbundled
+    distribution: same-switch
+    target_zone: be-plane-a-leaf/be-plane-a-sn50-ports
+    speed: 400
+    port_type: data
+  - server_class: sn50-plane-a
+    connection_id: be2
+    transceiver_module_type: xcvr_generic_400g
+    connection_name: backend-2
+    nic: be2
+    port_index: 0
+    ports_per_connection: 1
+    hedgehog_conn_type: unbundled
+    distribution: same-switch
+    target_zone: be-plane-a-leaf/be-plane-a-sn50-ports
+    speed: 400
+    port_type: data
+  - server_class: sn50-plane-a
+    connection_id: be3
+    transceiver_module_type: xcvr_generic_400g
+    connection_name: backend-3
+    nic: be3
+    port_index: 0
+    ports_per_connection: 1
+    hedgehog_conn_type: unbundled
+    distribution: same-switch
+    target_zone: be-plane-a-leaf/be-plane-a-sn50-ports
+    speed: 400
+    port_type: data
+  - server_class: sn50-plane-b
+    connection_id: fe
+    transceiver_module_type: xcvr_generic_400g
+    connection_name: frontend
+    nic: fe-bcm
+    port_index: 0
+    ports_per_connection: 2
+    hedgehog_conn_type: unbundled
+    distribution: same-switch
+    target_zone: fe-leaf/fe-sn50-ports
+    speed: 400
+    port_type: data
+  - server_class: sn50-plane-b
+    connection_id: be0
+    transceiver_module_type: xcvr_generic_400g
+    connection_name: backend-0
+    nic: be0
+    port_index: 0
+    ports_per_connection: 1
+    hedgehog_conn_type: unbundled
+    distribution: same-switch
+    target_zone: be-plane-b-leaf/be-plane-b-sn50-ports
+    speed: 400
+    port_type: data
+  - server_class: sn50-plane-b
+    connection_id: be1
+    transceiver_module_type: xcvr_generic_400g
+    connection_name: backend-1
+    nic: be1
+    port_index: 0
+    ports_per_connection: 1
+    hedgehog_conn_type: unbundled
+    distribution: same-switch
+    target_zone: be-plane-b-leaf/be-plane-b-sn50-ports
+    speed: 400
+    port_type: data
+  - server_class: sn50-plane-b
+    connection_id: be2
+    transceiver_module_type: xcvr_generic_400g
+    connection_name: backend-2
+    nic: be2
+    port_index: 0
+    ports_per_connection: 1
+    hedgehog_conn_type: unbundled
+    distribution: same-switch
+    target_zone: be-plane-b-leaf/be-plane-b-sn50-ports
+    speed: 400
+    port_type: data
+  - server_class: sn50-plane-b
+    connection_id: be3
+    transceiver_module_type: xcvr_generic_400g
+    connection_name: backend-3
+    nic: be3
+    port_index: 0
+    ports_per_connection: 1
+    hedgehog_conn_type: unbundled
+    distribution: same-switch
+    target_zone: be-plane-b-leaf/be-plane-b-sn50-ports
+    speed: 400
+    port_type: data
+
+expected:
+  counts:
+    server_classes: 4
+    switch_classes: 6
+    connections: 28
