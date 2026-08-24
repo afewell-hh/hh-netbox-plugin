@@ -1,0 +1,114 @@
+meta:
+  case_id: experimental_opg_sn40_sn50_dual_plane
+  name: Experimental OPG SN40-SN50 Dual Plane
+  description: Experimental composition-ready OPG; no XOC-side cabling is included.
+  version: 1
+  managed_by: yaml
+  tags: [experimental, opg, sn40, sn50, dual-plane]
+reference_data:
+  manufacturers:
+    - {id: generic, name: Generic, slug: generic}
+    - {id: celestica, name: Celestica, slug: celestica}
+    - {id: nvidia, name: NVIDIA, slug: nvidia}
+    - {id: broadcom, name: Broadcom, slug: broadcom}
+  device_types:
+    - {id: ds5000, manufacturer: celestica, model: Celestica DS5000, slug: celestica-ds5000}
+    - {id: sn40_server, manufacturer: generic, model: SN40 Server, slug: sn40-server, u_height: 2, is_full_depth: true}
+    - {id: sn50_server, manufacturer: generic, model: SN50 Server, slug: sn50-server, u_height: 2, is_full_depth: true}
+  device_type_extensions:
+    - {id: ds5000_ext, device_type: ds5000, mclag_capable: false, hedgehog_roles: [server-leaf], supported_breakouts: [1x800g, 2x400g, 4x200g], native_speed: 800, uplink_ports: 32, hedgehog_profile_name: celestica-ds5000}
+  breakout_options:
+    - {id: b_1x800, breakout_id: 1x800g, from_speed: 800, logical_ports: 1, logical_speed: 800, optic_type: OSFP-800G-DR8}
+    - {id: b_2x400, breakout_id: 2x400g, from_speed: 800, logical_ports: 2, logical_speed: 400, optic_type: OSFP-800G-2x400G-DR4}
+    - {id: b_4x200, breakout_id: 4x200g, from_speed: 800, logical_ports: 4, logical_speed: 200, optic_type: OSFP-800G-4x200G-DR4}
+  module_types:
+    - {id: nic_thor1_1x200, manufacturer: nvidia, model: Thor-1 1x200G, interface_templates: [{name: p0, type: other}]}
+    - {id: nic_broadcom_2x400, manufacturer: broadcom, model: Broadcom 2x400G, interface_templates: [{name: p0, type: other}, {name: p1, type: other}]}
+    - {id: nic_broadcom_1x400, manufacturer: broadcom, model: Broadcom 1x400G, interface_templates: [{name: p0, type: other}]}
+    - {id: xcvr_generic_200g, manufacturer: generic, model: QSFP112-200GBASE-SR2}
+    - {id: xcvr_generic_400g, manufacturer: generic, model: OSFP-400G-DR4}
+plan:
+  name: Experimental OPG SN40-SN50 Dual Plane
+  status: draft
+  description: 48 SN40 and 32 SN50 nodes. All DS5000 ports 33-64 are reserved as future XOC uplinks.
+connection_defaults:
+  sn40_b: &sn40_b {server_class: sn40-b, connection_name: backend-plane-b, port_index: 0, ports_per_connection: 1, hedgehog_conn_type: unbundled, distribution: same-switch, target_zone: be-b-leaf/be-b-200-server, speed: 200, port_type: data, transceiver_module_type: xcvr_generic_200g}
+  sn50_a: &sn50_a {server_class: sn50-a, connection_name: backend-plane-a, port_index: 0, ports_per_connection: 1, hedgehog_conn_type: unbundled, distribution: same-switch, target_zone: be-a-leaf/be-a-400-server, speed: 400, port_type: data, transceiver_module_type: xcvr_generic_400g}
+  sn50_b: &sn50_b {server_class: sn50-b, connection_name: backend-plane-b, port_index: 0, ports_per_connection: 1, hedgehog_conn_type: unbundled, distribution: same-switch, target_zone: be-b-leaf/be-b-400-server, speed: 400, port_type: data, transceiver_module_type: xcvr_generic_400g}
+switch_classes:
+  - {switch_class_id: fe-leaf, fabric_name: frontend, fabric_class: managed, hedgehog_role: server-leaf, device_type_extension: ds5000_ext, override_quantity: 2, uplink_ports_per_switch: 32}
+  - {switch_class_id: be-a-leaf, fabric_name: backend-plane-a, fabric_class: managed, hedgehog_role: server-leaf, device_type_extension: ds5000_ext, override_quantity: 3, uplink_ports_per_switch: 32}
+  - {switch_class_id: be-b-leaf, fabric_name: backend-plane-b, fabric_class: managed, hedgehog_role: server-leaf, device_type_extension: ds5000_ext, override_quantity: 3, uplink_ports_per_switch: 32}
+switch_port_zones:
+  - {switch_class: fe-leaf, zone_name: fe-200-server, zone_type: server, port_spec: 1-16, breakout_option: b_4x200, allocation_strategy: sequential, priority: 10}
+  - {switch_class: fe-leaf, zone_name: fe-400-server, zone_type: server, port_spec: 17-32, breakout_option: b_2x400, allocation_strategy: sequential, priority: 10}
+  - {switch_class: fe-leaf, zone_name: fe-xoc-uplinks, zone_type: uplink, port_spec: 33-64, breakout_option: b_1x800, allocation_strategy: sequential, priority: 20}
+  - {switch_class: be-a-leaf, zone_name: be-a-200-server, zone_type: server, port_spec: 1-16, breakout_option: b_4x200, allocation_strategy: sequential, priority: 10}
+  - {switch_class: be-a-leaf, zone_name: be-a-400-server, zone_type: server, port_spec: 17-32, breakout_option: b_2x400, allocation_strategy: sequential, priority: 10}
+  - {switch_class: be-a-leaf, zone_name: be-a-xoc-uplinks, zone_type: uplink, port_spec: 33-64, breakout_option: b_1x800, allocation_strategy: sequential, priority: 20}
+  - {switch_class: be-b-leaf, zone_name: be-b-200-server, zone_type: server, port_spec: 1-16, breakout_option: b_4x200, allocation_strategy: sequential, priority: 10}
+  - {switch_class: be-b-leaf, zone_name: be-b-400-server, zone_type: server, port_spec: 17-32, breakout_option: b_2x400, allocation_strategy: sequential, priority: 10}
+  - {switch_class: be-b-leaf, zone_name: be-b-xoc-uplinks, zone_type: uplink, port_spec: 33-64, breakout_option: b_1x800, allocation_strategy: sequential, priority: 20}
+server_classes:
+  - {server_class_id: sn40-a, description: SN40 assigned to backend plane A, category: gpu, quantity: 24, gpus_per_server: 0, server_device_type: sn40_server}
+  - {server_class_id: sn40-b, description: SN40 assigned to backend plane B, category: gpu, quantity: 24, gpus_per_server: 0, server_device_type: sn40_server}
+  - {server_class_id: sn50-a, description: SN50 assigned to backend plane A, category: gpu, quantity: 16, gpus_per_server: 0, server_device_type: sn50_server}
+  - {server_class_id: sn50-b, description: SN50 assigned to backend plane B, category: gpu, quantity: 16, gpus_per_server: 0, server_device_type: sn50_server}
+server_nics:
+  - {server_class: sn40-a, nic_id: fe, module_type: nic_thor1_1x200}
+  - {server_class: sn40-b, nic_id: fe, module_type: nic_thor1_1x200}
+  - {server_class: sn50-a, nic_id: fe, module_type: nic_broadcom_2x400}
+  - {server_class: sn50-b, nic_id: fe, module_type: nic_broadcom_2x400}
+  - {server_class: sn40-a, nic_id: be0, module_type: nic_thor1_1x200}
+  - {server_class: sn40-a, nic_id: be1, module_type: nic_thor1_1x200}
+  - {server_class: sn40-a, nic_id: be2, module_type: nic_thor1_1x200}
+  - {server_class: sn40-a, nic_id: be3, module_type: nic_thor1_1x200}
+  - {server_class: sn40-a, nic_id: be4, module_type: nic_thor1_1x200}
+  - {server_class: sn40-a, nic_id: be5, module_type: nic_thor1_1x200}
+  - {server_class: sn40-a, nic_id: be6, module_type: nic_thor1_1x200}
+  - {server_class: sn40-a, nic_id: be7, module_type: nic_thor1_1x200}
+  - {server_class: sn40-b, nic_id: be0, module_type: nic_thor1_1x200}
+  - {server_class: sn40-b, nic_id: be1, module_type: nic_thor1_1x200}
+  - {server_class: sn40-b, nic_id: be2, module_type: nic_thor1_1x200}
+  - {server_class: sn40-b, nic_id: be3, module_type: nic_thor1_1x200}
+  - {server_class: sn40-b, nic_id: be4, module_type: nic_thor1_1x200}
+  - {server_class: sn40-b, nic_id: be5, module_type: nic_thor1_1x200}
+  - {server_class: sn40-b, nic_id: be6, module_type: nic_thor1_1x200}
+  - {server_class: sn40-b, nic_id: be7, module_type: nic_thor1_1x200}
+  - {server_class: sn50-a, nic_id: be0, module_type: nic_broadcom_1x400}
+  - {server_class: sn50-a, nic_id: be1, module_type: nic_broadcom_1x400}
+  - {server_class: sn50-a, nic_id: be2, module_type: nic_broadcom_1x400}
+  - {server_class: sn50-a, nic_id: be3, module_type: nic_broadcom_1x400}
+  - {server_class: sn50-b, nic_id: be0, module_type: nic_broadcom_1x400}
+  - {server_class: sn50-b, nic_id: be1, module_type: nic_broadcom_1x400}
+  - {server_class: sn50-b, nic_id: be2, module_type: nic_broadcom_1x400}
+  - {server_class: sn50-b, nic_id: be3, module_type: nic_broadcom_1x400}
+server_connections:
+  - {server_class: sn40-a, connection_id: fe, connection_name: frontend, nic: fe, port_index: 0, ports_per_connection: 1, hedgehog_conn_type: unbundled, distribution: same-switch, target_zone: fe-leaf/fe-200-server, speed: 200, port_type: data, transceiver_module_type: xcvr_generic_200g}
+  - {server_class: sn40-b, connection_id: fe, connection_name: frontend, nic: fe, port_index: 0, ports_per_connection: 1, hedgehog_conn_type: unbundled, distribution: same-switch, target_zone: fe-leaf/fe-200-server, speed: 200, port_type: data, transceiver_module_type: xcvr_generic_200g}
+  - {server_class: sn50-a, connection_id: fe, connection_name: frontend, nic: fe, port_index: 0, ports_per_connection: 2, hedgehog_conn_type: unbundled, distribution: alternating, target_zone: fe-leaf/fe-400-server, speed: 400, port_type: data, transceiver_module_type: xcvr_generic_400g}
+  - {server_class: sn50-b, connection_id: fe, connection_name: frontend, nic: fe, port_index: 0, ports_per_connection: 2, hedgehog_conn_type: unbundled, distribution: alternating, target_zone: fe-leaf/fe-400-server, speed: 400, port_type: data, transceiver_module_type: xcvr_generic_400g}
+  - {server_class: sn40-a, connection_id: be0, connection_name: backend-plane-a, nic: be0, port_index: 0, ports_per_connection: 1, hedgehog_conn_type: unbundled, distribution: same-switch, target_zone: be-a-leaf/be-a-200-server, speed: 200, port_type: data, transceiver_module_type: xcvr_generic_200g}
+  - {server_class: sn40-a, connection_id: be1, connection_name: backend-plane-a, nic: be1, port_index: 0, ports_per_connection: 1, hedgehog_conn_type: unbundled, distribution: same-switch, target_zone: be-a-leaf/be-a-200-server, speed: 200, port_type: data, transceiver_module_type: xcvr_generic_200g}
+  - {server_class: sn40-a, connection_id: be2, connection_name: backend-plane-a, nic: be2, port_index: 0, ports_per_connection: 1, hedgehog_conn_type: unbundled, distribution: same-switch, target_zone: be-a-leaf/be-a-200-server, speed: 200, port_type: data, transceiver_module_type: xcvr_generic_200g}
+  - {server_class: sn40-a, connection_id: be3, connection_name: backend-plane-a, nic: be3, port_index: 0, ports_per_connection: 1, hedgehog_conn_type: unbundled, distribution: same-switch, target_zone: be-a-leaf/be-a-200-server, speed: 200, port_type: data, transceiver_module_type: xcvr_generic_200g}
+  - {server_class: sn40-a, connection_id: be4, connection_name: backend-plane-a, nic: be4, port_index: 0, ports_per_connection: 1, hedgehog_conn_type: unbundled, distribution: same-switch, target_zone: be-a-leaf/be-a-200-server, speed: 200, port_type: data, transceiver_module_type: xcvr_generic_200g}
+  - {server_class: sn40-a, connection_id: be5, connection_name: backend-plane-a, nic: be5, port_index: 0, ports_per_connection: 1, hedgehog_conn_type: unbundled, distribution: same-switch, target_zone: be-a-leaf/be-a-200-server, speed: 200, port_type: data, transceiver_module_type: xcvr_generic_200g}
+  - {server_class: sn40-a, connection_id: be6, connection_name: backend-plane-a, nic: be6, port_index: 0, ports_per_connection: 1, hedgehog_conn_type: unbundled, distribution: same-switch, target_zone: be-a-leaf/be-a-200-server, speed: 200, port_type: data, transceiver_module_type: xcvr_generic_200g}
+  - {server_class: sn40-a, connection_id: be7, connection_name: backend-plane-a, nic: be7, port_index: 0, ports_per_connection: 1, hedgehog_conn_type: unbundled, distribution: same-switch, target_zone: be-a-leaf/be-a-200-server, speed: 200, port_type: data, transceiver_module_type: xcvr_generic_200g}
+  - {<<: *sn40_b, connection_id: be0, nic: be0}
+  - {<<: *sn40_b, connection_id: be1, nic: be1}
+  - {<<: *sn40_b, connection_id: be2, nic: be2}
+  - {<<: *sn40_b, connection_id: be3, nic: be3}
+  - {<<: *sn40_b, connection_id: be4, nic: be4}
+  - {<<: *sn40_b, connection_id: be5, nic: be5}
+  - {<<: *sn40_b, connection_id: be6, nic: be6}
+  - {<<: *sn40_b, connection_id: be7, nic: be7}
+  - {<<: *sn50_a, connection_id: be0, nic: be0}
+  - {<<: *sn50_a, connection_id: be1, nic: be1}
+  - {<<: *sn50_a, connection_id: be2, nic: be2}
+  - {<<: *sn50_a, connection_id: be3, nic: be3}
+  - {<<: *sn50_b, connection_id: be0, nic: be0}
+  - {<<: *sn50_b, connection_id: be1, nic: be1}
+  - {<<: *sn50_b, connection_id: be2, nic: be2}
+  - {<<: *sn50_b, connection_id: be3, nic: be3}
