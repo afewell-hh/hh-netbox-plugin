@@ -107,3 +107,39 @@ def compose_shared_spines(
                 )
         result[fabric] = ComposedFabric(fabric, spines, tuple(links))
     return result
+
+
+def leaf_projections_from_inventory(
+    devices: list[dict],
+    interfaces: list[dict],
+    *,
+    domain: str,
+    fabrics: set[str],
+    reserved_uplink_ports: tuple[str, ...] = tuple(f"E1/{port}" for port in range(33, 65)),
+) -> list[LeafProjection]:
+    """Extract composable leaf projections from a plan-inventory JSON document.
+
+    Only server-leaf devices in the requested shared fabrics participate.  The
+    caller deliberately excludes OPG-local fabrics such as storage and
+    converged management.  Reserved uplinks must exist as physical inventory
+    interfaces even though a leaf-only OPG projection has no cable on them.
+    """
+    device_fields = {
+        item["name"]: item.get("custom_field_data") or {}
+        for item in devices
+    }
+    interface_names: dict[str, set[str]] = defaultdict(set)
+    for interface in interfaces:
+        interface_names[interface["device_name"]].add(interface["name"])
+
+    leaves = []
+    for device_name, fields in device_fields.items():
+        if fields.get("hedgehog_role") != "server-leaf":
+            continue
+        fabric = fields.get("hedgehog_fabric")
+        if fabric not in fabrics:
+            continue
+        available = interface_names[device_name]
+        uplinks = tuple(port for port in reserved_uplink_ports if port in available)
+        leaves.append(LeafProjection(domain, device_name, fabric, uplinks))
+    return sorted(leaves, key=lambda leaf: leaf.qualified_name)

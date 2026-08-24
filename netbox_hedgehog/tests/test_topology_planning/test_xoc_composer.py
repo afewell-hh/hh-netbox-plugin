@@ -6,6 +6,7 @@ from netbox_hedgehog.services.xoc_composer import (
     CompositionError,
     LeafProjection,
     compose_shared_spines,
+    leaf_projections_from_inventory,
 )
 
 
@@ -56,3 +57,21 @@ class XOC3712ComposerTests(SimpleTestCase):
         leaves = [_leaf("opg512-1", number, "frontend") for number in range(1, 66)]
         with self.assertRaisesMessage(CompositionError, "exceed spine downlink capacity"):
             compose_shared_spines(leaves)
+
+    def test_extracts_only_shared_fabric_server_leaves_from_inventory(self):
+        ports = [f"E1/{port}" for port in range(1, 65)]
+        devices = [
+            {"name": "fe-leaf-01", "custom_field_data": {"hedgehog_role": "server-leaf", "hedgehog_fabric": "frontend"}},
+            {"name": "storage-leaf-01", "custom_field_data": {"hedgehog_role": "server-leaf", "hedgehog_fabric": "storage"}},
+            {"name": "fe-spine-01", "custom_field_data": {"hedgehog_role": "spine", "hedgehog_fabric": "frontend"}},
+        ]
+        interfaces = [{"device_name": "fe-leaf-01", "name": port} for port in ports]
+        interfaces += [{"device_name": "storage-leaf-01", "name": port} for port in ports]
+
+        leaves = leaf_projections_from_inventory(
+            devices, interfaces, domain="opg512-1",
+            fabrics={"frontend", "backend-plane-a", "backend-plane-b"},
+        )
+
+        self.assertEqual([leaf.qualified_name for leaf in leaves], ["opg512-1--fe-leaf-01"])
+        self.assertEqual(leaves[0].reserved_uplinks, tuple(f"E1/{port}" for port in range(33, 65)))
