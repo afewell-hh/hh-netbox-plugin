@@ -10,6 +10,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from collections import defaultdict
+from copy import deepcopy
+import hashlib
 
 
 class CompositionError(ValueError):
@@ -173,3 +175,76 @@ def compose_xoc3712(
             f"XOC-3712 leaf counts must be {expected_leaf_counts}, found {actual_leaf_counts}"
         )
     return fabrics
+
+
+def compose_wiring_documents(domains, *, fabric, spine_count=32):
+    """Replace projection-local spines with a namespaced shared spine tier.
+
+    ``domains`` is an ordered iterable of ``(domain, YAML-documents)`` for one
+    fabric.  The documents are the existing per-fabric HNP exports.
+    """
+    namespace_docs, body, leaves = [], [], []
+    for domain, documents in domains:
+        device_names = set()
+        for doc in documents:
+            if doc.get("kind") in {"VLANNamespace", "IPv4Namespace"}:
+                if not any(existing.get("kind") == doc.get("kind") for existing in namespace_docs):
+                    namespace_docs.append(deepcopy(doc))
+                continue
+            item = deepcopy(doc)
+            metadata = item.get("metadata", {})
+            original = metadata.get("name", "")
+            kind = item.get("kind")
+            if kind == "Switch" and item.get("spec", {}).get("role") == "spine":
+                continue
+            if kind == "Connection" and "fabric" in item.get("spec", {}):
+                continue
+            if kind in {"Switch", "Server"}:
+                device_names.add(original)
+                metadata["name"] = f"{domain}--{original}"
+                if kind == "Switch":
+                    item["spec"]["boot"]["mac"] = _composition_mac(metadata["name"])
+                    leaves.append((metadata["name"], item))
+            elif kind == "Connection":
+                metadata["name"] = f"{domain}--{original}"
+                _namespace_connection_ports(item, device_names, domain)
+            body.append(item)
+
+    spines = []
+    fabric_links = []
+    ordered_leaves = sorted(name for name, _ in leaves)
+    for spine_index in range(1, spine_count + 1):
+        spine = f"xoc3712--{fabric}--spine-{spine_index:02d}"
+        spines.append({"apiVersion": "wiring.githedgehog.com/v1beta1", "kind": "Switch",
+            "metadata": {"name": spine, "namespace": "default"},
+            "spec": {"role": "spine", "profile": "celestica-ds5000", "boot": {"mac": _composition_mac(spine)},
+                     "portBreakouts": {f"E1/{port}": "1x800G" for port in range(1, 65)}}})
+        for leaf_index, leaf in enumerate(ordered_leaves, start=1):
+            fabric_links.append({"apiVersion": "wiring.githedgehog.com/v1beta1", "kind": "Connection",
+                "metadata": {"name": f"{spine}-fabric-{leaf}", "namespace": "default"},
+                "spec": {"fabric": {"links": [{
+                    "leaf": {"port": f"{leaf}/E1/{32 + spine_index}"},
+                    "spine": {"port": f"{spine}/E1/{leaf_index}"},
+                }]}}})
+    return namespace_docs + body + spines + fabric_links
+
+
+def _composition_mac(name):
+    digest = hashlib.sha256(name.encode()).digest()
+    return ":".join(f"{byte:02x}" for byte in bytes([0x02]) + digest[:5])
+
+
+def _namespace_connection_ports(document, device_names, domain):
+    def update(value):
+        if isinstance(value, dict):
+            for key, child in value.items():
+                if key == "port" and isinstance(child, str) and "/" in child:
+                    device, port = child.split("/", 1)
+                    if device in device_names:
+                        value[key] = f"{domain}--{device}/{port}"
+                else:
+                    update(child)
+        elif isinstance(value, list):
+            for child in value:
+                update(child)
+    update(document.get("spec", {}))
