@@ -32,9 +32,11 @@ from netbox_hedgehog.tests.test_topology_planning.test_rack_placement import (
     _locality_range_model,
 )
 from netbox_hedgehog.models.topology_planning import (
+    GenerationState,
     PlanServerClass,
     TopologyPlan,
 )
+from netbox_hedgehog.choices import GenerationStatusChoices
 from netbox_hedgehog.services.device_generator import DeviceGenerator
 
 User = get_user_model()
@@ -211,11 +213,18 @@ class DisabledStateFormNormalizationTestCase(TestCase):
 # Rack authorization gating on generation
 # ---------------------------------------------------------------------------
 class RackGenerationAuthorizationTestCase(TestCase):
-    """Generating a rack-enabled plan must require dcim.add_rack/delete_rack.
+    """Rack authorization at the HTTP gate of the unified generate/update view.
 
-    Enforced on the DCIM-permission gate of the unified generate/update view
-    (`topologyplan_generate_update`, which raises PermissionDenied -> 403).
-    A non-rack plan must still succeed WITHOUT those rack permissions.
+    `TopologyPlanGenerateUpdateView.post()` is ASYNCHRONOUS: on an allowed
+    request it enqueues a DeviceGenerationJob, sets GenerationState=QUEUED, and
+    redirects (302) to the job page — it does NOT create devices/racks
+    synchronously. So these HTTP tests assert the permission outcome + enqueue
+    only; actual rack / no-rack object creation is covered separately by the
+    unmocked generator-integration tests (RackConstructionTestCase,
+    LegacyNoRackTestCase, ByteIdenticalCompatTestCase).
+
+    A rack-enabled plan must require dcim.add_rack/delete_rack (strict 403 at
+    the gate, raised before enqueue); a non-rack plan must not.
     """
 
     DCIM_BASE = [
@@ -260,6 +269,12 @@ class RackGenerationAuthorizationTestCase(TestCase):
             resp.status_code, 403,
             'Rack-enabled generation without dcim.add_rack must be a strict 403',
         )
+        # Denial is raised before the enqueue step: nothing queued, nothing built.
+        self.assertFalse(
+            GenerationState.objects.filter(
+                plan=plan, status=GenerationStatusChoices.QUEUED).exists(),
+            'A 403 denial must not enqueue a generation job',
+        )
         self.assertEqual(_plan_racks(plan).count(), 0)
         self.assertEqual(
             Device.objects.filter(
@@ -267,7 +282,20 @@ class RackGenerationAuthorizationTestCase(TestCase):
             'A 403 denial must not have generated anything',
         )
 
-    def test_with_rack_permission_succeeds(self):
+    def _assert_enqueued_no_immediate_objects(self, plan):
+        state = GenerationState.objects.filter(plan=plan).first()
+        self.assertIsNotNone(state, 'An allowed request must create GenerationState')
+        self.assertEqual(state.status, GenerationStatusChoices.QUEUED)
+        self.assertIsNotNone(state.job, 'GenerationState must link the enqueued job')
+        # Asynchronous: no devices/racks created synchronously by the HTTP call.
+        self.assertEqual(_plan_racks(plan).count(), 0)
+        self.assertEqual(
+            Device.objects.filter(
+                custom_field_data__hedgehog_plan_id=str(plan.pk)).count(), 0,
+            'Generation is async; the POST must not create objects immediately',
+        )
+
+    def test_with_rack_permission_enqueues_job(self):
         plan, *_ = _make_same_switch_plan(
             'auth-rack-ok', quantity=8, num_switches=1,
             place_in_racks=True, servers_per_rack=8,
@@ -283,10 +311,10 @@ class RackGenerationAuthorizationTestCase(TestCase):
 
         resp = self.client.post(self._url(plan), follow=False)
         self.assertEqual(resp.status_code, 302)
-        self.assertEqual(_plan_racks(plan).count(), 1)
+        self._assert_enqueued_no_immediate_objects(plan)
 
-    def test_non_rack_plan_succeeds_without_rack_permission(self):
-        """Regression: rack perms are NOT required for a place_in_racks=False plan."""
+    def test_non_rack_plan_enqueues_without_rack_permission(self):
+        """Regression: rack perms are NOT required to enqueue a place_in_racks=False plan."""
         plan, *_ = _make_same_switch_plan(
             'auth-norack', quantity=8, num_switches=1, place_in_racks=False,
         )
@@ -303,13 +331,7 @@ class RackGenerationAuthorizationTestCase(TestCase):
             'A non-rack plan must not require rack permissions',
         )
         self.assertEqual(resp.status_code, 302)
-        self.assertEqual(_plan_racks(plan).count(), 0)
-        self.assertTrue(
-            Device.objects.filter(
-                custom_field_data__hedgehog_plan_id=str(plan.pk),
-                role__slug='server').exists(),
-            'Non-rack generation should have produced server devices',
-        )
+        self._assert_enqueued_no_immediate_objects(plan)
 
 
 # ---------------------------------------------------------------------------

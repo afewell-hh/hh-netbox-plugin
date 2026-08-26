@@ -170,15 +170,24 @@ def _switch_side_wiring(plan):
 
 
 def _locality_signature(plan):
-    """Ordered content signature of the persisted PlanLocalityRange rows."""
+    """Full-contract ordered content signature of the persisted
+    PlanLocalityRange rows — includes every provenance field so an
+    unchanged-state check detects any locality-report mutation."""
     rows = _locality_range_model().objects.filter(plan=plan).order_by(
         'server_class', 'rack_index', 'switch__name',
         'zone__priority', 'zone__zone_name', 'alloc_seq_start',
     )
     return [
-        (r.rack_index, r.switch.name, r.zone.zone_name,
-         r.alloc_seq_start, r.alloc_seq_end,
-         r.server_ordinal_start, r.server_ordinal_end, r.spans_boundary)
+        (
+            r.server_class_id, r.rack_index, r.switch.name, r.zone.zone_name,
+            r.distribution,
+            r.alloc_seq_start, r.alloc_seq_end,
+            r.server_ordinal_start, r.server_ordinal_end,
+            r.logical_name_first, r.logical_name_last,
+            tuple(r.logical_sequence), tuple(r.physical_sequence),
+            tuple(r.physical_ports_distinct),
+            r.port_count, r.spans_boundary,
+        )
         for r in rows
     ]
 
@@ -613,3 +622,39 @@ class ByteIdenticalCompatTestCase(TestCase):
         DeviceGenerator(disabled).generate_all()  # regenerate
         self.assertEqual(_switch_side_wiring(disabled), first,
                          'Disabled generation must be byte-stable across runs')
+
+    @staticmethod
+    def _yaml_wiring_body(plan):
+        """Deterministic wiring-YAML document body for comparison.
+
+        Comment/header lines (which carry plan name + generation timestamp) are
+        stripped; the remaining CRD documents contain no plan-identity tokens
+        (they are keyed by device names, identical across the two plans). This
+        proves a *defined semantic equivalence* of the YAML wiring — the CRD
+        documents are identical — not raw byte equality of the full file.
+        """
+        from netbox_hedgehog.services.yaml_generator import generate_yaml_for_plan
+        text = generate_yaml_for_plan(plan)
+        return '\n'.join(
+            line for line in text.splitlines()
+            if line.strip() and not line.lstrip().startswith('#')
+        )
+
+    def test_i1_disabled_yaml_wiring_matches_baseline(self):
+        from dcim.models import Site
+
+        control = self._make_control_plan('compat-yaml-control')
+        DeviceGenerator(control, site=Site.objects.get_or_create(
+            slug='compat-ya', defaults={'name': 'compat-ya'})[0]).generate_all()
+
+        disabled, *_ = _make_same_switch_plan(
+            'compat-yaml-disabled', quantity=4, num_switches=1,
+            place_in_racks=False, port_spec='1-8',
+        )
+        DeviceGenerator(disabled, site=Site.objects.get_or_create(
+            slug='compat-yb', defaults={'name': 'compat-yb'})[0]).generate_all()
+
+        self.assertEqual(
+            self._yaml_wiring_body(control), self._yaml_wiring_body(disabled),
+            'Disabling placement must not change the exported YAML wiring documents',
+        )
