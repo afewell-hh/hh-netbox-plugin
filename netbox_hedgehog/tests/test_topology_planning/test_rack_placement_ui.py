@@ -20,7 +20,7 @@ from django.contrib.contenttypes.models import ContentType
 from django.test import Client, TestCase
 from django.urls import reverse
 
-from dcim.models import DeviceType, Manufacturer
+from dcim.models import Device, DeviceType, Manufacturer
 
 from users.models import ObjectPermission
 
@@ -211,7 +211,17 @@ class DisabledStateFormNormalizationTestCase(TestCase):
 # Rack authorization gating on generation
 # ---------------------------------------------------------------------------
 class RackGenerationAuthorizationTestCase(TestCase):
-    """Generating a rack-enabled plan must require dcim.add_rack/delete_rack."""
+    """Generating a rack-enabled plan must require dcim.add_rack/delete_rack.
+
+    Enforced on the DCIM-permission gate of the unified generate/update view
+    (`topologyplan_generate_update`, which raises PermissionDenied -> 403).
+    A non-rack plan must still succeed WITHOUT those rack permissions.
+    """
+
+    DCIM_BASE = [
+        'dcim.add_device', 'dcim.delete_device',
+        'dcim.add_interface', 'dcim.add_cable', 'dcim.delete_cable',
+    ]
 
     def _grant(self, user, codenames):
         for codename in codenames:
@@ -220,58 +230,86 @@ class RackGenerationAuthorizationTestCase(TestCase):
                 content_type__app_label=app_label, codename=code)
             user.user_permissions.add(perm)
 
-    def _rack_enabled_plan(self, name):
-        plan, *_ = _make_same_switch_plan(
-            name, quantity=8, num_switches=1,
-            place_in_racks=True, servers_per_rack=8,
-        )
-        return plan
+    def _obj_perm(self, user, name):
+        obj_perm = ObjectPermission.objects.create(
+            name=name, actions=['view', 'change'])
+        obj_perm.object_types.add(ContentType.objects.get_for_model(TopologyPlan))
+        obj_perm.users.add(user)
+
+    def _url(self, plan):
+        return reverse('plugins:netbox_hedgehog:topologyplan_generate_update',
+                       args=[plan.pk])
 
     def setUp(self):
         self.client = Client()
-        self.plan = self._rack_enabled_plan('auth-plan')
-        self.dcim_base = [
-            'dcim.add_device', 'dcim.delete_device',
-            'dcim.add_interface', 'dcim.add_cable', 'dcim.delete_cable',
-        ]
 
-    def _url(self):
-        return reverse('plugins:netbox_hedgehog:topologyplan_generate',
-                       args=[self.plan.pk])
-
-    def test_missing_rack_permission_forbidden(self):
+    def test_missing_rack_permission_strictly_forbidden(self):
+        plan, *_ = _make_same_switch_plan(
+            'auth-rack', quantity=8, num_switches=1,
+            place_in_racks=True, servers_per_rack=8,
+        )
         user = User.objects.create_user(
             username='no-rack', password='pw', is_staff=True)
-        self._grant(user, ['netbox_hedgehog.change_topologyplan'] + self.dcim_base)
-        # Deliberately WITHOUT dcim.add_rack / dcim.delete_rack.
-        obj_perm = ObjectPermission.objects.create(
-            name='no-rack-plan', actions=['view', 'change'])
-        obj_perm.object_types.add(ContentType.objects.get_for_model(TopologyPlan))
-        obj_perm.users.add(user)
+        # change_topologyplan + base DCIM perms, but NOT dcim.add_rack/delete_rack.
+        self._grant(user, ['netbox_hedgehog.change_topologyplan'] + self.DCIM_BASE)
+        self._obj_perm(user, 'no-rack-op')
         self.client.login(username='no-rack', password='pw')
 
-        resp = self.client.post(self._url(), follow=False)
-        self.assertIn(resp.status_code, (403, 302))
-        # Whatever the redirect, generation must NOT have created racks.
-        self.assertEqual(_plan_racks(self.plan).count(), 0,
-                         'Rack-enabled generation must be blocked without dcim.add_rack')
+        resp = self.client.post(self._url(plan), follow=False)
+        self.assertEqual(
+            resp.status_code, 403,
+            'Rack-enabled generation without dcim.add_rack must be a strict 403',
+        )
+        self.assertEqual(_plan_racks(plan).count(), 0)
+        self.assertEqual(
+            Device.objects.filter(
+                custom_field_data__hedgehog_plan_id=str(plan.pk)).count(), 0,
+            'A 403 denial must not have generated anything',
+        )
 
     def test_with_rack_permission_succeeds(self):
+        plan, *_ = _make_same_switch_plan(
+            'auth-rack-ok', quantity=8, num_switches=1,
+            place_in_racks=True, servers_per_rack=8,
+        )
         user = User.objects.create_user(
             username='has-rack', password='pw', is_staff=True)
         self._grant(user, [
             'netbox_hedgehog.change_topologyplan',
             'dcim.add_rack', 'dcim.delete_rack',
-        ] + self.dcim_base)
-        obj_perm = ObjectPermission.objects.create(
-            name='has-rack-plan', actions=['view', 'change'])
-        obj_perm.object_types.add(ContentType.objects.get_for_model(TopologyPlan))
-        obj_perm.users.add(user)
+        ] + self.DCIM_BASE)
+        self._obj_perm(user, 'has-rack-op')
         self.client.login(username='has-rack', password='pw')
 
-        resp = self.client.post(self._url(), follow=False)
+        resp = self.client.post(self._url(plan), follow=False)
         self.assertEqual(resp.status_code, 302)
-        self.assertEqual(_plan_racks(self.plan).count(), 1)
+        self.assertEqual(_plan_racks(plan).count(), 1)
+
+    def test_non_rack_plan_succeeds_without_rack_permission(self):
+        """Regression: rack perms are NOT required for a place_in_racks=False plan."""
+        plan, *_ = _make_same_switch_plan(
+            'auth-norack', quantity=8, num_switches=1, place_in_racks=False,
+        )
+        user = User.objects.create_user(
+            username='norack-user', password='pw', is_staff=True)
+        # Base DCIM perms only, deliberately WITHOUT dcim.add_rack/delete_rack.
+        self._grant(user, ['netbox_hedgehog.change_topologyplan'] + self.DCIM_BASE)
+        self._obj_perm(user, 'norack-op')
+        self.client.login(username='norack-user', password='pw')
+
+        resp = self.client.post(self._url(plan), follow=False)
+        self.assertNotEqual(
+            resp.status_code, 403,
+            'A non-rack plan must not require rack permissions',
+        )
+        self.assertEqual(resp.status_code, 302)
+        self.assertEqual(_plan_racks(plan).count(), 0)
+        self.assertTrue(
+            Device.objects.filter(
+                custom_field_data__hedgehog_plan_id=str(plan.pk),
+                role__slug='server').exists(),
+            'Non-rack generation should have produced server devices',
+        )
 
 
 # ---------------------------------------------------------------------------

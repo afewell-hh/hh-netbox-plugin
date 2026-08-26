@@ -293,7 +293,7 @@ class AllocationStrategyProjectionTestCase(TestCase):
 
     def _single_cell(self, name, allocation_strategy, port_spec='1-8',
                      breakouts=None, breakout_id=None, quantity=4,
-                     ports_per_connection=1):
+                     ports_per_connection=1, allocation_order=None):
         ext = _make_switch_ext(model=f'SW-{name}', roles=['server-leaf'],
                                breakouts=breakouts or [])
         server_type = _make_server_type(model=f'SRV-{name}', u_height=1)
@@ -307,10 +307,13 @@ class AllocationStrategyProjectionTestCase(TestCase):
             hedgehog_role='server-leaf', device_type_extension=ext,
             uplink_ports_per_switch=0, calculated_quantity=1,
         )
-        zone = SwitchPortZone.objects.create(
+        zone_kwargs = dict(
             switch_class=switch_class, zone_name='ports', zone_type='server',
             port_spec=port_spec, allocation_strategy=allocation_strategy,
         )
+        if allocation_order is not None:
+            zone_kwargs['allocation_order'] = allocation_order
+        zone = SwitchPortZone.objects.create(**zone_kwargs)
         PlanServerConnection.objects.create(
             server_class=sc, connection_id='C', nic=get_test_server_nic(sc),
             port_index=0, ports_per_connection=ports_per_connection,
@@ -342,6 +345,16 @@ class AllocationStrategyProjectionTestCase(TestCase):
         # spaced interleaves halves: [1,5,2,6,3,7,4,8]; first 4 consumed.
         self.assertEqual(row.physical_sequence, [1, 5, 2, 6])
 
+    def test_i8_custom_declared_order(self):
+        # custom allocation_order is honored verbatim; 4 servers consume all 4.
+        row = self._single_cell(
+            'custom', 'custom', port_spec='1-4', quantity=4,
+            allocation_order=[4, 2, 1, 3],
+        )
+        self.assertEqual(row.physical_sequence, [4, 2, 1, 3])
+        self.assertEqual(
+            row.logical_sequence, ['E1/4', 'E1/2', 'E1/1', 'E1/3'])
+
     def test_i8_breakout_straddle_multiplicity(self):
         # 4x breakout: 1 server x 4 ports/connection -> lanes E1/1/1..E1/1/4.
         row = self._single_cell(
@@ -361,6 +374,40 @@ class AllocationStrategyProjectionTestCase(TestCase):
 # ---------------------------------------------------------------------------
 # I12 — uniqueness of the cell key
 # ---------------------------------------------------------------------------
+class PartialRackReportTestCase(TestCase):
+    """I13 (report side): the final partial rack's row must clip its ordinal
+    range at quantity-1 and carry the correct spans_boundary."""
+
+    def test_i13_report_clips_final_rack(self):
+        # 20 servers, 8/rack, single switch -> racks 0(0-7),1(8-15),2(16-19).
+        # Single leaf => one same-switch group => no partition crossing.
+        plan, *_ = _make_same_switch_plan(
+            'i13-report', quantity=20, num_switches=1,
+            place_in_racks=True, servers_per_rack=8,
+        )
+        DeviceGenerator(plan).generate_all()
+        rows = _rows(plan)
+
+        by_index = {}
+        for r in rows:
+            by_index.setdefault(r.rack_index, []).append(r)
+        self.assertEqual(sorted(by_index), [0, 1, 2])
+
+        final = by_index[2]
+        self.assertEqual(len(final), 1, 'Single switch -> one cell for final rack')
+        final_row = final[0]
+        self.assertEqual(
+            final_row.server_ordinal_end, 20 - 1,
+            'Final partial rack must clip server_ordinal_end at quantity-1',
+        )
+        self.assertEqual(final_row.server_ordinal_start, 16)
+        self.assertEqual(final_row.port_count, 4)  # 4 servers in the final rack
+        self.assertFalse(
+            final_row.spans_boundary,
+            'Single-switch same-switch rack must not span a boundary',
+        )
+
+
 class LocalityUniquenessTestCase(TestCase):
 
     def test_i12_duplicate_cell_rejected(self):

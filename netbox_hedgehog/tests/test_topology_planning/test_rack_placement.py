@@ -143,6 +143,46 @@ def _plan_servers(plan):
     )
 
 
+def _plan_cable_pks(plan):
+    from dcim.models import Cable
+    return set(
+        Cable.objects.filter(
+            **{f'custom_field_data__{PLAN_ID_CF}': str(plan.pk)}
+        ).values_list('pk', flat=True)
+    )
+
+
+def _switch_side_wiring(plan):
+    """Deterministic switch-side (device_name, interface_name) pairs for every
+    plan cable — a name-based wiring signature independent of primary keys."""
+    from dcim.models import Cable
+    from netbox_hedgehog.services.inventory_export import terminations_for_side
+    pairs = set()
+    for cable in Cable.objects.filter(
+        **{f'custom_field_data__{PLAN_ID_CF}': str(plan.pk)}
+    ):
+        for side in ('a', 'b'):
+            for term in terminations_for_side(cable, side):
+                dev = getattr(term, 'device', None)
+                if dev is not None and getattr(dev.role, 'slug', '') == 'leaf':
+                    pairs.add((dev.name, term.name))
+    return pairs
+
+
+def _locality_signature(plan):
+    """Ordered content signature of the persisted PlanLocalityRange rows."""
+    rows = _locality_range_model().objects.filter(plan=plan).order_by(
+        'server_class', 'rack_index', 'switch__name',
+        'zone__priority', 'zone__zone_name', 'alloc_seq_start',
+    )
+    return [
+        (r.rack_index, r.switch.name, r.zone.zone_name,
+         r.alloc_seq_start, r.alloc_seq_end,
+         r.server_ordinal_start, r.server_ordinal_end, r.spans_boundary)
+        for r in rows
+    ]
+
+
 # ---------------------------------------------------------------------------
 # Canonical disabled-state normalization (model level)
 # ---------------------------------------------------------------------------
@@ -332,9 +372,12 @@ class RackCapacityPreflightTestCase(TestCase):
             place_in_racks=True, servers_per_rack=8, server_u_height=2,
         )
         DeviceGenerator(plan).generate_all()
+        # Snapshot ALL generated artifacts: devices, racks, cables, locality rows.
         prior_devices = set(_plan_servers(plan).values_list('name', flat=True))
         prior_racks = set(_plan_racks(plan).values_list('name', flat=True))
-        self.assertTrue(prior_devices and prior_racks)
+        prior_cables = _plan_cable_pks(plan)
+        prior_rows = _locality_signature(plan)
+        self.assertTrue(prior_devices and prior_racks and prior_cables and prior_rows)
 
         # Mutate to an invalid capacity, regenerate -> must fail and leave prior intact.
         sc.server_device_type.u_height = 60
@@ -350,6 +393,10 @@ class RackCapacityPreflightTestCase(TestCase):
             set(_plan_racks(plan).values_list('name', flat=True)), prior_racks,
             'Prior racks must be unchanged after a failed regenerate',
         )
+        self.assertEqual(_plan_cable_pks(plan), prior_cables,
+                         'Prior cables must be unchanged after a failed regenerate')
+        self.assertEqual(_locality_signature(plan), prior_rows,
+                         'Prior locality rows must be unchanged after a failed regenerate')
 
 
 # ---------------------------------------------------------------------------
@@ -380,6 +427,54 @@ class ZeroHeightDeviceTestCase(TestCase):
                                  'membership_only must still set the rack')
             self.assertIsNone(server.position,
                               'membership_only must leave position null')
+
+    def test_i9_failed_regenerate_preserves_prior_state(self):
+        """A previously-valid generation must survive a later invalid regenerate."""
+        plan, sc, *_ = _make_same_switch_plan(
+            'zero-preserve', quantity=4, num_switches=1,
+            place_in_racks=True, servers_per_rack=4, server_u_height=2,
+        )
+        DeviceGenerator(plan).generate_all()
+        prior_devices = set(_plan_servers(plan).values_list('name', flat=True))
+        prior_racks = set(_plan_racks(plan).values_list('name', flat=True))
+        prior_cables = _plan_cable_pks(plan)
+        prior_rows = _locality_signature(plan)
+
+        # Flip the device type to zero-height (positioned placement now invalid).
+        sc.server_device_type.u_height = 0
+        sc.server_device_type.save()
+        with self.assertRaises(ValidationError):
+            DeviceGenerator(plan).generate_all()
+
+        self.assertEqual(
+            set(_plan_servers(plan).values_list('name', flat=True)), prior_devices)
+        self.assertEqual(
+            set(_plan_racks(plan).values_list('name', flat=True)), prior_racks)
+        self.assertEqual(_plan_cable_pks(plan), prior_cables)
+        self.assertEqual(_locality_signature(plan), prior_rows)
+
+
+class MembershipOnlyPositiveHeightTestCase(TestCase):
+    """membership_only is an explicit per-class option, valid for rackable
+    (positive-height) device types too — rack set, position deliberately null."""
+
+    def test_membership_only_positive_height_places_without_position(self):
+        plan, *_ = _make_same_switch_plan(
+            'membership-pos', quantity=8, num_switches=1,
+            place_in_racks=True, servers_per_rack=8,
+            membership_only=True, server_u_height=2,
+        )
+        DeviceGenerator(plan).generate_all()
+        self.assertEqual(_plan_racks(plan).count(), 1)
+        servers = list(_plan_servers(plan))
+        self.assertEqual(len(servers), 8)
+        for server in servers:
+            self.assertIsNotNone(
+                server.rack,
+                'membership_only on a rackable type must still set the rack')
+            self.assertIsNone(
+                server.position,
+                'membership_only must leave position null even for positive u_height')
 
 
 # ---------------------------------------------------------------------------
@@ -443,3 +538,78 @@ class MixedDistributionTestCase(TestCase):
         with self.assertRaises(ValidationError):
             DeviceGenerator(plan).generate_all()
         self.assertEqual(_plan_racks(plan).count(), 0)
+
+
+class ByteIdenticalCompatTestCase(TestCase):
+    """I1 (strengthened): with placement disabled, full device names and the
+    generated wiring content must be byte-identical to the rack-agnostic
+    baseline, and deterministic across regeneration."""
+
+    def _make_control_plan(self, name):
+        """Baseline plan whose server class does NOT touch the rack fields at
+        all (rack-agnostic control)."""
+        ext = _make_switch_ext()
+        server_type = _make_server_type()
+        plan = TopologyPlan.objects.create(name=name, customer_name='Test')
+        switch_class = PlanSwitchClass.objects.create(
+            plan=plan, switch_class_id='fe-leaf', fabric='frontend',
+            hedgehog_role='server-leaf', device_type_extension=ext,
+            uplink_ports_per_switch=0, calculated_quantity=1,
+        )
+        zone = SwitchPortZone.objects.create(
+            switch_class=switch_class, zone_name='fe-server-ports',
+            zone_type='server', port_spec='1-8', allocation_strategy='sequential',
+        )
+        sc = PlanServerClass.objects.create(
+            plan=plan, server_class_id='gpu-server',
+            server_device_type=server_type, quantity=4,
+        )
+        PlanServerConnection.objects.create(
+            server_class=sc, connection_id='FE-01', nic=get_test_server_nic(sc),
+            port_index=0, ports_per_connection=1, hedgehog_conn_type='unbundled',
+            distribution='same-switch', target_zone=zone, speed=400,
+        )
+        return plan
+
+    def test_i1_disabled_full_names_and_wiring_match_baseline(self):
+        from dcim.models import Site
+
+        control = self._make_control_plan('compat-control')
+        DeviceGenerator(control, site=Site.objects.get_or_create(
+            slug='compat-a', defaults={'name': 'compat-a'})[0]).generate_all()
+
+        disabled, *_ = _make_same_switch_plan(
+            'compat-disabled', quantity=4, num_switches=1,
+            place_in_racks=False, port_spec='1-8',
+        )
+        DeviceGenerator(disabled, site=Site.objects.get_or_create(
+            slug='compat-b', defaults={'name': 'compat-b'})[0]).generate_all()
+
+        # Complete server device names must be identical (not merely suffixes).
+        self.assertEqual(
+            sorted(_plan_servers(control).values_list('name', flat=True)),
+            sorted(_plan_servers(disabled).values_list('name', flat=True)),
+        )
+        self.assertEqual(
+            sorted(_plan_servers(disabled).values_list('name', flat=True)),
+            ['gpu-server-001', 'gpu-server-002', 'gpu-server-003', 'gpu-server-004'],
+        )
+        # Full switch-side wiring content must be identical.
+        self.assertEqual(
+            _switch_side_wiring(control), _switch_side_wiring(disabled),
+            'Disabling placement must not change wiring content vs the baseline',
+        )
+        # And no rack leaked into either.
+        self.assertFalse(any(s.rack for s in _plan_servers(disabled)))
+        self.assertEqual(_plan_racks(disabled).count(), 0)
+
+    def test_i1_disabled_generation_is_byte_stable(self):
+        disabled, *_ = _make_same_switch_plan(
+            'compat-stable', quantity=4, num_switches=1,
+            place_in_racks=False, port_spec='1-8',
+        )
+        DeviceGenerator(disabled).generate_all()
+        first = _switch_side_wiring(disabled)
+        DeviceGenerator(disabled).generate_all()  # regenerate
+        self.assertEqual(_switch_side_wiring(disabled), first,
+                         'Disabled generation must be byte-stable across runs')
