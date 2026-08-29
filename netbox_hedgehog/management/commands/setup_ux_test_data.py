@@ -364,7 +364,6 @@ class Command(BaseCommand):
             username='viewer',
             email='viewer@example.com',
             password='viewer',
-            is_staff=True,  # Need is_staff to access admin interface
             is_active=True
         )
 
