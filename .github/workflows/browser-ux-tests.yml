@@ -38,38 +38,15 @@ jobs:
         run: |
           cd netbox-docker
 
-          # Create docker-compose.override.yml to mount plugin
+          # Mount the repository outside NetBox's Python package directory.
+          # Mounting it at /opt/netbox/netbox/netbox_hedgehog shadows the real
+          # inner package and makes NetBox import a namespace package without
+          # the plugin's required `config` variable.
           cat > docker-compose.override.yml << 'EOF'
           services:
             netbox:
               volumes:
-                - ../hh-netbox-plugin:/opt/netbox/netbox/netbox_hedgehog:ro
-          EOF
-
-          # Create Dockerfile-Plugins to install plugin dependencies
-          cat > Dockerfile-Plugins << 'EOF'
-          ARG FROM
-          FROM ${FROM}
-
-          # Install plugin dependencies (if any)
-          # RUN pip install -r /opt/netbox/netbox/netbox_hedgehog/requirements.txt
-
-          # Install the plugin
-          RUN pip install -e /opt/netbox/netbox/netbox_hedgehog/
-          EOF
-
-          # Create plugin configuration
-          mkdir -p configuration
-          cat > configuration/plugins.py << 'EOF'
-          PLUGINS = ['netbox_hedgehog']
-          PLUGINS_CONFIG = {
-              'netbox_hedgehog': {
-                  'kubernetes_config_file': None,
-                  'sync_interval': 300,
-                  'enable_webhooks': True,
-                  'max_concurrent_syncs': 5,
-              }
-          }
+                - ../hh-netbox-plugin:/opt/netbox/plugins/hh-netbox-plugin:ro
           EOF
 
       - name: Start NetBox
@@ -93,6 +70,25 @@ jobs:
         run: |
           docker compose -f netbox-docker/docker-compose.yml ps
           docker compose -f netbox-docker/docker-compose.yml logs netbox | tail -50
+
+      - name: Install and enable plugin
+        run: |
+          cd netbox-docker
+          docker compose exec -T netbox pip install -e /opt/netbox/plugins/hh-netbox-plugin
+          mkdir -p configuration
+          cat > configuration/plugins.py << 'EOF'
+          PLUGINS = ['netbox_hedgehog']
+          PLUGINS_CONFIG = {
+              'netbox_hedgehog': {
+                  'kubernetes_config_file': None,
+                  'sync_interval': 300,
+                  'enable_webhooks': True,
+                  'max_concurrent_syncs': 5,
+              }
+          }
+          EOF
+          docker compose restart netbox
+          timeout 180 bash -c 'until docker compose ps netbox | grep -q "healthy"; do sleep 5; echo "Still waiting for plugin-enabled NetBox..."; done'
 
       - name: Run NetBox migrations
         run: |
