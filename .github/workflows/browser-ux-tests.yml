@@ -47,6 +47,8 @@ jobs:
             netbox:
               volumes:
                 - ../hh-netbox-plugin:/opt/netbox/plugins/hh-netbox-plugin:ro
+              ports:
+                - "8000:8080"
           EOF
 
       - name: Start NetBox
