@@ -184,6 +184,33 @@ class PlanServerClass(NetBoxModel):
         help_text="Additional notes about this server class"
     )
 
+    # --- Opt-in rack placement (DIET-607) ---------------------------------
+    place_in_racks = models.BooleanField(
+        default=False,
+        help_text=(
+            "Opt in to deterministic automatic rack placement for this server "
+            "class. Default off preserves legacy behavior (no racks)."
+        ),
+    )
+
+    servers_per_rack = models.PositiveIntegerField(
+        null=True,
+        blank=True,
+        help_text=(
+            "Number of servers per rack. Required (>=1) when rack placement is "
+            "enabled; ignored/normalized to NULL when disabled."
+        ),
+    )
+
+    membership_only = models.BooleanField(
+        default=False,
+        help_text=(
+            "Place servers into racks without assigning U positions. Required "
+            "for zero-height device types; also valid as an explicit choice for "
+            "rackable types. Normalized to False when placement is disabled."
+        ),
+    )
+
     class Meta:
         ordering = ['plan', 'server_class_id']
         verbose_name = "Server Class"
@@ -195,6 +222,33 @@ class PlanServerClass(NetBoxModel):
 
     def get_absolute_url(self):
         return reverse('plugins:netbox_hedgehog:planserverclass_detail', args=[self.pk])
+
+    def _normalize_rack_fields(self):
+        """Canonical disabled-state normalization (DIET-607, single rule).
+
+        When rack placement is disabled, dormant values must never survive:
+        ``servers_per_rack`` becomes NULL and ``membership_only`` becomes False.
+        Applied on both clean() and save() so model/form/API converge.
+        """
+        if not self.place_in_racks:
+            self.servers_per_rack = None
+            self.membership_only = False
+
+    def clean(self):
+        super().clean()
+        self._normalize_rack_fields()
+        if self.place_in_racks:
+            if self.servers_per_rack is None or self.servers_per_rack < 1:
+                raise ValidationError({
+                    'servers_per_rack': (
+                        'Required and must be >= 1 when rack placement is enabled.'
+                    )
+                })
+
+    def save(self, *args, **kwargs):
+        # Guarantee normalization even for programmatic writes that skip clean().
+        self._normalize_rack_fields()
+        super().save(*args, **kwargs)
 
 
 class PlanServerNIC(NetBoxModel):

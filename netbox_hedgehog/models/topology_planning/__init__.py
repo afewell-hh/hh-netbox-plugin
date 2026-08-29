@@ -39,6 +39,9 @@ from .naming import (
 from .generation import (
     GenerationState,
 )
+from .locality import (
+    PlanLocalityRange,
+)
 
 __all__ = [
     # Reference Data
@@ -55,4 +58,5 @@ __all__ = [
     'SwitchPortZone',
     'NamingTemplate',
     'GenerationState',
+    'PlanLocalityRange',
 ]
