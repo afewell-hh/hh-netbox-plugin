@@ -29,6 +29,22 @@ from ..services.preflight import check_transceiver_bay_readiness, user_message
 logger = logging.getLogger(__name__)
 
 
+def _require_rack_permissions(request, plan):
+    """DIET-607: a plan with any rack-enabled server class requires
+    dcim.add_rack / dcim.delete_rack at EVERY generation entry point (generation
+    creates/deletes real racks). Enforced on both the sync and unified views so
+    the sync path cannot bypass rack RBAC.
+    """
+    if not plan.server_classes.filter(place_in_racks=True).exists():
+        return
+    for perm in ('dcim.add_rack', 'dcim.delete_rack'):
+        if not request.user.has_perm(perm):
+            raise PermissionDenied(
+                f"Rack placement requires '{perm}' permission. "
+                f"Contact administrator for rack management permissions."
+            )
+
+
 def _require_topologyplan_change_permission(request, plan=None):
     """
     Check change_topologyplan permission.
@@ -242,8 +258,14 @@ class TopologyPlanView(generic.ObjectView):
         server_link_review = build_server_link_review(instance)
         switch_fabric_review = build_switch_fabric_review(instance)
 
+        # DIET-607: plan-scoped rack-locality report (restricted to viewable rows).
+        locality_ranges = models.PlanLocalityRange.objects.restrict(
+            request.user, 'view'
+        ).filter(plan=instance).select_related('server_class', 'rack', 'switch', 'zone')
+
         return {
             'server_classes': instance.server_classes.all(),
+            'locality_ranges': locality_ranges,
             'switch_classes': instance.switch_classes.all(),
             'server_connections': server_connections,
             'can_generate_devices': can_generate_devices,
@@ -329,6 +351,9 @@ class TopologyPlanGenerateView(PermissionRequiredMixin, View):
     def post(self, request, pk):
         _require_topologyplan_change_permission(request)
         plan = get_object_or_404(models.TopologyPlan, pk=pk)
+        # DIET-607: rack-enabled generation requires rack DCIM permissions on
+        # this (synchronous) path too — must not bypass rack RBAC.
+        _require_rack_permissions(request, plan)
         if plan.server_classes.count() == 0 or plan.switch_classes.count() == 0:
             messages.error(
                 request,
@@ -569,17 +594,15 @@ class TopologyPlanGenerateUpdateView(View):
         Raises:
             PermissionDenied: If user lacks any required DCIM permission
         """
-        required = list(self.REQUIRED_DCIM_PERMISSIONS)
-        if plan is not None and plan.server_classes.filter(
-            place_in_racks=True
-        ).exists():
-            required += ['dcim.add_rack', 'dcim.delete_rack']
-        for perm in required:
+        for perm in self.REQUIRED_DCIM_PERMISSIONS:
             if not request.user.has_perm(perm):
                 raise PermissionDenied(
                     f"Device generation requires '{perm}' permission. "
                     f"Contact administrator for device management permissions."
                 )
+        # DIET-607: rack DCIM permissions (shared with the sync path).
+        if plan is not None:
+            _require_rack_permissions(request, plan)
 
 
 class TopologyPlanRecalculateView(PermissionRequiredMixin, View):
