@@ -385,3 +385,118 @@ class LocalityRangeViewRBACTestCase(TestCase):
         resp = self.client.get(
             reverse('plugins:netbox_hedgehog:planlocalityrange_list'))
         self.assertEqual(resp.status_code, 200)
+
+
+class SyncEndpointRackAuthTestCase(TestCase):
+    """B3: the legacy SYNCHRONOUS generate endpoint must also enforce rack DCIM
+    permissions (it runs DeviceGenerator.generate_all() in-request)."""
+
+    def _grant(self, user, perms):
+        for perm in perms:
+            app_label, codename = perm.split('.')
+            action, model = codename.split('_', 1)
+            ct = ContentType.objects.get(app_label=app_label, model=model)
+            op = ObjectPermission.objects.create(
+                name=f'{user.username}-{codename}', actions=[action])
+            op.object_types.add(ct)
+            op.users.add(user)
+
+    def _url(self, plan):
+        return reverse('plugins:netbox_hedgehog:topologyplan_generate',
+                       args=[plan.pk])
+
+    def setUp(self):
+        self.client = Client()
+
+    def test_sync_rack_generation_forbidden_without_rack_perm(self):
+        plan, *_ = _make_same_switch_plan(
+            'sync-auth', quantity=8, num_switches=1,
+            place_in_racks=True, servers_per_rack=8,
+        )
+        user = User.objects.create_user(
+            username='sync-norack', password='pw', is_staff=True)
+        self._grant(user, ['netbox_hedgehog.change_topologyplan'])
+        self.client.login(username='sync-norack', password='pw')
+        resp = self.client.post(self._url(plan), follow=False)
+        self.assertEqual(resp.status_code, 403,
+                         'Sync rack generation without dcim.add_rack must be 403')
+        self.assertEqual(_plan_racks(plan).count(), 0)
+        self.assertEqual(
+            Device.objects.filter(
+                custom_field_data__hedgehog_plan_id=str(plan.pk)).count(), 0)
+
+    def test_sync_rack_generation_succeeds_with_rack_perm(self):
+        plan, *_ = _make_same_switch_plan(
+            'sync-auth-ok', quantity=8, num_switches=1,
+            place_in_racks=True, servers_per_rack=8,
+        )
+        user = User.objects.create_user(
+            username='sync-hasrack', password='pw', is_staff=True)
+        self._grant(user, [
+            'netbox_hedgehog.change_topologyplan',
+            'dcim.add_rack', 'dcim.delete_rack',
+        ])
+        self.client.login(username='sync-hasrack', password='pw')
+        resp = self.client.post(self._url(plan), follow=False)
+        self.assertEqual(resp.status_code, 302)
+        # Sync path generates in-request: racks exist immediately.
+        self.assertEqual(_plan_racks(plan).count(), 1)
+
+
+class PlanDetailLocalityCardTestCase(TestCase):
+    """B2: the plan detail page shows a plan-scoped Rack Locality report."""
+
+    def test_detail_shows_locality_card_and_rows(self):
+        plan, *_ = _make_same_switch_plan(
+            'card', quantity=8, num_switches=1,
+            place_in_racks=True, servers_per_rack=8,
+        )
+        DeviceGenerator(plan).generate_all()
+        su = User.objects.create_user(
+            username='card-su', password='pw', is_staff=True, is_superuser=True)
+        self.client = Client()
+        self.client.login(username='card-su', password='pw')
+        resp = self.client.get(
+            reverse('plugins:netbox_hedgehog:topologyplan_detail', args=[plan.pk]))
+        self.assertEqual(resp.status_code, 200)
+        self.assertContains(resp, 'Rack Locality')
+        # A generated rack name appears in the card.
+        rack = _plan_racks(plan).first()
+        self.assertContains(resp, rack.name)
+
+
+class LocalityRangeAPITestCase(TestCase):
+    """B2: read-only REST API with RBAC for the locality report."""
+
+    def setUp(self):
+        self.client = Client()
+        self.plan, *_ = _make_same_switch_plan(
+            'api', quantity=8, num_switches=1,
+            place_in_racks=True, servers_per_rack=8,
+        )
+        DeviceGenerator(self.plan).generate_all()
+
+    def _url(self):
+        return reverse('plugins-api:netbox_hedgehog-api:planlocalityrange-list')
+
+    def test_api_list_forbidden_without_permission(self):
+        User.objects.create_user(username='api-none', password='pw', is_staff=True)
+        self.client.login(username='api-none', password='pw')
+        resp = self.client.get(self._url())
+        self.assertIn(resp.status_code, (403, 401))
+
+    def test_api_list_returns_rows_with_permission(self):
+        user = User.objects.create_user(
+            username='api-view', password='pw', is_staff=True)
+        op = ObjectPermission.objects.create(name='api-lr-view', actions=['view'])
+        op.object_types.add(
+            ContentType.objects.get_for_model(_locality_range_model()))
+        op.users.add(user)
+        self.client.login(username='api-view', password='pw')
+        resp = self.client.get(self._url())
+        self.assertEqual(resp.status_code, 200)
+        data = resp.json()
+        results = data.get('results', data)
+        self.assertTrue(len(results) >= 1)
+        self.assertIn('spans_boundary', results[0])
+        self.assertIn('physical_sequence', results[0])

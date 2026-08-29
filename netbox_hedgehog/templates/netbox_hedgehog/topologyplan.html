@@ -858,6 +858,57 @@
     </div>
 </div>
 
+{# Rack Locality Report (DIET-607) #}
+<div class="row mb-3">
+    <div class="col col-md-12">
+        <div class="card">
+            <h5 class="card-header">Rack Locality</h5>
+            <div class="card-body">
+                {% if locality_ranges %}
+                    <table class="table table-sm table-hover">
+                        <thead>
+                            <tr>
+                                <th>Rack</th>
+                                <th>Server Class</th>
+                                <th>Switch</th>
+                                <th>Zone</th>
+                                <th>Distribution</th>
+                                <th>Alloc Seq</th>
+                                <th>Server Ordinals</th>
+                                <th>Ports</th>
+                                <th>Spans Boundary</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for r in locality_ranges %}
+                            <tr>
+                                <td>{{ r.rack.name }}</td>
+                                <td>{{ r.server_class.server_class_id }}</td>
+                                <td>{{ r.switch.name }}</td>
+                                <td>{{ r.zone.zone_name }}</td>
+                                <td>{{ r.distribution }}</td>
+                                <td>{{ r.alloc_seq_start }}–{{ r.alloc_seq_end }}</td>
+                                <td>{{ r.server_ordinal_start }}–{{ r.server_ordinal_end }}</td>
+                                <td>{{ r.port_count }}</td>
+                                <td>
+                                    {% if r.spans_boundary %}
+                                        <span class="badge bg-warning text-dark">spans</span>
+                                    {% else %}
+                                        <span class="badge bg-success text-white">aligned</span>
+                                    {% endif %}
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                {% else %}
+                    <p class="text-muted mb-0">No rack-locality ranges. Enable rack placement on a server class and generate.</p>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+
 {# Destructive Confirmation Modal #}
 <div class="modal fade" id="destructiveConfirmModal" tabindex="-1" aria-labelledby="destructiveConfirmModalLabel" aria-hidden="true">
   <div class="modal-dialog">

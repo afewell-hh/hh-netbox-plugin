@@ -82,3 +82,22 @@ class StatusAPIView(APIView):
             'fabrics': len(fabrics),
             'status': 'operational'
         }, status=status.HTTP_200_OK)
+
+class PlanLocalityRangeViewSet(viewsets.ReadOnlyModelViewSet):
+    """Read-only REST API for the persisted rack-locality report (DIET-607).
+
+    PlanLocalityRange is a plain models.Model; this is a plain DRF read-only
+    viewset. NetBox's global TokenPermissions enforces view_planlocalityrange,
+    and restrict() applies object-level ObjectPermission filtering.
+    """
+    queryset = models.PlanLocalityRange.objects.all()
+    serializer_class = serializers.PlanLocalityRangeSerializer
+    filterset_fields = ['plan', 'server_class', 'rack', 'switch', 'zone', 'spans_boundary']
+
+    def get_queryset(self):
+        qs = super().get_queryset().select_related(
+            'plan', 'server_class', 'rack', 'switch', 'zone')
+        user = getattr(self.request, 'user', None)
+        if user is not None and hasattr(qs, 'restrict'):
+            return qs.restrict(user, 'view')
+        return qs

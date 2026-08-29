@@ -572,7 +572,9 @@ class MixedDistributionTestCase(TestCase):
             distribution='same-switch',
         )
         # Second connection to the SAME zone with a different distribution.
-        PlanServerConnection.objects.create(
+        # Model clean() blocks this best-effort; bypass via bulk path (no clean)
+        # to prove the generator preflight is the authoritative guard.
+        PlanServerConnection.objects.bulk_create([PlanServerConnection(
             server_class=server_class,
             connection_id='FE-02',
             nic=get_test_server_nic(server_class, nic_id='nic-2'),
@@ -582,10 +584,33 @@ class MixedDistributionTestCase(TestCase):
             distribution='alternating',
             target_zone=zone,
             speed=400,
-        )
+        )])
         with self.assertRaises(ValidationError):
             DeviceGenerator(plan).generate_all()
         self.assertEqual(_plan_racks(plan).count(), 0)
+
+    def test_i11_mixed_distribution_rejected_at_model_clean(self):
+        """Best-effort model-level guard: full_clean() blocks a rack-enabled
+        class from saving a second connection with a different distribution to
+        the same zone (form/API inherit this via full_clean)."""
+        plan, server_class, _sw, zone = _make_same_switch_plan(
+            'mixed-clean', quantity=8, num_switches=2,
+            place_in_racks=True, servers_per_rack=4,
+            distribution='same-switch',
+        )
+        second = PlanServerConnection(
+            server_class=server_class,
+            connection_id='FE-02',
+            nic=get_test_server_nic(server_class, nic_id='nic-2'),
+            port_index=0,
+            ports_per_connection=1,
+            hedgehog_conn_type='unbundled',
+            distribution='alternating',  # differs from the same-switch sibling
+            target_zone=zone,
+            speed=400,
+        )
+        with self.assertRaises(ValidationError):
+            second.full_clean()
 
 
 class ByteIdenticalCompatTestCase(TestCase):
