@@ -49,6 +49,8 @@ jobs:
                 - ../hh-netbox-plugin:/opt/netbox/plugins/hh-netbox-plugin:ro
               ports:
                 - "8000:8080"
+              environment:
+                PYTHONPATH: /opt/netbox/plugins/hh-netbox-plugin
           EOF
 
       - name: Start NetBox
@@ -79,10 +81,9 @@ jobs:
           docker compose -f netbox-docker/docker-compose.yml ps
           docker compose -f netbox-docker/docker-compose.yml logs netbox | tail -50
 
-      - name: Install and enable plugin
+      - name: Enable plugin
         run: |
           cd netbox-docker
-          docker compose exec -T netbox /opt/netbox/venv/bin/pip install -e /opt/netbox/plugins/hh-netbox-plugin
           mkdir -p configuration
           cat > configuration/plugins.py << 'EOF'
           PLUGINS = ['netbox_hedgehog']
