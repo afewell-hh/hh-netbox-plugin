@@ -9,6 +9,7 @@ from .topology_planning import (
     PlanServerNICTable,
     PlanSwitchClassTable,
     PlanServerConnectionTable,
+    PlanLocalityRangeTable,
     SwitchPortZoneTable,
 )
 
@@ -33,5 +34,6 @@ __all__ = [
     'PlanServerNICTable',
     'PlanSwitchClassTable',
     'PlanServerConnectionTable',
+    'PlanLocalityRangeTable',
     'SwitchPortZoneTable',
 ]

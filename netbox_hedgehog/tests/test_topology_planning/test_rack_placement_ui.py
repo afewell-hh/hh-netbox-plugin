@@ -133,7 +133,8 @@ class PlanServerClassRackUXTestCase(TestCase):
         self.client.login(username='rack-admin', password='pw')
         resp = self.client.post(
             reverse('plugins:netbox_hedgehog:planserverclass_delete',
-                    args=[self.existing.pk]), follow=False,
+                    args=[self.existing.pk]),
+            {'confirm': True}, follow=False,
         )
         self.assertEqual(resp.status_code, 302)
         self.assertFalse(
@@ -161,6 +162,16 @@ class PlanServerClassRackUXTestCase(TestCase):
             name='psc-all', actions=['view', 'add', 'change', 'delete'])
         perm.object_types.add(ContentType.objects.get_for_model(PlanServerClass))
         perm.users.add(self.regular)
+        # NetBox restricts related-FK form querysets to viewable objects, so the
+        # user also needs view on the referenced TopologyPlan and DeviceType.
+        from dcim.models import DeviceType
+        view_perm = ObjectPermission.objects.create(
+            name='psc-related-view', actions=['view'])
+        view_perm.object_types.add(
+            ContentType.objects.get_for_model(TopologyPlan),
+            ContentType.objects.get_for_model(DeviceType),
+        )
+        view_perm.users.add(self.regular)
         self.client.login(username='rack-regular', password='pw')
         resp = self.client.post(
             reverse('plugins:netbox_hedgehog:planserverclass_add'),
@@ -232,18 +243,21 @@ class RackGenerationAuthorizationTestCase(TestCase):
         'dcim.add_interface', 'dcim.add_cable', 'dcim.delete_cable',
     ]
 
-    def _grant(self, user, codenames):
-        for codename in codenames:
-            app_label, code = codename.split('.')
-            perm = Permission.objects.get(
-                content_type__app_label=app_label, codename=code)
-            user.user_permissions.add(perm)
+    def _grant(self, user, perms):
+        """Grant perms via ObjectPermission — NetBox does NOT honor Django
+        user_permissions for these object-type permissions."""
+        for perm in perms:
+            app_label, codename = perm.split('.')
+            action, model = codename.split('_', 1)
+            ct = ContentType.objects.get(app_label=app_label, model=model)
+            op = ObjectPermission.objects.create(
+                name=f'{user.username}-{codename}', actions=[action])
+            op.object_types.add(ct)
+            op.users.add(user)
 
     def _obj_perm(self, user, name):
-        obj_perm = ObjectPermission.objects.create(
-            name=name, actions=['view', 'change'])
-        obj_perm.object_types.add(ContentType.objects.get_for_model(TopologyPlan))
-        obj_perm.users.add(user)
+        # change_topologyplan is granted through _grant() as an ObjectPermission.
+        pass
 
     def _url(self, plan):
         return reverse('plugins:netbox_hedgehog:topologyplan_generate_update',
@@ -298,7 +312,7 @@ class RackGenerationAuthorizationTestCase(TestCase):
     def test_with_rack_permission_enqueues_job(self):
         plan, *_ = _make_same_switch_plan(
             'auth-rack-ok', quantity=8, num_switches=1,
-            place_in_racks=True, servers_per_rack=8,
+            place_in_racks=True, servers_per_rack=8, with_breakout=True,
         )
         user = User.objects.create_user(
             username='has-rack', password='pw', is_staff=True)
@@ -317,6 +331,7 @@ class RackGenerationAuthorizationTestCase(TestCase):
         """Regression: rack perms are NOT required to enqueue a place_in_racks=False plan."""
         plan, *_ = _make_same_switch_plan(
             'auth-norack', quantity=8, num_switches=1, place_in_racks=False,
+            with_breakout=True,
         )
         user = User.objects.create_user(
             username='norack-user', password='pw', is_staff=True)

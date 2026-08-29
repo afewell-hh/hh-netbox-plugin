@@ -212,6 +212,9 @@ class PlanServerClassForm(NetBoxModelForm):
             'quantity',
             'gpus_per_server',
             'server_device_type',
+            'place_in_racks',
+            'servers_per_rack',
+            'membership_only',
             'notes',
             'tags',
         ]
@@ -225,6 +228,9 @@ class PlanServerClassForm(NetBoxModelForm):
             'quantity': 'Number of servers in this class (PRIMARY INPUT)',
             'gpus_per_server': 'Number of GPUs per server (0 for non-GPU servers)',
             'server_device_type': 'Optional reference to NetBox DeviceType',
+            'place_in_racks': 'Opt in to automatic rack placement for this class',
+            'servers_per_rack': 'Servers per rack (required when rack placement is enabled)',
+            'membership_only': 'Assign racks without U positions (for zero-height types)',
             'notes': 'Additional notes about this server class',
         }
 

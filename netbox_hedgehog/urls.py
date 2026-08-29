@@ -31,6 +31,7 @@ from .views.topology_planning import (
     TopologyPlanGenerateView, TopologyPlanGenerateUpdateView, TopologyPlanRecalculateView, TopologyPlanExportView,
     TopologyPlanBOMCSVView, TopologyPlanBOMPerDeviceCSVView, TopologyPlanBOMComparisonCSVView,
     PlanServerClassListView, PlanServerClassView, PlanServerClassEditView, PlanServerClassDeleteView,
+    PlanLocalityRangeListView,
     PlanSwitchClassListView, PlanSwitchClassView, PlanSwitchClassEditView, PlanSwitchClassDeleteView,
     PlanServerNICListView, PlanServerNICView, PlanServerNICEditView, PlanServerNICDeleteView,
     PlanServerConnectionListView, PlanServerConnectionView, PlanServerConnectionEditView, PlanServerConnectionDeleteView,
@@ -238,6 +239,7 @@ urlpatterns = [
 
     # PlanServerClass URLs (DIET-004)
     path('plan-server-classes/', PlanServerClassListView.as_view(), name='planserverclass_list'),
+    path('plan-locality-ranges/', PlanLocalityRangeListView.as_view(), name='planlocalityrange_list'),
     path('plan-server-classes/add/', PlanServerClassEditView.as_view(), name='planserverclass_add'),
     path('plan-server-classes/<int:pk>/', PlanServerClassView.as_view(), name='planserverclass_detail'),
     path('plan-server-classes/<int:pk>/edit/', PlanServerClassEditView.as_view(), name='planserverclass_edit'),

@@ -108,8 +108,13 @@ def _make_same_switch_plan(name, quantity, num_switches, port_spec='1-64',
                            place_in_racks=False, servers_per_rack=None,
                            membership_only=False, server_u_height=2,
                            distribution='same-switch', allocation_strategy='sequential',
-                           ports_per_connection=1):
-    """Minimal plan: one server class, one leaf switch class + server zone."""
+                           ports_per_connection=1, with_breakout=False):
+    """Minimal plan: one server class, one leaf switch class + server zone.
+
+    ``with_breakout`` attaches a 1x (no-op) BreakoutOption to the zone, needed
+    only by tests that drive the view's recalculation path (the direct generator
+    does not recalc).
+    """
     ext = _make_switch_ext()
     server_type = _make_server_type(u_height=server_u_height)
     plan = TopologyPlan.objects.create(name=name, customer_name='Test')
@@ -122,13 +127,20 @@ def _make_same_switch_plan(name, quantity, num_switches, port_spec='1-64',
         uplink_ports_per_switch=0,
         calculated_quantity=num_switches,
     )
-    zone = SwitchPortZone.objects.create(
+    zone_kwargs = dict(
         switch_class=switch_class,
         zone_name='fe-server-ports',
         zone_type='server',
         port_spec=port_spec,
         allocation_strategy=allocation_strategy,
     )
+    if with_breakout:
+        from netbox_hedgehog.models.topology_planning import BreakoutOption
+        bo, _ = BreakoutOption.objects.get_or_create(
+            breakout_id='rack-1x', defaults={
+                'from_speed': 400, 'logical_ports': 1, 'logical_speed': 400})
+        zone_kwargs['breakout_option'] = bo
+    zone = SwitchPortZone.objects.create(**zone_kwargs)
     server_class = PlanServerClass.objects.create(
         plan=plan,
         server_class_id='gpu-server',

@@ -68,17 +68,21 @@ class WiringUnchangedByRackTestCase(TestCase):
         return server_names, iface, cable
 
     def test_rack_placement_does_not_change_wiring(self):
+        from dcim.models import Site
+
         off_plan, *_ = _make_same_switch_plan(
             'wire-off', quantity=8, num_switches=2, place_in_racks=False,
         )
-        DeviceGenerator(off_plan).generate_all()
+        DeviceGenerator(off_plan, site=Site.objects.get_or_create(
+            slug='wire-a', defaults={'name': 'wire-a'})[0]).generate_all()
         off_names, off_iface, off_cable = self._counts(off_plan)
 
         on_plan, *_ = _make_same_switch_plan(
             'wire-on', quantity=8, num_switches=2,
             place_in_racks=True, servers_per_rack=4,
         )
-        DeviceGenerator(on_plan).generate_all()
+        DeviceGenerator(on_plan, site=Site.objects.get_or_create(
+            slug='wire-b', defaults={'name': 'wire-b'})[0]).generate_all()
         on_names, on_iface, on_cable = self._counts(on_plan)
 
         self.assertEqual(off_iface, on_iface,

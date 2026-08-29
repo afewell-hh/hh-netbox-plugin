@@ -14,6 +14,7 @@ from ..models.topology_planning import (
     PlanServerNIC,
     PlanSwitchClass,
     PlanServerConnection,
+    PlanLocalityRange,
     SwitchPortZone,
 )
 
@@ -458,4 +459,27 @@ class SwitchPortZoneTable(NetBoxTable):
         default_columns = (
             'zone_name', 'switch_class', 'zone_type', 'port_spec',
             'breakout_option', 'allocation_strategy', 'priority'
+        )
+
+
+class PlanLocalityRangeTable(NetBoxTable):
+    """Read-only table for the persisted rack-locality report (DIET-607)."""
+
+    plan = tables.Column(linkify=True, verbose_name='Plan')
+    server_class = tables.Column(linkify=True, verbose_name='Server Class')
+    rack = tables.Column(linkify=True, verbose_name='Rack')
+    switch = tables.Column(linkify=True, verbose_name='Switch')
+    zone = tables.Column(verbose_name='Zone')
+
+    class Meta(NetBoxTable.Meta):
+        model = PlanLocalityRange
+        fields = (
+            'pk', 'id', 'plan', 'server_class', 'rack', 'rack_index', 'switch',
+            'zone', 'distribution', 'alloc_seq_start', 'alloc_seq_end',
+            'server_ordinal_start', 'server_ordinal_end', 'logical_name_first',
+            'logical_name_last', 'port_count', 'spans_boundary',
+        )
+        default_columns = (
+            'plan', 'server_class', 'rack', 'switch', 'zone', 'distribution',
+            'alloc_seq_start', 'alloc_seq_end', 'port_count', 'spans_boundary',
         )

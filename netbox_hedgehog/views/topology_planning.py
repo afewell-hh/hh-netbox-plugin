@@ -847,6 +847,13 @@ class PlanServerClassListView(generic.ObjectListView):
     table = tables.PlanServerClassTable
 
 
+class PlanLocalityRangeListView(generic.ObjectListView):
+    """Read-only list view for the persisted rack-locality report (DIET-607)."""
+    queryset = models.PlanLocalityRange.objects.all()
+    table = tables.PlanLocalityRangeTable
+    actions = {}  # read-only artifact: no add/import/export bulk actions
+
+
 class PlanServerClassView(generic.ObjectView):
     """Detail view for a single PlanServerClass"""
     queryset = models.PlanServerClass.objects.all()
