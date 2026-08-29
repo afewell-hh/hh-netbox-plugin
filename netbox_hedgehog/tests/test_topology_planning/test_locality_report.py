@@ -33,6 +33,7 @@ from netbox_hedgehog.tests.test_topology_planning.test_rack_placement import (
     _plan_racks,
     _plan_servers,
     _locality_range_model,
+    get_test_nic_with_ports,
     PLAN_ID_CF,
 )
 from netbox_hedgehog.models.topology_planning import (
@@ -114,7 +115,8 @@ class LocalityRowsPersistedTestCase(TestCase):
             port_spec='1-64', allocation_strategy='sequential', priority=2,
         )
         PlanServerConnection.objects.create(
-            server_class=sc, connection_id='BE', nic=get_test_server_nic(sc, 'nic-be'),
+            server_class=sc, connection_id='BE',
+            nic=get_test_nic_with_ports(sc, 'nic-be', 8),
             port_index=0, ports_per_connection=8, hedgehog_conn_type='unbundled',
             distribution='same-switch', target_zone=be_zone, speed=400,
         )
@@ -175,9 +177,12 @@ class SpansBoundaryTestCase(TestCase):
                         'Straddling rack must produce >=2 cells')
 
     def test_i5c_alternating_multi_cell_no_span(self):
+        # Alternating fans by port_index, so a 2-port connection touches both
+        # leaves (port0->leaf-a, port1->leaf-b) -> 2 cells, no ordinal span.
         plan, *_ = _make_same_switch_plan(
             'i5c', quantity=8, num_switches=2,
             place_in_racks=True, servers_per_rack=8, distribution='alternating',
+            ports_per_connection=2,
         )
         DeviceGenerator(plan).generate_all()
         rows = _rows(plan)
@@ -313,9 +318,23 @@ class AllocationStrategyProjectionTestCase(TestCase):
         )
         if allocation_order is not None:
             zone_kwargs['allocation_order'] = allocation_order
+        if breakout_id is not None:
+            from netbox_hedgehog.models.topology_planning import BreakoutOption
+            logical = int(breakout_id.split('x')[0])
+            bo, _ = BreakoutOption.objects.get_or_create(
+                breakout_id=breakout_id,
+                defaults={'from_speed': 400, 'logical_ports': logical,
+                          'logical_speed': 100},
+            )
+            zone_kwargs['breakout_option'] = bo
         zone = SwitchPortZone.objects.create(**zone_kwargs)
+        conn_nic = (
+            get_test_server_nic(sc)
+            if ports_per_connection <= 2
+            else get_test_nic_with_ports(sc, 'nic-wide', ports_per_connection)
+        )
         PlanServerConnection.objects.create(
-            server_class=sc, connection_id='C', nic=get_test_server_nic(sc),
+            server_class=sc, connection_id='C', nic=conn_nic,
             port_index=0, ports_per_connection=ports_per_connection,
             hedgehog_conn_type='unbundled', distribution='same-switch',
             target_zone=zone, speed=400,
@@ -359,7 +378,8 @@ class AllocationStrategyProjectionTestCase(TestCase):
         # 4x breakout: 1 server x 4 ports/connection -> lanes E1/1/1..E1/1/4.
         row = self._single_cell(
             'brk', 'sequential', port_spec='1-8',
-            breakouts=['4x100G'], quantity=1, ports_per_connection=4,
+            breakouts=['4x100G'], breakout_id='4x100G',
+            quantity=1, ports_per_connection=4,
         )
         self.assertEqual(row.physical_sequence, [1, 1, 1, 1],
                          'Breakout lanes repeat the physical port (multiplicity)')

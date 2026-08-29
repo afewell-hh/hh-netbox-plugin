@@ -77,6 +77,12 @@ class DeviceGenerator:
     DEFAULT_TAG_SLUG = "hedgehog-generated"
     DEFAULT_ROLE_COLOR = "9e9e9e"
 
+    # DIET-607: fixed rack geometry, shared by preflight, creation, and the
+    # position formula so all three stay consistent (never read a not-yet-
+    # created Rack's defaults).
+    DEFAULT_RACK_U_HEIGHT = 42
+    DEFAULT_RACK_STARTING_UNIT = 1
+
     def __init__(self, plan: TopologyPlan, site: Site | None = None, logger=None):
         self.plan = plan
         self.site = site or self._ensure_default_site()
@@ -87,36 +93,52 @@ class DeviceGenerator:
         self._device_cache: dict[str, Device] = {}
         self._interface_cache: dict[tuple[int, str], Interface] = {}
         self._rail_count_cache: dict[tuple[str, str], int] = {}  # (server_class_id, switch_class_id) -> total_rails
+        # DIET-607 rack placement: server_class.pk -> list[Rack] (ordinal order).
+        self._class_racks: dict[int, list] = {}
+        # DIET-607 locality report accumulator, keyed
+        # (server_class.pk, rack_index, switch.pk, zone.pk).
+        self._locality_cells: dict[tuple, dict] = {}
 
     def _cleanup_generated_objects(self) -> None:
         """
         Delete all previously generated objects for this plan.
 
-        Deletes Cables first (to avoid termination protection issues), then
-        Devices (which cascades to Interfaces). All deletions are scoped to
-        this specific plan using hedgehog_plan_id.
+        Order (DIET-607): locality rows -> Cables -> Devices -> Racks. Racks
+        are deleted LAST because Device.rack is on_delete=PROTECT; devices must
+        go first to release the protect. Locality rows hold no PROTECT targets
+        and are deleted first for determinism. All deletions are plan-scoped.
         """
-        from dcim.models import Cable
+        from dcim.models import Cable, Rack
+        from netbox_hedgehog.models.topology_planning import PlanLocalityRange
 
-        # IMPORTANT: Delete cables FIRST before devices to avoid termination
-        # protection issues in NetBox. Cables must be plan-scoped to avoid
-        # deleting cables from other plans.
+        plan_id = str(self.plan.pk)
+
+        # 0) Locality report rows (plan-scoped; CASCADE FKs, no PROTECT targets).
+        PlanLocalityRange.objects.filter(plan=self.plan).delete()
+
+        # 1) Cables FIRST to avoid termination-protection issues.
         cables_to_delete = Cable.objects.filter(
             tags__slug=self.DEFAULT_TAG_SLUG,
-            custom_field_data__hedgehog_plan_id=str(self.plan.pk)
+            custom_field_data__hedgehog_plan_id=plan_id,
         )
-        cable_count = cables_to_delete.count()
-        if cable_count > 0:
+        if cables_to_delete.count() > 0:
             cables_to_delete.delete()
 
-        # Now delete devices for this plan (interfaces will cascade)
+        # 2) Devices (interfaces cascade). Releases Device.rack PROTECT.
         devices_to_delete = Device.objects.filter(
             tags__slug=self.DEFAULT_TAG_SLUG,
-            custom_field_data__hedgehog_plan_id=str(self.plan.pk)
+            custom_field_data__hedgehog_plan_id=plan_id,
         )
-        device_count = devices_to_delete.count()
-        if device_count > 0:
+        if devices_to_delete.count() > 0:
             devices_to_delete.delete()
+
+        # 3) Racks LAST (now free of plan devices). Plan-scoped via tag + CF.
+        racks_to_delete = Rack.objects.filter(
+            tags__slug=self.DEFAULT_TAG_SLUG,
+            custom_field_data__hedgehog_plan_id=plan_id,
+        )
+        if racks_to_delete.count() > 0:
+            racks_to_delete.delete()
 
     @contextmanager
     def _cached_custom_field_defaults(self):
@@ -184,6 +206,15 @@ class DeviceGenerator:
         # (minutes in, everything rolled back), which reads as a hang (#598).
         self._preflight_zone_capacity()
 
+        # DIET-607: validate rack placement (capacity/u_height/mixed-distribution)
+        # and foreign occupants BEFORE any cleanup/writes, so a failure leaves the
+        # prior generated state completely intact.
+        self._preflight_rack_placement()
+
+        # Reset per-run rack/locality accumulators.
+        self._class_racks = {}
+        self._locality_cells = {}
+
         with self._cached_custom_field_defaults():
             # Milestone 1: Starting device generation
             if self.logger:
@@ -197,6 +228,10 @@ class DeviceGenerator:
             devices = []
             interfaces = []
             cables = []
+
+            # DIET-607: create opt-in racks before server devices so placement
+            # can reference them.
+            self._create_racks(devices)
 
             # Stage 2: missing-bay error accumulator.  Populated by
             # _create_nested_transceiver_module() and _create_switch_transceiver_module()
@@ -226,6 +261,9 @@ class DeviceGenerator:
                 switch_devices,
                 server_devices,
             )
+
+            # DIET-607: persist the locality report accumulated during wiring.
+            self._persist_locality_ranges()
 
             # Milestone 5b: Creating mesh connections (explicit mesh fabrics)
             if self.logger:
@@ -360,6 +398,9 @@ class DeviceGenerator:
         role = self._ensure_role(DeviceCategoryChoices.SERVER)
 
         for server_class in self.plan.server_classes.all():
+            racks = self._class_racks.get(server_class.pk) or []
+            spr = server_class.servers_per_rack
+            u_height = getattr(server_class.server_device_type, 'u_height', 0) or 0
             for index in range(server_class.quantity):
                 name = self._render_device_name(
                     category=DeviceCategoryChoices.SERVER,
@@ -373,6 +414,16 @@ class DeviceGenerator:
                     site=self.site,
                     status=DeviceStatusChoices.STATUS_PLANNED,
                 )
+                # DIET-607: deterministic rack membership + optional U position.
+                if racks and spr:
+                    rack = racks[index // spr]
+                    device.rack = rack
+                    if not server_class.membership_only:
+                        slot = index % spr
+                        device.position = (
+                            self.DEFAULT_RACK_U_HEIGHT - (slot + 1) * u_height + 1
+                        )
+                        device.face = 'front'
                 device.custom_field_data = {
                     'hedgehog_plan_id': str(self.plan.pk),
                     'hedgehog_class': server_class.server_class_id,
@@ -384,6 +435,233 @@ class DeviceGenerator:
                 self._device_cache[name] = device
 
         return server_devices
+
+    # ------------------------------------------------------------------ #
+    # DIET-607 rack placement + locality report
+    # ------------------------------------------------------------------ #
+
+    @staticmethod
+    def _rack_enabled_classes(plan):
+        return [
+            sc for sc in plan.server_classes.all()
+            if sc.place_in_racks and sc.servers_per_rack
+        ]
+
+    def _preflight_rack_placement(self) -> None:
+        """Validate rack placement before any cleanup/writes (DIET-607).
+
+        Hard-fails on: mixed distributions to one zone (I11), zero/negative
+        u_height with positioned placement (I9), rack capacity over-subscription
+        (I7), and — for EVERY pre-existing plan-generated rack scheduled for
+        cleanup, regardless of the plan's current place_in_racks — a foreign
+        (non-plan) occupant that would block PROTECT deletion (I10).
+        """
+        from dcim.models import Rack
+
+        plan_id = str(self.plan.pk)
+
+        # I10: foreign occupant in any rack we would delete during cleanup.
+        # NOTE: a plain .exclude(custom_field_data__hedgehog_plan_id=plan_id)
+        # misses devices whose JSON key is ABSENT (SQL NOT NULL -> NULL), which
+        # is exactly the manual-device case; check in Python instead.
+        for rack in Rack.objects.filter(
+            tags__slug=self.DEFAULT_TAG_SLUG,
+            custom_field_data__hedgehog_plan_id=plan_id,
+        ):
+            for occupant in rack.devices.all():
+                if (occupant.custom_field_data or {}).get('hedgehog_plan_id') != plan_id:
+                    raise ValidationError(
+                        f"Rack '{rack.name}' contains non-plan device "
+                        f"'{occupant.name}'; refusing to delete. Remove it before "
+                        "regenerating."
+                    )
+
+        for server_class in self._rack_enabled_classes(self.plan):
+            spr = server_class.servers_per_rack
+
+            # I11: one distribution per zone for a rack-enabled class.
+            zone_distributions: dict[int, set] = {}
+            for conn in server_class.connections.all():
+                zone_distributions.setdefault(conn.target_zone_id, set()).add(
+                    conn.distribution
+                )
+            for zone_id, dists in zone_distributions.items():
+                if len(dists) > 1:
+                    raise ValidationError(
+                        f"Rack-enabled class '{server_class.server_class_id}' has "
+                        f"mixed distributions {sorted(dists)} targeting one zone; "
+                        "a rack-placed class must use one distribution per zone."
+                    )
+
+            u_height = getattr(server_class.server_device_type, 'u_height', 0) or 0
+            if not server_class.membership_only:
+                # I9: positioned placement needs a positive-height device type.
+                if u_height <= 0:
+                    raise ValidationError(
+                        f"Server class '{server_class.server_class_id}' uses device "
+                        f"type '{server_class.server_device_type}' with u_height <= 0; "
+                        "enable membership_only or choose a rackable device type."
+                    )
+                # I7: rack capacity.
+                if spr * u_height > self.DEFAULT_RACK_U_HEIGHT:
+                    raise ValidationError(
+                        f"Rack capacity exceeded: {spr} servers x {u_height}U > "
+                        f"{self.DEFAULT_RACK_U_HEIGHT}U for class "
+                        f"'{server_class.server_class_id}'."
+                    )
+
+    def _create_racks(self, devices: list) -> None:
+        """Create ceil(quantity/servers_per_rack) plan-scoped racks per opted-in
+        class, with explicit geometry/status (DIET-607)."""
+        from dcim.models import Rack
+        from dcim.choices import RackStatusChoices
+
+        for server_class in self._rack_enabled_classes(self.plan):
+            spr = server_class.servers_per_rack
+            rack_count = math.ceil(server_class.quantity / spr)
+            racks = []
+            for rack_index in range(rack_count):
+                rack = Rack(
+                    site=self.site,
+                    name=self._render_rack_name(server_class, rack_index),
+                    status=RackStatusChoices.STATUS_PLANNED,
+                    u_height=self.DEFAULT_RACK_U_HEIGHT,
+                    starting_unit=self.DEFAULT_RACK_STARTING_UNIT,
+                )
+                rack.custom_field_data = {'hedgehog_plan_id': str(self.plan.pk)}
+                rack.save()
+                rack.tags.add(self.tag)
+                racks.append(rack)
+            self._class_racks[server_class.pk] = racks
+
+    def _render_rack_name(self, server_class, rack_index: int) -> str:
+        """Dedicated rack-object name renderer (distinct from the device
+        template's {rack} variable)."""
+        template = self._get_naming_template(DeviceCategoryChoices.RACK)
+        if template:
+            return template.render({
+                'site': self.site.slug,
+                'class': server_class.server_class_id,
+                'category': DeviceCategoryChoices.RACK,
+                'fabric': '',
+                'role': '',
+                'rack': rack_index,
+                'index': rack_index,
+            })
+        return f"{self.site.slug}-{slugify(server_class.server_class_id)}-rack-{rack_index:02d}"
+
+    def _record_locality(self, *, server_class, server_index, switch_device,
+                         zone, distribution, alloc_seq, logical_name,
+                         physical_port, switch_instances, total_rails,
+                         servers_per_domain) -> None:
+        spr = server_class.servers_per_rack
+        rack_index = server_index // spr
+        key = (server_class.pk, rack_index, switch_device.pk, zone.pk)
+        cell = self._locality_cells.get(key)
+        if cell is None:
+            cell = {
+                'server_class': server_class,
+                'rack_index': rack_index,
+                'switch': switch_device,
+                'zone': zone,
+                'distribution': distribution,
+                'entries': [],  # (alloc_seq, logical_name, physical_port, server_index)
+                'total_servers': server_class.quantity,
+                'num_switches': len(switch_instances),
+                'total_rails': total_rails,
+                'servers_per_domain': servers_per_domain,
+            }
+            self._locality_cells[key] = cell
+        cell['entries'].append((alloc_seq, logical_name, physical_port, server_index))
+
+    def _persist_locality_ranges(self) -> None:
+        from netbox_hedgehog.models.topology_planning import PlanLocalityRange
+
+        plan_id = str(self.plan.pk)
+        rows = []
+        for cell in self._locality_cells.values():
+            # Same-plan provenance guard (DIET-607 correction 6).
+            sc = cell['server_class']
+            switch = cell['switch']
+            zone = cell['zone']
+            if sc.plan_id != self.plan.pk:
+                raise ValidationError("Locality row server_class belongs to another plan.")
+            if zone.switch_class.plan_id != self.plan.pk:
+                raise ValidationError("Locality row zone belongs to another plan.")
+            if (switch.custom_field_data or {}).get('hedgehog_plan_id') != plan_id:
+                raise ValidationError("Locality row switch is not plan-generated.")
+
+            entries = sorted(cell['entries'], key=lambda e: e[0])
+            logical_sequence = [e[1] for e in entries]
+            physical_sequence = [e[2] for e in entries]
+            ordinals = [e[3] for e in entries]
+            rows.append(PlanLocalityRange(
+                plan=self.plan,
+                server_class=sc,
+                rack=self._class_racks[sc.pk][cell['rack_index']],
+                switch=switch,
+                zone=zone,
+                rack_index=cell['rack_index'],
+                distribution=cell['distribution'],
+                alloc_seq_start=entries[0][0],
+                alloc_seq_end=entries[-1][0],
+                server_ordinal_start=min(ordinals),
+                server_ordinal_end=max(ordinals),
+                logical_name_first=logical_sequence[0],
+                logical_name_last=logical_sequence[-1],
+                logical_sequence=logical_sequence,
+                physical_sequence=physical_sequence,
+                physical_ports_distinct=sorted(set(physical_sequence)),
+                port_count=len(entries),
+                spans_boundary=self._rack_spans_boundary(cell),
+            ))
+        if rows:
+            PlanLocalityRange.objects.bulk_create(rows)
+
+    def _rack_spans_boundary(self, cell) -> bool:
+        """True iff the rack's full ordinal range crosses an ordinal-partition
+        boundary of the distribution (same-switch group / rail domain). False
+        for alternating and rail capacity-sharing (no ordinal partition)."""
+        sc = cell['server_class']
+        spr = sc.servers_per_rack
+        rack_index = cell['rack_index']
+        lo = rack_index * spr
+        hi = min((rack_index + 1) * spr, cell['total_servers']) - 1
+        if hi <= lo:
+            return False
+        dist = cell['distribution']
+
+        if dist == ConnectionDistributionChoices.SAME_SWITCH:
+            return (
+                self._same_switch_group_index(lo, cell['total_servers'], cell['num_switches'])
+                != self._same_switch_group_index(hi, cell['total_servers'], cell['num_switches'])
+            )
+        if dist == ConnectionDistributionChoices.RAIL_OPTIMIZED:
+            total_rails = cell['total_rails']
+            num_switches = cell['num_switches']
+            spd = cell['servers_per_domain']
+            # Domain-based partitioning only when num_switches >= total_rails.
+            if total_rails and num_switches >= total_rails and spd:
+                return (lo // spd) != (hi // spd)
+            return False  # capacity-sharing: no ordinal partition
+        return False  # alternating and any other: no ordinal partition
+
+    @staticmethod
+    def _same_switch_group_index(server_index, total_servers, num_switches) -> int:
+        """Mirror _select_switch_instance same-switch grouping to find the
+        switch (group) index a given ordinal falls in."""
+        if num_switches <= 1 or not total_servers:
+            return 0
+        base = total_servers // num_switches
+        extra = total_servers % num_switches
+        lower = 0
+        for switch_index in range(num_switches):
+            size = base + (1 if switch_index < extra else 0)
+            upper = lower + size
+            if server_index < upper:
+                return switch_index
+            lower = upper
+        return num_switches - 1
 
     def _create_connections(
         self,
@@ -472,6 +750,27 @@ class DeviceGenerator:
                             zone,
                             1,
                         )[0]
+
+                        # DIET-607: record locality for rack-enabled classes.
+                        # alloc_seq = the per-(switch,zone) cursor index of this
+                        # port = cursor-after-allocate minus one.
+                        if server_class.place_in_racks and server_class.servers_per_rack:
+                            alloc_seq = self.port_allocator._cursors[
+                                (switch_device.name, zone.pk)
+                            ] - 1
+                            self._record_locality(
+                                server_class=server_class,
+                                server_index=server_index,
+                                switch_device=switch_device,
+                                zone=zone,
+                                distribution=connection_def.distribution,
+                                alloc_seq=alloc_seq,
+                                logical_name=switch_port.name,
+                                physical_port=switch_port.physical_port,
+                                switch_instances=switch_instances,
+                                total_rails=total_rails,
+                                servers_per_domain=servers_per_domain,
+                            )
 
                         switch_interface = self._get_or_create_interface(
                             device=switch_device,

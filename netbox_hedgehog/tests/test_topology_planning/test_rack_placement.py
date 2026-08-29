@@ -67,9 +67,30 @@ def _make_switch_ext(model='SW-RACK-01', u_height=1, native_speed=400,
             'supported_breakouts': breakouts or [],
             'native_speed': native_speed,
             'uplink_ports': 0,
+            'hedgehog_profile_name': model.lower(),
         },
     )
     return ext
+
+
+def get_test_nic_with_ports(server_class, nic_id, port_count):
+    """Create (or reuse) a PlanServerNIC whose ModuleType has ``port_count``
+    interface templates — needed for multi-port connections."""
+    from dcim.models import InterfaceTemplate, Manufacturer, ModuleType
+    from netbox_hedgehog.models.topology_planning import PlanServerNIC
+
+    mfr, _ = Manufacturer.objects.get_or_create(
+        name='NVIDIA', defaults={'slug': 'nvidia'})
+    mt, created = ModuleType.objects.get_or_create(
+        manufacturer=mfr, model=f'WideNIC-{port_count}p')
+    if created:
+        for i in range(port_count):
+            InterfaceTemplate.objects.get_or_create(
+                module_type=mt, name=f'p{i}',
+                defaults={'type': '200gbase-x-qsfp112'})
+    nic, _ = PlanServerNIC.objects.get_or_create(
+        server_class=server_class, nic_id=nic_id, defaults={'module_type': mt})
+    return nic
 
 
 def _make_server_type(model='SRV-RACK-01', u_height=2):
@@ -86,7 +107,8 @@ def _make_server_type(model='SRV-RACK-01', u_height=2):
 def _make_same_switch_plan(name, quantity, num_switches, port_spec='1-64',
                            place_in_racks=False, servers_per_rack=None,
                            membership_only=False, server_u_height=2,
-                           distribution='same-switch', allocation_strategy='sequential'):
+                           distribution='same-switch', allocation_strategy='sequential',
+                           ports_per_connection=1):
     """Minimal plan: one server class, one leaf switch class + server zone."""
     ext = _make_switch_ext()
     server_type = _make_server_type(u_height=server_u_height)
@@ -116,12 +138,17 @@ def _make_same_switch_plan(name, quantity, num_switches, port_spec='1-64',
         servers_per_rack=servers_per_rack,
         membership_only=membership_only,
     )
+    nic = (
+        get_test_server_nic(server_class)
+        if ports_per_connection <= 2
+        else get_test_nic_with_ports(server_class, 'nic-wide', ports_per_connection)
+    )
     PlanServerConnection.objects.create(
         server_class=server_class,
         connection_id='FE-01',
-        nic=get_test_server_nic(server_class),
+        nic=nic,
         port_index=0,
-        ports_per_connection=1,
+        ports_per_connection=ports_per_connection,
         hedgehog_conn_type='unbundled',
         distribution=distribution,
         target_zone=zone,

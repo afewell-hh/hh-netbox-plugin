@@ -466,7 +466,7 @@ class TopologyPlanGenerateUpdateView(View):
             return redirect('plugins:netbox_hedgehog:topologyplan_detail', pk=plan.pk)
 
         # Enforce DCIM permissions (required for device/cable generation)
-        self._require_dcim_permissions(request)
+        self._require_dcim_permissions(request, plan=plan)
 
         # Validate plan has required classes
         if plan.server_classes.count() == 0:
@@ -558,14 +558,23 @@ class TopologyPlanGenerateUpdateView(View):
         # Redirect to NetBox Job detail page
         return redirect(job.get_absolute_url())
 
-    def _require_dcim_permissions(self, request):
+    def _require_dcim_permissions(self, request, plan=None):
         """
         Enforce DCIM permissions required for device/cable generation.
+
+        DIET-607: a plan with any rack-enabled server class additionally requires
+        dcim.add_rack / dcim.delete_rack (generation creates/deletes real racks).
+        Plans without rack placement are unaffected.
 
         Raises:
             PermissionDenied: If user lacks any required DCIM permission
         """
-        for perm in self.REQUIRED_DCIM_PERMISSIONS:
+        required = list(self.REQUIRED_DCIM_PERMISSIONS)
+        if plan is not None and plan.server_classes.filter(
+            place_in_racks=True
+        ).exists():
+            required += ['dcim.add_rack', 'dcim.delete_rack']
+        for perm in required:
             if not request.user.has_perm(perm):
                 raise PermissionDenied(
                     f"Device generation requires '{perm}' permission. "
