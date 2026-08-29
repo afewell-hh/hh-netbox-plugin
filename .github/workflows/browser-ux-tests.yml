@@ -82,7 +82,7 @@ jobs:
       - name: Install and enable plugin
         run: |
           cd netbox-docker
-          docker compose exec -T netbox pip install -e /opt/netbox/plugins/hh-netbox-plugin
+          docker compose exec -T netbox /opt/netbox/venv/bin/pip install -e /opt/netbox/plugins/hh-netbox-plugin
           mkdir -p configuration
           cat > configuration/plugins.py << 'EOF'
           PLUGINS = ['netbox_hedgehog']
