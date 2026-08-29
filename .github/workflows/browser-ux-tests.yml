@@ -79,11 +79,6 @@ jobs:
           docker compose -f netbox-docker/docker-compose.yml ps
           docker compose -f netbox-docker/docker-compose.yml logs netbox | tail -50
 
-      - name: Start NetBox worker
-        run: |
-          cd netbox-docker
-          docker compose up -d netbox-worker
-
       - name: Install and enable plugin
         run: |
           cd netbox-docker
