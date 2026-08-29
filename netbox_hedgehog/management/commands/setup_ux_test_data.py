@@ -13,13 +13,14 @@ Usage:
 
 from django.core.management.base import BaseCommand
 from django.db import transaction
-from dcim.models import DeviceType, Manufacturer
+from dcim.models import DeviceType, InterfaceTemplate, Manufacturer, ModuleType
 from dcim.models import Cable, Device, Interface
 from extras.models import Tag
 
 from netbox_hedgehog.models.topology_planning import (
     TopologyPlan,
     PlanServerClass,
+    PlanServerNIC,
     PlanSwitchClass,
     PlanServerConnection,
     DeviceTypeExtension,
@@ -59,11 +60,11 @@ class Command(BaseCommand):
         try:
             with transaction.atomic():
                 # Create reference data
-                manufacturer, breakout_option, device_ext = self._create_reference_data()
+                manufacturer, breakout_option, device_ext, nic_module_type = self._create_reference_data()
 
                 # Create test plans
-                plan1 = self._create_test_plan_1(manufacturer, breakout_option, device_ext)
-                plan2 = self._create_test_plan_2(manufacturer, breakout_option, device_ext)
+                plan1 = self._create_test_plan_1(manufacturer, breakout_option, device_ext, nic_module_type)
+                plan2 = self._create_test_plan_2(manufacturer, breakout_option, device_ext, nic_module_type)
                 empty_plan = self._create_empty_plan()
 
                 # Pre-generate plan2 so we can test regeneration warning
@@ -171,10 +172,21 @@ class Command(BaseCommand):
             }
         )
 
-        self.stdout.write('    ✓ Reference data ready')
-        return manufacturer, breakout_option, device_ext
+        nic_module_type, _ = ModuleType.objects.get_or_create(
+            manufacturer=manufacturer,
+            model='UX-Test-200G-NIC',
+        )
+        for port_name in ('p0', 'p1'):
+            InterfaceTemplate.objects.get_or_create(
+                module_type=nic_module_type,
+                name=port_name,
+                defaults={'type': '200gbase-x-qsfp112'},
+            )
 
-    def _create_test_plan_1(self, manufacturer, breakout_option, device_ext):
+        self.stdout.write('    ✓ Reference data ready')
+        return manufacturer, breakout_option, device_ext, nic_module_type
+
+    def _create_test_plan_1(self, manufacturer, breakout_option, device_ext, nic_module_type):
         """Create primary test plan with servers and switches"""
         self.stdout.write('  Creating Test Plan 1 (primary)...')
 
@@ -196,6 +208,11 @@ class Command(BaseCommand):
             quantity=3,  # 3 servers for testing
             gpus_per_server=8,
             server_device_type=server_type
+        )
+        nic = PlanServerNIC.objects.create(
+            server_class=server_class,
+            nic_id='nic-fe',
+            module_type=nic_module_type,
         )
 
         # Create switch class
@@ -226,6 +243,7 @@ class Command(BaseCommand):
         # Create connection
         PlanServerConnection.objects.create(
             server_class=server_class,
+            nic=nic,
             connection_id='ux-test-frontend',
             connection_name='Frontend Connection',
             ports_per_connection=2,
@@ -238,7 +256,7 @@ class Command(BaseCommand):
         self.stdout.write('    ✓ Test Plan 1 created')
         return plan
 
-    def _create_test_plan_2(self, manufacturer, breakout_option, device_ext):
+    def _create_test_plan_2(self, manufacturer, breakout_option, device_ext, nic_module_type):
         """Create second test plan for multi-plan isolation testing"""
         self.stdout.write('  Creating Test Plan 2 (multi-plan)...')
 
@@ -256,6 +274,11 @@ class Command(BaseCommand):
             category=ServerClassCategoryChoices.INFRASTRUCTURE,
             quantity=2,
             server_device_type=server_type
+        )
+        nic = PlanServerNIC.objects.create(
+            server_class=server_class,
+            nic_id='nic-fe',
+            module_type=nic_module_type,
         )
 
         switch_class = PlanSwitchClass.objects.create(
@@ -282,6 +305,7 @@ class Command(BaseCommand):
 
         PlanServerConnection.objects.create(
             server_class=server_class,
+            nic=nic,
             connection_id='ux-test-conn-plan2',
             connection_name='Plan 2 Connection',
             ports_per_connection=1,
