@@ -10,19 +10,26 @@ user's perspective; the generator is the only writer.
 
 from django.db import models
 from django.urls import reverse
-from netbox.models import NetBoxModel
+
+from utilities.querysets import RestrictedQuerySet
 
 from netbox_hedgehog.choices import ConnectionDistributionChoices
 
 
-class PlanLocalityRange(NetBoxModel):
+class PlanLocalityRange(models.Model):
     """One reported cell: an allocation-sequence range for a rack's servers on a
     single (switch, zone), with logical/physical projections and provenance.
+
+    Plain ``models.Model`` per the #609 ADR (an ephemeral plugin-owned artifact,
+    no tags/custom-fields/changelog churn). ``RestrictedQuerySet`` still provides
+    NetBox ObjectPermission enforcement for the read-only UI/API.
 
     The cell key ``(plan, server_class, rack, switch, zone)`` is unique. All FKs
     use CASCADE so the row can never block deletion of a generated Rack/Device/
     zone (Device.rack is PROTECT; these rows hold no PROTECT targets).
     """
+
+    objects = RestrictedQuerySet.as_manager()
 
     plan = models.ForeignKey(
         to='netbox_hedgehog.TopologyPlan',

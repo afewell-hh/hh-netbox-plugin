@@ -1,7 +1,4 @@
 import django.db.models.deletion
-import netbox.models.deletion
-import taggit.managers
-import utilities.json
 from django.db import migrations, models
 
 
@@ -40,9 +37,6 @@ class Migration(migrations.Migration):
             name='PlanLocalityRange',
             fields=[
                 ('id', models.BigAutoField(auto_created=True, primary_key=True, serialize=False)),
-                ('created', models.DateTimeField(auto_now_add=True, null=True)),
-                ('last_updated', models.DateTimeField(auto_now=True, null=True)),
-                ('custom_field_data', models.JSONField(blank=True, default=dict, encoder=utilities.json.CustomFieldJSONEncoder)),
                 ('rack_index', models.PositiveIntegerField()),
                 ('distribution', models.CharField(max_length=32)),
                 ('alloc_seq_start', models.PositiveIntegerField()),
@@ -60,7 +54,6 @@ class Migration(migrations.Migration):
                 ('rack', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name='+', to='dcim.rack')),
                 ('server_class', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name='locality_ranges', to='netbox_hedgehog.planserverclass')),
                 ('switch', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name='+', to='dcim.device')),
-                ('tags', taggit.managers.TaggableManager(through='extras.TaggedItem', to='extras.Tag')),
                 ('zone', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name='locality_ranges', to='netbox_hedgehog.switchportzone')),
             ],
             options={
@@ -69,6 +62,5 @@ class Migration(migrations.Migration):
                 'ordering': ['plan', 'server_class', 'rack_index', 'switch__name', 'zone__priority', 'zone__zone_name', 'alloc_seq_start'],
                 'unique_together': {('plan', 'server_class', 'rack', 'switch', 'zone')},
             },
-            bases=(netbox.models.deletion.DeleteMixin, models.Model),
         ),
     ]

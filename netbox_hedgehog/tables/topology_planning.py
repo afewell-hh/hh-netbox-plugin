@@ -463,7 +463,12 @@ class SwitchPortZoneTable(NetBoxTable):
 
 
 class PlanLocalityRangeTable(NetBoxTable):
-    """Read-only table for the persisted rack-locality report (DIET-607)."""
+    """Read-only table for the persisted rack-locality report (DIET-607).
+
+    PlanLocalityRange is a plain models.Model (no changelog/tags), so the table
+    only references domain fields; NetBoxTable is used because NetBox's
+    ObjectListView constructs the table with a ``user=`` kwarg.
+    """
 
     plan = tables.Column(linkify=True, verbose_name='Plan')
     server_class = tables.Column(linkify=True, verbose_name='Server Class')
