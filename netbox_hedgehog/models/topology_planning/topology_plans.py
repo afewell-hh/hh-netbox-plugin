@@ -835,6 +835,27 @@ class PlanServerConnection(NetBoxModel):
                     'target_zone': 'Target zone must belong to the same plan as the server class.'
                 })
 
+        # DIET-607: best-effort mixed-distribution guard for rack-enabled classes.
+        # A rack-placed class must use one distribution per zone (the locality
+        # report cell is keyed per zone and carries a single distribution).
+        # Authoritative enforcement remains in DeviceGenerator._preflight_rack_placement.
+        if (
+            self.target_zone_id and self.server_class_id
+            and getattr(self.server_class, 'place_in_racks', False)
+            and self.distribution
+        ):
+            siblings = self.server_class.connections.filter(
+                target_zone_id=self.target_zone_id
+            ).exclude(pk=self.pk).exclude(distribution=self.distribution)
+            if siblings.exists():
+                other = siblings.first().distribution
+                raise ValidationError({
+                    'distribution': (
+                        f"Rack-enabled class must use one distribution per zone; "
+                        f"zone already targeted with '{other}'."
+                    )
+                })
+
         # Validate zone_type alignment: IPMI → OOB zone, other → SERVER zone
         if self.target_zone_id:
             expected_type = 'oob' if self.port_type == PortTypeChoices.IPMI else 'server'
