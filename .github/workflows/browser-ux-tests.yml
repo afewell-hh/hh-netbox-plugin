@@ -53,7 +53,13 @@ jobs:
         run: |
           cd netbox-docker
           docker compose pull
-          docker compose up -d
+          # Start NetBox independently of its worker. On a fresh CI database the
+          # initial NetBox migration can take longer than Compose's worker
+          # dependency wait; starting all services together then reports the
+          # healthy-worker dependency as a failed startup before this workflow's
+          # explicit readiness loop can run.
+          docker compose up -d postgres redis redis-cache
+          docker compose up -d netbox
 
           # Wait for NetBox to be ready
           echo "Waiting for NetBox to start..."
@@ -70,6 +76,11 @@ jobs:
         run: |
           docker compose -f netbox-docker/docker-compose.yml ps
           docker compose -f netbox-docker/docker-compose.yml logs netbox | tail -50
+
+      - name: Start NetBox worker
+        run: |
+          cd netbox-docker
+          docker compose up -d netbox-worker
 
       - name: Install and enable plugin
         run: |
