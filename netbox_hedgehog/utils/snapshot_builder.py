@@ -63,6 +63,10 @@ def build_plan_snapshot(plan: 'TopologyPlan') -> dict:
             'quantity': server_class.quantity,
             'device_type_id': server_class.server_device_type_id,
             'gpus_per_server': server_class.gpus_per_server,
+            # DIET-607: rack placement affects generated output.
+            'place_in_racks': server_class.place_in_racks,
+            'servers_per_rack': server_class.servers_per_rack,
+            'membership_only': server_class.membership_only,
         })
 
     # Switch classes (include device type and configuration)

@@ -24,6 +24,9 @@ router.register('switches', views.SwitchViewSet)
 router.register('switch-groups', views.SwitchGroupViewSet)
 router.register('vlan-namespaces', views.VLANNamespaceViewSet)
 
+# Topology Planning (DIET) — read-only locality report
+router.register('plan-locality-ranges', views.PlanLocalityRangeViewSet)
+
 urlpatterns = router.urls + [
     # Custom endpoints
     path('sync/', views.SyncAPIView.as_view(), name='sync'),

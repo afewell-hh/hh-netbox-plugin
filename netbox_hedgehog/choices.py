@@ -363,6 +363,7 @@ class DeviceCategoryChoices(ChoiceSet):
     SPINE = 'spine'
     OOB = 'oob'
     BORDER = 'border'
+    RACK = 'rack'
 
     CHOICES = [
         (SERVER, 'Server'),
@@ -370,6 +371,7 @@ class DeviceCategoryChoices(ChoiceSet):
         (SPINE, 'Spine'),
         (OOB, 'OOB'),
         (BORDER, 'Border'),
+        (RACK, 'Rack'),
     ]
 
 

@@ -39,6 +39,7 @@ from .topology_planning import (
     PlanMCLAGDomain,
     SwitchPortZone,
     GenerationState,
+    PlanLocalityRange,
 )
 
 __all__ = [
@@ -70,4 +71,5 @@ __all__ = [
     'PlanMCLAGDomain',
     'SwitchPortZone',
     'GenerationState',
+    'PlanLocalityRange',
 ]

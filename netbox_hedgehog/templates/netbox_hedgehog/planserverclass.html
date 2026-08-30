@@ -49,6 +49,25 @@
         </table>
       </div>
     </div>
+    <div class="card mt-3">
+      <h5 class="card-header">Rack Placement</h5>
+      <div class="card-body">
+        <table class="table table-hover attr-table">
+          <tr>
+            <th scope="row">Place in Racks</th>
+            <td>{% checkmark object.place_in_racks %}</td>
+          </tr>
+          <tr>
+            <th scope="row">Servers per Rack</th>
+            <td>{{ object.servers_per_rack|placeholder }}</td>
+          </tr>
+          <tr>
+            <th scope="row">Membership Only</th>
+            <td>{% checkmark object.membership_only %}</td>
+          </tr>
+        </table>
+      </div>
+    </div>
     {% if object.description %}
     <div class="card mt-3">
       <h5 class="card-header">Description</h5>

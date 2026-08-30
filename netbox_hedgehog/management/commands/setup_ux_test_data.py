@@ -13,19 +13,21 @@ Usage:
 
 from django.core.management.base import BaseCommand
 from django.db import transaction
-from dcim.models import DeviceType, Manufacturer
+from dcim.models import DeviceType, InterfaceTemplate, Manufacturer, ModuleType
 from dcim.models import Cable, Device, Interface
 from extras.models import Tag
 
 from netbox_hedgehog.models.topology_planning import (
     TopologyPlan,
     PlanServerClass,
+    PlanServerNIC,
     PlanSwitchClass,
     PlanServerConnection,
     DeviceTypeExtension,
     BreakoutOption,
     SwitchPortZone,
     GenerationState,
+    PlanLocalityRange,
 )
 from netbox_hedgehog.choices import (
     TopologyPlanStatusChoices,
@@ -59,11 +61,11 @@ class Command(BaseCommand):
         try:
             with transaction.atomic():
                 # Create reference data
-                manufacturer, breakout_option, device_ext = self._create_reference_data()
+                manufacturer, breakout_option, device_ext, nic_module_type = self._create_reference_data()
 
                 # Create test plans
-                plan1 = self._create_test_plan_1(manufacturer, breakout_option, device_ext)
-                plan2 = self._create_test_plan_2(manufacturer, breakout_option, device_ext)
+                plan1 = self._create_test_plan_1(manufacturer, breakout_option, device_ext, nic_module_type)
+                plan2 = self._create_test_plan_2(manufacturer, breakout_option, device_ext, nic_module_type)
                 empty_plan = self._create_empty_plan()
 
                 # Pre-generate plan2 so we can test regeneration warning
@@ -93,13 +95,35 @@ class Command(BaseCommand):
             raise
 
     def _cleanup_test_data(self):
-        """Remove existing UX test data"""
-        # Remove generated objects from prior UX test runs
-        tag = Tag.objects.filter(slug='hedgehog-generated').first()
-        if tag:
-            Cable.objects.filter(tags=tag).delete()
-            Device.objects.filter(tags=tag).delete()
-            Interface.objects.filter(tags=tag).delete()
+        """Remove existing UX test data.
+
+        IMPORTANT (DIET-616): generated inventory is deleted **scoped to the UX
+        fixture plan IDs** via ``custom_field_data.hedgehog_plan_id``, NOT by the
+        shared ``hedgehog-generated`` tag. Using the tag as the sole scope would
+        destroy unrelated generated DIET plans in the same instance. Devices
+        cascade their interfaces, so scoped device deletion is sufficient.
+        """
+        from dcim.models import Rack
+
+        ux_plans = list(TopologyPlan.objects.filter(name__startswith='UX Test Plan'))
+        ux_plan_ids = [str(p.pk) for p in ux_plans]
+
+        if ux_plan_ids:
+            # Dependency order: cables -> devices (cascade interfaces) -> racks;
+            # each strictly scoped to UX plan IDs.
+            Cable.objects.filter(
+                custom_field_data__hedgehog_plan_id__in=ux_plan_ids
+            ).delete()
+            Device.objects.filter(
+                custom_field_data__hedgehog_plan_id__in=ux_plan_ids
+            ).delete()
+            # Locality rows + racks exist only if a UX plan used rack placement;
+            # scoped deletes are safe no-ops otherwise. Errors must abort --clean,
+            # not be swallowed (PlanLocalityRange is a binding installed model).
+            PlanLocalityRange.objects.filter(plan__in=ux_plans).delete()
+            Rack.objects.filter(
+                custom_field_data__hedgehog_plan_id__in=ux_plan_ids
+            ).delete()
 
         # Delete in dependency order due to PROTECT on target_zone
         plans = TopologyPlan.objects.filter(name__startswith='UX Test Plan')
@@ -167,14 +191,33 @@ class Command(BaseCommand):
                 'native_speed': 800,
                 'supported_breakouts': ['1x800g', '2x400g', '4x200g'],
                 'mclag_capable': False,
-                'hedgehog_roles': ['spine', 'server-leaf']
+                'hedgehog_roles': ['spine', 'server-leaf'],
+                # Required by the YAML generator so Export YAML succeeds for
+                # generated plans (matches real profile-imported switches).
+                'hedgehog_profile_name': 'ux-test-switch-800g',
             }
         )
+        # Ensure the profile name is set even if the extension already existed
+        # from a prior (pre-fix) fixture run under --keepdb/--clean.
+        if not device_ext.hedgehog_profile_name:
+            device_ext.hedgehog_profile_name = 'ux-test-switch-800g'
+            device_ext.save(update_fields=['hedgehog_profile_name'])
+
+        nic_module_type, _ = ModuleType.objects.get_or_create(
+            manufacturer=manufacturer,
+            model='UX-Test-200G-NIC',
+        )
+        for port_name in ('p0', 'p1'):
+            InterfaceTemplate.objects.get_or_create(
+                module_type=nic_module_type,
+                name=port_name,
+                defaults={'type': '200gbase-x-qsfp112'},
+            )
 
         self.stdout.write('    ✓ Reference data ready')
-        return manufacturer, breakout_option, device_ext
+        return manufacturer, breakout_option, device_ext, nic_module_type
 
-    def _create_test_plan_1(self, manufacturer, breakout_option, device_ext):
+    def _create_test_plan_1(self, manufacturer, breakout_option, device_ext, nic_module_type):
         """Create primary test plan with servers and switches"""
         self.stdout.write('  Creating Test Plan 1 (primary)...')
 
@@ -196,6 +239,11 @@ class Command(BaseCommand):
             quantity=3,  # 3 servers for testing
             gpus_per_server=8,
             server_device_type=server_type
+        )
+        nic = PlanServerNIC.objects.create(
+            server_class=server_class,
+            nic_id='nic-fe',
+            module_type=nic_module_type,
         )
 
         # Create switch class
@@ -226,6 +274,7 @@ class Command(BaseCommand):
         # Create connection
         PlanServerConnection.objects.create(
             server_class=server_class,
+            nic=nic,
             connection_id='ux-test-frontend',
             connection_name='Frontend Connection',
             ports_per_connection=2,
@@ -238,7 +287,7 @@ class Command(BaseCommand):
         self.stdout.write('    ✓ Test Plan 1 created')
         return plan
 
-    def _create_test_plan_2(self, manufacturer, breakout_option, device_ext):
+    def _create_test_plan_2(self, manufacturer, breakout_option, device_ext, nic_module_type):
         """Create second test plan for multi-plan isolation testing"""
         self.stdout.write('  Creating Test Plan 2 (multi-plan)...')
 
@@ -256,6 +305,11 @@ class Command(BaseCommand):
             category=ServerClassCategoryChoices.INFRASTRUCTURE,
             quantity=2,
             server_device_type=server_type
+        )
+        nic = PlanServerNIC.objects.create(
+            server_class=server_class,
+            nic_id='nic-fe',
+            module_type=nic_module_type,
         )
 
         switch_class = PlanSwitchClass.objects.create(
@@ -282,6 +336,7 @@ class Command(BaseCommand):
 
         PlanServerConnection.objects.create(
             server_class=server_class,
+            nic=nic,
             connection_id='ux-test-conn-plan2',
             connection_name='Plan 2 Connection',
             ports_per_connection=1,
@@ -340,16 +395,28 @@ class Command(BaseCommand):
             username='viewer',
             email='viewer@example.com',
             password='viewer',
-            is_staff=True,  # Need is_staff to access admin interface
             is_active=True
         )
 
-        # Add view permissions for topology planning models
+        # Grant real view-only access. NetBox enforces object-type permissions
+        # via ObjectPermission (Django user_permissions alone are NOT honored by
+        # NetBox's permission backend), so the viewer must get a view-scoped
+        # ObjectPermission to actually see plans while remaining unable to
+        # generate (no change_topologyplan).
         content_type = ContentType.objects.get_for_model(TopologyPlan)
         view_permission = Permission.objects.get(
             content_type=content_type,
             codename='view_topologyplan'
         )
-        viewer.user_permissions.add(view_permission)
+        viewer.user_permissions.add(view_permission)  # harmless; kept for clarity
+
+        from users.models import ObjectPermission
+        ObjectPermission.objects.filter(name='ux-viewer-view-plans').delete()
+        obj_perm = ObjectPermission.objects.create(
+            name='ux-viewer-view-plans',
+            actions=['view'],
+        )
+        obj_perm.object_types.add(content_type)
+        obj_perm.users.add(viewer)
 
         self.stdout.write('    ✓ Viewer user created (username: viewer, password: viewer)')

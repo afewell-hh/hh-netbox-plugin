@@ -29,6 +29,22 @@ from ..services.preflight import check_transceiver_bay_readiness, user_message
 logger = logging.getLogger(__name__)
 
 
+def _require_rack_permissions(request, plan):
+    """DIET-607: a plan with any rack-enabled server class requires
+    dcim.add_rack / dcim.delete_rack at EVERY generation entry point (generation
+    creates/deletes real racks). Enforced on both the sync and unified views so
+    the sync path cannot bypass rack RBAC.
+    """
+    if not plan.server_classes.filter(place_in_racks=True).exists():
+        return
+    for perm in ('dcim.add_rack', 'dcim.delete_rack'):
+        if not request.user.has_perm(perm):
+            raise PermissionDenied(
+                f"Rack placement requires '{perm}' permission. "
+                f"Contact administrator for rack management permissions."
+            )
+
+
 def _require_topologyplan_change_permission(request, plan=None):
     """
     Check change_topologyplan permission.
@@ -242,8 +258,14 @@ class TopologyPlanView(generic.ObjectView):
         server_link_review = build_server_link_review(instance)
         switch_fabric_review = build_switch_fabric_review(instance)
 
+        # DIET-607: plan-scoped rack-locality report (restricted to viewable rows).
+        locality_ranges = models.PlanLocalityRange.objects.restrict(
+            request.user, 'view'
+        ).filter(plan=instance).select_related('server_class', 'rack', 'switch', 'zone')
+
         return {
             'server_classes': instance.server_classes.all(),
+            'locality_ranges': locality_ranges,
             'switch_classes': instance.switch_classes.all(),
             'server_connections': server_connections,
             'can_generate_devices': can_generate_devices,
@@ -329,6 +351,9 @@ class TopologyPlanGenerateView(PermissionRequiredMixin, View):
     def post(self, request, pk):
         _require_topologyplan_change_permission(request)
         plan = get_object_or_404(models.TopologyPlan, pk=pk)
+        # DIET-607: rack-enabled generation requires rack DCIM permissions on
+        # this (synchronous) path too — must not bypass rack RBAC.
+        _require_rack_permissions(request, plan)
         if plan.server_classes.count() == 0 or plan.switch_classes.count() == 0:
             messages.error(
                 request,
@@ -466,7 +491,7 @@ class TopologyPlanGenerateUpdateView(View):
             return redirect('plugins:netbox_hedgehog:topologyplan_detail', pk=plan.pk)
 
         # Enforce DCIM permissions (required for device/cable generation)
-        self._require_dcim_permissions(request)
+        self._require_dcim_permissions(request, plan=plan)
 
         # Validate plan has required classes
         if plan.server_classes.count() == 0:
@@ -558,9 +583,13 @@ class TopologyPlanGenerateUpdateView(View):
         # Redirect to NetBox Job detail page
         return redirect(job.get_absolute_url())
 
-    def _require_dcim_permissions(self, request):
+    def _require_dcim_permissions(self, request, plan=None):
         """
         Enforce DCIM permissions required for device/cable generation.
+
+        DIET-607: a plan with any rack-enabled server class additionally requires
+        dcim.add_rack / dcim.delete_rack (generation creates/deletes real racks).
+        Plans without rack placement are unaffected.
 
         Raises:
             PermissionDenied: If user lacks any required DCIM permission
@@ -571,6 +600,9 @@ class TopologyPlanGenerateUpdateView(View):
                     f"Device generation requires '{perm}' permission. "
                     f"Contact administrator for device management permissions."
                 )
+        # DIET-607: rack DCIM permissions (shared with the sync path).
+        if plan is not None:
+            _require_rack_permissions(request, plan)
 
 
 class TopologyPlanRecalculateView(PermissionRequiredMixin, View):
@@ -836,6 +868,13 @@ class PlanServerClassListView(generic.ObjectListView):
     """List view for PlanServerClasses"""
     queryset = models.PlanServerClass.objects.all()
     table = tables.PlanServerClassTable
+
+
+class PlanLocalityRangeListView(generic.ObjectListView):
+    """Read-only list view for the persisted rack-locality report (DIET-607)."""
+    queryset = models.PlanLocalityRange.objects.all()
+    table = tables.PlanLocalityRangeTable
+    actions = {}  # read-only artifact: no add/import/export bulk actions
 
 
 class PlanServerClassView(generic.ObjectView):

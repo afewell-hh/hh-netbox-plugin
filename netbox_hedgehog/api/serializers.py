@@ -103,3 +103,28 @@ from .serializers_simple import (
     PlanMCLAGDomainSerializer,
     SwitchPortZoneSerializer,
 )
+
+
+class PlanLocalityRangeSerializer(serializers.ModelSerializer):
+    """Read-only serializer for the persisted rack-locality report (DIET-607).
+
+    PlanLocalityRange is a plain models.Model, so this is a plain DRF
+    ModelSerializer (not NetBoxModelSerializer). Read-only from the API.
+    """
+
+    rack_name = serializers.CharField(source='rack.name', read_only=True)
+    switch_name = serializers.CharField(source='switch.name', read_only=True)
+    zone_name = serializers.CharField(source='zone.zone_name', read_only=True)
+    server_class_id = serializers.CharField(
+        source='server_class.server_class_id', read_only=True)
+
+    class Meta:
+        model = models.PlanLocalityRange
+        fields = [
+            'id', 'plan', 'server_class', 'server_class_id', 'rack', 'rack_name',
+            'rack_index', 'switch', 'switch_name', 'zone', 'zone_name',
+            'distribution', 'alloc_seq_start', 'alloc_seq_end',
+            'server_ordinal_start', 'server_ordinal_end', 'logical_name_first',
+            'logical_name_last', 'logical_sequence', 'physical_sequence',
+            'physical_ports_distinct', 'port_count', 'spans_boundary',
+        ]

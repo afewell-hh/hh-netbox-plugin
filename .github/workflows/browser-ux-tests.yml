@@ -38,45 +38,37 @@ jobs:
         run: |
           cd netbox-docker
 
-          # Create docker-compose.override.yml to mount plugin
+          # Mount the repository outside NetBox's Python package directory.
+          # Mounting it at /opt/netbox/netbox/netbox_hedgehog shadows the real
+          # inner package and makes NetBox import a namespace package without
+          # the plugin's required `config` variable.
           cat > docker-compose.override.yml << 'EOF'
           services:
             netbox:
               volumes:
-                - ../hh-netbox-plugin:/opt/netbox/netbox/netbox_hedgehog:ro
-          EOF
-
-          # Create Dockerfile-Plugins to install plugin dependencies
-          cat > Dockerfile-Plugins << 'EOF'
-          ARG FROM
-          FROM ${FROM}
-
-          # Install plugin dependencies (if any)
-          # RUN pip install -r /opt/netbox/netbox/netbox_hedgehog/requirements.txt
-
-          # Install the plugin
-          RUN pip install -e /opt/netbox/netbox/netbox_hedgehog/
-          EOF
-
-          # Create plugin configuration
-          mkdir -p configuration
-          cat > configuration/plugins.py << 'EOF'
-          PLUGINS = ['netbox_hedgehog']
-          PLUGINS_CONFIG = {
-              'netbox_hedgehog': {
-                  'kubernetes_config_file': None,
-                  'sync_interval': 300,
-                  'enable_webhooks': True,
-                  'max_concurrent_syncs': 5,
-              }
-          }
+                - ../hh-netbox-plugin:/opt/netbox/plugins/hh-netbox-plugin:ro
+              ports:
+                - "8000:8080"
+              environment:
+                PYTHONPATH: /opt/netbox/plugins/hh-netbox-plugin
+            netbox-worker:
+              volumes:
+                - ../hh-netbox-plugin:/opt/netbox/plugins/hh-netbox-plugin:ro
+              environment:
+                PYTHONPATH: /opt/netbox/plugins/hh-netbox-plugin
           EOF
 
       - name: Start NetBox
         run: |
           cd netbox-docker
           docker compose pull
-          docker compose up -d
+          # Start NetBox independently of its worker. On a fresh CI database the
+          # initial NetBox migration can take longer than Compose's worker
+          # dependency wait; starting all services together then reports the
+          # healthy-worker dependency as a failed startup before this workflow's
+          # explicit readiness loop can run.
+          docker compose up -d postgres redis redis-cache
+          docker compose up -d netbox
 
           # Wait for NetBox to be ready
           echo "Waiting for NetBox to start..."
@@ -93,6 +85,32 @@ jobs:
         run: |
           docker compose -f netbox-docker/docker-compose.yml ps
           docker compose -f netbox-docker/docker-compose.yml logs netbox | tail -50
+
+      - name: Enable plugin
+        run: |
+          cd netbox-docker
+          mkdir -p configuration
+          cat > configuration/plugins.py << 'EOF'
+          PLUGINS = ['netbox_hedgehog']
+          PLUGINS_CONFIG = {
+              'netbox_hedgehog': {
+                  'kubernetes_config_file': None,
+                  'sync_interval': 300,
+                  'enable_webhooks': True,
+                  'max_concurrent_syncs': 5,
+              }
+          }
+          EOF
+          docker compose restart netbox
+          timeout 180 bash -c 'until docker compose ps netbox | grep -q "healthy"; do sleep 5; echo "Still waiting for plugin-enabled NetBox..."; done'
+
+      - name: Start asynchronous job worker
+        run: |
+          cd netbox-docker
+          # Browser generation tests submit real background jobs. Start the
+          # worker only after the plugin-enabled NetBox restart, bypassing
+          # Compose's dependency-health wait that is already covered above.
+          docker compose up -d --no-deps netbox-worker
 
       - name: Run NetBox migrations
         run: |

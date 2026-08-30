@@ -89,6 +89,10 @@ def serialize_device(device) -> dict:
         "manufacturer": manufacturer,
         "site": site,
         "status": device.status,
+        # DIET-607: rack provenance (null when placement disabled).
+        "rack": device.rack.name if device.rack_id else None,
+        "position": float(device.position) if device.position is not None else None,
+        "face": device.face or None,
         "tags": tags,
         "custom_field_data": device.custom_field_data or {},
     }
