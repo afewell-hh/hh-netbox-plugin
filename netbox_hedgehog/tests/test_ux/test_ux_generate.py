@@ -1,477 +1,286 @@
 """
-Browser UX tests for Generate Devices workflow (PR #109 validation).
+Browser UX tests for the Generate / Regenerate / Export workflow.
 
-These tests validate that users can successfully generate NetBox devices from
-topology plans using a real browser, ensuring the complete UX flow works as intended.
+Reconciled with the current NetBox UI (DIET-616): the plan-detail page uses a
+unified ``#generate-btn`` that opens a confirmation modal and posts to the
+ASYNC ``generate-update`` endpoint (redirects to the NetBox job page; a worker
+performs generation). There is no legacy ``/generate/`` preview navigation.
 
-This is CRITICAL testing that was missing from PR #109 - we merged without validating
-that users can actually complete this workflow in a browser.
+Interaction contract (verified live + confirmed by Dev B):
+  * ungenerated plan  -> button "Generate Devices"   -> #expectationGuidanceModal
+  * out-of-sync plan  -> button "Update Devices"      -> #destructiveConfirmModal
+  * in-sync plan      -> button "Regenerate Devices"  -> #destructiveConfirmModal
+  * #destructiveConfirmModal (#confirmDestructiveBtn "Yes, Continue")
+        chains to #expectationGuidanceModal
+  * #expectationGuidanceModal (#proceedGenerationBtn "Start Generation")
+        submits #generate-form -> POST generate-update -> /core/jobs/<id>/
+  * Export YAML: <a class="btn"> only when generated; disabled <button> otherwise
 """
 
-import pytest
 import re
+import pytest
 from playwright.sync_api import Page, expect
 from .conftest import NETBOX_URL
 
+PLAN1 = "UX Test Plan 1 - Generate Devices"       # ungenerated, ready
+PLAN2 = "UX Test Plan 2 - Multi-Plan Isolation"   # pre-generated
+PLAN3 = "UX Test Plan 3 - Empty (Warnings)"       # empty
 
-class TestGenerateDevicesWorkflow:
-    """
-    Test suite for Generate Devices workflow.
+PLAN_DETAIL_RE = re.compile(r'.*/plugins/hedgehog/topology-plans/\d+/$')
+JOB_URL_RE = re.compile(r'.*/core/jobs/\d+/.*')
 
-    Tests the complete end-to-end flow:
-    1. Navigate to topology plan
-    2. Click Generate Devices button
-    3. See preview page with counts
-    4. Confirm generation
-    5. Verify devices created
-    6. Test regeneration
+
+# --------------------------------------------------------------------------- #
+# Helpers — dynamic plan lookup by NAME (no fixed PKs) and real modal/async flow
+# --------------------------------------------------------------------------- #
+
+def open_plan_by_name(page: Page, name: str) -> None:
+    """Open a plan's detail page via the list, matched by fixture name."""
+    page.goto(f'{NETBOX_URL}/plugins/hedgehog/topology-plans/')
+    link = page.get_by_role("link", name=name, exact=True)
+    if link.count() == 0:
+        pytest.skip(f"UX test plan {name!r} not found - run setup_ux_test_data --clean")
+    link.first.click()
+    expect(page).to_have_url(PLAN_DETAIL_RE)
+
+
+def start_generation_via_modal(page: Page) -> None:
+    """Drive the real confirmation-modal progression, then submit (async).
+
+    Handles both first-generation (expectation modal directly) and
+    update/regeneration (destructive modal -> expectation modal). Leaves the
+    browser on whatever URL the POST redirects to (job page on success, or the
+    plan detail with an error for an invalid/empty plan).
     """
+    btn = page.locator('#generate-btn')
+    expect(btn).to_be_visible()
+    target = btn.get_attribute('data-bs-target')
+    btn.click()
+
+    if target == '#destructiveConfirmModal':
+        modal = page.locator('#destructiveConfirmModal')
+        expect(modal).to_be_visible()
+        expect(modal).to_contain_text('Confirm Destructive Regeneration')
+        page.click('#confirmDestructiveBtn')
+
+    expect(page.locator('#expectationGuidanceModal')).to_be_visible()
+    page.click('#proceedGenerationBtn')
+
+
+def wait_until_generated(page: Page, plan_name: str, timeout_ms: int = 90000) -> None:
+    """Poll the plan detail until the async job completes (Export YAML link
+    appears, i.e. generation_state.status == 'generated')."""
+    deadline = timeout_ms
+    step = 2000
+    while deadline > 0:
+        open_plan_by_name(page, plan_name)
+        if page.locator('a.btn:has-text("Export YAML")').count() > 0:
+            return
+        page.wait_for_timeout(step)
+        deadline -= step
+    raise AssertionError(
+        f"Async generation for {plan_name!r} did not complete within {timeout_ms}ms")
+
+
+# --------------------------------------------------------------------------- #
+# Navigation + control-visibility
+# --------------------------------------------------------------------------- #
+
+class TestGenerateControls:
 
     def test_navigate_to_topology_plans(self, authenticated_page: Page):
-        """Test that user can navigate to Topology Plans page"""
         page = authenticated_page
-
-        # Click Hedgehog menu
         page.click('text=Hedgehog')
-
-        # Click Topology Plans submenu
         page.click('a:has-text("Topology Plans")')
-
-        # Verify we're on the topology plans list page
         expect(page).to_have_url(re.compile(r'.*/plugins/hedgehog/topology-plans/.*'))
-
-        # Verify page title or heading
         expect(page.locator('.page-title, h1.page-title')).to_contain_text('Topology Plans')
 
-    def test_generate_button_visible_on_plan_detail(self, authenticated_page: Page):
-        """
-        Test that Generate Devices button is visible on plan detail page.
-
-        This requires a topology plan to exist. If none exists, this test will
-        document that fact and can be skipped in CI until test data is created.
-        """
+    def test_generate_button_visible_on_ungenerated_plan(self, authenticated_page: Page):
         page = authenticated_page
+        open_plan_by_name(page, PLAN1)
+        btn = page.locator('#generate-btn')
+        expect(btn).to_be_visible()
+        expect(btn).to_contain_text('Generate Devices')
+        expect(btn).to_have_attribute('data-bs-target', '#expectationGuidanceModal')
 
-        # Navigate to topology plans
-        page.goto(f'{NETBOX_URL}/plugins/hedgehog/topology-plans/')
-
-        # Check if any plans exist
-        plans_exist = page.locator('table tbody tr').count() > 0
-
-        if not plans_exist:
-            pytest.skip("No topology plans exist - cannot test Generate Devices button visibility")
-
-        # Click on first plan
-        page.click('table tbody tr:first-child td a:first-child')
-
-        # Verify we're on plan detail page
-        expect(page).to_have_url(re.compile(r'.*/topology-plans/\d+/$'))
-
-        # Verify Generate Devices button exists
-        generate_button = page.locator('a:has-text("Generate Devices"), button:has-text("Generate Devices")')
-
-        # Check if button is visible (requires change_topologyplan permission)
-        if generate_button.count() > 0:
-            expect(generate_button).to_be_visible()
-        else:
-            pytest.fail("Generate Devices button not found - check if user has change_topologyplan permission")
-
-    def test_generate_preview_page_loads(self, authenticated_page: Page):
-        """
-        Test that clicking Generate Devices shows preview page with counts.
-
-        This is the CRITICAL test that validates PR #109's UI actually works.
-        """
+    def test_generate_opens_expectation_modal_with_counts(self, authenticated_page: Page):
+        """Replaces the legacy /generate/ preview-page test: the pre-submit
+        expectation modal shows the expected device/interface/cable counts."""
         page = authenticated_page
+        open_plan_by_name(page, PLAN1)
+        page.locator('#generate-btn').click()
+        modal = page.locator('#expectationGuidanceModal')
+        expect(modal).to_be_visible()
+        expect(modal).to_contain_text(re.compile(r'Devices:', re.I))
+        expect(modal).to_contain_text(re.compile(r'Interfaces:', re.I))
+        expect(modal).to_contain_text(re.compile(r'Cables:', re.I))
+        expect(page.locator('#proceedGenerationBtn')).to_be_visible()
 
-        # Navigate to topology plans
-        page.goto(f'{NETBOX_URL}/plugins/hedgehog/topology-plans/')
 
-        # Check if any plans exist
-        if page.locator('table tbody tr').count() == 0:
-            pytest.skip("No topology plans exist - create test data first")
+# --------------------------------------------------------------------------- #
+# Generate / Regenerate / Export workflows (modal + async job)
+# --------------------------------------------------------------------------- #
 
-        # Click on first plan
-        page.click('table tbody tr:first-child td a:first-child')
+class TestGenerateWorkflow:
 
-        # Click Generate Devices button
-        generate_button = page.locator('a:has-text("Generate Devices"), button:has-text("Generate Devices")').first
-        if generate_button.count() == 0:
-            pytest.skip("Generate Devices button not found - check permissions")
-
-        generate_button.click()
-
-        # Verify we're on the generate preview page
-        expect(page).to_have_url(re.compile(r'.*/topology-plans/\d+/generate/$'))
-
-        # Verify preview page shows counts
-        # The preview should show:
-        # - Total devices
-        # - Server count
-        # - Switch count
-        # - Interface count
-        # - Cable count
-        # - Site name
-
-        page_content = page.content().lower()
-        assert 'device' in page_content, "Preview should show device information"
-        assert 'server' in page_content, "Preview should show server count"
-        assert 'switch' in page_content, "Preview should show switch count"
-
-    def test_generate_preview_shows_warnings_for_empty_plan(self, authenticated_page: Page):
-        """
-        Test that preview shows warnings when plan has no servers or switches.
-
-        Uses UX Test Plan 3 - Empty (Warnings)
-        """
+    def test_empty_plan_modal_shows_zero_counts_and_errors_on_submit(
+            self, authenticated_page: Page):
+        """Empty plan: expectation modal shows zero counts, and submitting
+        surfaces the 'requires at least one server class' error (the intentional
+        replacement for the retired /generate/ warning page)."""
         page = authenticated_page
-
-        # Navigate to the empty test plan by name
-        page.goto(f'{NETBOX_URL}/plugins/hedgehog/topology-plans/')
-        empty_plan_link = page.locator('a:has-text("UX Test Plan 3 - Empty (Warnings)")').first
-        if empty_plan_link.count() == 0:
-            pytest.skip("UX test plan data not found - run setup_ux_test_data")
-        empty_plan_link.click()
-
-        # Click Generate Devices button
-        generate_button = page.locator('a:has-text("Generate Devices"), button:has-text("Generate Devices")').first
-        if generate_button.count() == 0:
-            pytest.skip("Generate Devices button not found - check permissions")
-
-        generate_button.click()
-
-        # Verify we're on the generate preview page
-        expect(page).to_have_url(re.compile(r'.*/topology-plans/\d+/generate/$'))
-
-        # Verify warning/alert appears about empty plan
-        # Check page content for warning indicators
-        page_content = page.content().lower()
-        has_warning = 'warning' in page_content or 'no server' in page_content or 'empty' in page_content
-        assert has_warning, "Expected warning message for empty plan not found"
+        open_plan_by_name(page, PLAN3)
+        page.locator('#generate-btn').click()
+        modal = page.locator('#expectationGuidanceModal')
+        expect(modal).to_be_visible()
+        expect(modal).to_contain_text(re.compile(r'Devices:\s*0', re.I))
+        page.click('#proceedGenerationBtn')
+        page.wait_for_load_state('load')
+        body = page.content().lower()
+        assert ('at least one server class' in body or 'cannot generate' in body), \
+            "Expected empty-plan generation error not found"
 
     def test_generate_confirm_creates_devices(self, authenticated_page: Page):
-        """
-        Test the complete generate workflow: preview → confirm → devices created.
-
-        This is the MOST CRITICAL test - it validates that the entire UX flow
-        works end-to-end as a user would experience it.
-        """
+        """Full flow: modal -> Start Generation -> async job page -> worker
+        completes -> devices exist. Full request/result assertion."""
         page = authenticated_page
-
-        # Navigate to topology plans
-        page.goto(f'{NETBOX_URL}/plugins/hedgehog/topology-plans/')
-
-        # Check if any plans exist
-        if page.locator('table tbody tr').count() == 0:
-            pytest.skip("No topology plans exist - create test data first")
-
-        # Use known UX test plan for deterministic behavior
-        plan_link = page.locator('a:has-text("UX Test Plan 1 - Generate Devices")').first
-        if plan_link.count() == 0:
-            pytest.skip("UX test plan data not found - run setup_ux_test_data")
-        plan_link.click()
-
-        # Click Generate Devices
-        generate_button = page.locator('a:has-text("Generate Devices"), button:has-text("Generate Devices")').first
-        if generate_button.count() == 0:
-            pytest.skip("Generate Devices button not found - check permissions")
-
-        generate_button.click()
-
-        # We're on preview page - click Generate/Confirm button
-        confirm_button = page.locator(
-            'button:has-text("Generate Devices"), input[type="submit"][value*="Generate Devices"]'
-        ).first
-
-        if confirm_button.count() == 0:
-            pytest.fail("Generate confirmation button not found on preview page")
-
-        # Read counts before generation (for verification)
-        # This requires the preview page to display counts
-
-        # Click confirm and wait for redirect
-        with page.expect_navigation(url=re.compile(r'.*/topology-plans/\d+/$'), timeout=30000):
-            confirm_button.click(force=True)
-
-        # Verify success message appears
-        # Check for success message
-        page_content = page.content().lower()
-        assert 'generation complete' in page_content or 'success' in page_content, \
-            "Expected success message not found"
-
-        # Navigate to Devices page to verify devices were created
-        page.click('text=Devices')
-        page.locator('a:has-text("Devices")').nth(1).click()  # Click the Devices submenu
-
-        # Wait for devices page to load
-        expect(page).to_have_url(re.compile(r'.*/dcim/devices/.*'))
-
-        # Verify generated devices appear in list (avoid Select2 tag filter)
-        page_content = page.content().lower()
-        assert 'ux-test-servers' in page_content or 'ux-test-frontend-leaf' in page_content, \
+        open_plan_by_name(page, PLAN1)
+        start_generation_via_modal(page)
+        # Async: submitting redirects to the NetBox job page.
+        expect(page).to_have_url(JOB_URL_RE, timeout=15000)
+        # Worker performs generation; wait for completion via plan detail.
+        wait_until_generated(page, PLAN1)
+        # Verify generated devices appear in the DCIM device list.
+        page.goto(f'{NETBOX_URL}/dcim/devices/?tag=hedgehog-generated')
+        body = page.content().lower()
+        assert 'ux-test-servers' in body or 'ux-test-frontend-leaf' in body, \
             "Generated devices not found in device list"
 
-    def test_regeneration_shows_warning(self, authenticated_page: Page):
-        """
-        Test that regenerating a plan shows warning about previous generation.
-
-        Uses UX Test Plan 2 which is pre-generated by setup_ux_test_data.
-        """
+    def test_regeneration_uses_destructive_modal(self, authenticated_page: Page):
+        """Generated plan: control is 'Regenerate Devices' and opens the
+        destructive-confirmation modal (the regeneration warning surface)."""
         page = authenticated_page
+        open_plan_by_name(page, PLAN2)
+        btn = page.locator('#generate-btn')
+        expect(btn).to_contain_text(re.compile(r'Regenerate|Update', re.I))
+        expect(btn).to_have_attribute('data-bs-target', '#destructiveConfirmModal')
+        btn.click()
+        modal = page.locator('#destructiveConfirmModal')
+        expect(modal).to_be_visible()
+        expect(modal).to_contain_text('Confirm Destructive Regeneration')
+        expect(page.locator('#confirmDestructiveBtn')).to_be_visible()
 
-        # Navigate to Plan 2 which has been pre-generated
-        page.goto(f'{NETBOX_URL}/plugins/hedgehog/topology-plans/')
-
-        # Find and click on "UX Test Plan 2 - Multi-Plan Isolation"
-        page.click('a:has-text("UX Test Plan 2")')
-
-        # Click Generate Devices button
-        page.click('a:has-text("Generate Devices"), button:has-text("Generate Devices")')
-
-        # Verify we're on the generate preview page
-        expect(page).to_have_url(re.compile(r'.*/topology-plans/\d+/generate/$'))
-
-        # Verify warning/message about regeneration appears
-        page_content = page.content().lower()
-        has_regeneration_indicator = (
-            'regenerate' in page_content or
-            'previously generated' in page_content or
-            'already generated' in page_content
-        )
-        assert has_regeneration_indicator, "Expected regeneration warning/message not found"
-
-    def test_regeneration_updates_devices(self, authenticated_page: Page):
-        """
-        Test complete regeneration workflow: modify plan → regenerate → devices updated.
-
-        This validates that regeneration actually works from a user perspective.
-        """
+    def test_export_yaml_link_on_generated_plan_downloads(
+            self, authenticated_page: Page):
+        """Generated plan exposes Export YAML as an enabled link, and clicking
+        it produces a YAML download (exercise, not selector-only)."""
         page = authenticated_page
+        open_plan_by_name(page, PLAN2)
+        export = page.locator('a.btn:has-text("Export YAML")')
+        expect(export.first).to_be_visible()
+        with page.expect_download(timeout=15000) as dl_info:
+            export.first.click()
+        download = dl_info.value
+        name = download.suggested_filename.lower()
+        assert name.endswith(('.yaml', '.yml')), \
+            f"Export did not produce a YAML download: {download.suggested_filename}"
 
-        # This requires:
-        # 1. A plan with generated devices
-        # 2. Modifying the plan
-        # 3. Regenerating
-        # 4. Verifying devices changed
-        pytest.skip("Requires test data setup - implement after basic tests pass")
+    def test_export_yaml_disabled_on_ungenerated_plan(self, authenticated_page: Page):
+        """Separate assertion (per Dev B): ungenerated plan shows Export YAML as
+        a disabled button, not an enabled link."""
+        page = authenticated_page
+        open_plan_by_name(page, PLAN3)  # empty, never generated
+        assert page.locator('a.btn:has-text("Export YAML")').count() == 0, \
+            "Ungenerated plan must not expose an enabled Export YAML link"
+        expect(page.locator('button:disabled:has-text("Export YAML")')).to_be_visible()
 
     def test_permission_denied_without_change_permission(self, viewer_page: Page):
-        """
-        Test that users without change_topologyplan permission cannot access generate.
+        """Viewer (no change_topologyplan) is denied generation access.
 
-        Uses viewer user (username: viewer, password: viewer) created by setup_ux_test_data.
-        Verifies that PermissionRequiredMixin enforcement in generate view works correctly.
+        Dynamic plan lookup by name (no fixed PK): resolve a real plan URL as a
+        privileged step is unavailable to the viewer, so derive the pk from the
+        detail link the viewer CAN see, then GET its /generate/ URL -> 403.
         """
         page = viewer_page
+        page.goto(f'{NETBOX_URL}/plugins/hedgehog/topology-plans/')
+        link = page.get_by_role("link", name=PLAN1, exact=True)
+        if link.count() == 0:
+            pytest.skip("UX test plan data not found - run setup_ux_test_data --clean")
+        href = link.first.get_attribute('href')  # e.g. /plugins/hedgehog/topology-plans/75/
+        m = re.search(r'/topology-plans/(\d+)/', href)
+        assert m, f"Could not resolve plan pk from href {href!r}"
+        page.goto(f'{NETBOX_URL}/plugins/hedgehog/topology-plans/{m.group(1)}/generate/')
+        page_title = page.title().lower()
+        body = page.content().lower()
+        assert ('access denied' in page_title or 'permission denied' in body
+                or 'forbidden' in body or '403' in body), \
+            f"Expected permission denied, got title: {page.title()}"
 
-        # Try to access generate URL directly for a known plan
-        # We know from setup_ux_test_data that plans exist, try to access one
-        # Just use a plan ID directly - viewer can view but not generate
-        page.goto(f'{NETBOX_URL}/plugins/hedgehog/topology-plans/22/generate/')
 
-        # NetBox shows "Access Denied" in the page title for permission errors
-        page_title = page.title()
-        page_content = page.content().lower()
+# --------------------------------------------------------------------------- #
+# Multi-plan isolation + generated artifacts
+# --------------------------------------------------------------------------- #
 
-        has_permission_denied = (
-            'access denied' in page_title.lower() or  # NetBox standard permission denied title
-            'permission denied' in page_content or
-            'forbidden' in page_content or
-            '403' in page_content or
-            'not permitted' in page_content
-        )
-        assert has_permission_denied, f"Expected permission denied, got title: {page_title}"
+def _plan_pk_by_name(page: Page, name: str) -> str:
+    page.goto(f'{NETBOX_URL}/plugins/hedgehog/topology-plans/')
+    link = page.get_by_role("link", name=name, exact=True)
+    if link.count() == 0:
+        pytest.skip(f"UX test plan {name!r} not found - run setup_ux_test_data --clean")
+    href = link.first.get_attribute('href')
+    m = re.search(r'/topology-plans/(\d+)/', href)
+    assert m, f"Could not resolve plan pk from {href!r}"
+    return m.group(1)
 
-    def test_export_yaml_button_exists(self, authenticated_page: Page):
-        """
-        Test that Export YAML button exists on plan detail page.
 
-        While not part of Generate Devices, this validates another critical UX element.
-        """
+def _count_plan_devices(page: Page, plan_pk: str) -> int:
+    page.goto(
+        f'{NETBOX_URL}/dcim/devices/'
+        f'?cf_hedgehog_plan_id={plan_pk}&tag=hedgehog-generated')
+    rows = page.locator('table.object-list tbody tr, table tbody tr.device')
+    if rows.count() == 0:
+        rows = page.locator('table tbody tr')
+    return rows.count()
+
+
+class TestMultiPlanIsolation:
+
+    def test_generation_creates_cables(self, authenticated_page: Page):
+        """After generation, the DCIM cable list contains hedgehog-generated
+        cables (interfaces + cables are produced by the async job)."""
+        page = authenticated_page
+        open_plan_by_name(page, PLAN1)
+        # Generate only if not already generated in this run.
+        if page.locator('a.btn:has-text("Export YAML")').count() == 0:
+            start_generation_via_modal(page)
+            expect(page).to_have_url(JOB_URL_RE, timeout=15000)
+            wait_until_generated(page, PLAN1)
+        page.goto(f'{NETBOX_URL}/dcim/cables/?tag=hedgehog-generated')
+        rows = page.locator('table tbody tr')
+        assert rows.count() > 0, "Expected hedgehog-generated cables after generation"
+
+    def test_plan_scoped_regeneration_isolation(self, authenticated_page: Page):
+        """Regenerating Plan 1 must not change Plan 2's generated devices."""
         page = authenticated_page
 
-        # Navigate to topology plans
-        page.goto(f'{NETBOX_URL}/plugins/hedgehog/topology-plans/')
+        # Ensure Plan 1 is generated.
+        open_plan_by_name(page, PLAN1)
+        if page.locator('a.btn:has-text("Export YAML")').count() == 0:
+            start_generation_via_modal(page)
+            expect(page).to_have_url(JOB_URL_RE, timeout=15000)
+            wait_until_generated(page, PLAN1)
 
-        if page.locator('table tbody tr').count() == 0:
-            pytest.skip("No topology plans exist")
+        # Plan 2 is pre-generated; record its device count.
+        plan2_pk = _plan_pk_by_name(page, PLAN2)
+        before = _count_plan_devices(page, plan2_pk)
+        assert before > 0, "Plan 2 should be pre-generated with devices"
 
-        # Click on first plan
-        page.click('table tbody tr:first-child td a:first-child')
+        # Regenerate Plan 1 (destructive modal -> expectation modal -> async).
+        open_plan_by_name(page, PLAN1)
+        start_generation_via_modal(page)
+        expect(page).to_have_url(JOB_URL_RE, timeout=15000)
+        wait_until_generated(page, PLAN1)
 
-        # Verify Export YAML button exists
-        export_button = page.locator('a.btn:has-text("Export YAML")')
-
-        if export_button.count() > 0:
-            expect(export_button.first).to_be_visible()
-        else:
-            pytest.fail("Export YAML button not found on plan detail page")
-
-
-class TestGenerateDevicesWithTestData:
-    """
-    Test suite using specific test data created by setup_ux_test_data management command.
-
-    Test Plans:
-    - Plan ID 4: UX Test Plan 1 - Generate Devices (3 servers, ready for generation)
-    - Plan ID 5: UX Test Plan 2 - Multi-Plan Isolation (2 servers, for multi-plan testing)
-    - Plan ID 6: UX Test Plan 3 - Empty (Warnings) (empty plan for warning tests)
-
-    Run setup_ux_test_data before these tests:
-        docker compose exec netbox python manage.py setup_ux_test_data --clean
-    """
-
-    def test_generate_creates_correct_number_of_devices(self, authenticated_page: Page):
-        """
-        Test that generation creates expected number of devices based on plan configuration.
-
-        Uses UX Test Plan 1 which has 3 servers + calculated switches.
-        """
-        page = authenticated_page
-
-        # Navigate to UX Test Plan 1 by name
-        page.goto(f'{NETBOX_URL}/plugins/hedgehog/topology-plans/')
-        plan_link = page.locator('a:has-text("UX Test Plan 1 - Generate Devices")').first
-        if plan_link.count() == 0:
-            pytest.skip("UX test plan data not found - run setup_ux_test_data")
-        plan_link.click()
-
-        # Click Generate Devices
-        page.click('a:has-text("Generate Devices"), button:has-text("Generate Devices")')
-
-        # Read device counts from preview page
-        page.wait_for_url(re.compile(r'.*/topology-plans/\d+/generate/$'))
-
-        # Look for device count in preview (e.g., "Total Devices: 5")
-        # The exact format depends on template, so we use flexible matching
-        preview_text = page.content()
-
-        # Click Generate/Confirm and wait for redirect
-        with page.expect_navigation(url=re.compile(r'.*/topology-plans/\d+/$'), timeout=30000):
-            page.click('button:has-text("Generate Devices"), input[type="submit"][value*="Generate Devices"]', force=True)
-        # Check for success message
-        page_content = page.content().lower()
-        assert 'generation complete' in page_content or 'success' in page_content, \
-            "Expected success message not found"
-
-        # Navigate to Devices to verify count
-        page.goto(f'{NETBOX_URL}/dcim/devices/')
-
-        # Filter by plan's custom field
-        # (Complex filtering in NetBox - just verify devices exist)
-        page_content = page.content()
-        assert 'ux-test-servers' in page_content.lower() or 'ux-test-frontend-leaf' in page_content.lower(), \
-            "Generated devices not found in device list"
-
-    def test_generate_creates_interfaces_and_cables(self, authenticated_page: Page):
-        """
-        Test that generation creates interfaces and cables.
-
-        Uses UX Test Plan 1 which has server connections requiring interfaces and cables.
-        """
-        page = authenticated_page
-
-        # Navigate to UX Test Plan 1 by name
-        page.goto(f'{NETBOX_URL}/plugins/hedgehog/topology-plans/')
-        plan_link = page.locator('a:has-text("UX Test Plan 1 - Generate Devices")').first
-        if plan_link.count() == 0:
-            pytest.skip("UX test plan data not found - run setup_ux_test_data")
-        plan_link.click()
-
-        # Check if already generated
-        if 'regenerate' in page.content().lower():
-            # Already generated - navigate to preview anyway
-            page.click('a:has-text("Generate Devices"), button:has-text("Generate Devices")')
-        else:
-            # First time - generate
-            page.click('a:has-text("Generate Devices"), button:has-text("Generate Devices")')
-            with page.expect_navigation(url=re.compile(r'.*/topology-plans/\d+/$'), timeout=30000):
-                page.click('button:has-text("Generate Devices"), input[type="submit"][value*="Generate Devices"]', force=True)
-
-        # Navigate to Cables page
-        page.goto(f'{NETBOX_URL}/dcim/cables/')
-
-        # Verify cables exist (tagged with hedgehog-generated)
-        page_content = page.content()
-        # Just verify cables page loaded - exact filtering is complex
-        assert 'cables' in page_content.lower(), "Cables page did not load"
-
-    def test_plan_scoped_regeneration(self, authenticated_page: Page):
-        """
-        Test that regenerating Plan A doesn't affect Plan B (multi-tenant safety).
-
-        Uses:
-        - UX Test Plan 1 (ID 4) - Plan A
-        - UX Test Plan 2 (ID 5) - Plan B
-
-        Steps:
-        1. Generate Plan A (ID 4)
-        2. Generate Plan B (ID 5)
-        3. Get count of Plan B devices
-        4. Regenerate Plan A
-        5. Verify Plan B device count unchanged
-        """
-        page = authenticated_page
-
-        # Step 1: Generate Plan A (UX Test Plan 1)
-        page.goto(f'{NETBOX_URL}/plugins/hedgehog/topology-plans/')
-        plan_a_link = page.locator('a:has-text("UX Test Plan 1 - Generate Devices")').first
-        if plan_a_link.count() == 0:
-            pytest.skip("UX test plan data not found - run setup_ux_test_data")
-        plan_a_link.click()
-
-        # Generate if not already generated
-        page.click('a:has-text("Generate Devices"), button:has-text("Generate Devices")')
-        generate_or_regenerate = page.locator('button:has-text("Generate Devices")')
-        with page.expect_navigation(url=re.compile(r'.*/topology-plans/\d+/$'), timeout=30000):
-            generate_or_regenerate.first.click(force=True)
-
-        # Step 2: Generate Plan B (UX Test Plan 2)
-        page.goto(f'{NETBOX_URL}/plugins/hedgehog/topology-plans/')
-        plan_b_link = page.locator('a:has-text("UX Test Plan 2 - Multi-Plan Isolation")').first
-        if plan_b_link.count() == 0:
-            pytest.skip("UX test plan data not found - run setup_ux_test_data")
-        plan_b_link.click()
-        page.click('a:has-text("Generate Devices"), button:has-text("Generate Devices")')
-
-        # Count devices on Plan B preview
-        preview_content_before = page.content()
-
-        # Click generate for Plan B
-        generate_or_regenerate = page.locator('button:has-text("Generate Devices")')
-        with page.expect_navigation(url=re.compile(r'.*/topology-plans/\d+/$'), timeout=30000):
-            generate_or_regenerate.first.click(force=True)
-
-        # Step 3: Get Plan B device count by navigating to preview again
-        page.click('a:has-text("Generate Devices"), button:has-text("Generate Devices")')
-        plan_b_preview_content = page.content()
-
-        # Step 4: Regenerate Plan A
-        page.goto(f'{NETBOX_URL}/plugins/hedgehog/topology-plans/')
-        plan_a_link = page.locator('a:has-text("UX Test Plan 1 - Generate Devices")').first
-        if plan_a_link.count() == 0:
-            pytest.skip("UX test plan data not found - run setup_ux_test_data")
-        plan_a_link.click()
-        page.click('a:has-text("Generate Devices"), button:has-text("Generate Devices")')
-
-        # Should show regeneration warning
-        expect(page.locator('text=Previously generated')).to_be_visible()
-
-        # Click Regenerate
-        regenerate_button = page.locator('button:has-text("Generate Devices")')
-        with page.expect_navigation(url=re.compile(r'.*/topology-plans/\d+/$'), timeout=30000):
-            regenerate_button.first.click(force=True)
-
-        # Step 5: Verify Plan B unchanged
-        page.goto(f'{NETBOX_URL}/plugins/hedgehog/topology-plans/')
-        plan_b_link = page.locator('a:has-text("UX Test Plan 2 - Multi-Plan Isolation")').first
-        if plan_b_link.count() == 0:
-            pytest.skip("UX test plan data not found - run setup_ux_test_data")
-        plan_b_link.click()
-        page.click('a:has-text("Generate Devices"), button:has-text("Generate Devices")')
-
-        plan_b_preview_after = page.content()
-
-        # Verify Plan B preview still reflects its server count
-        servers_value = page.locator('table tr:has-text("Servers") td').last
-        expect(servers_value).to_have_text('2')
+        # Plan 2 device count is unchanged (plan-scoped isolation).
+        after = _count_plan_devices(page, plan2_pk)
+        assert after == before, \
+            f"Plan 2 device count changed after regenerating Plan 1: {before} -> {after}"
