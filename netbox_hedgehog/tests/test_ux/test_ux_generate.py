@@ -144,17 +144,17 @@ class TestGenerateWorkflow:
         """Full flow: modal -> Start Generation -> async job page -> worker
         completes -> devices exist. Full request/result assertion."""
         page = authenticated_page
+        plan1_pk = _plan_pk_by_name(page, PLAN1)
         open_plan_by_name(page, PLAN1)
         start_generation_via_modal(page)
         # Async: submitting redirects to the NetBox job page.
         expect(page).to_have_url(JOB_URL_RE, timeout=15000)
         # Worker performs generation; wait for completion via plan detail.
         wait_until_generated(page, PLAN1)
-        # Verify generated devices appear in the DCIM device list.
-        page.goto(f'{NETBOX_URL}/dcim/devices/?tag=hedgehog-generated')
-        body = page.content().lower()
-        assert 'ux-test-servers' in body or 'ux-test-frontend-leaf' in body, \
-            "Generated devices not found in device list"
+        # Verify PLAN 1's OWN generated devices exist (plan-ID scoped — Plan 2 is
+        # already generated, so a global-tag check could pass even if Plan 1 failed).
+        assert _count_plan_devices(page, plan1_pk) > 0, \
+            "Plan 1's generated devices not found (plan-ID scoped)"
 
     def test_regeneration_uses_destructive_modal(self, authenticated_page: Page):
         """Generated plan: control is 'Regenerate Devices' and opens the
@@ -209,12 +209,13 @@ class TestGenerateWorkflow:
         href = link.first.get_attribute('href')  # e.g. /plugins/hedgehog/topology-plans/75/
         m = re.search(r'/topology-plans/(\d+)/', href)
         assert m, f"Could not resolve plan pk from href {href!r}"
-        page.goto(f'{NETBOX_URL}/plugins/hedgehog/topology-plans/{m.group(1)}/generate/')
-        page_title = page.title().lower()
-        body = page.content().lower()
-        assert ('access denied' in page_title or 'permission denied' in body
-                or 'forbidden' in body or '403' in body), \
-            f"Expected permission denied, got title: {page.title()}"
+        resp = page.goto(
+            f'{NETBOX_URL}/plugins/hedgehog/topology-plans/{m.group(1)}/generate/')
+        # Strict HTTP 403 (PermissionRequiredMixin raise_exception), not just text.
+        assert resp is not None and resp.status == 403, \
+            f"Expected HTTP 403 for viewer generate access, got {getattr(resp, 'status', None)}"
+        assert 'access denied' in page.title().lower(), \
+            f"Expected Access Denied page, got title: {page.title()}"
 
 
 # --------------------------------------------------------------------------- #
@@ -242,21 +243,30 @@ def _count_plan_devices(page: Page, plan_pk: str) -> int:
     return rows.count()
 
 
+def _count_plan_cables(page: Page, plan_pk: str) -> int:
+    page.goto(
+        f'{NETBOX_URL}/dcim/cables/'
+        f'?cf_hedgehog_plan_id={plan_pk}&tag=hedgehog-generated')
+    return page.locator('table tbody tr').count()
+
+
 class TestMultiPlanIsolation:
 
     def test_generation_creates_cables(self, authenticated_page: Page):
         """After generation, the DCIM cable list contains hedgehog-generated
         cables (interfaces + cables are produced by the async job)."""
         page = authenticated_page
+        plan1_pk = _plan_pk_by_name(page, PLAN1)
         open_plan_by_name(page, PLAN1)
         # Generate only if not already generated in this run.
         if page.locator('a.btn:has-text("Export YAML")').count() == 0:
             start_generation_via_modal(page)
             expect(page).to_have_url(JOB_URL_RE, timeout=15000)
             wait_until_generated(page, PLAN1)
-        page.goto(f'{NETBOX_URL}/dcim/cables/?tag=hedgehog-generated')
-        rows = page.locator('table tbody tr')
-        assert rows.count() > 0, "Expected hedgehog-generated cables after generation"
+        # Plan-ID scoped: Plan 2 is also generated, so a global-tag check could
+        # pass even if Plan 1 produced no cables.
+        assert _count_plan_cables(page, plan1_pk) > 0, \
+            "Expected Plan 1's hedgehog-generated cables after generation"
 
     def test_plan_scoped_regeneration_isolation(self, authenticated_page: Page):
         """Regenerating Plan 1 must not change Plan 2's generated devices."""
