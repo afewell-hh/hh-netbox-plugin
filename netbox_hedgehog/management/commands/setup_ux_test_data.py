@@ -27,6 +27,7 @@ from netbox_hedgehog.models.topology_planning import (
     BreakoutOption,
     SwitchPortZone,
     GenerationState,
+    PlanLocalityRange,
 )
 from netbox_hedgehog.choices import (
     TopologyPlanStatusChoices,
@@ -117,12 +118,9 @@ class Command(BaseCommand):
                 custom_field_data__hedgehog_plan_id__in=ux_plan_ids
             ).delete()
             # Locality rows + racks exist only if a UX plan used rack placement;
-            # scoped deletes are safe no-ops otherwise.
-            try:
-                from netbox_hedgehog.models.topology_planning import PlanLocalityRange
-                PlanLocalityRange.objects.filter(plan__in=ux_plans).delete()
-            except Exception:
-                pass
+            # scoped deletes are safe no-ops otherwise. Errors must abort --clean,
+            # not be swallowed (PlanLocalityRange is a binding installed model).
+            PlanLocalityRange.objects.filter(plan__in=ux_plans).delete()
             Rack.objects.filter(
                 custom_field_data__hedgehog_plan_id__in=ux_plan_ids
             ).delete()
