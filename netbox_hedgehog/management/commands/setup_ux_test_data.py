@@ -94,13 +94,38 @@ class Command(BaseCommand):
             raise
 
     def _cleanup_test_data(self):
-        """Remove existing UX test data"""
-        # Remove generated objects from prior UX test runs
-        tag = Tag.objects.filter(slug='hedgehog-generated').first()
-        if tag:
-            Cable.objects.filter(tags=tag).delete()
-            Device.objects.filter(tags=tag).delete()
-            Interface.objects.filter(tags=tag).delete()
+        """Remove existing UX test data.
+
+        IMPORTANT (DIET-616): generated inventory is deleted **scoped to the UX
+        fixture plan IDs** via ``custom_field_data.hedgehog_plan_id``, NOT by the
+        shared ``hedgehog-generated`` tag. Using the tag as the sole scope would
+        destroy unrelated generated DIET plans in the same instance. Devices
+        cascade their interfaces, so scoped device deletion is sufficient.
+        """
+        from dcim.models import Rack
+
+        ux_plans = list(TopologyPlan.objects.filter(name__startswith='UX Test Plan'))
+        ux_plan_ids = [str(p.pk) for p in ux_plans]
+
+        if ux_plan_ids:
+            # Dependency order: cables -> devices (cascade interfaces) -> racks;
+            # each strictly scoped to UX plan IDs.
+            Cable.objects.filter(
+                custom_field_data__hedgehog_plan_id__in=ux_plan_ids
+            ).delete()
+            Device.objects.filter(
+                custom_field_data__hedgehog_plan_id__in=ux_plan_ids
+            ).delete()
+            # Locality rows + racks exist only if a UX plan used rack placement;
+            # scoped deletes are safe no-ops otherwise.
+            try:
+                from netbox_hedgehog.models.topology_planning import PlanLocalityRange
+                PlanLocalityRange.objects.filter(plan__in=ux_plans).delete()
+            except Exception:
+                pass
+            Rack.objects.filter(
+                custom_field_data__hedgehog_plan_id__in=ux_plan_ids
+            ).delete()
 
         # Delete in dependency order due to PROTECT on target_zone
         plans = TopologyPlan.objects.filter(name__startswith='UX Test Plan')
