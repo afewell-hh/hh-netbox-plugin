@@ -37,25 +37,36 @@ class UXFixtureCleanupScopeTestCase(TestCase):
         dev.custom_field_data = {'hedgehog_plan_id': str(plan_pk)}
         dev.save()
         dev.tags.add(tag)
-        return dev
+        return dev, tag
 
     def test_clean_preserves_non_ux_generated_plan(self):
-        # A separate, non-UX plan with a generated + tagged device.
+        # A separate, non-UX plan with a generated + tagged device AND cable
+        # (both halves of the former global-tag blast radius).
         other = TopologyPlan.objects.create(name='Unrelated Production Plan')
-        survivor = self._make_generated_device(other.pk, 'unrelated-generated-sw')
-        self.assertTrue(
-            Device.objects.filter(pk=survivor.pk).exists())
+        dev_a, tag = self._make_generated_device(other.pk, 'unrelated-generated-a')
+        dev_b, _ = self._make_generated_device(other.pk, 'unrelated-generated-b')
+        iface_a = Interface.objects.create(device=dev_a, name='eth0', type='1000base-t')
+        iface_b = Interface.objects.create(device=dev_b, name='eth0', type='1000base-t')
+        cable = Cable(a_terminations=[iface_a], b_terminations=[iface_b])
+        cable.custom_field_data = {'hedgehog_plan_id': str(other.pk)}
+        cable.save()
+        cable.tags.add(tag)
+        self.assertTrue(Device.objects.filter(pk=dev_a.pk).exists())
+        self.assertTrue(Cable.objects.filter(pk=cable.pk).exists())
 
         # Run the fixture bootstrap with cleanup.
         call_command('setup_ux_test_data', '--clean', verbosity=0)
 
-        # The unrelated plan and its generated device must survive.
+        # The unrelated plan, its device, and its cable must all survive.
         self.assertTrue(
             TopologyPlan.objects.filter(pk=other.pk).exists(),
             'Non-UX plan was deleted by setup_ux_test_data --clean')
         self.assertTrue(
-            Device.objects.filter(pk=survivor.pk).exists(),
+            Device.objects.filter(pk=dev_a.pk).exists(),
             'Non-UX generated device was deleted by --clean (tag-scoped bug)')
+        self.assertTrue(
+            Cable.objects.filter(pk=cable.pk).exists(),
+            'Non-UX generated cable was deleted by --clean (tag-scoped bug)')
 
         # And the UX fixture plans WERE (re)created.
         self.assertTrue(
