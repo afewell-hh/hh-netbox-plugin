@@ -168,9 +168,17 @@ class Command(BaseCommand):
                 'native_speed': 800,
                 'supported_breakouts': ['1x800g', '2x400g', '4x200g'],
                 'mclag_capable': False,
-                'hedgehog_roles': ['spine', 'server-leaf']
+                'hedgehog_roles': ['spine', 'server-leaf'],
+                # Required by the YAML generator so Export YAML succeeds for
+                # generated plans (matches real profile-imported switches).
+                'hedgehog_profile_name': 'ux-test-switch-800g',
             }
         )
+        # Ensure the profile name is set even if the extension already existed
+        # from a prior (pre-fix) fixture run under --keepdb/--clean.
+        if not device_ext.hedgehog_profile_name:
+            device_ext.hedgehog_profile_name = 'ux-test-switch-800g'
+            device_ext.save(update_fields=['hedgehog_profile_name'])
 
         nic_module_type, _ = ModuleType.objects.get_or_create(
             manufacturer=manufacturer,
@@ -367,12 +375,25 @@ class Command(BaseCommand):
             is_active=True
         )
 
-        # Add view permissions for topology planning models
+        # Grant real view-only access. NetBox enforces object-type permissions
+        # via ObjectPermission (Django user_permissions alone are NOT honored by
+        # NetBox's permission backend), so the viewer must get a view-scoped
+        # ObjectPermission to actually see plans while remaining unable to
+        # generate (no change_topologyplan).
         content_type = ContentType.objects.get_for_model(TopologyPlan)
         view_permission = Permission.objects.get(
             content_type=content_type,
             codename='view_topologyplan'
         )
-        viewer.user_permissions.add(view_permission)
+        viewer.user_permissions.add(view_permission)  # harmless; kept for clarity
+
+        from users.models import ObjectPermission
+        ObjectPermission.objects.filter(name='ux-viewer-view-plans').delete()
+        obj_perm = ObjectPermission.objects.create(
+            name='ux-viewer-view-plans',
+            actions=['view'],
+        )
+        obj_perm.object_types.add(content_type)
+        obj_perm.users.add(viewer)
 
         self.stdout.write('    ✓ Viewer user created (username: viewer, password: viewer)')
