@@ -28,14 +28,14 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: netbox-community/netbox-docker
-          # NetBox 4.4.8 / netbox-docker 3.4.1 is the HNP release baseline.
-          # Pin the matching Compose bundle so CI does not test :latest.
-          ref: a945236c818f563c2ca483db23d26f0992ffb000
+          # Pin HNP's NetBox 4.4.8 / netbox-docker 3.4.2 baseline.
+          ref: 7d6f00662c90c9294911182935d41a6e66f8896b
           path: netbox-docker
 
       - name: Configure NetBox plugin mount
         run: |
           cd netbox-docker
+          echo 'VERSION=v4.4-3.4.2' > .env
           cat > docker-compose.override.yml << 'EOF'
           services:
             netbox:
@@ -72,8 +72,9 @@ jobs:
             if grep -Fq '✅ Initialisation is done.' netbox-startup.log; then
               break
             fi
+            grep -Fq '❌ Waited ' netbox-startup.log && exit 1
             netbox_id=$(docker compose ps -q netbox)
-            if [ -n "$netbox_id" ] && [ "$(docker inspect -f '{{.State.Status}}' "$netbox_id")" = 'exited' ]; then
+            if [ -n "$netbox_id" ] && [[ "$(docker inspect -f '{{.State.Status}}' "$netbox_id")" =~ ^(exited|dead|restarting)$ ]]; then
               exit 1
             fi
             sleep 5
@@ -145,14 +146,14 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: netbox-community/netbox-docker
-          # NetBox 4.4.8 / netbox-docker 3.4.1 is the HNP release baseline.
-          # Pin the matching Compose bundle so CI does not test :latest.
-          ref: a945236c818f563c2ca483db23d26f0992ffb000
+          # Pin HNP's NetBox 4.4.8 / netbox-docker 3.4.2 baseline.
+          ref: 7d6f00662c90c9294911182935d41a6e66f8896b
           path: netbox-docker
 
       - name: Configure NetBox Docker
         run: |
           cd netbox-docker
+          echo 'VERSION=v4.4-3.4.2' > .env
 
           # Mount the repository outside NetBox's Python package directory.
           # Mounting only netbox_hedgehog inside the package shadows the plugin
@@ -215,8 +216,9 @@ jobs:
             if grep -Fq '✅ Initialisation is done.' netbox-startup.log; then
               break
             fi
+            grep -Fq '❌ Waited ' netbox-startup.log && exit 1
             netbox_id=$(docker compose ps -q netbox)
-            if [ -n "$netbox_id" ] && [ "$(docker inspect -f '{{.State.Status}}' "$netbox_id")" = 'exited' ]; then
+            if [ -n "$netbox_id" ] && [[ "$(docker inspect -f '{{.State.Status}}' "$netbox_id")" =~ ^(exited|dead|restarting)$ ]]; then
               exit 1
             fi
             sleep 5
@@ -302,14 +304,14 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: netbox-community/netbox-docker
-          # NetBox 4.4.8 / netbox-docker 3.4.1 is the HNP release baseline.
-          # Pin the matching Compose bundle so CI does not test :latest.
-          ref: a945236c818f563c2ca483db23d26f0992ffb000
+          # Pin HNP's NetBox 4.4.8 / netbox-docker 3.4.2 baseline.
+          ref: 7d6f00662c90c9294911182935d41a6e66f8896b
           path: netbox-docker
 
       - name: Configure NetBox Docker
         run: |
           cd netbox-docker
+          echo 'VERSION=v4.4-3.4.2' > .env
 
           # Mount the repository outside NetBox's Python package directory.
           cat > docker-compose.override.yml << 'EOF'
@@ -368,8 +370,9 @@ jobs:
             if grep -Fq '✅ Initialisation is done.' netbox-startup.log; then
               break
             fi
+            grep -Fq '❌ Waited ' netbox-startup.log && exit 1
             netbox_id=$(docker compose ps -q netbox)
-            if [ -n "$netbox_id" ] && [ "$(docker inspect -f '{{.State.Status}}' "$netbox_id")" = 'exited' ]; then
+            if [ -n "$netbox_id" ] && [[ "$(docker inspect -f '{{.State.Status}}' "$netbox_id")" =~ ^(exited|dead|restarting)$ ]]; then
               exit 1
             fi
             sleep 5
@@ -553,14 +556,14 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: netbox-community/netbox-docker
-          # NetBox 4.4.8 / netbox-docker 3.4.1 is the HNP release baseline.
-          # Pin the matching Compose bundle so CI does not test :latest.
-          ref: a945236c818f563c2ca483db23d26f0992ffb000
+          # Pin HNP's NetBox 4.4.8 / netbox-docker 3.4.2 baseline.
+          ref: 7d6f00662c90c9294911182935d41a6e66f8896b
           path: netbox-docker
 
       - name: Configure NetBox Docker
         run: |
           cd netbox-docker
+          echo 'VERSION=v4.4-3.4.2' > .env
 
           # Mount the repository outside NetBox's Python package directory.
           cat > docker-compose.override.yml << 'EOF'
@@ -612,8 +615,9 @@ jobs:
             if grep -Fq '✅ Initialisation is done.' netbox-startup.log; then
               break
             fi
+            grep -Fq '❌ Waited ' netbox-startup.log && exit 1
             netbox_id=$(docker compose ps -q netbox)
-            if [ -n "$netbox_id" ] && [ "$(docker inspect -f '{{.State.Status}}' "$netbox_id")" = 'exited' ]; then
+            if [ -n "$netbox_id" ] && [[ "$(docker inspect -f '{{.State.Status}}' "$netbox_id")" =~ ^(exited|dead|restarting)$ ]]; then
               exit 1
             fi
             sleep 5
