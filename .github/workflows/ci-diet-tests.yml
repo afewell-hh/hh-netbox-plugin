@@ -54,20 +54,21 @@ jobs:
           }
           EOF
 
-      - name: Start NetBox and wait for Django
+      - name: Start NetBox and prove entrypoint migration completion
         run: |
+          set -o pipefail
           cd netbox-docker
           docker compose pull
           docker compose up -d postgres redis redis-cache
-          docker compose up -d netbox
-          for i in {1..60}; do
-            if docker compose exec -T netbox python manage.py showmigrations > /dev/null 2>&1; then
-              exit 0
-            fi
-            sleep 5
-          done
-          docker compose logs netbox
-          exit 1
+          # The NetBox entrypoint is the only schema writer in this workflow.
+          # `--wait` gates on the HTTP healthcheck; the marker is emitted only
+          # after the entrypoint's migrate --no-input has completed.
+          docker compose up -d --wait --wait-timeout 600 netbox
+          docker compose logs --no-color netbox | tee netbox-startup.log
+          grep -Fq '✅ Initialisation is done.' netbox-startup.log
+          docker compose exec -T netbox python manage.py showmigrations --plan \
+            | tee migration-state.txt
+          docker compose exec -T netbox python manage.py migrate --check
 
       - name: Run DIET calculation and generation regression tier
         run: |
@@ -88,6 +89,17 @@ jobs:
         with:
           name: diet-pr-regression-log
           path: netbox-docker/diet-pr-regression.log
+          if-no-files-found: ignore
+          retention-days: 14
+
+      - name: Upload NetBox migration diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: diet-pr-migration-diagnostics
+          path: |
+            netbox-docker/netbox-startup.log
+            netbox-docker/migration-state.txt
           if-no-files-found: ignore
           retention-days: 14
 
@@ -175,27 +187,18 @@ jobs:
           curl -fsSL https://i.hhdev.io/hhfab | bash
           echo "$HOME/.hedgehog/bin" >> "$GITHUB_PATH"
 
-      - name: Start NetBox
+      - name: Start NetBox and prove entrypoint migration completion
         run: |
+          set -o pipefail
           cd netbox-docker
           docker compose pull
           docker compose up -d postgres redis redis-cache
-          docker compose up -d netbox
-
-          # Wait for NetBox to be ready
-          echo "Waiting for NetBox to start..."
-          for i in {1..60}; do
-            if docker compose exec -T netbox python manage.py showmigrations > /dev/null 2>&1; then
-              echo "NetBox is ready!"
-              break
-            fi
-            echo "Waiting... ($i/60)"
-            sleep 5
-          done
-          if ! docker compose exec -T netbox python manage.py showmigrations > /dev/null 2>&1; then
-            docker compose logs netbox
-            exit 1
-          fi
+          docker compose up -d --wait --wait-timeout 600 netbox
+          docker compose logs --no-color netbox | tee netbox-startup.log
+          grep -Fq '✅ Initialisation is done.' netbox-startup.log
+          docker compose exec -T netbox python manage.py showmigrations --plan \
+            | tee migration-state.txt
+          docker compose exec -T netbox python manage.py migrate --check
 
       - name: Copy hhfab into NetBox container
         run: |
@@ -204,11 +207,6 @@ jobs:
           CONTAINER=$(docker compose ps -q netbox)
           docker cp "$HHFAB_PATH" "${CONTAINER}:/usr/local/bin/hhfab"
           docker compose exec -T netbox hhfab --version
-
-      - name: Run NetBox migrations
-        run: |
-          cd netbox-docker
-          docker compose exec -T netbox python manage.py migrate
 
       - name: Load DIET reference data
         run: |
@@ -235,6 +233,17 @@ jobs:
         with:
           name: diet-full-regression-log
           path: netbox-docker/diet-full-regression.log
+          if-no-files-found: ignore
+          retention-days: 14
+
+      - name: Upload NetBox migration diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: diet-full-migration-diagnostics
+          path: |
+            netbox-docker/netbox-startup.log
+            netbox-docker/migration-state.txt
           if-no-files-found: ignore
           retention-days: 14
 
@@ -318,27 +327,18 @@ jobs:
           curl -fsSL https://i.hhdev.io/hhfab | bash
           echo "$HOME/.hedgehog/bin" >> "$GITHUB_PATH"
 
-      - name: Start NetBox (Fresh Install)
+      - name: Start NetBox and prove entrypoint migration completion
         run: |
+          set -o pipefail
           cd netbox-docker
           docker compose pull
           docker compose up -d postgres redis redis-cache
-          docker compose up -d netbox
-
-          # Wait for NetBox to be ready
-          echo "Waiting for NetBox to start..."
-          for i in {1..60}; do
-            if docker compose exec -T netbox python manage.py showmigrations > /dev/null 2>&1; then
-              echo "NetBox is ready!"
-              break
-            fi
-            echo "Waiting... ($i/60)"
-            sleep 5
-          done
-          if ! docker compose exec -T netbox python manage.py showmigrations > /dev/null 2>&1; then
-            docker compose logs netbox
-            exit 1
-          fi
+          docker compose up -d --wait --wait-timeout 600 netbox
+          docker compose logs --no-color netbox | tee netbox-startup.log
+          grep -Fq '✅ Initialisation is done.' netbox-startup.log
+          docker compose exec -T netbox python manage.py showmigrations --plan \
+            | tee migration-state.txt
+          docker compose exec -T netbox python manage.py migrate --check
 
       - name: Copy hhfab into NetBox container
         run: |
@@ -347,11 +347,6 @@ jobs:
           CONTAINER=$(docker compose ps -q netbox)
           docker cp "$HHFAB_PATH" "${CONTAINER}:/usr/local/bin/hhfab"
           docker compose exec -T netbox hhfab --version
-
-      - name: Run NetBox migrations
-        run: |
-          cd netbox-docker
-          docker compose exec -T netbox python manage.py migrate
 
       - name: Seed DIET reference data
         run: |
@@ -478,6 +473,17 @@ jobs:
 
           echo "[OK] hhfab validation gate passed"
 
+      - name: Upload NetBox migration diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: fresh-install-migration-diagnostics
+          path: |
+            netbox-docker/netbox-startup.log
+            netbox-docker/migration-state.txt
+          if-no-files-found: ignore
+          retention-days: 14
+
       - name: Show NetBox logs on failure
         if: failure()
         run: |
@@ -552,31 +558,18 @@ jobs:
           }
           EOF
 
-      - name: Start NetBox
+      - name: Start NetBox and prove entrypoint migration completion
         run: |
+          set -o pipefail
           cd netbox-docker
           docker compose pull
           docker compose up -d postgres redis redis-cache
-          docker compose up -d netbox
-
-          echo "Waiting for NetBox to start..."
-          for i in {1..60}; do
-            if docker compose exec -T netbox python manage.py showmigrations > /dev/null 2>&1; then
-              echo "NetBox is ready!"
-              break
-            fi
-            echo "Waiting... ($i/60)"
-            sleep 5
-          done
-          if ! docker compose exec -T netbox python manage.py showmigrations > /dev/null 2>&1; then
-            docker compose logs netbox
-            exit 1
-          fi
-
-      - name: Run NetBox migrations
-        run: |
-          cd netbox-docker
-          docker compose exec -T netbox python manage.py migrate
+          docker compose up -d --wait --wait-timeout 600 netbox
+          docker compose logs --no-color netbox | tee netbox-startup.log
+          grep -Fq '✅ Initialisation is done.' netbox-startup.log
+          docker compose exec -T netbox python manage.py showmigrations --plan \
+            | tee migration-state.txt
+          docker compose exec -T netbox python manage.py migrate --check
 
       - name: Initial seed
         run: |
@@ -662,6 +655,17 @@ jobs:
 
           print("✅ Re-seed verified! Reset+seed workflow is idempotent.")
           EOF
+
+      - name: Upload NetBox migration diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: reset-seed-migration-diagnostics
+          path: |
+            netbox-docker/netbox-startup.log
+            netbox-docker/migration-state.txt
+          if-no-files-found: ignore
+          retention-days: 14
 
       - name: Show NetBox logs on failure
         if: failure()
