@@ -33,6 +33,9 @@ jobs:
       - name: Configure NetBox plugin mount
         run: |
           cd netbox-docker
+          # HNP's DIET tests target the NetBox 4.4 release line. Without this,
+          # netbox-docker's moving default can select an incompatible major.
+          echo 'VERSION=v4.4-3.4.1' > .env
           cat > docker-compose.override.yml << 'EOF'
           services:
             netbox:
@@ -147,6 +150,9 @@ jobs:
       - name: Configure NetBox Docker
         run: |
           cd netbox-docker
+
+          # Keep the CI platform on HNP's supported NetBox 4.4 release line.
+          echo 'VERSION=v4.4-3.4.1' > .env
 
           # Mount the repository outside NetBox's Python package directory.
           # Mounting only netbox_hedgehog inside the package shadows the plugin
@@ -301,6 +307,9 @@ jobs:
       - name: Configure NetBox Docker
         run: |
           cd netbox-docker
+
+          # Keep the CI platform on HNP's supported NetBox 4.4 release line.
+          echo 'VERSION=v4.4-3.4.1' > .env
 
           # Mount the repository outside NetBox's Python package directory.
           cat > docker-compose.override.yml << 'EOF'
@@ -549,6 +558,9 @@ jobs:
       - name: Configure NetBox Docker
         run: |
           cd netbox-docker
+
+          # Keep the CI platform on HNP's supported NetBox 4.4 release line.
+          echo 'VERSION=v4.4-3.4.1' > .env
 
           # Mount the repository outside NetBox's Python package directory.
           cat > docker-compose.override.yml << 'EOF'
