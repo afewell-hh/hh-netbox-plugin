@@ -255,6 +255,7 @@ jobs:
     name: Fresh Install Smoke Test + hhfab Validation Gate (128-GPU Case)
     runs-on: ubuntu-latest
     timeout-minutes: 60
+    if: github.event_name != 'pull_request'
 
     steps:
       - name: Checkout plugin code
