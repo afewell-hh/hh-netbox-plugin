@@ -61,10 +61,20 @@ jobs:
           docker compose pull
           docker compose up -d postgres redis redis-cache
           # The NetBox entrypoint is the only schema writer in this workflow.
-          # `--wait` gates on the HTTP healthcheck; the marker is emitted only
-          # after the entrypoint's migrate --no-input has completed.
-          docker compose up -d --wait --wait-timeout 600 netbox
-          docker compose logs --no-color netbox | tee netbox-startup.log
+          # Its HTTP healthcheck can turn unhealthy while a fresh database is
+          # still migrating, so wait for its post-migration completion marker.
+          docker compose up -d netbox
+          for i in {1..120}; do
+            docker compose logs --no-color netbox | tee netbox-startup.log
+            if grep -Fq '✅ Initialisation is done.' netbox-startup.log; then
+              break
+            fi
+            netbox_id=$(docker compose ps -q netbox)
+            if [ -n "$netbox_id" ] && [ "$(docker inspect -f '{{.State.Status}}' "$netbox_id")" = 'exited' ]; then
+              exit 1
+            fi
+            sleep 5
+          done
           grep -Fq '✅ Initialisation is done.' netbox-startup.log
           docker compose exec -T netbox python manage.py showmigrations --plan \
             | tee migration-state.txt
@@ -193,8 +203,18 @@ jobs:
           cd netbox-docker
           docker compose pull
           docker compose up -d postgres redis redis-cache
-          docker compose up -d --wait --wait-timeout 600 netbox
-          docker compose logs --no-color netbox | tee netbox-startup.log
+          docker compose up -d netbox
+          for i in {1..120}; do
+            docker compose logs --no-color netbox | tee netbox-startup.log
+            if grep -Fq '✅ Initialisation is done.' netbox-startup.log; then
+              break
+            fi
+            netbox_id=$(docker compose ps -q netbox)
+            if [ -n "$netbox_id" ] && [ "$(docker inspect -f '{{.State.Status}}' "$netbox_id")" = 'exited' ]; then
+              exit 1
+            fi
+            sleep 5
+          done
           grep -Fq '✅ Initialisation is done.' netbox-startup.log
           docker compose exec -T netbox python manage.py showmigrations --plan \
             | tee migration-state.txt
@@ -333,8 +353,18 @@ jobs:
           cd netbox-docker
           docker compose pull
           docker compose up -d postgres redis redis-cache
-          docker compose up -d --wait --wait-timeout 600 netbox
-          docker compose logs --no-color netbox | tee netbox-startup.log
+          docker compose up -d netbox
+          for i in {1..120}; do
+            docker compose logs --no-color netbox | tee netbox-startup.log
+            if grep -Fq '✅ Initialisation is done.' netbox-startup.log; then
+              break
+            fi
+            netbox_id=$(docker compose ps -q netbox)
+            if [ -n "$netbox_id" ] && [ "$(docker inspect -f '{{.State.Status}}' "$netbox_id")" = 'exited' ]; then
+              exit 1
+            fi
+            sleep 5
+          done
           grep -Fq '✅ Initialisation is done.' netbox-startup.log
           docker compose exec -T netbox python manage.py showmigrations --plan \
             | tee migration-state.txt
@@ -564,8 +594,18 @@ jobs:
           cd netbox-docker
           docker compose pull
           docker compose up -d postgres redis redis-cache
-          docker compose up -d --wait --wait-timeout 600 netbox
-          docker compose logs --no-color netbox | tee netbox-startup.log
+          docker compose up -d netbox
+          for i in {1..120}; do
+            docker compose logs --no-color netbox | tee netbox-startup.log
+            if grep -Fq '✅ Initialisation is done.' netbox-startup.log; then
+              break
+            fi
+            netbox_id=$(docker compose ps -q netbox)
+            if [ -n "$netbox_id" ] && [ "$(docker inspect -f '{{.State.Status}}' "$netbox_id")" = 'exited' ]; then
+              exit 1
+            fi
+            sleep 5
+          done
           grep -Fq '✅ Initialisation is done.' netbox-startup.log
           docker compose exec -T netbox python manage.py showmigrations --plan \
             | tee migration-state.txt
