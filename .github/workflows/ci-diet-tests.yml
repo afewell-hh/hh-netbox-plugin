@@ -1,17 +1,112 @@
 name: DIET CI Tests
 
 on:
-  workflow_dispatch:  # Manual trigger only during MVP push
+  pull_request:
+    branches: [main, develop]
+  workflow_dispatch:
   schedule:
     # Nightly fresh-install verification at 2 AM UTC
     - cron: '0 2 * * *'
 
 jobs:
+  # Fast, meaningful PR gate. It covers calculation, allocation, generation/update,
+  # and form-validation behavior without weakening the full sequential regression
+  # suite below, which remains the scheduled/manual release gate.
+  diet-pr-regression:
+    name: DIET PR Regression (calculation, generation, forms)
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    if: github.event_name == 'pull_request'
+
+    steps:
+      - name: Checkout plugin code
+        uses: actions/checkout@v4
+        with:
+          path: hh-netbox-plugin
+
+      - name: Checkout netbox-docker
+        uses: actions/checkout@v4
+        with:
+          repository: netbox-community/netbox-docker
+          path: netbox-docker
+
+      - name: Configure NetBox plugin mount
+        run: |
+          cd netbox-docker
+          cat > docker-compose.override.yml << 'EOF'
+          services:
+            netbox:
+              volumes:
+                - ../hh-netbox-plugin:/opt/netbox/plugins/hh-netbox-plugin:ro
+              environment:
+                PYTHONPATH: /opt/netbox/plugins/hh-netbox-plugin
+          EOF
+          mkdir -p configuration
+          cat > configuration/plugins.py << 'EOF'
+          PLUGINS = ['netbox_hedgehog']
+          PLUGINS_CONFIG = {
+              'netbox_hedgehog': {
+                  'kubernetes_config_file': None,
+                  'sync_interval': 300,
+                  'enable_webhooks': True,
+                  'max_concurrent_syncs': 5,
+              }
+          }
+          EOF
+
+      - name: Start NetBox and wait for Django
+        run: |
+          cd netbox-docker
+          docker compose pull
+          docker compose up -d postgres redis redis-cache
+          docker compose up -d netbox
+          for i in {1..60}; do
+            if docker compose exec -T netbox python manage.py showmigrations > /dev/null 2>&1; then
+              exit 0
+            fi
+            sleep 5
+          done
+          docker compose logs netbox
+          exit 1
+
+      - name: Run DIET calculation and generation regression tier
+        run: |
+          set -o pipefail
+          cd netbox-docker
+          docker compose exec -T netbox python manage.py test \
+            netbox_hedgehog.tests.test_topology_planning.test_topology_calculations \
+            netbox_hedgehog.tests.test_topology_planning.test_port_allocator \
+            netbox_hedgehog.tests.test_topology_planning.test_unified_generate_update \
+            netbox_hedgehog.tests.test_topology_planning.test_form_validation \
+            --verbosity=2 | tee diet-pr-regression.log
+
+      - name: Upload DIET test log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: diet-pr-regression-log
+          path: netbox-docker/diet-pr-regression.log
+          if-no-files-found: ignore
+          retention-days: 14
+
+      - name: Show NetBox logs on failure
+        if: failure()
+        run: |
+          cd netbox-docker
+          docker compose logs netbox | tail -300
+
+      - name: Clean up
+        if: always()
+        run: |
+          cd netbox-docker
+          docker compose down -v
+
   # Job A: Unit/integration tests + export completeness + hhfab gate (DIET-228)
   django-tests:
     name: Django Unit & Integration Tests (incl. hhfab gate)
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 90
+    if: github.event_name != 'pull_request'
 
     steps:
       - name: Checkout plugin code
@@ -29,12 +124,16 @@ jobs:
         run: |
           cd netbox-docker
 
-          # Mount plugin code
+          # Mount the repository outside NetBox's Python package directory.
+          # Mounting only netbox_hedgehog inside the package shadows the plugin
+          # package and prevents normal plugin discovery.
           cat > docker-compose.override.yml << 'EOF'
           services:
             netbox:
               volumes:
-                - ../hh-netbox-plugin/netbox_hedgehog:/opt/netbox/netbox/netbox_hedgehog:ro
+                - ../hh-netbox-plugin:/opt/netbox/plugins/hh-netbox-plugin:ro
+              environment:
+                PYTHONPATH: /opt/netbox/plugins/hh-netbox-plugin
           EOF
 
           # Create Dockerfile-Plugins
@@ -67,7 +166,9 @@ jobs:
 
       - name: Install hhfab (runner)
         run: |
-          # Install hhfab on the runner so it can be copied into the container.
+          # hhfab's installer requires oras. The historical scheduled failures
+          # stopped here before NetBox or any DIET test could run.
+          curl -fsSL https://i.hhdev.io/oras | bash
           # hhfab is required for ExportHHFabValidationGateTestCase (DIET-228).
           curl -fsSL https://i.hhdev.io/hhfab | bash
           echo "$HOME/.hedgehog/bin" >> "$GITHUB_PATH"
@@ -76,7 +177,8 @@ jobs:
         run: |
           cd netbox-docker
           docker compose pull
-          docker compose up -d
+          docker compose up -d postgres redis redis-cache
+          docker compose up -d netbox
 
           # Wait for NetBox to be ready
           echo "Waiting for NetBox to start..."
@@ -88,6 +190,10 @@ jobs:
             echo "Waiting... ($i/60)"
             sleep 5
           done
+          if ! docker compose exec -T netbox python manage.py showmigrations > /dev/null 2>&1; then
+            docker compose logs netbox
+            exit 1
+          fi
 
       - name: Copy hhfab into NetBox container
         run: |
@@ -114,10 +220,21 @@ jobs:
 
       - name: Run Django tests (includes completeness + hhfab gate)
         run: |
+          set -o pipefail
           # ExportCompletenessRegressionTestCase enforces completeness contracts (no hhfab required).
           # ExportHHFabValidationGateTestCase enforces hhfab validation (hhfab now in container).
           cd netbox-docker
-          docker compose exec -T netbox python manage.py test netbox_hedgehog.tests.test_topology_planning --verbosity=2
+          docker compose exec -T netbox python manage.py test \
+            netbox_hedgehog.tests.test_topology_planning --verbosity=2 | tee diet-full-regression.log
+
+      - name: Upload full DIET test log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: diet-full-regression-log
+          path: netbox-docker/diet-full-regression.log
+          if-no-files-found: ignore
+          retention-days: 14
 
       - name: Show NetBox logs on failure
         if: failure()
@@ -135,7 +252,7 @@ jobs:
   fresh-install-smoke:
     name: Fresh Install Smoke Test + hhfab Validation Gate (128-GPU Case)
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 60
 
     steps:
       - name: Checkout plugin code
@@ -153,12 +270,14 @@ jobs:
         run: |
           cd netbox-docker
 
-          # Mount plugin code
+          # Mount the repository outside NetBox's Python package directory.
           cat > docker-compose.override.yml << 'EOF'
           services:
             netbox:
               volumes:
-                - ../hh-netbox-plugin/netbox_hedgehog:/opt/netbox/netbox/netbox_hedgehog:ro
+                - ../hh-netbox-plugin:/opt/netbox/plugins/hh-netbox-plugin:ro
+              environment:
+                PYTHONPATH: /opt/netbox/plugins/hh-netbox-plugin
           EOF
 
           # Create Dockerfile-Plugins
@@ -191,6 +310,8 @@ jobs:
 
       - name: Install hhfab (runner)
         run: |
+          # hhfab's installer requires oras.
+          curl -fsSL https://i.hhdev.io/oras | bash
           curl -fsSL https://i.hhdev.io/hhfab | bash
           echo "$HOME/.hedgehog/bin" >> "$GITHUB_PATH"
 
@@ -198,7 +319,8 @@ jobs:
         run: |
           cd netbox-docker
           docker compose pull
-          docker compose up -d
+          docker compose up -d postgres redis redis-cache
+          docker compose up -d netbox
 
           # Wait for NetBox to be ready
           echo "Waiting for NetBox to start..."
@@ -210,6 +332,10 @@ jobs:
             echo "Waiting... ($i/60)"
             sleep 5
           done
+          if ! docker compose exec -T netbox python manage.py showmigrations > /dev/null 2>&1; then
+            docker compose logs netbox
+            exit 1
+          fi
 
       - name: Copy hhfab into NetBox container
         run: |
@@ -365,7 +491,7 @@ jobs:
   reset-seed-verification:
     name: Reset + Seed Verification
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 45
     # Only run on schedule (nightly) or manual trigger
     if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
 
@@ -385,12 +511,14 @@ jobs:
         run: |
           cd netbox-docker
 
-          # Mount plugin code
+          # Mount the repository outside NetBox's Python package directory.
           cat > docker-compose.override.yml << 'EOF'
           services:
             netbox:
               volumes:
-                - ../hh-netbox-plugin/netbox_hedgehog:/opt/netbox/netbox/netbox_hedgehog:ro
+                - ../hh-netbox-plugin:/opt/netbox/plugins/hh-netbox-plugin:ro
+              environment:
+                PYTHONPATH: /opt/netbox/plugins/hh-netbox-plugin
           EOF
 
           # Create Dockerfile-Plugins
@@ -425,7 +553,8 @@ jobs:
         run: |
           cd netbox-docker
           docker compose pull
-          docker compose up -d
+          docker compose up -d postgres redis redis-cache
+          docker compose up -d netbox
 
           echo "Waiting for NetBox to start..."
           for i in {1..60}; do
@@ -436,6 +565,10 @@ jobs:
             echo "Waiting... ($i/60)"
             sleep 5
           done
+          if ! docker compose exec -T netbox python manage.py showmigrations > /dev/null 2>&1; then
+            docker compose logs netbox
+            exit 1
+          fi
 
       - name: Run NetBox migrations
         run: |
