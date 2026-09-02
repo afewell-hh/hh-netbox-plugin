@@ -9,11 +9,11 @@ on:
     - cron: '0 2 * * *'
 
 jobs:
-  # Fast, meaningful PR gate. It covers calculation, allocation, generation/update,
+  # Fast, meaningful PR gate. It covers breakout calculation, allocation, generation,
   # and form-validation behavior without weakening the full sequential regression
   # suite below, which remains the scheduled/manual release gate.
   diet-pr-regression:
-    name: DIET PR Regression (calculation, generation, forms)
+    name: DIET PR Regression (breakout, allocation, generation, forms)
     runs-on: ubuntu-latest
     timeout-minutes: 45
     if: github.event_name == 'pull_request'
@@ -74,10 +74,12 @@ jobs:
           set -o pipefail
           cd netbox-docker
           docker compose exec -T netbox python manage.py test \
-            netbox_hedgehog.tests.test_topology_planning.test_topology_calculations \
+            netbox_hedgehog.tests.test_topology_planning.test_topology_calculations.DetermineOptimalBreakoutTestCase \
+            netbox_hedgehog.tests.test_topology_planning.test_helpers_port_specification \
             netbox_hedgehog.tests.test_topology_planning.test_port_allocator \
-            netbox_hedgehog.tests.test_topology_planning.test_unified_generate_update \
-            netbox_hedgehog.tests.test_topology_planning.test_form_validation \
+            netbox_hedgehog.tests.test_topology_planning.test_generate_integration.TopologyPlanGenerateIntegrationTestCase.test_generate_post_creates_devices \
+            netbox_hedgehog.tests.test_topology_planning.test_generate_integration.TopologyPlanGenerateIntegrationTestCase.test_generate_post_creates_cables \
+            netbox_hedgehog.tests.test_topology_planning.test_form_validation.TopologyPlanFormValidationTestCase \
             --verbosity=2 | tee diet-pr-regression.log
 
       - name: Upload DIET test log
