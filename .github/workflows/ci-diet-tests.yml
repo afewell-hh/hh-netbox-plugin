@@ -40,9 +40,7 @@ jobs:
           services:
             netbox:
               volumes:
-                - ../hh-netbox-plugin:/opt/netbox/plugins/hh-netbox-plugin:ro
-              environment:
-                PYTHONPATH: /opt/netbox/plugins/hh-netbox-plugin
+                - ../hh-netbox-plugin/netbox_hedgehog:/opt/netbox/netbox/netbox_hedgehog:ro
           EOF
           mkdir -p configuration
           cat > configuration/plugins.py << 'EOF'
@@ -166,9 +164,7 @@ jobs:
           services:
             netbox:
               volumes:
-                - ../hh-netbox-plugin:/opt/netbox/plugins/hh-netbox-plugin:ro
-              environment:
-                PYTHONPATH: /opt/netbox/plugins/hh-netbox-plugin
+                - ../hh-netbox-plugin/netbox_hedgehog:/opt/netbox/netbox/netbox_hedgehog:ro
           EOF
 
           # Create Dockerfile-Plugins
@@ -326,9 +322,7 @@ jobs:
           services:
             netbox:
               volumes:
-                - ../hh-netbox-plugin:/opt/netbox/plugins/hh-netbox-plugin:ro
-              environment:
-                PYTHONPATH: /opt/netbox/plugins/hh-netbox-plugin
+                - ../hh-netbox-plugin/netbox_hedgehog:/opt/netbox/netbox/netbox_hedgehog:ro
           EOF
 
           # Create Dockerfile-Plugins
@@ -582,9 +576,7 @@ jobs:
           services:
             netbox:
               volumes:
-                - ../hh-netbox-plugin:/opt/netbox/plugins/hh-netbox-plugin:ro
-              environment:
-                PYTHONPATH: /opt/netbox/plugins/hh-netbox-plugin
+                - ../hh-netbox-plugin/netbox_hedgehog:/opt/netbox/netbox/netbox_hedgehog:ro
           EOF
 
           # Create Dockerfile-Plugins
