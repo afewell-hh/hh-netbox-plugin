@@ -21,6 +21,10 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: netbox-community/netbox-docker
+          # Pin HNP's NetBox 4.4.8 / netbox-docker 3.4.2 baseline (netbox-docker tag 3.4.2).
+          # Unpinned, this workflow silently tracked netbox-docker `release` and became a
+          # moving-latest platform test (see #635).
+          ref: 7d6f00662c90c9294911182935d41a6e66f8896b
           path: netbox-docker
 
       - name: Set up Python
@@ -37,25 +41,26 @@ jobs:
       - name: Configure NetBox Docker
         run: |
           cd netbox-docker
+          echo 'VERSION=v4.4-3.4.2' > .env
 
-          # Mount the repository outside NetBox's Python package directory.
-          # Mounting it at /opt/netbox/netbox/netbox_hedgehog shadows the real
-          # inner package and makes NetBox import a namespace package without
-          # the plugin's required `config` variable.
+          # Mount the INNER netbox_hedgehog package into NetBox's own source tree.
+          # That directory is the app server's import path, so the plugin is importable
+          # without PYTHONPATH.  This matters: netbox-docker 3.4.2 serves NetBox with
+          # NGINX Unit, whose app config has a fixed `path`/`home` and does not inherit
+          # the container's PYTHONPATH -- a repo-root mount plus PYTHONPATH reaches
+          # manage.py but not the web app (#635).
+          # Mount the repository ROOT here instead and NetBox would import a namespace
+          # package lacking the plugin's required `config` variable.
           cat > docker-compose.override.yml << 'EOF'
           services:
             netbox:
               volumes:
-                - ../hh-netbox-plugin:/opt/netbox/plugins/hh-netbox-plugin:ro
+                - ../hh-netbox-plugin/netbox_hedgehog:/opt/netbox/netbox/netbox_hedgehog:ro
               ports:
                 - "8000:8080"
-              environment:
-                PYTHONPATH: /opt/netbox/plugins/hh-netbox-plugin
             netbox-worker:
               volumes:
-                - ../hh-netbox-plugin:/opt/netbox/plugins/hh-netbox-plugin:ro
-              environment:
-                PYTHONPATH: /opt/netbox/plugins/hh-netbox-plugin
+                - ../hh-netbox-plugin/netbox_hedgehog:/opt/netbox/netbox/netbox_hedgehog:ro
           EOF
 
       - name: Start NetBox
@@ -80,6 +85,11 @@ jobs:
             echo "Waiting... ($i/60)"
             sleep 5
           done
+          if ! curl -f http://localhost:8000/login/ > /dev/null 2>&1; then
+            echo "NetBox did not become ready"
+            docker compose logs netbox | tail -200
+            exit 1
+          fi
 
       - name: Check NetBox status
         run: |

@@ -578,3 +578,70 @@ class SameSwitchGroupingIntegrationTestCase(TestCase):
                          f'Servers 005-008 must all be on one leaf, got {group_b}')
         self.assertNotEqual(group_a, group_b,
                             'The two server groups must be on different leaves')
+
+
+class CustomFieldDefaultsCacheTestCase(TestCase):
+    """#635: the generation-time CustomField default cache must accept model instances.
+
+    ``DeviceGenerator._cached_custom_field_defaults`` monkey-patches
+    ``CustomField.objects.get_defaults_for_model`` for the duration of a run.
+    NetBox calls that helper with either a model class or a model *instance*:
+    ``CustomFieldsMixin.save()`` passes ``self``.  An unsaved instance has no pk
+    and is therefore unhashable, so caching on the raw argument raises
+
+        TypeError: cannot use 'DeviceRole' as a dict key
+                   (Model instances without primary key value are unhashable)
+
+    the first time a NetBox release routes an object creation through that path.
+    NetBox 4.4.8 never calls the helper, so the defect was invisible on the
+    baseline and only surfaced on a newer platform.  Custom field defaults are
+    per-model, so the cache keys by class and both call styles must work.
+    """
+
+    @classmethod
+    def setUpTestData(cls):
+        cls.plan = TopologyPlan.objects.create(name='CF Cache Plan')
+
+    def test_cache_accepts_unsaved_model_instance(self):
+        """An unsaved instance must not raise, and must agree with the class call."""
+        from extras.models.customfields import CustomField
+
+        generator = DeviceGenerator(plan=self.plan)
+        unsaved = DeviceRole(name='Unsaved Role', slug='unsaved-role')
+        self.assertIsNone(unsaved.pk, 'fixture must be unsaved to reproduce #635')
+
+        with generator._cached_custom_field_defaults():
+            by_instance = CustomField.objects.get_defaults_for_model(unsaved)
+            by_class = CustomField.objects.get_defaults_for_model(DeviceRole)
+
+        self.assertEqual(
+            by_instance, by_class,
+            'defaults are per-model: instance and class calls must agree',
+        )
+
+    def test_cache_is_restored_after_the_context_exits(self):
+        """The patch must not leak past the generation run (it is process-global)."""
+        from extras.models.customfields import CustomField
+
+        manager_cls = type(CustomField.objects)
+        before = manager_cls.get_defaults_for_model
+
+        generator = DeviceGenerator(plan=self.plan)
+        with generator._cached_custom_field_defaults():
+            self.assertIsNot(manager_cls.get_defaults_for_model, before)
+
+        self.assertIs(manager_cls.get_defaults_for_model, before)
+
+    def test_role_creation_inside_the_cache_context_succeeds(self):
+        """The exact failing path from #635: create a DeviceRole while patched."""
+        generator = DeviceGenerator(plan=self.plan)
+
+        with generator._cached_custom_field_defaults():
+            role = generator._ensure_role('diet-635-leaf')
+
+        self.assertIsNotNone(role.pk, 'role must be persisted')
+        self.assertEqual(role.slug, 'diet-635-leaf')
+        self.assertTrue(
+            DeviceRole.objects.filter(slug='diet-635-leaf').exists(),
+            '_ensure_role must create the role under the patched cache',
+        )
