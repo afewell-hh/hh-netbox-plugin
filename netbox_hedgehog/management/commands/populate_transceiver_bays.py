@@ -10,17 +10,21 @@ Stage 2 (DIET-334): Add ModuleBayTemplate entries to:
 This command is idempotent; running it multiple times does not create
 duplicates (uses get_or_create throughout).
 
-Run this command after applying migration 0045, before running Stage 2
-generation for the first time.
+load_diet_reference_data invokes this command, so a bootstrapped
+environment is already generation-ready (#626).  Run it directly only to
+cover inventory introduced after bootstrap -- for example NIC ModuleTypes
+created by a YAML case file.
 """
 
 import re
 
 from django.core.management.base import BaseCommand
+from django.db.models import Q
 
 from dcim.models import DeviceType, InterfaceTemplate, ModuleBayTemplate, ModuleType
 
 from netbox_hedgehog.models.topology_planning import DeviceTypeExtension, PlanServerNIC
+from netbox_hedgehog.seed_catalog import STATIC_NIC_MODULE_TYPES
 from netbox_hedgehog.services.transceiver_bay_policy import (
     is_virtual_placeholder_module_type,
     is_virtual_placeholder_switch_device_type,
@@ -61,8 +65,27 @@ class Command(BaseCommand):
                     switch_bays_added += 1
 
         # --- 2. NIC ModuleTypes ---
-        # All ModuleTypes referenced by at least one PlanServerNIC.
-        nic_mt_ids = PlanServerNIC.objects.values_list('module_type_id', flat=True).distinct()
+        # ModuleTypes referenced by at least one PlanServerNIC, plus the NIC
+        # ModuleTypes the bundled catalog seeds.  The second set matters at
+        # bootstrap time: a fresh environment has no plans yet, so a
+        # PlanServerNIC-only scope would leave the seeded catalog without cages
+        # and every first generation would fail preflight (#626).
+        # Seeded types are matched on (manufacturer slug, model) so ModuleTypes
+        # this plugin did not create are never touched.
+        nic_mt_ids = set(
+            PlanServerNIC.objects.values_list('module_type_id', flat=True).distinct()
+        )
+        if STATIC_NIC_MODULE_TYPES:
+            seeded_q = Q()
+            for spec in STATIC_NIC_MODULE_TYPES:
+                seeded_q |= Q(
+                    manufacturer__slug=spec['manufacturer_slug'],
+                    model=spec['model'],
+                )
+            nic_mt_ids |= set(
+                ModuleType.objects.filter(seeded_q).values_list('pk', flat=True)
+            )
+
         for mt in ModuleType.objects.filter(pk__in=nic_mt_ids):
             if is_virtual_placeholder_module_type(mt):
                 nic_bays_removed += ModuleBayTemplate.objects.filter(module_type=mt).count()

@@ -705,6 +705,24 @@ def _apply_v2_case(case: dict, *, clean: bool = False, prune: bool = False) -> T
     return plan
 
 
+def _ensure_transceiver_bays() -> None:
+    """Give the inventory this case just introduced its transceiver bays.
+
+    A case file may create its own DeviceTypes and NIC ModuleTypes through
+    ``reference_data`` / ``test_fixtures``.  Those are not part of the bundled
+    catalog that ``load_diet_reference_data`` readies, so without this the first
+    generation after ingest fails preflight with "Transceiver bays missing"
+    (#626).  Whoever creates the inventory owns readying it.
+
+    ``populate_transceiver_bays`` is idempotent and scopes NIC cages to
+    ModuleTypes referenced by a PlanServerNIC, which exist by the time this
+    runs, so repeat ingests stay safe.
+    """
+    from django.core.management import call_command
+
+    call_command("populate_transceiver_bays", verbosity=0)
+
+
 @transaction.atomic
 def apply_case(
     case: dict,
@@ -719,7 +737,9 @@ def apply_case(
     case = validate_case_dict(case)
 
     if case.get("apiVersion") == "diet/v2":
-        return _apply_v2_case(case, clean=clean, prune=prune)
+        plan = _apply_v2_case(case, clean=clean, prune=prune)
+        _ensure_transceiver_bays()
+        return plan
 
     case_id = case["meta"]["case_id"]
     plan_name = case["plan"]["name"]
@@ -1212,6 +1232,8 @@ def apply_case(
         for sc in PlanServerClass.objects.filter(plan=plan):
             valid_conn_ids = {cid for sid, cid in declared_conn_keys if sid == sc.server_class_id}
             PlanServerConnection.objects.filter(server_class=sc).exclude(connection_id__in=valid_conn_ids).delete()
+
+    _ensure_transceiver_bays()
 
     _run_expected_assertions(case, plan)
 
