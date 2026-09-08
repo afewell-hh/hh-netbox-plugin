@@ -29,6 +29,7 @@ from netbox_hedgehog.choices import (
     GenerationStatusChoices,
 )
 from netbox_hedgehog.services.device_generator import DeviceGenerator
+from netbox_hedgehog.services.yaml_generator import generate_yaml_for_plan
 
 User = get_user_model()
 
@@ -293,6 +294,49 @@ class TestManagedFabricExportDownloads(ManagedFabricTestBase):
         self.assertNotIn('be-leaf-zip-01', fe_switches)
         self.assertIn('be-leaf-zip-01', be_switches)
         self.assertNotIn('fe-leaf-zip-01', be_switches)
+
+    def test_multi_fabric_zip_excludes_standalone_surrogate_but_complete_export_keeps_it(self):
+        """A standalone surrogate belongs only in the complete-plan artifact.
+
+        ZIP members are deliberately scoped to a managed fabric.  An unmanaged
+        device with no cable to either managed fabric must therefore be omitted
+        from both members, while the unscoped complete-plan export retains it as
+        a Server CRD surrogate.
+        """
+        plan = self._make_plan_with_generation_state('MF Standalone Surrogate')
+        fe = self._make_switch_device(
+            plan, 'fe-leaf-standalone-01', 'frontend', 'server-leaf'
+        )
+        be = self._make_switch_device(
+            plan, 'be-leaf-standalone-01', 'backend', 'server-leaf'
+        )
+        self._make_switch_device(
+            plan, 'oob-mgmt-standalone-01', 'oob-mgmt', 'server-leaf'
+        )
+        self._anchor_cable(plan, fe, suffix='fe')
+        self._anchor_cable(plan, be, suffix='be')
+
+        complete_docs = self._yaml_docs(generate_yaml_for_plan(plan).encode())
+        complete_servers = {
+            doc['metadata']['name']
+            for doc in complete_docs
+            if doc.get('kind') == 'Server'
+        }
+        self.assertIn('oob-mgmt-standalone-01', complete_servers)
+
+        response = self.client.get(self._export_url(plan))
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response['Content-Type'], 'application/zip')
+
+        archive = zipfile.ZipFile(io.BytesIO(response.content))
+        for member_name in archive.namelist():
+            member_docs = self._yaml_docs(archive.read(member_name))
+            member_names = {
+                doc['metadata']['name']
+                for doc in member_docs
+                if doc.get('kind') in {'Server', 'Switch'}
+            }
+            self.assertNotIn('oob-mgmt-standalone-01', member_names, member_name)
 
     def test_single_managed_fabric_export_downloads_dedicated_yaml(self):
         plan = self._make_plan_with_generation_state('Single Fabric Export Plan')
