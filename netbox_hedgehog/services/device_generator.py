@@ -168,9 +168,14 @@ class DeviceGenerator:
         table_names_cache = None
 
         def cached_cf(manager_self, model):
-            if model not in cf_cache:
-                cf_cache[model] = original_cf(manager_self, model)
-            return cf_cache[model]
+            # NetBox calls get_defaults_for_model() with either a model class or a
+            # model *instance* (features.py CustomFieldsMixin.save passes ``self``).
+            # An unsaved instance is unhashable, so key the cache by class — custom
+            # field defaults are per-model, never per-instance.  Mirrors cached_ot().
+            key = model if isinstance(model, type) else model.__class__
+            if key not in cf_cache:
+                cf_cache[key] = original_cf(manager_self, model)
+            return cf_cache[key]
 
         def cached_ot(manager_self, model, for_concrete_model=True):
             key = (model if isinstance(model, type) else model.__class__, for_concrete_model)
