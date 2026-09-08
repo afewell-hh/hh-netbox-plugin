@@ -738,7 +738,13 @@ class TopologyPlanExportView(PermissionRequiredMixin, View):
 
             if len(managed_fabrics) == 1:
                 fabric = managed_fabrics[0]
-                yaml_content = generate_yaml_for_plan(plan, fabric=fabric)
+                # A single downloaded artifact represents the complete plan.  Keep
+                # this call unscoped so standalone unmanaged devices are emitted as
+                # Server CRD surrogates.  A fabric-scoped generator intentionally
+                # includes only surrogates cabled to that fabric, which is correct
+                # for the per-fabric members of a multi-fabric ZIP but would drop
+                # valid OOB inventory from a single-artifact export.
+                yaml_content = generate_yaml_for_plan(plan)
                 filename = f"{filename_base}-{fabric}.yaml"
             else:
                 yaml_content = generate_yaml_for_plan(plan)
