@@ -312,6 +312,41 @@ class TestManagedFabricExportDownloads(ManagedFabricTestBase):
         }
         self.assertEqual(switches, {'fe-leaf-yaml-01'})
 
+    def test_single_managed_fabric_export_retains_standalone_surrogate(self):
+        """Single-artifact export keeps OOB inventory not cabled to the leaf.
+
+        A one-fabric download has a fabric-qualified filename, but is still the
+        complete-plan artifact.  In particular, an unmanaged OOB device must be
+        emitted as a Server surrogate even when no cable connects it to the
+        managed fabric.  Per-fabric ZIP members intentionally have narrower
+        scoping and are covered separately above.
+        """
+        plan = self._make_plan_with_generation_state('Single Fabric Surrogate Export')
+        fe = self._make_switch_device(plan, 'fe-leaf-surrogate-01', 'frontend', 'server-leaf')
+        self._make_switch_device(plan, 'oob-mgmt-surrogate-01', 'oob-mgmt', 'server-leaf')
+        self._anchor_cable(plan, fe, suffix='surrogate')
+
+        response = self.client.get(self._export_url(plan))
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(
+            'single-fabric-surrogate-export-frontend.yaml',
+            response['Content-Disposition'],
+        )
+
+        docs = self._yaml_docs(response.content)
+        server_names = {
+            doc['metadata']['name']
+            for doc in docs
+            if doc.get('kind') == 'Server'
+        }
+        switch_names = {
+            doc['metadata']['name']
+            for doc in docs
+            if doc.get('kind') == 'Switch'
+        }
+        self.assertIn('oob-mgmt-surrogate-01', server_names)
+        self.assertNotIn('oob-mgmt-surrogate-01', switch_names)
+
 
 # =============================================================================
 # T1: Mixed plan export - managed switches appear, unmanaged do not
