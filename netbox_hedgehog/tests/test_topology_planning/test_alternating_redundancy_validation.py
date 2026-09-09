@@ -34,6 +34,7 @@ from netbox_hedgehog.models.topology_planning import (
     SwitchPortZone,
     TopologyPlan,
 )
+from netbox_hedgehog.tests.test_topology_planning.case_128gpu_helpers import load_case_128gpu
 from netbox_hedgehog.tests.test_topology_planning import get_test_server_nic
 
 
@@ -418,4 +419,19 @@ class AlternatingRedundancy128GpuRegressionTestCase(TestCase):
         self.assertTrue(
             border_leaf.redundancy_group,
             "fe-border-leaf must have redundancy_group set (required by PlanSwitchClass.clean())"
+        )
+
+    def test_canonical_128gpu_input_declares_border_leaf_redundancy(self):
+        """Canonical input must express the same ESLAG intent ingest persists."""
+        case = load_case_128gpu()
+        border_leaf = next(
+            switch_class
+            for switch_class in case['switch_classes']
+            if switch_class['switch_class_id'] == 'fe-border-leaf'
+        )
+
+        self.assertEqual(border_leaf.get('redundancy_type'), 'eslag')
+        self.assertTrue(
+            border_leaf.get('redundancy_group'),
+            'canonical fe-border-leaf must declare the redundancy group required by ESLAG',
         )
