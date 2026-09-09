@@ -924,39 +924,38 @@ class PlanServerConnection(NetBoxModel):
 
     def _validate_transceiver_module_type(self):
         """Validate transceiver_module_type FK local invariants (V1, V7)."""
-        if not self.transceiver_module_type_id:
-            return
-        xcvr_mt = self.transceiver_module_type
-        # V1: FK must reference a Network Transceiver ModuleType.
-        if not (xcvr_mt.profile_id and xcvr_mt.profile.name == 'Network Transceiver'):
-            raise ValidationError({
-                'transceiver_module_type': (
-                    "Must reference a ModuleType with the 'Network Transceiver' profile. "
-                    f"'{xcvr_mt.model}' does not have this profile."
-                )
-            })
-        xcvr_ad = xcvr_mt.attribute_data or {}
-        # V7: reach_class must be compatible with medium (copper vs. optical invariant).
-        rc = xcvr_ad.get('reach_class')
-        resolved_medium = xcvr_ad.get('medium')
-        if rc and resolved_medium:
-            _copper_mediums = {'DAC', 'ACC'}
-            _optical_mediums = {'MMF', 'SMF'}
-            _optical_reach_classes = {'SR', 'LR', 'DR'}
-            if rc == 'DAC' and resolved_medium in _optical_mediums:
+        if self.transceiver_module_type_id:
+            xcvr_mt = self.transceiver_module_type
+            # V1: FK must reference a Network Transceiver ModuleType.
+            if not (xcvr_mt.profile_id and xcvr_mt.profile.name == 'Network Transceiver'):
                 raise ValidationError({
                     'transceiver_module_type': (
-                        f"reach_class 'DAC' is incompatible with medium '{resolved_medium}': "
-                        f"DAC reach class requires a copper medium (DAC or ACC)."
+                        "Must reference a ModuleType with the 'Network Transceiver' profile. "
+                        f"'{xcvr_mt.model}' does not have this profile."
                     )
                 })
-            elif rc in _optical_reach_classes and resolved_medium in _copper_mediums:
-                raise ValidationError({
-                    'transceiver_module_type': (
-                        f"reach_class '{rc}' is incompatible with medium '{resolved_medium}': "
-                        f"optical reach classes (SR, LR, DR) require a fiber medium (MMF or SMF)."
-                    )
-                })
+            xcvr_ad = xcvr_mt.attribute_data or {}
+            # V7: reach_class must be compatible with medium (copper vs. optical invariant).
+            rc = xcvr_ad.get('reach_class')
+            resolved_medium = xcvr_ad.get('medium')
+            if rc and resolved_medium:
+                _copper_mediums = {'DAC', 'ACC'}
+                _optical_mediums = {'MMF', 'SMF'}
+                _optical_reach_classes = {'SR', 'LR', 'DR'}
+                if rc == 'DAC' and resolved_medium in _optical_mediums:
+                    raise ValidationError({
+                        'transceiver_module_type': (
+                            f"reach_class 'DAC' is incompatible with medium '{resolved_medium}': "
+                            f"DAC reach class requires a copper medium (DAC or ACC)."
+                        )
+                    })
+                elif rc in _optical_reach_classes and resolved_medium in _copper_mediums:
+                    raise ValidationError({
+                        'transceiver_module_type': (
+                            f"reach_class '{rc}' is incompatible with medium '{resolved_medium}': "
+                            f"optical reach classes (SR, LR, DR) require a fiber medium (MMF or SMF)."
+                        )
+                    })
 
         # Validate nic belongs to the same server_class (not cross-plan, not cross-server-class)
         if self.nic_id and self.server_class_id:

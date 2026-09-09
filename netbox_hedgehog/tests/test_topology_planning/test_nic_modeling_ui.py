@@ -12,6 +12,7 @@ from django.test import TestCase, Client
 from django.urls import reverse
 from django.contrib.auth import get_user_model
 from django.contrib.contenttypes.models import ContentType
+from django.core.exceptions import ValidationError
 from users.models import ObjectPermission
 
 from dcim.models import DeviceType, Manufacturer, ModuleType, InterfaceTemplate
@@ -98,6 +99,26 @@ class NICModelingUITestCase(TestCase):
         cls.nic = PlanServerNIC.objects.create(
             server_class=cls.server_class, nic_id='nic-fe', module_type=cls.bf3_type,
         )
+        cls.empty_template_type = ModuleType.objects.create(
+            manufacturer=cls.test_mfg,
+            model='UI NIC Without Interfaces',
+        )
+        cls.nic_without_interfaces = PlanServerNIC.objects.create(
+            server_class=cls.server_class,
+            nic_id='nic-without-interfaces',
+            module_type=cls.empty_template_type,
+        )
+        cls.other_server_class = PlanServerClass.objects.create(
+            plan=cls.plan,
+            server_class_id='cpu',
+            server_device_type=cls.server_dt,
+            quantity=1,
+        )
+        cls.other_server_class_nic = PlanServerNIC.objects.create(
+            server_class=cls.other_server_class,
+            nic_id='nic-other-server-class',
+            module_type=cls.bf3_type,
+        )
         cls.connection = PlanServerConnection.objects.create(
             server_class=cls.server_class, connection_id='fe',
             nic=cls.nic, port_index=0, ports_per_connection=1,
@@ -147,6 +168,28 @@ class NICModelingUITestCase(TestCase):
         conn = PlanServerConnection.objects.get(connection_id='fe-new')
         self.assertEqual(conn.nic, self.nic)
 
+    def test_valid_post_allows_null_optional_transceiver(self):
+        """Leaving transceiver intent unset is the approved normal workflow."""
+        url = reverse('plugins:netbox_hedgehog:planserverconnection_add')
+        data = {
+            'server_class': self.server_class.pk,
+            'connection_id': 'fe-no-transceiver',
+            'nic': self.nic.pk,
+            'port_index': 0,
+            'ports_per_connection': 1,
+            'hedgehog_conn_type': 'unbundled',
+            'distribution': 'alternating',
+            'target_zone': self.zone.pk,
+            'speed': 200,
+            'port_type': 'data',
+            'transceiver_module_type': '',
+            'tags': [],
+        }
+        response = self.client.post(url, data)
+        self.assertEqual(response.status_code, 302)
+        conn = PlanServerConnection.objects.get(connection_id='fe-no-transceiver')
+        self.assertIsNone(conn.transceiver_module_type)
+
     def test_validation_enforces_nic_required(self):
         url = reverse('plugins:netbox_hedgehog:planserverconnection_add')
         data = {
@@ -183,6 +226,7 @@ class NICModelingUITestCase(TestCase):
         }
         response = self.client.post(url, data)
         self.assertEqual(response.status_code, 200)  # form error
+        self.assertContains(response, 'Port index 99 exceeds available ports')
         self.assertFalse(PlanServerConnection.objects.filter(connection_id='fe-badport').exists())
 
     def test_validation_ports_per_connection_vs_available(self):
@@ -202,7 +246,76 @@ class NICModelingUITestCase(TestCase):
         }
         response = self.client.post(url, data)
         self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'Insufficient ports for this connection')
         self.assertFalse(PlanServerConnection.objects.filter(connection_id='fe-toomany').exists())
+
+    def test_validation_rejects_nic_from_another_server_class_without_transceiver(self):
+        """The normal form path rejects a NIC outside the selected server class."""
+        url = reverse('plugins:netbox_hedgehog:planserverconnection_add')
+        data = {
+            'server_class': self.server_class.pk,
+            'connection_id': 'fe-other-nic',
+            'nic': self.other_server_class_nic.pk,
+            'port_index': 0,
+            'ports_per_connection': 1,
+            'hedgehog_conn_type': 'unbundled',
+            'distribution': 'alternating',
+            'target_zone': self.zone.pk,
+            'speed': 200,
+            'port_type': 'data',
+            'transceiver_module_type': '',
+            'tags': [],
+        }
+        response = self.client.post(url, data)
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'Select a valid choice')
+        self.assertFalse(PlanServerConnection.objects.filter(connection_id='fe-other-nic').exists())
+
+    def test_model_validation_rejects_nic_from_another_server_class_without_transceiver(self):
+        """Keep the model invariant reachable behind the form's queryset guard."""
+        connection = PlanServerConnection(
+            server_class=self.server_class,
+            connection_id='fe-other-nic-model',
+            nic=self.other_server_class_nic,
+            port_index=0,
+            ports_per_connection=1,
+            hedgehog_conn_type=ConnectionTypeChoices.UNBUNDLED,
+            distribution=ConnectionDistributionChoices.ALTERNATING,
+            target_zone=self.zone,
+            speed=200,
+            port_type='data',
+            transceiver_module_type=None,
+        )
+
+        with self.assertRaises(ValidationError) as raised:
+            connection.clean()
+
+        self.assertIn('nic', raised.exception.message_dict)
+        self.assertIn('NIC must belong to the same server class', raised.exception.message_dict['nic'][0])
+
+    def test_validation_rejects_nic_without_interface_templates_without_transceiver(self):
+        """A selected NIC must expose interfaces even when transceiver intent is null."""
+        url = reverse('plugins:netbox_hedgehog:planserverconnection_add')
+        data = {
+            'server_class': self.server_class.pk,
+            'connection_id': 'fe-no-interface-templates',
+            'nic': self.nic_without_interfaces.pk,
+            'port_index': 0,
+            'ports_per_connection': 1,
+            'hedgehog_conn_type': 'unbundled',
+            'distribution': 'alternating',
+            'target_zone': self.zone.pk,
+            'speed': 200,
+            'port_type': 'data',
+            'transceiver_module_type': '',
+            'tags': [],
+        }
+        response = self.client.post(url, data)
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'has no interface templates defined')
+        self.assertFalse(
+            PlanServerConnection.objects.filter(connection_id='fe-no-interface-templates').exists()
+        )
 
     def test_detail_view_renders_nic_slot_and_transceiver_data(self):
         url = reverse('plugins:netbox_hedgehog:planserverconnection_detail', args=[self.connection.pk])
