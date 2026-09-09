@@ -228,3 +228,186 @@ class BootstrapGenerationReadinessTestCase(TestCase):
             ModuleBayTemplate.objects.count(), before,
             'running the standalone command after bootstrap must be a no-op',
         )
+
+
+class IngestGenerationReadinessTestCase(TestCase):
+    """#626: case ingest must ready the inventory the case itself introduces.
+
+    A case file may create DeviceTypes and NIC ModuleTypes of its own, which the
+    bundled catalog knows nothing about.  Bootstrap therefore cannot ready them,
+    so ``apply_case`` owns it — for **both** the v1 and v2 branches, which return
+    from different points in the function.
+    """
+
+    @classmethod
+    def setUpTestData(cls):
+        call_command('load_diet_reference_data', stdout=StringIO(), verbosity=0)
+
+    def _case_local_nic(self, model):
+        """A NIC ModuleType that is NOT part of the bundled catalog."""
+        mfr, _ = Manufacturer.objects.get_or_create(
+            name='DIET-626 Vendor', defaults={'slug': 'diet-626-vendor'},
+        )
+        mt, _ = ModuleType.objects.get_or_create(manufacturer=mfr, model=model)
+        for name in ('port0', 'port1'):
+            InterfaceTemplate.objects.get_or_create(
+                module_type=mt, name=name, defaults={'type': '400gbase-x-osfp'},
+            )
+        return mfr, mt
+
+    def test_v2_ingest_populates_cages_for_case_local_nic(self):
+        """v2 branch: apply_case must ready a NIC the case introduced."""
+        from netbox_hedgehog.test_cases.ingest import apply_case
+
+        mfr, mt = self._case_local_nic('DIET626-V2-NIC')
+        self.assertEqual(
+            ModuleBayTemplate.objects.filter(module_type=mt).count(), 0,
+            'fixture: case-local NIC must start with no cages',
+        )
+
+        case = {
+            'apiVersion': 'diet/v2',
+            'kind': 'TopologyPlan',
+            'metadata': {
+                'case_id': 'diet626_v2_nic',
+                'name': 'DIET-626 v2 NIC case',
+                'version': 2,
+                'managed_by': 'yaml',
+            },
+            'spec': {
+                'plan': {'name': 'DIET-626 v2 NIC plan', 'status': 'draft'},
+                'switch_classes': [],
+                'server_classes': [{
+                    'server_class_id': 'gpu',
+                    'quantity': 1,
+                    'server_device_type': self._server_dt_slug(),
+                }],
+                'server_nics': [{
+                    'server_class': 'gpu',
+                    'nic_id': 'nic-0',
+                    'module_type': {'manufacturer': mfr.slug, 'model': mt.model},
+                }],
+                'server_connections': [],
+            },
+        }
+        apply_case(case, clean=True)
+
+        self.assertEqual(
+            ModuleBayTemplate.objects.filter(module_type=mt).count(), 2,
+            'v2 ingest must leave one cage per port on a case-introduced NIC',
+        )
+
+    def test_v1_ingest_populates_cages_for_case_local_nic(self):
+        """v1 branch: the same guarantee, from the other return point."""
+        from netbox_hedgehog.test_cases.ingest import apply_case
+
+        mfr, mt = self._case_local_nic('DIET626-V1-NIC')
+        self.assertEqual(
+            ModuleBayTemplate.objects.filter(module_type=mt).count(), 0,
+            'fixture: case-local NIC must start with no cages',
+        )
+
+        # v1 resolves references through case-local ids declared in
+        # reference_data; v2 resolves by slug.  That asymmetry is exactly why
+        # both branches need their own coverage.
+        server_dt = DeviceType.objects.get(slug=self._server_dt_slug())
+        case = {
+            'meta': {
+                'case_id': 'diet626_v1_nic',
+                'name': 'DIET-626 v1 NIC case',
+                'version': 1,
+                'managed_by': 'yaml',
+            },
+            'reference_data': {
+                'manufacturers': [
+                    {'id': 'vendor', 'name': mfr.name, 'slug': mfr.slug},
+                    {
+                        'id': 'srv_mfr',
+                        'name': server_dt.manufacturer.name,
+                        'slug': server_dt.manufacturer.slug,
+                    },
+                ],
+                'device_types': [{
+                    'id': 'srv_dt',
+                    'manufacturer': 'srv_mfr',
+                    'model': server_dt.model,
+                    'slug': server_dt.slug,
+                }],
+                'module_types': [{
+                    'id': 'case_nic',
+                    'manufacturer': 'vendor',
+                    'model': mt.model,
+                }],
+            },
+            'plan': {'name': 'DIET-626 v1 NIC plan', 'status': 'draft'},
+            'switch_classes': [],
+            'server_classes': [{
+                'server_class_id': 'gpu',
+                'quantity': 1,
+                'server_device_type': 'srv_dt',
+            }],
+            'server_nics': [{
+                'server_class': 'gpu',
+                'nic_id': 'nic-0',
+                'module_type': 'case_nic',
+            }],
+            'server_connections': [],
+        }
+        apply_case(case, clean=True, reference_mode='ensure')
+
+        self.assertEqual(
+            ModuleBayTemplate.objects.filter(module_type=mt).count(), 2,
+            'v1 ingest must leave one cage per port on a case-introduced NIC',
+        )
+
+    @staticmethod
+    def _server_dt_slug():
+        dt = DeviceType.objects.filter(slug='gpu-server-fe').first()
+        return dt.slug if dt else DeviceType.objects.first().slug
+
+
+class BootstrapLeavesUnrelatedInventoryAloneTestCase(TestCase):
+    """#626: readying our own catalog must not touch anyone else's inventory.
+
+    ``populate_transceiver_bays`` is scoped to switch DeviceTypes carrying a
+    DeviceTypeExtension, NIC ModuleTypes referenced by a PlanServerNIC, and NIC
+    ModuleTypes the bundled catalog seeds — matched on (manufacturer slug,
+    model).  Nothing else may gain ModuleBayTemplates.  This matters because the
+    plugin writes into NetBox-owned dcim tables: an over-broad scope would
+    silently modify inventory that has nothing to do with HNP.
+    """
+
+    def test_bootstrap_does_not_add_bays_to_foreign_inventory(self):
+        foreign_mfr, _ = Manufacturer.objects.get_or_create(
+            name='Unrelated Vendor', defaults={'slug': 'unrelated-vendor'},
+        )
+        # A ModuleType with ports, not in the bundled catalog and not referenced
+        # by any PlanServerNIC.
+        foreign_mt, _ = ModuleType.objects.get_or_create(
+            manufacturer=foreign_mfr, model='Unrelated-NIC-2P',
+        )
+        for name in ('port0', 'port1'):
+            InterfaceTemplate.objects.get_or_create(
+                module_type=foreign_mt, name=name, defaults={'type': '400gbase-x-osfp'},
+            )
+        # A DeviceType with ports but no DeviceTypeExtension (not an HNP switch).
+        foreign_dt, _ = DeviceType.objects.get_or_create(
+            manufacturer=foreign_mfr, model='Unrelated-Switch',
+            defaults={'slug': 'unrelated-switch', 'u_height': 1},
+        )
+        InterfaceTemplate.objects.get_or_create(
+            device_type=foreign_dt, name='Eth1', defaults={'type': '400gbase-x-osfp'},
+        )
+
+        call_command('load_diet_reference_data', stdout=StringIO(), verbosity=0)
+
+        self.assertEqual(
+            ModuleBayTemplate.objects.filter(module_type=foreign_mt).count(), 0,
+            'bootstrap must not add cages to a ModuleType outside the bundled '
+            'catalog and unreferenced by any plan',
+        )
+        self.assertEqual(
+            ModuleBayTemplate.objects.filter(device_type=foreign_dt).count(), 0,
+            'bootstrap must not add bays to a DeviceType with no '
+            'DeviceTypeExtension',
+        )
