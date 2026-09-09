@@ -225,9 +225,9 @@ class DeviceGenerator:
             if self.logger:
                 self.logger.info(f"Starting device generation for plan: {self.plan.name}")
 
-            # Milestone 2: Cleaning up old objects
+            # Phase 1/6: Cleaning up old objects
             if self.logger:
-                self.logger.info("Cleaning up previously generated objects")
+                self.logger.info("Phase 1/6: Cleaning up previously generated objects")
             self._cleanup_generated_objects()
 
             devices = []
@@ -249,19 +249,19 @@ class DeviceGenerator:
             # trigger one Module placement per physical cage per generation run.
             self._placed_switch_xcvr_bays: set[tuple[int, str]] = set()
 
-            # Milestone 3: Creating switch devices
+            # Phase 2/6: Creating switch devices
             if self.logger:
-                self.logger.info("Creating switch devices")
+                self.logger.info("Phase 2/6: Creating switch devices")
             switch_devices = self._create_switch_devices(devices)
 
-            # Milestone 4: Creating server devices
+            # Phase 3/6: Creating server devices
             if self.logger:
-                self.logger.info("Creating server devices")
+                self.logger.info("Phase 3/6: Creating server devices")
             server_devices = self._create_server_devices(devices)
 
-            # Milestone 5: Creating connections (interfaces and cables)
+            # Phase 4/6: Creating connections (interfaces and cables)
             if self.logger:
-                self.logger.info("Creating connections (interfaces and cables)")
+                self.logger.info("Phase 4/6: Creating interfaces and cables")
             interfaces, cables = self._create_connections(
                 switch_devices,
                 server_devices,
@@ -270,16 +270,16 @@ class DeviceGenerator:
             # DIET-607: persist the locality report accumulated during wiring.
             self._persist_locality_ranges()
 
-            # Milestone 5b: Creating mesh connections (explicit mesh fabrics)
+            # Mesh connections are part of the same wiring phase.
             if self.logger:
-                self.logger.info("Creating mesh connections (if any mesh-mode fabrics)")
+                self.logger.info("Phase 4/6: Creating mesh connections (if any mesh-mode fabrics)")
             mesh_ifaces, mesh_cables = self._create_mesh_connections(self.plan, switch_devices)
             interfaces.extend(mesh_ifaces)
             cables.extend(mesh_cables)
 
-            # Milestone 6: Tagging and finalizing
+            # Phase 5/6: Tagging and finalizing
             if self.logger:
-                self.logger.info("Tagging objects and finalizing generation")
+                self.logger.info("Phase 5/6: Tagging objects and finalizing generation")
             self._tag_objects(devices, interfaces, cables)
 
             # Milestone 7a: Bay-placement hard-fail check (Stage 2, #345).

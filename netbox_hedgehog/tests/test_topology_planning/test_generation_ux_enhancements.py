@@ -373,6 +373,7 @@ class GenerationUXEnhancementsTestCase(TestCase):
             cable_count=0,
             snapshot={}
         )
+        job_ids_before = set(Job.objects.values_list('pk', flat=True))
 
         # Attempt to enqueue second job
         url = reverse('plugins:netbox_hedgehog:topologyplan_generate_update', args=[self.plan.pk])
@@ -392,11 +393,11 @@ class GenerationUXEnhancementsTestCase(TestCase):
         self.assertIn('queued', error_msg)
 
         # Should NOT create second job
-        job_count = Job.objects.filter(
-            object_id=self.plan.pk,
-            name__icontains='generate'
-        ).count()
-        self.assertEqual(job_count, 1, "Should not create duplicate job")
+        self.assertEqual(
+            set(Job.objects.values_list('pk', flat=True)),
+            job_ids_before,
+            "Should not create a duplicate job",
+        )
 
     def test_backend_blocks_duplicate_enqueue_when_in_progress(self):
         """
@@ -600,9 +601,9 @@ class GenerationUXEnhancementsTestCase(TestCase):
         """
         Test 4a: Job should log progress at each phase.
 
-        Given: DeviceGenerationJob with plan
-        When: job.run() executes
-        Then: Job logs contain milestone messages:
+        Given: a queued DeviceGenerationJob associated with a plan
+        When: the real NetBox JobRunner worker lifecycle handles it
+        Then: persisted job logs and the job detail UI contain milestones:
           - "Phase 1/6: Cleaning up..."
           - "Phase 2/6: Creating switch devices..."
           - "Phase 3/6: Creating server devices..."
@@ -623,25 +624,36 @@ class GenerationUXEnhancementsTestCase(TestCase):
             plan_id=self.plan.pk,
         )
 
-        # Execute job
-        job_runner = DeviceGenerationJob(job=job)
+        # Exercise the actual JobRunner worker lifecycle. Calling run() directly
+        # only appends logs in memory; handle() starts and terminates the job,
+        # which persists its log_entries exactly as the RQ worker does.
+        DeviceGenerationJob.handle(job, plan_id=self.plan.pk)
 
-        # Capture logs by checking job.data after execution
-        job_runner.run(plan_id=self.plan.pk)
-
-        # Refresh job to get logs
+        # Refresh the persisted worker result, rather than inspecting obsolete
+        # Job.data (which is not the NetBox job-log storage).
         job.refresh_from_db()
+        self.assertEqual(job.status, 'completed')
 
-        # Job should have log data
-        # Note: Exact log format depends on NetBox JobRunner implementation
-        # We verify that the job completed successfully and logs exist
-        self.assertIsNotNone(job.data, "Job should have log data")
+        log_str = str(job.log_entries)
+        milestones = [
+            'Phase 1/6: Cleaning up previously generated objects',
+            'Phase 2/6: Creating switch devices',
+            'Phase 3/6: Creating server devices',
+            'Phase 4/6: Creating interfaces and cables',
+            'Phase 5/6: Tagging objects and finalizing generation',
+            'Phase 6/6: Updating generation state',
+            '✓ Generation complete:',
+        ]
+        for milestone in milestones:
+            self.assertIn(milestone, log_str)
 
-        # Convert log data to string for searching
-        log_str = str(job.data).lower()
-
-        # Verify key milestone phrases appear
-        self.assertIn('phase', log_str, "Logs should contain phase milestones")
+        # NetBox renders the job's persisted progress on its Log tab (the job
+        # detail page links there), so assert the user-visible log UI rather
+        # than an implementation-only database field.
+        response = self.client.get(f'{job.get_absolute_url()}log/')
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'Phase 1/6: Cleaning up previously generated objects')
+        self.assertContains(response, '✓ Generation complete:')
 
     def test_device_generator_accepts_logger_parameter(self):
         """
