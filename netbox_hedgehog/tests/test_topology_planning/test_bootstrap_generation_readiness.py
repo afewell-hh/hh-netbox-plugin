@@ -430,6 +430,29 @@ class IngestDoesNotReadyForeignPlansTestCase(TestCase):
     def setUpTestData(cls):
         call_command('load_diet_reference_data', stdout=StringIO(), verbosity=0)
 
+    def _registered_switch(self, model, slug):
+        """A DeviceType registered with HNP (has a DeviceTypeExtension) and ports."""
+        mfr, _ = Manufacturer.objects.get_or_create(
+            name='DIET-626 Foreign Vendor', defaults={'slug': 'diet-626-foreign'},
+        )
+        dt, _ = DeviceType.objects.get_or_create(
+            manufacturer=mfr, model=model, defaults={'slug': slug, 'u_height': 1},
+        )
+        for i in (1, 2, 3):
+            InterfaceTemplate.objects.get_or_create(
+                device_type=dt, name=f'E1/{i}', defaults={'type': '400gbase-x-osfp'},
+            )
+        DeviceTypeExtension.objects.get_or_create(
+            device_type=dt,
+            defaults={
+                'mclag_capable': False,
+                'hedgehog_roles': ['server-leaf'],
+                'supported_breakouts': ['1x400g'],
+                'native_speed': 400,
+            },
+        )
+        return dt
+
     def _nic_module_type(self, model):
         mfr, _ = Manufacturer.objects.get_or_create(
             name='DIET-626 Foreign Vendor', defaults={'slug': 'diet-626-foreign'},
@@ -503,4 +526,72 @@ class IngestDoesNotReadyForeignPlansTestCase(TestCase):
         self.assertEqual(
             ModuleBayTemplate.objects.filter(module_type=foreign_mt).count(), 0,
             'ingest must NOT ready a NIC belonging to an unrelated plan',
+        )
+
+
+    def test_ingest_readies_only_the_case_switch_types(self):
+        """plan_scope() switch selection must be inclusive AND exclusive.
+
+        The prior global scope readied every DeviceType carrying a
+        DeviceTypeExtension, so ingesting any case readied the entire registered
+        switch catalog.  Asserting only the negative half would pass even if
+        plan_scope() selected no switches at all, so the case-owned switch
+        carries an explicit positive assertion.
+        """
+        from netbox_hedgehog.test_cases.ingest import apply_case
+
+        foreign_dt = self._registered_switch(
+            'DIET626-FOREIGN-SW', 'diet626-foreign-sw',
+        )
+        case_dt = self._registered_switch('DIET626-CASE-SW', 'diet626-case-sw')
+
+        # A foreign plan that owns the foreign switch.
+        foreign_plan = TopologyPlan.objects.create(name='DIET-626 Foreign Switch Plan')
+        PlanSwitchClass.objects.create(
+            plan=foreign_plan,
+            switch_class_id='foreign-leaf',
+            fabric_name='backend',
+            fabric_class=FabricClassChoices.MANAGED,
+            hedgehog_role=HedgehogRoleChoices.SERVER_LEAF,
+            device_type_extension=DeviceTypeExtension.objects.get(device_type=foreign_dt),
+        )
+
+        for dt in (foreign_dt, case_dt):
+            self.assertEqual(
+                ModuleBayTemplate.objects.filter(device_type=dt).count(), 0,
+                f'fixture: {dt.model} must start with no bays',
+            )
+
+        case = {
+            'apiVersion': 'diet/v2',
+            'kind': 'TopologyPlan',
+            'metadata': {
+                'case_id': 'diet626_sw_scope',
+                'name': 'DIET-626 switch scope case',
+                'version': 2,
+                'managed_by': 'yaml',
+            },
+            'spec': {
+                'plan': {'name': 'DIET-626 switch scope plan', 'status': 'draft'},
+                'switch_classes': [{
+                    'switch_class_id': 'case-leaf',
+                    'fabric_name': 'backend',
+                    'fabric_class': 'managed',
+                    'hedgehog_role': 'server-leaf',
+                    'device_type': case_dt.slug,
+                }],
+                'server_classes': [],
+                'server_connections': [],
+            },
+        }
+        apply_case(case, clean=True)
+
+        self.assertEqual(
+            ModuleBayTemplate.objects.filter(device_type=case_dt).count(), 3,
+            'ingest must ready the switch DeviceType the case declared '
+            '(one bay per interface template)',
+        )
+        self.assertEqual(
+            ModuleBayTemplate.objects.filter(device_type=foreign_dt).count(), 0,
+            'ingest must NOT ready a switch DeviceType owned by an unrelated plan',
         )
