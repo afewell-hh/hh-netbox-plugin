@@ -411,3 +411,96 @@ class BootstrapLeavesUnrelatedInventoryAloneTestCase(TestCase):
             'bootstrap must not add bays to a DeviceType with no '
             'DeviceTypeExtension',
         )
+
+
+class IngestDoesNotReadyForeignPlansTestCase(TestCase):
+    """#626 review: ingest readiness must not reach another plan's inventory.
+
+    ``_ensure_transceiver_bays`` originally delegated to the global
+    ``populate_transceiver_bays`` scope, which selects *every*
+    ``PlanServerNIC.module_type`` in the database.  Ingesting one case therefore
+    added ModuleBayTemplates to NICs owned by unrelated plans — and those
+    templates change what every future Device of that type instantiates, so the
+    blast radius is real rather than cosmetic.  It also contradicted the
+    lifecycle rule the fix is built on: whoever creates the inventory owns
+    readying it, and a case owns only what it declares.
+    """
+
+    @classmethod
+    def setUpTestData(cls):
+        call_command('load_diet_reference_data', stdout=StringIO(), verbosity=0)
+
+    def _nic_module_type(self, model):
+        mfr, _ = Manufacturer.objects.get_or_create(
+            name='DIET-626 Foreign Vendor', defaults={'slug': 'diet-626-foreign'},
+        )
+        mt, _ = ModuleType.objects.get_or_create(manufacturer=mfr, model=model)
+        for name in ('port0', 'port1'):
+            InterfaceTemplate.objects.get_or_create(
+                module_type=mt, name=name, defaults={'type': '400gbase-x-osfp'},
+            )
+        return mfr, mt
+
+    def test_ingest_readies_only_the_case_inventory(self):
+        from netbox_hedgehog.test_cases.ingest import apply_case
+
+        server_dt = DeviceType.objects.get(slug='gpu-server-fe')
+
+        # (1) A foreign plan whose NIC ModuleType has ports and no cages.
+        foreign_mfr, foreign_mt = self._nic_module_type('DIET626-FOREIGN-NIC')
+        foreign_plan = TopologyPlan.objects.create(name='DIET-626 Foreign Plan')
+        foreign_sc = PlanServerClass.objects.create(
+            plan=foreign_plan,
+            server_class_id='foreign-gpu',
+            category=ServerClassCategoryChoices.GPU,
+            quantity=1,
+            server_device_type=server_dt,
+        )
+        PlanServerNIC.objects.create(
+            server_class=foreign_sc, nic_id='foreign-nic', module_type=foreign_mt,
+        )
+        self.assertEqual(
+            ModuleBayTemplate.objects.filter(module_type=foreign_mt).count(), 0,
+            'fixture: the foreign NIC must start with no cages',
+        )
+
+        # (2) Ingest a case that brings its own NIC.
+        case_mfr, case_mt = self._nic_module_type('DIET626-CASE-NIC')
+        case = {
+            'apiVersion': 'diet/v2',
+            'kind': 'TopologyPlan',
+            'metadata': {
+                'case_id': 'diet626_scope',
+                'name': 'DIET-626 scope case',
+                'version': 2,
+                'managed_by': 'yaml',
+            },
+            'spec': {
+                'plan': {'name': 'DIET-626 scope plan', 'status': 'draft'},
+                'switch_classes': [],
+                'server_classes': [{
+                    'server_class_id': 'gpu',
+                    'quantity': 1,
+                    'server_device_type': server_dt.slug,
+                }],
+                'server_nics': [{
+                    'server_class': 'gpu',
+                    'nic_id': 'nic-0',
+                    'module_type': {
+                        'manufacturer': case_mfr.slug, 'model': case_mt.model,
+                    },
+                }],
+                'server_connections': [],
+            },
+        }
+        apply_case(case, clean=True)
+
+        # (3) The case NIC is readied; the foreign plan's NIC is untouched.
+        self.assertEqual(
+            ModuleBayTemplate.objects.filter(module_type=case_mt).count(), 2,
+            'ingest must ready the NIC the case declared',
+        )
+        self.assertEqual(
+            ModuleBayTemplate.objects.filter(module_type=foreign_mt).count(), 0,
+            'ingest must NOT ready a NIC belonging to an unrelated plan',
+        )

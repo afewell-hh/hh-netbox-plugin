@@ -705,8 +705,8 @@ def _apply_v2_case(case: dict, *, clean: bool = False, prune: bool = False) -> T
     return plan
 
 
-def _ensure_transceiver_bays() -> None:
-    """Give the inventory this case just introduced its transceiver bays.
+def _ensure_transceiver_bays(plan) -> None:
+    """Give the inventory *this case* introduced its transceiver bays.
 
     A case file may create its own DeviceTypes and NIC ModuleTypes through
     ``reference_data`` / ``test_fixtures``.  Those are not part of the bundled
@@ -714,13 +714,21 @@ def _ensure_transceiver_bays() -> None:
     generation after ingest fails preflight with "Transceiver bays missing"
     (#626).  Whoever creates the inventory owns readying it.
 
-    ``populate_transceiver_bays`` is idempotent and scopes NIC cages to
-    ModuleTypes referenced by a PlanServerNIC, which exist by the time this
-    runs, so repeat ingests stay safe.
-    """
-    from django.core.management import call_command
+    Scoped to *plan* deliberately.  The global catalog scope would also ready
+    NIC ModuleTypes referenced by unrelated plans, which would let ingesting one
+    case silently add ModuleBayTemplates to another plan's inventory -- and those
+    templates change what every future Device of that type instantiates.  Both
+    the switch and NIC scopes are narrowed, not just NICs.
 
-    call_command("populate_transceiver_bays", verbosity=0)
+    Idempotent, so repeat ingests stay safe.
+    """
+    from netbox_hedgehog.management.commands.populate_transceiver_bays import (
+        plan_scope,
+        populate_bays,
+    )
+
+    device_types, module_types = plan_scope(plan)
+    populate_bays(device_types=device_types, module_types=module_types)
 
 
 @transaction.atomic
@@ -738,7 +746,7 @@ def apply_case(
 
     if case.get("apiVersion") == "diet/v2":
         plan = _apply_v2_case(case, clean=clean, prune=prune)
-        _ensure_transceiver_bays()
+        _ensure_transceiver_bays(plan)
         return plan
 
     case_id = case["meta"]["case_id"]
@@ -1233,7 +1241,7 @@ def apply_case(
             valid_conn_ids = {cid for sid, cid in declared_conn_keys if sid == sc.server_class_id}
             PlanServerConnection.objects.filter(server_class=sc).exclude(connection_id__in=valid_conn_ids).delete()
 
-    _ensure_transceiver_bays()
+    _ensure_transceiver_bays(plan)
 
     _run_expected_assertions(case, plan)
 
