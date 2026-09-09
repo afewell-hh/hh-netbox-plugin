@@ -705,6 +705,32 @@ def _apply_v2_case(case: dict, *, clean: bool = False, prune: bool = False) -> T
     return plan
 
 
+def _ensure_transceiver_bays(plan) -> None:
+    """Give the inventory *this case* introduced its transceiver bays.
+
+    A case file may create its own DeviceTypes and NIC ModuleTypes through
+    ``reference_data`` / ``test_fixtures``.  Those are not part of the bundled
+    catalog that ``load_diet_reference_data`` readies, so without this the first
+    generation after ingest fails preflight with "Transceiver bays missing"
+    (#626).  Whoever creates the inventory owns readying it.
+
+    Scoped to *plan* deliberately.  The global catalog scope would also ready
+    NIC ModuleTypes referenced by unrelated plans, which would let ingesting one
+    case silently add ModuleBayTemplates to another plan's inventory -- and those
+    templates change what every future Device of that type instantiates.  Both
+    the switch and NIC scopes are narrowed, not just NICs.
+
+    Idempotent, so repeat ingests stay safe.
+    """
+    from netbox_hedgehog.management.commands.populate_transceiver_bays import (
+        plan_scope,
+        populate_bays,
+    )
+
+    device_types, module_types = plan_scope(plan)
+    populate_bays(device_types=device_types, module_types=module_types)
+
+
 @transaction.atomic
 def apply_case(
     case: dict,
@@ -719,7 +745,9 @@ def apply_case(
     case = validate_case_dict(case)
 
     if case.get("apiVersion") == "diet/v2":
-        return _apply_v2_case(case, clean=clean, prune=prune)
+        plan = _apply_v2_case(case, clean=clean, prune=prune)
+        _ensure_transceiver_bays(plan)
+        return plan
 
     case_id = case["meta"]["case_id"]
     plan_name = case["plan"]["name"]
@@ -1212,6 +1240,8 @@ def apply_case(
         for sc in PlanServerClass.objects.filter(plan=plan):
             valid_conn_ids = {cid for sid, cid in declared_conn_keys if sid == sc.server_class_id}
             PlanServerConnection.objects.filter(server_class=sc).exclude(connection_id__in=valid_conn_ids).delete()
+
+    _ensure_transceiver_bays(plan)
 
     _run_expected_assertions(case, plan)
 

@@ -22,7 +22,10 @@ that should appear in bootstrap or reset scripts.
 - `seed_generic_server_device_types` — seeds server DeviceTypes
 - `load_breakout_options` — seeds BreakoutOptions
 - `populate_transceiver_bays` — builds ModuleBayTemplates from InterfaceTemplates
-  (run after `load_diet_reference_data`)
+  on the seeded switch DeviceTypes and NIC ModuleTypes. Invoked by
+  `load_diet_reference_data`, so bootstrap alone leaves the environment
+  generation-ready. Call it directly only for inventory introduced after
+  bootstrap (for example NIC ModuleTypes created by a YAML case file).
 
 ### Deprecated Commands
 

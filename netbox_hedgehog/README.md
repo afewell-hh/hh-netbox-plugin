@@ -18,8 +18,13 @@ full reset. It is idempotent — safe to run multiple times.
 - Management switch (`celestica-es1000`) via `seed_management_switch_device_types`
 - Server DeviceTypes (`gpu-server-fe`, `gpu-server-fe-be`, `storage-server-200g`)
 - All BreakoutOptions and NIC / transceiver ModuleTypes
+- Transceiver ModuleBayTemplates on the seeded switch DeviceTypes and NIC
+  ModuleTypes, via `populate_transceiver_bays`
 
-After seeding, run `populate_transceiver_bays` to build ModuleBayTemplates.
+A bootstrapped environment is generation-ready; no further manual command is
+required. Run `populate_transceiver_bays` directly only for inventory
+introduced after bootstrap, such as NIC ModuleTypes created by a YAML case
+file.
 
 ## Static vs Dynamic Inventory
 

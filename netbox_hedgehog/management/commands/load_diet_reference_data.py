@@ -85,6 +85,15 @@ class Command(BaseCommand):
         transceiver_profile = self.ensure_network_transceiver_profile()
         module_type_count = self.seed_static_module_inventory(transceiver_profile)
 
+        # Transceiver bays are part of the reference data this command owns:
+        # generation places transceiver Modules into ModuleBayTemplate slots on
+        # the seeded switch DeviceTypes and NIC ModuleTypes.  Without them a
+        # freshly bootstrapped environment looks ready and then fails every
+        # generation on preflight, which previously required an undocumented
+        # manual populate_transceiver_bays run (#626).  The command is
+        # idempotent, so repeat bootstraps stay safe.
+        call_command("populate_transceiver_bays", verbosity=0)
+
         self.stdout.write(self.style.SUCCESS(
             f'\nSuccessfully loaded DIET reference data:'
         ))
@@ -102,6 +111,9 @@ class Command(BaseCommand):
         ))
         self.stdout.write(self.style.SUCCESS(
             f'  - Module inventory ensured: {module_type_count}'
+        ))
+        self.stdout.write(self.style.SUCCESS(
+            '  - Transceiver bays populated (environment is generation-ready)'
         ))
         if retired_count:
             self.stdout.write(self.style.WARNING(
