@@ -93,6 +93,8 @@ class DeviceGenerationJob(JobRunner):
             state.job = self.job  # Re-link job to new state object
             state.save()
 
+            self.logger.info("Phase 6/6: Updating generation state")
+
             if state.status == GenerationStatusChoices.FAILED:
                 report = state.mismatch_report or {}
                 self.logger.warning(
@@ -103,7 +105,7 @@ class DeviceGenerationJob(JobRunner):
                 )
             else:
                 self.logger.info(
-                    f"Generation complete: {result.device_count} devices, "
+                    f"✓ Generation complete: {result.device_count} devices, "
                     f"{result.interface_count} interfaces, {result.cable_count} cables"
                 )
 

@@ -568,7 +568,9 @@ class TopologyPlanGenerateUpdateView(View):
         plugin_config = settings.PLUGINS_CONFIG.get('netbox_hedgehog', {})
         timeout = plugin_config.get('device_generation_timeout', 3600)
 
-        # Enqueue DeviceGenerationJob (passing plan_id as arg, not instance)
+        # Enqueue DeviceGenerationJob (passing plan_id as arg, not instance).
+        # TopologyPlan is not a NetBox job-capable object type, so the
+        # GenerationState relation is the authoritative plan-to-job link.
         job = DeviceGenerationJob.enqueue(
             name=f"Generate devices for plan: {plan.name}",
             user=request.user,
