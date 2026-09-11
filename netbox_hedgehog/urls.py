@@ -1,6 +1,7 @@
-from django.urls import path
+from django.urls import path, reverse_lazy
 from django.views.generic import TemplateView, ListView, CreateView, UpdateView, DeleteView, RedirectView
 from netbox.views.generic import ObjectView
+from utilities.views import ObjectPermissionRequiredMixin
 
 from .models import HedgehogFabric, VPC, External
 from .forms import HedgehogFabricForm, VPCForm, ExternalForm
@@ -57,32 +58,56 @@ class OverviewView(TemplateView):
         return context
 
 # Fabric Views
-class FabricListView(ListView):
+#
+# DIET-625: these are plain Django generic views, which perform no NetBox
+# ObjectPermission checking of their own -- any authenticated user could list,
+# create, modify, and delete fabric configuration (including its Kubernetes
+# credentials). ObjectPermissionRequiredMixin is NetBox's conventional
+# enforcement point: it evaluates model-level AND object-level grants and
+# filters the queryset to permitted objects. FabricDetailView already inherits
+# enforcement from NetBox's ObjectView and is left alone.
+class FabricListView(ObjectPermissionRequiredMixin, ListView):
     model = HedgehogFabric
+    queryset = HedgehogFabric.objects.all()
     template_name = 'netbox_hedgehog/fabric_list.html'
     context_object_name = 'fabrics'
     paginate_by = 25
+
+    def get_required_permission(self):
+        return 'netbox_hedgehog.view_hedgehogfabric'
 
 class FabricDetailView(ObjectView):
     queryset = HedgehogFabric.objects.all()
     template_name = 'netbox_hedgehog/fabric_detail.html'
 
-class FabricCreateView(CreateView):
+class FabricCreateView(ObjectPermissionRequiredMixin, CreateView):
     model = HedgehogFabric
+    queryset = HedgehogFabric.objects.all()
     form_class = HedgehogFabricForm
     template_name = 'netbox_hedgehog/fabric_edit.html'
-    success_url = '/plugins/netbox_hedgehog/fabrics/'
+    success_url = reverse_lazy('plugins:netbox_hedgehog:fabric_list')
 
-class FabricEditView(UpdateView):
+    def get_required_permission(self):
+        return 'netbox_hedgehog.add_hedgehogfabric'
+
+class FabricEditView(ObjectPermissionRequiredMixin, UpdateView):
     model = HedgehogFabric
+    queryset = HedgehogFabric.objects.all()
     form_class = HedgehogFabricForm
     template_name = 'netbox_hedgehog/fabric_edit.html'
-    success_url = '/plugins/netbox_hedgehog/fabrics/'
+    success_url = reverse_lazy('plugins:netbox_hedgehog:fabric_list')
 
-class FabricDeleteView(DeleteView):
+    def get_required_permission(self):
+        return 'netbox_hedgehog.change_hedgehogfabric'
+
+class FabricDeleteView(ObjectPermissionRequiredMixin, DeleteView):
     model = HedgehogFabric
+    queryset = HedgehogFabric.objects.all()
     template_name = 'netbox_hedgehog/fabric_confirm_delete.html'
-    success_url = '/plugins/netbox_hedgehog/fabrics/'
+    success_url = reverse_lazy('plugins:netbox_hedgehog:fabric_list')
+
+    def get_required_permission(self):
+        return 'netbox_hedgehog.delete_hedgehogfabric'
 
 # Other Views
 class TopologyView(TemplateView):

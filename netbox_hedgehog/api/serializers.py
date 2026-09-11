@@ -14,16 +14,32 @@ class BaseCRDSerializer(NetBoxModelSerializer):
             if hasattr(field, 'view_name'):
                 field.view_name = None
 
+#: Credential fields that must never be returned in a REST response or written
+#: into a changelog/event record (DIET-625). They remain writable so the API can
+#: still set them; ``write_only`` means "accept on input, never emit on output".
+FABRIC_SECRET_FIELDS = ('kubernetes_token', 'kubernetes_ca_cert')
+
+FABRIC_SECRET_EXTRA_KWARGS = {
+    field: {'write_only': True} for field in FABRIC_SECRET_FIELDS
+}
+
+
 class FabricSerializer(NetBoxModelSerializer):
     class Meta:
         model = models.HedgehogFabric
         fields = '__all__'
+        extra_kwargs = FABRIC_SECRET_EXTRA_KWARGS
 
-# Alias for NetBox event system
+
+# Alias for NetBox event system.
+# DIET-625: this serializer also feeds NetBox change logging, so without
+# write_only the stored token would be persisted into changelog records —
+# a durable disclosure that outlives the object itself.
 class HedgehogFabricSerializer(NetBoxModelSerializer):
     class Meta:
         model = models.HedgehogFabric
         fields = '__all__'
+        extra_kwargs = FABRIC_SECRET_EXTRA_KWARGS
 
 # VPC API Serializers
 class VPCSerializer(BaseCRDSerializer):
