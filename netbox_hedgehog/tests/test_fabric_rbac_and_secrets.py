@@ -119,7 +119,7 @@ class LegacyFabricCrudAuthorizationTestCase(_FabricSecurityBase):
         self.assertTrue(HedgehogFabric.objects.filter(pk=self.fabric.pk).exists(),
                         'unauthorized POST must not delete a fabric')
 
-    # NOTE (DIET-625, Dev B review finding 2): these two encode the required
+    # NOTE (DIET-625, Dev B review finding 2; tracked by #653): these encode the required
     # "authorized success" criterion for create and delete, but they cannot pass
     # today. Both mutations raise ImproperlyConfigured during NetBox change-log
     # serialization -- a PRE-EXISTING defect independent of this patch, verified
@@ -128,7 +128,8 @@ class LegacyFabricCrudAuthorizationTestCase(_FabricSecurityBase):
     #     delete -> raises, object still present
     # They are marked expectedFailure rather than deleted so the requirement
     # stays encoded and asserted; when the serializer defect is fixed they will
-    # report an unexpected success and force this marker to be removed. They are
+    # report an unexpected success and force this marker to be removed.
+    # #653 owns that fix and REQUIRES removing these two decorators. They are
     # NOT masking an authorization failure -- the unauthorized-mutation tests
     # above pass on their own merits.
     @unittest.expectedFailure
