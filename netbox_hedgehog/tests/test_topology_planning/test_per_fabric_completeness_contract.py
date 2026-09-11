@@ -133,6 +133,13 @@ class UCCase128PerFabricContractTestCase(TestCase):
     #: The canonical frontend redundancy group approved by #246 / restored by #637.
     CANONICAL_FE_GROUP = 'fe-border-leaf-eslag'
 
+    #: Redundancy types that legitimately materialize a SwitchGroup CRD.
+    #: Deliberately a literal set rather than derived from the model's field
+    #: choices: #246 authorizes ESLAG/MCLAG grouping *specifically*, so a future
+    #: redundancy type must be an explicit contract decision rather than silently
+    #: inheriting permission to emit groups (Dev B review of DIET-649).
+    GROUPING_REDUNDANCY_TYPES = frozenset({'mclag', 'eslag'})
+
     @classmethod
     def setUpTestData(cls):
         from netbox_hedgehog.services.device_generator import DeviceGenerator
@@ -248,13 +255,19 @@ class UCCase128PerFabricContractTestCase(TestCase):
         """Redundancy groups explicitly declared by this fabric's switch classes.
 
         This is the contract's reference set. A SwitchGroup CRD is legitimate
-        exactly when a switch class asked for it; anything else is gratuitous.
+        exactly when a switch class declared an ESLAG/MCLAG grouping; anything
+        else is gratuitous.
+
+        The redundancy_type filter is the narrow reading of #246, which
+        authorizes ESLAG/MCLAG groups specifically. A non-empty redundancy_group
+        alone is deliberately NOT sufficient -- accepting any named group would
+        over-broaden the contract for redundancy types nobody has approved.
         """
         from netbox_hedgehog.models.topology_planning import PlanSwitchClass
         return {
             sc.redundancy_group
             for sc in PlanSwitchClass.objects.filter(plan=self._plan, fabric_name=fabric)
-            if sc.redundancy_group
+            if sc.redundancy_group and sc.redundancy_type in self.GROUPING_REDUNDANCY_TYPES
         }
 
     def test_fe_switch_groups_match_declared_redundancy(self):
@@ -320,6 +333,8 @@ class UCCase128PerFabricContractTestCase(TestCase):
         self.assertEqual(border.fabric_name, self.FE_FABRIC,
                          'fe-border-leaf must be a frontend class for this contract to apply')
         self.assertEqual(border.redundancy_type, 'eslag')
+        self.assertIn(border.redundancy_type, self.GROUPING_REDUNDANCY_TYPES,
+                      'only ESLAG/MCLAG classes may materialize a SwitchGroup (#246)')
         self.assertEqual(border.redundancy_group, self.CANONICAL_FE_GROUP)
 
     def test_canonical_export_emits_frontend_eslag_group(self):
