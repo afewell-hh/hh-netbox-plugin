@@ -21,6 +21,7 @@ from django.contrib.auth import get_user_model
 from django.contrib.contenttypes.models import ContentType
 from django.test import Client, TestCase
 from django.urls import reverse
+from django.utils.html import escape
 
 from dcim.models import DeviceType, Manufacturer
 from users.models import ObjectPermission
@@ -151,6 +152,21 @@ class ScopedDependentChoicesTestCase(TestCase):
         payload.update(overrides)
         return payload
 
+    def _assert_error_visible(self, response, field_name):
+        """The rejection must reach the user, not only form.errors.
+
+        A forged submission that is rejected silently -- or whose error never
+        renders -- looks to the user like the save simply did nothing.
+        """
+        form = response.context['form']
+        errors = form.errors.get(field_name)
+        self.assertTrue(errors, f'{field_name} must carry a field error')
+        html = response.content.decode()
+        for message in errors:
+            self.assertIn(
+                escape(message), html,
+                f'the {field_name} error must be rendered in the response, not just held in form.errors')
+
     # --- 1. Initial add view: no choices offered before a server class -------
 
     def test_initial_add_form_offers_no_nic_choices(self):
@@ -229,6 +245,38 @@ class ScopedDependentChoicesTestCase(TestCase):
         self.assertIn(self.zone_a.pk, zone_pks)
         self.assertNotIn(self.zone_b.pk, zone_pks, 'Cross-plan zone must be excluded')
 
+    def test_add_form_scoped_by_server_class_query_param(self):
+        """GET ?server_class=<pk> must scope the dependent controls.
+
+        This is the real entry point when a user navigates to "add connection"
+        from a server class: scope is implied by the query string, not by POST
+        data. If narrowing only happened on POST, this path would still offer
+        every NIC in the install -- the exact G8 defect, just reached differently.
+        """
+        response = self.client.get(f'{reverse(ADD_URL)}?server_class={self.sc_a.pk}')
+        self.assertEqual(response.status_code, 200)
+        form = response.context['form']
+
+        nic_pks = set(form.fields['nic'].queryset.values_list('pk', flat=True))
+        self.assertIn(self.nic_a.pk, nic_pks,
+                      'in-scope NIC must be offered when server_class is given in the query string')
+        self.assertNotIn(self.nic_a2.pk, nic_pks, 'same-plan other server class NIC must be excluded')
+        self.assertNotIn(self.nic_b.pk, nic_pks, 'cross-plan NIC must be excluded')
+
+        zone_pks = set(form.fields['target_zone'].queryset.values_list('pk', flat=True))
+        self.assertIn(self.zone_a.pk, zone_pks,
+                      'in-scope zone must be offered when server_class is given in the query string')
+        self.assertNotIn(self.zone_b.pk, zone_pks, 'cross-plan zone must be excluded')
+
+    def test_add_form_query_param_scoping_renders_only_scoped_options(self):
+        """The rendered controls must match the scoped querysets, not just the
+        in-memory field state."""
+        response = self.client.get(f'{reverse(ADD_URL)}?server_class={self.sc_a.pk}')
+        html = response.content.decode()
+        self.assertEqual(
+            self._rendered_option_values(html, 'nic'), [str(self.nic_a.pk)],
+            'only the in-scope NIC may be rendered as a selectable option')
+
     # --- 3. Valid scoped create --------------------------------------------
 
     def test_valid_scoped_post_creates_connection(self):
@@ -253,6 +301,7 @@ class ScopedDependentChoicesTestCase(TestCase):
         self.assertEqual(response.status_code, 200, 'Must re-render, not redirect')
         self.assertEqual(PlanServerConnection.objects.count(), before)
         self.assertTrue(response.context['form'].errors)
+        self._assert_error_visible(response, 'nic')
 
     def test_forged_cross_plan_nic_is_rejected(self):
         before = PlanServerConnection.objects.count()
@@ -262,6 +311,7 @@ class ScopedDependentChoicesTestCase(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertEqual(PlanServerConnection.objects.count(), before)
         self.assertTrue(response.context['form'].errors)
+        self._assert_error_visible(response, 'nic')
 
     def test_forged_cross_plan_target_zone_is_rejected(self):
         before = PlanServerConnection.objects.count()
@@ -271,6 +321,7 @@ class ScopedDependentChoicesTestCase(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertEqual(PlanServerConnection.objects.count(), before)
         self.assertTrue(response.context['form'].errors)
+        self._assert_error_visible(response, 'target_zone')
 
     # --- 5. Edit behaviour --------------------------------------------------
 
