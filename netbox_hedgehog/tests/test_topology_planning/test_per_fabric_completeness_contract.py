@@ -9,6 +9,18 @@ Live count verification (2026-05-10, pk=207, branch diet-517-green):
   frontend: VLANNamespace=1 IPv4Namespace=1 SwitchGroup=0 Switch=10 Server=159 Connection=342
   backend:  VLANNamespace=1 IPv4Namespace=1 SwitchGroup=0 Switch=6  Server=32  Connection=264
 
+DIET-649 correction: the frontend SwitchGroup=0 figure above is stale. #246 is the
+controlling decision -- it approved ESLAG on the canonical fe-border-leaf class for
+alternating distribution, and #637 restored `redundancy_type: eslag` /
+`redundancy_group: fe-border-leaf-eslag`. That declaration legitimately materializes
+exactly one frontend SwitchGroup CRD.
+
+The contract is therefore expressed as a RULE rather than a frozen count: a fabric's
+emitted SwitchGroup names must equal the set of redundancy groups its switch classes
+explicitly declare. That still rejects gratuitous groups (anything undeclared), still
+yields zero for a fabric declaring none, and cannot go stale the way a hardcoded count
+did when approved topology intent changed.
+
 RED matrix: 19 tests (T1-T17 run without hhfab; T18-T19 skip when hhfab absent).
 
 Setup architecture:
@@ -107,14 +119,19 @@ class UCCase128PerFabricContractTestCase(TestCase):
     FE_FABRIC = _FE_FABRIC
     BE_FABRIC = _BE_FABRIC
 
+    # SwitchGroup is deliberately absent here: it is derived from what the plan's
+    # switch classes declare (see _declared_groups), not frozen. See DIET-649.
     EXPECTED_FE = {
         'VLANNamespace': 1, 'IPv4Namespace': 1,
-        'SwitchGroup': 0, 'Switch': 10, 'Server': 159, 'Connection': 342,
+        'Switch': 10, 'Server': 159, 'Connection': 342,
     }
     EXPECTED_BE = {
         'VLANNamespace': 1, 'IPv4Namespace': 1,
-        'SwitchGroup': 0, 'Switch': 6, 'Server': 32, 'Connection': 264,
+        'Switch': 6, 'Server': 32, 'Connection': 264,
     }
+
+    #: The canonical frontend redundancy group approved by #246 / restored by #637.
+    CANONICAL_FE_GROUP = 'fe-border-leaf-eslag'
 
     @classmethod
     def setUpTestData(cls):
@@ -175,6 +192,7 @@ class UCCase128PerFabricContractTestCase(TestCase):
         cls._be_sg_names = _names_for_kind(cls._be_content, 'SwitchGroup')
         cls._fe_conn_refs = _connection_switch_names(cls._fe_content)
         cls._be_conn_refs = _connection_switch_names(cls._be_content)
+        cls._plan = plan
 
     # T1 -------------------------------------------------------------------
     def test_split_produces_exactly_two_managed_fabric_files(self):
@@ -225,20 +243,111 @@ class UCCase128PerFabricContractTestCase(TestCase):
             f"BE Switch: expected {self.EXPECTED_BE['Switch']}, got {actual} "
             f"(fabric=backend, artifact=wiring-backend.yaml)")
 
-    # T8-T9: switch group counts -------------------------------------------
-    def test_fe_switch_group_count(self):
-        """T8: FE has exactly 0 SwitchGroup CRDs (no ESLAG/MCLAG redundancy protocol on FE)."""
-        actual = _count_kinds(self._fe_content).get('SwitchGroup', 0)
-        self.assertEqual(actual, self.EXPECTED_FE['SwitchGroup'],
-            f"FE SwitchGroup: expected {self.EXPECTED_FE['SwitchGroup']}, got {actual} "
+    # T8-T9: switch groups match declared redundancy intent ------------------
+    def _declared_groups(self, fabric):
+        """Redundancy groups explicitly declared by this fabric's switch classes.
+
+        This is the contract's reference set. A SwitchGroup CRD is legitimate
+        exactly when a switch class asked for it; anything else is gratuitous.
+        """
+        from netbox_hedgehog.models.topology_planning import PlanSwitchClass
+        return {
+            sc.redundancy_group
+            for sc in PlanSwitchClass.objects.filter(plan=self._plan, fabric_name=fabric)
+            if sc.redundancy_group
+        }
+
+    def test_fe_switch_groups_match_declared_redundancy(self):
+        """T8: FE SwitchGroups are exactly those its switch classes declare.
+
+        Narrowed from "FE has zero SwitchGroups" (DIET-649). #246 approved ESLAG
+        on fe-border-leaf, so a frontend SwitchGroup is required -- but only the
+        declared one. An undeclared group still fails here.
+        """
+        declared = self._declared_groups(self.FE_FABRIC)
+        self.assertEqual(
+            self._fe_sg_names, declared,
+            f"FE SwitchGroup CRDs must equal declared frontend redundancy groups. "
+            f"emitted={sorted(self._fe_sg_names)} declared={sorted(declared)} "
             f"(fabric=frontend, artifact=wiring-frontend.yaml)")
 
-    def test_be_switch_group_count(self):
-        """T9: BE has exactly 0 SwitchGroup CRDs."""
-        actual = _count_kinds(self._be_content).get('SwitchGroup', 0)
-        self.assertEqual(actual, self.EXPECTED_BE['SwitchGroup'],
-            f"BE SwitchGroup: expected {self.EXPECTED_BE['SwitchGroup']}, got {actual} "
+    def test_be_switch_groups_match_declared_redundancy(self):
+        """T9: BE SwitchGroups are exactly those its switch classes declare.
+
+        Backend declares none in the canonical case, so this still asserts zero --
+        by the rule rather than by a frozen constant.
+        """
+        declared = self._declared_groups(self.BE_FABRIC)
+        self.assertEqual(
+            self._be_sg_names, declared,
+            f"BE SwitchGroup CRDs must equal declared backend redundancy groups. "
+            f"emitted={sorted(self._be_sg_names)} declared={sorted(declared)} "
             f"(fabric=backend, artifact=wiring-backend.yaml)")
+
+    def test_no_gratuitous_switch_groups_in_either_fabric(self):
+        """T8b: every emitted SwitchGroup traces to an explicit declaration.
+
+        The exclusion half of the contract, kept explicit so narrowing T8 cannot
+        be mistaken for removing the guard against spurious groups.
+        """
+        for fabric, emitted in (
+            (self.FE_FABRIC, self._fe_sg_names),
+            (self.BE_FABRIC, self._be_sg_names),
+        ):
+            undeclared = emitted - self._declared_groups(fabric)
+            self.assertEqual(
+                undeclared, set(),
+                f"{fabric}: SwitchGroup CRDs emitted without a declaring switch class: "
+                f"{sorted(undeclared)}")
+
+    # T8c-T8e: canonical ESLAG coverage — source, ingest, export -------------
+    def test_canonical_source_declares_frontend_eslag_group(self):
+        """T8c: SOURCE — the canonical YAML declares the approved #246 intent."""
+        from netbox_hedgehog.tests.test_topology_planning.case_128gpu_helpers import (
+            load_case_128gpu,
+        )
+        border = next(
+            sc for sc in load_case_128gpu()['switch_classes']
+            if sc['switch_class_id'] == 'fe-border-leaf'
+        )
+        self.assertEqual(border.get('redundancy_type'), 'eslag')
+        self.assertEqual(border.get('redundancy_group'), self.CANONICAL_FE_GROUP)
+
+    def test_canonical_ingest_persists_frontend_eslag_group(self):
+        """T8d: INGEST — the declaration reaches the plan on a frontend class."""
+        from netbox_hedgehog.models.topology_planning import PlanSwitchClass
+        border = PlanSwitchClass.objects.get(plan=self._plan, switch_class_id='fe-border-leaf')
+        self.assertEqual(border.fabric_name, self.FE_FABRIC,
+                         'fe-border-leaf must be a frontend class for this contract to apply')
+        self.assertEqual(border.redundancy_type, 'eslag')
+        self.assertEqual(border.redundancy_group, self.CANONICAL_FE_GROUP)
+
+    def test_canonical_export_emits_frontend_eslag_group(self):
+        """T8e: EXPORT — exactly one frontend SwitchGroup, and it is the declared one."""
+        self.assertIn(
+            self.CANONICAL_FE_GROUP, self._fe_sg_names,
+            f"canonical frontend SwitchGroup {self.CANONICAL_FE_GROUP!r} missing from "
+            f"wiring-frontend.yaml; emitted={sorted(self._fe_sg_names)}")
+        self.assertEqual(
+            len(self._fe_sg_names), 1,
+            f"expected exactly one frontend SwitchGroup; got {sorted(self._fe_sg_names)}")
+
+    def test_canonical_frontend_switches_reference_the_group(self):
+        """T8f: EXPORT — the group is referenced, not orphaned.
+
+        A SwitchGroup CRD nothing points at would satisfy a count check while
+        being meaningless, so assert membership from the Switch side too.
+        """
+        referencing = [
+            doc['metadata']['name']
+            for doc in yaml.safe_load_all(self._fe_content)
+            if isinstance(doc, dict) and doc.get('kind') == 'Switch'
+            and self.CANONICAL_FE_GROUP in (doc.get('spec', {}).get('groups') or [])
+        ]
+        self.assertTrue(
+            referencing,
+            f"no frontend Switch CRD references {self.CANONICAL_FE_GROUP!r}; "
+            f"an unreferenced SwitchGroup is not the approved #246 intent")
 
     # T10-T11: server counts -----------------------------------------------
     def test_fe_server_count(self):
