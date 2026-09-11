@@ -18,6 +18,8 @@ tests. The sentinel is deliberately self-describing so it can never be mistaken
 for a live credential in output.
 """
 
+import unittest
+
 from django.contrib.auth import get_user_model
 from django.contrib.contenttypes.models import ContentType
 from django.test import Client, TestCase
@@ -117,6 +119,45 @@ class LegacyFabricCrudAuthorizationTestCase(_FabricSecurityBase):
         self.assertTrue(HedgehogFabric.objects.filter(pk=self.fabric.pk).exists(),
                         'unauthorized POST must not delete a fabric')
 
+    # NOTE (DIET-625, Dev B review finding 2): these two encode the required
+    # "authorized success" criterion for create and delete, but they cannot pass
+    # today. Both mutations raise ImproperlyConfigured during NetBox change-log
+    # serialization -- a PRE-EXISTING defect independent of this patch, verified
+    # on main with these changes stashed:
+    #     create -> raises AFTER the object is created
+    #     delete -> raises, object still present
+    # They are marked expectedFailure rather than deleted so the requirement
+    # stays encoded and asserted; when the serializer defect is fixed they will
+    # report an unexpected success and force this marker to be removed. They are
+    # NOT masking an authorization failure -- the unauthorized-mutation tests
+    # above pass on their own merits.
+    @unittest.expectedFailure
+    def test_create_allowed_with_objectpermission(self):
+        """Authorized create must succeed as a real request flow."""
+        self._grant(self.nobody, ['view', 'add'])
+        client = self._login('fabric-nobody')
+        before = HedgehogFabric.objects.count()
+        client.post(reverse(FABRIC_ADD), data={
+            'name': 'authorized-create', 'description': '', 'status': 'active',
+            'kubernetes_server': '', 'kubernetes_token': '', 'kubernetes_ca_cert': '',
+            'kubernetes_namespace': 'default', 'sync_interval': 300,
+        })
+        self.assertEqual(HedgehogFabric.objects.count(), before + 1,
+                         'granted add permission must allow fabric creation')
+        self.assertTrue(HedgehogFabric.objects.filter(name='authorized-create').exists())
+
+    @unittest.expectedFailure
+    def test_delete_allowed_with_objectpermission(self):
+        """Authorized delete must succeed as a real request flow."""
+        self._grant(self.nobody, ['view', 'delete'])
+        target = HedgehogFabric.objects.create(
+            name='delete-me', kubernetes_namespace='default', sync_interval=300,
+        )
+        client = self._login('fabric-nobody')
+        client.post(reverse(FABRIC_DELETE, args=[target.pk]))
+        self.assertFalse(HedgehogFabric.objects.filter(pk=target.pk).exists(),
+                         'granted delete permission must allow fabric deletion')
+
     def test_list_allowed_with_objectpermission(self):
         self._grant(self.nobody, ['view'])
         client = self._login('fabric-nobody')
@@ -189,6 +230,16 @@ class FabricCredentialDisclosureTestCase(_FabricSecurityBase):
         self.assertEqual(response.status_code, 200)
         self.assertNotIn(SYNTHETIC_TOKEN, response.content.decode(),
                          'edit form must not render the stored token back in cleartext')
+
+    def test_edit_form_does_not_render_stored_ca_cert(self):
+        """The CA cert is declared write_only in both serializers, so the form
+        must not render it back either (Dev B review finding 1: the two were
+        classified as sensitive but treated inconsistently)."""
+        client = self._login('fabric-admin')
+        response = client.get(reverse(FABRIC_EDIT, args=[self.fabric.pk]))
+        self.assertEqual(response.status_code, 200)
+        self.assertNotIn(SYNTHETIC_CA, response.content.decode(),
+                         'edit form must not render the stored CA certificate')
 
     def test_detail_view_does_not_render_token(self):
         client = self._login('fabric-admin')

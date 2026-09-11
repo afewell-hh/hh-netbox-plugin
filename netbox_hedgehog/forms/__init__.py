@@ -33,6 +33,10 @@ class HedgehogFabricForm(ModelForm):
                     'autocomplete': 'new-password',
                 },
             ),
+            # DIET-625: rendered empty via __init__ so the stored value is never
+            # returned in the response. Kept as a Textarea (not PasswordInput)
+            # because a PEM blob is multi-line and masking it hurts entry UX
+            # without adding protection beyond non-disclosure.
             'kubernetes_ca_cert': forms.Textarea(attrs={
                 'rows': 4,
                 'placeholder': 'CA certificate for TLS verification (optional)',
@@ -52,6 +56,20 @@ class HedgehogFabricForm(ModelForm):
             'kubernetes_namespace': 'Default namespace for this fabric\'s resources',
             'sync_interval': 'Sync interval in seconds (0 to disable)',
         }
+
+    #: Fields whose stored value must never be rendered back into the page.
+    SECRET_FIELDS = ('kubernetes_token', 'kubernetes_ca_cert')
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        # DIET-625: never seed a bound/initial secret value into the rendered
+        # widget. PasswordInput(render_value=False) already covers the token;
+        # this also covers the CA textarea and any future secret field, so the
+        # two cannot drift apart the way they did in review.
+        for name in self.SECRET_FIELDS:
+            if name in self.fields:
+                self.initial[name] = ''
+                self.fields[name].required = False
 
     def clean_kubernetes_token(self):
         """Blank means "unchanged", not "clear the credential".
