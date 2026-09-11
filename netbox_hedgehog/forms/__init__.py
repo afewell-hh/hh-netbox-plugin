@@ -22,11 +22,21 @@ class HedgehogFabricForm(ModelForm):
                 'placeholder': 'https://k8s-api.example.com:6443',
                 'class': 'form-control'
             }),
-            'kubernetes_token': forms.Textarea(attrs={
-                'rows': 4,
-                'placeholder': 'Service account token for authentication',
-                'class': 'form-control'
-            }),
+            # DIET-625: never render the stored token back into the page.
+            # PasswordInput(render_value=False) keeps the field writable while
+            # ensuring the response body carries no credential material.
+            'kubernetes_token': forms.PasswordInput(
+                render_value=False,
+                attrs={
+                    'placeholder': 'Leave blank to keep the existing token',
+                    'class': 'form-control',
+                    'autocomplete': 'new-password',
+                },
+            ),
+            # DIET-625: rendered empty via __init__ so the stored value is never
+            # returned in the response. Kept as a Textarea (not PasswordInput)
+            # because a PEM blob is multi-line and masking it hurts entry UX
+            # without adding protection beyond non-disclosure.
             'kubernetes_ca_cert': forms.Textarea(attrs={
                 'rows': 4,
                 'placeholder': 'CA certificate for TLS verification (optional)',
@@ -46,6 +56,40 @@ class HedgehogFabricForm(ModelForm):
             'kubernetes_namespace': 'Default namespace for this fabric\'s resources',
             'sync_interval': 'Sync interval in seconds (0 to disable)',
         }
+
+    #: Fields whose stored value must never be rendered back into the page.
+    SECRET_FIELDS = ('kubernetes_token', 'kubernetes_ca_cert')
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        # DIET-625: never seed a bound/initial secret value into the rendered
+        # widget. PasswordInput(render_value=False) already covers the token;
+        # this also covers the CA textarea and any future secret field, so the
+        # two cannot drift apart the way they did in review.
+        for name in self.SECRET_FIELDS:
+            if name in self.fields:
+                self.initial[name] = ''
+                self.fields[name].required = False
+
+    def clean_kubernetes_token(self):
+        """Blank means "unchanged", not "clear the credential".
+
+        The widget deliberately renders empty (DIET-625), so an ordinary save
+        submits an empty value. Treating that as a clear would silently rotate
+        every configured fabric's credential and break its connectivity --
+        turning a disclosure fix into an outage.
+        """
+        submitted = self.cleaned_data.get('kubernetes_token')
+        if not submitted and self.instance and self.instance.pk:
+            return self.instance.kubernetes_token
+        return submitted
+
+    def clean_kubernetes_ca_cert(self):
+        """Blank means "unchanged" -- same rationale as the token."""
+        submitted = self.cleaned_data.get('kubernetes_ca_cert')
+        if not submitted and self.instance and self.instance.pk:
+            return self.instance.kubernetes_ca_cert
+        return submitted
 
 # Import forms from other modules
 from .vpc_api import VPCForm, ExternalForm, IPv4NamespaceForm, ExternalAttachmentForm, ExternalPeeringForm, VPCAttachmentForm, VPCPeeringForm
