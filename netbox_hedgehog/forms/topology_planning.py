@@ -450,6 +450,18 @@ class PlanServerConnectionForm(NetBoxModelForm):
             )
             self.fields['nic'].help_text = f'NICs for server class: {server_class.server_class_id}'
         else:
+            # DIET-645 (#618 finding G8): with no resolvable server class there is
+            # no in-scope choice to offer. Leaving the default querysets in place
+            # made the add form present every NIC and zone in the install, so a
+            # user could select an option the form itself offered and have it
+            # rejected on submit with Django's generic "Select a valid choice".
+            # Offer nothing and explain the prerequisite instead. This is a
+            # presentation-scoping change only: the POST path re-resolves
+            # server_class from submitted data and the edit path resolves it from
+            # the instance, so real choices are restored whenever scope is known.
+            # Model/API integrity validation is unchanged.
+            self.fields['target_zone'].queryset = SwitchPortZone.objects.none()
+            self.fields['nic'].queryset = PlanServerNIC.objects.none()
             self.fields['target_zone'].help_text = (
                 'Select a server class first. Target zone must be from the same plan.'
             )
