@@ -95,6 +95,7 @@ jobs:
             netbox_hedgehog.tests.test_topology_planning.test_generate_integration.TopologyPlanGenerateIntegrationTestCase.test_generate_post_creates_devices \
             netbox_hedgehog.tests.test_topology_planning.test_generate_integration.TopologyPlanGenerateIntegrationTestCase.test_generate_post_creates_cables \
             netbox_hedgehog.tests.test_topology_planning.test_form_validation.TopologyPlanFormValidationTestCase \
+            --testrunner=netbox_hedgehog.tests.runner.DietTestRunner \
             --verbosity=2 | tee diet-pr-regression.log
 
       - name: Upload DIET test log
@@ -255,7 +256,9 @@ jobs:
           # ExportHHFabValidationGateTestCase enforces hhfab validation (hhfab now in container).
           cd netbox-docker
           docker compose exec -T netbox python -u manage.py test \
-            netbox_hedgehog.tests.test_topology_planning --verbosity=2 | tee diet-full-regression.log
+            netbox_hedgehog.tests.test_topology_planning \
+            --testrunner=netbox_hedgehog.tests.runner.DietTestRunner \
+            --verbosity=2 | tee diet-full-regression.log
 
       - name: Upload full DIET test log
         if: always()
