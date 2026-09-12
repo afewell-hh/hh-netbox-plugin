@@ -221,6 +221,21 @@ class HedgehogFabric(NetBoxModel):
             pass
         return total
     
+    #: Fields excluded from change-log snapshots (DIET-653).
+    #: DIET-625 marked these write_only on the REST serializers, but change
+    #: logging does not use those serializers -- it calls serialize_object(),
+    #: which emits every model field. Without this the credential is written
+    #: into ObjectChange.prechange_data/postchange_data in cleartext, where it
+    #: is durable and outlives the object: rotating the credential does not
+    #: remove it from history.
+    CHANGELOG_EXCLUDED_FIELDS = ('kubernetes_token', 'kubernetes_ca_cert')
+
+    def serialize_object(self, exclude=None):
+        """Exclude Kubernetes credentials from change-log snapshots."""
+        exclude = list(exclude or [])
+        exclude.extend(f for f in self.CHANGELOG_EXCLUDED_FIELDS if f not in exclude)
+        return super().serialize_object(exclude=exclude)
+
     def get_kubernetes_config(self):
         """
         Return Kubernetes configuration for this fabric.

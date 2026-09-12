@@ -18,8 +18,6 @@ tests. The sentinel is deliberately self-describing so it can never be mistaken
 for a live credential in output.
 """
 
-import unittest
-
 from django.contrib.auth import get_user_model
 from django.contrib.contenttypes.models import ContentType
 from django.test import Client, TestCase
@@ -119,20 +117,6 @@ class LegacyFabricCrudAuthorizationTestCase(_FabricSecurityBase):
         self.assertTrue(HedgehogFabric.objects.filter(pk=self.fabric.pk).exists(),
                         'unauthorized POST must not delete a fabric')
 
-    # NOTE (DIET-625, Dev B review finding 2; tracked by #653): these encode the required
-    # "authorized success" criterion for create and delete, but they cannot pass
-    # today. Both mutations raise ImproperlyConfigured during NetBox change-log
-    # serialization -- a PRE-EXISTING defect independent of this patch, verified
-    # on main with these changes stashed:
-    #     create -> raises AFTER the object is created
-    #     delete -> raises, object still present
-    # They are marked expectedFailure rather than deleted so the requirement
-    # stays encoded and asserted; when the serializer defect is fixed they will
-    # report an unexpected success and force this marker to be removed.
-    # #653 owns that fix and REQUIRES removing these two decorators. They are
-    # NOT masking an authorization failure -- the unauthorized-mutation tests
-    # above pass on their own merits.
-    @unittest.expectedFailure
     def test_create_allowed_with_objectpermission(self):
         """Authorized create must succeed as a real request flow."""
         self._grant(self.nobody, ['view', 'add'])
@@ -147,7 +131,6 @@ class LegacyFabricCrudAuthorizationTestCase(_FabricSecurityBase):
                          'granted add permission must allow fabric creation')
         self.assertTrue(HedgehogFabric.objects.filter(name='authorized-create').exists())
 
-    @unittest.expectedFailure
     def test_delete_allowed_with_objectpermission(self):
         """Authorized delete must succeed as a real request flow."""
         self._grant(self.nobody, ['view', 'delete'])
