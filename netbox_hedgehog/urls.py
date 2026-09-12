@@ -306,3 +306,32 @@ urlpatterns = [
     # Other URLs
     path('topology/', TopologyView.as_view(), name='topology'),
 ]
+
+# ---------------------------------------------------------------------------
+# DIET-653: NetBox-conventional UI detail route names.
+#
+# NetBox's NetBoxURLHyperlinkedIdentityField resolves a model's UI URL via
+# utilities.views.get_viewname(model) -- with action=None, giving
+# `plugins:<app>:<modelname>` and NO `_detail` suffix.
+#
+# That field lives on NetBoxModelSerializer, and extras.events.
+# serialize_for_event() runs the serializer on EVERY create/update/delete.
+# Where the route name does not match, the lookup raises AFTER the write has
+# landed: the object is changed, no audit record is written, and the caller
+# gets a 500.
+#
+# Most plugin routes already use the bare convention (vpc, switch, server,
+# connection, switchgroup, vlannamespace, ipv4namespace) and are unaffected.
+# The six below used a `_detail` suffix -- or, for the fabric, a name that does
+# not match its model name (`fabric_detail` vs model `hedgehogfabric`).
+#
+# These aliases are ADDITIVE: the original names are kept so existing reverse()
+# calls in views, templates and redirects continue to work.
+urlpatterns += [
+    path('fabrics/<int:pk>/', FabricDetailView.as_view(), name='hedgehogfabric'),
+    path('externals/<int:pk>/', ExternalView.as_view(), name='external'),
+    path('external-attachments/<int:pk>/', ExternalAttachmentView.as_view(), name='externalattachment'),
+    path('external-peerings/<int:pk>/', ExternalPeeringView.as_view(), name='externalpeering'),
+    path('vpc-attachments/<int:pk>/', VPCAttachmentView.as_view(), name='vpcattachment'),
+    path('vpc-peerings/<int:pk>/', VPCPeeringView.as_view(), name='vpcpeering'),
+]
