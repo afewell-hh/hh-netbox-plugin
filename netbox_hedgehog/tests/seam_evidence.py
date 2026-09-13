@@ -121,15 +121,38 @@ def find_secret_leaks(
     if payload_kind == 'markup':
         return leaks
 
-    if isinstance(payload, dict):
-        for key in secret_keys:
-            if key in payload:
-                leaks.append(f'secret KEY present: {key}')
+    if isinstance(payload, (dict, list, tuple)):
+        # Walk the whole structure. A top-level-only check misses
+        # {'spec': {'kubernetes_token': ''}} -- and REST/event payloads nest
+        # routinely (custom_fields, related objects), so a surviving secret key
+        # is more likely to appear nested than at the root.
+        wanted = set(secret_keys)
+        for path, key in _walk_mapping_keys(payload):
+            if key in wanted:
+                leaks.append(f'secret KEY present at {path}')
     else:
         for key in secret_keys:
             if key in text:
                 leaks.append(f'secret KEY present in serialized form: {key}')
     return leaks
+
+
+def _walk_mapping_keys(payload, prefix: str = ''):
+    """Yield (dotted_path, key) for every mapping key at any depth.
+
+    Recurses through dicts and sequences. Only mapping *keys* are yielded;
+    values are covered separately by the value scan, which is string-based and
+    therefore already depth-independent.
+    """
+    if isinstance(payload, dict):
+        for key, value in payload.items():
+            key_text = str(key)
+            path = f'{prefix}.{key_text}' if prefix else key_text
+            yield path, key_text
+            yield from _walk_mapping_keys(value, path)
+    elif isinstance(payload, (list, tuple)):
+        for index, item in enumerate(payload):
+            yield from _walk_mapping_keys(item, f'{prefix}[{index}]' if prefix else f'[{index}]')
 
 
 # --- direction 2: audit presence -------------------------------------------

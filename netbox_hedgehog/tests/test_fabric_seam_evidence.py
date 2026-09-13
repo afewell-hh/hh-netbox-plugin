@@ -105,7 +105,7 @@ FABRIC_SEAM = SeamInventory(
             'covered by write_only and is retained outside the database. Not '
             'established as leaking; enumerated so it is not omitted.'),
         EmissionPath(
-            'get_k8s_config()', 'cache', 'unverified',
+            'HedgehogFabric.get_kubernetes_config()', 'cache', 'unverified',
             'Builds an in-process dict containing the bearer token for adapter '
             'use. Downgraded from asserted per Dev B review: no test in this '
             'repository proves its output never reaches a serialized or '
@@ -237,6 +237,22 @@ class FabricSecretAbsenceTestCase(TestCase):
         leaks = find_secret_leaks(
             {'kubernetes_token': ''}, (SYNTHETIC_TOKEN,), SECRET_FIELDS)
         self.assertTrue(leaks, 'a surviving secret key must be detected')
+
+    def test_nested_secret_key_is_detected(self):
+        """A surviving secret key nested inside a structured payload must be
+        caught. REST and event payloads nest routinely, so a top-level-only
+        check would miss the likeliest real shape."""
+        leaks = find_secret_leaks(
+            {'spec': {'kubernetes_token': ''}}, (SYNTHETIC_TOKEN,), SECRET_FIELDS)
+        self.assertTrue(leaks, 'a nested secret key must be detected')
+        self.assertIn('spec.kubernetes_token', leaks[0])
+
+    def test_list_nested_secret_key_is_detected(self):
+        """Same, through a sequence -- list payloads are common in list endpoints."""
+        leaks = find_secret_leaks(
+            {'results': [{'kubernetes_ca_cert': ''}]}, (SYNTHETIC_TOKEN,), SECRET_FIELDS)
+        self.assertTrue(leaks, 'a list-nested secret key must be detected')
+        self.assertIn('results[0].kubernetes_ca_cert', leaks[0])
 
     def test_sync_error_field_leak_is_detected(self):
         """The second enumerated `unverified` error path. sync_error takes
