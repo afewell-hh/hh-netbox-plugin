@@ -54,8 +54,15 @@ docker compose exec netbox python manage.py reset_diet_data --plan <plan_id> --n
 **How to run**:
 ```bash
 cd /home/ubuntu/afewell-hh/netbox-docker
-docker compose exec netbox python manage.py test netbox_hedgehog.tests.test_topology_planning --verbosity=2
+/home/ubuntu/afewell-hh/hh-netbox-plugin/scripts/run_diet_tests.sh \
+  netbox_hedgehog.tests.test_topology_planning --verbosity=2
 ```
+
+`run_diet_tests.sh` is the supported local DIET command. It explicitly activates the
+test-only `netbox_hedgehog.tests.runner.DietTestRunner`; the runner refuses non-test databases
+before applying its DIET-643 guard. CI keeps the same runner explicit. To use an isolated lane,
+set `NETBOX_DOCKER_DIR` and the lane's normal Compose environment/project variables before
+running the wrapper.
 
 **Location**: `netbox_hedgehog/tests/test_topology_planning/`
 

@@ -108,19 +108,25 @@ so there is no cross-worker contention.
 
 ```bash
 # Targeted dev-cycle run (fast): use --parallel N where N <= number of CPUs / 2
-docker compose exec -T netbox python manage.py test \
+scripts/run_diet_tests.sh \
   netbox_hedgehog.tests.test_topology_planning.test_unified_generate_update \
   netbox_hedgehog.tests.test_topology_planning.test_form_validation \
   --keepdb --parallel 4
 
 # Full regression sweep (for waivers/PRs): always sequential
 # --parallel fails with pickling errors when pre-existing failures exist
-docker compose exec -T netbox python manage.py test \
-  netbox_hedgehog.tests.test_topology_planning --keepdb --exclude-tag=slow
+scripts/run_diet_tests.sh \
+  netbox_hedgehog.tests.test_topology_planning \
+  --keepdb --exclude-tag=slow --timing --durations 0
 ```
 
 **Rule:** `--parallel` is for green targeted runs only. The full regression sweep must stay
 sequential so failure tracebacks can be captured reliably.
+
+`scripts/run_diet_tests.sh` is the supported local DIET test command. It explicitly selects
+the test-only `DietTestRunner`, which refuses non-test databases before applying the DIET-643
+autovacuum guard. Do not replace it with a production `TEST_RUNNER` setting or pass a different
+`--testrunner` value.
 
 ## Reporting Requirements
 In your final update, include:
