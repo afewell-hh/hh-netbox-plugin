@@ -28,6 +28,14 @@ class ComparisonDisposition(str, Enum):
     DIAGNOSTIC = "diagnostic"
 
 
+class NodePlacement(str, Enum):
+    """A node's topology role; ordinary servers are not fabric members."""
+
+    SERVER = "server"
+    MANAGED_FABRIC = "managed-fabric"
+    UNMANAGED_FABRIC = "unmanaged-fabric"
+
+
 @dataclass(frozen=True, order=True)
 class Endpoint:
     """A cable endpoint including physical breakout identity where applicable."""
@@ -65,7 +73,7 @@ def normalize_endpoint(value: Mapping[str, Any]) -> Endpoint | UnmeasuredEndpoin
 class GraphNode:
     name: str
     kind: str
-    managed: bool = True
+    placement: NodePlacement = NodePlacement.SERVER
     surrogate: bool = False
 
 
@@ -225,7 +233,7 @@ def validate_surrogate_contract(graph: TopologyGraph) -> list[str]:
     for name in sorted(graph.forbidden_surrogates & actual_surrogates):
         findings.append(f"forbidden scoped surrogate node: {name}")
     for node in graph.nodes:
-        if not node.managed and not node.surrogate:
+        if node.placement is NodePlacement.UNMANAGED_FABRIC and not node.surrogate:
             findings.append(f"forbidden non-surrogate unmanaged node: {node.name}")
     for edge in graph.edges:
         left = nodes_by_name.get(edge.left.device)
@@ -237,6 +245,6 @@ def validate_surrogate_contract(graph: TopologyGraph) -> list[str]:
             continue
         if left.surrogate and right.surrogate:
             findings.append(f"forbidden surrogate-to-surrogate connection: {left.name}<->{right.name}")
-        elif not (left.managed or right.managed):
+        elif left.placement is NodePlacement.SERVER or right.placement is NodePlacement.SERVER:
             findings.append(f"forbidden server-to-surrogate connection: {left.name}<->{right.name}")
     return findings

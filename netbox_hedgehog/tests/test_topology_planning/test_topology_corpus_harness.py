@@ -14,6 +14,7 @@ from netbox_hedgehog.tests.corpus.topology_graph import (
     Endpoint,
     ExportMode,
     GraphNode,
+    NodePlacement,
     ProvenanceEnvelope,
     TopologyGraph,
     compare_graphs,
@@ -96,9 +97,9 @@ class TopologyGraphContractTestCase(TestCase):
         self.assertEqual(report.differences["export_mode"], ("full-plan", "fabric-scoped"))
 
     def test_unmanaged_surrogate_positive_and_negative_contracts_are_preserved(self):
-        managed = GraphNode("fe-leaf-01", "Switch", managed=True)
-        surrogate = GraphNode("oob-leaf-01", "Server", managed=False, surrogate=True)
-        excluded = GraphNode("inb-mgmt-01", "Server", managed=False, surrogate=False)
+        managed = GraphNode("fe-leaf-01", "Switch", NodePlacement.MANAGED_FABRIC)
+        surrogate = GraphNode("oob-leaf-01", "Server", NodePlacement.UNMANAGED_FABRIC, surrogate=True)
+        excluded = GraphNode("inb-mgmt-01", "Server", NodePlacement.UNMANAGED_FABRIC)
         graph = self._graph(
             nodes=(managed, surrogate, excluded),
             edges=(
@@ -114,9 +115,9 @@ class TopologyGraphContractTestCase(TestCase):
         self.assertNotIn("forbidden server-to-surrogate connection", " ".join(report.exclusions))
 
     def test_scoped_export_requires_only_cabled_surrogates_and_excludes_uncabled_ones(self):
-        managed = GraphNode("fe-leaf-01", "Switch", managed=True)
-        cabled = GraphNode("oob-leaf-cabled", "Server", managed=False, surrogate=True)
-        uncabled = GraphNode("oob-leaf-uncabled", "Server", managed=False, surrogate=True)
+        managed = GraphNode("fe-leaf-01", "Switch", NodePlacement.MANAGED_FABRIC)
+        cabled = GraphNode("oob-leaf-cabled", "Server", NodePlacement.UNMANAGED_FABRIC, surrogate=True)
+        uncabled = GraphNode("oob-leaf-uncabled", "Server", NodePlacement.UNMANAGED_FABRIC, surrogate=True)
         good = self._graph(
             mode=ExportMode.FABRIC_SCOPED,
             nodes=(managed, cabled),
@@ -134,6 +135,23 @@ class TopologyGraphContractTestCase(TestCase):
             "forbidden scoped surrogate node: oob-leaf-uncabled",
             compare_graphs(bad, bad).exclusions,
         )
+
+    def test_default_server_encoding_rejects_server_to_surrogate_connection(self):
+        server = GraphNode("server-01", "Server")
+        surrogate = GraphNode("oob-leaf-01", "Server", NodePlacement.UNMANAGED_FABRIC, surrogate=True)
+        graph = self._graph(
+            nodes=(server, surrogate),
+            edges=(
+                {"left": {"device": "server-01", "interface": "eth0"},
+                 "right": {"device": "oob-leaf-01", "interface": "E1/1"}},
+            ),
+        )
+        report = compare_graphs(graph, graph)
+        self.assertIn(
+            "forbidden server-to-surrogate connection: server-01<->oob-leaf-01",
+            report.exclusions,
+        )
+        self.assertNotIn("forbidden non-surrogate unmanaged node: server-01", report.exclusions)
 
     def test_breakout_without_parent_and_lane_is_unmeasured_not_collapsed(self):
         graph = self._graph(edges=(
