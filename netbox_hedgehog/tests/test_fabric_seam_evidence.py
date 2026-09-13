@@ -72,16 +72,46 @@ FABRIC_SEAM = SeamInventory(
             'text is NOT established here; test_error_field_leak_is_detected '
             'proves the check would catch it if it did.'),
         EmissionPath(
-            'HedgehogFabricForm (forms/fabric.py)', 'model_serialization', 'latent',
-            'A second form class with an unredacted Textarea for both secret '
-            'fields. forms/__init__.py defines its own HedgehogFabricForm and '
-            'never imports this module, so it is shadowed and unreachable -- '
-            'but it would emit secrets if wired up.'),
+            'FabricForm (forms/fabric.py)', 'model_serialization', 'latent',
+            'A second fabric form -- class name is FabricForm, NOT '
+            'HedgehogFabricForm (corrected by Dev B review). Unredacted '
+            'Textarea for both secret fields. Not imported anywhere, so it is '
+            'unreachable today, but would emit secrets if wired up.'),
         EmissionPath(
-            'get_k8s_config()', 'cache', 'asserted',
+            'HedgehogFabricForm (forms/fabric_forms.py)', 'model_serialization', 'latent',
+            'A THIRD fabric form, missed in the original inventory. Its '
+            '__init__ seeds the STORED kubeconfig into the rendered field: '
+            "self.fields['kubeconfig_content'].initial = yaml.dump(...). That "
+            'is the #625 shape exactly -- stored credential material rendered '
+            'back into the page -- and a kubeconfig carries credentials. Not '
+            'imported, so latent, but it is a live rendering pattern if wired '
+            'up. Note kubeconfig_content is not among this seam\'s '
+            'secret_fields; a reachable version would require extending them.'),
+        EmissionPath(
+            'simple_sync sync_error', 'error_handling', 'unverified',
+            'Missed in the original inventory. Sync failures persist text to '
+            'HedgehogFabric.sync_error, which like connection_error is NOT '
+            'write_only, so it reaches the REST, event and changelog paths. '
+            'simple_sync.py:252 assigns str(e) directly -- an arbitrary '
+            'exception string, which carries more upstream context than the '
+            'curated result.get("error") used for connection_error. Failures '
+            'are also written to logger.error with a full traceback. Whether '
+            'the Kubernetes client places credential material in either is NOT '
+            'established; test_sync_error_field_leak_is_detected proves the '
+            'check would catch it.'),
+        EmissionPath(
+            'simple_sync logger.error traceback', 'log', 'unverified',
+            'Sync/connection failures log full tracebacks. Log content is not '
+            'covered by write_only and is retained outside the database. Not '
+            'established as leaking; enumerated so it is not omitted.'),
+        EmissionPath(
+            'get_k8s_config()', 'cache', 'unverified',
             'Builds an in-process dict containing the bearer token for adapter '
-            'use. Adapter-scoped and never returned to a caller outside the '
-            'adapter; asserted not to be part of any serialized output.'),
+            'use. Downgraded from asserted per Dev B review: no test in this '
+            'repository proves its output never reaches a serialized or '
+            'persisted path, and proving that negative across all callers is '
+            'not attempted here. It returns the credential by design; the open '
+            'question is caller discipline, not this function.'),
         EmissionPath(
             'historical ObjectChange rows', 'retention_backup', 'out_of_scope',
             'Records written before #653 may contain credential material. '
@@ -207,6 +237,14 @@ class FabricSecretAbsenceTestCase(TestCase):
         leaks = find_secret_leaks(
             {'kubernetes_token': ''}, (SYNTHETIC_TOKEN,), SECRET_FIELDS)
         self.assertTrue(leaks, 'a surviving secret key must be detected')
+
+    def test_sync_error_field_leak_is_detected(self):
+        """The second enumerated `unverified` error path. sync_error takes
+        str(e) directly, so it carries whatever an upstream exception says."""
+        leaks = find_secret_leaks(
+            {'sync_error': f'401 Unauthorized: Bearer {SYNTHETIC_TOKEN}'},
+            (SYNTHETIC_TOKEN,), SECRET_FIELDS)
+        self.assertTrue(leaks, 'credential material in sync_error must be detected')
 
     def test_error_field_leak_is_detected(self):
         """The enumerated `unverified` path: connection_error is not write_only,
