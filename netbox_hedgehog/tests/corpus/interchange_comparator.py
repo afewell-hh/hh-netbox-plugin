@@ -27,6 +27,7 @@ It is test-only and must never be imported by production code.
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
 from typing import Any, Mapping
 
@@ -35,6 +36,8 @@ from typing import Any, Mapping
 CLAIMED_FACT_CLASSES = (
     "envelope",
     "identity",
+    "bundle_manifest",
+    "catalog_content",
     "catalog_reference",
     "content_integrity",
     "assumption",
@@ -59,6 +62,23 @@ _KIND_FIELDS = {
     "DesignRevision": frozenset({
         "revision", "catalogRefs", "assumptions", "maturity", "provenance", "topology"}),
 }
+
+#: Fields whose ABSENCE must be unmeasured rather than equal. Checking only for
+#: unknown fields let a dropped required field compare equal, because both sides
+#: simply extracted None -- the oracle gap #672 N1 warns about, in the one place
+#: it is easiest to miss.
+_REQUIRED_FIELDS = {
+    "Bundle": frozenset({"apiVersion", "kind", "schemaVersion", "manifest", "objects"}),
+    "CatalogVersion": frozenset({
+        "apiVersion", "kind", "schemaVersion", "identity", "version", "catalogContent"}),
+    "DesignRevision": frozenset({
+        "apiVersion", "kind", "schemaVersion", "identity", "revision", "catalogRefs",
+        "topology"}),
+}
+
+#: Accepted identity syntax: publisher reverse-DNS namespace plus lowercase slug.
+_NAMESPACE_RE = re.compile(r"^[a-z0-9]+(\.[a-z0-9-]+)+$")
+_SLUG_RE = re.compile(r"^[a-z0-9][a-z0-9-]*$")
 
 
 @dataclass(frozen=True)
@@ -116,11 +136,21 @@ def qualified_identity(identity: Any, path: str) -> tuple:
         slug = identity.get("slug")
         if not isinstance(slug, str):
             return None, Unmeasured("identity", path, "child identity has no local slug")
+        if not _SLUG_RE.match(slug):
+            return None, Unmeasured(
+                "identity", path, f"local slug {slug!r} is not a lowercase slug")
         return f"{parent}/{slug}", None
     namespace, slug = identity.get("namespace"), identity.get("slug")
     if not isinstance(namespace, str) or not isinstance(slug, str):
         return None, Unmeasured(
             "identity", path, "top-level identity needs namespace and slug")
+    if not _NAMESPACE_RE.match(namespace):
+        return None, Unmeasured(
+            "identity", path,
+            f"namespace {namespace!r} is not a lowercase reverse-DNS namespace")
+    if not _SLUG_RE.match(slug):
+        return None, Unmeasured(
+            "identity", path, f"slug {slug!r} is not a lowercase slug")
     return f"{namespace}:{slug}", None
 
 
@@ -157,6 +187,11 @@ def _structural_findings(obj: Any, path: str) -> list:
     for field in sorted(set(obj) - allowed):
         findings.append(Unmeasured(
             "envelope", f"{path}.{field}", f"unknown field for kind {kind!r}"))
+    for field in sorted(_REQUIRED_FIELDS[kind] - set(obj)):
+        findings.append(Unmeasured(
+            "envelope", f"{path}.{field}",
+            f"required field missing for kind {kind!r}; absence is unmeasured, "
+            f"never equal"))
     findings += _extension_findings(obj, path)
     return findings
 
@@ -188,6 +223,10 @@ _EXTRACTORS = {
     "provenance": lambda o: o.get("provenance"),
     "extension": lambda o: o.get("extensions"),
     "topology": lambda o: o.get("topology"),
+    # Catalog CONTENT, distinct from the reference binding held by a design.
+    # Altering published content while leaving a design's binding untouched was
+    # invisible before this class existed.
+    "catalog_content": lambda o: o.get("catalogContent"),
 }
 
 
@@ -218,6 +257,20 @@ def compare_interchange(left: Any, right: Any) -> ComparisonOutcome:
                 continue
             index[qualified] = obj
         indexes.append(index)
+
+    # The bundle document itself carries facts -- envelope and manifest -- that
+    # are not attached to any indexed member, so comparing only members left
+    # them unchecked.
+    if isinstance(left, Mapping) and isinstance(right, Mapping):
+        for fact_class, key in (("envelope", None), ("bundle_manifest", "manifest")):
+            if key is None:
+                lvalue = (left.get("apiVersion"), left.get("kind"), left.get("schemaVersion"))
+                rvalue = (right.get("apiVersion"), right.get("kind"), right.get("schemaVersion"))
+            else:
+                lvalue, rvalue = left.get(key), right.get(key)
+            if lvalue != rvalue:
+                differences.append(FactDifference(
+                    fact_class, f"bundle.{key or 'envelope'}", lvalue, rvalue))
 
     left_index, right_index = indexes
     for missing in sorted(set(left_index) - set(right_index)):

@@ -34,6 +34,7 @@ from netbox_hedgehog.tests.test_interchange import fixtures
 VALUE_DIFFERENCE_CLASSES = (
     "identity", "catalog_reference", "content_integrity",
     "assumption", "maturity", "provenance", "topology",
+    "bundle_manifest", "catalog_content",
 )
 
 
@@ -145,6 +146,45 @@ class ComparatorFailsClosedTestCase(SimpleTestCase):
         document = fixtures.valid_bundle()
         document["objects"][1]["identity"] = {"name": "XOC-64 Mesh"}
         self._assert_blocked(document, "namespace and slug")
+
+    def test_removing_a_required_field_is_unmeasured_never_equal(self):
+        """Both sides extracting None is not agreement. Checking only for
+        UNKNOWN fields let a dropped required field compare equal (#674 B1)."""
+        for name in sorted(fixtures.REQUIRED_FIELD_REMOVALS):
+            with self.subTest(required_field=name):
+                document = fixtures.without_required_field(name)
+                outcome = compare_interchange(document, document)
+                self.assertFalse(
+                    outcome.full_model_equal,
+                    f'dropping {name} must be unmeasured, not equal')
+
+    def test_malformed_identity_is_unmeasured(self):
+        """The accepted identity decision is reverse-DNS namespace plus lowercase
+        slug; "is a string" was not enough."""
+        for label, identity in sorted(fixtures.MALFORMED_IDENTITIES.items()):
+            with self.subTest(identity=label):
+                document = fixtures.with_identity(identity)
+                outcome = compare_interchange(document, document)
+                self.assertFalse(
+                    outcome.full_model_equal, f'{label} must not be accepted')
+
+    def test_altering_published_catalog_content_is_detected(self):
+        """Dev B's case: change CatalogVersion.catalogContent while leaving the
+        design's reference binding untouched."""
+        document = fixtures.valid_bundle()
+        document["objects"][0]["catalogContent"]["portCount"] = 32
+        outcome = compare_interchange(fixtures.valid_bundle(), document)
+        self.assertTrue(
+            any(d.fact_class == "catalog_content" for d in outcome.differences),
+            f'catalog content change not detected: {outcome.describe()}')
+
+    def test_altering_bundle_manifest_is_detected(self):
+        document = fixtures.valid_bundle()
+        document["manifest"]["provenance"]["exporter"] = "elsewhere"
+        outcome = compare_interchange(fixtures.valid_bundle(), document)
+        self.assertTrue(
+            any(d.fact_class == "bundle_manifest" for d in outcome.differences),
+            f'manifest change not detected: {outcome.describe()}')
 
     def test_missing_objects_list_is_unmeasured(self):
         self._assert_blocked(

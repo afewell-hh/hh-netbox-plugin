@@ -81,6 +81,17 @@ def design_revision(slug: str = "xoc64-mesh") -> dict:
                     }],
                 }],
             }],
+            "connections": [{
+                "kind": "Connection",
+                "left": {"device": "fe-leaf-01", "interface": "E1/1/1",
+                         "physical_parent": "E1/1", "lane": 0, "is_breakout": True},
+                "right": {"device": "srv-01", "interface": "fe-p0"},
+            }, {
+                "kind": "Connection",
+                "left": {"device": "fe-leaf-01", "interface": "E1/1/2",
+                         "physical_parent": "E1/1", "lane": 1, "is_breakout": True},
+                "right": {"device": "srv-02", "interface": "fe-p0"},
+            }],
         },
     }
 
@@ -153,8 +164,23 @@ def _p_extension(doc):
     doc["objects"][1]["extensions"] = {"com.example.ext/v1": {"note": "hello"}}
 
 
+def _p_bundle_manifest(doc):
+    doc["manifest"]["provenance"]["exporter"] = "other-exporter"
+
+
+def _p_catalog_content(doc):
+    # Alters PUBLISHED catalog content while leaving the design's reference
+    # binding untouched -- invisible until catalog_content became a fact class.
+    doc["objects"][0]["catalogContent"]["portCount"] = 32
+
+
 def _p_topology(doc):
     doc["objects"][1]["topology"]["fabrics"][0]["switchClasses"][0]["quantity"] = 5
+
+
+def _p_topology_edge(doc):
+    """A connection-level change, which the T1 subset must also see."""
+    doc["objects"][1]["topology"]["connections"][0]["right"]["device"] = "srv-99"
 
 
 PERTURBATIONS = {
@@ -167,7 +193,46 @@ PERTURBATIONS = {
     "provenance": ("exporter changed", _p_provenance),
     "extension": ("unregistered extension namespace added", _p_extension),
     "topology": ("switch-class quantity changed", _p_topology),
+    "bundle_manifest": ("bundle manifest provenance changed", _p_bundle_manifest),
+    "catalog_content": ("published catalog content changed, binding untouched",
+                        _p_catalog_content),
 }
+
+#: (label, callable) pairs that REMOVE a required field. Absence must be
+#: unmeasured, never equal -- both sides extracting None is not agreement.
+REQUIRED_FIELD_REMOVALS = {
+    "bundle.manifest": lambda d: d.pop("manifest"),
+    "bundle.objects": lambda d: d.pop("objects"),
+    "CatalogVersion.catalogContent": lambda d: d["objects"][0].pop("catalogContent"),
+    "CatalogVersion.version": lambda d: d["objects"][0].pop("version"),
+    "CatalogVersion.identity": lambda d: d["objects"][0].pop("identity"),
+    "DesignRevision.revision": lambda d: d["objects"][1].pop("revision"),
+    "DesignRevision.catalogRefs": lambda d: d["objects"][1].pop("catalogRefs"),
+    "DesignRevision.topology": lambda d: d["objects"][1].pop("topology"),
+}
+
+
+def without_required_field(name: str) -> dict:
+    document = valid_bundle()
+    REQUIRED_FIELD_REMOVALS[name](document)
+    return document
+
+
+#: Identity values that violate the accepted reverse-DNS + lowercase-slug rule.
+MALFORMED_IDENTITIES = {
+    "namespace not reverse-DNS": {"namespace": "hedgehog", "slug": "plan-a"},
+    "uppercase namespace": {"namespace": "Com.Hedgehog.Aid", "slug": "plan-a"},
+    "uppercase slug": {"namespace": PUBLISHER, "slug": "Plan-A"},
+    "slug with underscore": {"namespace": PUBLISHER, "slug": "plan_a"},
+    "display-name identity": {"name": "Plan A"},
+    "child without parent qualification": {"slug": "fe-leaf"},
+}
+
+
+def with_identity(identity: dict) -> dict:
+    document = valid_bundle()
+    document["objects"][1]["identity"] = identity
+    return document
 
 
 def perturbed(fact_class: str) -> dict:

@@ -28,6 +28,15 @@ PRODUCTION_MODULE = "netbox_hedgehog.interchange"
 EXPECTED_ENTRY_POINTS = ("decode_document", "import_bundle", "export_revision")
 
 
+class InjectedFault(RuntimeError):
+    """Raised by a test-supplied probe to force a fault at a known boundary.
+
+    The probe is supplied BY THE TEST and observes real persistence before it
+    raises, so the implementation cannot satisfy an atomicity row by raising
+    before it has written anything (#674 Blocking 2).
+    """
+
+
 class FeatureAbsent(AssertionError):
     """The production interchange feature does not exist yet."""
 

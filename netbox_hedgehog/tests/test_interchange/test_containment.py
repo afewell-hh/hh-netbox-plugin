@@ -30,6 +30,7 @@ TEST_ONLY_MODULES = (
     "netbox_hedgehog.tests.corpus.topology_graph",
     "netbox_hedgehog.tests.corpus.interchange_comparator",
     "netbox_hedgehog.tests.corpus.interchange_model",
+    "netbox_hedgehog.tests.test_interchange",
 )
 
 
@@ -92,6 +93,15 @@ class ProductionDoesNotImportTestCodeTestCase(SimpleTestCase):
                 self.assertTrue(
                     (TESTS_ROOT / relative).is_file(),
                     f'{relative} must remain under tests/')
+
+    def test_full_model_comparator_does_not_import_the_t1_adapter(self):
+        """The full-model comparator must not reach T1 indirectly either."""
+        source = TESTS_ROOT / "corpus" / "interchange_comparator.py"
+        imported = list(_imported_names(source))
+        self.assertFalse(
+            [name for name in imported if "t1_adapter" in name],
+            f'the full-model comparator must not route to T1 via the adapter; '
+            f'got {imported}')
 
     def test_comparator_does_not_import_t1(self):
         """The full-model comparator must not be a wrapper around the narrower

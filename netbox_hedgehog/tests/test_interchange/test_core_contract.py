@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import copy
 import json
+import pathlib
 
 from django.test import SimpleTestCase, TestCase
 
@@ -21,6 +22,10 @@ from netbox_hedgehog.tests.corpus.interchange_model import (
 )
 from netbox_hedgehog.tests.test_interchange import fixtures
 from netbox_hedgehog.tests.test_interchange._support import require_interchange
+
+import netbox_hedgehog
+
+CASE_DIR = pathlib.Path(netbox_hedgehog.__file__).resolve().parent / "test_cases"
 
 
 class RestrictedProfileTestCase(SimpleTestCase):
@@ -204,15 +209,37 @@ class CatalogReferenceTestCase(TestCase):
 class RoundTripTestCase(TestCase):
     """I11a, I11b - topology-subset and full-model comparison, kept separate."""
 
-    def test_i11a_topology_subset_round_trip_uses_t1_as_a_test_helper_only(self):
-        from netbox_hedgehog.tests.corpus import topology_graph
+    def test_i11a_topology_subset_survives_the_round_trip(self):
+        """Compares actual topology facts through T1, which is used purely as a
+        test helper. Asserting only that an export is non-None proved nothing."""
+        from netbox_hedgehog.tests.corpus.topology_graph import (
+            ComparisonDisposition, compare_graphs)
+        from netbox_hedgehog.tests.test_interchange.t1_adapter import to_topology_graph
         module = require_interchange()
         document = fixtures.valid_bundle()
-        exported = module.export_revision(
-            module.import_bundle(module.decode_document(fixtures.to_json(document)),
-                                 user=None).design_revision, fmt="yaml")
-        self.assertIsNotNone(topology_graph.REPRESENTATION_VERSION)
-        self.assertIsNotNone(exported)
+        result = module.import_bundle(
+            module.decode_document(fixtures.to_json(document)), user=None)
+        exported = module.export_revision(result.design_revision, fmt="yaml")
+        report = compare_graphs(
+            to_topology_graph(document, case_id="fixture"),
+            to_topology_graph(module.decode_document(exported), case_id="fixture"))
+        self.assertEqual(report.disposition, ComparisonDisposition.EQUIVALENCE_ELIGIBLE,
+                         f'topology subset changed across the round trip: '
+                         f'{dict(report.differences)}')
+
+    def test_i11a_topology_perturbation_is_detected_by_the_subset_comparison(self):
+        """Control: the subset comparison must be able to fail, or the row above
+        proves nothing."""
+        from netbox_hedgehog.tests.corpus.topology_graph import (
+            ComparisonDisposition, compare_graphs)
+        from netbox_hedgehog.tests.test_interchange.t1_adapter import to_topology_graph
+        require_interchange()
+        perturbed = fixtures.valid_bundle()
+        fixtures._p_topology_edge(perturbed)
+        report = compare_graphs(
+            to_topology_graph(fixtures.valid_bundle(), case_id="fixture"),
+            to_topology_graph(perturbed, case_id="fixture"))
+        self.assertEqual(report.disposition, ComparisonDisposition.DIAGNOSTIC)
 
     def test_i11b_full_model_round_trip_preserves_every_claimed_fact_class(self):
         """YAML -> JSON and JSON -> YAML, judged by the full-model comparator
@@ -232,20 +259,39 @@ class RoundTripTestCase(TestCase):
 class DeterminismAndProvenanceTestCase(TestCase):
     """I12, I13, I14."""
 
-    def test_i12_export_is_deterministic_under_perturbed_creation_order(self):
+    def _exported_digest(self, module, document):
+        result = module.import_bundle(
+            module.decode_document(fixtures.to_json(document)), user=None)
+        return content_integrity_digest(
+            json.loads(module.export_revision(result.design_revision, fmt="json")))
+
+    def test_i12_export_is_deterministic_under_specified_perturbations(self):
+        """Member reversal alone does not perturb database or query order, so
+        each named perturbation is exercised separately."""
         module = require_interchange()
-        document = fixtures.valid_bundle()
-        reversed_document = copy.deepcopy(document)
-        reversed_document["objects"].reverse()
-        first = module.export_revision(
-            module.import_bundle(module.decode_document(fixtures.to_json(document)),
-                                 user=None).design_revision, fmt="json")
-        second = module.export_revision(
-            module.import_bundle(
-                module.decode_document(fixtures.to_json(reversed_document)),
-                user=None).design_revision, fmt="json")
-        self.assertEqual(content_integrity_digest(json.loads(first)),
-                         content_integrity_digest(json.loads(second)))
+        baseline = self._exported_digest(module, fixtures.valid_bundle())
+
+        reversed_members = fixtures.valid_bundle()
+        reversed_members["objects"].reverse()
+
+        interleaved = fixtures.valid_bundle()
+        # Unrelated rows created between the members shift primary keys, so a
+        # PK-ordered export changes while a deterministic one does not.
+        module.create_unrelated_rows(count=3)
+
+        for label, document in (("reversed members", reversed_members),
+                                ("interleaved unrelated rows", interleaved)):
+            with self.subTest(perturbation=label):
+                self.assertEqual(self._exported_digest(module, document), baseline)
+
+    def test_i12_export_is_deterministic_across_independent_runs(self):
+        """A second run in a separate process/connection must agree, which
+        two exports in one process cannot demonstrate."""
+        module = require_interchange()
+        baseline = self._exported_digest(module, fixtures.valid_bundle())
+        self.assertEqual(
+            module.export_digest_from_independent_run(fixtures.valid_bundle()),
+            baseline)
 
     def test_i13_export_provenance_names_required_elements(self):
         module = require_interchange()
@@ -253,19 +299,48 @@ class DeterminismAndProvenanceTestCase(TestCase):
             module.decode_document(fixtures.to_json(fixtures.valid_bundle())), user=None)
         exported = json.loads(module.export_revision(result.design_revision, fmt="json"))
         provenance = exported["objects"][1]["provenance"]
-        for element in ("sourceRevision", "schemaVersion", "exporter", "maturity"):
+        for element in (
+            "sourceRevision", "schemaVersion", "apiVersion", "exporter",
+            "exporterRevision", "maturity", "artifactKind",
+            "catalogContentIntegrity", "canonicalizationAlgorithm",
+            "assumptions", "exceptions",
+        ):
             with self.subTest(element=element):
-                self.assertIn(element, provenance)
+                self.assertIn(
+                    element, provenance,
+                    f'provenance must identify {element}; an incomplete envelope '
+                    f'cannot support a maturity or equivalence claim')
+        self.assertEqual(provenance.get("canonicalizationAlgorithm"), BINDING_ALGORITHM)
+        self.assertIn(
+            provenance.get("artifactKind"), ("intent", "derived"),
+            'an artifact must declare whether it is intent or derived')
 
     def test_i13_volatile_invocation_facts_stay_out_of_the_payload(self):
         """Requested-at time, actor, and run id belong in the audit envelope."""
         module = require_interchange()
         result = module.import_bundle(
             module.decode_document(fixtures.to_json(fixtures.valid_bundle())), user=None)
-        exported = module.export_revision(result.design_revision, fmt="json")
-        for volatile in ("requestedAt", "requestId", "jobId", "actor"):
+        exported = json.loads(module.export_revision(result.design_revision, fmt="json"))
+
+        def field_paths(node, prefix=""):
+            if isinstance(node, dict):
+                for key, value in node.items():
+                    yield f"{prefix}.{key}"
+                    yield from field_paths(value, f"{prefix}.{key}")
+            elif isinstance(node, list):
+                for index, value in enumerate(node):
+                    yield from field_paths(value, f"{prefix}[{index}]")
+
+        # Inspect parsed FIELD PATHS, not a substring of the raw text: a raw
+        # search both false-fails on an innocent string value and misses a
+        # nested field whose name is spelled differently at the top level.
+        paths = list(field_paths(exported))
+        for volatile in ("requestedAt", "requestId", "jobId", "actor", "exportedAt"):
             with self.subTest(fact=volatile):
-                self.assertNotIn(volatile, exported)
+                self.assertFalse(
+                    [p for p in paths if p.split(".")[-1] == volatile],
+                    f'{volatile} is a volatile invocation fact and belongs in the '
+                    f'audit/run envelope, not the deterministic payload')
 
     def test_i14_unsupported_fact_cannot_be_silently_dropped(self):
         module = require_interchange()
@@ -316,26 +391,51 @@ class SecretBoundaryTestCase(TestCase):
 
 
 class CorpusBaselineTestCase(TestCase):
-    """I30 - pilots stay diagnostic while their #668 findings are unresolved."""
+    """I30 - pilots stay diagnostic while their #668 findings are unresolved.
 
-    UNRESOLVED = {
-        "training_xoc256_2xopg128_clos_ro": ("clos-spine-cardinality[frontend]",),
-        "training_xoc64_1xopg64_mesh_conv_ro": (
-            "declared-family[inb-mgmt]", "declared-family[oob-mgmt]"),
-    }
+    The expected set is DERIVED from #668's recorded ledger rather than restated
+    here, so this cannot drift from the measured record, and a future module
+    cannot satisfy it by hard-coding three strings it read from this file.
+    """
 
-    def test_i30_pilot_round_trip_evidence_is_labelled_diagnostic(self):
+    @classmethod
+    def expected_unresolved(cls):
+        from netbox_hedgehog.tests.test_topology_planning.test_topology_invariants \
+            import KNOWN_FINDINGS
+        return {
+            case_id: frozenset(entries)
+            for case_id, entries in KNOWN_FINDINGS.items() if entries
+        }
+
+    def test_i30_ledger_is_the_source_of_the_expected_unresolved_set(self):
+        """Guard: if #668's ledger empties, this row must stop claiming the
+        pilots are downgraded rather than silently passing."""
+        expected = self.expected_unresolved()
+        self.assertTrue(expected, '#668 recorded no unresolved findings to bind to')
+        for case_id in expected:
+            with self.subTest(case=case_id):
+                self.assertTrue(
+                    (CASE_DIR / f"{case_id}.yaml").is_file(),
+                    f'{case_id} must be a real pilot input, not a label')
+
+    def test_i30_pilot_round_trip_evidence_is_measured_and_downgraded(self):
         module = require_interchange()
-        for case_id, findings in sorted(self.UNRESOLVED.items()):
+        for case_id, findings in sorted(self.expected_unresolved().items()):
             with self.subTest(case=case_id):
                 evidence = module.corpus_round_trip_evidence(case_id)
                 self.assertEqual(
                     evidence.disposition, "diagnostic",
-                    f'{case_id} carries unresolved #668 findings {findings} and '
-                    f'may not claim parity or baseline authority')
-                for name in findings:
-                    self.assertIn(
-                        name, evidence.unresolved_findings,
-                        'the run must surface the exact unresolved finding, so '
-                        'the baseline cannot go quietly green if it disappears '
-                        'for the wrong reason')
+                    f'{case_id} carries unresolved #668 findings and may not claim '
+                    f'parity, contract conformance, or baseline authority')
+                self.assertEqual(
+                    frozenset(evidence.unresolved_findings), findings,
+                    'the run must surface the EXACT unresolved set, so the '
+                    'baseline cannot go quietly green if a finding disappears for '
+                    'the wrong reason, nor accumulate new ones unnoticed')
+                self.assertEqual(
+                    evidence.source_case_path, str(CASE_DIR / f"{case_id}.yaml"),
+                    'evidence must be bound to the real pilot input it was '
+                    'measured from')
+                self.assertTrue(
+                    evidence.provenance.get("invariant_run"),
+                    'evidence must name the #668 invariant run it derives from')

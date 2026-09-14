@@ -1,151 +1,229 @@
-"""RED import atomicity and success state (#673, rows I15-I16d, I17, I18).
+"""RED import atomicity and success state (#673 I15-I16d, I17, I18).
 
-The distinction these rows exist to enforce
--------------------------------------------
-I15 fails BEFORE any write is attempted. An implementation with no transaction
-whatsoever -- one that merely validates first -- passes it. That is why I15
-alone was rejected as proof of atomicity (#672 B1).
+What this suite must be able to falsify
+---------------------------------------
+I15 fails BEFORE any write is attempted, so an implementation with no
+transaction at all -- one that merely validates first -- passes it. It is kept
+as necessary-but-not-sufficient and explicitly does not claim to prove
+atomicity (#672 B1).
 
-I16a-d inject the fault AFTER the first durable write inside the commit
-boundary. They are the rows that actually separate an atomic implementation
-from a validate-first one, and they must fail for the latter.
+Two properties make I16a-d able to separate atomic from validate-first, both
+added after Dev B's #674 review:
 
-Each fault row asserts the same four-part zero-write guarantee: no target
-record of EITHER family, no provenance, no success audit or event, and no
-retained ingress artifact.
+1. **State is observed independently of the code under test.** Counting through
+   the production module's own accessors would let a non-atomic implementation
+   report zero from its own counters while rows exist. `persistence.snapshot()`
+   reads the database and media tree by introspection instead.
+
+2. **The fault probe proves a durable write happened before it fires.** The
+   probe is supplied BY THE TEST: it asserts, against the independent snapshot,
+   that the first target write is visible, and only then raises. An
+   implementation cannot satisfy the row by raising before writing anything --
+   the probe itself fails first, and the row stays red.
 """
 
 from __future__ import annotations
 
-from django.test import TestCase
+import os
+import signal
+import subprocess
+import sys
 
-from netbox_hedgehog.tests.test_interchange import fixtures
-from netbox_hedgehog.tests.test_interchange._support import require_interchange
+from django.test import TestCase, TransactionTestCase, tag
+
+from netbox_hedgehog.tests.test_interchange import fixtures, persistence
+from netbox_hedgehog.tests.test_interchange._support import (
+    InjectedFault,
+    require_interchange,
+)
 
 
-class _ImportStateMixin:
-    """Shared zero-write assertions.
+class _ZeroWriteMixin:
 
-    Counts are taken through the production module's own accessors so the row
-    cannot be satisfied by writing to a table the assertion does not know about.
-    """
-
-    def durable_state(self, module):
-        return {
-            "design_revisions": module.count_design_revisions(),
-            "catalog_versions": module.count_catalog_versions(),
-            "provenance_records": module.count_provenance_records(),
-            "success_audit_records": module.count_success_audit_records(),
-            "retained_ingress_artifacts": module.count_ingress_artifacts(),
-        }
-
-    def assert_zero_durable_writes(self, module, before, label):
-        after = self.durable_state(module)
+    def assert_zero_durable_writes(self, before, label):
+        after = persistence.snapshot()
+        difference = before.diff(after)
         self.assertEqual(
-            after, before,
-            f'{label}: import must leave zero durable writes. A surviving '
-            f'record of either family, a provenance row, a success audit, or a '
-            f'retained upload all break the all-or-nothing guarantee. '
-            f'before={before} after={after}')
+            difference, {"tables": {}},
+            f'{label}: import must leave zero durable writes. A surviving row of '
+            f'either target family, a provenance row, a success audit/changelog '
+            f'entry, or a retained ingress artifact all break the all-or-nothing '
+            f'guarantee. Observed: {difference}')
+
+    def write_boundary_probe(self, before, label):
+        """Return a probe that PROVES a durable write occurred, then faults.
+
+        This is the half that stops an implementation self-attesting: if nothing
+        was written when the probe runs, the probe fails the test rather than
+        letting the row pass.
+        """
+        def probe(*_args, **_kwargs):
+            at_fault = persistence.snapshot()
+            self.assertNotEqual(
+                before.diff(at_fault), {"tables": {}},
+                f'{label}: the fault hook fired before any durable write, so this '
+                f'row would prove nothing about commit-boundary atomicity. The '
+                f'hook must run AFTER the first target write is visible.')
+            raise InjectedFault(label)
+        return probe
 
 
-class PreWriteFailureTestCase(_ImportStateMixin, TestCase):
-    """I15 - validation failures before any write. Necessary, not sufficient."""
+class PreWriteFailureTestCase(_ZeroWriteMixin, TestCase):
+    """I15 - validation failures before any write. Necessary, NOT sufficient.
+
+    These rows deliberately do not claim to prove atomicity; I16a-d do that.
+    """
 
     def test_i15_invalid_syntax_leaves_no_state(self):
         module = require_interchange()
-        before = self.durable_state(module)
+        before = persistence.snapshot()
         with self.assertRaises(Exception):
             module.import_bundle(module.decode_document("{not: valid: json"), user=None)
-        self.assert_zero_durable_writes(module, before, 'invalid syntax')
+        self.assert_zero_durable_writes(before, 'invalid syntax')
 
     def test_i15_schema_failure_leaves_no_state(self):
         module = require_interchange()
-        before = self.durable_state(module)
+        before = persistence.snapshot()
         document = fixtures.valid_bundle()
         document["objects"][1].pop("schemaVersion")
         with self.assertRaises(Exception):
             module.import_bundle(
                 module.decode_document(fixtures.to_json(document)), user=None)
-        self.assert_zero_durable_writes(module, before, 'schema failure')
+        self.assert_zero_durable_writes(before, 'schema failure')
 
 
-class CommitBoundaryFaultTestCase(_ImportStateMixin, TestCase):
-    """I16a-d - faults injected after the first durable write.
+class CommitBoundaryFaultTestCase(_ZeroWriteMixin, TestCase):
+    """I16a, I16b - faults injected after a PROVEN durable write."""
 
-    These must fail for a validate-first-but-nontransactional implementation.
-    """
-
-    def test_i16a_exception_after_first_target_write_rolls_back_both_families(self):
-        """Mixed catalog+topology bundle; fail after the first target commits
-        but before its counterpart and provenance complete."""
+    def test_i16a_fault_after_first_target_write_rolls_back_both_families(self):
         module = require_interchange()
-        before = self.durable_state(module)
-        document = fixtures.valid_bundle()
-        with self.assertRaises(Exception):
-            with module.fault_after_first_target_write():
-                module.import_bundle(
-                    module.decode_document(fixtures.to_json(document)), user=None)
-        self.assert_zero_durable_writes(module, before, 'I16a post-first-write fault')
+        before = persistence.snapshot()
+        probe = self.write_boundary_probe(before, 'I16a')
+        with self.assertRaises(InjectedFault):
+            module.import_bundle(
+                module.decode_document(fixtures.to_json(fixtures.valid_bundle())),
+                user=None, after_first_target_write=probe)
+        self.assert_zero_durable_writes(before, 'I16a post-first-write fault')
 
     def test_i16b_integrity_failure_in_second_target_rolls_back_the_first(self):
         """No partial catalog-only or topology-only success."""
         module = require_interchange()
-        before = self.durable_state(module)
-        document = fixtures.valid_bundle()
-        with self.assertRaises(Exception):
-            with module.fault_on_second_target_write():
-                module.import_bundle(
-                    module.decode_document(fixtures.to_json(document)), user=None)
-        self.assert_zero_durable_writes(module, before, 'I16b second-target fault')
-
-    def test_i16c_validation_failure_after_upload_retains_no_artifact(self):
-        """The upload is accepted by the request path, then validation fails."""
-        module = require_interchange()
-        before = self.durable_state(module)
-        document = fixtures.valid_bundle()
-        document["objects"][1]["invented"] = "value"
-        with self.assertRaises(Exception):
-            module.import_uploaded_artifact(fixtures.to_json(document), user=None)
-        self.assert_zero_durable_writes(module, before, 'I16c post-upload failure')
-
-    def test_i16d_hard_process_loss_after_write_boundary_leaves_no_success(self):
-        """Abrupt termination runs no `finally`, so a cleanup design that relies
-        on one is insufficient; the approved quarantine/reaper outcome must be
-        proven instead."""
-        module = require_interchange()
-        before = self.durable_state(module)
-        document = fixtures.valid_bundle()
-        with self.assertRaises(Exception):
-            with module.simulate_hard_process_loss_after_write():
-                module.import_bundle(
-                    module.decode_document(fixtures.to_json(document)), user=None)
-        module.run_ingress_reaper()
-        self.assert_zero_durable_writes(module, before, 'I16d hard process loss')
+        before = persistence.snapshot()
+        probe = self.write_boundary_probe(before, 'I16b')
+        with self.assertRaises(InjectedFault):
+            module.import_bundle(
+                module.decode_document(fixtures.to_json(fixtures.valid_bundle())),
+                user=None, after_second_target_write=probe)
+        self.assert_zero_durable_writes(before, 'I16b second-target fault')
 
     def test_i16_failure_audit_never_claims_success(self):
         module = require_interchange()
-        document = fixtures.valid_bundle()
-        with self.assertRaises(Exception):
-            with module.fault_after_first_target_write():
-                module.import_bundle(
-                    module.decode_document(fixtures.to_json(document)), user=None)
+        before = persistence.snapshot()
+        probe = self.write_boundary_probe(before, 'audit')
+        with self.assertRaises(InjectedFault):
+            module.import_bundle(
+                module.decode_document(fixtures.to_json(fixtures.valid_bundle())),
+                user=None, after_first_target_write=probe)
         for record in module.recent_audit_records():
             with self.subTest(record=record):
                 self.assertNotEqual(record.outcome, "success")
 
 
-class SuccessStateTestCase(_ImportStateMixin, TestCase):
+class IngressFailureTestCase(_ZeroWriteMixin, TestCase):
+    """I16c - the artifact must be ACCEPTED by the request path before the
+    failure, otherwise the row proves only that invalid input was refused."""
+
+    def test_i16c_accepted_upload_is_not_retained_after_validation_failure(self):
+        module = require_interchange()
+        before = persistence.snapshot()
+
+        # Parses cleanly and passes schema, so ingress must accept and store it;
+        # it fails later on SEMANTIC validation.
+        document = fixtures.valid_bundle()
+        document["objects"][1]["catalogRefs"][0]["identity"]["slug"] = "absent-catalog"
+
+        def probe(*_args, **_kwargs):
+            at_ingress = persistence.snapshot()
+            self.assertTrue(
+                at_ingress.media_files - before.media_files
+                or before.diff(at_ingress) != {"tables": {}},
+                'I16c: nothing was durably accepted at ingress, so this row would '
+                'not exercise retention of an accepted artifact')
+        with self.assertRaises(Exception):
+            module.import_uploaded_artifact(
+                fixtures.to_json(document), user=None, after_ingress_accepted=probe)
+        self.assert_zero_durable_writes(before, 'I16c accepted-then-failed upload')
+
+
+class GracefulCancellationTestCase(_ZeroWriteMixin, TestCase):
+    """I16d(i) - cooperative cancellation after the write boundary.
+
+    Named for what it actually is. A context manager raising in-process still
+    runs normal cleanup, so this is NOT a process-loss test (#674 Blocking 2).
+    """
+
+    def test_i16d_graceful_cancellation_after_write_boundary_leaves_no_success(self):
+        module = require_interchange()
+        before = persistence.snapshot()
+        probe = self.write_boundary_probe(before, 'I16d-graceful')
+        with self.assertRaises(InjectedFault):
+            module.import_bundle(
+                module.decode_document(fixtures.to_json(fixtures.valid_bundle())),
+                user=None, after_first_target_write=probe)
+        self.assert_zero_durable_writes(before, 'I16d graceful cancellation')
+
+
+@tag('slow')
+class HardProcessLossTestCase(_ZeroWriteMixin, TransactionTestCase):
+    """I16d(ii) - genuine out-of-process loss.
+
+    Tagged slow, and it genuinely is: `TransactionTestCase` flushes the database
+    and re-runs the plugin's post-migrate reference-data seeding, which costs
+    minutes in this repo. It is excluded from the fast lane run via
+    `--exclude-tag=slow` and must be run explicitly. That cost buys the one thing
+    an in-process context manager cannot: a process that dies running no cleanup.
+
+    `TransactionTestCase` because the child process must see COMMITTED state,
+    and SIGKILL because abrupt termination runs no `finally` -- a cleanup design
+    that depends on one cannot pass this row. The parent then runs the approved
+    reaper and asserts the outcome.
+    """
+
+    CHILD = (
+        "import django; django.setup();\n"
+        "import os, signal;\n"
+        "from netbox_hedgehog import interchange;\n"
+        "from netbox_hedgehog.tests.test_interchange import fixtures;\n"
+        "kill = lambda *a, **k: os.kill(os.getpid(), signal.SIGKILL);\n"
+        "interchange.import_bundle(\n"
+        "    interchange.decode_document(fixtures.to_json(fixtures.valid_bundle())),\n"
+        "    user=None, after_first_target_write=kill)\n"
+    )
+
+    def test_i16d_hard_process_loss_after_write_boundary_leaves_no_success(self):
+        module = require_interchange()
+        before = persistence.snapshot()
+
+        completed = subprocess.run(
+            [sys.executable, "-c", self.CHILD],
+            capture_output=True, env={**os.environ},
+        )
+        self.assertEqual(
+            completed.returncode, -signal.SIGKILL,
+            f'the child must die by SIGKILL for this to be a process-loss test; '
+            f'got {completed.returncode}: {completed.stderr[-400:]!r}')
+
+        module.run_ingress_reaper()
+        self.assert_zero_durable_writes(before, 'I16d hard process loss')
+
+
+class SuccessStateTestCase(_ZeroWriteMixin, TestCase):
     """I17 - exactly one new unapproved draft and one unpublished version."""
 
     def test_i17_valid_import_creates_one_draft_and_one_unpublished_version(self):
         module = require_interchange()
-        before = self.durable_state(module)
         result = module.import_bundle(
             module.decode_document(fixtures.to_json(fixtures.valid_bundle())), user=None)
-        after = self.durable_state(module)
-        self.assertEqual(after["design_revisions"], before["design_revisions"] + 1)
-        self.assertEqual(after["catalog_versions"], before["catalog_versions"] + 1)
         self.assertFalse(result.design_revision.approved)
         self.assertFalse(result.catalog_version.published)
 
@@ -157,17 +235,17 @@ class SuccessStateTestCase(_ImportStateMixin, TestCase):
         self.assertEqual(module.approved_content_fingerprint(), baseline)
 
 
-class RetryAndConflictTestCase(_ImportStateMixin, TestCase):
+class RetryAndConflictTestCase(_ZeroWriteMixin, TestCase):
     """I18 - the accepted duplicate/retry policy."""
 
     def test_i18_exact_retry_is_idempotent_and_creates_no_duplicate(self):
         module = require_interchange()
         text = fixtures.to_json(fixtures.valid_bundle())
         first = module.import_bundle(module.decode_document(text), user=None)
-        before = self.durable_state(module)
+        before = persistence.snapshot()
         second = module.import_bundle(module.decode_document(text), user=None)
-        self.assertEqual(self.durable_state(module), before,
-                         'an exact retry must create nothing')
+        self.assertEqual(before.diff(persistence.snapshot()).get("tables"), {},
+                         'an exact retry must create no new rows')
         self.assertTrue(second.idempotent)
         self.assertEqual(second.design_revision.pk, first.design_revision.pk)
 
@@ -177,11 +255,11 @@ class RetryAndConflictTestCase(_ImportStateMixin, TestCase):
         module.import_bundle(module.decode_document(text), user=None)
         changed = fixtures.valid_bundle()
         changed["objects"][1]["assumptions"][0]["statement"] = "different"
-        before = self.durable_state(module)
+        before = persistence.snapshot()
         with self.assertRaises(Exception):
             module.import_bundle(
                 module.decode_document(fixtures.to_json(changed)), user=None)
-        self.assert_zero_durable_writes(module, before, 'I18 identity conflict')
+        self.assert_zero_durable_writes(before, 'I18 identity conflict')
 
     def test_i18_retry_is_audited_as_an_idempotent_no_create(self):
         module = require_interchange()
