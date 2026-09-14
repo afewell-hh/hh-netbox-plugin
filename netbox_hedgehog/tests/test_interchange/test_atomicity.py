@@ -209,19 +209,41 @@ class HardProcessLossTestCase(_ZeroWriteMixin, TransactionTestCase):
     Tagged slow: the flush re-runs post-migrate reference-data seeding.
     """
 
-    #: Set by the test; read by the child through the environment.
+    #: The child must PROVE it reached the post-write boundary before killing
+    #: itself. A bare `os.kill` hook would let a future implementation call
+    #: after_first_target_write before any write: the child still dies by
+    #: SIGKILL, the parent still sees no residue, and the row passes having
+    #: tested nothing -- the exact pre-write false assurance fixed for I16a/b.
+    #:
+    #: If no durable write is visible, the child raises instead of killing, so
+    #: it exits non-zero and the parent's required -SIGKILL status fails the row.
     CHILD = (
         "import os, signal, django;\n"
         "django.setup();\n"
         "from django.db import connection;\n"
         "connection.settings_dict['NAME'] = os.environ['HH_TEST_DB'];\n"
+        "from netbox_hedgehog.tests.test_interchange import fixtures, persistence;\n"
         "from netbox_hedgehog import interchange;\n"
-        "from netbox_hedgehog.tests.test_interchange import fixtures;\n"
-        "kill = lambda *a, **k: os.kill(os.getpid(), signal.SIGKILL);\n"
+        "before = persistence.snapshot();\n"
+        "expect = [t for t in os.environ.get('HH_EXPECT_TABLES', '').split(',') if t];\n"
+        "def probe(*a, **k):\n"
+        "    changed = before.diff(persistence.snapshot()).get('tables', {});\n"
+        "    assert changed, (\n"
+        "        'after_first_target_write fired before any durable write was '\n"
+        "        'visible on the child connection; this row would prove nothing');\n"
+        "    assert not expect or [t for t in changed if any(e in t for e in expect)], (\n"
+        "        'expected the first write in %s, saw %s' % (expect, sorted(changed)));\n"
+        "    os.kill(os.getpid(), signal.SIGKILL)\n"
+        "\n"
         "interchange.import_bundle(\n"
         "    interchange.decode_document(fixtures.to_json(fixtures.valid_bundle())),\n"
-        "    user=None, after_first_target_write=kill)\n"
+        "    user=None, after_first_target_write=probe)\n"
     )
+
+    #: Bind to the real catalog/design target tables when those models exist
+    #: (see GREEN_PHASE_BINDINGS in test_row_coverage). Empty means "any durable
+    #: write", which is the weaker but still pre-write-proof assertion.
+    EXPECT_TABLES: tuple = ()
 
     def _fixture_teardown(self):
         for db_name in self._databases_names(include_mirrors=False):
@@ -237,12 +259,16 @@ class HardProcessLossTestCase(_ZeroWriteMixin, TransactionTestCase):
 
         completed = subprocess.run(
             [sys.executable, "-c", self.CHILD], capture_output=True,
-            env={**os.environ, "HH_TEST_DB": connection.settings_dict["NAME"]},
+            env={**os.environ, "HH_TEST_DB": connection.settings_dict["NAME"],
+                 "HH_EXPECT_TABLES": ",".join(self.EXPECT_TABLES)},
         )
         self.assertEqual(
             completed.returncode, -signal.SIGKILL,
-            f'the child must die by SIGKILL for this to be a process-loss test; '
-            f'got {completed.returncode}: {completed.stderr[-400:]!r}')
+            f'the child must die by SIGKILL for this to be a process-loss test. '
+            f'A non-SIGKILL exit means either the feature is absent or the child '
+            f'reached the hook before any durable write was visible -- in which '
+            f'case this row would prove nothing. '
+            f'got {completed.returncode}: {completed.stderr[-500:]!r}')
 
         module.run_ingress_reaper()
         self.assert_zero_durable_writes(before, 'I16d hard process loss')

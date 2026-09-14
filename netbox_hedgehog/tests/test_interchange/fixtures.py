@@ -151,18 +151,44 @@ def bundle_for_family(family: str) -> dict:
     return bundle(catalog_version(), design_revision_for_family(family))
 
 
-#: Family-complete positives, and the intent shapes that must NOT be accepted.
+#: Family-complete positives.
 VALID_FAMILIES = ("mesh", "clos", "single-switch")
 
+
+def _strip_spine_domain(revision: dict) -> None:
+    """Remove the spine class AND the spine domain entirely.
+
+    Distinct from S=0: this is a Clos declaration with no spine domain at all,
+    which exercises missing-spine-domain validation rather than a declared but
+    vacuous one.
+    """
+    fabric = revision["topology"]["fabrics"][0]
+    fabric["family"] = "clos"
+    fabric["switchClasses"] = [
+        c for c in fabric["switchClasses"] if c.get("role") != "spine"]
+    fabric.pop("spineDomain", None)
+
+
+def _drop_capacity_bound(revision: dict) -> None:
+    revision["topology"]["fabrics"][0].pop("capacityBound", None)
+
+
+#: label -> (base family, mutator). Each negative is built from the family it is
+#: actually invalid FOR, so a mutator cannot silently be a no-op against a base
+#: that already satisfies it -- which would ask GREEN to reject a valid document.
 INVALID_FAMILY_INTENT = {
-    "clos with no spine class": lambda d: (
-        d["topology"]["fabrics"][0].__setitem__("family", "clos")),
-    "clos with one spine": lambda d: _set_spine_count(d, 1),
-    "clos with zero spines": lambda d: _set_spine_count(d, 0),
-    "single-switch without a capacity bound": lambda d: (
-        d["topology"]["fabrics"][0].pop("capacityBound", None)
-        or d["topology"]["fabrics"][0].__setitem__("family", "single-switch")),
+    "clos with no spine class or domain": ("clos", _strip_spine_domain),
+    "clos with one spine": ("clos", lambda r: _set_spine_count(r, 1)),
+    "clos with zero spines": ("clos", lambda r: _set_spine_count(r, 0)),
+    "single-switch without a capacity bound": ("single-switch", _drop_capacity_bound),
 }
+
+
+def invalid_family_bundle(label: str) -> dict:
+    base_family, mutate = INVALID_FAMILY_INTENT[label]
+    document = bundle_for_family(base_family)
+    mutate(document["objects"][1])
+    return document
 
 
 def _set_spine_count(revision: dict, count: int) -> None:

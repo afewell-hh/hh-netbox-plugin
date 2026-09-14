@@ -193,10 +193,13 @@ class TopologyFamilyTestCase(SourceLocationMixin, TestCase):
         """The matching negatives, so the positives above cannot be satisfied by
         an implementation that simply accepts anything."""
         module = require_interchange()
-        for label, mutate in sorted(fixtures.INVALID_FAMILY_INTENT.items()):
+        for label in sorted(fixtures.INVALID_FAMILY_INTENT):
             with self.subTest(intent=label):
-                document = fixtures.bundle_for_family("clos")
-                mutate(document["objects"][1])
+                # Built from the family it is actually invalid FOR, so the
+                # mutator cannot be a no-op against a base that already
+                # satisfies it -- which would demand rejection of a valid
+                # document and contradict the positive test above.
+                document = fixtures.invalid_family_bundle(label)
                 with self.assertRaises(Exception, msg=f'{label} must be rejected'):
                     module.import_bundle(
                         module.decode_document(fixtures.to_json(document)), user=None)
@@ -207,7 +210,7 @@ class TopologyFamilyTestCase(SourceLocationMixin, TestCase):
         for count in (0, 1):
             with self.subTest(spine_count=count):
                 document = fixtures.bundle_for_family("clos")
-                fixtures._set_spine_count(document["objects"][1], count)
+                fixtures._set_spine_count(document["objects"][1], count)  # noqa
                 with self.assertRaises(Exception):
                     module.import_bundle(
                         module.decode_document(fixtures.to_json(document)), user=None)
