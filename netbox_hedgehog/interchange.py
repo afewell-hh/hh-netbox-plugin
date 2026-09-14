@@ -25,12 +25,6 @@ BINDING_ALGORITHM = "aid-jcs-rfc8785-sha256-v1"
 _NAMESPACE = re.compile(r"^[a-z0-9]+(\.[a-z0-9-]+)+$")
 _SLUG = re.compile(r"^[a-z0-9][a-z0-9-]*$")
 _SECRET_KEYS = frozenset({"password", "token", "secret", "credential", "kubernetes_token"})
-_PILOT_FINDINGS = {
-    "training_xoc256_2xopg128_clos_ro": ("clos-spine-cardinality[frontend]",),
-    "training_xoc64_1xopg64_mesh_conv_ro": (
-        "declared-family[inb-mgmt]", "declared-family[oob-mgmt]",
-    ),
-}
 _DERIVED_PROVENANCE = frozenset({"exporterRevision", "artifactKind", "catalogContentIntegrity", "canonicalizationAlgorithm", "assumptions", "exceptions", "apiVersion", "maturity"})
 
 
@@ -319,12 +313,10 @@ def import_bundle(document, *, user=None, after_first_target_write=None, after_s
     for design in designs: _validate_refs(design, catalog_lookup)
     existing = InterchangeDesignRevision.objects.filter(artifact_digest=artifact_digest).first()
     if existing:
-        # A retry is auditable without introducing a second durable audit row;
-        # exact retries are required to add no state.
-        audit = InterchangeAudit.objects.filter(payload__digest=artifact_digest).order_by("pk").last()
-        if audit:
-            audit.outcome = "idempotent-no-create"
-            audit.save(update_fields=["outcome"])
+        # Append-only audit history records the retry without falsifying the
+        # original successful import.
+        InterchangeAudit.objects.create(
+            outcome="idempotent-no-create", payload={"digest": artifact_digest, "design": existing.pk})
         return ImportResult(existing, InterchangeCatalogVersion.objects.filter(artifact_digest=artifact_digest).first(), False, True)
     for design in designs:
         ns, slug = _parts(design["identity"])
@@ -390,27 +382,15 @@ def export_revision(revision, *, fmt):
     _error("unsupported export format")
 
 
-def approved_content_fingerprint(): return content_integrity_digest([])
-def create_unrelated_rows(count=1):
-    for _ in range(count): InterchangeAudit.objects.create(outcome="unrelated", payload={})
-def export_digest_from_independent_run(document):
-    # Independent connection/process transport is verified by RED test caller;
-    # semantic output uses the same approved canonical binding.
-    result = import_bundle(decode_document(json.dumps(document)), user=None)
-    return content_integrity_digest(json.loads(export_revision(result.design_revision, fmt="json")))
+def approved_content_fingerprint():
+    """Fingerprint immutable published catalog content, never a test stub."""
+    published = [
+        {"identity": {"namespace": item.namespace, "slug": item.slug},
+         "version": item.version, "contentIntegrity": _binding(item.content)}
+        for item in InterchangeCatalogVersion.objects.filter(published=True)
+    ]
+    return content_integrity_digest(sorted(published, key=lambda item: (
+        item["identity"]["namespace"], item["identity"]["slug"], item["version"])))
 def recent_audit_records(): return list(InterchangeAudit.objects.order_by("pk"))
 def run_ingress_reaper(): return None
 def export_connection(revision, *, index=0): return revision.document["topology"]["connections"][index]
-def corpus_round_trip_evidence(case_id):
-    """Return diagnostic-only corpus evidence without importing test tooling.
-
-    #675 deliberately does not claim parity or make the test-suite ledger a
-    runtime dependency.  The measurement harness owns the exact findings.
-    """
-    from types import SimpleNamespace
-    from pathlib import Path
-    return SimpleNamespace(
-        disposition="diagnostic", unresolved_findings=list(_PILOT_FINDINGS.get(case_id, ())),
-        source_case_path=str(Path(__file__).resolve().parent / "test_cases" / f"{case_id}.yaml"),
-        provenance={"invariant_run": "#668"},
-    )
