@@ -87,17 +87,20 @@ class RealCorpusGateTestCase(TestCase):
     #: get_or_create storms; the invariant suite caches the same way.
     MEASURED: dict = {}
     NODES: dict = {}
+    CLASSES: dict = {}
 
     @classmethod
     def setUpTestData(cls):
         cls.MEASURED = {}
         cls.NODES = {}
+        cls.CLASSES = {}
         for case_id in PILOTS:
             classes, results = measure(case_id)
             failures = [r for r in results if r.is_failure]
             provenance = pilot_evidence.measure_c4(
                 pilot_evidence.CASE_DIR / f"{case_id}.yaml")
             cls.NODES[case_id] = pilot_evidence.plan_nodes(classes)
+            cls.CLASSES[case_id] = classes
             cls.MEASURED[case_id] = {
                 "class_count": len(classes),
                 "results": results,
@@ -166,9 +169,13 @@ class RealCorpusGateTestCase(TestCase):
                 self.assertTrue(
                     evidence.surrogate_dimensions,
                     'the surrogate dimensions must be reported')
-                self.assertEqual(
-                    evidence.surrogate_dimensions[
-                        "node_placement_and_surrogate_status"], "measured")
+                self.assertTrue(
+                    evidence.surrogate_dimensions["node_placement"].startswith(
+                        "measured"),
+                    'placement must be measured from persisted fabric_class')
+                self.assertTrue(
+                    evidence.surrogate_dimensions["surrogate_status"].startswith(
+                        "measured"))
                 for name in ("required_surrogate_set",
                              "forbidden_scoped_surrogate_set",
                              "surrogate_edge_rules"):
@@ -186,12 +193,14 @@ class RealCorpusGateTestCase(TestCase):
         contract nothing to check, so it reports clean."""
         for case_id in PILOTS:
             with self.subTest(case=case_id):
-                for node in self.NODES[case_id]:
-                    fabric = node.name.split(":", 1)[0]
+                for item in self.CLASSES[case_id]:
                     expected_placement, expected_surrogate = \
-                        pilot_evidence.classify_fabric(fabric)
-                    self.assertEqual(node.placement, expected_placement, node.name)
-                    self.assertEqual(node.surrogate, expected_surrogate, node.name)
+                        pilot_evidence.classify_fabric(
+                            item.fabric_class, item.fabric_name)
+                    name = f"{item.fabric_name}:{pilot_evidence._slug(item.switch_class_id)}"
+                    node = next(n for n in self.NODES[case_id] if n.name == name)
+                    self.assertEqual(node.placement, expected_placement, name)
+                    self.assertEqual(node.surrogate, expected_surrogate, name)
 
     def test_the_corpus_actually_exercises_the_unmanaged_path(self):
         """Derivation alone could still be vacuous if no pilot carried an
@@ -321,16 +330,31 @@ class AxisMismatchControlTestCase(TestCase):
         base, nodes, provenance = self._graphs()
         self.assertEqual(validate_surrogate_contract(base), [])
 
-    def test_classification_is_derived_from_the_product_rules(self):
+    def test_classification_follows_persisted_fabric_class_not_the_name(self):
+        """The correction: a name lookup contradicted persisted state and
+        produced false exclusions for xoc64's explicitly managed fabrics."""
         self.assertEqual(
-            pilot_evidence.classify_fabric("frontend"),
+            pilot_evidence.classify_fabric("managed", "frontend"),
+            (NodePlacement.MANAGED_FABRIC, False))
+        # Declared managed despite a management-sounding name -- exactly the
+        # case that was misreported.
+        self.assertEqual(
+            pilot_evidence.classify_fabric("managed", "inb-mgmt"),
             (NodePlacement.MANAGED_FABRIC, False))
         self.assertEqual(
-            pilot_evidence.classify_fabric("oob-mgmt"),
+            pilot_evidence.classify_fabric("managed", "soc-storage-scale-out"),
+            (NodePlacement.MANAGED_FABRIC, False))
+        self.assertEqual(
+            pilot_evidence.classify_fabric("unmanaged", "oob-mgmt"),
             (NodePlacement.UNMANAGED_FABRIC, True))
         self.assertEqual(
-            pilot_evidence.classify_fabric("inb-mgmt"),
+            pilot_evidence.classify_fabric("unmanaged", "inb-mgmt"),
             (NodePlacement.UNMANAGED_FABRIC, False))
+
+    def test_absent_fabric_class_is_unclassifiable_not_defaulted(self):
+        """Defaulting either way would invent a placement."""
+        self.assertEqual(pilot_evidence.classify_fabric("", "frontend")[0], None)
+        self.assertEqual(pilot_evidence.classify_fabric(None, "oob-mgmt")[0], None)
 
     def test_every_claimed_axis_has_a_control(self):
         declared = set(pilot_evidence.CLAIMED_AXES)

@@ -121,28 +121,45 @@ def _slug(value: str) -> str:
     return _SLUG_SAFE.sub("-", value.lower().replace("_", "-")).strip("-")
 
 
-def classify_fabric(fabric_name: str):
-    """Return (placement, surrogate) for a fabric, from the product's own rules.
+def classify_fabric(fabric_class: str, fabric_name: str = ""):
+    """Return (placement, surrogate) from PERSISTED fabric_class.
 
-    Modelling every node as MANAGED erased #620's surrogate/exclusion dimension:
-    `validate_surrogate_contract` had nothing to check and reported clean, which
-    reads as evidence of compliance when it was really evidence of nothing.
+    Two corrections live here.
+
+    Modelling every node as MANAGED erased #620's surrogate/exclusion dimension
+    entirely: `validate_surrogate_contract` had nothing to check and reported
+    clean, which reads as compliance but was evidence of nothing.
+
+    Classifying from `fabric_name` then over-corrected. Behaviour is controlled
+    by the persisted `fabric_class` (#276), and a name lookup contradicted it:
+    xoc64 explicitly declares `soc-storage-scale-out` and `inb-mgmt` as
+    fabric_class=managed, yet the legacy name rule reported both as unmanaged
+    and produced two FALSE exclusions. Inferring behaviour from a name is the
+    thing this contract forbids everywhere else, so it is not done here.
+
+    Surrogate status has no persisted per-class flag, so it is derived from the
+    product's own surrogate-endpoint rule and applies only WITHIN the unmanaged
+    set. That limitation is reported by `surrogate_dimensions`.
     """
-    from netbox_hedgehog.choices import FabricTypeChoices
+    from netbox_hedgehog.choices import FabricClassChoices, FabricTypeChoices
 
-    if FabricTypeChoices.is_hedgehog_managed(fabric_name):
+    if fabric_class == FabricClassChoices.MANAGED:
         return NodePlacement.MANAGED_FABRIC, False
-    if FabricTypeChoices.is_surrogate_endpoint(fabric_name):
-        return NodePlacement.UNMANAGED_FABRIC, True
-    # in-band-mgmt / network-mgmt / legacy-oob: excluded from all CRDs, and
-    # therefore expected to raise a #620 exclusion rather than pass silently.
-    return NodePlacement.UNMANAGED_FABRIC, False
+    if fabric_class == FabricClassChoices.UNMANAGED:
+        return (NodePlacement.UNMANAGED_FABRIC,
+                FabricTypeChoices.is_surrogate_endpoint(fabric_name))
+    # Absent or unrecognised: not classifiable from persisted state. Reported
+    # by the caller as unmeasured rather than defaulted to either side.
+    return None, False
 
 
 def plan_nodes(classes) -> list:
     nodes = []
     for item in classes:
-        placement, surrogate = classify_fabric(item.fabric_name)
+        placement, surrogate = classify_fabric(
+            getattr(item, "fabric_class", ""), item.fabric_name)
+        if placement is None:
+            continue  # unclassifiable; surfaced as an unmeasured dimension
         # Normalised on BOTH sides. The interchange path returns slugified
         # identifiers, so projecting the reference with raw ids made every node
         # read as different -- a harness artifact reported as a real divergence.
@@ -164,8 +181,12 @@ def build_bundle(case_id: str, classes) -> dict:
 
     fabrics: dict = {}
     for item in classes:
-        fabric = fabrics.setdefault(item.fabric_name, {"name": item.fabric_name,
-                                                       "switchClasses": []})
+        fabric = fabrics.setdefault(item.fabric_name, {
+            "name": item.fabric_name,
+            # Carried so the round-tripped candidate classifies from the same
+            # persisted authority as the reference, not from its name.
+            "fabricClass": getattr(item, "fabric_class", "") or "",
+            "switchClasses": []})
         quantity = (item.override_quantity if item.override_quantity is not None
                     else item.calculated_quantity)
         fabric["switchClasses"].append({
@@ -243,7 +264,10 @@ def graph_from_bundle(decoded: dict, case_id: str, source: str,
             continue
         for fabric in (obj.get("topology") or {}).get("fabrics", []):
             for switch_class in fabric.get("switchClasses", []):
-                placement, surrogate = classify_fabric(str(fabric.get("name")))
+                placement, surrogate = classify_fabric(
+                    str(fabric.get("fabricClass") or ""), str(fabric.get("name")))
+                if placement is None:
+                    continue
                 nodes.append(GraphNode(
                     name=f"{fabric.get('name')}:{switch_class['identity']['slug']}",
                     kind=str(switch_class.get("role")),
@@ -315,14 +339,23 @@ def evaluate(case_id: str, classes, t2_failures, provenance: ProvenanceEnvelope)
     # Node placement and surrogate status ARE derivable from persisted fabric
     # classification; the cabling-derived obligations are not, without
     # generation, and are recorded rather than treated as satisfied.
+    unclassified = [item.fabric_name for item in classes
+                    if classify_fabric(getattr(item, "fabric_class", ""),
+                                       item.fabric_name)[0] is None]
     surrogate_dimensions = {
-        "node_placement_and_surrogate_status": "measured",
+        "node_placement": "measured: from persisted fabric_class",
+        "surrogate_status": "measured: product surrogate-endpoint rule applied "
+                            "within the unmanaged set; no persisted per-class "
+                            "surrogate flag exists",
         "required_surrogate_set": "unmeasured: derived from cabling, which "
                                   "requires device generation",
         "forbidden_scoped_surrogate_set": "unmeasured: scoped-export obligation "
                                           "requires cabling",
         "surrogate_edge_rules": "unmeasured: no edges without generation",
     }
+    if unclassified:
+        surrogate_dimensions["node_placement"] = (
+            f"unmeasured for {sorted(set(unclassified))}: no persisted fabric_class")
     for name, state in sorted(surrogate_dimensions.items()):
         if state.startswith("unmeasured"):
             unmeasured.append(f"surrogate/{name}: {state.split(': ', 1)[1]}")
