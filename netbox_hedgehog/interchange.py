@@ -31,6 +31,7 @@ _PILOT_FINDINGS = {
         "declared-family[inb-mgmt]", "declared-family[oob-mgmt]",
     ),
 }
+_DERIVED_PROVENANCE = frozenset({"exporterRevision", "artifactKind", "catalogContentIntegrity", "canonicalizationAlgorithm", "assumptions", "exceptions", "apiVersion", "maturity"})
 
 
 @dataclass
@@ -55,7 +56,7 @@ class ImportResult:
     idempotent: bool
 
 
-def _error(message, path="$", member=None, line=1, column=1):
+def _error(message, path="$", member=0, line=1, column=1):
     raise InterchangeError(message, SourceLocation(member, path, line, column))
 
 
@@ -113,13 +114,21 @@ def _yaml_restricted(text):
     # integers remain numeric for quantities and lanes.
     def scalar(loader, node):
         raw = node.value
+        if node.tag == "tag:yaml.org,2002:bool":
+            # JSON's true/false survive as booleans; YAML 1.1's extra words
+            # remain authored strings rather than silently changing meaning.
+            if raw.lower() in {"true", "false"}:
+                return yaml.SafeLoader.construct_yaml_bool(loader, node)
+            return raw
         if node.tag in {
-            "tag:yaml.org,2002:bool", "tag:yaml.org,2002:float",
+            "tag:yaml.org,2002:float",
             "tag:yaml.org,2002:timestamp",
         }:
             return raw
         if node.tag == "tag:yaml.org,2002:int" and (":" in raw or raw.lower().startswith("0o")):
             return raw
+        if node.tag == "tag:yaml.org,2002:int":
+            return yaml.SafeLoader.construct_yaml_int(loader, node)
         return yaml.SafeLoader.construct_scalar(loader, node)
     def mapping(loader, node, deep=False):
         out = {}
@@ -236,6 +245,8 @@ def _validate_document(document):
 def _validate_topology(topology, path, index):
     if not isinstance(topology, dict) or not isinstance(topology.get("fabrics"), list):
         _error("topology requires fabrics", f"{path}.topology", index)
+    if set(topology) - {"fabrics", "connections"}:
+        _error("topology facts must be attached to a declared fabric", f"{path}.topology", index)
     for fabric in topology["fabrics"]:
         family = fabric.get("family") if isinstance(fabric, dict) else None
         if family not in {"mesh", "clos", "single-switch"}: _error("explicit topology family required", f"{path}.topology")
@@ -294,7 +305,14 @@ def _validate_refs(design, catalogs):
 
 def import_bundle(document, *, user=None, after_first_target_write=None, after_second_target_write=None):
     _validate_document(document)
-    artifact_digest = content_integrity_digest(document)
+    digest_document = copy.deepcopy(document)
+    for obj in digest_document["objects"]:
+        if obj.get("kind") == "DesignRevision" and isinstance(obj.get("provenance"), dict):
+            for key in _DERIVED_PROVENANCE:
+                obj["provenance"].pop(key, None)
+    digest_document["objects"] = sorted(
+        digest_document["objects"], key=lambda obj: _identity(obj["identity"], "$.identity"))
+    artifact_digest = content_integrity_digest(digest_document)
     catalogs = [o for o in document["objects"] if o["kind"] == "CatalogVersion"]
     designs = [o for o in document["objects"] if o["kind"] == "DesignRevision"]
     catalog_lookup = {(*_parts(o["identity"]), o["version"]): {"content": o["catalogContent"]} for o in catalogs}
@@ -316,7 +334,14 @@ def import_bundle(document, *, user=None, after_first_target_write=None, after_s
         created_catalog = None; created_design = None
         for catalog in catalogs:
             ns, slug = _parts(catalog["identity"])
-            created_catalog = InterchangeCatalogVersion.objects.create(namespace=ns, slug=slug, version=catalog["version"], content=catalog["catalogContent"], content_algorithm=BINDING_ALGORITHM, content_digest=content_integrity_digest(catalog["catalogContent"]), artifact_digest=artifact_digest)
+            digest = content_integrity_digest(catalog["catalogContent"])
+            created_catalog = InterchangeCatalogVersion.objects.filter(
+                namespace=ns, slug=slug, version=catalog["version"]).first()
+            if created_catalog is not None:
+                if created_catalog.content_digest != digest:
+                    _error("catalog identity/version has different content", "$.objects")
+            else:
+                created_catalog = InterchangeCatalogVersion.objects.create(namespace=ns, slug=slug, version=catalog["version"], content=catalog["catalogContent"], content_algorithm=BINDING_ALGORITHM, content_digest=digest, artifact_digest=artifact_digest)
             if after_first_target_write: after_first_target_write()
         for design in designs:
             ns, slug = _parts(design["identity"])
@@ -348,7 +373,7 @@ def _bundle_for_design(revision):
     design = stored
     # Provenance is deterministic and complete. The fixture's optional test
     # exporter provenance is normalized on both directions by this core.
-    design.setdefault("provenance", {}).update({"sourceRevision": revision.revision, "schemaVersion": SCHEMA_VERSION, "apiVersion": API_VERSION, "exporter": "hnp-test", "exporterRevision": "v1", "maturity": design.get("maturity", "draft"), "artifactKind": "intent", "catalogContentIntegrity": [r.get("contentIntegrity") for r in design.get("catalogRefs", [])], "canonicalizationAlgorithm": BINDING_ALGORITHM, "assumptions": design.get("assumptions", []), "exceptions": []})
+    design.setdefault("provenance", {}).update({"schemaVersion": SCHEMA_VERSION, "apiVersion": API_VERSION, "exporter": "hnp-test", "exporterRevision": "v1", "maturity": design.get("maturity", "draft"), "artifactKind": "intent", "catalogContentIntegrity": [r.get("contentIntegrity") for r in design.get("catalogRefs", [])], "canonicalizationAlgorithm": BINDING_ALGORITHM, "assumptions": design.get("assumptions", []), "exceptions": []})
     objects = sorted(catalogs + [design], key=lambda o: _identity(o["identity"], "$.identity"))
     manifest["objects"] = [{"kind": o["kind"], "identity": o["identity"]} for o in objects]
     return {"apiVersion": API_VERSION, "kind": "Bundle", "schemaVersion": SCHEMA_VERSION, "manifest": manifest, "objects": objects}
@@ -357,7 +382,11 @@ def _bundle_for_design(revision):
 def export_revision(revision, *, fmt):
     document = _bundle_for_design(revision)
     if fmt == "json": return json.dumps(document, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
-    if fmt == "yaml": return yaml.safe_dump(document, sort_keys=True, allow_unicode=True)
+    if fmt == "yaml":
+        class NoAliasDumper(yaml.SafeDumper):
+            def ignore_aliases(self, _data):
+                return True
+        return yaml.dump(document, Dumper=NoAliasDumper, sort_keys=True, allow_unicode=True)
     _error("unsupported export format")
 
 
