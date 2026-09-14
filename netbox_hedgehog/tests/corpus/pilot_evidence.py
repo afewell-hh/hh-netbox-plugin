@@ -43,6 +43,7 @@ from netbox_hedgehog.tests.corpus.topology_graph import (
     ProvenanceEnvelope,
     TopologyGraph,
     compare_graphs,
+    validate_surrogate_contract,
 )
 
 PLUGIN_ROOT = Path(__file__).resolve().parents[2]
@@ -59,7 +60,8 @@ PILOT_SOURCE_DIGESTS = {
 
 #: Axes this harness claims to compare. Each needs a deliberate mismatch
 #: control; an axis that cannot be measured is reported, not dropped.
-CLAIMED_AXES = ("nodes", "edges", "export_mode", "provenance", "interchange_round_trip")
+CLAIMED_AXES = ("nodes", "edges", "export_mode", "provenance",
+                "interchange_round_trip", "surrogate_contract")
 
 _SLUG_SAFE = re.compile(r"[^a-z0-9-]+")
 
@@ -119,12 +121,35 @@ def _slug(value: str) -> str:
     return _SLUG_SAFE.sub("-", value.lower().replace("_", "-")).strip("-")
 
 
+def classify_fabric(fabric_name: str):
+    """Return (placement, surrogate) for a fabric, from the product's own rules.
+
+    Modelling every node as MANAGED erased #620's surrogate/exclusion dimension:
+    `validate_surrogate_contract` had nothing to check and reported clean, which
+    reads as evidence of compliance when it was really evidence of nothing.
+    """
+    from netbox_hedgehog.choices import FabricTypeChoices
+
+    if FabricTypeChoices.is_hedgehog_managed(fabric_name):
+        return NodePlacement.MANAGED_FABRIC, False
+    if FabricTypeChoices.is_surrogate_endpoint(fabric_name):
+        return NodePlacement.UNMANAGED_FABRIC, True
+    # in-band-mgmt / network-mgmt / legacy-oob: excluded from all CRDs, and
+    # therefore expected to raise a #620 exclusion rather than pass silently.
+    return NodePlacement.UNMANAGED_FABRIC, False
+
+
 def plan_nodes(classes) -> list:
-    return [
-        GraphNode(name=f"{item.fabric_name}:{item.switch_class_id}",
-                  kind=str(item.hedgehog_role), placement=NodePlacement.MANAGED_FABRIC)
-        for item in classes
-    ]
+    nodes = []
+    for item in classes:
+        placement, surrogate = classify_fabric(item.fabric_name)
+        # Normalised on BOTH sides. The interchange path returns slugified
+        # identifiers, so projecting the reference with raw ids made every node
+        # read as different -- a harness artifact reported as a real divergence.
+        nodes.append(GraphNode(
+            name=f"{item.fabric_name}:{_slug(item.switch_class_id)}",
+            kind=str(item.hedgehog_role), placement=placement, surrogate=surrogate))
+    return nodes
 
 
 def build_bundle(case_id: str, classes) -> dict:
@@ -218,10 +243,11 @@ def graph_from_bundle(decoded: dict, case_id: str, source: str,
             continue
         for fabric in (obj.get("topology") or {}).get("fabrics", []):
             for switch_class in fabric.get("switchClasses", []):
+                placement, surrogate = classify_fabric(str(fabric.get("name")))
                 nodes.append(GraphNode(
                     name=f"{fabric.get('name')}:{switch_class['identity']['slug']}",
                     kind=str(switch_class.get("role")),
-                    placement=NodePlacement.MANAGED_FABRIC))
+                    placement=placement, surrogate=surrogate))
     return TopologyGraph.from_records(
         ComparisonIdentity(case_id, ExportMode.FULL_PLAN, source), nodes, (), provenance)
 
@@ -237,6 +263,10 @@ class PilotEvidence:
     provenance_missing: tuple = ()
     t1_differences: dict = field(default_factory=dict)
     round_trip_error: str | None = None
+    #: #620 surrogate/exclusion findings actually produced by the contract.
+    exclusions: tuple = ()
+    #: Which surrogate sub-dimensions were measured, and which were not.
+    surrogate_dimensions: dict = field(default_factory=dict)
 
     @property
     def claims_parity(self) -> bool:
@@ -263,14 +293,44 @@ def evaluate(case_id: str, classes, t2_failures, provenance: ProvenanceEnvelope)
 
     decoded, error = interchange_round_trip(build_bundle(case_id, classes))
     differences: dict = {}
+    exclusions: tuple = ()
     if error is not None:
         reasons.append(f"{case_id}: interchange round trip failed -- {error}")
+        # The surrogate contract is still evaluable on the reference alone; a
+        # failed round trip must not silently drop that dimension too.
+        exclusions = tuple(dict.fromkeys(validate_surrogate_contract(reference)))
     else:
         candidate = graph_from_bundle(decoded, case_id, "interchange-round-trip", provenance)
         report = compare_graphs(reference, candidate)
         differences = {k: v for k, v in report.differences.items()}
+        # compare_graphs evaluates the contract on BOTH graphs, so an exclusion
+        # present in each appears twice. Deduplicated, order preserved: two
+        # sightings of one defect are one finding, and counting them twice
+        # overstates the evidence.
+        exclusions = tuple(dict.fromkeys(report.exclusions))
         if report.disposition is not ComparisonDisposition.EQUIVALENCE_ELIGIBLE:
             reasons.append(f"{case_id}: T1 comparison is {report.disposition.value}")
+
+    # #620 surrogate/exclusion dimensions, reported as measured or unmeasured.
+    # Node placement and surrogate status ARE derivable from persisted fabric
+    # classification; the cabling-derived obligations are not, without
+    # generation, and are recorded rather than treated as satisfied.
+    surrogate_dimensions = {
+        "node_placement_and_surrogate_status": "measured",
+        "required_surrogate_set": "unmeasured: derived from cabling, which "
+                                  "requires device generation",
+        "forbidden_scoped_surrogate_set": "unmeasured: scoped-export obligation "
+                                          "requires cabling",
+        "surrogate_edge_rules": "unmeasured: no edges without generation",
+    }
+    for name, state in sorted(surrogate_dimensions.items()):
+        if state.startswith("unmeasured"):
+            unmeasured.append(f"surrogate/{name}: {state.split(': ', 1)[1]}")
+            reasons.append(f"{case_id}: {unmeasured[-1]}")
+    if exclusions:
+        reasons.append(
+            f"{case_id}: {len(exclusions)} #620 exclusion finding(s): "
+            f"{list(exclusions)}")
 
     # Edges are not measured without device generation. Recorded rather than
     # compared as an empty set, which would trivially match.
@@ -288,7 +348,8 @@ def evaluate(case_id: str, classes, t2_failures, provenance: ProvenanceEnvelope)
             f"this pilot; equivalence is not claimable until #671 resolves them")
 
     eligible = (not reasons and not stale and not unmeasured and not t2_failures
-                and not missing and error is None and not differences)
+                and not missing and error is None and not differences
+                and not exclusions)
     return PilotEvidence(
         case_id=case_id,
         disposition=(ComparisonDisposition.EQUIVALENCE_ELIGIBLE if eligible
@@ -296,5 +357,6 @@ def evaluate(case_id: str, classes, t2_failures, provenance: ProvenanceEnvelope)
         reasons=tuple(reasons), unmeasured_axes=tuple(unmeasured),
         t2_failures=tuple(t2_failures), stale=stale,
         provenance_missing=tuple(missing), t1_differences=differences,
-        round_trip_error=error,
+        round_trip_error=error, exclusions=exclusions,
+        surrogate_dimensions=surrogate_dimensions,
     )

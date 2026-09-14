@@ -27,7 +27,8 @@ from netbox_hedgehog.tests.corpus.invariants import (
 )
 from netbox_hedgehog.tests.corpus.topology_graph import (
     ComparisonDisposition, ComparisonIdentity, ExportMode, GraphNode,
-    ProvenanceEnvelope, TopologyGraph, compare_graphs,
+    NodePlacement, ProvenanceEnvelope, TopologyGraph, compare_graphs,
+    validate_surrogate_contract,
 )
 from netbox_hedgehog.tests.test_topology_planning.test_topology_invariants import (
     KNOWN_FINDINGS,
@@ -85,15 +86,18 @@ class RealCorpusGateTestCase(TestCase):
     #: is slow and provoked DeviceType deadlocks under repeated
     #: get_or_create storms; the invariant suite caches the same way.
     MEASURED: dict = {}
+    NODES: dict = {}
 
     @classmethod
     def setUpTestData(cls):
         cls.MEASURED = {}
+        cls.NODES = {}
         for case_id in PILOTS:
             classes, results = measure(case_id)
             failures = [r for r in results if r.is_failure]
             provenance = pilot_evidence.measure_c4(
                 pilot_evidence.CASE_DIR / f"{case_id}.yaml")
+            cls.NODES[case_id] = pilot_evidence.plan_nodes(classes)
             cls.MEASURED[case_id] = {
                 "class_count": len(classes),
                 "results": results,
@@ -132,7 +136,10 @@ class RealCorpusGateTestCase(TestCase):
                       f"t2_failures={[f.name for f in evidence.t2_failures]} "
                       f"round_trip_error={evidence.round_trip_error} "
                       f"t1_differences={sorted(evidence.t1_differences)} "
-                      f"provenance_missing={list(evidence.provenance_missing)}")
+                      f"provenance_missing={list(evidence.provenance_missing)} "
+                      f"exclusions={list(evidence.exclusions)}")
+                for name, state in sorted(evidence.surrogate_dimensions.items()):
+                    print(f"    surrogate/{name}: {state}")
                 for reason in evidence.reasons:
                     print(f"    reason: {reason}")
 
@@ -145,6 +152,57 @@ class RealCorpusGateTestCase(TestCase):
                 self.assertEqual(outcome["unrecorded"], [], f'{case_id}: {outcome}')
                 self.assertEqual(outcome["changed"], [], f'{case_id}: {outcome}')
                 self.assertEqual(outcome["stale"], [], f'{case_id}: {outcome}')
+
+    def test_surrogate_dimensions_are_reported_measured_or_unmeasured(self):
+        """#620's surrogate/exclusion dimension must be stated, not erased.
+
+        Modelling every node as MANAGED left validate_surrogate_contract with
+        nothing to check, so it reported clean -- which reads as compliance but
+        was evidence of nothing.
+        """
+        for case_id in PILOTS:
+            with self.subTest(case=case_id):
+                _, _, _, evidence = self._evidence(case_id)
+                self.assertTrue(
+                    evidence.surrogate_dimensions,
+                    'the surrogate dimensions must be reported')
+                self.assertEqual(
+                    evidence.surrogate_dimensions[
+                        "node_placement_and_surrogate_status"], "measured")
+                for name in ("required_surrogate_set",
+                             "forbidden_scoped_surrogate_set",
+                             "surrogate_edge_rules"):
+                    with self.subTest(dimension=name):
+                        self.assertTrue(
+                            evidence.surrogate_dimensions[name].startswith("unmeasured"),
+                            f'{name} cannot be measured without generation and must '
+                            f'say so rather than be treated as satisfied')
+                        self.assertTrue(
+                            any(name in axis for axis in evidence.unmeasured_axes),
+                            f'{name} must also appear in the unmeasured axes')
+
+    def test_node_placement_is_derived_not_hard_coded(self):
+        """The specific defect: hard-coding every node MANAGED leaves the #620
+        contract nothing to check, so it reports clean."""
+        for case_id in PILOTS:
+            with self.subTest(case=case_id):
+                for node in self.NODES[case_id]:
+                    fabric = node.name.split(":", 1)[0]
+                    expected_placement, expected_surrogate = \
+                        pilot_evidence.classify_fabric(fabric)
+                    self.assertEqual(node.placement, expected_placement, node.name)
+                    self.assertEqual(node.surrogate, expected_surrogate, node.name)
+
+    def test_the_corpus_actually_exercises_the_unmanaged_path(self):
+        """Derivation alone could still be vacuous if no pilot carried an
+        unmanaged fabric. At least one must, or the dimension is untested by
+        this corpus and that would need saying."""
+        placements = {node.placement
+                      for case_id in PILOTS for node in self.NODES[case_id]}
+        self.assertIn(
+            NodePlacement.UNMANAGED_FABRIC, placements,
+            'no pilot carries an unmanaged fabric, so the #620 exclusion '
+            'dimension is not exercised by this corpus')
 
     def test_edges_are_reported_unmeasured_not_compared_as_empty(self):
         """An empty edge set would trivially match and read as agreement."""
@@ -237,11 +295,46 @@ class AxisMismatchControlTestCase(TestCase):
         self.assertIsNone(decoded)
         self.assertTrue(error, 'a rejected bundle must be recorded as an error')
 
+    def test_surrogate_contract_axis_detects_a_missing_required_surrogate(self):
+        base, nodes, provenance = self._graphs()
+        graph = TopologyGraph.from_records(
+            base.identity, nodes, (), provenance,
+            required_surrogates=("oob-mgmt:absent",))
+        self.assertIn(
+            "missing required surrogate node: oob-mgmt:absent",
+            validate_surrogate_contract(graph))
+
+    def test_surrogate_contract_axis_detects_a_non_surrogate_unmanaged_node(self):
+        """The case real management fabrics produce."""
+        base, _, provenance = self._graphs()
+        graph = TopologyGraph.from_records(
+            base.identity,
+            [GraphNode("inb-mgmt:leaf", "server-leaf", NodePlacement.UNMANAGED_FABRIC)],
+            (), provenance)
+        self.assertIn(
+            "forbidden non-surrogate unmanaged node: inb-mgmt:leaf",
+            validate_surrogate_contract(graph))
+
+    def test_surrogate_contract_axis_reports_clean_for_a_managed_only_graph(self):
+        """Control on the control: the contract must not fire on every graph,
+        or the two tests above would prove nothing."""
+        base, nodes, provenance = self._graphs()
+        self.assertEqual(validate_surrogate_contract(base), [])
+
+    def test_classification_is_derived_from_the_product_rules(self):
+        self.assertEqual(
+            pilot_evidence.classify_fabric("frontend"),
+            (NodePlacement.MANAGED_FABRIC, False))
+        self.assertEqual(
+            pilot_evidence.classify_fabric("oob-mgmt"),
+            (NodePlacement.UNMANAGED_FABRIC, True))
+        self.assertEqual(
+            pilot_evidence.classify_fabric("inb-mgmt"),
+            (NodePlacement.UNMANAGED_FABRIC, False))
+
     def test_every_claimed_axis_has_a_control(self):
         declared = set(pilot_evidence.CLAIMED_AXES)
-        covered = {name.replace("test_", "").replace("_axis_detects_a_difference", "")
-                   .replace("_axis_detects_an_incomplete_envelope", "")
-                   .replace("_axis_detects_a_rejected_bundle", "")
+        covered = {name.replace("test_", "").split("_axis_")[0]
                    for name in dir(self) if name.startswith("test_") and "_axis_" in name}
         self.assertEqual(
             declared - covered, set(),
