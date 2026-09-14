@@ -24,7 +24,14 @@ added after Dev B's #674 review:
 
 from __future__ import annotations
 
-from django.test import TestCase
+import os
+import signal
+import subprocess
+import sys
+
+from django.core.management import call_command
+from django.db import connection
+from django.test import TestCase, TransactionTestCase, tag
 
 from netbox_hedgehog.tests.test_interchange import fixtures, persistence
 from netbox_hedgehog.tests.test_interchange._support import (
@@ -45,7 +52,7 @@ class _ZeroWriteMixin:
             f'entry, or a retained ingress artifact all break the all-or-nothing '
             f'guarantee. Observed: {difference}')
 
-    def write_boundary_probe(self, before, label):
+    def write_boundary_probe(self, before, label, expect_tables=None):
         """Return a probe that PROVES a durable write occurred, then faults.
 
         This is the half that stops an implementation self-attesting: if nothing
@@ -54,11 +61,21 @@ class _ZeroWriteMixin:
         """
         def probe(*_args, **_kwargs):
             at_fault = persistence.snapshot()
+            changed = before.diff(at_fault).get("tables", {})
             self.assertNotEqual(
-                before.diff(at_fault), {"tables": {}},
+                changed, {},
                 f'{label}: the fault hook fired before any durable write, so this '
                 f'row would prove nothing about commit-boundary atomicity. The '
                 f'hook must run AFTER the first target write is visible.')
+            if expect_tables is not None:
+                # Stronger binding: the change must be in a NAMED target table,
+                # not merely any plugin or changelog row. Left optional until the
+                # target models exist; see GREEN_PHASE_BINDINGS in
+                # test_row_coverage.
+                self.assertTrue(
+                    [t for t in changed if any(e in t for e in expect_tables)],
+                    f'{label}: expected the first write in one of {expect_tables}, '
+                    f'observed changes in {sorted(changed)}')
             raise InjectedFault(label)
         return probe
 
@@ -168,29 +185,67 @@ class GracefulCancellationTestCase(_ZeroWriteMixin, TestCase):
         self.assert_zero_durable_writes(before, 'I16d graceful cancellation')
 
 
-# --- I16d(ii) genuine out-of-process loss: NOT COVERED -------------------------
-#
-# Dev B correctly required either a real process-loss probe or an honest
-# relabelling. The relabelling is done above. The real probe is NOT shippable in
-# this repo today, and that is recorded here rather than faked.
-#
-# A child process can only observe COMMITTED state, which needs
-# `TransactionTestCase`. Its teardown cannot complete against this schema:
-#
-#     psycopg.errors.FeatureNotSupported: cannot truncate a table referenced in
-#     a foreign key constraint
-#     DETAIL: Table "netbox_hedgehog_vpc_tags" references "netbox_hedgehog_vpc".
-#
-# Measured 2026-09-14 in lane diet673 running only that class: 1 failure (the
-# expected feature-absence RED) plus 1 teardown ERROR. An erroring test violates
-# #673 acceptance gate 1, which requires the suite to be red solely because the
-# feature is absent, so the class was removed rather than left to error.
-#
-# Consequence, stated plainly: the process-loss half of I16d has NO coverage.
-# The graceful-cancellation row above does not substitute for it -- abrupt
-# termination runs no cleanup, which is the entire point of the row. Restoring
-# it depends on the `TransactionTestCase` flush defect being fixed separately;
-# it is tracked in test_row_coverage.BLOCKED_ROWS so it cannot be forgotten.
+@tag('slow')
+class HardProcessLossTestCase(_ZeroWriteMixin, TransactionTestCase):
+    """I16d(ii) - genuine out-of-process loss.
+
+    SIGKILL, because abrupt termination runs no cleanup: a design whose only
+    cleanup is a `finally` or a context-manager exit cannot pass this row, and
+    graceful cancellation therefore does not substitute for it.
+
+    `TransactionTestCase` because the child must observe COMMITTED state.
+
+    Two things make that workable in this repo:
+
+    * `_fixture_teardown` is overridden to pass ``allow_cascade=True``. Django
+      otherwise derives it from ``available_apps`` and a plain TRUNCATE fails
+      here with "cannot truncate a table referenced in a foreign key
+      constraint" (netbox_hedgehog_vpc_tags -> netbox_hedgehog_vpc). Restricting
+      ``available_apps`` would also inhibit post-migrate and leave the kept
+      database unseeded for later runs, so the flag is set directly instead.
+    * The child is told which database to use. `django.setup()` alone would
+      connect to the real lane database rather than the test one.
+
+    Tagged slow: the flush re-runs post-migrate reference-data seeding.
+    """
+
+    #: Set by the test; read by the child through the environment.
+    CHILD = (
+        "import os, signal, django;\n"
+        "django.setup();\n"
+        "from django.db import connection;\n"
+        "connection.settings_dict['NAME'] = os.environ['HH_TEST_DB'];\n"
+        "from netbox_hedgehog import interchange;\n"
+        "from netbox_hedgehog.tests.test_interchange import fixtures;\n"
+        "kill = lambda *a, **k: os.kill(os.getpid(), signal.SIGKILL);\n"
+        "interchange.import_bundle(\n"
+        "    interchange.decode_document(fixtures.to_json(fixtures.valid_bundle())),\n"
+        "    user=None, after_first_target_write=kill)\n"
+    )
+
+    def _fixture_teardown(self):
+        for db_name in self._databases_names(include_mirrors=False):
+            call_command(
+                "flush", verbosity=0, interactive=False, database=db_name,
+                reset_sequences=False, allow_cascade=True,
+                inhibit_post_migrate=False,
+            )
+
+    def test_i16d_hard_process_loss_after_write_boundary_leaves_no_success(self):
+        module = require_interchange()
+        before = persistence.snapshot()
+
+        completed = subprocess.run(
+            [sys.executable, "-c", self.CHILD], capture_output=True,
+            env={**os.environ, "HH_TEST_DB": connection.settings_dict["NAME"]},
+        )
+        self.assertEqual(
+            completed.returncode, -signal.SIGKILL,
+            f'the child must die by SIGKILL for this to be a process-loss test; '
+            f'got {completed.returncode}: {completed.stderr[-400:]!r}')
+
+        module.run_ingress_reaper()
+        self.assert_zero_durable_writes(before, 'I16d hard process loss')
 
 
 class SuccessStateTestCase(_ZeroWriteMixin, TestCase):

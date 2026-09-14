@@ -96,6 +96,87 @@ def design_revision(slug: str = "xoc64-mesh") -> dict:
     }
 
 
+def _switch_class(parent: dict, slug: str, role: str, quantity: int,
+                  uplink_ports: int = 0, zones=None) -> dict:
+    return {
+        "identity": {"parent": dict(parent), "slug": slug},
+        "role": role,
+        "quantity": quantity,
+        "uplinkPorts": uplink_ports,
+        "zones": zones if zones is not None else [],
+    }
+
+
+def design_revision_for_family(family: str, slug: str | None = None) -> dict:
+    """A FAMILY-COMPLETE design revision.
+
+    Flipping the `family` string on the mesh fixture would have asked a future
+    implementation to accept under-specified intent -- a Clos with no spine
+    domain, or an unbounded single switch. #661 requires a non-vacuous spine
+    domain for Clos and an explicit capacity bound for a single switch, so each
+    family gets intent that is actually valid for it.
+    """
+    slug = slug or f"xoc64-{family}"
+    revision = design_revision(slug)
+    parent = {"namespace": PUBLISHER, "slug": slug}
+    fabric = revision["topology"]["fabrics"][0]
+    fabric["family"] = family
+
+    if family == "mesh":
+        pass  # leaf-only is valid for mesh
+    elif family == "clos":
+        # Non-vacuous spine domain: S >= 2 (#661 F2).
+        fabric["switchClasses"][0]["uplinkPorts"] = 8
+        fabric["switchClasses"].append(
+            _switch_class(parent, "fe-spine", "spine", quantity=2))
+        fabric["spineDomain"] = {"spineClass": "fe-spine", "spineCount": 2}
+    elif family == "single-switch":
+        # Explicitly capacity-bounded, not merely "one switch".
+        fabric["switchClasses"] = [
+            _switch_class(parent, "fe-only", "server-leaf", quantity=1,
+                          zones=[{
+                              "identity": {"parent": dict(parent),
+                                           "slug": "fe-only-servers"},
+                              "breakoutParent": "E1/1",
+                              "lane": 0,
+                          }])
+        ]
+        fabric["capacityBound"] = {"maxServerPorts": 48, "declared": True}
+    else:
+        raise ValueError(f"no complete fixture for family {family!r}")
+    return revision
+
+
+def bundle_for_family(family: str) -> dict:
+    return bundle(catalog_version(), design_revision_for_family(family))
+
+
+#: Family-complete positives, and the intent shapes that must NOT be accepted.
+VALID_FAMILIES = ("mesh", "clos", "single-switch")
+
+INVALID_FAMILY_INTENT = {
+    "clos with no spine class": lambda d: (
+        d["topology"]["fabrics"][0].__setitem__("family", "clos")),
+    "clos with one spine": lambda d: _set_spine_count(d, 1),
+    "clos with zero spines": lambda d: _set_spine_count(d, 0),
+    "single-switch without a capacity bound": lambda d: (
+        d["topology"]["fabrics"][0].pop("capacityBound", None)
+        or d["topology"]["fabrics"][0].__setitem__("family", "single-switch")),
+}
+
+
+def _set_spine_count(revision: dict, count: int) -> None:
+    fabric = revision["topology"]["fabrics"][0]
+    fabric["family"] = "clos"
+    parent = revision["identity"]
+    fabric["switchClasses"] = [
+        c for c in fabric["switchClasses"] if c.get("role") != "spine"]
+    if count:
+        fabric["switchClasses"].append(
+            _switch_class(parent, "fe-spine", "spine", quantity=count))
+    fabric["spineDomain"] = {"spineClass": "fe-spine", "spineCount": count}
+
+
 def bundle(*objects) -> dict:
     members = list(objects) or [catalog_version(), design_revision()]
     return {

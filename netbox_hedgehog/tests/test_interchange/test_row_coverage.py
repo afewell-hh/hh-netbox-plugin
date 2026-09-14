@@ -52,12 +52,22 @@ ROW_TESTS = {
     "I9": ["test_semantics.TopologyFamilyTestCase."
            "test_i9_absent_family_declaration_is_rejected",
            "test_semantics.TopologyFamilyTestCase."
-           "test_i9_each_explicit_family_is_accepted",
+           "test_i9_each_family_complete_declaration_is_accepted",
+           "test_semantics.TopologyFamilyTestCase."
+           "test_i9_under_specified_family_intent_is_rejected",
+           "test_semantics.TopologyFamilyTestCase."
+           "test_i9_clos_requires_a_non_vacuous_spine_domain",
+           "test_semantics.TopologyFamilyTestCase."
+           "test_i9_single_switch_must_declare_its_capacity_bound",
            "test_semantics.TopologyFamilyTestCase."
            "test_i9_mesh_declared_with_a_spine_role_is_rejected",
            "test_semantics.TopologyFamilyTestCase."
            "test_i9_breakout_endpoint_without_parent_or_lane_is_rejected"],
     "I10": ["test_semantics.PhysicalCapabilityTestCase."
+            "test_i10_native_fixed_port_is_accepted_without_a_transceiver",
+            "test_semantics.PhysicalCapabilityTestCase."
+            "test_i10_incompatible_overlay_on_a_native_port_is_rejected",
+            "test_semantics.PhysicalCapabilityTestCase."
             "test_i10_media_overlay_is_not_silently_accepted_by_inference",
             "test_semantics.PhysicalCapabilityTestCase."
             "test_i10_integrated_assembly_is_not_inferred_from_a_pluggable_default"],
@@ -93,7 +103,11 @@ ROW_TESTS = {
              "test_i16b_integrity_failure_in_second_target_rolls_back_the_first"],
     "I16c": ["test_atomicity.IngressFailureTestCase."
              "test_i16c_accepted_upload_is_not_retained_after_validation_failure"],
-    "I16d": ["test_atomicity.GracefulCancellationTestCase."
+    # Both halves. Graceful cancellation does NOT substitute for process loss;
+    # it is listed alongside, never instead of, the SIGKILL probe.
+    "I16d": ["test_atomicity.HardProcessLossTestCase."
+             "test_i16d_hard_process_loss_after_write_boundary_leaves_no_success",
+             "test_atomicity.GracefulCancellationTestCase."
              "test_i16d_graceful_cancellation_after_write_boundary_leaves_no_success"],
     "I17": ["test_atomicity.SuccessStateTestCase."
             "test_i17_valid_import_creates_one_draft_and_one_unpublished_version",
@@ -116,15 +130,28 @@ ROW_TESTS = {
 #: Rows whose coverage is KNOWN INCOMPLETE, with the reason. Recorded here so a
 #: gap is visible in the coverage map rather than discovered later by its
 #: absence. A row may appear in both maps: partially covered is not covered.
-BLOCKED_ROWS = {
-    "I16d": (
-        "The process-loss half has no coverage. It requires a child process to "
-        "see COMMITTED state, hence TransactionTestCase, whose teardown fails "
-        "on this schema: 'cannot truncate a table referenced in a foreign key "
-        "constraint' (netbox_hedgehog_vpc_tags -> netbox_hedgehog_vpc). "
-        "Graceful cancellation is covered and does NOT substitute: abrupt "
-        "termination runs no cleanup, which is the whole point of the row. "
-        "Blocked on the TransactionTestCase flush defect."
+#: Currently EMPTY. I16d's process-loss half was blocked here by the
+#: TransactionTestCase teardown failure ("cannot truncate a table referenced in
+#: a foreign key constraint"); that was repaired by overriding _fixture_teardown
+#: to pass allow_cascade=True, so the row is genuinely covered rather than
+#: deferred. The mechanism stays for the next real gap.
+BLOCKED_ROWS: dict = {}
+
+#: Known-weak bindings that a GREEN implementation must strengthen. These are
+#: not coverage gaps -- the rows exist and fail correctly -- but their assertion
+#: is looser than it will need to be once the target models exist.
+GREEN_PHASE_BINDINGS = {
+    "I16a/I16b": (
+        "The write-boundary probe proves SOME durable change before faulting, "
+        "not that the named catalog/design target was the first write. Bind it "
+        "to the actual target tables via write_boundary_probe(expect_tables=...) "
+        "once those models exist."
+    ),
+    "I30": (
+        "Evidence is asserted from the value corpus_round_trip_evidence() "
+        "returns, so an implementation could still manufacture the disposition "
+        "and finding names. GREEN must derive them from actual pilot/invariant "
+        "execution and its provenance envelope."
     ),
 }
 
@@ -132,6 +159,13 @@ PACKAGE = "netbox_hedgehog.tests.test_interchange"
 
 
 class RowCoverageTestCase(SimpleTestCase):
+
+    def test_green_phase_bindings_are_declared_with_a_reason(self):
+        """A known-weak assertion must be written down, not left to be noticed."""
+        for label, reason in sorted(GREEN_PHASE_BINDINGS.items()):
+            with self.subTest(binding=label):
+                self.assertGreater(len(reason), 80,
+                                   f'{label} needs a substantive reason')
 
     def test_blocked_rows_are_declared_with_a_reason(self):
         """A known gap must be stated, not implied by absence."""

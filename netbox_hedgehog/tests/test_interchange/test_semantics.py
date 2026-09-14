@@ -159,7 +159,7 @@ class ReferenceGraphTestCase(SourceLocationMixin, TestCase):
 class TopologyFamilyTestCase(SourceLocationMixin, TestCase):
     """I9 - explicit Clos/mesh/single-switch family, zones, breakout identity."""
 
-    def _import(self, mutate):
+    def _import(self, mutate):  # noqa: D401 - mesh-based negatives
         module = require_interchange()
         document = fixtures.valid_bundle()
         mutate(document["objects"][1]["topology"])
@@ -175,11 +175,50 @@ class TopologyFamilyTestCase(SourceLocationMixin, TestCase):
         with self.assertRaises(Exception):
             self._import(lambda t: t["fabrics"][0].update(family="somethingelse"))
 
-    def test_i9_each_explicit_family_is_accepted(self):
-        for family in ("clos", "mesh", "single-switch"):
+    def test_i9_each_family_complete_declaration_is_accepted(self):
+        """Positives use FAMILY-COMPLETE intent. Flipping the family string on a
+        leaf-only fixture would have asked an implementation to accept a Clos
+        with no spine domain or an unbounded single switch -- licensing exactly
+        the under-specification #661 forbids."""
+        module = require_interchange()
+        for family in fixtures.VALID_FAMILIES:
             with self.subTest(family=family):
-                result = self._import(lambda t, f=family: t["fabrics"][0].update(family=f))
+                result = module.import_bundle(
+                    module.decode_document(
+                        fixtures.to_json(fixtures.bundle_for_family(family))),
+                    user=None)
                 self.assertIsNotNone(result)
+
+    def test_i9_under_specified_family_intent_is_rejected(self):
+        """The matching negatives, so the positives above cannot be satisfied by
+        an implementation that simply accepts anything."""
+        module = require_interchange()
+        for label, mutate in sorted(fixtures.INVALID_FAMILY_INTENT.items()):
+            with self.subTest(intent=label):
+                document = fixtures.bundle_for_family("clos")
+                mutate(document["objects"][1])
+                with self.assertRaises(Exception, msg=f'{label} must be rejected'):
+                    module.import_bundle(
+                        module.decode_document(fixtures.to_json(document)), user=None)
+
+    def test_i9_clos_requires_a_non_vacuous_spine_domain(self):
+        """S=0 and S=1 are the specific cases #661 F2 and #668 turn on."""
+        module = require_interchange()
+        for count in (0, 1):
+            with self.subTest(spine_count=count):
+                document = fixtures.bundle_for_family("clos")
+                fixtures._set_spine_count(document["objects"][1], count)
+                with self.assertRaises(Exception):
+                    module.import_bundle(
+                        module.decode_document(fixtures.to_json(document)), user=None)
+
+    def test_i9_single_switch_must_declare_its_capacity_bound(self):
+        module = require_interchange()
+        document = fixtures.bundle_for_family("single-switch")
+        document["objects"][1]["topology"]["fabrics"][0].pop("capacityBound")
+        with self.assertRaises(Exception):
+            module.import_bundle(
+                module.decode_document(fixtures.to_json(document)), user=None)
 
     def test_i9_mesh_declared_with_a_spine_role_is_rejected(self):
         """Self-contradictory persisted family, the #668 finding in text form."""
@@ -215,11 +254,13 @@ class TopologyFamilyTestCase(SourceLocationMixin, TestCase):
 class PhysicalCapabilityTestCase(TestCase):
     """I10 - physical assembly and media-overlay ownership.
 
-    The media-overlay ownership gate is OPEN (#672 §10.2). This row therefore
-    asserts only the part that holds under every possible outcome: an artifact
-    carrying media-overlay facts must not be silently accepted using an inferred
-    substitute. When the gate closes, this splits into explicit accept/reject
-    cases per the approved policy -- it is deliberately NOT predicting which.
+    Native fixed ports are an accepted realization type, so they are tested for
+    ACCEPTANCE without an invented optic.
+
+    What stays gated is narrower: media-overlay OWNERSHIP is still open
+    (#672 10.2), so where an overlay's admissibility depends on that decision,
+    the row asserts only that no inferred substitute is used. That gate does not
+    license rejecting native realization itself, which was the error here.
     """
 
     def _with_physical(self, connection_overlay):
@@ -241,8 +282,29 @@ class PhysicalCapabilityTestCase(TestCase):
             module.import_bundle(
                 module.decode_document(fixtures.to_json(document)), user=None)
 
-    def test_i10_native_port_connection_does_not_acquire_a_transceiver(self):
+    def test_i10_native_fixed_port_is_accepted_without_a_transceiver(self):
+        """Native fixed ports are an ACCEPTED realization type, so this asserts
+        acceptance and the absence of an invented optic -- the previous version
+        expected rejection, which contradicted both the contract and its own
+        name."""
         module, document = self._with_physical({"assembly": {"kind": "native-port"}})
+        result = module.import_bundle(
+            module.decode_document(fixtures.to_json(document)), user=None)
+        connection = module.export_connection(result.design_revision, index=0)
+        self.assertEqual(connection["assembly"]["kind"], "native-port")
+        for invented in ("transceiver", "optic", "mediaOverlay"):
+            with self.subTest(field=invented):
+                self.assertNotIn(
+                    invented, connection,
+                    f'a native fixed port must not acquire {invented} by inference')
+
+    def test_i10_incompatible_overlay_on_a_native_port_is_rejected(self):
+        """Accepting native realization does not mean accepting any overlay on
+        it; an incompatible one must fail rather than be reconciled."""
+        module, document = self._with_physical({
+            "assembly": {"kind": "native-port"},
+            "mediaOverlay": {"cage": "osfp", "pluggable": True},
+        })
         with self.assertRaises(Exception):
             module.import_bundle(
                 module.decode_document(fixtures.to_json(document)), user=None)
