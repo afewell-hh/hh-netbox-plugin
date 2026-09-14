@@ -24,12 +24,7 @@ added after Dev B's #674 review:
 
 from __future__ import annotations
 
-import os
-import signal
-import subprocess
-import sys
-
-from django.test import TestCase, TransactionTestCase, tag
+from django.test import TestCase
 
 from netbox_hedgehog.tests.test_interchange import fixtures, persistence
 from netbox_hedgehog.tests.test_interchange._support import (
@@ -173,48 +168,29 @@ class GracefulCancellationTestCase(_ZeroWriteMixin, TestCase):
         self.assert_zero_durable_writes(before, 'I16d graceful cancellation')
 
 
-@tag('slow')
-class HardProcessLossTestCase(_ZeroWriteMixin, TransactionTestCase):
-    """I16d(ii) - genuine out-of-process loss.
-
-    Tagged slow, and it genuinely is: `TransactionTestCase` flushes the database
-    and re-runs the plugin's post-migrate reference-data seeding, which costs
-    minutes in this repo. It is excluded from the fast lane run via
-    `--exclude-tag=slow` and must be run explicitly. That cost buys the one thing
-    an in-process context manager cannot: a process that dies running no cleanup.
-
-    `TransactionTestCase` because the child process must see COMMITTED state,
-    and SIGKILL because abrupt termination runs no `finally` -- a cleanup design
-    that depends on one cannot pass this row. The parent then runs the approved
-    reaper and asserts the outcome.
-    """
-
-    CHILD = (
-        "import django; django.setup();\n"
-        "import os, signal;\n"
-        "from netbox_hedgehog import interchange;\n"
-        "from netbox_hedgehog.tests.test_interchange import fixtures;\n"
-        "kill = lambda *a, **k: os.kill(os.getpid(), signal.SIGKILL);\n"
-        "interchange.import_bundle(\n"
-        "    interchange.decode_document(fixtures.to_json(fixtures.valid_bundle())),\n"
-        "    user=None, after_first_target_write=kill)\n"
-    )
-
-    def test_i16d_hard_process_loss_after_write_boundary_leaves_no_success(self):
-        module = require_interchange()
-        before = persistence.snapshot()
-
-        completed = subprocess.run(
-            [sys.executable, "-c", self.CHILD],
-            capture_output=True, env={**os.environ},
-        )
-        self.assertEqual(
-            completed.returncode, -signal.SIGKILL,
-            f'the child must die by SIGKILL for this to be a process-loss test; '
-            f'got {completed.returncode}: {completed.stderr[-400:]!r}')
-
-        module.run_ingress_reaper()
-        self.assert_zero_durable_writes(before, 'I16d hard process loss')
+# --- I16d(ii) genuine out-of-process loss: NOT COVERED -------------------------
+#
+# Dev B correctly required either a real process-loss probe or an honest
+# relabelling. The relabelling is done above. The real probe is NOT shippable in
+# this repo today, and that is recorded here rather than faked.
+#
+# A child process can only observe COMMITTED state, which needs
+# `TransactionTestCase`. Its teardown cannot complete against this schema:
+#
+#     psycopg.errors.FeatureNotSupported: cannot truncate a table referenced in
+#     a foreign key constraint
+#     DETAIL: Table "netbox_hedgehog_vpc_tags" references "netbox_hedgehog_vpc".
+#
+# Measured 2026-09-14 in lane diet673 running only that class: 1 failure (the
+# expected feature-absence RED) plus 1 teardown ERROR. An erroring test violates
+# #673 acceptance gate 1, which requires the suite to be red solely because the
+# feature is absent, so the class was removed rather than left to error.
+#
+# Consequence, stated plainly: the process-loss half of I16d has NO coverage.
+# The graceful-cancellation row above does not substitute for it -- abrupt
+# termination runs no cleanup, which is the entire point of the row. Restoring
+# it depends on the `TransactionTestCase` flush defect being fixed separately;
+# it is tracked in test_row_coverage.BLOCKED_ROWS so it cannot be forgotten.
 
 
 class SuccessStateTestCase(_ZeroWriteMixin, TestCase):

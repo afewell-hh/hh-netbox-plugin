@@ -94,9 +94,7 @@ ROW_TESTS = {
     "I16c": ["test_atomicity.IngressFailureTestCase."
              "test_i16c_accepted_upload_is_not_retained_after_validation_failure"],
     "I16d": ["test_atomicity.GracefulCancellationTestCase."
-             "test_i16d_graceful_cancellation_after_write_boundary_leaves_no_success",
-             "test_atomicity.HardProcessLossTestCase."
-             "test_i16d_hard_process_loss_after_write_boundary_leaves_no_success"],
+             "test_i16d_graceful_cancellation_after_write_boundary_leaves_no_success"],
     "I17": ["test_atomicity.SuccessStateTestCase."
             "test_i17_valid_import_creates_one_draft_and_one_unpublished_version",
             "test_atomicity.SuccessStateTestCase."
@@ -115,10 +113,33 @@ ROW_TESTS = {
             "test_i30_ledger_is_the_source_of_the_expected_unresolved_set"],
 }
 
+#: Rows whose coverage is KNOWN INCOMPLETE, with the reason. Recorded here so a
+#: gap is visible in the coverage map rather than discovered later by its
+#: absence. A row may appear in both maps: partially covered is not covered.
+BLOCKED_ROWS = {
+    "I16d": (
+        "The process-loss half has no coverage. It requires a child process to "
+        "see COMMITTED state, hence TransactionTestCase, whose teardown fails "
+        "on this schema: 'cannot truncate a table referenced in a foreign key "
+        "constraint' (netbox_hedgehog_vpc_tags -> netbox_hedgehog_vpc). "
+        "Graceful cancellation is covered and does NOT substitute: abrupt "
+        "termination runs no cleanup, which is the whole point of the row. "
+        "Blocked on the TransactionTestCase flush defect."
+    ),
+}
+
 PACKAGE = "netbox_hedgehog.tests.test_interchange"
 
 
 class RowCoverageTestCase(SimpleTestCase):
+
+    def test_blocked_rows_are_declared_with_a_reason(self):
+        """A known gap must be stated, not implied by absence."""
+        for row, reason in sorted(BLOCKED_ROWS.items()):
+            with self.subTest(row=row):
+                self.assertIn(row, ROW_TESTS, f'{row} is blocked but not dispatched')
+                self.assertGreater(len(reason), 80,
+                                   f'{row} needs a substantive reason, not a label')
 
     def test_every_dispatched_row_names_at_least_one_test(self):
         empty = sorted(row for row, tests in ROW_TESTS.items() if not tests)
