@@ -37,7 +37,7 @@ def catalog_version(slug: str = "ds5000", version: str = "3") -> dict:
         "version": version,
         "catalogContent": copy.deepcopy(CATALOG_CONTENT),
         "maturity": "published",
-        "provenance": {"exporter": "hnp-test", "sourceRevision": "r1"},
+        "provenance": {"sourceRevision": "r1", "schemaVersion": SCHEMA_VERSION},
     }
 
 
@@ -62,8 +62,7 @@ def design_revision(slug: str = "xoc64-mesh") -> dict:
         "catalogRefs": [catalog_reference()],
         "assumptions": [{"id": "a1", "statement": "air-cooled racks"}],
         "maturity": "draft",
-        "provenance": {"exporter": "hnp-test", "sourceRevision": "r1",
-                       "schemaVersion": SCHEMA_VERSION},
+        "provenance": {"sourceRevision": "r1", "schemaVersion": SCHEMA_VERSION},
         "topology": {
             "fabrics": [{
                 "name": "frontend",
