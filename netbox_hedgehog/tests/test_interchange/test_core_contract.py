@@ -8,6 +8,7 @@ the only real path, or treating T1 as a product schema.
 from __future__ import annotations
 
 import copy
+import hashlib
 import json
 import os
 import pathlib
@@ -407,13 +408,46 @@ class DeterminismAndProvenanceTestCase(TestCase):
                     f'cannot support a maturity or equivalence claim')
         self.assertEqual(provenance.get("canonicalizationAlgorithm"), BINDING_ALGORITHM)
         self.assertEqual(provenance.get("exporter"), module.EXPORTER_ID)
-        self.assertEqual(provenance.get("exporterRevision"), module._exporter_revision())
-        self.assertTrue(
-            provenance["exporterRevision"].startswith("source-sha256:"),
-            "exporterRevision must identify the shipped exporter build, not a test literal")
+        # Computed INDEPENDENTLY from the shipped file rather than by calling
+        # the exporter's own helper. Comparing the export against
+        # module._exporter_revision() is self-referential: if that helper became
+        # a constant, both sides would still agree and the prefix check would
+        # still pass, so the row would no longer prove the revision tracks the
+        # shipped code. It also avoids coupling the suite to a private name.
+        expected = "source-sha256:" + hashlib.sha256(
+            pathlib.Path(module.__file__).read_bytes()).hexdigest()
+        self.assertEqual(
+            provenance.get("exporterRevision"), expected,
+            'exporterRevision must be a fingerprint of the shipped exporter '
+            'implementation, independently reproducible from its source')
         self.assertIn(
             provenance.get("artifactKind"), ("intent", "derived"),
             'an artifact must declare whether it is intent or derived')
+
+    def test_i13_author_supplied_emitter_identity_does_not_survive_export(self):
+        """Reclassifying `exporter` as export-derived is right -- emitter
+        identity is a property of the emitting software, not an author claim.
+
+        But it removed the only check that noticed a forged one: an authored
+        `exporter` is now excluded from the authored-mode round trip, and the
+        fixed-point row compares export against export where both already carry
+        the emitter's own value. A hostile or stale author-supplied emitter
+        identity would surface in neither. This is that missing negative.
+        """
+        module = require_interchange()
+        document = fixtures.valid_bundle()
+        document["objects"][1]["provenance"]["exporter"] = "evil-corp"
+        document["objects"][1]["provenance"]["exporterRevision"] = "source-sha256:0"
+        result = module.import_bundle(
+            module.decode_document(fixtures.to_json(document)), user=None)
+        exported = json.loads(module.export_revision(result.design_revision, fmt="json"))
+        provenance = exported["objects"][1]["provenance"]
+        self.assertEqual(
+            provenance.get("exporter"), module.EXPORTER_ID,
+            'an author must not be able to assert who exported the artifact')
+        self.assertNotEqual(
+            provenance.get("exporterRevision"), "source-sha256:0",
+            'an author must not be able to assert which build exported it')
 
     def test_i13_volatile_invocation_facts_stay_out_of_the_payload(self):
         """Requested-at time, actor, and run id belong in the audit envelope."""
