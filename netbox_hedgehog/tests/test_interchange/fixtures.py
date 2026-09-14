@@ -37,7 +37,8 @@ def catalog_version(slug: str = "ds5000", version: str = "3") -> dict:
         "version": version,
         "catalogContent": copy.deepcopy(CATALOG_CONTENT),
         "maturity": "published",
-        "provenance": {"exporter": "hnp-test", "sourceRevision": "r1"},
+        "provenance": {"exporter": "hnp-test", "sourceRevision": "r1",
+                       "schemaVersion": SCHEMA_VERSION},
     }
 
 

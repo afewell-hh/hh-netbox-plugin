@@ -47,6 +47,26 @@ CLAIMED_FACT_CLASSES = (
     "topology",
 )
 
+#: Provenance keys an AUTHOR writes into portable intent. These must survive a
+#: round trip unchanged.
+AUTHORED_PROVENANCE_KEYS = frozenset({"exporter", "sourceRevision", "schemaVersion"})
+
+#: Provenance keys an EXPORTER derives. They are absent from authored intent by
+#: definition -- an author cannot know the exporter's build revision or the
+#: content-integrity binding of a catalog it merely references.
+EXPORT_DERIVED_PROVENANCE_KEYS = frozenset({
+    "apiVersion", "exporterRevision", "maturity", "artifactKind",
+    "catalogContentIntegrity", "canonicalizationAlgorithm", "assumptions",
+    "exceptions",
+})
+
+#: The complete set a deterministic export must carry. SINGLE SOURCE OF TRUTH:
+#: I13 imports this rather than restating it. The two were stated independently
+#: before, which is how I13 came to require keys that I11b's exact-equality
+#: comparison then rejected -- a contract that no implementation could satisfy.
+REQUIRED_EXPORT_PROVENANCE_KEYS = (
+    AUTHORED_PROVENANCE_KEYS | EXPORT_DERIVED_PROVENANCE_KEYS)
+
 SUPPORTED_API_VERSIONS = frozenset({"aid.hedgehog.com/v1"})
 SUPPORTED_SCHEMA_VERSIONS = frozenset({"1.0"})
 
@@ -213,6 +233,23 @@ def _catalog_refs(obj: Mapping) -> tuple:
     return tuple(sorted(identities, key=repr)), tuple(sorted(bindings, key=repr))
 
 
+def _strip_derived(provenance):
+    """Drop export-derived keys so authored provenance can be compared alone."""
+    if not isinstance(provenance, Mapping):
+        return provenance
+    return {k: v for k, v in provenance.items()
+            if k not in EXPORT_DERIVED_PROVENANCE_KEYS}
+
+
+def _manifest_authored(manifest):
+    if not isinstance(manifest, Mapping):
+        return manifest
+    result = dict(manifest)
+    if isinstance(result.get("provenance"), Mapping):
+        result["provenance"] = _strip_derived(result["provenance"])
+    return result
+
+
 #: fact class -> callable(obj) -> comparable value
 _EXTRACTORS = {
     "envelope": lambda o: (o.get("apiVersion"), o.get("kind"), o.get("schemaVersion")),
@@ -230,8 +267,19 @@ _EXTRACTORS = {
 }
 
 
-def compare_interchange(left: Any, right: Any) -> ComparisonOutcome:
-    """Compare two decoded interchange bundles across every claimed fact class."""
+def compare_interchange(left: Any, right: Any, *,
+                        authored_provenance_only: bool = False) -> ComparisonOutcome:
+    """Compare two decoded interchange bundles across every claimed fact class.
+
+    ``authored_provenance_only`` excludes EXPORT_DERIVED_PROVENANCE_KEYS from the
+    provenance and bundle-manifest comparisons. Use it ONLY when comparing
+    authored input against exported output, where the exporter legitimately adds
+    derived provenance the author could not have written.
+
+    Never use it between two exports: there the derived keys must match exactly,
+    and excluding them would hide export drift. The fixed-point row compares two
+    exports with this off for exactly that reason.
+    """
     differences: list = []
     unmeasured: list = []
 
@@ -268,6 +316,8 @@ def compare_interchange(left: Any, right: Any) -> ComparisonOutcome:
                 rvalue = (right.get("apiVersion"), right.get("kind"), right.get("schemaVersion"))
             else:
                 lvalue, rvalue = left.get(key), right.get(key)
+                if authored_provenance_only:
+                    lvalue, rvalue = _manifest_authored(lvalue), _manifest_authored(rvalue)
             if lvalue != rvalue:
                 differences.append(FactDifference(
                     fact_class, f"bundle.{key or 'envelope'}", lvalue, rvalue))
@@ -282,6 +332,8 @@ def compare_interchange(left: Any, right: Any) -> ComparisonOutcome:
         lobj, robj = left_index[qualified], right_index[qualified]
         for fact_class, extract in _EXTRACTORS.items():
             lvalue, rvalue = extract(lobj), extract(robj)
+            if authored_provenance_only and fact_class == "provenance":
+                lvalue, rvalue = _strip_derived(lvalue), _strip_derived(rvalue)
             if lvalue != rvalue:
                 differences.append(FactDifference(
                     fact_class, f"objects[{qualified}].{fact_class}", lvalue, rvalue))

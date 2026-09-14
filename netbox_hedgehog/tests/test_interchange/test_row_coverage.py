@@ -77,6 +77,10 @@ ROW_TESTS = {
              "test_i11a_topology_perturbation_is_detected_by_the_subset_comparison"],
     "I11b": ["test_core_contract.RoundTripTestCase."
              "test_i11b_full_model_round_trip_preserves_every_claimed_fact_class",
+             "test_core_contract.RoundTripTestCase."
+             "test_i11b_export_is_a_fixed_point_including_derived_provenance",
+             "test_comparator_controls.AuthoredProvenanceModeTestCase."
+             "test_added_derived_provenance_IS_a_difference_in_the_default_mode",
              "test_comparator_controls.ComparatorControlTestCase."
              "test_mutation_control_detects_each_fact_class_by_name_and_path"],
     "I11c": ["test_containment.ProductionDoesNotImportTestCodeTestCase."
