@@ -94,6 +94,8 @@ ROW_TESTS = {
     "I13": ["test_core_contract.DeterminismAndProvenanceTestCase."
             "test_i13_export_provenance_names_required_elements",
             "test_core_contract.DeterminismAndProvenanceTestCase."
+            "test_i13_author_supplied_emitter_identity_does_not_survive_export",
+            "test_core_contract.DeterminismAndProvenanceTestCase."
             "test_i13_volatile_invocation_facts_stay_out_of_the_payload"],
     "I14": ["test_core_contract.DeterminismAndProvenanceTestCase."
             "test_i14_unsupported_fact_cannot_be_silently_dropped"],
