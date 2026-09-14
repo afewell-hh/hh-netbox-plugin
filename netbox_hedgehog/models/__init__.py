@@ -41,6 +41,12 @@ from .topology_planning import (
     GenerationState,
     PlanLocalityRange,
 )
+from .interchange import (
+    InterchangeCatalogVersion,
+    InterchangeDesignRevision,
+    InterchangeProvenance,
+    InterchangeAudit,
+)
 
 __all__ = [
     # Base
@@ -72,4 +78,8 @@ __all__ = [
     'SwitchPortZone',
     'GenerationState',
     'PlanLocalityRange',
+    'InterchangeCatalogVersion',
+    'InterchangeDesignRevision',
+    'InterchangeProvenance',
+    'InterchangeAudit',
 ]
