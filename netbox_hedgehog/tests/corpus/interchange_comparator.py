@@ -49,12 +49,13 @@ CLAIMED_FACT_CLASSES = (
 
 #: Provenance keys an AUTHOR writes into portable intent. These must survive a
 #: round trip unchanged.
-AUTHORED_PROVENANCE_KEYS = frozenset({"exporter", "sourceRevision", "schemaVersion"})
+AUTHORED_PROVENANCE_KEYS = frozenset({"sourceRevision", "schemaVersion"})
 
 #: Provenance keys an EXPORTER derives. They are absent from authored intent by
 #: definition -- an author cannot know the exporter's build revision or the
 #: content-integrity binding of a catalog it merely references.
 EXPORT_DERIVED_PROVENANCE_KEYS = frozenset({
+    "exporter",
     "apiVersion", "exporterRevision", "maturity", "artifactKind",
     "catalogContentIntegrity", "canonicalizationAlgorithm", "assumptions",
     "exceptions",

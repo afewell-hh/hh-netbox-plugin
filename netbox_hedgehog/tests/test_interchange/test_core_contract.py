@@ -406,6 +406,11 @@ class DeterminismAndProvenanceTestCase(TestCase):
                     f'provenance must identify {element}; an incomplete envelope '
                     f'cannot support a maturity or equivalence claim')
         self.assertEqual(provenance.get("canonicalizationAlgorithm"), BINDING_ALGORITHM)
+        self.assertEqual(provenance.get("exporter"), module.EXPORTER_ID)
+        self.assertEqual(provenance.get("exporterRevision"), module._exporter_revision())
+        self.assertTrue(
+            provenance["exporterRevision"].startswith("source-sha256:"),
+            "exporterRevision must identify the shipped exporter build, not a test literal")
         self.assertIn(
             provenance.get("artifactKind"), ("intent", "derived"),
             'an artifact must declare whether it is intent or derived')

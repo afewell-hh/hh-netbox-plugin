@@ -10,6 +10,7 @@ import json
 import re
 from dataclasses import dataclass
 from contextlib import nullcontext
+from pathlib import Path
 
 import yaml
 from django.db import transaction
@@ -22,10 +23,11 @@ from .models.interchange import (
 API_VERSION = "aid.hedgehog.com/v1"
 SCHEMA_VERSION = "1.0"
 BINDING_ALGORITHM = "aid-jcs-rfc8785-sha256-v1"
+EXPORTER_ID = "netbox-hedgehog"
 _NAMESPACE = re.compile(r"^[a-z0-9]+(\.[a-z0-9-]+)+$")
 _SLUG = re.compile(r"^[a-z0-9][a-z0-9-]*$")
 _SECRET_KEYS = frozenset({"password", "token", "secret", "credential", "kubernetes_token"})
-_DERIVED_PROVENANCE = frozenset({"exporterRevision", "artifactKind", "catalogContentIntegrity", "canonicalizationAlgorithm", "assumptions", "exceptions", "apiVersion", "maturity"})
+_DERIVED_PROVENANCE = frozenset({"exporter", "exporterRevision", "artifactKind", "catalogContentIntegrity", "canonicalizationAlgorithm", "assumptions", "exceptions", "apiVersion", "maturity"})
 
 
 @dataclass
@@ -279,6 +281,11 @@ def _binding(content):
     return {"algorithm": BINDING_ALGORITHM, "digest": content_integrity_digest(content)}
 
 
+def _exporter_revision():
+    """A deterministic fingerprint of the shipped exporter implementation."""
+    return "source-sha256:" + hashlib.sha256(Path(__file__).read_bytes()).hexdigest()
+
+
 def _validate_refs(design, catalogs):
     refs = design.get("catalogRefs") or []
     if not refs: _error("design requires explicit catalog reference", "$.catalogRefs")
@@ -365,7 +372,7 @@ def _bundle_for_design(revision):
     design = stored
     # Provenance is deterministic and complete. The fixture's optional test
     # exporter provenance is normalized on both directions by this core.
-    design.setdefault("provenance", {}).update({"schemaVersion": SCHEMA_VERSION, "apiVersion": API_VERSION, "exporter": "hnp-test", "exporterRevision": "v1", "maturity": design.get("maturity", "draft"), "artifactKind": "intent", "catalogContentIntegrity": [r.get("contentIntegrity") for r in design.get("catalogRefs", [])], "canonicalizationAlgorithm": BINDING_ALGORITHM, "assumptions": design.get("assumptions", []), "exceptions": []})
+    design.setdefault("provenance", {}).update({"schemaVersion": SCHEMA_VERSION, "apiVersion": API_VERSION, "exporter": EXPORTER_ID, "exporterRevision": _exporter_revision(), "maturity": design.get("maturity", "draft"), "artifactKind": "intent", "catalogContentIntegrity": [r.get("contentIntegrity") for r in design.get("catalogRefs", [])], "canonicalizationAlgorithm": BINDING_ALGORITHM, "assumptions": design.get("assumptions", []), "exceptions": []})
     objects = sorted(catalogs + [design], key=lambda o: _identity(o["identity"], "$.identity"))
     manifest["objects"] = [{"kind": o["kind"], "identity": o["identity"]} for o in objects]
     return {"apiVersion": API_VERSION, "kind": "Bundle", "schemaVersion": SCHEMA_VERSION, "manifest": manifest, "objects": objects}

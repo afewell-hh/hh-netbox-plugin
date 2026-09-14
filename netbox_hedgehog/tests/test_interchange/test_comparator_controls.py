@@ -148,7 +148,7 @@ class AuthoredProvenanceModeTestCase(SimpleTestCase):
         for authored_only in (False, True):
             with self.subTest(authored_provenance_only=authored_only):
                 document = fixtures.valid_bundle()
-                document["objects"][1]["provenance"]["exporter"] = "someone-else"
+                document["objects"][1]["provenance"]["sourceRevision"] = "r2"
                 outcome = compare_interchange(
                     document, fixtures.valid_bundle(),
                     authored_provenance_only=authored_only)
