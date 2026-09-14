@@ -58,6 +58,117 @@ class InvariantResult:
             Finding.HNP_DEFECT, Finding.CONTRACT_DEFECT, Finding.UNRESOLVED)
 
 
+#: PlanSwitchClass.topology_mode value meaning Clos (TopologyModeChoices.SPINE_LEAF).
+CLOS_MODE = "spine-leaf"
+
+
+def collect_fabric_facts(switch_classes: Sequence[Mapping[str, Any]]) -> dict:
+    """Reduce persisted switch-class records to the facts the invariants need.
+
+    Declared-Clos fabrics are SEEDED at zero spines. Without that a fabric that
+    declares Clos but carries no spine class never enters the collection at all,
+    so ``check_clos_spine_cardinality`` emits nothing and S=0 -- the very case
+    the invariant exists to catch -- is undetectable.
+
+    A fabric is declared Clos when any of its classes sets
+    ``topology_mode='spine-leaf'`` or carries the ``spine`` role. Seeding is
+    keyed on the declaration, never on inferring intent from uplink counts,
+    which #661 forbids.
+    """
+    fabric_classes: dict = {}
+    for record in switch_classes:
+        fabric_classes.setdefault(record["fabric_name"], []).append(record)
+
+    spine_counts: dict = {}
+    unknown_spine_fabrics: set = set()
+    leaf_uplinks: dict = {}
+    leaf_fabric: dict = {}
+
+    for fabric, classes in fabric_classes.items():
+        modes = {c.get("topology_mode") for c in classes if c.get("topology_mode")}
+        roles = {c.get("hedgehog_role") for c in classes}
+        if CLOS_MODE in modes or "spine" in roles:
+            spine_counts[fabric] = 0
+
+        for record in classes:
+            quantity = record.get("quantity")
+            if record.get("hedgehog_role") == "spine":
+                if fabric in unknown_spine_fabrics:
+                    continue
+                if quantity is None:
+                    # A fabric mixing known and unknown spine quantities has an
+                    # UNKNOWN total; summing only the known ones would report a
+                    # confident subtotal that could satisfy S>=2 on partial data.
+                    unknown_spine_fabrics.add(fabric)
+                    spine_counts[fabric] = None
+                else:
+                    spine_counts[fabric] = (spine_counts.get(fabric) or 0) + quantity
+            else:
+                leaf_uplinks[record["switch_class_id"]] = record.get("uplink_ports") or 0
+                leaf_fabric[record["switch_class_id"]] = fabric
+
+    return {
+        "fabric_classes": fabric_classes,
+        "spine_counts": spine_counts,
+        "leaf_uplinks": leaf_uplinks,
+        "leaf_fabric": leaf_fabric,
+    }
+
+
+# --- ledger reconciliation --------------------------------------------------
+
+#: Every ledger entry must carry these, so a recorded finding names who decides,
+#: where the triage lives, and what state it is in -- not just that it is known.
+LEDGER_REQUIRED_FIELDS = ("finding", "detail_contains", "owner", "resolution", "provenance")
+
+#: A recorded finding is pending a decision, or an accepted divergence with a
+#: reason. There is deliberately no "ignored" state.
+LEDGER_RESOLUTIONS = ("pending-governed-decision", "accepted-divergence")
+
+
+def validate_ledger(known: Mapping[str, Mapping[str, Any]]) -> list:
+    """Return structural problems in a findings ledger."""
+    problems = []
+    for name, entry in sorted(known.items()):
+        for field_name in LEDGER_REQUIRED_FIELDS:
+            if not str(entry.get(field_name, "")).strip():
+                problems.append(f"{name}: missing or empty {field_name!r}")
+        resolution = entry.get("resolution")
+        if resolution and resolution not in LEDGER_RESOLUTIONS:
+            problems.append(
+                f"{name}: resolution {resolution!r} not one of {list(LEDGER_RESOLUTIONS)}")
+    return problems
+
+
+def reconcile_findings(failures: Sequence[InvariantResult],
+                       known: Mapping[str, Mapping[str, Any]]) -> dict:
+    """Compare observed failures against the ledger.
+
+    Returns unrecorded, changed and stale sets. A ledger entry covers ONE
+    specific finding -- classification and substance -- not an invariant name,
+    so the same check failing differently is unrecorded rather than inherited.
+    """
+    observed = {failure.name for failure in failures}
+    unrecorded = sorted(name for name in observed if name not in known)
+
+    changed = []
+    for failure in failures:
+        entry = known.get(failure.name)
+        if entry is None:
+            continue
+        if failure.finding.value != entry.get("finding"):
+            changed.append(
+                f"{failure.name}: classification {entry.get('finding')} -> "
+                f"{failure.finding.value}")
+        elif str(entry.get("detail_contains")) not in failure.detail:
+            changed.append(
+                f"{failure.name}: substance changed; expected to contain "
+                f"{entry.get('detail_contains')!r}")
+
+    stale = sorted(name for name in known if name not in observed)
+    return {"unrecorded": unrecorded, "changed": sorted(changed), "stale": stale}
+
+
 # --- topology family --------------------------------------------------------
 
 def check_declared_family(fabric_classes: Mapping[str, Sequence[Mapping[str, Any]]]) -> list:
@@ -82,6 +193,10 @@ def check_declared_family(fabric_classes: Mapping[str, Sequence[Mapping[str, Any
             results.append(InvariantResult(
                 Family.TOPOLOGY_FAMILY, name, Finding.HOLDS,
                 "mesh declared explicitly"))
+        elif CLOS_MODE in modes:
+            results.append(InvariantResult(
+                Family.TOPOLOGY_FAMILY, name, Finding.HOLDS,
+                f"Clos declared explicitly via topology_mode={CLOS_MODE!r}"))
         elif "spine" in roles:
             results.append(InvariantResult(
                 Family.TOPOLOGY_FAMILY, name, Finding.HOLDS,
