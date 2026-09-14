@@ -13,7 +13,10 @@ import pathlib
 
 from django.test import SimpleTestCase, TestCase
 
-from netbox_hedgehog.tests.corpus.interchange_comparator import compare_interchange
+from netbox_hedgehog.tests.corpus.interchange_comparator import (
+    REQUIRED_EXPORT_PROVENANCE_KEYS,
+    compare_interchange,
+)
 from netbox_hedgehog.tests.corpus.interchange_model import (
     BINDING_ALGORITHM,
     RestrictedProfileError,
@@ -252,8 +255,36 @@ class RoundTripTestCase(TestCase):
                         else fixtures.to_yaml(document))
                 result = module.import_bundle(module.decode_document(text), user=None)
                 exported = module.export_revision(result.design_revision, fmt=target_fmt)
-                outcome = compare_interchange(module.decode_document(exported), document)
+                # Authored-only: a deterministic export legitimately ADDS
+                # provenance the author could not have written (exporter build
+                # revision, content-integrity binding). Demanding exact
+                # provenance equality here contradicted I13 and made the pair
+                # unsatisfiable. Authored facts must still survive unchanged,
+                # and the derived keys are checked by I13 and by the fixed-point
+                # row below.
+                outcome = compare_interchange(
+                    module.decode_document(exported), document,
+                    authored_provenance_only=True)
                 self.assertTrue(outcome.full_model_equal, outcome.describe())
+
+    def test_i11b_export_is_a_fixed_point_including_derived_provenance(self):
+        """Re-importing an export and exporting again must reproduce it exactly.
+
+        This is where derived provenance IS compared. Authored-only comparison
+        above would hide export drift, so the two rows are complementary: one
+        proves authored facts survive, this one proves the export is stable.
+        """
+        module = require_interchange()
+        first = module.export_revision(
+            module.import_bundle(
+                module.decode_document(fixtures.to_json(fixtures.valid_bundle())),
+                user=None).design_revision, fmt="json")
+        second = module.export_revision(
+            module.import_bundle(module.decode_document(first), user=None).design_revision,
+            fmt="json")
+        outcome = compare_interchange(
+            module.decode_document(first), module.decode_document(second))
+        self.assertTrue(outcome.full_model_equal, outcome.describe())
 
 
 class DeterminismAndProvenanceTestCase(TestCase):
@@ -299,12 +330,9 @@ class DeterminismAndProvenanceTestCase(TestCase):
             module.decode_document(fixtures.to_json(fixtures.valid_bundle())), user=None)
         exported = json.loads(module.export_revision(result.design_revision, fmt="json"))
         provenance = exported["objects"][1]["provenance"]
-        for element in (
-            "sourceRevision", "schemaVersion", "apiVersion", "exporter",
-            "exporterRevision", "maturity", "artifactKind",
-            "catalogContentIntegrity", "canonicalizationAlgorithm",
-            "assumptions", "exceptions",
-        ):
+        # Imported, not restated: stating the required set independently here is
+        # what let it drift out of step with the comparison rule.
+        for element in sorted(REQUIRED_EXPORT_PROVENANCE_KEYS):
             with self.subTest(element=element):
                 self.assertIn(
                     element, provenance,

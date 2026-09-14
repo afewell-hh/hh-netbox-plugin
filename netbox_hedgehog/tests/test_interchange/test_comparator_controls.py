@@ -21,7 +21,10 @@ there: you can only perturb a fact class you already modelled.
 from django.test import SimpleTestCase
 
 from netbox_hedgehog.tests.corpus.interchange_comparator import (
+    AUTHORED_PROVENANCE_KEYS,
     CLAIMED_FACT_CLASSES,
+    EXPORT_DERIVED_PROVENANCE_KEYS,
+    REQUIRED_EXPORT_PROVENANCE_KEYS,
     FactDifference,
     compare_interchange,
 )
@@ -99,6 +102,76 @@ class ComparatorControlTestCase(SimpleTestCase):
                         for d in outcome.differences),
                     f'{fact_class} must be compared by value; got '
                     f'{outcome.describe()}')
+
+
+class AuthoredProvenanceModeTestCase(SimpleTestCase):
+    """Controls for `authored_provenance_only`.
+
+    An exclusion is a potential hiding place, so each side of it is pinned:
+    authored keys stay compared in BOTH modes, derived keys are compared in the
+    default mode, and the mode is only ever legitimate for authored-vs-export.
+    """
+
+    def _exported_like(self):
+        """A bundle as an exporter would emit it: authored plus derived."""
+        document = fixtures.valid_bundle()
+        for obj in document["objects"]:
+            obj["provenance"].update(
+                {key: "derived-value" for key in EXPORT_DERIVED_PROVENANCE_KEYS})
+        return document
+
+    def test_key_sets_are_disjoint_and_cover_the_required_set(self):
+        self.assertFalse(AUTHORED_PROVENANCE_KEYS & EXPORT_DERIVED_PROVENANCE_KEYS)
+        self.assertEqual(
+            REQUIRED_EXPORT_PROVENANCE_KEYS,
+            AUTHORED_PROVENANCE_KEYS | EXPORT_DERIVED_PROVENANCE_KEYS)
+
+    def test_fixture_authors_exactly_the_authored_key_set(self):
+        """Stops the fixture and the contract drifting apart again."""
+        self.assertEqual(
+            set(fixtures.design_revision()["provenance"]), set(AUTHORED_PROVENANCE_KEYS))
+
+    def test_added_derived_provenance_is_not_a_difference_in_authored_mode(self):
+        """The contradiction this mode exists to resolve: I13 requires these
+        keys, so I11b must not reject an export for carrying them."""
+        outcome = compare_interchange(
+            self._exported_like(), fixtures.valid_bundle(),
+            authored_provenance_only=True)
+        self.assertTrue(outcome.full_model_equal, outcome.describe())
+
+    def test_added_derived_provenance_IS_a_difference_in_the_default_mode(self):
+        """So export-to-export drift cannot hide behind the exclusion."""
+        outcome = compare_interchange(self._exported_like(), fixtures.valid_bundle())
+        self.assertFalse(outcome.full_model_equal)
+
+    def test_changed_authored_provenance_is_detected_in_both_modes(self):
+        for authored_only in (False, True):
+            with self.subTest(authored_provenance_only=authored_only):
+                document = fixtures.valid_bundle()
+                document["objects"][1]["provenance"]["exporter"] = "someone-else"
+                outcome = compare_interchange(
+                    document, fixtures.valid_bundle(),
+                    authored_provenance_only=authored_only)
+                self.assertFalse(
+                    outcome.full_model_equal,
+                    'an authored provenance change must never be excluded')
+
+    def test_dropped_authored_provenance_is_detected_in_authored_mode(self):
+        document = fixtures.valid_bundle()
+        document["objects"][1]["provenance"].pop("sourceRevision")
+        outcome = compare_interchange(
+            document, fixtures.valid_bundle(), authored_provenance_only=True)
+        self.assertFalse(outcome.full_model_equal)
+
+    def test_manifest_provenance_follows_the_same_rule(self):
+        document = fixtures.valid_bundle()
+        document["manifest"]["provenance"].update(
+            {key: "derived-value" for key in EXPORT_DERIVED_PROVENANCE_KEYS})
+        self.assertTrue(
+            compare_interchange(document, fixtures.valid_bundle(),
+                                authored_provenance_only=True).full_model_equal)
+        self.assertFalse(
+            compare_interchange(document, fixtures.valid_bundle()).full_model_equal)
 
 
 class ComparatorFailsClosedTestCase(SimpleTestCase):
