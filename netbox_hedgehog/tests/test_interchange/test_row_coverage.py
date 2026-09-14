@@ -144,13 +144,22 @@ ROW_TESTS = {
 #: we cannot yet write, a deferred row is one we have decided not to claim.
 DEFERRED_ROWS = {
     "I30": (
-        "Deferred for #675 GREEN, pending explicit lead sign-off. Honest "
+        "Deferred for #675 GREEN pending explicit lead sign-off; tracked by "
+        "#677. Honest "
         "evidence requires executing the pilot and the #668 invariant "
         "measurement, and #675 must neither import nor duplicate that harness. "
         "The review stub hard-coded #668's findings into production code, which "
         "inverts the dependency the ledger exists to enforce and would go stale "
         "silently. CorpusLedgerGuardTestCase keeps the test-only binding to the "
         "ledger and the real pilot inputs alive in the meantime."
+    ),
+    "S1": (
+        "Deferred for #675 GREEN pending explicit lead sign-off; tracked by "
+        "#678. I16c and I16d prove atomic rollback after a transient ingress "
+        "acceptance boundary, but no retained quarantine artifact exists and "
+        "run_ingress_reaper() is intentionally a no-op. They therefore cannot "
+        "be presented as evidence of retention/reaper behavior until #678 "
+        "implements that capability and its independent evidence."
     ),
 }
 
@@ -170,12 +179,6 @@ GREEN_PHASE_BINDINGS = {
         "not that the named catalog/design target was the first write. Bind it "
         "to the actual target tables via write_boundary_probe(expect_tables=...) "
         "once those models exist."
-    ),
-    "I30": (
-        "Evidence is asserted from the value corpus_round_trip_evidence() "
-        "returns, so an implementation could still manufacture the disposition "
-        "and finding names. GREEN must derive them from actual pilot/invariant "
-        "execution and its provenance envelope."
     ),
 }
 
