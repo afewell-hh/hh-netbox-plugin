@@ -133,7 +133,14 @@ ROW_TESTS = {
             "test_i26a_designated_credential_field_is_rejected",
             "test_core_contract.SecretBoundaryTestCase."
             "test_i26b_free_text_sentinel_documents_the_stated_limit"],
-    # I30 is NOT listed: it is deferred for #675. See DEFERRED_ROWS.
+    "I30": [
+        "netbox_hedgehog.tests.test_topology_planning.test_real_corpus_gate."
+        "RealCorpusGateTestCase.test_both_pilots_are_measured_and_remain_diagnostic",
+        "netbox_hedgehog.tests.test_topology_planning.test_real_corpus_gate."
+        "RealCorpusGateTestCase.test_recorded_t2_findings_are_preserved_not_resolved_away",
+        "netbox_hedgehog.tests.test_topology_planning.test_real_corpus_gate."
+        "AxisMismatchControlTestCase.test_every_claimed_axis_has_a_control",
+    ],
 }
 
 #: Rows whose coverage is KNOWN INCOMPLETE, with the reason. Recorded here so a
@@ -143,16 +150,6 @@ ROW_TESTS = {
 #: the approval still required. Distinct from BLOCKED_ROWS: a blocked row is one
 #: we cannot yet write, a deferred row is one we have decided not to claim.
 DEFERRED_ROWS = {
-    "I30": (
-        "Deferred for #675 GREEN pending explicit lead sign-off; tracked by "
-        "#677. Honest "
-        "evidence requires executing the pilot and the #668 invariant "
-        "measurement, and #675 must neither import nor duplicate that harness. "
-        "The review stub hard-coded #668's findings into production code, which "
-        "inverts the dependency the ledger exists to enforce and would go stale "
-        "silently. CorpusLedgerGuardTestCase keeps the test-only binding to the "
-        "ledger and the real pilot inputs alive in the meantime."
-    ),
     "S1": (
         "Deferred for #675 GREEN pending explicit lead sign-off; tracked by "
         "#678. I16c and I16d prove atomic rollback after a transient ingress "
@@ -224,9 +221,12 @@ class RowCoverageTestCase(SimpleTestCase):
         missing = []
         for row, tests in sorted(ROW_TESTS.items()):
             for dotted in tests:
-                module_name, class_name, method = dotted.split(".")
+                module_name, class_name, method = dotted.rsplit(".", 2)
+                qualified_module = (
+                    module_name if module_name.startswith("netbox_hedgehog.")
+                    else f"{PACKAGE}.{module_name}")
                 try:
-                    module = __import__(f"{PACKAGE}.{module_name}", fromlist=[class_name])
+                    module = __import__(qualified_module, fromlist=[class_name])
                     case = getattr(module, class_name)
                     if not callable(getattr(case, method, None)):
                         missing.append(f"{row}: {dotted}")
