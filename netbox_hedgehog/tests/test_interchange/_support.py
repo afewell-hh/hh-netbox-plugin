@@ -57,5 +57,21 @@ def require_interchange():
     return module
 
 
+def require_interchange_models():
+    """Return the production interchange models module, or fail RED.
+
+    Seeding approved state is done through the models directly rather than
+    through a production test-helper, so the suite does not require the code
+    under test to provide its own fixtures (#676 B1/B2).
+    """
+    try:
+        return importlib.import_module("netbox_hedgehog.models.interchange")
+    except ImportError as exc:
+        raise FeatureAbsent(
+            f"production interchange API absent: netbox_hedgehog.models."
+            f"interchange ({exc}). This test is RED because the feature is not "
+            f"implemented, not because a contract was weakened.") from None
+
+
 def require_entry_point(name: str):
     return getattr(require_interchange(), name)

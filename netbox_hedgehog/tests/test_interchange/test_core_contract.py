@@ -9,8 +9,12 @@ from __future__ import annotations
 
 import copy
 import json
+import os
 import pathlib
+import subprocess
+import sys
 
+from django.db import connection, transaction
 from django.test import SimpleTestCase, TestCase
 
 from netbox_hedgehog.tests.corpus.interchange_comparator import (
@@ -24,7 +28,10 @@ from netbox_hedgehog.tests.corpus.interchange_model import (
     content_integrity_digest,
 )
 from netbox_hedgehog.tests.test_interchange import fixtures
-from netbox_hedgehog.tests.test_interchange._support import require_interchange
+from netbox_hedgehog.tests.test_interchange._support import (
+    require_interchange,
+    require_interchange_models,
+)
 
 import netbox_hedgehog
 
@@ -306,23 +313,83 @@ class DeterminismAndProvenanceTestCase(TestCase):
         reversed_members["objects"].reverse()
 
         interleaved = fixtures.valid_bundle()
-        # Unrelated rows created between the members shift primary keys, so a
-        # PK-ordered export changes while a deterministic one does not.
-        module.create_unrelated_rows(count=3)
+        # Unrelated rows in a TARGET table shift its primary keys, so a
+        # PK-ordered export changes while a deterministic one does not. Created
+        # test-side: a production helper that wrote to an unrelated table would
+        # not perturb the ordering this row exists to test.
+        models = require_interchange_models()
+        for index in range(3):
+            payload = {"filler": index}
+            models.InterchangeCatalogVersion.objects.create(
+                namespace="com.example.filler", slug=f"filler-{index}", version="1",
+                content=payload, content_algorithm=BINDING_ALGORITHM,
+                content_digest=content_integrity_digest(payload),
+                published=False, artifact_digest=content_integrity_digest(payload))
 
         for label, document in (("reversed members", reversed_members),
                                 ("interleaved unrelated rows", interleaved)):
             with self.subTest(perturbation=label):
                 self.assertEqual(self._exported_digest(module, document), baseline)
 
+    #: Runs the whole import/export cycle in a SEPARATE process and connection
+    #: and prints the digest. Test-owned on purpose: a production helper that
+    #: re-ran in-process could not demonstrate independence, and asking the code
+    #: under test to attest to its own independence is not evidence.
+    INDEPENDENT_RUN = (
+        "import json, os, django;\n"
+        "django.setup();\n"
+        "from django.db import connection, transaction;\n"
+        "connection.settings_dict['NAME'] = os.environ['HH_TEST_DB'];\n"
+        "from netbox_hedgehog import interchange;\n"
+        "from netbox_hedgehog.tests.test_interchange import fixtures;\n"
+        "from netbox_hedgehog.tests.corpus.interchange_model import "
+        "content_integrity_digest;\n"
+        "class _Rollback(Exception): pass\n"
+        "try:\n"
+        "    with transaction.atomic():\n"
+        "        r = interchange.import_bundle(\n"
+        "            interchange.decode_document(\n"
+        "                fixtures.to_json(fixtures.valid_bundle())), user=None);\n"
+        "        d = content_integrity_digest(json.loads(\n"
+        "            interchange.export_revision(r.design_revision, fmt='json')));\n"
+        "        print('DIGEST=' + d);\n"
+        "        raise _Rollback\n"
+        "except _Rollback:\n"
+        "    pass\n"
+    )
+
     def test_i12_export_is_deterministic_across_independent_runs(self):
-        """A second run in a separate process/connection must agree, which
-        two exports in one process cannot demonstrate."""
+        """A second run in a separate process and connection must agree.
+
+        Two exports in one process cannot demonstrate this, and neither can a
+        production helper that claims independence while running in-process.
+        The in-process digest is computed and rolled back FIRST so the child's
+        insert cannot block on this transaction's uncommitted rows.
+        """
         module = require_interchange()
-        baseline = self._exported_digest(module, fixtures.valid_bundle())
+
+        class _Rollback(Exception):
+            pass
+
+        baseline = None
+        try:
+            with transaction.atomic():
+                baseline = self._exported_digest(module, fixtures.valid_bundle())
+                raise _Rollback
+        except _Rollback:
+            pass
+
+        completed = subprocess.run(
+            [sys.executable, "-c", self.INDEPENDENT_RUN], capture_output=True,
+            env={**os.environ, "HH_TEST_DB": connection.settings_dict["NAME"]},
+        )
         self.assertEqual(
-            module.export_digest_from_independent_run(fixtures.valid_bundle()),
-            baseline)
+            completed.returncode, 0,
+            f'independent run failed: {completed.stderr[-500:]!r}')
+        printed = [line for line in completed.stdout.decode().splitlines()
+                   if line.startswith("DIGEST=")]
+        self.assertTrue(printed, f'no digest printed: {completed.stdout[-300:]!r}')
+        self.assertEqual(printed[-1].split("=", 1)[1], baseline)
 
     def test_i13_export_provenance_names_required_elements(self):
         module = require_interchange()
@@ -418,12 +485,15 @@ class SecretBoundaryTestCase(TestCase):
             'ever rejects, the universal claim must be re-examined, not assumed')
 
 
-class CorpusBaselineTestCase(TestCase):
-    """I30 - pilots stay diagnostic while their #668 findings are unresolved.
+class CorpusLedgerGuardTestCase(TestCase):
+    """I30 is DEFERRED for #675 (see DEFERRED_ROWS in test_row_coverage).
 
-    The expected set is DERIVED from #668's recorded ledger rather than restated
-    here, so this cannot drift from the measured record, and a future module
-    cannot satisfy it by hard-coding three strings it read from this file.
+    It cannot be satisfied honestly without the measurement harness, which #675
+    must not import or duplicate -- the stub found in review hard-coded #668's
+    findings into production code, inverting the dependency the ledger exists to
+    enforce. What remains here is test-only: it keeps the binding to #668's
+    recorded ledger and the real pilot inputs alive so the deferral does not
+    quietly lose them.
     """
 
     @classmethod
@@ -435,9 +505,7 @@ class CorpusBaselineTestCase(TestCase):
             for case_id, entries in KNOWN_FINDINGS.items() if entries
         }
 
-    def test_i30_ledger_is_the_source_of_the_expected_unresolved_set(self):
-        """Guard: if #668's ledger empties, this row must stop claiming the
-        pilots are downgraded rather than silently passing."""
+    def test_ledger_still_records_unresolved_pilot_findings(self):
         expected = self.expected_unresolved()
         self.assertTrue(expected, '#668 recorded no unresolved findings to bind to')
         for case_id in expected:
@@ -445,25 +513,3 @@ class CorpusBaselineTestCase(TestCase):
                 self.assertTrue(
                     (CASE_DIR / f"{case_id}.yaml").is_file(),
                     f'{case_id} must be a real pilot input, not a label')
-
-    def test_i30_pilot_round_trip_evidence_is_measured_and_downgraded(self):
-        module = require_interchange()
-        for case_id, findings in sorted(self.expected_unresolved().items()):
-            with self.subTest(case=case_id):
-                evidence = module.corpus_round_trip_evidence(case_id)
-                self.assertEqual(
-                    evidence.disposition, "diagnostic",
-                    f'{case_id} carries unresolved #668 findings and may not claim '
-                    f'parity, contract conformance, or baseline authority')
-                self.assertEqual(
-                    frozenset(evidence.unresolved_findings), findings,
-                    'the run must surface the EXACT unresolved set, so the '
-                    'baseline cannot go quietly green if a finding disappears for '
-                    'the wrong reason, nor accumulate new ones unnoticed')
-                self.assertEqual(
-                    evidence.source_case_path, str(CASE_DIR / f"{case_id}.yaml"),
-                    'evidence must be bound to the real pilot input it was '
-                    'measured from')
-                self.assertTrue(
-                    evidence.provenance.get("invariant_run"),
-                    'evidence must name the #668 invariant run it derives from')

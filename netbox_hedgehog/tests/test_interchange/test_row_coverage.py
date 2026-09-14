@@ -116,24 +116,42 @@ ROW_TESTS = {
     "I17": ["test_atomicity.SuccessStateTestCase."
             "test_i17_valid_import_creates_one_draft_and_one_unpublished_version",
             "test_atomicity.SuccessStateTestCase."
-            "test_i17_import_does_not_mutate_existing_approved_content"],
+            "test_i17_import_does_not_mutate_existing_approved_content",
+            "test_atomicity.SuccessStateTestCase."
+            "test_i17_approved_fingerprint_responds_to_approved_content"],
     "I18": ["test_atomicity.RetryAndConflictTestCase."
-            "test_i18_exact_retry_is_idempotent_and_creates_no_duplicate",
+            "test_i18_exact_retry_creates_no_new_target_objects",
+            "test_atomicity.RetryAndConflictTestCase."
+            "test_i18_exact_retry_appends_one_audit_record",
+            "test_atomicity.RetryAndConflictTestCase."
+            "test_i18_retry_preserves_the_original_success_record",
             "test_atomicity.RetryAndConflictTestCase."
             "test_i18_non_identical_reuse_of_an_identity_conflicts_with_zero_write"],
     "I26": ["test_core_contract.SecretBoundaryTestCase."
             "test_i26a_designated_credential_field_is_rejected",
             "test_core_contract.SecretBoundaryTestCase."
             "test_i26b_free_text_sentinel_documents_the_stated_limit"],
-    "I30": ["test_core_contract.CorpusBaselineTestCase."
-            "test_i30_pilot_round_trip_evidence_is_measured_and_downgraded",
-            "test_core_contract.CorpusBaselineTestCase."
-            "test_i30_ledger_is_the_source_of_the_expected_unresolved_set"],
+    # I30 is NOT listed: it is deferred for #675. See DEFERRED_ROWS.
 }
 
 #: Rows whose coverage is KNOWN INCOMPLETE, with the reason. Recorded here so a
 #: gap is visible in the coverage map rather than discovered later by its
 #: absence. A row may appear in both maps: partially covered is not covered.
+#: Rows explicitly DEFERRED out of a tranche's coverage, with the reason and
+#: the approval still required. Distinct from BLOCKED_ROWS: a blocked row is one
+#: we cannot yet write, a deferred row is one we have decided not to claim.
+DEFERRED_ROWS = {
+    "I30": (
+        "Deferred for #675 GREEN, pending explicit lead sign-off. Honest "
+        "evidence requires executing the pilot and the #668 invariant "
+        "measurement, and #675 must neither import nor duplicate that harness. "
+        "The review stub hard-coded #668's findings into production code, which "
+        "inverts the dependency the ledger exists to enforce and would go stale "
+        "silently. CorpusLedgerGuardTestCase keeps the test-only binding to the "
+        "ledger and the real pilot inputs alive in the meantime."
+    ),
+}
+
 #: Currently EMPTY. I16d's process-loss half was blocked here by the
 #: TransactionTestCase teardown failure ("cannot truncate a table referenced in
 #: a foreign key constraint"); that was repaired by overriding _fixture_teardown
@@ -170,6 +188,17 @@ class RowCoverageTestCase(SimpleTestCase):
             with self.subTest(binding=label):
                 self.assertGreater(len(reason), 80,
                                    f'{label} needs a substantive reason')
+
+    def test_deferred_rows_are_declared_with_a_reason_and_not_claimed(self):
+        """A deferred row must be visibly absent from coverage, not quietly
+        satisfied by a stub that reads as covered."""
+        for row, reason in sorted(DEFERRED_ROWS.items()):
+            with self.subTest(row=row):
+                self.assertNotIn(
+                    row, ROW_TESTS,
+                    f'{row} is deferred and must not also be claimed as covered')
+                self.assertGreater(len(reason), 120,
+                                   f'{row} needs a substantive reason')
 
     def test_blocked_rows_are_declared_with_a_reason(self):
         """A known gap must be stated, not implied by absence."""

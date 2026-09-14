@@ -33,10 +33,15 @@ from django.core.management import call_command
 from django.db import connection
 from django.test import TestCase, TransactionTestCase, tag
 
+from netbox_hedgehog.tests.corpus.interchange_model import (
+    BINDING_ALGORITHM,
+    content_integrity_digest,
+)
 from netbox_hedgehog.tests.test_interchange import fixtures, persistence
 from netbox_hedgehog.tests.test_interchange._support import (
     InjectedFault,
     require_interchange,
+    require_interchange_models,
 )
 
 
@@ -284,27 +289,119 @@ class SuccessStateTestCase(_ZeroWriteMixin, TestCase):
         self.assertFalse(result.design_revision.approved)
         self.assertFalse(result.catalog_version.published)
 
+    def _seed_approved_catalog(self, slug="approved-unrelated", version="1",
+                               content=None):
+        """Seed a PUBLISHED catalog unrelated to the imported bundle."""
+        models = require_interchange_models()
+        payload = content if content is not None else {"portCount": 64}
+        return models.InterchangeCatalogVersion.objects.create(
+            namespace="com.example.catalog", slug=slug, version=version,
+            content=payload, content_algorithm=BINDING_ALGORITHM,
+            content_digest=content_integrity_digest(payload),
+            published=True, artifact_digest=content_integrity_digest(payload))
+
+    def test_i17_approved_fingerprint_responds_to_approved_content(self):
+        """Mutation control for the invariance assertion below.
+
+        Without it, a fingerprint that ignores its inputs -- the constant
+        `content_integrity_digest([])` found in review -- satisfies the
+        invariance test unconditionally. Three distinct mutations are required
+        to change it, so the fingerprint must cover identity, version AND the
+        content binding rather than merely counting rows.
+        """
+        module = require_interchange()
+        empty = module.approved_content_fingerprint()
+
+        self._seed_approved_catalog()
+        seeded = module.approved_content_fingerprint()
+        self.assertNotEqual(
+            seeded, empty,
+            'the fingerprint must change when approved content is added; a '
+            'constant cannot detect mutation of approved content')
+
+        self._seed_approved_catalog(slug="approved-second")
+        self.assertNotEqual(
+            module.approved_content_fingerprint(), seeded,
+            'the fingerprint must cover approved catalog IDENTITY')
+
+        record = self._seed_approved_catalog(slug="approved-third")
+        before_binding = module.approved_content_fingerprint()
+        record.content = {"portCount": 32}
+        record.content_digest = content_integrity_digest(record.content)
+        record.save(update_fields=["content", "content_digest"])
+        self.assertNotEqual(
+            module.approved_content_fingerprint(), before_binding,
+            'the fingerprint must cover the approved CONTENT BINDING')
+
     def test_i17_import_does_not_mutate_existing_approved_content(self):
         module = require_interchange()
+        self._seed_approved_catalog()
         baseline = module.approved_content_fingerprint()
         module.import_bundle(
             module.decode_document(fixtures.to_json(fixtures.valid_bundle())), user=None)
-        self.assertEqual(module.approved_content_fingerprint(), baseline)
+        self.assertEqual(
+            module.approved_content_fingerprint(), baseline,
+            'import creates only new draft/unpublished state and must leave '
+            'approved content untouched')
 
 
 class RetryAndConflictTestCase(_ZeroWriteMixin, TestCase):
     """I18 - the accepted duplicate/retry policy."""
 
-    def test_i18_exact_retry_is_idempotent_and_creates_no_duplicate(self):
+    TARGET_TABLES = (
+        "netbox_hedgehog_interchangedesignrevision",
+        "netbox_hedgehog_interchangecatalogversion",
+        "netbox_hedgehog_interchangeprovenance",
+    )
+    AUDIT_TABLE = "netbox_hedgehog_interchangeaudit"
+
+    def test_i18_exact_retry_creates_no_new_target_objects(self):
         module = require_interchange()
         text = fixtures.to_json(fixtures.valid_bundle())
         first = module.import_bundle(module.decode_document(text), user=None)
         before = persistence.snapshot()
         second = module.import_bundle(module.decode_document(text), user=None)
-        self.assertEqual(before.diff(persistence.snapshot()).get("tables"), {},
-                         'an exact retry must create no new rows')
+        changed = before.diff(persistence.snapshot()).get("tables", {})
+        for table in self.TARGET_TABLES:
+            with self.subTest(table=table):
+                self.assertNotIn(
+                    table, changed,
+                    f'an exact retry must create no new {table} rows; got {changed}')
         self.assertTrue(second.idempotent)
         self.assertEqual(second.design_revision.pk, first.design_revision.pk)
+
+    def test_i18_exact_retry_appends_one_audit_record(self):
+        """Asserting only "no new rows anywhere" let a retry REWRITE the
+        original audit row and still pass, which review found. The retry must
+        APPEND, so the audit table must grow by exactly one."""
+        module = require_interchange()
+        text = fixtures.to_json(fixtures.valid_bundle())
+        module.import_bundle(module.decode_document(text), user=None)
+        before = persistence.snapshot()
+        module.import_bundle(module.decode_document(text), user=None)
+        after = persistence.snapshot()
+        self.assertEqual(
+            after.row_counts.get(self.AUDIT_TABLE, 0)
+            - before.row_counts.get(self.AUDIT_TABLE, 0), 1,
+            'an exact retry must append exactly one audit record')
+
+    def test_i18_retry_preserves_the_original_success_record(self):
+        """An audit trail that mutates prior entries is not an audit trail."""
+        module = require_interchange()
+        text = fixtures.to_json(fixtures.valid_bundle())
+        module.import_bundle(module.decode_document(text), user=None)
+        original = [record.outcome for record in module.recent_audit_records()]
+        module.import_bundle(module.decode_document(text), user=None)
+        after = [record.outcome for record in module.recent_audit_records()]
+
+        self.assertEqual(
+            after[:len(original)], original,
+            'earlier audit records must be preserved verbatim; relabelling the '
+            'original success event destroys the record that it happened')
+        self.assertEqual(after[-1], "idempotent-no-create")
+        self.assertNotEqual(
+            original[-1], "idempotent-no-create",
+            'the first import must not already be recorded as a no-create')
 
     def test_i18_non_identical_reuse_of_an_identity_conflicts_with_zero_write(self):
         module = require_interchange()
@@ -318,9 +415,4 @@ class RetryAndConflictTestCase(_ZeroWriteMixin, TestCase):
                 module.decode_document(fixtures.to_json(changed)), user=None)
         self.assert_zero_durable_writes(before, 'I18 identity conflict')
 
-    def test_i18_retry_is_audited_as_an_idempotent_no_create(self):
-        module = require_interchange()
-        text = fixtures.to_json(fixtures.valid_bundle())
-        module.import_bundle(module.decode_document(text), user=None)
-        module.import_bundle(module.decode_document(text), user=None)
-        self.assertEqual(module.recent_audit_records()[-1].outcome, "idempotent-no-create")
+
