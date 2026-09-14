@@ -73,6 +73,31 @@ class RestrictedProfileTestCase(SimpleTestCase):
             content_integrity_digest({"a": 1, "b": 2}),
             content_integrity_digest({"b": 2, "a": 1}))
 
+    # Expected bytes/digests are fixed independently of the implementation.
+    # RFC 8785 §§3.2.1-3.2.4 specify no whitespace, literal/string emission,
+    # recursive sorting, and UTF-8. Its full primitive vector contains floats
+    # and its full sorting vector contains a non-BMP key, both rejected by this
+    # repository's restricted profile; these are their in-profile projections.
+    RFC8785_RESTRICTED_VECTORS = (
+        (
+            {"z": {"b": True, "a": None}, "a": [False, 1, "€"]},
+            b'{"a":[false,1,"\xe2\x82\xac"],"z":{"a":null,"b":true}}',
+            "df93c9ff6927b7dd2f1e63ee5afb96650fc682d509f84923f27f6901f90bc6d8",
+        ),
+        (
+            {"literals": [None, True, False], "string": "€$\x0f\nA'B\"\\\"/"},
+            b'{"literals":[null,true,false],"string":"\xe2\x82\xac$\\u000f\\nA\'B\\"\\\\\\"/"}',
+            "3b682bc213c1fa88d5931e98b2efabfa60a236fb621f05437d6aa51daaa8031d",
+        ),
+    )
+
+    def test_rfc8785_restricted_profile_vectors(self):
+        for value, expected_bytes, expected_digest in self.RFC8785_RESTRICTED_VECTORS:
+            with self.subTest(expected_digest=expected_digest):
+                self.assertEqual(hashlib.sha256(expected_bytes).hexdigest(), expected_digest)
+                self.assertEqual(canonicalize(value), expected_bytes)
+                self.assertEqual(content_integrity_digest(value), expected_digest)
+
 
 class DecodeContractTestCase(TestCase):
     """I1, I1a, I3, I4, I5, I6 - decoding one semantic model from two formats."""
