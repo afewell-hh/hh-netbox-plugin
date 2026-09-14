@@ -433,6 +433,29 @@ class InvariantMechanicsTestCase(TestCase):
         ])
         self.assertIsNone(facts["spine_counts"]["fab"])
 
+    def test_mesh_declared_with_a_spine_role_is_an_hnp_defect(self):
+        """A mesh fabric has no spine tier, so this is self-contradictory
+        persisted output. The plain-mesh branch used to short-circuit and accept
+        it as valid mesh while collect_fabric_facts() treated the same fabric as
+        Clos -- two readings of one fabric, silently disagreeing."""
+        results = check_declared_family({'fab': [
+            {'switch_class_id': 'leaf-a', 'topology_mode': 'mesh',
+             'hedgehog_role': 'server-leaf'},
+            {'switch_class_id': 'spine-a', 'topology_mode': 'mesh',
+             'hedgehog_role': 'spine'},
+        ]})
+        self.assertEqual(results[0].finding, Finding.HNP_DEFECT)
+        self.assertIn('spine-a', results[0].detail)
+        self.assertIn('mesh', results[0].detail)
+
+    def test_plain_mesh_without_a_spine_role_still_holds(self):
+        """The contradiction branch must not swallow legitimate mesh."""
+        results = check_declared_family({'fab': [
+            {'switch_class_id': 'leaf-a', 'topology_mode': 'mesh',
+             'hedgehog_role': 'server-leaf'},
+        ]})
+        self.assertEqual(results[0].finding, Finding.HOLDS)
+
     # --- controlled ledger mechanics ---------------------------------------
 
     def _finding(self, name, finding=Finding.UNRESOLVED, detail='original substance'):

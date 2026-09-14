@@ -189,6 +189,23 @@ def check_declared_family(fabric_classes: Mapping[str, Sequence[Mapping[str, Any
             results.append(InvariantResult(
                 Family.TOPOLOGY_FAMILY, name, Finding.HNP_DEFECT,
                 f"fabric declares conflicting topology modes: {sorted(modes)}"))
+        elif "mesh" in modes and "spine" in roles:
+            # A mesh fabric has no spine tier by definition, so declaring mesh
+            # while carrying a spine class is self-contradictory persisted
+            # output. Checked BEFORE the plain-mesh branch: that branch used to
+            # short-circuit and accept this as valid mesh, while
+            # collect_fabric_facts() simultaneously treated the same fabric as
+            # Clos -- two readings of one fabric, silently disagreeing.
+            #
+            # Attributable to HNP without a governed decision: #661 does not
+            # have to choose a family here, because no reading of the contract
+            # makes a fabric both mesh and spine-bearing.
+            results.append(InvariantResult(
+                Family.TOPOLOGY_FAMILY, name, Finding.HNP_DEFECT,
+                "fabric declares topology_mode='mesh' but carries spine-role "
+                f"classes {sorted(c['switch_class_id'] for c in classes if c.get('hedgehog_role') == 'spine')}; "
+                "mesh has no spine tier, so the persisted family contradicts "
+                "the persisted roles"))
         elif "mesh" in modes:
             results.append(InvariantResult(
                 Family.TOPOLOGY_FAMILY, name, Finding.HOLDS,
