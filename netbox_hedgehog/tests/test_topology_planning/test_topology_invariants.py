@@ -54,7 +54,10 @@ from netbox_hedgehog.tests.corpus.topology_graph import (
 #: visible rather than absorbed.
 KNOWN_FINDINGS = {
     "training_xoc256_2xopg128_clos_ro": {
-        "clos-spine-cardinality[frontend]":
+        "clos-spine-cardinality[frontend]": {
+            "finding": "attribution-unresolved",
+            "detail_contains": "S=1 on a declared Clos fabric",
+            "note":
             "S=1. HNP's arithmetic is correct -- fe-leaf 2 leaves x 32 uplinks = 64, "
             "and one fe-spine fabric zone supplies exactly 64 downlinks, so 1 is the "
             "capacity minimum. The conflict is with #661 F2, which requires S>=2 for a "
@@ -63,8 +66,25 @@ KNOWN_FINDINGS = {
             "what an implementation must do when capacity yields 1. #668 reserves "
             "contract correction for a recorded amendment with a named owner and "
             "independent review, so this tranche reports and does not decide.",
+        },
     },
-    "training_xoc64_1xopg64_mesh_conv_ro": {},
+    "training_xoc64_1xopg64_mesh_conv_ro": {
+        # Surfaced only once the family check became per-fabric: the global
+        # check let these hide behind the well-declared mesh fabric.
+        "declared-family[inb-mgmt]": {
+            "finding": "attribution-unresolved",
+            "detail_contains": "family would be inferred",
+            "note": "single management leaf class with no topology_mode and no "
+                    "spine role. Attribution open between the case, HNP, and "
+                    "#661's treatment of single-class management fabrics.",
+        },
+        "declared-family[oob-mgmt]": {
+            "finding": "attribution-unresolved",
+            "detail_contains": "family would be inferred",
+            "note": "as above; this is also the surrogate fabric, so its family "
+                    "declaration interacts with the unmanaged/surrogate rules.",
+        },
+    },
 }
 
 XOC64 = "training_xoc64_1xopg64_mesh_conv_ro"
@@ -93,30 +113,43 @@ class _PilotInvariantMixin:
         """Read HNP's persisted calculation output -- not the source YAML."""
         classes = list(PlanSwitchClass.objects.filter(plan=plan))
         spine_counts: dict = {}
+        unknown_spine_fabrics: set = set()
         leaf_uplinks: dict = {}
         leaf_fabric: dict = {}
+        fabric_classes: dict = {}
         for switch_class in classes:
             fabric = switch_class.fabric_name
+            fabric_classes.setdefault(fabric, []).append({
+                "topology_mode": switch_class.topology_mode,
+                "hedgehog_role": switch_class.hedgehog_role,
+            })
             # Preserve None: "not calculated" is not the same fact as zero.
             quantity = switch_class.override_quantity
             if quantity is None:
                 quantity = switch_class.calculated_quantity
             if switch_class.hedgehog_role == "spine":
+                # A fabric whose spine classes mix known and unknown quantities
+                # has an UNKNOWN total. Summing only the known ones would report
+                # a confident subtotal and could even satisfy S>=2 on partial
+                # data, so an unknown poisons the fabric total permanently.
+                if fabric in unknown_spine_fabrics:
+                    continue
                 if quantity is None:
-                    spine_counts.setdefault(fabric, None)
+                    unknown_spine_fabrics.add(fabric)
+                    spine_counts[fabric] = None
                 else:
-                    current = spine_counts.get(fabric)
-                    spine_counts[fabric] = quantity if current is None else current + quantity
+                    spine_counts[fabric] = (spine_counts.get(fabric) or 0) + quantity
             else:
                 leaf_uplinks[switch_class.switch_class_id] = (
                     switch_class.uplink_ports_per_switch or 0)
                 leaf_fabric[switch_class.switch_class_id] = fabric
-        return classes, spine_counts, leaf_uplinks, leaf_fabric
+        return classes, spine_counts, leaf_uplinks, leaf_fabric, fabric_classes
 
     @classmethod
     def _evaluate(cls):
         document, plan = cls._ingest()
-        classes, spine_counts, leaf_uplinks, leaf_fabric = cls._plan_facts(plan)
+        (classes, spine_counts, leaf_uplinks, leaf_fabric,
+         fabric_classes) = cls._plan_facts(plan)
         zones = [
             {"zone_name": z.zone_name, "breakout_option": z.breakout_option_id,
              "zone_type": z.zone_type}
@@ -133,7 +166,7 @@ class _PilotInvariantMixin:
             for c in classes
         ]
 
-        results: list = [check_declared_family(document)]
+        results: list = list(check_declared_family(fabric_classes))
         results += check_clos_spine_cardinality(spine_counts)
         results += check_equal_spine_divisibility(leaf_uplinks, spine_counts, leaf_fabric)
         results += check_zone_breakout_declared(zones)
@@ -161,11 +194,18 @@ class _PilotInvariantMixin:
             self.assertIsInstance(result.finding, Finding)
             self.assertTrue(result.detail.strip(), f'{result.name} must state its basis')
 
-    def test_declared_topology_family_is_explicit(self):
-        result = self._by_family(Family.TOPOLOGY_FAMILY)[0]
-        self.assertNotEqual(
-            result.finding, Finding.CONTRACT_DEFECT,
-            f'topology family must not be inferred: {result.detail}')
+    def test_declared_topology_family_is_evaluated_per_fabric(self):
+        """Every fabric gets its own verdict; none inherits another's.
+
+        Under-declared fabrics are recorded findings, not assertion failures --
+        see KNOWN_FINDINGS and test_findings_are_reported_and_none_is_unrecorded.
+        """
+        family = [r for r in self.results if r.name.startswith('declared-family[')]
+        self.assertTrue(family, 'each plan must produce per-fabric family verdicts')
+        for result in family:
+            self.assertNotEqual(
+                result.finding, Finding.HNP_DEFECT,
+                f'conflicting topology modes persisted: {result.detail}')
 
     def test_rail_grouping_is_not_asserted_as_an_established_contract(self):
         """#661 family 6: rail grouping stays a hypothesis until its harness
@@ -192,11 +232,32 @@ class _PilotInvariantMixin:
             print(f"  {failure.finding.value.upper()}: {failure.name} -- {failure.detail}")
 
         known = KNOWN_FINDINGS.get(self.case_id, {})
+
         unrecorded = sorted(f.name for f in failures if f.name not in known)
         self.assertEqual(
             unrecorded, [],
             f'unrecorded invariant findings for {self.case_id}: {unrecorded}. '
             f'Triage and record them in KNOWN_FINDINGS -- do not weaken the check.')
+
+        # A ledger keyed on the invariant NAME alone would absorb the same
+        # invariant failing for a DIFFERENT reason or at a different severity.
+        # Pin the classification and a substantive marker so a changed failure
+        # is unrecorded rather than silently inherited.
+        changed = []
+        for failure in failures:
+            expected = known[failure.name]
+            if failure.finding.value != expected['finding']:
+                changed.append(
+                    f'{failure.name}: classification {expected["finding"]} -> '
+                    f'{failure.finding.value}')
+            elif expected['detail_contains'] not in failure.detail:
+                changed.append(
+                    f'{failure.name}: substance changed; expected to contain '
+                    f'{expected["detail_contains"]!r}, got {failure.detail!r}')
+        self.assertEqual(
+            changed, [],
+            f'recorded findings changed for {self.case_id}: {changed}. '
+            f'A ledger entry covers one specific finding, not an invariant name.')
 
         stale = sorted(name for name in known if name not in {f.name for f in failures})
         self.assertEqual(
@@ -249,10 +310,10 @@ class InvariantMechanicsTestCase(TestCase):
     """RED evidence: the checks must be able to fail. A suite that only ever
     passes proves nothing was evaluated."""
 
-    def test_clos_cardinality_rejects_zero_and_one_spine(self):
-        for spines, label in ((0, 'S=0'), (1, 'S=1')):
-            results = check_clos_spine_cardinality({'fabric-x': spines})
-            self.assertEqual(results[0].finding, Finding.HNP_DEFECT, label)
+    def test_clos_cardinality_rejects_zero_spines(self):
+        """S=0 is unambiguous. S=1 is covered separately as UNRESOLVED."""
+        results = check_clos_spine_cardinality({'fabric-x': 0})
+        self.assertEqual(results[0].finding, Finding.HNP_DEFECT)
 
     def test_uncalculated_spine_quantity_is_unmeasured_not_a_defect(self):
         """A quantity that was never calculated is a gap in the measurement, not
@@ -283,6 +344,52 @@ class InvariantMechanicsTestCase(TestCase):
             {'leaf-a': 4}, {'fab': 2}, {'leaf-a': 'fab'})
         self.assertEqual(results[0].finding, Finding.HOLDS)
 
+    def test_s1_is_unresolved_not_an_hnp_defect(self):
+        """S=1 must NOT be attributed to HNP.
+
+        The PR states attribution between an HNP defect and a #661 F2 gap is
+        unresolved. Returning HNP_DEFECT would make the code decide what the
+        prose explicitly refuses to, and #668 reserves that for a governed
+        amendment. It still counts as a failure requiring triage.
+        """
+        result = check_clos_spine_cardinality({'fab': 1})[0]
+        self.assertEqual(result.finding, Finding.UNRESOLVED)
+        self.assertTrue(result.is_failure, 'unresolved is a finding, not a clean result')
+        self.assertIn('NOT decided here', result.detail)
+
+    def test_zero_spines_remains_an_hnp_defect(self):
+        """S=0 is unambiguous: a declared Clos cannot have no spine domain."""
+        result = check_clos_spine_cardinality({'fab': 0})[0]
+        self.assertEqual(result.finding, Finding.HNP_DEFECT)
+
+    def test_divisibility_handles_unknown_spine_count_without_crashing(self):
+        """`None < 2` raises TypeError; the guard must precede any comparison,
+        or a harness crash masquerades as a measurement."""
+        results = check_equal_spine_divisibility(
+            {'leaf-a': 4}, {'fab': None}, {'leaf-a': 'fab'})
+        self.assertEqual(results[0].finding, Finding.UNMEASURED)
+        self.assertIn('not known', results[0].detail)
+
+    def test_declared_family_is_evaluated_per_fabric(self):
+        """One verdict for a whole plan would let an under-declared fabric hide
+        behind a well-declared one."""
+        results = check_declared_family({
+            'frontend': [{'hedgehog_role': 'spine'}, {'hedgehog_role': 'server-leaf'}],
+            'orphan': [{'hedgehog_role': 'server-leaf'}],
+        })
+        by_name = {r.name: r for r in results}
+        self.assertEqual(len(results), 2, 'one result per fabric')
+        self.assertEqual(by_name['declared-family[frontend]'].finding, Finding.HOLDS)
+        self.assertEqual(
+            by_name['declared-family[orphan]'].finding, Finding.UNRESOLVED,
+            'a fabric with neither mesh nor spine must not inherit another fabric\'s verdict')
+
+    def test_conflicting_topology_modes_in_one_fabric_are_a_defect(self):
+        results = check_declared_family({
+            'fab': [{'topology_mode': 'mesh'}, {'topology_mode': 'clos'}]})
+        self.assertEqual(results[0].finding, Finding.HNP_DEFECT)
+        self.assertIn('conflicting', results[0].detail)
+
     def test_zone_without_breakout_is_a_defect(self):
         results = check_zone_breakout_declared([{'zone_name': 'z', 'breakout_option': None}])
         self.assertEqual(results[0].finding, Finding.HNP_DEFECT)
@@ -292,9 +399,13 @@ class InvariantMechanicsTestCase(TestCase):
             [{'switch_class_id': 'c', 'redundancy_type': 'eslag', 'redundancy_group': ''}])
         self.assertEqual(results[0].finding, Finding.HNP_DEFECT)
 
-    def test_inferred_topology_family_is_a_contract_defect(self):
-        result = check_declared_family({'switch_classes': [{'hedgehog_role': 'server-leaf'}]})
-        self.assertEqual(result.finding, Finding.CONTRACT_DEFECT)
+    def test_inferred_topology_family_is_unresolved_not_blamed(self):
+        """An under-declared family has three possible owners -- the case, HNP,
+        or #661. Naming one would repeat the S=1 mistake."""
+        results = check_declared_family({'fab': [{'hedgehog_role': 'server-leaf'}]})
+        self.assertEqual(results[0].finding, Finding.UNRESOLVED)
+        self.assertTrue(results[0].is_failure)
+        self.assertIn('NOT decided here', results[0].detail)
 
     def test_breakout_endpoint_without_identity_stays_unmeasured(self):
         """T1 used strictly as a comparison representation: an endpoint missing

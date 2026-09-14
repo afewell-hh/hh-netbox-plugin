@@ -37,6 +37,10 @@ class Finding(str, Enum):
     DOCUMENTED_DIVERGENCE = "intentional-documented-divergence"
     UNMEASURED = "unmeasured"
     HYPOTHESIS = "hypothesis-not-yet-contract"
+    #: A real, reproducible finding whose attribution between HNP and the
+    #: contract is genuinely open. Distinct from HNP_DEFECT: naming a side
+    #: would decide a question #668 reserves for a governed amendment.
+    UNRESOLVED = "attribution-unresolved"
 
 
 @dataclass(frozen=True)
@@ -48,25 +52,49 @@ class InvariantResult:
 
     @property
     def is_failure(self) -> bool:
-        return self.finding in (Finding.HNP_DEFECT, Finding.CONTRACT_DEFECT)
+        """Findings requiring triage. UNRESOLVED counts: it is a real finding
+        awaiting a governed decision, not a clean result."""
+        return self.finding in (
+            Finding.HNP_DEFECT, Finding.CONTRACT_DEFECT, Finding.UNRESOLVED)
 
 
 # --- topology family --------------------------------------------------------
 
-def check_declared_family(case: Mapping[str, Any]) -> InvariantResult:
-    """A fabric declares exactly one family; silent substitution is forbidden."""
-    modes = {s.get("topology_mode") for s in case["switch_classes"] if s.get("topology_mode")}
-    roles = {s.get("hedgehog_role") for s in case["switch_classes"]}
-    if "mesh" in modes:
-        return InvariantResult(Family.TOPOLOGY_FAMILY, "declared-family",
-                               Finding.HOLDS, f"mesh declared explicitly: {sorted(modes)}")
-    if "spine" in roles:
-        return InvariantResult(Family.TOPOLOGY_FAMILY, "declared-family",
-                               Finding.HOLDS, "Clos expressed via leaf/spine roles")
-    return InvariantResult(
-        Family.TOPOLOGY_FAMILY, "declared-family", Finding.CONTRACT_DEFECT,
-        "neither an explicit topology_mode nor a spine role; family is inferred, "
-        "which #661 forbids")
+def check_declared_family(fabric_classes: Mapping[str, Sequence[Mapping[str, Any]]]) -> list:
+    """Each fabric declares exactly one family; silent substitution is forbidden.
+
+    Evaluated PER FABRIC from persisted HNP state, not once over a whole source
+    document. A plan may hold several fabrics with different families, and a
+    single global verdict would let an under-declared fabric hide behind a
+    well-declared one. Reading persisted PlanSwitchClass rows also keeps this an
+    observation of HNP output rather than of the input YAML (#668).
+    """
+    results = []
+    for fabric, classes in sorted(fabric_classes.items()):
+        modes = {c.get("topology_mode") for c in classes if c.get("topology_mode")}
+        roles = {c.get("hedgehog_role") for c in classes}
+        name = f"declared-family[{fabric}]"
+        if len(modes) > 1:
+            results.append(InvariantResult(
+                Family.TOPOLOGY_FAMILY, name, Finding.HNP_DEFECT,
+                f"fabric declares conflicting topology modes: {sorted(modes)}"))
+        elif "mesh" in modes:
+            results.append(InvariantResult(
+                Family.TOPOLOGY_FAMILY, name, Finding.HOLDS,
+                "mesh declared explicitly"))
+        elif "spine" in roles:
+            results.append(InvariantResult(
+                Family.TOPOLOGY_FAMILY, name, Finding.HOLDS,
+                "Clos expressed via leaf/spine roles"))
+        else:
+            results.append(InvariantResult(
+                Family.TOPOLOGY_FAMILY, name, Finding.UNRESOLVED,
+                "neither an explicit topology_mode nor a spine role, so the family "
+                "would be inferred, which #661 forbids. Attribution is open: the "
+                "case may need to declare a capacity-bounded single-switch family, "
+                "HNP may need to require one, or #661 may need to address "
+                "single-class management fabrics. NOT decided here"))
+    return results
 
 
 def check_clos_spine_cardinality(spine_counts: Mapping[str, Any]) -> list:
@@ -91,9 +119,12 @@ def check_clos_spine_cardinality(spine_counts: Mapping[str, Any]) -> list:
         if spines >= 2:
             finding, detail = Finding.HOLDS, f"S={spines}"
         elif spines == 1:
-            finding, detail = (Finding.HNP_DEFECT,
-                               "S=1 declared Clos; must be the capacity-bounded "
-                               "single-switch family")
+            finding, detail = (Finding.UNRESOLVED,
+                               "S=1 on a declared Clos fabric. #661 F2 requires "
+                               "S>=2; HNP computes the capacity minimum. "
+                               "Attribution between an HNP defect and a contract "
+                               "gap is NOT decided here (#668 reserves contract "
+                               "correction for a governed amendment)")
         else:
             finding, detail = (Finding.HNP_DEFECT,
                                "S=0; Clos invariants would be vacuously satisfied")
@@ -110,8 +141,16 @@ def check_equal_spine_divisibility(leaf_uplinks: Mapping[str, int],
     results = []
     for leaf, uplinks in sorted(leaf_uplinks.items()):
         fabric = leaf_fabric.get(leaf)
-        spines = spine_counts.get(fabric, 0)
+        spines = spine_counts.get(fabric)
         name = f"equal-spine-divisibility[{leaf}]"
+        if spines is None:
+            # Guard before any comparison: `None < 2` raises TypeError, which
+            # would surface as a harness crash rather than an honest result.
+            results.append(InvariantResult(
+                Family.CAPACITY, name, Finding.UNMEASURED,
+                f"fabric {fabric!r} spine quantity is not known; divisibility "
+                f"cannot be evaluated"))
+            continue
         if spines < 2:
             results.append(InvariantResult(
                 Family.CAPACITY, name, Finding.UNMEASURED,
