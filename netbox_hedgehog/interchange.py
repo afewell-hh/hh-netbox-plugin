@@ -149,7 +149,13 @@ def _yaml_restricted(text):
         _error(str(exc))
 
 
-def decode_document(text, *, media_type=None, filename=None):
+def _depth(value):
+    if isinstance(value, dict): return 1 + max((_depth(v) for v in value.values()), default=0)
+    if isinstance(value, list): return 1 + max((_depth(v) for v in value), default=0)
+    return 0
+
+
+def decode_document(text, *, media_type=None, filename=None, limits=None):
     if not isinstance(text, str):
         _error("document must be text")
     try:
@@ -159,6 +165,11 @@ def decode_document(text, *, media_type=None, filename=None):
     except (json.JSONDecodeError, ValueError):
         value = _yaml_restricted(text)
     _walk_restricted(value)
+    if limits:
+        if isinstance(value, dict) and isinstance(value.get('objects'), list) and len(value['objects']) > limits['max_objects']:
+            _error('object limit exceeded', '$.objects')
+        if _depth(value) > limits['max_nesting_depth']:
+            _error('depth limit exceeded', '$')
     _validate_document(value)
     return value
 

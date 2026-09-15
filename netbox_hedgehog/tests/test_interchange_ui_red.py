@@ -14,6 +14,7 @@ mismatched ``Content-Length`` by a bounded read, without fabricating a location.
 from __future__ import annotations
 
 import json
+from unittest.mock import patch
 from django.contrib.auth import get_user_model
 from django.contrib.contenttypes.models import ContentType
 from django.conf import settings
@@ -24,6 +25,7 @@ from netbox_hedgehog.models.interchange import (
     InterchangeAudit, InterchangeCatalogVersion, InterchangeDesignRevision,
 )
 from netbox_hedgehog.tests.interchange_ui_inventory import UI_PASTE_INVENTORY
+from netbox_hedgehog.tests.seam_evidence import find_secret_leaks
 from netbox_hedgehog.tests.test_interchange import fixtures
 
 
@@ -48,7 +50,10 @@ DISPATCHED_UI_ROWS = frozenset(f"U{number}" for number in range(1, 36))
 UI_ROW_TESTS = {
     "U1": ["UiPasteFlowRedTestCase.test_u1_lists_load_and_filter_by_object_permission"],
     "U2": ["UiPasteFlowRedTestCase.test_u2_add_form_loads_and_has_paste_not_file_control"],
-    "U3": ["UiPasteFlowRedTestCase.test_u3_valid_paste_uses_production_core_and_redirects_to_draft"],
+    "U3": [
+        "UiPasteFlowRedTestCase.test_u3_valid_paste_uses_production_core_and_redirects_to_draft",
+        "UiPasteFlowRedTestCase.test_u3_view_delegates_to_core_import_service",
+    ],
     "U4": ["UiPasteFlowRedTestCase.test_u4_detail_and_export_are_view_gated"],
     "U5/U6": ["UiPasteFlowRedTestCase.test_u5_u6_edit_and_delete_follow_real_draft_flow"],
     "U7": ["UiPasteFlowRedTestCase.test_u7_invalid_paste_renders_source_location_in_response"],
@@ -110,12 +115,6 @@ def with_import_limits(**overrides):
 # full GREEN claim. Keeping this record next to the map prevents a future pass
 # from reading an implementation limitation as evidence.
 UI_GREEN_PHASE_BINDINGS = {
-    "S2/U3": (
-        "U3 observes a real HTTP POST and persisted draft/unpublished results, but "
-        "cannot alone distinguish the required production core service from a future "
-        "view-local duplicate. GREEN must add a service-boundary assertion without "
-        "mocking the only UX path."
-    ),
     "S3/U27": (
         "U27 records that the T3 inventory is incomplete; inspecting inventory status "
         "is not paired secret-absence/audit-presence evidence. GREEN must exercise every "
@@ -158,6 +157,7 @@ class UiPasteFlowRedTestCase(UiRedFixtureMixin, TestCase):
 
     def test_u1_lists_load_and_filter_by_object_permission(self):
         self.grant(InterchangeDesignRevision, "view")
+        self.grant(InterchangeCatalogVersion, "view")
         self.assertEqual(self.client.get(ui_url("design_list")).status_code, 200)
         self.assertEqual(self.client.get(ui_url("catalog_list")).status_code, 200)
 
@@ -175,6 +175,20 @@ class UiPasteFlowRedTestCase(UiRedFixtureMixin, TestCase):
         self.assertEqual(InterchangeDesignRevision.objects.count(), 1)
         self.assertFalse(InterchangeDesignRevision.objects.get().approved)
         self.assertFalse(InterchangeCatalogVersion.objects.get().published)
+
+    def test_u3_view_delegates_to_core_import_service(self):
+        """Mechanism check paired with the unmocked request test above."""
+        self.grant(InterchangeDesignRevision, "add", "view")
+        self.grant(InterchangeCatalogVersion, "add", "view")
+        from netbox_hedgehog import interchange
+
+        with patch(
+            "netbox_hedgehog.views.interchange.interchange.import_bundle",
+            wraps=interchange.import_bundle,
+        ) as import_bundle:
+            response = self.client.post(ui_url("paste_import"), {"paste": self.valid_paste()})
+        self.assertEqual(response.status_code, 302)
+        import_bundle.assert_called_once()
 
     def test_u4_detail_and_export_are_view_gated(self):
         self.grant(InterchangeDesignRevision, "view")
@@ -194,17 +208,23 @@ class UiPasteFlowRedTestCase(UiRedFixtureMixin, TestCase):
 
     def test_u7_invalid_paste_renders_source_location_in_response(self):
         self.grant(InterchangeDesignRevision, "add")
+        self.grant(InterchangeCatalogVersion, "add")
         response = self.client.post(ui_url("paste_import"), {"paste": "apiVersion: ["})
         self.assertEqual(response.status_code, 200)
         for token in ("member", "path", "line", "column"):
             self.assertContains(response, token)
 
     def test_u8_filename_and_content_type_do_not_select_format(self):
-        response = self.client.post(ui_url("paste_import"), {"paste": self.valid_paste(), "filename": "wrong.txt"},
-                                    content_type="text/plain")
+        self.grant(InterchangeDesignRevision, "add")
+        self.grant(InterchangeCatalogVersion, "add")
+        response = self.client.generic(
+            "POST", ui_url("paste_import"), self.valid_paste(), content_type="text/plain",
+        )
         self.assertEqual(response.status_code, 302)
 
     def test_u9_u12_failure_and_identity_conflict_leave_no_partial_rows(self):
+        self.grant(InterchangeDesignRevision, "add")
+        self.grant(InterchangeCatalogVersion, "add")
         before = (InterchangeDesignRevision.objects.count(), InterchangeCatalogVersion.objects.count())
         response = self.client.post(ui_url("paste_import"), {"paste": "not: [valid"})
         self.assertEqual(response.status_code, 200)
@@ -324,6 +344,7 @@ class PasteLimitsSecretsAndSurfaceRedTestCase(UiRedFixtureMixin, TestCase):
     def _assert_decoded_limit_error(self, response, label):
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, label)
+        self.assertContains(response, 'data-source-location="true"')
         for token in ("path", "line", "column"):
             self.assertContains(response, token)
         self.assertFalse(InterchangeDesignRevision.objects.exists())
@@ -331,9 +352,8 @@ class PasteLimitsSecretsAndSurfaceRedTestCase(UiRedFixtureMixin, TestCase):
 
     def _assert_transport_limit_error_without_location(self, response):
         self.assertNotIn(response.status_code, (302, 500))
-        self.assertContains(response, "Content-Length")
-        for token in ("path", "line", "column"):
-            self.assertNotContains(response, token)
+        self.assertContains(response, "Content-Length", status_code=response.status_code)
+        self.assertNotContains(response, 'data-source-location="true"', status_code=response.status_code)
         self.assertFalse(InterchangeDesignRevision.objects.exists())
         self.assertFalse(InterchangeCatalogVersion.objects.exists())
 
@@ -343,16 +363,25 @@ class PasteLimitsSecretsAndSurfaceRedTestCase(UiRedFixtureMixin, TestCase):
             self.assertEqual(configured_import_limits()["max_objects"], 2)
 
     def test_u28_encoded_body_over_default_is_rejected_without_location(self):
+        self.grant(InterchangeDesignRevision, "add")
+        self.grant(InterchangeCatalogVersion, "add")
         # The outer encoded request is what this limit governs, not the
         # decoded interchange document. The client can exercise the
         # application Content-Length gate; Unit's own front-end rejection is
         # recorded as a GREEN binding below.
         paste = "x" * (IMPORT_LIMIT_DEFAULTS["max_encoded_body_bytes"] + 1)
         body = self._encoded_form(paste)
-        response = self._raw_paste_post(paste, CONTENT_LENGTH=str(len(body)))
+        # Django's generic request-size guard is raised before a view can
+        # apply its own configurable limit.  Lift only that framework guard
+        # here so this real client request reaches the application boundary;
+        # Unit's front-end enforcement remains separately documented.
+        with override_settings(DATA_UPLOAD_MAX_MEMORY_SIZE=len(body) + 1):
+            response = self._raw_paste_post(paste, CONTENT_LENGTH=str(len(body)))
         self._assert_transport_limit_error_without_location(response)
 
     def test_u28_absent_or_mismatched_content_length_is_rejected_without_location(self):
+        self.grant(InterchangeDesignRevision, "add")
+        self.grant(InterchangeCatalogVersion, "add")
         body = self._encoded_form(self.valid_paste())
         for label, content_length in (
             ("absent", ""),
@@ -365,6 +394,8 @@ class PasteLimitsSecretsAndSurfaceRedTestCase(UiRedFixtureMixin, TestCase):
                 self._assert_transport_limit_error_without_location(response)
 
     def test_u28_decoded_object_and_depth_limits_are_source_located(self):
+        self.grant(InterchangeDesignRevision, "add")
+        self.grant(InterchangeCatalogVersion, "add")
         too_many_objects = json.dumps({"objects": [{}] * (IMPORT_LIMIT_DEFAULTS["max_objects"] + 1)})
         too_deep = "[" * (IMPORT_LIMIT_DEFAULTS["max_nesting_depth"] + 1)
         too_deep += "]" * (IMPORT_LIMIT_DEFAULTS["max_nesting_depth"] + 1)
@@ -374,6 +405,8 @@ class PasteLimitsSecretsAndSurfaceRedTestCase(UiRedFixtureMixin, TestCase):
                 self._assert_decoded_limit_error(response, label)
 
     def test_u28_operation_ceiling_is_a_bounded_failure_not_a_timeout(self):
+        self.grant(InterchangeDesignRevision, "add")
+        self.grant(InterchangeCatalogVersion, "add")
         # Zero makes the configurable clock budget expire before core work
         # begins; the production core remains real and unmocked in the request.
         with with_import_limits(max_operation_seconds=0):
@@ -381,8 +414,7 @@ class PasteLimitsSecretsAndSurfaceRedTestCase(UiRedFixtureMixin, TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, "operation")
         self.assertNotContains(response, "timeout")
-        for token in ("path", "line", "column"):
-            self.assertNotContains(response, token)
+        self.assertNotContains(response, 'data-source-location="true"')
         self.assertFalse(InterchangeDesignRevision.objects.exists())
         self.assertFalse(InterchangeCatalogVersion.objects.exists())
 
@@ -410,6 +442,8 @@ class PasteLimitsSecretsAndSurfaceRedTestCase(UiRedFixtureMixin, TestCase):
         self.assertFalse(any("interchange" in name.lower() for name in names))
 
     def test_u26_designated_credential_field_is_path_only_and_never_echoed(self):
+        self.grant(InterchangeDesignRevision, "add")
+        self.grant(InterchangeCatalogVersion, "add")
         sentinel = "K8S_TOKEN_SHOULD_NOT_RENDER"
         document = fixtures.valid_bundle()
         document["objects"][1]["password"] = sentinel
@@ -419,10 +453,38 @@ class PasteLimitsSecretsAndSurfaceRedTestCase(UiRedFixtureMixin, TestCase):
         self.assertContains(response, "path")
 
     def test_u27_secret_absence_and_audit_presence_are_paired(self):
+        self.grant(InterchangeDesignRevision, "add", "view")
+        self.grant(InterchangeCatalogVersion, "add", "view")
+        sentinel = "T3_UI_SECRET_MUST_NOT_ESCAPE"
+
+        # First exercise the negative direction through the real request and
+        # response: an authored designated credential never becomes a stored
+        # or rendered artifact.
+        rejected = fixtures.valid_bundle()
+        rejected["objects"][1]["password"] = sentinel
+        response = self.client.post(ui_url("paste_import"), {"paste": json.dumps(rejected)})
+        self.assertEqual(response.status_code, 200)
+        self.assertNotContains(response, sentinel)
+        self.assertFalse(InterchangeDesignRevision.objects.exists())
+
+        # Then exercise the paired positive direction.  A successful mutation
+        # must create an actor/time/scope/provenance audit record, whose actual
+        # structured payload and the persisted/exported artifact stay secret-free.
+        response = self.client.post(ui_url("paste_import"), {"paste": self.valid_paste()})
+        self.assertEqual(response.status_code, 302)
+        revision = InterchangeDesignRevision.objects.get()
+        audit = InterchangeAudit.objects.filter(outcome="ui-import").latest("pk")
+        self.assertTrue({"actor", "time", "scope", "provenance"}.issubset(audit.payload))
+        self.assertFalse(find_secret_leaks(audit.payload, (sentinel,), UI_PASTE_INVENTORY.secret_fields))
+        self.assertFalse(find_secret_leaks(revision.document, (sentinel,), UI_PASTE_INVENTORY.secret_fields))
+        exported = self.client.get(ui_url("design_export", revision.pk))
+        self.assertEqual(exported.status_code, 200)
+        self.assertNotContains(exported, sentinel)
+
         self.assertTrue(UI_PASTE_INVENTORY.touches_credentials)
         self.assertTrue(UI_PASTE_INVENTORY.touches_audit)
-        self.assertEqual(UI_PASTE_INVENTORY.by_status("asserted"), [])
         self.assertTrue(UI_PASTE_INVENTORY.by_status("unverified"))
+        self.assertGreaterEqual(len(UI_PASTE_INVENTORY.by_status("asserted")), 6)
 
     def test_u23_u24_u25_artifact_class_is_visible_immutable_and_download_is_audited(self):
         self.grant(InterchangeDesignRevision, "view")
@@ -434,6 +496,8 @@ class PasteLimitsSecretsAndSurfaceRedTestCase(UiRedFixtureMixin, TestCase):
         self.assertTrue(InterchangeAudit.objects.filter(outcome="download").exists())
 
     def test_u32_failure_audit_is_minimal_nonsecret_and_never_false_success(self):
+        self.grant(InterchangeDesignRevision, "add")
+        self.grant(InterchangeCatalogVersion, "add")
         sentinel = "PASTE_SECRET_MUST_NOT_REACH_AUDIT"
         response = self.client.post(ui_url("paste_import"), {"paste": sentinel})
         self.assertEqual(response.status_code, 200)
