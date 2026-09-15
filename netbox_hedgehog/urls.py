@@ -38,6 +38,10 @@ from .views.topology_planning import (
     PlanServerConnectionListView, PlanServerConnectionView, PlanServerConnectionEditView, PlanServerConnectionDeleteView,
     SwitchPortZoneListView, SwitchPortZoneView, SwitchPortZoneEditView, SwitchPortZoneDeleteView
 )
+from .views.interchange import (
+    CatalogListView, DesignApproveView, DesignDeleteView, DesignDetailView,
+    DesignEditView, DesignExportView, DesignListView, ImportView,
+)
 # from .views.crd_views import FabricCRDListView, CRDDetailView, ApplyCRDView, DeleteCRDView
 
 # Other Views
@@ -117,6 +121,16 @@ urlpatterns = [
     # Redirect plugin root to dashboard (preserves bookmarks/docs)
     path('', RedirectView.as_view(pattern_name='plugins:netbox_hedgehog:overview', permanent=False)),
     path('dashboard/', OverviewView.as_view(), name='overview'),
+
+    # #684: paste-only portable interchange UI. Upload/API are deliberately absent.
+    path('interchange/design-revisions/', DesignListView.as_view(), name='interchangedesignrevision_list'),
+    path('interchange/catalog-versions/', CatalogListView.as_view(), name='interchangecatalogversion_list'),
+    path('interchange/import/', ImportView.as_view(), name='interchange_import'),
+    path('interchange/design-revisions/<int:pk>/', DesignDetailView.as_view(), name='interchangedesignrevision'),
+    path('interchange/design-revisions/<int:pk>/edit/', DesignEditView.as_view(), name='interchangedesignrevision_edit'),
+    path('interchange/design-revisions/<int:pk>/delete/', DesignDeleteView.as_view(), name='interchangedesignrevision_delete'),
+    path('interchange/design-revisions/<int:pk>/export/', DesignExportView.as_view(), name='interchangedesignrevision_export'),
+    path('interchange/design-revisions/<int:pk>/approve/', DesignApproveView.as_view(), name='interchangedesignrevision_approve'),
 
     # Fabric URLs
     path('fabrics/', FabricListView.as_view(), name='fabric_list'),
