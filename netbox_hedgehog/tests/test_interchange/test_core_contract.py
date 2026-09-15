@@ -550,14 +550,12 @@ class SecretBoundaryTestCase(TestCase):
 
 
 class CorpusLedgerGuardTestCase(TestCase):
-    """I30 is DEFERRED for #675 (see DEFERRED_ROWS in test_row_coverage).
+    """Supplemental binding for the #677 I30 real-pilot measurement.
 
-    It cannot be satisfied honestly without the measurement harness, which #675
-    must not import or duplicate -- the stub found in review hard-coded #668's
-    findings into production code, inverting the dependency the ledger exists to
-    enforce. What remains here is test-only: it keeps the binding to #668's
-    recorded ledger and the real pilot inputs alive so the deferral does not
-    quietly lose them.
+    #677 executes the pilot and owns I30's row mapping. This test stays
+    test-only: it keeps the binding to #668's recorded ledger and the real
+    pilot inputs explicit, without importing or duplicating the measurement
+    harness in the production interchange implementation.
     """
 
     @classmethod
