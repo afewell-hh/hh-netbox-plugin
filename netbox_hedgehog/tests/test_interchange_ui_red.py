@@ -4,6 +4,11 @@ No application UI exists yet, so failures from this module must identify absent
 UI/lifecycle behavior -- never a mocked substitute.  Every future success path
 uses Django's real client, NetBox ObjectPermission records, and the production
 ``netbox_hedgehog.interchange`` service.
+
+Preflight numeric bounds remain a lead decision under #681 §8.1.  This suite
+therefore pins neither values nor a response code: transport size belongs to
+NGINX Unit, while decoded object/depth/time bounds are application errors with
+source locations, not HTTP 413 responses.
 """
 
 from __future__ import annotations
@@ -33,15 +38,6 @@ URLS = {
     "design_approve": "plugins:netbox_hedgehog:interchangedesignrevision_approve",
     "catalog_publish": "plugins:netbox_hedgehog:interchangecatalogversion_publish",
 }
-
-LIMITS = {"encoded_body": 10 * 1024 * 1024, "objects": 5000, "depth": 32, "seconds": 30}
-CUSTOM_PERMISSIONS = (
-    "approve_interchangedesignrevision",
-    "publish_interchangecatalogversion",
-    "deprecate_interchangecatalogversion",
-    "withdraw_interchangecatalogversion",
-)
-
 
 def ui_url(name, *args):
     """The absent route is the RED signal; never replace it with a stub."""
@@ -197,12 +193,17 @@ class PermissionAndLifecycleRedTestCase(UiRedFixtureMixin, TestCase):
                 ).values_list("codename", flat=True))
                 self.assertSetEqual(declared, codenames)
 
-    def test_u21_authorization_precedes_lookup_and_response_does_not_disclose(self):
-        existing = self._revision()
-        existing_response = self.client.get(ui_url("design_detail", existing.pk))
-        absent_response = self.client.get(ui_url("design_detail", existing.pk + 99999))
-        self.assertEqual(existing_response.status_code, absent_response.status_code)
-        self.assertEqual(existing_response.content, absent_response.content)
+    def test_u21_existing_but_unauthorized_and_permitted_but_absent_do_not_disclose(self):
+        """The pair must be discriminating: one existing object is hidden,
+        while the user is otherwise authorized to view an in-scope object."""
+        permitted = self._revision()
+        hidden = self._revision()
+        self.grant(InterchangeDesignRevision, "view", constraints={"pk": permitted.pk})
+
+        hidden_response = self.client.get(ui_url("design_detail", hidden.pk))
+        absent_response = self.client.get(ui_url("design_detail", hidden.pk + 99999))
+        self.assertEqual(hidden_response.status_code, absent_response.status_code)
+        self.assertEqual(hidden_response.content, absent_response.content)
 
     def test_u13_u18_filtered_detail_and_export_hide_out_of_scope_revision(self):
         permitted = self._revision()
@@ -228,10 +229,10 @@ class PasteLimitsSecretsAndSurfaceRedTestCase(UiRedFixtureMixin, TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, "Cannot query field 'interchangeDesignRevisions'")
 
-    def test_u26_secret_is_path_only_and_never_echoed(self):
+    def test_u26_designated_credential_field_is_path_only_and_never_echoed(self):
         sentinel = "K8S_TOKEN_SHOULD_NOT_RENDER"
         document = fixtures.valid_bundle()
-        document["objects"][1]["assumptions"][0]["statement"] = sentinel
+        document["objects"][1]["password"] = sentinel
         response = self.client.post(ui_url("paste_import"), {"paste": json.dumps(document)})
         self.assertEqual(response.status_code, 200)
         self.assertNotContains(response, sentinel)
@@ -242,16 +243,6 @@ class PasteLimitsSecretsAndSurfaceRedTestCase(UiRedFixtureMixin, TestCase):
         self.assertTrue(UI_PASTE_INVENTORY.touches_audit)
         self.assertEqual(UI_PASTE_INVENTORY.by_status("asserted"), [])
         self.assertTrue(UI_PASTE_INVENTORY.by_status("unverified"))
-
-    def test_u28_exact_encoded_object_depth_and_time_limits(self):
-        for label, payload in (
-            ("encoded", "x" * (LIMITS["encoded_body"] + 1)),
-            ("objects", json.dumps({"objects": [{}] * (LIMITS["objects"] + 1)})),
-            ("depth", "[" * (LIMITS["depth"] + 1) + "]" * (LIMITS["depth"] + 1)),
-        ):
-            with self.subTest(limit=label):
-                response = self.client.post(ui_url("paste_import"), {"paste": payload})
-                self.assertEqual(response.status_code, 413)
 
     def test_u23_u24_u25_artifact_class_is_visible_immutable_and_download_is_audited(self):
         self.grant(InterchangeDesignRevision, "view")
