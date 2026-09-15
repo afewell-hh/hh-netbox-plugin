@@ -14,10 +14,9 @@ source locations, not HTTP 413 responses.
 from __future__ import annotations
 
 import json
-
 from django.contrib.auth import get_user_model
 from django.contrib.contenttypes.models import ContentType
-from django.test import TestCase
+from django.test import SimpleTestCase, TestCase
 from django.urls import reverse
 
 from netbox_hedgehog.models.interchange import (
@@ -37,6 +36,48 @@ URLS = {
     "design_export": "plugins:netbox_hedgehog:interchangedesignrevision_export",
     "design_approve": "plugins:netbox_hedgehog:interchangedesignrevision_approve",
     "catalog_publish": "plugins:netbox_hedgehog:interchangecatalogversion_publish",
+}
+
+# Coverage is declared rather than inferred from names: the #682 dispatch has
+# many adjacent UX rows, and an omitted dictionary entry must fail review rather
+# than quietly becoming an untested promise.
+UI_ROW_TESTS = {
+    "U1": ["UiPasteFlowRedTestCase.test_u1_lists_load_and_filter_by_object_permission"],
+    "U2": ["UiPasteFlowRedTestCase.test_u2_add_form_loads_and_has_paste_not_file_control"],
+    "U3": ["UiPasteFlowRedTestCase.test_u3_valid_paste_uses_production_core_and_redirects_to_draft"],
+    "U4": ["UiPasteFlowRedTestCase.test_u4_detail_and_export_are_view_gated"],
+    "U5/U6": ["UiPasteFlowRedTestCase.test_u5_u6_edit_and_delete_follow_real_draft_flow"],
+    "U7": ["UiPasteFlowRedTestCase.test_u7_invalid_paste_renders_source_location_in_response"],
+    "U8": ["UiPasteFlowRedTestCase.test_u8_filename_and_content_type_do_not_select_format"],
+    "U9/U12": ["UiPasteFlowRedTestCase.test_u9_u12_failure_and_identity_conflict_leave_no_partial_rows"],
+    "U10/U11": ["UiPasteFlowRedTestCase.test_u10_u11_success_is_unapproved_and_retry_preserves_audit_history"],
+    "U13/U18": ["PermissionAndLifecycleRedTestCase.test_u13_u18_filtered_detail_and_export_hide_out_of_scope_revision"],
+    "U14/U15": ["PermissionAndLifecycleRedTestCase.test_u14_u15_denial_and_success_are_real_responses"],
+    "U16": ["PermissionAndLifecycleRedTestCase.test_u16_reference_scope_is_checked_before_import_write"],
+    "U17": ["PermissionAndLifecycleRedTestCase.test_u17_mixed_bundle_names_missing_catalog_capability"],
+    "U19": ["PermissionAndLifecycleRedTestCase.test_u19_locked_revision_rejects_change_without_constraint"],
+    "U20/U33": ["PermissionAndLifecycleRedTestCase.test_u20_u33_transition_requires_custom_not_change_permission"],
+    "U21": ["PermissionAndLifecycleRedTestCase.test_u21_existing_but_unauthorized_and_permitted_but_absent_do_not_disclose"],
+    "U22": ["PasteLimitsSecretsAndSurfaceRedTestCase.test_u22_no_rest_or_graphql_interchange_surface"],
+    "U23/U24/U25": ["PasteLimitsSecretsAndSurfaceRedTestCase.test_u23_u24_u25_artifact_class_is_visible_immutable_and_download_is_audited"],
+    "U26": ["PasteLimitsSecretsAndSurfaceRedTestCase.test_u26_designated_credential_field_is_path_only_and_never_echoed"],
+    "U27": ["PasteLimitsSecretsAndSurfaceRedTestCase.test_u27_secret_absence_and_audit_presence_are_paired"],
+    "U28": ["UiRedCoverageMapTestCase.test_u28_is_blocked_pending_lead_bound_decision"],
+    "U29/U30/U31": ["PasteLimitsSecretsAndSurfaceRedTestCase.test_upload_rows_are_na_with_678_reason_and_no_file_control"],
+    "U32": ["PasteLimitsSecretsAndSurfaceRedTestCase.test_u32_failure_audit_is_minimal_nonsecret_and_never_false_success"],
+    "U34/U35": [
+        "PermissionAndLifecycleRedTestCase.test_u34_all_lifecycle_permissions_are_declared_on_their_own_models",
+        "PermissionAndLifecycleRedTestCase.test_u34_u35_declared_custom_permission_and_state_are_both_required",
+    ],
+}
+
+UI_BLOCKED_ROWS = {
+    "U28": (
+        "#681 §8.1 reserves all four bound values for a lead decision. The #682 "
+        "numeric values conflict with that accepted gate, while transport size is "
+        "enforced by Unit rather than Django's client. Bind a lead-approved matrix "
+        "to Unit/application integration tests before claiming this row."
+    ),
 }
 
 def ui_url(name, *args):
@@ -218,16 +259,27 @@ class PasteLimitsSecretsAndSurfaceRedTestCase(UiRedFixtureMixin, TestCase):
     """U22 and U26--U28: bounds, absence of API/upload, T3 paired evidence."""
 
     def test_u22_no_rest_or_graphql_interchange_surface(self):
-        self.assertEqual(
-            self.client.get("/api/plugins/netbox-hedgehog/interchange-design-revisions/").status_code,
-            404,
-        )
+        """Inspect registered API/GraphQL surfaces, not guessed public names."""
+        from netbox_hedgehog.api.urls import router
+
+        for prefix, viewset, _basename in router.registry:
+            queryset = getattr(viewset, "queryset", None)
+            model = getattr(queryset, "model", None)
+            identifiers = (prefix, getattr(model._meta, "label_lower", "") if model else "")
+            self.assertFalse(any("interchange" in value.lower() for value in identifiers))
+
         # GraphQL itself is a shared NetBox endpoint and legitimately answers
-        # HTTP 200 for a validation error.  The contract is that it exposes no
-        # interchange field, not that the endpoint does not exist.
-        response = self.client.get("/graphql/", {"query": "{interchangeDesignRevisions{id}}"})
+        # HTTP 200 for introspection.  No interchange root field *or type* may
+        # be exposed, regardless of a future field's spelling.
+        response = self.client.get(
+            "/graphql/",
+            {"query": "{__schema{queryType{fields{name}} types{name}}}"},
+        )
         self.assertEqual(response.status_code, 200)
-        self.assertContains(response, "Cannot query field 'interchangeDesignRevisions'")
+        schema = response.json()["data"]["__schema"]
+        names = [field["name"] for field in schema["queryType"]["fields"]]
+        names.extend(type_["name"] for type_ in schema["types"])
+        self.assertFalse(any("interchange" in name.lower() for name in names))
 
     def test_u26_designated_credential_field_is_path_only_and_never_echoed(self):
         sentinel = "K8S_TOKEN_SHOULD_NOT_RENDER"
@@ -267,3 +319,31 @@ class PasteLimitsSecretsAndSurfaceRedTestCase(UiRedFixtureMixin, TestCase):
         self.assertEqual(upload.owner_issue, "#678")
         response = self.client.get(ui_url("paste_import"))
         self.assertNotContains(response, 'type="file"')
+
+
+class UiRedCoverageMapTestCase(SimpleTestCase):
+    """Coverage-map guards: a blocked row is recorded, never deleted."""
+
+    def test_u28_is_blocked_pending_lead_bound_decision(self):
+        self.assertIn("U28", UI_BLOCKED_ROWS)
+
+    def test_every_dispatched_ui_row_names_a_test(self):
+        self.assertEqual(
+            sorted(row for row, tests in UI_ROW_TESTS.items() if not tests), [],
+        )
+
+    def test_every_named_ui_test_exists(self):
+        missing = []
+        for row, tests in UI_ROW_TESTS.items():
+            for dotted in tests:
+                class_name, method_name = dotted.split(".")
+                case = globals().get(class_name)
+                if not isinstance(case, type) or not callable(getattr(case, method_name, None)):
+                    missing.append(f"{row}: {dotted}")
+        self.assertEqual(missing, [])
+
+    def test_blocked_rows_are_mapped_and_substantive(self):
+        for row, reason in UI_BLOCKED_ROWS.items():
+            with self.subTest(row=row):
+                self.assertIn(row, UI_ROW_TESTS)
+                self.assertGreater(len(reason), 180)
