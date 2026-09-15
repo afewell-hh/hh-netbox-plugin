@@ -9,17 +9,15 @@ uses Django's real client, NetBox ObjectPermission records, and the production
 from __future__ import annotations
 
 import json
-from unittest import skipUnless
 
 from django.contrib.auth import get_user_model
 from django.contrib.contenttypes.models import ContentType
 from django.test import TestCase
-from django.urls import NoReverseMatch, reverse
+from django.urls import reverse
 
 from netbox_hedgehog.models.interchange import (
     InterchangeAudit, InterchangeCatalogVersion, InterchangeDesignRevision,
 )
-from netbox_hedgehog.tests import seam_evidence
 from netbox_hedgehog.tests.interchange_ui_inventory import UI_PASTE_INVENTORY
 from netbox_hedgehog.tests.test_interchange import fixtures
 
@@ -178,6 +176,26 @@ class PermissionAndLifecycleRedTestCase(UiRedFixtureMixin, TestCase):
         self.grant(InterchangeDesignRevision, "approve")
         revision = self._revision(approved=True)
         self.assertIn(self.client.post(ui_url("design_approve", revision.pk)).status_code, (403, 409))
+
+    def test_u34_all_lifecycle_permissions_are_declared_on_their_own_models(self):
+        """A generic ``change`` grant must never stand in for a transition grant."""
+        from django.contrib.auth.models import Permission
+
+        expected = {
+            InterchangeDesignRevision: {"approve_interchangedesignrevision"},
+            InterchangeCatalogVersion: {
+                "publish_interchangecatalogversion",
+                "deprecate_interchangecatalogversion",
+                "withdraw_interchangecatalogversion",
+            },
+        }
+        for model, codenames in expected.items():
+            with self.subTest(model=model._meta.label):
+                declared = set(Permission.objects.filter(
+                    content_type=ContentType.objects.get_for_model(model),
+                    codename__in=codenames,
+                ).values_list("codename", flat=True))
+                self.assertSetEqual(declared, codenames)
 
     def test_u21_authorization_precedes_lookup_and_response_does_not_disclose(self):
         existing = self._revision()
