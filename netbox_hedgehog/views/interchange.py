@@ -1,11 +1,12 @@
 """Paste-only interchange UI (#684). No upload or public API surface."""
 import time
 import json
+import re
 
 from django.conf import settings
 from django.core.exceptions import PermissionDenied
-from django.http import HttpResponse, HttpResponseBadRequest, HttpResponseForbidden
-from django.shortcuts import get_object_or_404, redirect, render
+from django.http import HttpResponse, HttpResponseForbidden, HttpResponseNotFound
+from django.shortcuts import redirect, render
 from django.views import View
 
 from netbox_hedgehog import interchange
@@ -44,6 +45,16 @@ def error(request, message, location=None, status=200):
     return render(request, 'netbox_hedgehog/interchange/import.html', context, status=status)
 
 
+def complete_form_encoding(body):
+    """Reject a body truncated in the middle of percent encoding.
+
+    Unit normally enforces Content-Length before Django sees a request.  This
+    small application-layer backstop makes the same failure bounded when a
+    proxy supplies a truncated urlencoded body.
+    """
+    return re.search(br'%(?![0-9A-Fa-f]{2})', body) is None
+
+
 class ImportView(View):
     template_name = 'netbox_hedgehog/interchange/import.html'
     def get(self, request):
@@ -53,11 +64,19 @@ class ImportView(View):
                 request.user.has_perm('netbox_hedgehog.add_interchangecatalogversion')):
             return HttpResponseForbidden('catalog contributor permission is required')
         raw = request.META.get('CONTENT_LENGTH')
-        if not raw or not raw.isdigit() or int(raw) != len(request.body) or int(raw) > limits()['max_encoded_body_bytes']:
+        if (not raw or not raw.isdigit() or int(raw) != len(request.body)
+                or int(raw) > limits()['max_encoded_body_bytes']
+                or not complete_form_encoding(request.body)):
             return error(request, 'Content-Length bounded-preflight rejection', None, 400)
         started = time.monotonic()
         try:
-            document = interchange.decode_document(request.POST.get('paste', ''), limits=limits())
+            # A paste is text, not an uploaded file.  Accept a conventional
+            # form post as well as a text/plain body; the interchange parser,
+            # not the HTTP media type or a filename, selects YAML versus JSON.
+            paste = request.POST.get('paste')
+            if paste is None:
+                paste = request.body.decode(request.encoding or 'utf-8')
+            document = interchange.decode_document(paste, limits=limits())
             if time.monotonic() - started >= limits()['max_operation_seconds']:
                 return error(request, 'operation bounded-preflight rejection', None)
             result = interchange.import_bundle(document, user=request.user)
@@ -87,8 +106,30 @@ class CatalogListView(View):
 
 
 def visible_design(request, pk):
-    obj = get_object_or_404(InterchangeDesignRevision, pk=pk)
-    if not request.user.has_perm('netbox_hedgehog.view_interchangedesignrevision', obj):
+    obj = InterchangeDesignRevision.objects.filter(pk=pk).first()
+    if obj is None or not request.user.has_perm('netbox_hedgehog.view_interchangedesignrevision', obj):
+        # A constrained object permission must not disclose whether the
+        # requested revision exists outside the caller's scope.
+        return None
+    return obj
+
+
+def not_visible_response():
+    """Identical response for absent and out-of-scope revisions."""
+    return HttpResponseNotFound('Not found')
+
+
+def actionable_design(request, pk, action):
+    """Resolve a mutation target by its operation permission.
+
+    Transition permissions are intentionally independent of ``view``.  The
+    caller still receives a denial when it lacks the requested operation, and
+    a locked state is checked only after that operation is authorized.
+    """
+    obj = InterchangeDesignRevision.objects.filter(pk=pk).first()
+    if obj is None:
+        return None
+    if not request.user.has_perm(f'netbox_hedgehog.{action}_interchangedesignrevision', obj):
         raise PermissionDenied
     return obj
 
@@ -96,13 +137,17 @@ def visible_design(request, pk):
 class DesignDetailView(View):
     def get(self, request, pk):
         obj = visible_design(request, pk)
+        if obj is None:
+            return not_visible_response()
         return render(request, 'netbox_hedgehog/interchange/detail.html', {'object': obj})
 
 
 class DesignEditView(View):
     def post(self, request, pk):
-        obj = visible_design(request, pk)
-        if obj.approved or not request.user.has_perm('netbox_hedgehog.change_interchangedesignrevision', obj):
+        obj = actionable_design(request, pk, 'change')
+        if obj is None:
+            return not_visible_response()
+        if obj.approved:
             raise PermissionDenied
         obj.revision = request.POST.get('revision', obj.revision); obj.save()
         audit('ui-edit', request, design=obj.pk)
@@ -111,8 +156,10 @@ class DesignEditView(View):
 
 class DesignDeleteView(View):
     def post(self, request, pk):
-        obj = visible_design(request, pk)
-        if obj.approved or not request.user.has_perm('netbox_hedgehog.delete_interchangedesignrevision', obj): raise PermissionDenied
+        obj = actionable_design(request, pk, 'delete')
+        if obj is None:
+            return not_visible_response()
+        if obj.approved: raise PermissionDenied
         obj.delete(); audit('ui-delete', request, design=pk)
         return redirect('plugins:netbox_hedgehog:interchangedesignrevision_list')
 
@@ -120,6 +167,8 @@ class DesignDeleteView(View):
 class DesignExportView(View):
     def get(self, request, pk):
         obj = visible_design(request, pk)
+        if obj is None:
+            return not_visible_response()
         audit('download', request, design=obj.pk)
         if not obj.document.get('identity'):
             payload = json.dumps({'artifact': 'draft', 'provenance': 'unavailable'})
@@ -130,7 +179,9 @@ class DesignExportView(View):
 
 class DesignApproveView(View):
     def post(self, request, pk):
-        obj = visible_design(request, pk)
-        if obj.approved or not request.user.has_perm('netbox_hedgehog.approve_interchangedesignrevision', obj): raise PermissionDenied
+        obj = actionable_design(request, pk, 'approve')
+        if obj is None:
+            return not_visible_response()
+        if obj.approved: raise PermissionDenied
         obj.approved = True; obj.save(); audit('approve', request, design=obj.pk)
         return redirect('plugins:netbox_hedgehog:interchangedesignrevision', pk=obj.pk)

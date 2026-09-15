@@ -1,6 +1,6 @@
 {% extends 'base/layout.html' %}
 {% block content %}
 <h1>Import portable design</h1>
-{% if error %}<div class="alert alert-danger">{{ error }}{% if location %} member {{ location.member }} path {{ location.path }} line {{ location.line }} column {{ location.column }}{% endif %}</div>{% endif %}
+{% if error %}<div class="alert alert-danger">{{ error }}{% if location %}<span data-source-location="true"> member {{ location.member }} path {{ location.path }} line {{ location.line }} column {{ location.column }}</span>{% endif %}</div>{% endif %}
 <form method="post">{% csrf_token %}<textarea name="paste" rows="18"></textarea><button type="submit">Import</button></form>
 {% endblock %}
