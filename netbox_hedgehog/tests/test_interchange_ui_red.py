@@ -40,7 +40,10 @@ URLS = {
 
 # Coverage is declared rather than inferred from names: the #682 dispatch has
 # many adjacent UX rows, and an omitted dictionary entry must fail review rather
-# than quietly becoming an untested promise.
+# than quietly becoming an untested promise.  A blocked row is deliberately not
+# listed here: it has no behavior test until its governing decision is made.
+DISPATCHED_UI_ROWS = frozenset(f"U{number}" for number in range(1, 36))
+
 UI_ROW_TESTS = {
     "U1": ["UiPasteFlowRedTestCase.test_u1_lists_load_and_filter_by_object_permission"],
     "U2": ["UiPasteFlowRedTestCase.test_u2_add_form_loads_and_has_paste_not_file_control"],
@@ -62,7 +65,6 @@ UI_ROW_TESTS = {
     "U23/U24/U25": ["PasteLimitsSecretsAndSurfaceRedTestCase.test_u23_u24_u25_artifact_class_is_visible_immutable_and_download_is_audited"],
     "U26": ["PasteLimitsSecretsAndSurfaceRedTestCase.test_u26_designated_credential_field_is_path_only_and_never_echoed"],
     "U27": ["PasteLimitsSecretsAndSurfaceRedTestCase.test_u27_secret_absence_and_audit_presence_are_paired"],
-    "U28": ["UiRedCoverageMapTestCase.test_u28_is_blocked_pending_lead_bound_decision"],
     "U29/U30/U31": ["PasteLimitsSecretsAndSurfaceRedTestCase.test_upload_rows_are_na_with_678_reason_and_no_file_control"],
     "U32": ["PasteLimitsSecretsAndSurfaceRedTestCase.test_u32_failure_audit_is_minimal_nonsecret_and_never_false_success"],
     "U34/U35": [
@@ -77,6 +79,23 @@ UI_BLOCKED_ROWS = {
         "numeric values conflict with that accepted gate, while transport size is "
         "enforced by Unit rather than Django's client. Bind a lead-approved matrix "
         "to Unit/application integration tests before claiming this row."
+    ),
+}
+
+# These rows are present but their current assertion cannot by itself prove the
+# full GREEN claim. Keeping this record next to the map prevents a future pass
+# from reading an implementation limitation as evidence.
+UI_GREEN_PHASE_BINDINGS = {
+    "S2/U3": (
+        "U3 observes a real HTTP POST and persisted draft/unpublished results, but "
+        "cannot alone distinguish the required production core service from a future "
+        "view-local duplicate. GREEN must add a service-boundary assertion without "
+        "mocking the only UX path."
+    ),
+    "S3/U27": (
+        "U27 records that the T3 inventory is incomplete; inspecting inventory status "
+        "is not paired secret-absence/audit-presence evidence. GREEN must exercise every "
+        "implemented path with a synthetic secret and a corresponding audit assertion."
     ),
 }
 
@@ -324,13 +343,21 @@ class PasteLimitsSecretsAndSurfaceRedTestCase(UiRedFixtureMixin, TestCase):
 class UiRedCoverageMapTestCase(SimpleTestCase):
     """Coverage-map guards: a blocked row is recorded, never deleted."""
 
-    def test_u28_is_blocked_pending_lead_bound_decision(self):
-        self.assertIn("U28", UI_BLOCKED_ROWS)
+    @staticmethod
+    def _expand_rows(labels):
+        return {row for label in labels for row in label.split("/")}
 
-    def test_every_dispatched_ui_row_names_a_test(self):
-        self.assertEqual(
-            sorted(row for row, tests in UI_ROW_TESTS.items() if not tests), [],
-        )
+    def test_every_dispatched_ui_row_is_covered_or_explicitly_blocked(self):
+        covered = self._expand_rows(UI_ROW_TESTS)
+        blocked = self._expand_rows(UI_BLOCKED_ROWS)
+        self.assertEqual(covered & blocked, set(), "a blocked row cannot read as covered")
+        self.assertEqual(DISPATCHED_UI_ROWS - (covered | blocked), set(),
+                         "dispatched rows silently lost from the suite")
+        self.assertEqual((covered | blocked) - DISPATCHED_UI_ROWS, set(),
+                         "coverage names a row absent from the #682 dispatch")
+
+    def test_every_covered_ui_row_names_at_least_one_test(self):
+        self.assertEqual(sorted(row for row, tests in UI_ROW_TESTS.items() if not tests), [])
 
     def test_every_named_ui_test_exists(self):
         missing = []
@@ -345,5 +372,11 @@ class UiRedCoverageMapTestCase(SimpleTestCase):
     def test_blocked_rows_are_mapped_and_substantive(self):
         for row, reason in UI_BLOCKED_ROWS.items():
             with self.subTest(row=row):
-                self.assertIn(row, UI_ROW_TESTS)
+                self.assertNotIn(row, UI_ROW_TESTS)
+                self.assertIn(row, DISPATCHED_UI_ROWS)
+                self.assertGreater(len(reason), 180)
+
+    def test_green_phase_bindings_are_recorded_with_reasons(self):
+        for binding, reason in UI_GREEN_PHASE_BINDINGS.items():
+            with self.subTest(binding=binding):
                 self.assertGreater(len(reason), 180)
