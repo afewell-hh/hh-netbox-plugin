@@ -217,9 +217,16 @@ class PasteLimitsSecretsAndSurfaceRedTestCase(UiRedFixtureMixin, TestCase):
     """U22 and U26--U28: bounds, absence of API/upload, T3 paired evidence."""
 
     def test_u22_no_rest_or_graphql_interchange_surface(self):
-        for path in ("/api/plugins/netbox-hedgehog/interchange-design-revisions/",
-                     "/graphql/?query={interchangeDesignRevisions{id}}"):
-            self.assertEqual(self.client.get(path).status_code, 404)
+        self.assertEqual(
+            self.client.get("/api/plugins/netbox-hedgehog/interchange-design-revisions/").status_code,
+            404,
+        )
+        # GraphQL itself is a shared NetBox endpoint and legitimately answers
+        # HTTP 200 for a validation error.  The contract is that it exposes no
+        # interchange field, not that the endpoint does not exist.
+        response = self.client.get("/graphql/", {"query": "{interchangeDesignRevisions{id}}"})
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Cannot query field 'interchangeDesignRevisions'")
 
     def test_u26_secret_is_path_only_and_never_echoed(self):
         sentinel = "K8S_TOKEN_SHOULD_NOT_RENDER"
