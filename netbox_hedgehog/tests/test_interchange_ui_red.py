@@ -5,10 +5,10 @@ UI/lifecycle behavior -- never a mocked substitute.  Every future success path
 uses Django's real client, NetBox ObjectPermission records, and the production
 ``netbox_hedgehog.interchange`` service.
 
-Preflight numeric bounds remain a lead decision under #681 §8.1.  This suite
-therefore pins neither values nor a response code: transport size belongs to
-NGINX Unit, while decoded object/depth/time bounds are application errors with
-source locations, not HTTP 413 responses.
+The product owner has approved configurable defaults for #681 §8.1. Transport
+size belongs to NGINX Unit and receives no application source location; decoded
+object/depth bounds require one. The application still rejects absent or
+mismatched ``Content-Length`` by a bounded read, without fabricating a location.
 """
 
 from __future__ import annotations
@@ -16,7 +16,8 @@ from __future__ import annotations
 import json
 from django.contrib.auth import get_user_model
 from django.contrib.contenttypes.models import ContentType
-from django.test import SimpleTestCase, TestCase
+from django.conf import settings
+from django.test import SimpleTestCase, TestCase, override_settings
 from django.urls import reverse
 
 from netbox_hedgehog.models.interchange import (
@@ -65,6 +66,13 @@ UI_ROW_TESTS = {
     "U23/U24/U25": ["PasteLimitsSecretsAndSurfaceRedTestCase.test_u23_u24_u25_artifact_class_is_visible_immutable_and_download_is_audited"],
     "U26": ["PasteLimitsSecretsAndSurfaceRedTestCase.test_u26_designated_credential_field_is_path_only_and_never_echoed"],
     "U27": ["PasteLimitsSecretsAndSurfaceRedTestCase.test_u27_secret_absence_and_audit_presence_are_paired"],
+    "U28": [
+        "PasteLimitsSecretsAndSurfaceRedTestCase.test_u28_shipped_defaults_are_configurable",
+        "PasteLimitsSecretsAndSurfaceRedTestCase.test_u28_encoded_body_over_default_is_rejected_without_location",
+        "PasteLimitsSecretsAndSurfaceRedTestCase.test_u28_absent_or_mismatched_content_length_is_rejected_without_location",
+        "PasteLimitsSecretsAndSurfaceRedTestCase.test_u28_decoded_object_and_depth_limits_are_source_located",
+        "PasteLimitsSecretsAndSurfaceRedTestCase.test_u28_operation_ceiling_is_a_bounded_failure_not_a_timeout",
+    ],
     "U29/U30/U31": ["PasteLimitsSecretsAndSurfaceRedTestCase.test_upload_rows_are_na_with_678_reason_and_no_file_control"],
     "U32": ["PasteLimitsSecretsAndSurfaceRedTestCase.test_u32_failure_audit_is_minimal_nonsecret_and_never_false_success"],
     "U34/U35": [
@@ -73,14 +81,30 @@ UI_ROW_TESTS = {
     ],
 }
 
-UI_BLOCKED_ROWS = {
-    "U28": (
-        "#681 §8.1 reserves all four bound values for a lead decision. The #682 "
-        "numeric values conflict with that accepted gate, while transport size is "
-        "enforced by Unit rather than Django's client. Bind a lead-approved matrix "
-        "to Unit/application integration tests before claiming this row."
-    ),
+UI_BLOCKED_ROWS = {}
+
+IMPORT_LIMIT_DEFAULTS = {
+    "max_encoded_body_bytes": 10 * 1024 * 1024,
+    "max_objects": 5000,
+    "max_nesting_depth": 32,
+    "max_operation_seconds": 30,
 }
+
+
+def configured_import_limits():
+    """The supported UI setting: defaults are part of the product contract,
+    but deployment owners may override each value without changing code."""
+    return settings.PLUGINS_CONFIG["netbox_hedgehog"]["interchange_import_limits"]
+
+
+def with_import_limits(**overrides):
+    plugin_config = dict(settings.PLUGINS_CONFIG.get("netbox_hedgehog", {}))
+    limits = dict(IMPORT_LIMIT_DEFAULTS)
+    limits.update(overrides)
+    plugin_config["interchange_import_limits"] = limits
+    config = dict(settings.PLUGINS_CONFIG)
+    config["netbox_hedgehog"] = plugin_config
+    return override_settings(PLUGINS_CONFIG=config)
 
 # These rows are present but their current assertion cannot by itself prove the
 # full GREEN claim. Keeping this record next to the map prevents a future pass
@@ -96,6 +120,12 @@ UI_GREEN_PHASE_BINDINGS = {
         "U27 records that the T3 inventory is incomplete; inspecting inventory status "
         "is not paired secret-absence/audit-presence evidence. GREEN must exercise every "
         "implemented path with a synthetic secret and a corresponding audit assertion."
+    ),
+    "S4/U28 transport": (
+        "Django's test client starts below NGINX Unit, so U28 proves the application "
+        "Content-Length and bounded-read contract but cannot prove Unit's 10 MiB front-end "
+        "request limit. GREEN needs a real HTTP probe through the deployment listener; it "
+        "must remain distinct from decoded-content source-location assertions."
     ),
 }
 
@@ -276,6 +306,85 @@ class PermissionAndLifecycleRedTestCase(UiRedFixtureMixin, TestCase):
 
 class PasteLimitsSecretsAndSurfaceRedTestCase(UiRedFixtureMixin, TestCase):
     """U22 and U26--U28: bounds, absence of API/upload, T3 paired evidence."""
+
+    @staticmethod
+    def _encoded_form(paste):
+        from urllib.parse import urlencode
+        return urlencode({"paste": paste}).encode()
+
+    def _raw_paste_post(self, paste, **headers):
+        return self.client.generic(
+            "POST",
+            ui_url("paste_import"),
+            self._encoded_form(paste),
+            content_type="application/x-www-form-urlencoded",
+            **headers,
+        )
+
+    def _assert_decoded_limit_error(self, response, label):
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, label)
+        for token in ("path", "line", "column"):
+            self.assertContains(response, token)
+        self.assertFalse(InterchangeDesignRevision.objects.exists())
+        self.assertFalse(InterchangeCatalogVersion.objects.exists())
+
+    def _assert_transport_limit_error_without_location(self, response):
+        self.assertNotIn(response.status_code, (302, 500))
+        self.assertContains(response, "Content-Length")
+        for token in ("path", "line", "column"):
+            self.assertNotContains(response, token)
+        self.assertFalse(InterchangeDesignRevision.objects.exists())
+        self.assertFalse(InterchangeCatalogVersion.objects.exists())
+
+    def test_u28_shipped_defaults_are_configurable(self):
+        self.assertDictEqual(configured_import_limits(), IMPORT_LIMIT_DEFAULTS)
+        with with_import_limits(max_objects=2):
+            self.assertEqual(configured_import_limits()["max_objects"], 2)
+
+    def test_u28_encoded_body_over_default_is_rejected_without_location(self):
+        # The outer encoded request is what this limit governs, not the
+        # decoded interchange document. The client can exercise the
+        # application Content-Length gate; Unit's own front-end rejection is
+        # recorded as a GREEN binding below.
+        paste = "x" * (IMPORT_LIMIT_DEFAULTS["max_encoded_body_bytes"] + 1)
+        body = self._encoded_form(paste)
+        response = self._raw_paste_post(paste, CONTENT_LENGTH=str(len(body)))
+        self._assert_transport_limit_error_without_location(response)
+
+    def test_u28_absent_or_mismatched_content_length_is_rejected_without_location(self):
+        body = self._encoded_form(self.valid_paste())
+        for label, content_length in (
+            ("absent", ""),
+            ("mismatched", str(len(body) - 1)),
+        ):
+            with self.subTest(content_length=label):
+                response = self._raw_paste_post(
+                    self.valid_paste(), CONTENT_LENGTH=content_length,
+                )
+                self._assert_transport_limit_error_without_location(response)
+
+    def test_u28_decoded_object_and_depth_limits_are_source_located(self):
+        too_many_objects = json.dumps({"objects": [{}] * (IMPORT_LIMIT_DEFAULTS["max_objects"] + 1)})
+        too_deep = "[" * (IMPORT_LIMIT_DEFAULTS["max_nesting_depth"] + 1)
+        too_deep += "]" * (IMPORT_LIMIT_DEFAULTS["max_nesting_depth"] + 1)
+        for label, payload in (("object", too_many_objects), ("depth", too_deep)):
+            with self.subTest(limit=label):
+                response = self.client.post(ui_url("paste_import"), {"paste": payload})
+                self._assert_decoded_limit_error(response, label)
+
+    def test_u28_operation_ceiling_is_a_bounded_failure_not_a_timeout(self):
+        # Zero makes the configurable clock budget expire before core work
+        # begins; the production core remains real and unmocked in the request.
+        with with_import_limits(max_operation_seconds=0):
+            response = self.client.post(ui_url("paste_import"), {"paste": self.valid_paste()})
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "operation")
+        self.assertNotContains(response, "timeout")
+        for token in ("path", "line", "column"):
+            self.assertNotContains(response, token)
+        self.assertFalse(InterchangeDesignRevision.objects.exists())
+        self.assertFalse(InterchangeCatalogVersion.objects.exists())
 
     def test_u22_no_rest_or_graphql_interchange_surface(self):
         """Inspect registered API/GraphQL surfaces, not guessed public names."""
