@@ -32,6 +32,10 @@ jobs:
           ref: 7d6f00662c90c9294911182935d41a6e66f8896b
           path: netbox-docker
 
+      - name: Guard interchange host prerequisite
+        working-directory: hh-netbox-plugin
+        run: bash scripts/check_interchange_workflow_prerequisite.sh
+
       - name: Configure NetBox plugin mount
         run: |
           cd netbox-docker
