@@ -16,6 +16,11 @@ class InterchangeCatalogVersion(models.Model):
     class Meta:
         constraints = [models.UniqueConstraint(
             fields=("namespace", "slug", "version"), name="interchange_catalog_identity_version")]
+        permissions = (
+            ("publish_interchangecatalogversion", "Can publish interchange catalog version"),
+            ("deprecate_interchangecatalogversion", "Can deprecate interchange catalog version"),
+            ("withdraw_interchangecatalogversion", "Can withdraw interchange catalog version"),
+        )
 
     def __str__(self):
         return f"{self.namespace}:{self.slug}@{self.version}"
@@ -32,6 +37,7 @@ class InterchangeDesignRevision(models.Model):
     class Meta:
         constraints = [models.UniqueConstraint(
             fields=("namespace", "slug", "revision"), name="interchange_design_identity_revision")]
+        permissions = (("approve_interchangedesignrevision", "Can approve interchange design revision"),)
 
     def __str__(self):
         return f"{self.namespace}:{self.slug}#{self.revision}"
@@ -46,3 +52,4 @@ class InterchangeProvenance(models.Model):
 class InterchangeAudit(models.Model):
     outcome = models.CharField(max_length=64)
     payload = models.JSONField(default=dict)
+    created = models.DateTimeField(auto_now_add=True)

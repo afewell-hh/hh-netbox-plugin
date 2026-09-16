@@ -30,6 +30,9 @@ jobs:
         with:
           fetch-depth: 0  # Full history for proper context
 
+      - name: Guard interchange host prerequisite
+        run: bash scripts/check_interchange_workflow_prerequisite.sh
+
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
@@ -73,6 +76,10 @@ jobs:
 
           # Install plugin
           docker compose exec -T netbox pip install /tmp/plugin/
+
+          # Host setting for the #684 paste-only interchange prerequisite.
+          # It is intentionally NetBox configuration, not PLUGINS_CONFIG.
+          docker compose exec -T netbox bash -c 'echo "DATA_UPLOAD_MAX_MEMORY_SIZE = 10 * 1024 * 1024" >> /etc/netbox/config/extra.py'
 
           # Enable plugin in configuration
           docker compose exec -T netbox bash -c 'echo "PLUGINS = [\"netbox_hedgehog\"]" > /etc/netbox/config/plugins.py'

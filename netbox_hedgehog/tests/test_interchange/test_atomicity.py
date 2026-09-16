@@ -28,6 +28,7 @@ import os
 import signal
 import subprocess
 import sys
+import time
 
 from django.core.management import call_command
 from django.db import connection
@@ -121,6 +122,27 @@ class CommitBoundaryFaultTestCase(_ZeroWriteMixin, TestCase):
                 module.decode_document(fixtures.to_json(fixtures.valid_bundle())),
                 user=None, after_first_target_write=probe)
         self.assert_zero_durable_writes(before, 'I16a post-first-write fault')
+
+    def test_deadline_after_first_target_write_rolls_back_import_half(self):
+        """The synchronous UI deadline applies after writes begin, not just decode."""
+        module = require_interchange()
+        before = persistence.snapshot()
+
+        def cross_deadline():
+            # Leave enough headroom to prove the first write completes before
+            # we cross the deadline.  The former 10ms budget could expire at
+            # the entry checkpoint on a slow runner and prove nothing about
+            # deadline checks inside the import half.
+            time.sleep(0.25)
+
+        with self.assertRaises(module.OperationDeadlineExceeded):
+            module.import_bundle(
+                module.decode_document(fixtures.to_json(fixtures.valid_bundle())),
+                user=None,
+                deadline=time.monotonic() + 0.20,
+                after_first_target_write=cross_deadline,
+            )
+        self.assert_zero_durable_writes(before, 'deadline after first target write')
 
     def test_i16b_integrity_failure_in_second_target_rolls_back_the_first(self):
         """No partial catalog-only or topology-only success."""
@@ -414,5 +436,3 @@ class RetryAndConflictTestCase(_ZeroWriteMixin, TestCase):
             module.import_bundle(
                 module.decode_document(fixtures.to_json(changed)), user=None)
         self.assert_zero_durable_writes(before, 'I18 identity conflict')
-
-

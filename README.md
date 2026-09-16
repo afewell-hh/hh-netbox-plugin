@@ -62,6 +62,23 @@ The plugin supports the following configuration options:
 - `sync_interval`: Interval for automatic synchronization in seconds (default: 300)
 - `enable_webhooks`: Enable webhook notifications (default: True)
 
+### Paste-only interchange prerequisite
+
+The paste-only interchange UI has a configurable encoded-body maximum of 10 MiB
+by default. Configure the NetBox host setting to at least that value before
+enabling the UI; the plugin checks this at startup/`manage.py check` and will
+fail loudly rather than changing a host-wide security control:
+
+```python
+# NetBox configuration (not PLUGINS_CONFIG)
+DATA_UPLOAD_MAX_MEMORY_SIZE = 10 * 1024 * 1024
+```
+
+If `PLUGINS_CONFIG['netbox_hedgehog']['interchange_import_limits']`
+raises `max_encoded_body_bytes`, raise the host setting to the same or a larger
+value and restart NetBox. A deliberately lower host setting is rejected and is
+never overridden by the plugin.
+
 ## Usage
 
 ### Managing Fabrics

@@ -35,6 +35,12 @@ class HedgehogPluginConfig(PluginConfig):
         'sync_interval': 300,
         'enable_webhooks': True,
         'max_concurrent_syncs': 5,
+        'interchange_import_limits': {
+            'max_encoded_body_bytes': 10 * 1024 * 1024,
+            'max_objects': 5000,
+            'max_nesting_depth': 32,
+            'max_operation_seconds': 30,
+        },
     }
     caching_config = {
         'fabric_status': 60,  # Cache fabric status for 60 seconds
@@ -43,6 +49,8 @@ class HedgehogPluginConfig(PluginConfig):
 
     def ready(self):
         from django.db.models.signals import post_migrate
+        # Register deployment checks but never alter NetBox-wide host settings.
+        from netbox_hedgehog import checks  # noqa: F401
 
         super_ready = getattr(super(), "ready", None)
         if callable(super_ready):

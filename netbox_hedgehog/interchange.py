@@ -8,12 +8,13 @@ import copy
 import hashlib
 import json
 import re
+import time
 from dataclasses import dataclass
 from contextlib import nullcontext
 from pathlib import Path
 
 import yaml
-from django.db import transaction
+from django.db import OperationalError, connection, transaction
 
 from .models.interchange import (
     InterchangeAudit, InterchangeCatalogVersion, InterchangeDesignRevision,
@@ -42,6 +43,14 @@ class InterchangeError(ValueError):
     def __init__(self, message, location=None):
         super().__init__(message)
         self.source_location = location or SourceLocation(None, "$", 1, 1)
+
+
+class OperationDeadlineExceeded(InterchangeError):
+    """A synchronous UI operation exceeded its caller-provided deadline."""
+
+    def __init__(self):
+        ValueError.__init__(self, 'operation deadline exceeded')
+        self.source_location = None
 
 
 @dataclass
@@ -149,7 +158,13 @@ def _yaml_restricted(text):
         _error(str(exc))
 
 
-def decode_document(text, *, media_type=None, filename=None):
+def _depth(value):
+    if isinstance(value, dict): return 1 + max((_depth(v) for v in value.values()), default=0)
+    if isinstance(value, list): return 1 + max((_depth(v) for v in value), default=0)
+    return 0
+
+
+def decode_document(text, *, media_type=None, filename=None, limits=None):
     if not isinstance(text, str):
         _error("document must be text")
     try:
@@ -159,6 +174,11 @@ def decode_document(text, *, media_type=None, filename=None):
     except (json.JSONDecodeError, ValueError):
         value = _yaml_restricted(text)
     _walk_restricted(value)
+    if limits:
+        if isinstance(value, dict) and isinstance(value.get('objects'), list) and len(value['objects']) > limits['max_objects']:
+            _error('object limit exceeded', '$.objects')
+        if _depth(value) > limits['max_nesting_depth']:
+            _error('depth limit exceeded', '$')
     _validate_document(value)
     return value
 
@@ -304,7 +324,14 @@ def _validate_refs(design, catalogs):
         if expected != binding: _error("catalog content-integrity mismatch", "$.catalogRefs")
 
 
-def import_bundle(document, *, user=None, after_first_target_write=None, after_second_target_write=None):
+def _check_deadline(deadline):
+    if deadline is not None and time.monotonic() >= deadline:
+        raise OperationDeadlineExceeded()
+
+
+def import_bundle(document, *, user=None, after_first_target_write=None,
+                  after_second_target_write=None, deadline=None):
+    _check_deadline(deadline)
     _validate_document(document)
     digest_document = copy.deepcopy(document)
     for obj in digest_document["objects"]:
@@ -329,29 +356,44 @@ def import_bundle(document, *, user=None, after_first_target_write=None, after_s
         ns, slug = _parts(design["identity"])
         old = InterchangeDesignRevision.objects.filter(namespace=ns, slug=slug, revision=design["revision"]).first()
         if old: _error("non-identical identity/revision conflict", "$.objects")
-    with transaction.atomic():
-        created_catalog = None; created_design = None
-        for catalog in catalogs:
-            ns, slug = _parts(catalog["identity"])
-            digest = content_integrity_digest(catalog["catalogContent"])
-            created_catalog = InterchangeCatalogVersion.objects.filter(
-                namespace=ns, slug=slug, version=catalog["version"]).first()
-            if created_catalog is not None:
-                if created_catalog.content_digest != digest:
-                    _error("catalog identity/version has different content", "$.objects")
-            else:
-                created_catalog = InterchangeCatalogVersion.objects.create(namespace=ns, slug=slug, version=catalog["version"], content=catalog["catalogContent"], content_algorithm=BINDING_ALGORITHM, content_digest=digest, artifact_digest=artifact_digest)
-            if after_first_target_write: after_first_target_write()
-        for design in designs:
-            ns, slug = _parts(design["identity"])
-            stored_design = copy.deepcopy(design)
-            stored_design["_interchange_catalog_objects"] = copy.deepcopy(catalogs)
-            stored_design["_interchange_manifest"] = copy.deepcopy(document["manifest"])
-            created_design = InterchangeDesignRevision.objects.create(namespace=ns, slug=slug, revision=design["revision"], document=stored_design, artifact_digest=artifact_digest)
-            if after_second_target_write: after_second_target_write()
-        if created_design:
-            InterchangeProvenance.objects.create(design_revision=created_design, payload=created_design.document.get("provenance", {}))
-        InterchangeAudit.objects.create(outcome="success", payload={"digest": artifact_digest})
+    try:
+        with transaction.atomic():
+            if deadline is not None:
+                remaining_ms = max(1, int((deadline - time.monotonic()) * 1000))
+                with connection.cursor() as cursor:
+                    cursor.execute('SET LOCAL statement_timeout = %s', [remaining_ms])
+            _check_deadline(deadline)
+            created_catalog = None; created_design = None
+            for catalog in catalogs:
+                _check_deadline(deadline)
+                ns, slug = _parts(catalog["identity"])
+                digest = content_integrity_digest(catalog["catalogContent"])
+                created_catalog = InterchangeCatalogVersion.objects.filter(
+                    namespace=ns, slug=slug, version=catalog["version"]).first()
+                if created_catalog is not None:
+                    if created_catalog.content_digest != digest:
+                        _error("catalog identity/version has different content", "$.objects")
+                else:
+                    created_catalog = InterchangeCatalogVersion.objects.create(namespace=ns, slug=slug, version=catalog["version"], content=catalog["catalogContent"], content_algorithm=BINDING_ALGORITHM, content_digest=digest, artifact_digest=artifact_digest)
+                if after_first_target_write: after_first_target_write()
+                _check_deadline(deadline)
+            for design in designs:
+                _check_deadline(deadline)
+                ns, slug = _parts(design["identity"])
+                stored_design = copy.deepcopy(design)
+                stored_design["_interchange_catalog_objects"] = copy.deepcopy(catalogs)
+                stored_design["_interchange_manifest"] = copy.deepcopy(document["manifest"])
+                created_design = InterchangeDesignRevision.objects.create(namespace=ns, slug=slug, revision=design["revision"], document=stored_design, artifact_digest=artifact_digest)
+                if after_second_target_write: after_second_target_write()
+                _check_deadline(deadline)
+            if created_design:
+                InterchangeProvenance.objects.create(design_revision=created_design, payload=created_design.document.get("provenance", {}))
+            _check_deadline(deadline)
+            InterchangeAudit.objects.create(outcome="success", payload={"digest": artifact_digest})
+    except OperationalError:
+        if deadline is not None and time.monotonic() >= deadline:
+            raise OperationDeadlineExceeded() from None
+        raise
     return ImportResult(created_design, created_catalog, True, False)
 
 

@@ -32,6 +32,10 @@ jobs:
           ref: 7d6f00662c90c9294911182935d41a6e66f8896b
           path: netbox-docker
 
+      - name: Guard interchange host prerequisite
+        working-directory: hh-netbox-plugin
+        run: bash scripts/check_interchange_workflow_prerequisite.sh
+
       - name: Configure NetBox plugin mount
         run: |
           cd netbox-docker
@@ -44,6 +48,7 @@ jobs:
           EOF
           mkdir -p configuration
           cat > configuration/plugins.py << 'EOF'
+          DATA_UPLOAD_MAX_MEMORY_SIZE = 10 * 1024 * 1024
           PLUGINS = ['netbox_hedgehog']
           PLUGINS_CONFIG = {
               'netbox_hedgehog': {
@@ -185,6 +190,7 @@ jobs:
           # Create plugin configuration
           mkdir -p configuration
           cat > configuration/plugins.py << 'EOF'
+          DATA_UPLOAD_MAX_MEMORY_SIZE = 10 * 1024 * 1024
           PLUGINS = ['netbox_hedgehog']
           PLUGINS_CONFIG = {
               'netbox_hedgehog': {
@@ -345,6 +351,7 @@ jobs:
           # Create plugin configuration
           mkdir -p configuration
           cat > configuration/plugins.py << 'EOF'
+          DATA_UPLOAD_MAX_MEMORY_SIZE = 10 * 1024 * 1024
           PLUGINS = ['netbox_hedgehog']
           PLUGINS_CONFIG = {
               'netbox_hedgehog': {
@@ -599,6 +606,7 @@ jobs:
           # Create plugin configuration
           mkdir -p configuration
           cat > configuration/plugins.py << 'EOF'
+          DATA_UPLOAD_MAX_MEMORY_SIZE = 10 * 1024 * 1024
           PLUGINS = ['netbox_hedgehog']
           PLUGINS_CONFIG = {
               'netbox_hedgehog': {
