@@ -2,6 +2,7 @@
 import time
 import json
 import re
+import uuid
 
 from django.conf import settings
 from django.core.exceptions import PermissionDenied
@@ -35,9 +36,15 @@ def allowed(request, action, obj=None):
 
 
 def audit(outcome, request, **scope):
+    request_id = getattr(request, '_interchange_request_id', None)
+    if request_id is None:
+        # Never rely on an untrusted client-supplied correlation value.  One
+        # server-generated ID is retained for every audit event in this request.
+        request_id = uuid.uuid4().hex
+        request._interchange_request_id = request_id
     InterchangeAudit.objects.create(outcome=outcome, payload={
         'actor': request.user.pk, 'time': time.time(), 'scope': scope,
-        'provenance': 'interchange-ui',
+        'provenance': 'interchange-ui', 'request_id': request_id,
     })
 
 

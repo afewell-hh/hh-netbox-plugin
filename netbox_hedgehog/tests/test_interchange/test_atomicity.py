@@ -129,13 +129,17 @@ class CommitBoundaryFaultTestCase(_ZeroWriteMixin, TestCase):
         before = persistence.snapshot()
 
         def cross_deadline():
-            time.sleep(0.02)
+            # Leave enough headroom to prove the first write completes before
+            # we cross the deadline.  The former 10ms budget could expire at
+            # the entry checkpoint on a slow runner and prove nothing about
+            # deadline checks inside the import half.
+            time.sleep(0.25)
 
         with self.assertRaises(module.OperationDeadlineExceeded):
             module.import_bundle(
                 module.decode_document(fixtures.to_json(fixtures.valid_bundle())),
                 user=None,
-                deadline=time.monotonic() + 0.01,
+                deadline=time.monotonic() + 0.20,
                 after_first_target_write=cross_deadline,
             )
         self.assert_zero_durable_writes(before, 'deadline after first target write')
@@ -432,4 +436,3 @@ class RetryAndConflictTestCase(_ZeroWriteMixin, TestCase):
             module.import_bundle(
                 module.decode_document(fixtures.to_json(changed)), user=None)
         self.assert_zero_durable_writes(before, 'I18 identity conflict')
-
