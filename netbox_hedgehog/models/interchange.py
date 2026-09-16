@@ -52,3 +52,4 @@ class InterchangeProvenance(models.Model):
 class InterchangeAudit(models.Model):
     outcome = models.CharField(max_length=64)
     payload = models.JSONField(default=dict)
+    created = models.DateTimeField(auto_now_add=True)

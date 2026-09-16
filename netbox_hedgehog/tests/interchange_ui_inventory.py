@@ -29,6 +29,8 @@ UI_PASTE_INVENTORY = SeamInventory(
                      "U26 exercises the rendered context through the real Django response, not a template mock."),
         EmissionPath("interchange audit", "changelog", "asserted",
                      "U27 proves successful UI import records actor, time, scope, provenance, and no secret."),
+        EmissionPath("failed import audit", "changelog", "asserted",
+                     "U32 proves failed paste validation retains a minimal actor/time/scope/provenance audit without the submitted secret."),
         EmissionPath("ObjectChange/event payload", "event", "unverified",
                      "Lifecycle writes can emit NetBox snapshots and webhooks."),
         EmissionPath("download response and filename", "exporter", "asserted",

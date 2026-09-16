@@ -6,6 +6,7 @@ import re
 from django.conf import settings
 from django.core.exceptions import PermissionDenied
 from django.http import HttpResponse, HttpResponseForbidden, HttpResponseNotFound
+from django.http.request import QueryDict
 from django.shortcuts import redirect, render
 from django.views import View
 
@@ -40,6 +41,11 @@ def audit(outcome, request, **scope):
     })
 
 
+def audit_failure(request, stage):
+    """Persist the minimal, secret-free failure record required for pasted text."""
+    audit('ui-import-failed', request, stage=stage)
+
+
 def error(request, message, location=None, status=200):
     context = {'error': message, 'location': location}
     return render(request, 'netbox_hedgehog/interchange/import.html', context, status=status)
@@ -55,33 +61,57 @@ def complete_form_encoding(body):
     return re.search(br'%(?![0-9A-Fa-f]{2})', body) is None
 
 
+def read_paste_request(request):
+    """Read at most the configured application limit, never ``request.body``.
+
+    The declared size is checked before reading.  The extra byte detects a
+    stream exceeding that declaration/limit without materialising it all.
+    """
+    raw = request.META.get('CONTENT_LENGTH')
+    cap = limits()['max_encoded_body_bytes']
+    if not raw or not raw.isdigit() or int(raw) > cap:
+        return None
+    body = request.read(int(raw) + 1)
+    if len(body) != int(raw) or not complete_form_encoding(body):
+        return None
+    return body
+
+
+def pasted_text(request, body):
+    if request.content_type == 'application/x-www-form-urlencoded':
+        return QueryDict(body, encoding=request.encoding or 'utf-8').get('paste', '')
+    return body.decode(request.encoding or 'utf-8')
+
+
 class ImportView(View):
     template_name = 'netbox_hedgehog/interchange/import.html'
     def get(self, request):
         return render(request, self.template_name)
     def post(self, request):
-        if not (request.user.has_perm('netbox_hedgehog.add_interchangedesignrevision') and
-                request.user.has_perm('netbox_hedgehog.add_interchangecatalogversion')):
-            return HttpResponseForbidden('catalog contributor permission is required')
-        raw = request.META.get('CONTENT_LENGTH')
-        if (not raw or not raw.isdigit() or int(raw) != len(request.body)
-                or int(raw) > limits()['max_encoded_body_bytes']
-                or not complete_form_encoding(request.body)):
+        if not request.user.has_perm('netbox_hedgehog.add_interchangedesignrevision'):
+            audit_failure(request, 'design-permission')
+            return HttpResponseForbidden('design author permission is required')
+        body = read_paste_request(request)
+        if body is None:
+            audit_failure(request, 'transport-preflight')
             return error(request, 'Content-Length bounded-preflight rejection', None, 400)
         started = time.monotonic()
         try:
             # A paste is text, not an uploaded file.  Accept a conventional
             # form post as well as a text/plain body; the interchange parser,
             # not the HTTP media type or a filename, selects YAML versus JSON.
-            paste = request.POST.get('paste')
-            if paste is None:
-                paste = request.body.decode(request.encoding or 'utf-8')
+            paste = pasted_text(request, body)
             document = interchange.decode_document(paste, limits=limits())
-            if time.monotonic() - started >= limits()['max_operation_seconds']:
-                return error(request, 'operation bounded-preflight rejection', None)
-            result = interchange.import_bundle(document, user=request.user)
+            has_catalog = any(item.get('kind') == 'CatalogVersion'
+                              for item in document.get('objects', []))
+            if has_catalog and not request.user.has_perm('netbox_hedgehog.add_interchangecatalogversion'):
+                audit_failure(request, 'catalog-permission')
+                return HttpResponseForbidden('catalog contributor permission is required')
+            deadline = started + limits()['max_operation_seconds']
+            result = interchange.import_bundle(document, user=request.user, deadline=deadline)
         except interchange.InterchangeError as exc:
             location = getattr(exc, 'source_location', None)
+            audit_failure(request, 'validation' if location else 'operation')
             return error(request, str(exc), location)
         audit('ui-import', request, design=getattr(result.design_revision, 'pk', None))
         return redirect('plugins:netbox_hedgehog:interchangedesignrevision', pk=result.design_revision.pk)

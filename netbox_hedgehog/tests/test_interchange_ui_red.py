@@ -63,7 +63,10 @@ UI_ROW_TESTS = {
     "U13/U18": ["PermissionAndLifecycleRedTestCase.test_u13_u18_filtered_detail_and_export_hide_out_of_scope_revision"],
     "U14/U15": ["PermissionAndLifecycleRedTestCase.test_u14_u15_denial_and_success_are_real_responses"],
     "U16": ["PermissionAndLifecycleRedTestCase.test_u16_reference_scope_is_checked_before_import_write"],
-    "U17": ["PermissionAndLifecycleRedTestCase.test_u17_mixed_bundle_names_missing_catalog_capability"],
+    "U17": [
+        "PermissionAndLifecycleRedTestCase.test_u17_mixed_bundle_names_missing_catalog_capability",
+        "PermissionAndLifecycleRedTestCase.test_u17_design_only_bundle_does_not_require_catalog_contributor",
+    ],
     "U19": ["PermissionAndLifecycleRedTestCase.test_u19_locked_revision_rejects_change_without_constraint"],
     "U20/U33": ["PermissionAndLifecycleRedTestCase.test_u20_u33_transition_requires_custom_not_change_permission"],
     "U21": ["PermissionAndLifecycleRedTestCase.test_u21_existing_but_unauthorized_and_permitted_but_absent_do_not_disclose"],
@@ -151,6 +154,15 @@ class UiRedFixtureMixin:
     def valid_paste(self):
         return json.dumps(fixtures.valid_bundle())
 
+    def paste_post(self, paste, **headers):
+        """Browser-default urlencoded paste, never multipart upload data."""
+        from urllib.parse import urlencode
+        body = urlencode({"paste": paste}).encode()
+        return self.client.generic(
+            "POST", ui_url("paste_import"), body,
+            content_type="application/x-www-form-urlencoded", **headers,
+        )
+
 
 class UiPasteFlowRedTestCase(UiRedFixtureMixin, TestCase):
     """U1--U13: real request shapes, RED until UI routes/views exist."""
@@ -170,7 +182,7 @@ class UiPasteFlowRedTestCase(UiRedFixtureMixin, TestCase):
     def test_u3_valid_paste_uses_production_core_and_redirects_to_draft(self):
         self.grant(InterchangeDesignRevision, "add", "view")
         self.grant(InterchangeCatalogVersion, "add", "view")
-        response = self.client.post(ui_url("paste_import"), {"paste": self.valid_paste()})
+        response = self.paste_post(self.valid_paste())
         self.assertEqual(response.status_code, 302)
         self.assertEqual(InterchangeDesignRevision.objects.count(), 1)
         self.assertFalse(InterchangeDesignRevision.objects.get().approved)
@@ -186,7 +198,7 @@ class UiPasteFlowRedTestCase(UiRedFixtureMixin, TestCase):
             "netbox_hedgehog.views.interchange.interchange.import_bundle",
             wraps=interchange.import_bundle,
         ) as import_bundle:
-            response = self.client.post(ui_url("paste_import"), {"paste": self.valid_paste()})
+            response = self.paste_post(self.valid_paste())
         self.assertEqual(response.status_code, 302)
         import_bundle.assert_called_once()
 
@@ -209,7 +221,7 @@ class UiPasteFlowRedTestCase(UiRedFixtureMixin, TestCase):
     def test_u7_invalid_paste_renders_source_location_in_response(self):
         self.grant(InterchangeDesignRevision, "add")
         self.grant(InterchangeCatalogVersion, "add")
-        response = self.client.post(ui_url("paste_import"), {"paste": "apiVersion: ["})
+        response = self.paste_post("apiVersion: [")
         self.assertEqual(response.status_code, 200)
         for token in ("member", "path", "line", "column"):
             self.assertContains(response, token)
@@ -226,16 +238,16 @@ class UiPasteFlowRedTestCase(UiRedFixtureMixin, TestCase):
         self.grant(InterchangeDesignRevision, "add")
         self.grant(InterchangeCatalogVersion, "add")
         before = (InterchangeDesignRevision.objects.count(), InterchangeCatalogVersion.objects.count())
-        response = self.client.post(ui_url("paste_import"), {"paste": "not: [valid"})
+        response = self.paste_post("not: [valid")
         self.assertEqual(response.status_code, 200)
         self.assertEqual((InterchangeDesignRevision.objects.count(), InterchangeCatalogVersion.objects.count()), before)
 
     def test_u10_u11_success_is_unapproved_and_retry_preserves_audit_history(self):
         self.grant(InterchangeDesignRevision, "add")
         self.grant(InterchangeCatalogVersion, "add")
-        self.client.post(ui_url("paste_import"), {"paste": self.valid_paste()})
+        self.paste_post(self.valid_paste())
         first = InterchangeAudit.objects.count()
-        retry = self.client.post(ui_url("paste_import"), {"paste": self.valid_paste()})
+        retry = self.paste_post(self.valid_paste())
         self.assertEqual(retry.status_code, 302)
         self.assertEqual(InterchangeDesignRevision.objects.count(), 1)
         self.assertGreater(InterchangeAudit.objects.count(), first)
@@ -256,15 +268,37 @@ class PermissionAndLifecycleRedTestCase(UiRedFixtureMixin, TestCase):
 
     def test_u16_reference_scope_is_checked_before_import_write(self):
         self.grant(InterchangeDesignRevision, "add", constraints={"namespace": "com.hedgehog.allowed"})
-        response = self.client.post(ui_url("paste_import"), {"paste": self.valid_paste()})
+        response = self.paste_post(self.valid_paste())
         self.assertIn(response.status_code, (403, 400))
         self.assertFalse(InterchangeDesignRevision.objects.exists())
 
     def test_u17_mixed_bundle_names_missing_catalog_capability(self):
         self.grant(InterchangeDesignRevision, "add")
-        response = self.client.post(ui_url("paste_import"), {"paste": self.valid_paste()})
+        response = self.paste_post(self.valid_paste())
         self.assertIn(response.status_code, (403, 400))
         self.assertContains(response, "catalog", status_code=response.status_code)
+
+    def test_u17_design_only_bundle_does_not_require_catalog_contributor(self):
+        """The mixed-bundle rule must not erase the design-author capability."""
+        from netbox_hedgehog import interchange
+
+        bundle = fixtures.valid_bundle()
+        catalog, design = bundle["objects"]
+        InterchangeCatalogVersion.objects.create(
+            namespace=catalog["identity"]["namespace"],
+            slug=catalog["identity"]["slug"],
+            version=catalog["version"],
+            content=catalog["catalogContent"],
+            content_algorithm=interchange.BINDING_ALGORITHM,
+            content_digest=interchange.content_integrity_digest(catalog["catalogContent"]),
+            artifact_digest="d" * 64,
+        )
+        bundle["objects"] = [design]
+        bundle["manifest"]["objects"] = [bundle["manifest"]["objects"][1]]
+        self.grant(InterchangeDesignRevision, "add")
+        response = self.paste_post(json.dumps(bundle))
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(InterchangeDesignRevision.objects.count(), 1)
 
     def test_u19_locked_revision_rejects_change_without_constraint(self):
         self.grant(InterchangeDesignRevision, "change")
@@ -375,8 +409,7 @@ class PasteLimitsSecretsAndSurfaceRedTestCase(UiRedFixtureMixin, TestCase):
         # apply its own configurable limit.  Lift only that framework guard
         # here so this real client request reaches the application boundary;
         # Unit's front-end enforcement remains separately documented.
-        with override_settings(DATA_UPLOAD_MAX_MEMORY_SIZE=len(body) + 1):
-            response = self._raw_paste_post(paste, CONTENT_LENGTH=str(len(body)))
+        response = self._raw_paste_post(paste, CONTENT_LENGTH=str(len(body)))
         self._assert_transport_limit_error_without_location(response)
 
     def test_u28_absent_or_mismatched_content_length_is_rejected_without_location(self):
@@ -401,7 +434,7 @@ class PasteLimitsSecretsAndSurfaceRedTestCase(UiRedFixtureMixin, TestCase):
         too_deep += "]" * (IMPORT_LIMIT_DEFAULTS["max_nesting_depth"] + 1)
         for label, payload in (("object", too_many_objects), ("depth", too_deep)):
             with self.subTest(limit=label):
-                response = self.client.post(ui_url("paste_import"), {"paste": payload})
+                response = self.paste_post(payload)
                 self._assert_decoded_limit_error(response, label)
 
     def test_u28_operation_ceiling_is_a_bounded_failure_not_a_timeout(self):
@@ -410,7 +443,7 @@ class PasteLimitsSecretsAndSurfaceRedTestCase(UiRedFixtureMixin, TestCase):
         # Zero makes the configurable clock budget expire before core work
         # begins; the production core remains real and unmocked in the request.
         with with_import_limits(max_operation_seconds=0):
-            response = self.client.post(ui_url("paste_import"), {"paste": self.valid_paste()})
+            response = self.paste_post(self.valid_paste())
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, "operation")
         self.assertNotContains(response, "timeout")
@@ -447,7 +480,7 @@ class PasteLimitsSecretsAndSurfaceRedTestCase(UiRedFixtureMixin, TestCase):
         sentinel = "K8S_TOKEN_SHOULD_NOT_RENDER"
         document = fixtures.valid_bundle()
         document["objects"][1]["password"] = sentinel
-        response = self.client.post(ui_url("paste_import"), {"paste": json.dumps(document)})
+        response = self.paste_post(json.dumps(document))
         self.assertEqual(response.status_code, 200)
         self.assertNotContains(response, sentinel)
         self.assertContains(response, "path")
@@ -462,7 +495,7 @@ class PasteLimitsSecretsAndSurfaceRedTestCase(UiRedFixtureMixin, TestCase):
         # or rendered artifact.
         rejected = fixtures.valid_bundle()
         rejected["objects"][1]["password"] = sentinel
-        response = self.client.post(ui_url("paste_import"), {"paste": json.dumps(rejected)})
+        response = self.paste_post(json.dumps(rejected))
         self.assertEqual(response.status_code, 200)
         self.assertNotContains(response, sentinel)
         self.assertFalse(InterchangeDesignRevision.objects.exists())
@@ -470,7 +503,7 @@ class PasteLimitsSecretsAndSurfaceRedTestCase(UiRedFixtureMixin, TestCase):
         # Then exercise the paired positive direction.  A successful mutation
         # must create an actor/time/scope/provenance audit record, whose actual
         # structured payload and the persisted/exported artifact stay secret-free.
-        response = self.client.post(ui_url("paste_import"), {"paste": self.valid_paste()})
+        response = self.paste_post(self.valid_paste())
         self.assertEqual(response.status_code, 302)
         revision = InterchangeDesignRevision.objects.get()
         audit = InterchangeAudit.objects.filter(outcome="ui-import").latest("pk")
@@ -499,8 +532,11 @@ class PasteLimitsSecretsAndSurfaceRedTestCase(UiRedFixtureMixin, TestCase):
         self.grant(InterchangeDesignRevision, "add")
         self.grant(InterchangeCatalogVersion, "add")
         sentinel = "PASTE_SECRET_MUST_NOT_REACH_AUDIT"
-        response = self.client.post(ui_url("paste_import"), {"paste": sentinel})
+        response = self.paste_post(sentinel)
         self.assertEqual(response.status_code, 200)
+        failure = InterchangeAudit.objects.filter(outcome="ui-import-failed").latest("pk")
+        self.assertTrue({"actor", "time", "scope", "provenance"}.issubset(failure.payload))
+        self.assertIsNotNone(failure.created)
         audit_payloads = list(InterchangeAudit.objects.values_list("payload", flat=True))
         self.assertFalse(any(sentinel in str(payload) for payload in audit_payloads))
         self.assertFalse(InterchangeAudit.objects.filter(outcome="success").exists())
