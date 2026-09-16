@@ -72,7 +72,10 @@ UI_ROW_TESTS = {
     "U21": ["PermissionAndLifecycleRedTestCase.test_u21_existing_but_unauthorized_and_permitted_but_absent_do_not_disclose"],
     "U22": ["PasteLimitsSecretsAndSurfaceRedTestCase.test_u22_no_rest_or_graphql_interchange_surface"],
     "U23/U24/U25": ["PasteLimitsSecretsAndSurfaceRedTestCase.test_u23_u24_u25_artifact_class_is_visible_immutable_and_download_is_audited"],
-    "U26": ["PasteLimitsSecretsAndSurfaceRedTestCase.test_u26_designated_credential_field_is_path_only_and_never_echoed"],
+    "U26": [
+        "PasteLimitsSecretsAndSurfaceRedTestCase.test_u26_designated_credential_field_is_path_only_and_never_echoed",
+        "PasteLimitsSecretsAndSurfaceRedTestCase.test_u26_invalid_free_text_is_not_retained_in_paste_control",
+    ],
     "U27": ["PasteLimitsSecretsAndSurfaceRedTestCase.test_u27_secret_absence_and_audit_presence_are_paired"],
     "U28": [
         "PasteLimitsSecretsAndSurfaceRedTestCase.test_u28_shipped_defaults_are_configurable",
@@ -484,6 +487,21 @@ class PasteLimitsSecretsAndSurfaceRedTestCase(UiRedFixtureMixin, TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertNotContains(response, sentinel)
         self.assertContains(response, "path")
+
+    def test_u26_invalid_free_text_is_not_retained_in_paste_control(self):
+        """Free text is allowed, but a failed paste must never echo it back."""
+        self.grant(InterchangeDesignRevision, "add")
+        self.grant(InterchangeCatalogVersion, "add")
+        sentinel = "FREE_TEXT_SENTINEL_MUST_NOT_REAPPEAR"
+        document = fixtures.valid_bundle()
+        document["objects"][1]["assumptions"][0]["statement"] = sentinel
+        # Make the document invalid independently of its free-text field.
+        document["objects"][1]["topology"]["fabrics"][0]["family"] = "not-a-family"
+
+        response = self.paste_post(json.dumps(document))
+        self.assertEqual(response.status_code, 200)
+        self.assertNotContains(response, sentinel)
+        self.assertContains(response, '<textarea name="paste" rows="18"></textarea>')
 
     def test_u27_secret_absence_and_audit_presence_are_paired(self):
         self.grant(InterchangeDesignRevision, "add", "view")
