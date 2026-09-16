@@ -44,6 +44,7 @@ jobs:
           EOF
           mkdir -p configuration
           cat > configuration/plugins.py << 'EOF'
+          DATA_UPLOAD_MAX_MEMORY_SIZE = 10 * 1024 * 1024
           PLUGINS = ['netbox_hedgehog']
           PLUGINS_CONFIG = {
               'netbox_hedgehog': {
@@ -185,6 +186,7 @@ jobs:
           # Create plugin configuration
           mkdir -p configuration
           cat > configuration/plugins.py << 'EOF'
+          DATA_UPLOAD_MAX_MEMORY_SIZE = 10 * 1024 * 1024
           PLUGINS = ['netbox_hedgehog']
           PLUGINS_CONFIG = {
               'netbox_hedgehog': {
@@ -345,6 +347,7 @@ jobs:
           # Create plugin configuration
           mkdir -p configuration
           cat > configuration/plugins.py << 'EOF'
+          DATA_UPLOAD_MAX_MEMORY_SIZE = 10 * 1024 * 1024
           PLUGINS = ['netbox_hedgehog']
           PLUGINS_CONFIG = {
               'netbox_hedgehog': {
@@ -599,6 +602,7 @@ jobs:
           # Create plugin configuration
           mkdir -p configuration
           cat > configuration/plugins.py << 'EOF'
+          DATA_UPLOAD_MAX_MEMORY_SIZE = 10 * 1024 * 1024
           PLUGINS = ['netbox_hedgehog']
           PLUGINS_CONFIG = {
               'netbox_hedgehog': {

@@ -48,16 +48,9 @@ class HedgehogPluginConfig(PluginConfig):
     }
 
     def ready(self):
-        # The paste-only interchange contract has a 10 MiB application limit.
-        # Django otherwise rejects at its 2.5 MiB default before this plugin's
-        # bounded reader can apply that configured limit.
-        from django.conf import settings
         from django.db.models.signals import post_migrate
-
-        settings.DATA_UPLOAD_MAX_MEMORY_SIZE = max(
-            settings.DATA_UPLOAD_MAX_MEMORY_SIZE,
-            self.default_settings['interchange_import_limits']['max_encoded_body_bytes'],
-        )
+        # Register deployment checks but never alter NetBox-wide host settings.
+        from netbox_hedgehog import checks  # noqa: F401
 
         super_ready = getattr(super(), "ready", None)
         if callable(super_ready):

@@ -551,6 +551,49 @@ class PasteLimitsSecretsAndSurfaceRedTestCase(UiRedFixtureMixin, TestCase):
         self.assertNotContains(response, 'type="file"')
 
 
+class InterchangeHostPrerequisiteTestCase(SimpleTestCase):
+    """The plugin checks host posture; it never changes it (#684 lead gate)."""
+
+    @staticmethod
+    def _settings_with_limit(limit):
+        config = dict(settings.PLUGINS_CONFIG)
+        plugin = dict(config.get("netbox_hedgehog", {}))
+        plugin["interchange_import_limits"] = dict(IMPORT_LIMIT_DEFAULTS)
+        config["netbox_hedgehog"] = plugin
+        return override_settings(
+            PLUGINS_CONFIG=config,
+            DATA_UPLOAD_MAX_MEMORY_SIZE=limit,
+        )
+
+    def test_host_equal_to_default_is_accepted_without_mutation(self):
+        from netbox_hedgehog.checks import interchange_upload_limit_prerequisite
+
+        with self._settings_with_limit(IMPORT_LIMIT_DEFAULTS["max_encoded_body_bytes"]):
+            self.assertEqual(interchange_upload_limit_prerequisite(None), [])
+            self.assertEqual(settings.DATA_UPLOAD_MAX_MEMORY_SIZE,
+                             IMPORT_LIMIT_DEFAULTS["max_encoded_body_bytes"])
+
+    def test_host_greater_than_default_is_accepted_without_mutation(self):
+        from netbox_hedgehog.checks import interchange_upload_limit_prerequisite
+
+        host_limit = IMPORT_LIMIT_DEFAULTS["max_encoded_body_bytes"] + 1
+        with self._settings_with_limit(host_limit):
+            self.assertEqual(interchange_upload_limit_prerequisite(None), [])
+            self.assertEqual(settings.DATA_UPLOAD_MAX_MEMORY_SIZE, host_limit)
+
+    def test_host_lower_than_interchange_limit_is_actionably_rejected_without_mutation(self):
+        from netbox_hedgehog.checks import interchange_upload_limit_prerequisite
+
+        host_limit = IMPORT_LIMIT_DEFAULTS["max_encoded_body_bytes"] - 1
+        with self._settings_with_limit(host_limit):
+            errors = interchange_upload_limit_prerequisite(None)
+            self.assertEqual(len(errors), 1)
+            self.assertEqual(errors[0].id, "netbox_hedgehog.E001")
+            self.assertIn(str(host_limit), errors[0].hint)
+            self.assertIn(str(IMPORT_LIMIT_DEFAULTS["max_encoded_body_bytes"]), errors[0].hint)
+            self.assertEqual(settings.DATA_UPLOAD_MAX_MEMORY_SIZE, host_limit)
+
+
 class UiRedCoverageMapTestCase(SimpleTestCase):
     """Coverage-map guards: a blocked row is recorded, never deleted."""
 

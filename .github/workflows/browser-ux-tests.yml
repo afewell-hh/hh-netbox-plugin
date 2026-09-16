@@ -101,6 +101,7 @@ jobs:
           cd netbox-docker
           mkdir -p configuration
           cat > configuration/plugins.py << 'EOF'
+          DATA_UPLOAD_MAX_MEMORY_SIZE = 10 * 1024 * 1024
           PLUGINS = ['netbox_hedgehog']
           PLUGINS_CONFIG = {
               'netbox_hedgehog': {
