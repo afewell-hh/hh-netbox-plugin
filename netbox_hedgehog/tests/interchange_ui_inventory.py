@@ -24,7 +24,9 @@ UI_PASTE_INVENTORY = SeamInventory(
         EmissionPath("form re-render HTML", "import_template", "asserted",
                      "U26 proves a source-located validation re-render never echoes the submitted credential."),
         EmissionPath("source-located errors", "error_handling", "asserted",
-                     "U26 proves the error retains its path while omitting the credential value."),
+                     "#688 U26 drives hostile YAML and JSON-key failures through the real "
+                     "response; fixed decoder diagnostics retain line/column while omitting "
+                     "untrusted values and paths."),
         EmissionPath("template context", "import_template", "asserted",
                      "U26 exercises the rendered context through the real Django response, not a template mock."),
         EmissionPath("interchange audit", "changelog", "asserted",
@@ -35,8 +37,12 @@ UI_PASTE_INVENTORY = SeamInventory(
                      "Lifecycle writes can emit NetBox snapshots and webhooks."),
         EmissionPath("download response and filename", "exporter", "asserted",
                      "U27 downloads a successful imported draft and proves the response omits the secret sentinel."),
-        EmissionPath("application logs and traces", "log", "unverified",
-                     "Parser and view exceptions must not serialize pasted content."),
+        EmissionPath("application logs and traces", "log", "asserted",
+                     "#688 U26 captures the plugin logger during hostile decoder failures and "
+                     "proves no submitted value/key is emitted."),
+        EmissionPath("Django exception reporting", "error_handling", "asserted",
+                     "#688 U26 proves handled hostile decoder errors do not reach the "
+                     "available Django exception-reporting signal."),
         EmissionPath("retained artifact", "retention_backup", "asserted",
                      "U27 inspects the persisted draft after a real import and proves the secret sentinel is absent."),
         EmissionPath("file upload/quarantine/reaper", "retention_backup", "out_of_scope",

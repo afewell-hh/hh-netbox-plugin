@@ -56,7 +56,7 @@ UI_ROW_TESTS = {
     ],
     "U4": ["UiPasteFlowRedTestCase.test_u4_detail_and_export_are_view_gated"],
     "U5/U6": ["UiPasteFlowRedTestCase.test_u5_u6_edit_and_delete_follow_real_draft_flow"],
-    "U7": ["UiPasteFlowRedTestCase.test_u7_invalid_paste_renders_source_location_in_response"],
+    "U7": ["UiPasteFlowRedTestCase.test_u7_invalid_paste_renders_safe_source_location_in_response"],
     "U8": ["UiPasteFlowRedTestCase.test_u8_filename_and_content_type_do_not_select_format"],
     "U9/U12": ["UiPasteFlowRedTestCase.test_u9_u12_failure_and_identity_conflict_leave_no_partial_rows"],
     "U10/U11": ["UiPasteFlowRedTestCase.test_u10_u11_success_is_unapproved_and_retry_preserves_audit_history"],
@@ -73,8 +73,9 @@ UI_ROW_TESTS = {
     "U22": ["PasteLimitsSecretsAndSurfaceRedTestCase.test_u22_no_rest_or_graphql_interchange_surface"],
     "U23/U24/U25": ["PasteLimitsSecretsAndSurfaceRedTestCase.test_u23_u24_u25_artifact_class_is_visible_immutable_and_download_is_audited"],
     "U26": [
-        "PasteLimitsSecretsAndSurfaceRedTestCase.test_u26_designated_credential_field_is_path_only_and_never_echoed",
+        "PasteLimitsSecretsAndSurfaceRedTestCase.test_u26_designated_credential_field_is_never_echoed",
         "PasteLimitsSecretsAndSurfaceRedTestCase.test_u26_invalid_free_text_is_not_retained_in_paste_control",
+        "PasteLimitsSecretsAndSurfaceRedTestCase.test_u26_decoder_and_hostile_key_errors_never_escape_any_ui_sink",
     ],
     "U27": ["PasteLimitsSecretsAndSurfaceRedTestCase.test_u27_secret_absence_and_audit_presence_are_paired"],
     "U28": [
@@ -221,10 +222,12 @@ class UiPasteFlowRedTestCase(UiRedFixtureMixin, TestCase):
         self.assertEqual(self.client.post(ui_url("design_delete", revision.pk)).status_code, 302)
         self.assertFalse(InterchangeDesignRevision.objects.filter(pk=revision.pk).exists())
 
-    def test_u7_invalid_paste_renders_source_location_in_response(self):
+    def test_u7_invalid_paste_renders_safe_source_location_in_response(self):
         self.grant(InterchangeDesignRevision, "add")
         self.grant(InterchangeCatalogVersion, "add")
-        response = self.paste_post("apiVersion: [")
+        document = fixtures.valid_bundle()
+        document["objects"][1]["topology"]["fabrics"][0]["family"] = "not-a-family"
+        response = self.paste_post(json.dumps(document))
         self.assertEqual(response.status_code, 200)
         for token in ("member", "path", "line", "column"):
             self.assertContains(response, token)
@@ -477,7 +480,7 @@ class PasteLimitsSecretsAndSurfaceRedTestCase(UiRedFixtureMixin, TestCase):
         names.extend(type_["name"] for type_ in schema["types"])
         self.assertFalse(any("interchange" in name.lower() for name in names))
 
-    def test_u26_designated_credential_field_is_path_only_and_never_echoed(self):
+    def test_u26_designated_credential_field_is_never_echoed(self):
         self.grant(InterchangeDesignRevision, "add")
         self.grant(InterchangeCatalogVersion, "add")
         sentinel = "K8S_TOKEN_SHOULD_NOT_RENDER"
@@ -486,7 +489,9 @@ class PasteLimitsSecretsAndSurfaceRedTestCase(UiRedFixtureMixin, TestCase):
         response = self.paste_post(json.dumps(document))
         self.assertEqual(response.status_code, 200)
         self.assertNotContains(response, sentinel)
-        self.assertContains(response, "path")
+        self.assertContains(response, "line")
+        self.assertContains(response, "column")
+        self.assertNotContains(response, " path ")
 
     def test_u26_invalid_free_text_is_not_retained_in_paste_control(self):
         """Free text is allowed, but a failed paste must never echo it back."""
@@ -502,6 +507,54 @@ class PasteLimitsSecretsAndSurfaceRedTestCase(UiRedFixtureMixin, TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertNotContains(response, sentinel)
         self.assertContains(response, '<textarea name="paste" rows="18"></textarea>')
+
+    def test_u26_decoder_and_hostile_key_errors_never_escape_any_ui_sink(self):
+        """#688: real requests prove the decoder boundary, not a view scrubber."""
+        from django.core.signals import got_request_exception
+
+        self.grant(InterchangeDesignRevision, "add")
+        self.grant(InterchangeCatalogVersion, "add")
+        cases = (
+            (
+                "yaml-scanner",
+                'kubernetes_token: "SENTINEL_YAML_VALUE_MUST_NOT_ESCAPE\n',
+                "SENTINEL_YAML_VALUE_MUST_NOT_ESCAPE",
+            ),
+            (
+                "json-key",
+                '{"SENTINEL_JSON_KEY_MUST_NOT_ESCAPE":1,'
+                '"SENTINEL_JSON_KEY_MUST_NOT_ESCAPE":2}',
+                "SENTINEL_JSON_KEY_MUST_NOT_ESCAPE",
+            ),
+        )
+        reported = []
+
+        def exception_reporter(**kwargs):
+            reported.append(kwargs)
+
+        got_request_exception.connect(exception_reporter)
+        try:
+            for label, paste, sentinel in cases:
+                with self.subTest(case=label), self.assertNoLogs(
+                    "netbox_hedgehog", level="DEBUG"
+                ):
+                    response = self.paste_post(paste)
+                self.assertEqual(response.status_code, 200)
+                self.assertNotContains(response, sentinel)
+                self.assertContains(response, 'data-source-location="true"')
+                self.assertContains(response, "line")
+                self.assertContains(response, "column")
+                self.assertNotContains(response, " path ")
+                failure = InterchangeAudit.objects.filter(
+                    outcome="ui-import-failed"
+                ).latest("pk")
+                self.assertNotIn(sentinel, str(failure.payload))
+                self.assertFalse(
+                    InterchangeAudit.objects.filter(outcome="ui-import").exists()
+                )
+        finally:
+            got_request_exception.disconnect(exception_reporter)
+        self.assertEqual(reported, [], "handled decoder errors must not reach exception reporting")
 
     def test_u27_secret_absence_and_audit_presence_are_paired(self):
         self.grant(InterchangeDesignRevision, "add", "view")
