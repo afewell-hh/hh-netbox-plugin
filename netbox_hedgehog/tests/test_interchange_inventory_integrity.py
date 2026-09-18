@@ -1,26 +1,23 @@
-"""#687: keep the T3 inventory's source-location claim tied to real behaviour.
+"""Keep the T3 source-location assertion tied to real decoder behaviour.
 
 Test-only. This module changes no production code and authorizes no upload
 surface; #678's no-file-upload boundary and the paste-only UI are untouched.
 
-The #686 secure-ingress review found that
-``interchange_ui_inventory.UI_PASTE_INVENTORY`` marked ``source-located errors``
-as ``asserted`` on the strength of U26, which posts valid JSON and therefore
-only exercises semantic credential rejection. The YAML decoder does not hold
-that boundary. #687 downgrades the row to ``known_false``; this module is the
-part that makes the downgrade mean something.
+The #686 secure-ingress review found that this row's original assertion did not
+hold. #687 honestly recorded it as ``known_false``. #688 remediates the decoder
+and restores the row to ``asserted``; this module is the part that makes the
+restored claim mean something.
 
 A status check alone would be self-referential -- it would pass just as happily
 if someone edited the string back. So the binding test below drives the *real*
 decoder and requires the declared status to agree with what the decoder
 actually does:
 
-  decoder echoes untrusted input  ->  the row must be ``known_false``
-  decoder echoes nothing          ->  the row must no longer be ``known_false``
+  decoder echoes untrusted input  ->  the asserted row is false
+  decoder echoes nothing          ->  the asserted row remains evidenced
 
-Restoring ``asserted`` while the leak is still present fails. Remediating the
-decoder under #688 without updating the inventory also fails, which is how the
-row gets flipped back honestly rather than optimistically.
+Restoring a disclosure while leaving the row asserted fails. Leaving the row
+``known_false`` after remediation also fails, preventing stale gap reporting.
 """
 
 from __future__ import annotations
@@ -31,14 +28,10 @@ from django.test import SimpleTestCase
 
 from netbox_hedgehog import interchange
 from netbox_hedgehog.tests.interchange_ui_inventory import UI_PASTE_INVENTORY
-from netbox_hedgehog.tests.seam_evidence import EmissionPath
 
 
 #: The row this module governs.
 ROW_NAME = "source-located errors"
-
-#: Remediation owner for the decoder defect. Referenced by the row itself.
-REMEDIATION_ISSUE = "#688"
 
 #: Distinctive enough that a match cannot be coincidental, and shaped like the
 #: things that actually matter: a credential value, and a mapping key.
@@ -55,8 +48,9 @@ SENTINEL_VALUE = "HH687VALSENT"
 SENTINEL_KEY = "hh687KeySent"
 
 #: Shortest run of a sentinel whose appearance still proves submitted bytes
-#: reached the surface. Short enough to survive truncation, long enough that a
-#: coincidental match in fixed diagnostic text is not credible.
+#: reached the surface. The #687 truncation measurement observed PyYAML retain
+#: only a prefix of a 36-character sentinel; eight characters survives that
+#: truncation while remaining implausible in fixed diagnostic text.
 _PARTIAL_ECHO_CHARS = 8
 
 
@@ -147,16 +141,12 @@ def source_location_row() -> EmissionPath:
     for path in UI_PASTE_INVENTORY.paths:
         if path.name == ROW_NAME:
             return path
-    raise AssertionError(
-        f"the {ROW_NAME!r} row has been removed from UI_PASTE_INVENTORY. A row "
-        f"recording a known disclosure is deleted only when {REMEDIATION_ISSUE} "
-        f"has remediated it and this module's probes show no echo; deleting it "
-        f"otherwise erases the gap instead of closing it."
-    )
+    raise AssertionError(f"the {ROW_NAME!r} asserted row has been removed from "
+                         "UI_PASTE_INVENTORY, erasing its evidence contract.")
 
 
 class SourceLocationDisclosureTestCase(SimpleTestCase):
-    """The downgraded row, bound to the decoder's observed behaviour."""
+    """The restored assertion, bound to the decoder's observed behaviour."""
 
     def test_probes_still_reach_the_decoder_error_path(self):
         """Guard against the binding test passing for the wrong reason.
@@ -181,52 +171,24 @@ class SourceLocationDisclosureTestCase(SimpleTestCase):
         echoing = [p for p in probes if p.echoed]
         row = source_location_row()
 
-        if echoing:
-            self.assertEqual(
-                row.status, "known_false",
-                "the decoder still echoes untrusted input back through its error "
-                "path ("
-                + "; ".join(p.name for p in echoing)
-                + f"), so the {ROW_NAME!r} row cannot claim any status other than "
-                f"known_false. Restoring 'asserted' here would reinstate exactly "
-                f"the false security claim {REMEDIATION_ISSUE} exists to remove.",
-            )
-        else:
-            self.assertNotEqual(
-                row.status, "known_false",
-                f"no probe observed an echo, which suggests {REMEDIATION_ISSUE} has "
-                f"remediated the decoder. Update the {ROW_NAME!r} row to the status "
-                f"its new evidence supports, and extend the probes to cover the "
-                f"remediated paths, rather than leaving a stale known_false claim.",
-            )
-
-    def test_known_false_row_names_its_remediation_and_states_why(self):
-        row = source_location_row()
-        self.assertEqual(row.status, "known_false")
-        self.assertEqual(row.owner_issue, REMEDIATION_ISSUE)
-        self.assertIn("#687", row.detail)
-        self.assertGreater(
-            len(row.detail), 180,
-            "a known_false row must carry a reason a reviewer can act on, not a label",
+        self.assertFalse(
+            echoing,
+            "the decoder again echoes untrusted input through its error path ("
+            + "; ".join(p.name for p in echoing)
+            + "); the asserted source-located-errors row is no longer evidenced.",
+        )
+        self.assertEqual(
+            row.status, "asserted",
+            f"no probe observed an echo, so {ROW_NAME!r} must record the restored "
+            "assertion rather than a stale known_false gap.",
         )
 
-    def test_known_false_is_never_counted_as_secret_absence_coverage(self):
-        row = source_location_row()
-        self.assertNotIn(row, UI_PASTE_INVENTORY.by_status("asserted"))
-        self.assertNotIn(row, UI_PASTE_INVENTORY.proven_paths())
-        self.assertIn(row, UI_PASTE_INVENTORY.known_false_paths())
-
-    def test_schema_requires_a_remediation_issue_for_known_false(self):
-        """An unowned known_false row would be a gap with nobody to close it."""
-        with self.assertRaises(ValueError):
-            EmissionPath("unowned", "error_handling", "known_false", "no owner named")
-
     def test_unrelated_inventory_rows_are_preserved(self):
-        """#687 touches exactly one row; collateral drift must fail here."""
+        """The restored row must not cause collateral inventory drift."""
         expected = {
             "paste request body": "asserted",
             "form re-render HTML": "asserted",
-            "source-located errors": "known_false",
+            "source-located errors": "asserted",
             "template context": "asserted",
             "interchange audit": "asserted",
             "failed import audit": "asserted",
