@@ -223,6 +223,8 @@ class UiPasteFlowRedTestCase(UiRedFixtureMixin, TestCase):
         self.assertFalse(InterchangeDesignRevision.objects.filter(pk=revision.pk).exists())
 
     def test_u7_invalid_paste_renders_safe_source_location_in_response(self):
+        # This retains a useful safe-path diagnostic. The malformed-YAML scanner
+        # case moved to U26/#688 because its location deliberately omits path.
         self.grant(InterchangeDesignRevision, "add")
         self.grant(InterchangeCatalogVersion, "add")
         document = fixtures.valid_bundle()
@@ -544,6 +546,9 @@ class PasteLimitsSecretsAndSurfaceRedTestCase(UiRedFixtureMixin, TestCase):
                 self.assertContains(response, 'data-source-location="true"')
                 self.assertContains(response, "line")
                 self.assertContains(response, "column")
+                self.assertIsNone(response.context["location"].path)
+                # Keep a rendered-output assertion as well: a context-only
+                # assertion would miss a template that renders a None path.
                 self.assertNotContains(response, " path ")
                 failure = InterchangeAudit.objects.filter(
                     outcome="ui-import-failed"

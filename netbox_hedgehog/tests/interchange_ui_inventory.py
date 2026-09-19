@@ -37,9 +37,9 @@ UI_PASTE_INVENTORY = SeamInventory(
                      "Lifecycle writes can emit NetBox snapshots and webhooks."),
         EmissionPath("download response and filename", "exporter", "asserted",
                      "U27 downloads a successful imported draft and proves the response omits the secret sentinel."),
-        EmissionPath("application logs and traces", "log", "asserted",
-                     "#688 U26 captures the plugin logger during hostile decoder failures and "
-                     "proves no submitted value/key is emitted."),
+        EmissionPath("application logs and traces", "log", "unverified",
+                     "#688 proves handled decoder failures do not call a plugin logger, but "
+                     "does not yet exercise the django.request/unhandled-exception trace path."),
         EmissionPath("Django exception reporting", "error_handling", "asserted",
                      "#688 U26 proves handled hostile decoder errors do not reach the "
                      "available Django exception-reporting signal."),
