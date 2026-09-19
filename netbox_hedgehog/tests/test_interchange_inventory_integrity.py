@@ -42,8 +42,36 @@ REMEDIATION_ISSUE = "#688"
 
 #: Distinctive enough that a match cannot be coincidental, and shaped like the
 #: things that actually matter: a credential value, and a mapping key.
-SENTINEL_VALUE = "HH687-SOURCE-LOCATION-SENTINEL-VALUE"
-SENTINEL_KEY = "hh687SourceLocationSentinelKey"
+#:
+#: Deliberately SHORT, and placed early on their line by the probes below.
+#: PyYAML truncates the source-line snippet it embeds in an error at roughly
+#: fifty characters, appending " ... ". A long sentinel, or one pushed right by
+#: a long key, is therefore echoed only in part -- still a disclosure, but one
+#: an exact-substring check does not see. Probe A originally used a 36-character
+#: value behind an 18-character key and silently failed to detect a reverted
+#: scanner branch for exactly that reason. Keep these short, keep them early,
+#: and see `_echoes` for the partial-disclosure check that backs them up.
+SENTINEL_VALUE = "HH687VALSENT"
+SENTINEL_KEY = "hh687KeySent"
+
+#: Shortest run of a sentinel whose appearance still proves submitted bytes
+#: reached the surface. Short enough to survive truncation, long enough that a
+#: coincidental match in fixed diagnostic text is not credible.
+_PARTIAL_ECHO_CHARS = 8
+
+
+def _echoes(surface: str) -> bool:
+    """True if `surface` carries a sentinel whole *or* truncated.
+
+    A partially echoed secret is a leak. Checking only for the whole string
+    lets a truncating formatter hide one.
+    """
+    for sentinel in (SENTINEL_VALUE, SENTINEL_KEY):
+        if sentinel in surface:
+            return True
+        if sentinel[:_PARTIAL_ECHO_CHARS] in surface:
+            return True
+    return False
 
 
 @dataclass(frozen=True)
@@ -62,14 +90,14 @@ def _probe_scanner_error_message() -> DecoderProbe:
     ``_yaml_restricted`` passes ``str(exc)`` straight into ``_error``; PyYAML's
     message embeds the offending source line, so the credential rides along.
     """
-    document = f'apiVersion: aid/v1\nkubernetes_token: "{SENTINEL_VALUE}\n'
+    document = f'token: "{SENTINEL_VALUE}\n'
     try:
         interchange.decode_document(document)
     except interchange.InterchangeError as exc:
         return DecoderProbe(
             "YAML scanner error message",
             reached_error_path=True,
-            echoed=SENTINEL_VALUE in str(exc),
+            echoed=_echoes(str(exc)),
             detail=str(exc),
         )
     return DecoderProbe("YAML scanner error message", False, False,
@@ -91,7 +119,7 @@ def _probe_untrusted_key_in_source_location() -> DecoderProbe:
         return DecoderProbe(
             "untrusted key in source location",
             reached_error_path=True,
-            echoed=SENTINEL_KEY in rendered,
+            echoed=_echoes(rendered),
             detail=rendered,
         )
     return DecoderProbe("untrusted key in source location", False, False,
@@ -99,6 +127,19 @@ def _probe_untrusted_key_in_source_location() -> DecoderProbe:
 
 
 def run_decoder_probes() -> list:
+    """Every probe drives the real decoder; none mocks it.
+
+    That is a deliberate limit as well as a strength. These two reach the YAML
+    *scanner* branch and the JSON duplicate-key path. They cannot reach the
+    ``yaml.load`` constructor branch, which only fails for inputs the scanner
+    already accepted; provoking it needs a patched ``yaml.load``. That branch is
+    covered at the core level by
+    ``test_interchange.test_error_disclosure.DecoderDisclosureTestCase``.
+
+    Recorded here so the split is visible: a reverted constructor branch fails
+    that module, not this one. If this module is ever treated as the sole guard
+    for decoder disclosure, that assumption is wrong.
+    """
     return [_probe_scanner_error_message(), _probe_untrusted_key_in_source_location()]
 
 
