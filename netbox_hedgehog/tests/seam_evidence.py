@@ -34,9 +34,17 @@ CATEGORIES = (
 
 #: An enumerated path is in exactly one of these states. `unverified` and
 #: `latent` exist so a path cannot be quietly omitted by being hard to classify.
+#:
+#: `known_false` is deliberately distinct from `unverified` (#687). `unverified`
+#: means nobody has looked; `known_false` means somebody looked and the boundary
+#: does not hold. Filing a measured disclosure under `unverified` would let it
+#: hide among honest unknowns, and the whole point of this inventory is that a
+#: known gap stays visible. It therefore carries a named remediation issue, the
+#: way `out_of_scope` carries a named owner.
 STATUSES = (
     'asserted',      # a test in this repository proves the boundary holds here
     'unverified',    # enumerated, boundary plausible but not proven -- must be stated
+    'known_false',   # a test in this repository proves the boundary does NOT hold
     'latent',        # code exists but is unreachable; becomes live if wired up
     'out_of_scope',  # explicitly owned elsewhere, with the owner named
 )
@@ -59,6 +67,8 @@ class EmissionPath:
             raise ValueError(f'unknown path status: {self.status}')
         if self.status == 'out_of_scope' and not self.owner_issue:
             raise ValueError(f'{self.name}: out_of_scope requires a named owner')
+        if self.status == 'known_false' and not self.owner_issue:
+            raise ValueError(f'{self.name}: known_false requires a named remediation issue')
 
 
 @dataclass(frozen=True)
@@ -74,6 +84,18 @@ class SeamInventory:
 
     def by_status(self, status: str) -> list:
         return [p for p in self.paths if p.status == status]
+
+    def proven_paths(self) -> list:
+        """Only the paths a test actually proves. Never `known_false` (#687).
+
+        Exists so a caller asks for proof explicitly rather than counting rows
+        and treating enumeration as coverage.
+        """
+        return self.by_status('asserted')
+
+    def known_false_paths(self) -> list:
+        """Paths measured to be leaking, each with its remediation issue."""
+        return self.by_status('known_false')
 
     def categories_covered(self) -> set:
         return {p.category for p in self.paths}
