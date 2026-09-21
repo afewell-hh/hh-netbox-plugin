@@ -34,14 +34,17 @@ _DERIVED_PROVENANCE = frozenset({"exporter", "exporterRevision", "artifactKind",
 @dataclass
 class SourceLocation:
     member: int | None
-    path: str
+    # A decoded document key is untrusted input.  A location omits its path
+    # rather than echoing a path built from such a key.
+    path: str | None
     line: int | None
     column: int | None
 
 
 class InterchangeError(ValueError):
-    def __init__(self, message, location=None):
+    def __init__(self, message, location=None, *, code="invalid-document"):
         super().__init__(message)
+        self.code = code
         self.source_location = location or SourceLocation(None, "$", 1, 1)
 
 
@@ -61,8 +64,24 @@ class ImportResult:
     idempotent: bool
 
 
-def _error(message, path="$", member=0, line=1, column=1):
-    raise InterchangeError(message, SourceLocation(member, path, line, column))
+def _error(message, path="$", member=0, line=1, column=1, *, code="invalid-document"):
+    raise InterchangeError(message, SourceLocation(member, path, line, column), code=code)
+
+
+def _yaml_error(mark=None):
+    """Convert PyYAML failures at the decoder boundary without its raw text."""
+    _error(
+        "invalid YAML document",
+        path=None,
+        line=(mark.line + 1 if mark else 1),
+        column=(mark.column + 1 if mark else 1),
+        code="invalid-yaml",
+    )
+
+
+def _index_path(path, index):
+    """Append a trusted sequence index without reviving an unsafe parent path."""
+    return f"{path}[{index}]" if path is not None else None
 
 
 def _walk_restricted(value, path="$"):
@@ -76,15 +95,18 @@ def _walk_restricted(value, path="$"):
         _error("floating point is not representable in restricted I-JSON", path)
     if isinstance(value, list):
         for i, item in enumerate(value):
-            _walk_restricted(item, f"{path}[{i}]")
+            _walk_restricted(item, _index_path(path, i))
         return
     if isinstance(value, dict):
         for key, item in value.items():
             if not isinstance(key, str):
                 _error("mapping key is not a string", path)
             if any(ord(ch) > 0xffff for ch in key):
-                _error("non-BMP mapping key is unsupported", f"{path}.{key}")
-            _walk_restricted(item, f"{path}.{key}")
+                _error("non-BMP mapping key is unsupported", path,
+                       code="unsupported-mapping-key")
+            # Mapping keys are authored input, even when the current key looks
+            # harmless. Do not build a diagnostic path from them.
+            _walk_restricted(item, None)
         return
     _error(f"unsupported I-JSON type {type(value).__name__}", path)
 
@@ -104,7 +126,7 @@ def _yaml_restricted(text):
         events = list(yaml.parse(text, Loader=yaml.SafeLoader))
     except yaml.YAMLError as exc:
         mark = getattr(exc, "problem_mark", None)
-        _error(str(exc), line=(mark.line + 1 if mark else 1), column=(mark.column + 1 if mark else 1))
+        _yaml_error(mark)
     for event in events:
         if isinstance(event, (yaml.events.AliasEvent, yaml.events.NodeEvent)) and getattr(event, "anchor", None):
             _error("YAML anchors and aliases are unsupported", line=event.start_mark.line + 1,
@@ -155,7 +177,7 @@ def _yaml_restricted(text):
     except InterchangeError:
         raise
     except yaml.YAMLError as exc:
-        _error(str(exc))
+        _yaml_error(getattr(exc, "problem_mark", None))
 
 
 def _depth(value):
@@ -187,7 +209,7 @@ def _json_pairs(pairs):
     result = {}
     for key, value in pairs:
         if key in result:
-            _error("duplicate JSON mapping key", f"$.{key}")
+            _error("duplicate JSON mapping key", None, code="duplicate-mapping-key")
         result[key] = value
     return result
 
@@ -213,11 +235,14 @@ def _reject_secrets(value, path="$"):
     if isinstance(value, dict):
         for key, item in value.items():
             if key.lower() in _SECRET_KEYS:
-                _error(f"prohibited credential field at {path}.{key}", f"{path}.{key}")
-            _reject_secrets(item, f"{path}.{key}")
+                _error("prohibited credential field", None,
+                       code="prohibited-credential-field")
+            # Never incorporate an authored key into a location. This also
+            # ensures descendants cannot inherit an unsafe path.
+            _reject_secrets(item, None)
     elif isinstance(value, list):
-        for i, item in enumerate(value):
-            _reject_secrets(item, f"{path}[{i}]")
+        for item in value:
+            _reject_secrets(item, path)
 
 
 def _validate_document(document):
