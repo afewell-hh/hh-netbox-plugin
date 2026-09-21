@@ -28,6 +28,7 @@ from django.test import SimpleTestCase
 
 from netbox_hedgehog import interchange
 from netbox_hedgehog.tests.interchange_ui_inventory import UI_PASTE_INVENTORY
+from netbox_hedgehog.tests.seam_evidence import EmissionPath
 
 
 #: The row this module governs.
@@ -48,8 +49,8 @@ SENTINEL_VALUE = "HH687VALSENT"
 SENTINEL_KEY = "hh687KeySent"
 
 #: Shortest run of a sentinel whose appearance still proves submitted bytes
-#: reached the surface. The #687 truncation measurement observed PyYAML retain
-#: only a prefix of a 36-character sentinel; eight characters survives that
+#: reached the surface. The #687 truncation measurement observed that PyYAML
+#: retained only a prefix of a 36-character sentinel; eight characters survives
 #: truncation while remaining implausible in fixed diagnostic text.
 _PARTIAL_ECHO_CHARS = 8
 
@@ -195,6 +196,7 @@ class SourceLocationDisclosureTestCase(SimpleTestCase):
             "ObjectChange/event payload": "unverified",
             "download response and filename": "asserted",
             "application logs and traces": "unverified",
+            "Django exception reporting": "asserted",
             "retained artifact": "asserted",
             "file upload/quarantine/reaper": "out_of_scope",
         }
