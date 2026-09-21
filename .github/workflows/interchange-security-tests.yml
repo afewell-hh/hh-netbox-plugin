@@ -89,7 +89,7 @@ jobs:
             netbox_hedgehog.tests.test_interchange_ui_red \
             netbox_hedgehog.tests.test_interchange_inventory_integrity \
             netbox_hedgehog.tests.test_fabric_seam_evidence \
-            --verbosity=2 | tee interchange-security.log
+            --verbosity=2 2>&1 | tee interchange-security.log
 
       - name: Upload interchange test and migration diagnostics
         if: always()

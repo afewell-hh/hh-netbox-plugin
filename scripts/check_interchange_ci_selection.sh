@@ -16,8 +16,18 @@ has_django_selection() {
   local root=$2
 
   awk -v root="$root" '
+    {
+      uncommented = $0
+      sub(/^[[:space:]]*/, "", uncommented)
+      if (uncommented ~ /^#/) { next }
+    }
     /manage\.py test/ { in_test_command = 1 }
-    in_test_command && index($0, root) { found = 1; exit }
+    in_test_command {
+      candidate = $0
+      sub(/#.*/, "", candidate)
+      gsub(/^[[:space:]]+|[[:space:]\\]+$/, "", candidate)
+      if (candidate == root) { found = 1; exit }
+    }
     in_test_command && /^[[:space:]]*-[[:space:]]+name:/ { in_test_command = 0 }
     END { exit !found }
   ' "$workflow"
