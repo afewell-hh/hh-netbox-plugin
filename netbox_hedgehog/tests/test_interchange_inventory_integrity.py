@@ -208,3 +208,8 @@ class SourceLocationDisclosureTestCase(SimpleTestCase):
                       if p.name.startswith("file upload"))
         self.assertEqual(upload.status, "out_of_scope")
         self.assertEqual(upload.owner_issue, "#678")
+
+    def test_known_false_requires_a_remediation_owner(self):
+        """Reusable measured gaps must name the work that closes them."""
+        with self.assertRaises(ValueError):
+            EmissionPath("unowned", "error_handling", "known_false", "no owner")
