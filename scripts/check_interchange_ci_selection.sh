@@ -52,5 +52,6 @@ done < <(find .github/workflows -type f \( -name '*.yml' -o -name '*.yaml' \) -p
 
 printf '%s\n' 'No PR-triggered Django test command selects every interchange security root:' >&2
 printf '  %s\n' "${required_roots[@]}" >&2
+printf '%s\n' 'Use one uncommented root argument per line after `manage.py test`; quoted or combined roots are intentionally rejected.' >&2
 printf '%s\n' 'Keep future ingress/quarantine tests under test_interchange, or extend this declaration and the CI selection in the same change.' >&2
 exit 1
