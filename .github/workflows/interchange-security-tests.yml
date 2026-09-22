@@ -1,0 +1,116 @@
+name: Interchange Security Tests
+
+on:
+  pull_request:
+    branches: [main, develop]
+  workflow_dispatch:
+
+jobs:
+  interchange-security:
+    name: Interchange Security (core, UI, seam inventory)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout plugin code
+        uses: actions/checkout@v4
+        with:
+          path: hh-netbox-plugin
+
+      - name: Checkout pinned NetBox Docker
+        uses: actions/checkout@v4
+        with:
+          repository: netbox-community/netbox-docker
+          ref: 7d6f00662c90c9294911182935d41a6e66f8896b
+          path: netbox-docker
+
+      - name: Guard interchange CI selection
+        working-directory: hh-netbox-plugin
+        run: bash scripts/check_interchange_ci_selection.sh
+
+      - name: Configure plugin-enabled NetBox
+        run: |
+          cd netbox-docker
+          echo 'VERSION=v4.4-3.4.2' > .env
+          cat > docker-compose.override.yml << 'EOF'
+          services:
+            netbox:
+              volumes:
+                - ../hh-netbox-plugin/netbox_hedgehog:/opt/netbox/netbox/netbox_hedgehog:ro
+          EOF
+          mkdir -p configuration
+          cat > configuration/plugins.py << 'EOF'
+          # Required by the #684/#688 interchange host contract.
+          DATA_UPLOAD_MAX_MEMORY_SIZE = 10 * 1024 * 1024
+          PLUGINS = ['netbox_hedgehog']
+          PLUGINS_CONFIG = {
+              'netbox_hedgehog': {
+                  'kubernetes_config_file': None,
+                  'sync_interval': 300,
+                  'enable_webhooks': True,
+                  'max_concurrent_syncs': 5,
+              }
+          }
+          EOF
+
+      - name: Start isolated NetBox and verify migrations
+        run: |
+          set -o pipefail
+          cd netbox-docker
+          docker compose pull
+          docker compose up -d postgres redis redis-cache
+          docker compose up -d netbox
+          for i in {1..120}; do
+            docker compose logs --no-color netbox > netbox-startup.log
+            if grep -Fq '✅ Initialisation is done.' netbox-startup.log; then
+              break
+            fi
+            grep -Fq '❌ Waited ' netbox-startup.log && exit 1
+            netbox_id=$(docker compose ps -q netbox)
+            if [ -n "$netbox_id" ] && [[ "$(docker inspect -f '{{.State.Status}}' "$netbox_id")" =~ ^(exited|dead|restarting)$ ]]; then
+              exit 1
+            fi
+            sleep 5
+          done
+          grep -Fq '✅ Initialisation is done.' netbox-startup.log
+          docker compose exec -T netbox sh -lc \
+            'python manage.py showmigrations --plan && python manage.py migrate --check' \
+            | tee migration-state.txt
+
+      - name: Run interchange security suites
+        run: |
+          set -o pipefail
+          cd netbox-docker
+          # test_interchange is the stable core/ingress/quarantine package root.
+          # Future ingress/reaper coverage belongs there unless this selection and
+          # scripts/check_interchange_ci_selection.sh are extended together.
+          docker compose exec -T netbox python manage.py test \
+            netbox_hedgehog.tests.test_interchange \
+            netbox_hedgehog.tests.test_interchange_ui_red \
+            netbox_hedgehog.tests.test_interchange_inventory_integrity \
+            netbox_hedgehog.tests.test_fabric_seam_evidence \
+            --verbosity=2 2>&1 | tee interchange-security.log
+
+      - name: Upload interchange test and migration diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: interchange-security-diagnostics
+          path: |
+            netbox-docker/interchange-security.log
+            netbox-docker/netbox-startup.log
+            netbox-docker/migration-state.txt
+          if-no-files-found: ignore
+          retention-days: 14
+
+      - name: Show NetBox logs on failure
+        if: failure()
+        run: |
+          cd netbox-docker
+          docker compose logs netbox | tail -300
+
+      - name: Clean up isolated CI services
+        if: always()
+        run: |
+          cd netbox-docker
+          docker compose down -v
