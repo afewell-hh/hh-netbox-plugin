@@ -213,3 +213,35 @@ class SourceLocationDisclosureTestCase(SimpleTestCase):
         """Reusable measured gaps must name the work that closes them."""
         with self.assertRaises(ValueError):
             EmissionPath("unowned", "error_handling", "known_false", "no owner")
+
+    def test_out_of_scope_requires_a_named_owner(self):
+        """A path owned elsewhere must name where, or it is owned by nobody.
+
+        Sibling of the `known_false` guard above, added by #694. A #691 control
+        mutation showed this rule could be deleted from `seam_evidence` with the
+        whole suite still green -- the rule predates #687/#688 and had never had
+        a regression of its own.
+
+        The message assertion is what makes this specific. Both rules raise
+        ValueError for a missing `owner_issue`, so `assertRaises` alone would
+        still pass if the out_of_scope rule were deleted and some other status
+        check happened to fire. Binding to the text ties this test to the rule
+        it is named for.
+        """
+        with self.assertRaises(ValueError) as caught:
+            EmissionPath("unowned", "error_handling", "out_of_scope", "no owner")
+        self.assertIn("out_of_scope", str(caught.exception))
+
+    def test_owner_requirement_is_not_applied_to_every_status(self):
+        """Control: the rule is about the owner, not about rejecting statuses.
+
+        Without this, a mutation that rejected *all* unowned paths would satisfy
+        the two guards above while silently forbidding the ordinary statuses.
+        """
+        for status in ("asserted", "unverified", "latent"):
+            with self.subTest(status=status):
+                EmissionPath("ordinary", "error_handling", status, "no owner needed")
+        for status in ("out_of_scope", "known_false"):
+            with self.subTest(status=status, owned=True):
+                EmissionPath("owned", "error_handling", status, "detail",
+                             owner_issue="#694")
