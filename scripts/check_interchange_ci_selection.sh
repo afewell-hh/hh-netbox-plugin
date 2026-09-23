@@ -9,6 +9,7 @@ readonly -a required_roots=(
   'netbox_hedgehog.tests.test_interchange_ui_red'
   'netbox_hedgehog.tests.test_interchange_inventory_integrity'
   'netbox_hedgehog.tests.test_interchange_audit_retention'
+  'netbox_hedgehog.tests.test_interchange_recursion_boundary'
   'netbox_hedgehog.tests.test_fabric_seam_evidence'
 )
 
