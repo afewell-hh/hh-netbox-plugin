@@ -190,6 +190,29 @@ def decode_document(text, *, media_type=None, filename=None, limits=None):
     if not isinstance(text, str):
         _error("document must be text")
     try:
+        return _decode_bounded(text, limits)
+    except RecursionError:
+        # Every pass below recurses over the decoded structure, and the
+        # configured depth limit can only be reported once _depth() has
+        # finished walking. A document nested past the interpreter's stack
+        # therefore exhausts it before the limit check speaks, and
+        # RecursionError is a RuntimeError, so it escapes the ValueError
+        # handling around the parser (#693: this surfaced as an unhandled 500
+        # with no failure audit at all).
+        #
+        # Report it as the depth failure it is. The limit is the already
+        # approved max_nesting_depth, so this invents no new user-visible
+        # bound; it makes an existing one reachable for inputs that used to
+        # crash first, and keeps 33-deep and 5000-deep indistinguishable to
+        # the caller rather than disclosing where this deployment's stack
+        # gives out. The location stays the fixed "$"/1/1 the ordinary depth
+        # failure uses -- nothing here is derived from the submitted text.
+        _error('depth limit exceeded', '$')
+
+
+def _decode_bounded(text, limits):
+    """Decode and validate. Recursion is mapped by the caller, not here."""
+    try:
         value = json.loads(text, object_pairs_hook=lambda pairs: _json_pairs(pairs))
     except InterchangeError:
         raise
