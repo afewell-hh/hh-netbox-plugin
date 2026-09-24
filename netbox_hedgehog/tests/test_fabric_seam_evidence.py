@@ -6,6 +6,8 @@ read, written, printed, or asserted against. Nothing in this module inspects,
 mutates, or purges historical records -- #658 owns that separately.
 """
 
+# interchange-security-ci: required
+
 from django.contrib.auth import get_user_model
 from django.contrib.contenttypes.models import ContentType
 from django.test import Client, TestCase
