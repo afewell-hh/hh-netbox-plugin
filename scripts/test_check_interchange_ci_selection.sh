@@ -81,4 +81,15 @@ sed -i 's/^            netbox_hedgehog.tests.test_interchange_ui_red/           
   "$fixture/.github/workflows/interchange-security-tests.yml"
 expect_failure 'selected module commented out'
 
+write_fixture
+sed -i 's/netbox_hedgehog.tests.test_interchange_ui_red/netbox_hedgehog.tests.test_interchange_ui_red_extra/' \
+  "$fixture/.github/workflows/interchange-security-tests.yml"
+expect_failure 'prefix decoy is not an exact root'
+
+write_fixture
+sed -i '/test_interchange_ui_red/d' "$fixture/.github/workflows/interchange-security-tests.yml"
+sed -i '/--verbosity=2/a\          echo netbox_hedgehog.tests.test_interchange_ui_red' \
+  "$fixture/.github/workflows/interchange-security-tests.yml"
+expect_failure 'unrelated shell text is not a test root'
+
 printf '%s\n' 'interchange CI selection guard regression harness: PASS'
