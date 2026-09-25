@@ -66,6 +66,13 @@ guard_passes || { printf '%s\n' 'valid explicit exception failed' >&2; exit 1; }
 rm -f "$fixture/netbox_hedgehog/tests/test_interchange_new_security.py"
 
 write_fixture
+mkdir -p "$fixture/netbox_hedgehog/tests/test_interchange_v2"
+touch "$fixture/netbox_hedgehog/tests/test_interchange_v2/test_thing.py"
+expect_failure 'new unselected top-level interchange package'
+rm -f "$fixture/netbox_hedgehog/tests/test_interchange_v2/test_thing.py"
+rmdir "$fixture/netbox_hedgehog/tests/test_interchange_v2"
+
+write_fixture
 touch "$fixture/netbox_hedgehog/tests/test_interchange_new_security.py"
 printf 'netbox_hedgehog.tests.test_interchange_new_security\townerless\tinvalid fixture exception\n' \
   >> "$fixture/scripts/interchange_ci_selection_exceptions.tsv"

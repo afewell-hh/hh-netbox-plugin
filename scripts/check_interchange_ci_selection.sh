@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # Fail closed if an in-scope interchange-security test root is not selected by
 # a PR-triggered Django test command. Roots are discovered from the test layout:
-# the core test_interchange package, top-level test_interchange*.py modules,
-# and explicit source markers for legacy suites whose name predates the
+# top-level test_interchange* packages and modules, and explicit source
+# markers for legacy suites whose name predates the
 # interchange namespace. This prevents a new top-level module being forgotten
 # in the workflow declaration (#699).
 set -euo pipefail
@@ -28,10 +28,11 @@ path_to_module() {
 discover_roots() {
   local path module
 
-  if [[ -d "$test_root/test_interchange" ]] && \
-      find "$test_root/test_interchange" -type f -name 'test_*.py' -print -quit | grep -q .; then
-    printf '%s\n' 'netbox_hedgehog.tests.test_interchange'
-  fi
+  while IFS= read -r -d '' path; do
+    if find "$path" -type f -name 'test_*.py' -print -quit | grep -q .; then
+      path_to_module "$path"
+    fi
+  done < <(find "$test_root" -mindepth 1 -maxdepth 1 -type d -name 'test_interchange*' -print0 | sort -z)
 
   while IFS= read -r -d '' path; do
     path_to_module "$path"
