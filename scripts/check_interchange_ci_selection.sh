@@ -1,17 +1,62 @@
 #!/usr/bin/env bash
-# Fail closed if no PR-triggered Django test command selects every interchange
-# security root. Discover workflows from source instead of naming a workflow
-# file here: workflow renames/splits must preserve the actual selection.
+# Fail closed if an in-scope interchange-security test root is not selected by
+# a PR-triggered Django test command. Roots are discovered from the test layout:
+# top-level test_interchange* packages and modules, and explicit source
+# markers for legacy suites whose name predates the
+# interchange namespace. This prevents a new top-level module being forgotten
+# in the workflow declaration (#699).
 set -euo pipefail
 
-readonly -a required_roots=(
-  'netbox_hedgehog.tests.test_interchange'
-  'netbox_hedgehog.tests.test_interchange_ui_red'
-  'netbox_hedgehog.tests.test_interchange_inventory_integrity'
-  'netbox_hedgehog.tests.test_interchange_audit_retention'
-  'netbox_hedgehog.tests.test_interchange_recursion_boundary'
-  'netbox_hedgehog.tests.test_fabric_seam_evidence'
-)
+readonly test_root='netbox_hedgehog/tests'
+readonly exceptions_file='scripts/interchange_ci_selection_exceptions.tsv'
+readonly marker='interchange-security-ci: required'
+
+declare -a discovered_roots=()
+declare -A exceptions=()
+
+fail() {
+  printf '%s\n' "$*" >&2
+  exit 1
+}
+
+path_to_module() {
+  local path=$1
+  path=${path%.py}
+  printf '%s\n' "${path//\//.}"
+}
+
+discover_roots() {
+  local path module
+
+  while IFS= read -r -d '' path; do
+    if find "$path" -type f -name 'test_*.py' -print -quit | grep -q .; then
+      path_to_module "$path"
+    fi
+  done < <(find "$test_root" -mindepth 1 -maxdepth 1 -type d -name 'test_interchange*' -print0 | sort -z)
+
+  while IFS= read -r -d '' path; do
+    path_to_module "$path"
+  done < <(find "$test_root" -maxdepth 1 -type f -name 'test_interchange*.py' -print0 | sort -z)
+
+  while IFS= read -r -d '' path; do
+    module=$(path_to_module "$path")
+    printf '%s\n' "$module"
+  done < <(grep -rlZ --include='test_*.py' -E "^[[:space:]]*#[[:space:]]*$marker[[:space:]]*$" "$test_root")
+}
+
+load_exceptions() {
+  local line module owner reason trailing
+  [[ -f "$exceptions_file" ]] || fail "Missing $exceptions_file"
+
+  while IFS= read -r line || [[ -n "$line" ]]; do
+    [[ -z "$line" || "$line" =~ ^[[:space:]]*# ]] && continue
+    IFS=$'\t' read -r module owner reason trailing <<< "$line"
+    [[ -z "$trailing" && -n "$module" && "$owner" =~ ^#[0-9]+$ && -n "$reason" ]] ||
+      fail "Invalid exception in $exceptions_file: $line"
+    [[ -z ${exceptions[$module]+x} ]] || fail "Duplicate exception for $module"
+    exceptions[$module]="$owner: $reason"
+  done < "$exceptions_file"
+}
 
 has_django_selection() {
   local workflow=$1
@@ -35,25 +80,45 @@ has_django_selection() {
   ' "$workflow"
 }
 
+mapfile -t discovered_roots < <(discover_roots | sort -u)
+(( ${#discovered_roots[@]} > 0 )) || fail 'No interchange-security test roots were discovered'
+load_exceptions
+
+declare -A discovered=()
+for root in "${discovered_roots[@]}"; do
+  discovered[$root]=1
+done
+for root in "${!exceptions[@]}"; do
+  [[ -n ${discovered[$root]+x} ]] ||
+    fail "Exception names no discovered interchange-security root: $root"
+done
+
 while IFS= read -r -d '' workflow; do
   grep -Eq '^[[:space:]]*pull_request:' "$workflow" || continue
 
-  selected=true
-  for root in "${required_roots[@]}"; do
-    has_django_selection "$workflow" "$root" || {
-      selected=false
-      break
-    }
+  selected=0
+  excepted=0
+  missing=()
+  for root in "${discovered_roots[@]}"; do
+    if has_django_selection "$workflow" "$root"; then
+      ((selected += 1))
+    elif [[ -n ${exceptions[$root]+x} ]]; then
+      ((excepted += 1))
+    else
+      missing+=("$root")
+    fi
   done
 
-  if "$selected"; then
+  if (( ${#missing[@]} == 0 )); then
     printf 'interchange CI selection: %s\n' "$workflow"
+    printf 'interchange CI coverage: %d discovered root(s); %d selected; %d explicit exception(s)\n' \
+      "${#discovered_roots[@]}" "$selected" "$excepted"
     exit 0
   fi
 done < <(find .github/workflows -type f \( -name '*.yml' -o -name '*.yaml' \) -print0)
 
-printf '%s\n' 'No PR-triggered Django test command selects every interchange security root:' >&2
-printf '  %s\n' "${required_roots[@]}" >&2
-printf '%s\n' 'Use one uncommented root argument per line after `manage.py test`; quoted or combined roots are intentionally rejected.' >&2
-printf '%s\n' 'Keep future ingress/quarantine tests under test_interchange, or extend this declaration and the CI selection in the same change.' >&2
+printf '%s\n' 'No PR-triggered Django test command covers every discovered interchange-security root:' >&2
+printf '  %s\n' "${discovered_roots[@]}" >&2
+printf '%s\n' 'Use one uncommented exact root argument per line after `manage.py test`.' >&2
+printf '%s\n' 'A deliberate exclusion requires one tab-separated module, #issue owner, and reason in scripts/interchange_ci_selection_exceptions.tsv.' >&2
 exit 1

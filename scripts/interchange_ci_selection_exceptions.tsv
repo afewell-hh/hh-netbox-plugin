@@ -1,0 +1,4 @@
+# Deliberate exclusions from the PR Interchange Security lane only.
+# One row per source-discovered root: module<TAB>#owner-issue<TAB>reason.
+# The guard rejects malformed, duplicate, or stale entries. Keep this empty
+# unless an explicit issue decision authorizes an exception.

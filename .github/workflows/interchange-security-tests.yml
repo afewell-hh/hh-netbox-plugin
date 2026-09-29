@@ -26,7 +26,9 @@ jobs:
 
       - name: Guard interchange CI selection
         working-directory: hh-netbox-plugin
-        run: bash scripts/check_interchange_ci_selection.sh
+        run: |
+          bash scripts/test_check_interchange_ci_selection.sh
+          bash scripts/check_interchange_ci_selection.sh
 
       - name: Configure plugin-enabled NetBox
         run: |
