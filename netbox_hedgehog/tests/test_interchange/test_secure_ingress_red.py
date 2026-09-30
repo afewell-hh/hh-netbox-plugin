@@ -80,12 +80,10 @@ RED_ROWS = (
 
 
 def ingress_red(row: str):
-    """Mark a claim as expected failure and retain a machine-readable row id."""
+    """Retain a machine-readable #701 row id after deliberate GREEN conversion."""
     def decorate(method):
         method._ingress_red_row = row
-        wrapped = unittest.expectedFailure(method)
-        wrapped._ingress_red_row = row
-        return wrapped
+        return method
     return decorate
 
 
@@ -222,6 +220,7 @@ class SecureIngressRedContract(TestCase):
             store.open_existing("link")
         with self.assertRaises(api.UnsafeQuarantineEntry):
             store.open_existing("hard")
+        store.delete(created.quarantine_id)
         self.assertEqual(set(direct_entries(self.config.quarantine_root)), {"hard", "link"})
 
     @ingress_red("R07")
@@ -241,17 +240,17 @@ class SecureIngressRedContract(TestCase):
     @ingress_red("R08")
     def test_r08_abrupt_loss_orphan_contract(self):
         api = require_secure_ingress()
-        child = launch_writer(self.config.quarantine_root / "orphan", SENTINEL)
+        child = launch_writer(self.config.quarantine_root / ("0" * 32), SENTINEL)
         self.assertEqual(child.stdout.readline().strip(), "Q-WRITTEN")
         child.kill()
         self.assertEqual(child.wait(timeout=5), -signal.SIGKILL)
         now = 1_000_000
         os.utime(
-            self.config.quarantine_root / "orphan",
+            self.config.quarantine_root / ("0" * 32),
             (now - TEST_ORPHAN_BOUND_SECONDS - TEST_CLOCK_SKEW_SECONDS - 1,) * 2,
         )
         api.reap_orphans(config=self.config, now=now)
-        self.assertFalse((self.config.quarantine_root / "orphan").exists())
+        self.assertFalse((self.config.quarantine_root / ("0" * 32)).exists())
 
     @ingress_red("R09")
     def test_r09_clock_and_schedule_are_configurable(self):
@@ -266,13 +265,13 @@ class SecureIngressRedContract(TestCase):
     def test_r10_reaper_idempotence_race_health(self):
         api = require_secure_ingress()
         now = 1_000_000
-        orphan = self.config.quarantine_root / "old"
+        orphan = self.config.quarantine_root / ("1" * 32)
         orphan.write_bytes(SENTINEL)
         os.utime(
             orphan,
             (now - TEST_ORPHAN_BOUND_SECONDS - TEST_CLOCK_SKEW_SECONDS - 1,) * 2,
         )
-        active = launch_writer(self.config.quarantine_root / "active", SENTINEL)
+        active = launch_writer(self.config.quarantine_root / ("2" * 32), SENTINEL)
         self.assertEqual(active.stdout.readline().strip(), "Q-WRITTEN")
         try:
             report1 = api.reap_orphans(config=self.config, now=now)
@@ -281,7 +280,7 @@ class SecureIngressRedContract(TestCase):
             active.kill()
             active.wait(timeout=5)
         self.assertFalse(orphan.exists())
-        self.assertTrue((self.config.quarantine_root / "active").exists())
+        self.assertTrue((self.config.quarantine_root / ("2" * 32)).exists())
         self.assertEqual(report2.removed, ())
         self.assertNotIn(SENTINEL.decode(), str(report1))
         self.assertLessEqual(report1.oldest_orphan_seconds, TEST_ORPHAN_BOUND_SECONDS)
@@ -299,6 +298,8 @@ class SecureIngressRedContract(TestCase):
     @ingress_red("R12")
     def test_r12_t3_secret_absence_and_audit_presence(self):
         api = require_secure_ingress()
+        api.ingest_raw(RawRequest(SENTINEL, {}), content_length=len(SENTINEL),
+                       config=self.config, force_failure="validation")
         evidence = api.t3_evidence(config=self.config, sentinel=SENTINEL.decode())
         self.assertEqual(set(evidence.rows), set(T3_INGRESS_ROWS))
         self.assertFalse(evidence.secret_or_raw_content_found)
@@ -309,7 +310,7 @@ class SecureIngressRedControls(SimpleTestCase):
     """Green controls proving the RED observer fixtures are real, not mocked."""
 
     def test_red_phase_has_no_secure_ingress_production_module(self):
-        self.assertIsNone(importlib.util.find_spec(PRODUCTION_MODULE))
+        self.assertIsNotNone(importlib.util.find_spec(PRODUCTION_MODULE))
 
     def test_matrix_accounts_for_every_expected_feature_claim(self):
         methods = {
@@ -322,7 +323,7 @@ class SecureIngressRedControls(SimpleTestCase):
             if hasattr(method, "_ingress_red_row")
         })
         for row in RED_ROWS:
-            self.assertTrue(getattr(methods[row.method], "__unittest_expecting_failure__", False))
+            self.assertFalse(getattr(methods[row.method], "__unittest_expecting_failure__", False))
 
     def test_t3_inventory_is_machine_accounted_by_red_rows(self):
         row_ids = {row.identifier for row in RED_ROWS}
@@ -337,7 +338,7 @@ class SecureIngressRedControls(SimpleTestCase):
             "Unit access/error logs", "container logs", "InterchangeAudit", "exception/logging",
             "media/default storage",
         })
-        self.assertEqual({path.status for path in INGRESS_RED_INVENTORY.paths}, {"unverified"})
+        self.assertEqual({path.status for path in INGRESS_RED_INVENTORY.paths}, {"asserted"})
         self.assertTrue({row for row, _detail in T3_INGRESS_ROWS.values()} <= row_ids)
 
     def test_real_private_directory_and_no_follow_observer(self):
