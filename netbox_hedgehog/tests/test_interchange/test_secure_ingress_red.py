@@ -52,7 +52,6 @@ TEST_ACTIVE_WRITE_GRACE_SECONDS = 13
 TEST_CLOCK_SKEW_SECONDS = 5
 TEST_REAPER_INTERVAL_SECONDS = 60 * 60
 TEST_ORPHAN_BOUND_SECONDS = 24 * 60 * 60
-TEST_HEALTH_FAILURE_THRESHOLD = 2
 SENTINEL = b"HH701_RAW_BYTES_MUST_NOT_SURVIVE"
 
 
@@ -127,7 +126,6 @@ class SecureIngressRedContract(TestCase):
             clock_skew_seconds=TEST_CLOCK_SKEW_SECONDS,
             reaper_interval_seconds=TEST_REAPER_INTERVAL_SECONDS,
             orphan_bound_seconds=TEST_ORPHAN_BOUND_SECONDS,
-            health_failure_threshold=TEST_HEALTH_FAILURE_THRESHOLD,
         )
         for path in self.config.__dict__.values():
             if isinstance(path, Path):
@@ -289,6 +287,27 @@ class SecureIngressRedContract(TestCase):
         self.assertGreater(report1.oldest_orphan_seconds, TEST_ORPHAN_BOUND_SECONDS)
         self.assertTrue(report1.failed)
         self.assertEqual(report1.incident_count, 1)
+
+    def test_reaper_report_is_the_complete_aggregate_health_contract(self):
+        """Operators alert from this report; they do not reconstruct its state."""
+        api = require_secure_ingress()
+        now = 1_000_000
+        for name in ("unsafe-a", "unsafe-b"):
+            entry = self.config.quarantine_root / name
+            entry.write_bytes(SENTINEL)
+            os.utime(entry, (now - 777,) * 2)
+        safe = self.config.quarantine_root / ("3" * 32)
+        safe.write_bytes(SENTINEL)
+        os.utime(safe, (now - TEST_ORPHAN_BOUND_SECONDS - TEST_CLOCK_SKEW_SECONDS - 1,) * 2)
+
+        report = api.reap_orphans(config=self.config, now=now)
+
+        self.assertTrue(report.failed, "first unresolved incident is a failure")
+        self.assertEqual(report.incident_count, 2)
+        self.assertEqual(report.oldest_orphan_seconds, 777)
+        self.assertEqual(report.removed, ("3" * 32,))
+        self.assertNotIn("unsafe-a", str(report))
+        self.assertNotIn("unsafe-b", str(report))
 
     @ingress_red("R11")
     def test_r11_unit_listener_shapes(self):

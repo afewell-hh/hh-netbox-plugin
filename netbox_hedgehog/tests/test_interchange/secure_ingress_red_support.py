@@ -67,7 +67,6 @@ class IngressTestConfig:
     clock_skew_seconds: int
     reaper_interval_seconds: int
     orphan_bound_seconds: int
-    health_failure_threshold: int
 
 
 def direct_entries(root: Path) -> dict[str, os.stat_result]:
