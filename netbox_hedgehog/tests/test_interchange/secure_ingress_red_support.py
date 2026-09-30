@@ -23,7 +23,11 @@ REQUIRED_ENTRY_POINTS = (
     "QuarantineStore",
     "ingest_raw",
     "reap_orphans",
+    "reaper_schedule",
     "listener_regression_probe",
+    "LengthRejected",
+    "UnsafeQuarantineEntry",
+    "t3_evidence",
 )
 
 

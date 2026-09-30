@@ -190,6 +190,11 @@ class SecureIngressRedContract(TestCase):
                 result = api.ingest_raw(
                     RawRequest(SENTINEL, {}), content_length=len(SENTINEL),
                     config=self.config, force_failure=phase)
+                self.assertEqual(
+                    result.first_durable_artifact,
+                    "quarantine",
+                    f"{phase}: cleanup is only meaningful after a real Q write",
+                )
                 self.assertEqual(direct_entries(self.config.quarantine_root), {})
                 self.assertTrue(result.cleanup_idempotent)
 
