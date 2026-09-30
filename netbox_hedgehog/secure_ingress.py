@@ -54,6 +54,7 @@ class ReaperReport:
     removed: tuple[str, ...]
     oldest_orphan_seconds: int
     failed: bool = False
+    incident_count: int = 0
 
 
 class QuarantineStore:
@@ -190,19 +191,21 @@ def reaper_schedule(config):
 
 
 def reap_orphans(*, config, now=None):
-    store = QuarantineStore(config); now = time.time() if now is None else now; removed = []
+    store = QuarantineStore(config); now = time.time() if now is None else now; removed = []; incidents = 0; oldest = 0
     fd = store._dirfd()
     try:
         for entry in os.scandir(store.root):
-            if not _OPAQUE.fullmatch(entry.name): continue
             st = entry.stat(follow_symlinks=False)
-            age = now - st.st_mtime
+            age = max(0, int(now - st.st_mtime)); oldest = max(oldest, age)
+            if not _OPAQUE.fullmatch(entry.name) or not stat.S_ISREG(st.st_mode) or st.st_nlink != 1:
+                incidents += 1
+                continue
             if (stat.S_ISREG(st.st_mode) and st.st_nlink == 1 and age >=
                     config.orphan_bound_seconds + config.clock_skew_seconds):
                 try: os.unlink(entry.name, dir_fd=fd); removed.append(entry.name)
                 except FileNotFoundError: pass
     finally: os.close(fd)
-    return ReaperReport(tuple(removed), 0)
+    return ReaperReport(tuple(removed), oldest, bool(incidents), incidents)
 
 
 @dataclass(frozen=True)
@@ -223,6 +226,12 @@ class _Evidence:
 
 def t3_evidence(*, config, sentinel):
     payloads = str(list(InterchangeAudit.objects.values_list('payload', flat=True)))
+    roots = (config.quarantine_root, config.media_root, config.default_storage_root,
+             config.static_root, config.scripts_root, config.reports_root,
+             config.ordinary_temp_root, config.application_root)
+    filesystem_content = ''.join(
+        path.read_text(errors='ignore') for root in roots if root.exists()
+        for path in root.rglob('*') if path.is_file() and not path.is_symlink())
     rows = {
         'web_raw_ingress': ('R03', 'raw body/client metadata absent'),
         'quarantine_filesystem': ('R04', 'raw bytes absent after terminal cleanup'),
@@ -234,5 +243,5 @@ def t3_evidence(*, config, sentinel):
         'exception_logging': ('R12', 'handled paths omit submitted content'),
         'media_default_storage': ('R01', 'Q outside media/default storage'),
     }
-    return _Evidence(rows, sentinel in payloads,
+    return _Evidence(rows, sentinel in payloads or sentinel in filesystem_content,
                      InterchangeAudit.objects.filter(outcome='ui-import-failed').exists())

@@ -272,6 +272,9 @@ class SecureIngressRedContract(TestCase):
             (now - TEST_ORPHAN_BOUND_SECONDS - TEST_CLOCK_SKEW_SECONDS - 1,) * 2,
         )
         active = launch_writer(self.config.quarantine_root / ("2" * 32), SENTINEL)
+        incident = self.config.quarantine_root / "orphan"
+        incident.write_bytes(SENTINEL)
+        os.utime(incident, (now - TEST_ORPHAN_BOUND_SECONDS - TEST_CLOCK_SKEW_SECONDS - 1,) * 2)
         self.assertEqual(active.stdout.readline().strip(), "Q-WRITTEN")
         try:
             report1 = api.reap_orphans(config=self.config, now=now)
@@ -283,7 +286,9 @@ class SecureIngressRedContract(TestCase):
         self.assertTrue((self.config.quarantine_root / ("2" * 32)).exists())
         self.assertEqual(report2.removed, ())
         self.assertNotIn(SENTINEL.decode(), str(report1))
-        self.assertLessEqual(report1.oldest_orphan_seconds, TEST_ORPHAN_BOUND_SECONDS)
+        self.assertGreater(report1.oldest_orphan_seconds, TEST_ORPHAN_BOUND_SECONDS)
+        self.assertTrue(report1.failed)
+        self.assertEqual(report1.incident_count, 1)
 
     @ingress_red("R11")
     def test_r11_unit_listener_shapes(self):
@@ -338,7 +343,9 @@ class SecureIngressRedControls(SimpleTestCase):
             "Unit access/error logs", "container logs", "InterchangeAudit", "exception/logging",
             "media/default storage",
         })
-        self.assertEqual({path.status for path in INGRESS_RED_INVENTORY.paths}, {"asserted"})
+        statuses = {path.name: path.status for path in INGRESS_RED_INVENTORY.paths}
+        self.assertEqual(statuses["InterchangeAudit"], "asserted")
+        self.assertEqual({status for name, status in statuses.items() if name != "InterchangeAudit"}, {"unverified"})
         self.assertTrue({row for row, _detail in T3_INGRESS_ROWS.values()} <= row_ids)
 
     def test_real_private_directory_and_no_follow_observer(self):

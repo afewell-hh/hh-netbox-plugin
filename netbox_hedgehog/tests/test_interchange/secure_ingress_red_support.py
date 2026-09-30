@@ -132,14 +132,14 @@ INGRESS_RED_INVENTORY = SeamInventory(
     notes=("#703 internal-only quarantine/reaper evidence. Each asserted path is "
            "paired with its #701 GREEN row; no public upload surface exists."),
     paths=(
-        EmissionPath("web raw ingress", "import_template", "asserted", "R03 raw-byte and metadata absence"),
-        EmissionPath("quarantine filesystem", "retention_backup", "asserted", "R04 real Q cleanup observation"),
-        EmissionPath("terminal cleanup", "retention_backup", "asserted", "R05 terminal delete/incident evidence"),
-        EmissionPath("isolated reaper", "retention_backup", "asserted", "R10 aggregate health, no raw content"),
-        EmissionPath("Unit access/error logs", "log", "asserted", "R11 admission record, not application audit"),
-        EmissionPath("container logs", "log", "asserted", "R12 sentinel/path metadata absence"),
+        EmissionPath("web raw ingress", "import_template", "unverified", "R03 raw-byte and metadata absence"),
+        EmissionPath("quarantine filesystem", "retention_backup", "unverified", "R04 real Q cleanup observation"),
+        EmissionPath("terminal cleanup", "retention_backup", "unverified", "R05 terminal delete/incident evidence"),
+        EmissionPath("isolated reaper", "retention_backup", "unverified", "R10 aggregate health, no raw content"),
+        EmissionPath("Unit access/error logs", "log", "unverified", "R11 admission record, not application audit"),
+        EmissionPath("container logs", "log", "unverified", "R12 sentinel/path metadata absence"),
         EmissionPath("InterchangeAudit", "changelog", "asserted", "R07 minimal failure audit, no raw content"),
-        EmissionPath("exception/logging", "error_handling", "asserted", "R12 handled and incident paths"),
-        EmissionPath("media/default storage", "retention_backup", "asserted", "R01 Q isolation/non-web access"),
+        EmissionPath("exception/logging", "error_handling", "unverified", "R12 handled and incident paths"),
+        EmissionPath("media/default storage", "retention_backup", "unverified", "R01 Q isolation/non-web access"),
     ),
 )
