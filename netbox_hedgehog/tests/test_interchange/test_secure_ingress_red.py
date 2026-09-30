@@ -196,7 +196,12 @@ class SecureIngressRedContract(TestCase):
                     f"{phase}: cleanup is only meaningful after a real Q write",
                 )
                 self.assertEqual(direct_entries(self.config.quarantine_root), {})
-                self.assertTrue(result.cleanup_idempotent)
+                self.assertIs(result.cleanup_idempotent, True)
+
+    def test_r05_cleanup_idempotence_requires_literal_true(self):
+        """A truthy status is not evidence of the terminal-cleanup contract."""
+        with self.assertRaises(AssertionError):
+            self.assertIs("no", True)
 
     @ingress_red("R06")
     def test_r06_filesystem_no_follow_contract(self):
