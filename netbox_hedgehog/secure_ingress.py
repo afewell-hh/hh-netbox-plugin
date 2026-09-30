@@ -196,14 +196,17 @@ def reap_orphans(*, config, now=None):
     try:
         for entry in os.scandir(store.root):
             st = entry.stat(follow_symlinks=False)
-            age = max(0, int(now - st.st_mtime)); oldest = max(oldest, age)
+            age = max(0, int(now - st.st_mtime))
             if not _OPAQUE.fullmatch(entry.name) or not stat.S_ISREG(st.st_mode) or st.st_nlink != 1:
+                oldest = max(oldest, age)
                 incidents += 1
                 continue
             if (stat.S_ISREG(st.st_mode) and st.st_nlink == 1 and age >=
                     config.orphan_bound_seconds + config.clock_skew_seconds):
                 try: os.unlink(entry.name, dir_fd=fd); removed.append(entry.name)
                 except FileNotFoundError: pass
+            else:
+                oldest = max(oldest, age)
     finally: os.close(fd)
     return ReaperReport(tuple(removed), oldest, bool(incidents), incidents)
 
