@@ -182,6 +182,10 @@ class SecureIngressRedContract(TestCase):
         self.assertEqual(direct_entries(self.config.quarantine_root), {})
         self.assertIsNone(result.fetch_url)
 
+    def assert_r05_cleanup_idempotence(self, value):
+        """R05 accepts only the explicit terminal-cleanup success signal."""
+        self.assertIs(value, True)
+
     @ingress_red("R05")
     def test_r05_every_handled_failure_deletes_q(self):
         api = require_secure_ingress()
@@ -196,12 +200,12 @@ class SecureIngressRedContract(TestCase):
                     f"{phase}: cleanup is only meaningful after a real Q write",
                 )
                 self.assertEqual(direct_entries(self.config.quarantine_root), {})
-                self.assertIs(result.cleanup_idempotent, True)
+                self.assert_r05_cleanup_idempotence(result.cleanup_idempotent)
 
     def test_r05_cleanup_idempotence_requires_literal_true(self):
-        """A truthy status is not evidence of the terminal-cleanup contract."""
+        """Bind the truthy-non-boolean negative to the assertion R05 uses."""
         with self.assertRaises(AssertionError):
-            self.assertIs("no", True)
+            self.assert_r05_cleanup_idempotence("no")
 
     @ingress_red("R06")
     def test_r06_filesystem_no_follow_contract(self):
