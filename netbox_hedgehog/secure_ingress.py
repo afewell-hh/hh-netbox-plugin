@@ -51,10 +51,23 @@ class ReaperSchedule:
 
 @dataclass(frozen=True)
 class ReaperReport:
+    """Per-run health data, with current state separate from observed history.
+
+    ``failed`` and ``incident_count`` describe unresolved incidents this run.
+    ``oldest_orphan_seconds`` describes entries remaining after cleanup.
+    ``oldest_observed_seconds`` and ``bound_exceeded_count`` include entries
+    subsequently removed: successful cleanup cannot erase a retention breach.
+    The latter count uses the configured orphan bound, strictly exceeded;
+    cleanup's clock-skew allowance does not extend that policy bound.
+    Operators own scheduling and alert transport. These aggregate observations
+    do not introduce a new alert threshold or change ``failed`` semantics.
+    """
     removed: tuple[str, ...]
     oldest_orphan_seconds: int
     failed: bool = False
     incident_count: int = 0
+    bound_exceeded_count: int = 0
+    oldest_observed_seconds: int = 0
 
 
 class QuarantineStore:
@@ -192,11 +205,15 @@ def reaper_schedule(config):
 
 def reap_orphans(*, config, now=None):
     store = QuarantineStore(config); now = time.time() if now is None else now; removed = []; incidents = 0; oldest = 0
+    exceeded = 0
+    observed = 0
     fd = store._dirfd()
     try:
         for entry in os.scandir(store.root):
             st = entry.stat(follow_symlinks=False)
             age = max(0, int(now - st.st_mtime))
+            observed = max(observed, age)
+            exceeded += age > config.orphan_bound_seconds
             if not _OPAQUE.fullmatch(entry.name) or not stat.S_ISREG(st.st_mode) or st.st_nlink != 1:
                 oldest = max(oldest, age)
                 incidents += 1
@@ -208,7 +225,8 @@ def reap_orphans(*, config, now=None):
             else:
                 oldest = max(oldest, age)
     finally: os.close(fd)
-    return ReaperReport(tuple(removed), oldest, bool(incidents), incidents)
+    return ReaperReport(tuple(removed), oldest, bool(incidents), incidents,
+                        exceeded, observed)
 
 
 @dataclass(frozen=True)

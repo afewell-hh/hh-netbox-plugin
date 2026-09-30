@@ -288,7 +288,7 @@ class SecureIngressRedContract(TestCase):
         self.assertTrue(report1.failed)
         self.assertEqual(report1.incident_count, 1)
 
-    def test_reaper_report_is_the_complete_aggregate_health_contract(self):
+    def test_reaper_report_counts_unresolved_incidents_and_age(self):
         """Operators alert from this report; they do not reconstruct its state."""
         api = require_secure_ingress()
         now = 1_000_000
@@ -308,6 +308,52 @@ class SecureIngressRedContract(TestCase):
         self.assertEqual(report.removed, ("3" * 32,))
         self.assertNotIn("unsafe-a", str(report))
         self.assertNotIn("unsafe-b", str(report))
+
+    def test_reaper_report_preserves_breach_after_successful_cleanup(self):
+        api = require_secure_ingress()
+        now = 1_000_000
+        entry = self.config.quarantine_root / ("4" * 32)
+        entry.write_bytes(SENTINEL)
+        os.utime(entry, (now - 108000,) * 2)
+
+        report = api.reap_orphans(config=self.config, now=now)
+
+        self.assertFalse(entry.exists())
+        self.assertEqual(report.oldest_orphan_seconds, 0)
+        self.assertEqual(report.bound_exceeded_count, 1)
+        self.assertEqual(report.oldest_observed_seconds, 108000)
+        self.assertEqual(report.incident_count, 0)
+        self.assertIs(report.failed, False)
+        # A new run has no historical entries; evidence is per run.
+        clean = api.reap_orphans(config=self.config, now=now)
+        self.assertEqual(clean.bound_exceeded_count, 0)
+        self.assertEqual(clean.oldest_observed_seconds, 0)
+
+    def test_reaper_report_bound_observation_includes_unsafe_entries(self):
+        api = require_secure_ingress()
+        now = 1_000_000
+        entry = self.config.quarantine_root / "unsafe"
+        entry.write_bytes(SENTINEL)
+        os.utime(entry, (now - 108000,) * 2)
+        report = api.reap_orphans(config=self.config, now=now)
+        self.assertTrue(entry.exists())
+        self.assertIs(report.failed, True)
+        self.assertEqual(report.incident_count, 1)
+        self.assertEqual(report.bound_exceeded_count, 1)
+        self.assertEqual(report.oldest_observed_seconds, 108000)
+        self.assertEqual(report.oldest_orphan_seconds, 108000)
+
+    def test_reaper_report_observed_bound_is_strict_and_configurable(self):
+        api = require_secure_ingress()
+        now = 1_000_000
+        entry = self.config.quarantine_root / ("5" * 32)
+        entry.write_bytes(SENTINEL)
+        os.utime(entry, (now - self.config.orphan_bound_seconds,) * 2)
+        at_bound = api.reap_orphans(config=self.config, now=now)
+        self.assertEqual(at_bound.bound_exceeded_count, 0)
+        past_bound = api.reap_orphans(config=self.config, now=now + 1)
+        self.assertEqual(past_bound.bound_exceeded_count, 1)
+        self.assertEqual(past_bound.oldest_observed_seconds, self.config.orphan_bound_seconds + 1)
 
     @ingress_red("R11")
     def test_r11_unit_listener_shapes(self):
