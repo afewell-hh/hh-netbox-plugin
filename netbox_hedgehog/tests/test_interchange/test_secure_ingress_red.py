@@ -18,7 +18,7 @@ import signal
 import stat
 import tempfile
 import unittest
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 
 from django.test import SimpleTestCase, TestCase
@@ -52,7 +52,6 @@ TEST_ACTIVE_WRITE_GRACE_SECONDS = 13
 TEST_CLOCK_SKEW_SECONDS = 5
 TEST_REAPER_INTERVAL_SECONDS = 60 * 60
 TEST_ORPHAN_BOUND_SECONDS = 24 * 60 * 60
-TEST_HEALTH_FAILURE_THRESHOLD = 2
 SENTINEL = b"HH701_RAW_BYTES_MUST_NOT_SURVIVE"
 
 
@@ -80,12 +79,10 @@ RED_ROWS = (
 
 
 def ingress_red(row: str):
-    """Mark a claim as expected failure and retain a machine-readable row id."""
+    """Retain a machine-readable #701 row id after deliberate GREEN conversion."""
     def decorate(method):
         method._ingress_red_row = row
-        wrapped = unittest.expectedFailure(method)
-        wrapped._ingress_red_row = row
-        return wrapped
+        return method
     return decorate
 
 
@@ -129,7 +126,6 @@ class SecureIngressRedContract(TestCase):
             clock_skew_seconds=TEST_CLOCK_SKEW_SECONDS,
             reaper_interval_seconds=TEST_REAPER_INTERVAL_SECONDS,
             orphan_bound_seconds=TEST_ORPHAN_BOUND_SECONDS,
-            health_failure_threshold=TEST_HEALTH_FAILURE_THRESHOLD,
         )
         for path in self.config.__dict__.values():
             if isinstance(path, Path):
@@ -222,6 +218,7 @@ class SecureIngressRedContract(TestCase):
             store.open_existing("link")
         with self.assertRaises(api.UnsafeQuarantineEntry):
             store.open_existing("hard")
+        store.delete(created.quarantine_id)
         self.assertEqual(set(direct_entries(self.config.quarantine_root)), {"hard", "link"})
 
     @ingress_red("R07")
@@ -241,17 +238,17 @@ class SecureIngressRedContract(TestCase):
     @ingress_red("R08")
     def test_r08_abrupt_loss_orphan_contract(self):
         api = require_secure_ingress()
-        child = launch_writer(self.config.quarantine_root / "orphan", SENTINEL)
+        child = launch_writer(self.config.quarantine_root / ("0" * 32), SENTINEL)
         self.assertEqual(child.stdout.readline().strip(), "Q-WRITTEN")
         child.kill()
         self.assertEqual(child.wait(timeout=5), -signal.SIGKILL)
         now = 1_000_000
         os.utime(
-            self.config.quarantine_root / "orphan",
+            self.config.quarantine_root / ("0" * 32),
             (now - TEST_ORPHAN_BOUND_SECONDS - TEST_CLOCK_SKEW_SECONDS - 1,) * 2,
         )
         api.reap_orphans(config=self.config, now=now)
-        self.assertFalse((self.config.quarantine_root / "orphan").exists())
+        self.assertFalse((self.config.quarantine_root / ("0" * 32)).exists())
 
     @ingress_red("R09")
     def test_r09_clock_and_schedule_are_configurable(self):
@@ -266,13 +263,16 @@ class SecureIngressRedContract(TestCase):
     def test_r10_reaper_idempotence_race_health(self):
         api = require_secure_ingress()
         now = 1_000_000
-        orphan = self.config.quarantine_root / "old"
+        orphan = self.config.quarantine_root / ("1" * 32)
         orphan.write_bytes(SENTINEL)
         os.utime(
             orphan,
             (now - TEST_ORPHAN_BOUND_SECONDS - TEST_CLOCK_SKEW_SECONDS - 1,) * 2,
         )
-        active = launch_writer(self.config.quarantine_root / "active", SENTINEL)
+        active = launch_writer(self.config.quarantine_root / ("2" * 32), SENTINEL)
+        incident = self.config.quarantine_root / "orphan"
+        incident.write_bytes(SENTINEL)
+        os.utime(incident, (now - TEST_ORPHAN_BOUND_SECONDS - TEST_CLOCK_SKEW_SECONDS - 1,) * 2)
         self.assertEqual(active.stdout.readline().strip(), "Q-WRITTEN")
         try:
             report1 = api.reap_orphans(config=self.config, now=now)
@@ -281,10 +281,154 @@ class SecureIngressRedContract(TestCase):
             active.kill()
             active.wait(timeout=5)
         self.assertFalse(orphan.exists())
-        self.assertTrue((self.config.quarantine_root / "active").exists())
+        self.assertTrue((self.config.quarantine_root / ("2" * 32)).exists())
         self.assertEqual(report2.removed, ())
         self.assertNotIn(SENTINEL.decode(), str(report1))
-        self.assertLessEqual(report1.oldest_orphan_seconds, TEST_ORPHAN_BOUND_SECONDS)
+        self.assertGreater(report1.oldest_orphan_seconds, TEST_ORPHAN_BOUND_SECONDS)
+        self.assertTrue(report1.failed)
+        self.assertEqual(report1.incident_count, 1)
+
+    def test_reaper_report_counts_unresolved_incidents_and_age(self):
+        """Operators alert from this report; they do not reconstruct its state."""
+        api = require_secure_ingress()
+        now = 1_000_000
+        for name in ("unsafe-a", "unsafe-b"):
+            entry = self.config.quarantine_root / name
+            entry.write_bytes(SENTINEL)
+            os.utime(entry, (now - 777,) * 2)
+        safe = self.config.quarantine_root / ("3" * 32)
+        safe.write_bytes(SENTINEL)
+        os.utime(safe, (now - TEST_ORPHAN_BOUND_SECONDS - TEST_CLOCK_SKEW_SECONDS - 1,) * 2)
+
+        report = api.reap_orphans(config=self.config, now=now)
+
+        self.assertTrue(report.failed, "first unresolved incident is a failure")
+        self.assertEqual(report.incident_count, 2)
+        self.assertEqual(report.oldest_orphan_seconds, 777)
+        self.assertEqual(report.removed, ("3" * 32,))
+        self.assertNotIn("unsafe-a", str(report))
+        self.assertNotIn("unsafe-b", str(report))
+
+    def test_reaper_report_alerts_on_unresolved_incident_without_breach(self):
+        api = require_secure_ingress()
+        now = 1_000_000
+        clean = api.reap_orphans(config=self.config, now=now)
+        self.assertIs(clean.failed, False)
+        self.assertIs(clean.alert_required, False)
+        entry = self.config.quarantine_root / "unsafe"
+        entry.write_bytes(SENTINEL)
+        os.utime(entry, (now - 10,) * 2)
+
+        report = api.reap_orphans(config=self.config, now=now)
+
+        self.assertTrue(entry.exists())
+        self.assertEqual(report.incident_count, 1)
+        self.assertEqual(report.bound_exceeded_count, 0)
+        self.assertIs(report.failed, True)
+        self.assertIs(report.alert_required, True)
+        self.assertNotIn(SENTINEL.decode(), str(report))
+        self.assertNotIn("unsafe", str(report))
+
+    def test_reaper_report_preserves_breach_after_successful_cleanup(self):
+        api = require_secure_ingress()
+        now = 1_000_000
+        entry = self.config.quarantine_root / ("4" * 32)
+        entry.write_bytes(SENTINEL)
+        os.utime(entry, (now - 108000,) * 2)
+
+        report = api.reap_orphans(config=self.config, now=now)
+
+        self.assertFalse(entry.exists())
+        self.assertEqual(report.oldest_orphan_seconds, 0)
+        self.assertEqual(report.bound_exceeded_count, 1)
+        self.assertEqual(report.oldest_observed_seconds, 108000)
+        self.assertEqual(report.incident_count, 0)
+        self.assertIs(report.failed, False)
+        self.assertIs(report.alert_required, True)
+        # A new run has no historical entries; evidence is per run.
+        clean = api.reap_orphans(config=self.config, now=now)
+        self.assertEqual(clean.bound_exceeded_count, 0)
+        self.assertEqual(clean.oldest_observed_seconds, 0)
+        self.assertEqual(clean.oldest_orphan_seconds, 0)
+        self.assertEqual(clean.incident_count, 0)
+        self.assertIs(clean.failed, False)
+        self.assertIs(clean.alert_required, False)
+
+    def test_reaper_report_bound_observation_includes_unsafe_entries(self):
+        api = require_secure_ingress()
+        now = 1_000_000
+        entry = self.config.quarantine_root / "unsafe"
+        entry.write_bytes(SENTINEL)
+        os.utime(entry, (now - 108000,) * 2)
+        report = api.reap_orphans(config=self.config, now=now)
+        self.assertTrue(entry.exists())
+        self.assertIs(report.failed, True)
+        self.assertEqual(report.incident_count, 1)
+        self.assertEqual(report.bound_exceeded_count, 1)
+        self.assertEqual(report.oldest_observed_seconds, 108000)
+        self.assertEqual(report.oldest_orphan_seconds, 108000)
+
+    def test_reaper_report_observed_bound_is_strict_and_configurable(self):
+        api = require_secure_ingress()
+        now = 1_000_000
+        entry = self.config.quarantine_root / ("5" * 32)
+        entry.write_bytes(SENTINEL)
+        os.utime(entry, (now - self.config.orphan_bound_seconds,) * 2)
+        at_bound = api.reap_orphans(config=self.config, now=now)
+        self.assertEqual(at_bound.bound_exceeded_count, 0)
+        # Eligible entries are now removed before the bound. Recreate the
+        # independent over-bound observation instead of relying on retention.
+        entry.write_bytes(SENTINEL)
+        os.utime(entry, (now - self.config.orphan_bound_seconds,) * 2)
+        past_bound = api.reap_orphans(config=self.config, now=now + 1)
+        self.assertEqual(past_bound.bound_exceeded_count, 1)
+        self.assertEqual(past_bound.oldest_observed_seconds, self.config.orphan_bound_seconds + 1)
+
+    def test_reaper_eligibility_cadence_skew_margin(self):
+        api = require_secure_ingress()
+        now = 1_000_000
+        for bound, interval, skew, expected in (
+            (86400, 3600, 60, 82740),
+            (1000, 100, 7, 893),
+        ):
+            with self.subTest(bound=bound, interval=interval, skew=skew):
+                config = replace(self.config, orphan_bound_seconds=bound,
+                                 reaper_interval_seconds=interval, clock_skew_seconds=skew)
+                self.assertEqual(api.reaper_schedule(config).reap_eligible_after_seconds, expected)
+                entry = config.quarantine_root / ("6" * 32)
+                entry.write_bytes(SENTINEL)
+                os.utime(entry, (now - expected + 1,) * 2)
+                before = api.reap_orphans(config=config, now=now)
+                self.assertTrue(entry.exists())
+                self.assertEqual(before.removed, ())
+                self.assertIs(before.alert_required, False)
+
+                eligible = api.reap_orphans(config=config, now=now + 1)
+                self.assertFalse(entry.exists())
+                self.assertEqual(eligible.removed, ("6" * 32,))
+                self.assertEqual(eligible.oldest_observed_seconds, expected)
+                self.assertEqual(eligible.bound_exceeded_count, 0)
+                self.assertIs(eligible.failed, False)
+                self.assertIs(eligible.alert_required, False)
+
+    def test_reaper_early_eligibility_preserves_grace_and_unsafe_entries(self):
+        api = require_secure_ingress()
+        now = 1_000_000
+        config = replace(self.config, orphan_bound_seconds=100,
+                         reaper_interval_seconds=90, clock_skew_seconds=5,
+                         active_write_grace_seconds=13)
+        active = config.quarantine_root / ("7" * 32)
+        active.write_bytes(SENTINEL)
+        os.utime(active, (now - 12,) * 2)
+        unsafe = config.quarantine_root / "unsafe"
+        unsafe.write_bytes(SENTINEL)
+        os.utime(unsafe, (now - 90,) * 2)
+        report = api.reap_orphans(config=config, now=now)
+        self.assertTrue(active.exists(), "eligibility must not shorten active-write grace")
+        self.assertTrue(unsafe.exists(), "early cleanup must not delete unsafe entries")
+        self.assertEqual(report.removed, ())
+        self.assertEqual(report.incident_count, 1)
+        self.assertIs(report.failed, True)
 
     @ingress_red("R11")
     def test_r11_unit_listener_shapes(self):
@@ -299,6 +443,8 @@ class SecureIngressRedContract(TestCase):
     @ingress_red("R12")
     def test_r12_t3_secret_absence_and_audit_presence(self):
         api = require_secure_ingress()
+        api.ingest_raw(RawRequest(SENTINEL, {}), content_length=len(SENTINEL),
+                       config=self.config, force_failure="validation")
         evidence = api.t3_evidence(config=self.config, sentinel=SENTINEL.decode())
         self.assertEqual(set(evidence.rows), set(T3_INGRESS_ROWS))
         self.assertFalse(evidence.secret_or_raw_content_found)
@@ -309,7 +455,7 @@ class SecureIngressRedControls(SimpleTestCase):
     """Green controls proving the RED observer fixtures are real, not mocked."""
 
     def test_red_phase_has_no_secure_ingress_production_module(self):
-        self.assertIsNone(importlib.util.find_spec(PRODUCTION_MODULE))
+        self.assertIsNotNone(importlib.util.find_spec(PRODUCTION_MODULE))
 
     def test_matrix_accounts_for_every_expected_feature_claim(self):
         methods = {
@@ -322,7 +468,7 @@ class SecureIngressRedControls(SimpleTestCase):
             if hasattr(method, "_ingress_red_row")
         })
         for row in RED_ROWS:
-            self.assertTrue(getattr(methods[row.method], "__unittest_expecting_failure__", False))
+            self.assertFalse(getattr(methods[row.method], "__unittest_expecting_failure__", False))
 
     def test_t3_inventory_is_machine_accounted_by_red_rows(self):
         row_ids = {row.identifier for row in RED_ROWS}
@@ -337,7 +483,9 @@ class SecureIngressRedControls(SimpleTestCase):
             "Unit access/error logs", "container logs", "InterchangeAudit", "exception/logging",
             "media/default storage",
         })
-        self.assertEqual({path.status for path in INGRESS_RED_INVENTORY.paths}, {"unverified"})
+        statuses = {path.name: path.status for path in INGRESS_RED_INVENTORY.paths}
+        self.assertEqual(statuses["InterchangeAudit"], "asserted")
+        self.assertEqual({status for name, status in statuses.items() if name != "InterchangeAudit"}, {"unverified"})
         self.assertTrue({row for row, _detail in T3_INGRESS_ROWS.values()} <= row_ids)
 
     def test_real_private_directory_and_no_follow_observer(self):
