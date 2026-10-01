@@ -35,6 +35,7 @@ REQUIRED_ENTRY_POINTS = (
     "health_state",
     "lane_harness_spec",
     "DeploymentRejected",
+    "HarnessEvidenceMissing",
 )
 
 #: Mount points a reaper identity must not be able to reach. Named rather than
@@ -43,6 +44,14 @@ REQUIRED_ENTRY_POINTS = (
 FORBIDDEN_REAPER_MOUNTS = (
     "media", "static", "scripts", "reports", "default_storage", "ordinary_temp",
 )
+
+#: What a lane harness run must independently observe. ``mount_isolation`` is
+#: listed separately from ``uid_isolation``: a correct uid with a media mount
+#: is still a broken deployment, and #705 requires both.
+REQUIRED_HARNESS_OBSERVATIONS = frozenset({
+    "accepted_raw", "oversize_413", "chunked_411", "no_listener_spool",
+    "uid_isolation", "mount_isolation", "no_public_upload_route",
+})
 
 #: #703 approved v1 defaults. Declared here only so a row can prove the adapter
 #: reads them from configuration instead of hardcoding them; #705 invents no
@@ -141,7 +150,7 @@ def run_as_child(code: str, *args: str) -> subprocess.CompletedProcess:
 #: Rows whose claim is about deployment shape rather than Python behaviour.
 #: Recorded so a reader can tell which evidence a GREEN implementation must
 #: supply from a real container rather than from this suite.
-DEPLOYMENT_EVIDENCE_ROWS = frozenset({"A01", "A02", "A11", "A12"})
+DEPLOYMENT_EVIDENCE_ROWS = frozenset({"A01", "A02", "A11", "A12", "A15", "A17"})
 
 
 @dataclass(frozen=True)
@@ -154,3 +163,113 @@ class AdapterRow:
 
 def rows_for(requirement: str, rows) -> tuple[AdapterRow, ...]:
     return tuple(row for row in rows if row.requirement == requirement)
+
+
+# --- deficient stand-ins used by the vacuity controls ---------------------
+
+def build_permissive_stub():
+    """A module whose every entry point is a MagicMock.
+
+    Rejects rows that assert nothing at all. Necessary but, as #706 review
+    showed, nowhere near sufficient.
+    """
+    import types
+    from unittest.mock import MagicMock
+
+    module = types.ModuleType(ADAPTER_MODULE)
+    for name in REQUIRED_ENTRY_POINTS:
+        setattr(module, name, MagicMock(name=name))
+    module.DeploymentRejected = type("DeploymentRejected", (Exception,), {})
+    module.HarnessEvidenceMissing = type("HarnessEvidenceMissing", (Exception,), {})
+    return module
+
+
+def build_deficient_stub():
+    """A *typed* adapter that looks right and behaves wrongly.
+
+    Dev B built this during #706 review and it passed eleven of twelve rows,
+    which the MagicMock control could not detect. It is kept here so that
+    adversary runs on every suite execution instead of depending on a reviewer
+    thinking of it again. Each deficiency below is a real failure mode:
+
+      * a validator that implements only the checks the rows happen to probe;
+      * one that repairs an unsafe mode and *then* rejects, so rejection alone
+        looks correct while the evidence has been destroyed;
+      * an adapter that re-derives the alert verdict instead of reading it;
+      * health that fabricates its age, always alerts, and retains everything;
+      * a harness that is a manifest and nothing more.
+    """
+    import os as _os
+    import stat as _stat
+    import types
+    from types import SimpleNamespace
+
+    module = types.ModuleType(ADAPTER_MODULE)
+
+    class DeploymentRejected(Exception):
+        pass
+
+    class HarnessEvidenceMissing(Exception):
+        pass
+
+    def adapter_spec(fixture):
+        return SimpleNamespace(
+            reaper_uid=fixture.reaper_uid,
+            quarantine_owner_uid=fixture.reaper_uid,
+            web_service_name="web",
+            reaper_service_name="reaper",
+            reaper_mount_points=[str(fixture.quarantine_root)])
+
+    def validate_deployment(fixture):
+        if fixture.max_raw_bytes != fixture.unit_route_cap_bytes:
+            raise DeploymentRejected()
+        if fixture.derived_eligibility_seconds <= fixture.active_write_grace_seconds:
+            raise DeploymentRejected()
+        for root in fixture.forbidden_roots.values():
+            if (fixture.quarantine_root == root
+                    or str(fixture.quarantine_root).startswith(f"{root}/")):
+                raise DeploymentRejected()
+        if fixture.reaper_uid == 0 or fixture.reaper_uid != fixture.web_uid:
+            raise DeploymentRejected()
+        if not fixture.quarantine_root.exists():
+            raise DeploymentRejected()
+        st = _os.lstat(fixture.quarantine_root)
+        if _stat.S_IMODE(st.st_mode) != 0o700:
+            _os.chmod(fixture.quarantine_root, 0o700)
+            raise DeploymentRejected()
+        return True
+
+    def run_scheduled_reap(fixture, report=None, missed=False):
+        if missed:
+            return SimpleNamespace(alerting=True, state="missed")
+        return SimpleNamespace(
+            alerting=report.failed or report.bound_exceeded_count > 0, state="ran")
+
+    def health_state(fixture, missed_runs=0, seconds_since_success=0,
+                     last_report=None, history_limit=None, previous=None,
+                     last_run_failed=False):
+        history = list(previous.history) if previous is not None else []
+        if last_report is not None:
+            history.append(last_report)
+        return SimpleNamespace(alerting=True, seconds_since_success=0,
+                               history=history, history_limit=len(history) or 1)
+
+    def lane_harness_spec(fixture, artifact_dir=None):
+        return SimpleNamespace(
+            is_lane_only=True,
+            unit_route_cap_bytes=fixture.unit_route_cap_bytes,
+            required_observations=set(REQUIRED_HARNESS_OBSERVATIONS),
+            exposes_public_upload=False,
+            pinned_unit_version="1.34.2",
+            render=lambda: [],
+            observe=lambda: SimpleNamespace(observations={}, unit_version="1.34.2"),
+            verify=lambda evidence: True)
+
+    module.DeploymentRejected = DeploymentRejected
+    module.HarnessEvidenceMissing = HarnessEvidenceMissing
+    module.AdapterSpec = adapter_spec
+    module.validate_deployment = validate_deployment
+    module.run_scheduled_reap = run_scheduled_reap
+    module.health_state = health_state
+    module.lane_harness_spec = lane_harness_spec
+    return module
