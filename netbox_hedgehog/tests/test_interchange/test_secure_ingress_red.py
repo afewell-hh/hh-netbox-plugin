@@ -18,7 +18,7 @@ import signal
 import stat
 import tempfile
 import unittest
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 
 from django.test import SimpleTestCase, TestCase
@@ -376,9 +376,59 @@ class SecureIngressRedContract(TestCase):
         os.utime(entry, (now - self.config.orphan_bound_seconds,) * 2)
         at_bound = api.reap_orphans(config=self.config, now=now)
         self.assertEqual(at_bound.bound_exceeded_count, 0)
+        # Eligible entries are now removed before the bound. Recreate the
+        # independent over-bound observation instead of relying on retention.
+        entry.write_bytes(SENTINEL)
+        os.utime(entry, (now - self.config.orphan_bound_seconds,) * 2)
         past_bound = api.reap_orphans(config=self.config, now=now + 1)
         self.assertEqual(past_bound.bound_exceeded_count, 1)
         self.assertEqual(past_bound.oldest_observed_seconds, self.config.orphan_bound_seconds + 1)
+
+    def test_reaper_eligibility_cadence_skew_margin(self):
+        api = require_secure_ingress()
+        now = 1_000_000
+        for bound, interval, skew, expected in (
+            (86400, 3600, 60, 82740),
+            (1000, 100, 7, 893),
+        ):
+            with self.subTest(bound=bound, interval=interval, skew=skew):
+                config = replace(self.config, orphan_bound_seconds=bound,
+                                 reaper_interval_seconds=interval, clock_skew_seconds=skew)
+                self.assertEqual(api.reaper_schedule(config).reap_eligible_after_seconds, expected)
+                entry = config.quarantine_root / ("6" * 32)
+                entry.write_bytes(SENTINEL)
+                os.utime(entry, (now - expected + 1,) * 2)
+                before = api.reap_orphans(config=config, now=now)
+                self.assertTrue(entry.exists())
+                self.assertEqual(before.removed, ())
+                self.assertIs(before.alert_required, False)
+
+                eligible = api.reap_orphans(config=config, now=now + 1)
+                self.assertFalse(entry.exists())
+                self.assertEqual(eligible.removed, ("6" * 32,))
+                self.assertEqual(eligible.oldest_observed_seconds, expected)
+                self.assertEqual(eligible.bound_exceeded_count, 0)
+                self.assertIs(eligible.failed, False)
+                self.assertIs(eligible.alert_required, False)
+
+    def test_reaper_early_eligibility_preserves_grace_and_unsafe_entries(self):
+        api = require_secure_ingress()
+        now = 1_000_000
+        config = replace(self.config, orphan_bound_seconds=100,
+                         reaper_interval_seconds=90, clock_skew_seconds=5,
+                         active_write_grace_seconds=13)
+        active = config.quarantine_root / ("7" * 32)
+        active.write_bytes(SENTINEL)
+        os.utime(active, (now - 12,) * 2)
+        unsafe = config.quarantine_root / "unsafe"
+        unsafe.write_bytes(SENTINEL)
+        os.utime(unsafe, (now - 90,) * 2)
+        report = api.reap_orphans(config=config, now=now)
+        self.assertTrue(active.exists(), "eligibility must not shorten active-write grace")
+        self.assertTrue(unsafe.exists(), "early cleanup must not delete unsafe entries")
+        self.assertEqual(report.removed, ())
+        self.assertEqual(report.incident_count, 1)
+        self.assertIs(report.failed, True)
 
     @ingress_red("R11")
     def test_r11_unit_listener_shapes(self):

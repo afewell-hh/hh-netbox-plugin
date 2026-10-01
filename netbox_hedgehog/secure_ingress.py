@@ -48,6 +48,15 @@ class ReaperSchedule:
     active_write_grace_seconds: int
     clock_skew_seconds: int
 
+    @property
+    def reap_eligible_after_seconds(self) -> int:
+        """Cadence/skew safety margin, not a new user-facing retention period.
+
+        The deployment adapter must independently surface missed/failed runs;
+        this margin cannot make a stopped scheduler meet the orphan bound.
+        """
+        return self.orphan_bound_seconds - self.interval_seconds - self.clock_skew_seconds
+
 
 @dataclass(frozen=True)
 class ReaperReport:
@@ -211,6 +220,7 @@ def reaper_schedule(config):
 
 def reap_orphans(*, config, now=None):
     store = QuarantineStore(config); now = time.time() if now is None else now; removed = []; incidents = 0; oldest = 0
+    schedule = reaper_schedule(config)
     exceeded = 0
     observed = 0
     fd = store._dirfd()
@@ -224,8 +234,8 @@ def reap_orphans(*, config, now=None):
                 oldest = max(oldest, age)
                 incidents += 1
                 continue
-            if (stat.S_ISREG(st.st_mode) and st.st_nlink == 1 and age >=
-                    config.orphan_bound_seconds + config.clock_skew_seconds):
+            if (age >= schedule.reap_eligible_after_seconds
+                    and age >= schedule.active_write_grace_seconds):
                 try: os.unlink(entry.name, dir_fd=fd); removed.append(entry.name)
                 except FileNotFoundError: pass
             else:
