@@ -309,6 +309,26 @@ class SecureIngressRedContract(TestCase):
         self.assertNotIn("unsafe-a", str(report))
         self.assertNotIn("unsafe-b", str(report))
 
+    def test_reaper_report_alerts_on_unresolved_incident_without_breach(self):
+        api = require_secure_ingress()
+        now = 1_000_000
+        clean = api.reap_orphans(config=self.config, now=now)
+        self.assertIs(clean.failed, False)
+        self.assertIs(clean.alert_required, False)
+        entry = self.config.quarantine_root / "unsafe"
+        entry.write_bytes(SENTINEL)
+        os.utime(entry, (now - 10,) * 2)
+
+        report = api.reap_orphans(config=self.config, now=now)
+
+        self.assertTrue(entry.exists())
+        self.assertEqual(report.incident_count, 1)
+        self.assertEqual(report.bound_exceeded_count, 0)
+        self.assertIs(report.failed, True)
+        self.assertIs(report.alert_required, True)
+        self.assertNotIn(SENTINEL.decode(), str(report))
+        self.assertNotIn("unsafe", str(report))
+
     def test_reaper_report_preserves_breach_after_successful_cleanup(self):
         api = require_secure_ingress()
         now = 1_000_000
@@ -324,10 +344,15 @@ class SecureIngressRedContract(TestCase):
         self.assertEqual(report.oldest_observed_seconds, 108000)
         self.assertEqual(report.incident_count, 0)
         self.assertIs(report.failed, False)
+        self.assertIs(report.alert_required, True)
         # A new run has no historical entries; evidence is per run.
         clean = api.reap_orphans(config=self.config, now=now)
         self.assertEqual(clean.bound_exceeded_count, 0)
         self.assertEqual(clean.oldest_observed_seconds, 0)
+        self.assertEqual(clean.oldest_orphan_seconds, 0)
+        self.assertEqual(clean.incident_count, 0)
+        self.assertIs(clean.failed, False)
+        self.assertIs(clean.alert_required, False)
 
     def test_reaper_report_bound_observation_includes_unsafe_entries(self):
         api = require_secure_ingress()

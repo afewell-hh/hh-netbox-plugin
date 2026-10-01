@@ -59,8 +59,9 @@ class ReaperReport:
     subsequently removed: successful cleanup cannot erase a retention breach.
     The latter count uses the configured orphan bound, strictly exceeded;
     cleanup's clock-skew allowance does not extend that policy bound.
-    Operators own scheduling and alert transport. These aggregate observations
-    do not introduce a new alert threshold or change ``failed`` semantics.
+    Operators own scheduling and alert transport. The hourly isolated reaper
+    adapter must consume ``alert_required``, not recreate its logic: successful
+    cleanup resolves a failure but does not suppress an observed bound breach.
     """
     removed: tuple[str, ...]
     oldest_orphan_seconds: int
@@ -68,6 +69,11 @@ class ReaperReport:
     incident_count: int = 0
     bound_exceeded_count: int = 0
     oldest_observed_seconds: int = 0
+
+    @property
+    def alert_required(self) -> bool:
+        """Alert on unresolved failure or any retention breach observed this run."""
+        return self.failed or self.bound_exceeded_count > 0
 
 
 class QuarantineStore:
