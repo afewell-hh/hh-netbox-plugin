@@ -253,6 +253,26 @@ def shipped_configuration_inventory() -> list[Path]:
     return inventory
 
 
+def scan_for_artifact_references(artifact_names, config_files) -> list[str]:
+    """Report every shipped file that mentions a harness artifact name.
+
+    Extracted so the positive scan and its controlled negative run the *same*
+    code. An assertion written inline beside the loop tests the assertion
+    helper, not the scan: disabling the loop would leave such a negative
+    passing, which is how the previous version of this control was hollow.
+    """
+    violations = []
+    for config in config_files:
+        try:
+            text = config.read_text(encoding="utf-8", errors="ignore")
+        except OSError:
+            continue
+        for name in artifact_names:
+            if name in text:
+                violations.append(f"{config.name}: {name}")
+    return violations
+
+
 # --- deficient stand-ins used by the vacuity controls ---------------------
 
 def build_permissive_stub():

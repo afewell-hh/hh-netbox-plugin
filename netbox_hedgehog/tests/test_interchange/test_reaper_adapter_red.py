@@ -39,6 +39,7 @@ from netbox_hedgehog.tests.test_interchange.reaper_adapter_red_support import (
     build_permissive_stub,
     build_single_fault_stub,
     shipped_configuration_inventory,
+    scan_for_artifact_references,
     MANUAL_GATES,
     ShippedConfigurationUnavailable,
     DEPLOYMENT_EVIDENCE_ROWS,
@@ -542,6 +543,22 @@ class ReaperAdapterRedContract(SimpleTestCase):
             with self.subTest(artifact=path.name):
                 self.assertTrue(path.resolve().is_relative_to(self.artifacts.resolve()))
 
+        names = {path.name for path in written}
+
+        # Controlled negative first, so the scanner is exercised even where no
+        # checkout is reachable. A reference is planted in a disposable decoy;
+        # if the scan were disabled this reports nothing and fails. Placed
+        # before the inventory gate deliberately: behind it, this proof would
+        # be unreachable in exactly the environment CI runs in.
+        decoy_dir = Path(self.temp.name) / "decoy-shipped"
+        decoy_dir.mkdir()
+        decoy = decoy_dir / "workflow.yml"
+        planted_name = sorted(names)[0]
+        decoy.write_text(f"jobs:\n  run:\n    script: {planted_name}\n", encoding="utf-8")
+        self.assertEqual(scan_for_artifact_references(names, [decoy]),
+                         [f"workflow.yml: {planted_name}"],
+                         "the scanner cannot detect a reference it is given")
+
         try:
             shipped = shipped_configuration_inventory()
         except ShippedConfigurationUnavailable:
@@ -554,29 +571,13 @@ class ReaperAdapterRedContract(SimpleTestCase):
                                 "this PR closes #705; the obligation needs an issue that outlives it")
             return
 
-        names = {path.name for path in written}
+        self.assertEqual(scan_for_artifact_references(names, shipped), [],
+                         "a harness artifact name appears in shipped configuration")
         for config in shipped:
-            text = config.read_text(encoding="utf-8", errors="ignore")
-            for name in names:
-                with self.subTest(config=config.name, artifact=name):
-                    self.assertNotIn(name, text)
             self.assertFalse(
                 any(path.resolve().is_relative_to(config.parent.resolve())
                     for path in written),
                 "a harness artifact was written into shipped configuration")
-
-        # Controlled negative: the scan must be able to find a reference when
-        # one exists, or its silence proves nothing. A real file is written
-        # into a disposable copy of the inventory rather than into anything
-        # the repository ships.
-        planted_name = next(iter(names))
-        decoy_dir = Path(self.temp.name) / "decoy-shipped"
-        decoy_dir.mkdir()
-        decoy = decoy_dir / "workflow.yml"
-        decoy.write_text(f"jobs:\n  run:\n    script: {planted_name}\n", encoding="utf-8")
-        self.assertIn(planted_name, decoy.read_text(encoding="utf-8"))
-        with self.assertRaises(AssertionError):
-            self.assertNotIn(planted_name, decoy.read_text(encoding="utf-8"))
 
 class ReaperAdapterRedControls(SimpleTestCase):
     """Controls that pass today, proving the RED rows are honest."""
