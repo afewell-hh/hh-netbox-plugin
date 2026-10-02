@@ -36,6 +36,7 @@ REQUIRED_ENTRY_POINTS = (
     "lane_harness_spec",
     "DeploymentRejected",
     "HarnessEvidenceMissing",
+    "RunOutcome",
 )
 
 #: Mount points a reaper identity must not be able to reach. Named rather than
@@ -165,6 +166,64 @@ def rows_for(requirement: str, rows) -> tuple[AdapterRow, ...]:
     return tuple(row for row in rows if row.requirement == requirement)
 
 
+#: Evidence that cannot be produced from inside the plugin mount, with the
+#: reason. #705 requires such a gate to be named and machine-accounted rather
+#: than left to pass silently or to fail forever in the environment CI uses.
+MANUAL_GATES = {
+    "harness-artifacts-absent-from-shipped-configuration": (
+        "The CI job mounts only netbox_hedgehog/ into the container, so no "
+        "repository checkout is reachable from the test process and the "
+        "shipped workflow/script/compose inventory cannot be read. Scanning "
+        "the grafted tree instead would inspect an empty collection and pass "
+        "vacuously. A17 performs the scan wherever a checkout exists and "
+        "otherwise requires this gate to stay declared, so the obligation is "
+        "visible rather than skipped."
+    ),
+}
+
+
+class ShippedConfigurationUnavailable(AssertionError):
+    """The repository checkout could not be located, so containment is unproven."""
+
+
+def repository_checkout_root() -> Path:
+    """Find the real checkout, walking up from this file.
+
+    Under the CI mount the package is grafted into the NetBox tree, so
+    ``parents[3]`` is ``/opt/netbox/netbox`` -- a directory with no workflows
+    and a ``scripts/`` holding one ``__init__.py``. A containment scan rooted
+    there silently inspects nothing and passes. Locate a checkout marker
+    instead, and fail closed when there is none.
+    """
+    for candidate in Path(__file__).resolve().parents:
+        if (candidate / ".git").exists() or (candidate / "pyproject.toml").exists():
+            return candidate
+    raise ShippedConfigurationUnavailable(
+        "no repository checkout found above "
+        f"{Path(__file__).resolve()}; containment cannot be demonstrated from "
+        "a grafted package mount, so this must fail rather than pass vacuously")
+
+
+def shipped_configuration_inventory() -> list[Path]:
+    """Every shipped file a harness artifact must not appear in.
+
+    Fails closed: an empty inventory means the scan found nothing to check,
+    which is indistinguishable from a clean result and must not be reported
+    as one.
+    """
+    root = repository_checkout_root()
+    files = sorted((root / ".github" / "workflows").glob("*.y*ml"))
+    scripts = root / "scripts"
+    if scripts.is_dir():
+        files += sorted(path for path in scripts.iterdir() if path.is_file())
+    compose = sorted(root.glob("docker-compose*.y*ml"))
+    inventory = files + compose
+    if not inventory:
+        raise ShippedConfigurationUnavailable(
+            f"no shipped workflow, script, or compose file found under {root}")
+    return inventory
+
+
 # --- deficient stand-ins used by the vacuity controls ---------------------
 
 def build_permissive_stub():
@@ -212,6 +271,11 @@ def build_deficient_stub():
     class HarnessEvidenceMissing(Exception):
         pass
 
+    @dataclass(frozen=True)
+    class _RunOutcome:
+        started_at: int
+        succeeded: bool
+
     def adapter_spec(fixture):
         return SimpleNamespace(
             reaper_uid=fixture.reaper_uid,
@@ -245,14 +309,14 @@ def build_deficient_stub():
         return SimpleNamespace(
             alerting=report.failed or report.bound_exceeded_count > 0, state="ran")
 
-    def health_state(fixture, missed_runs=0, seconds_since_success=0,
-                     last_report=None, history_limit=None, previous=None,
-                     last_run_failed=False):
-        history = list(previous.history) if previous is not None else []
-        if last_report is not None:
-            history.append(last_report)
-        return SimpleNamespace(alerting=True, seconds_since_success=0,
-                               history=history, history_limit=len(history) or 1)
+    def health_state(fixture, now=0, last_success_at=0, runs=(),
+                     last_report=None, history_limit=None, previous=None):
+        # Echoes what it is told and keeps nothing: the #706 re-review's
+        # remaining false pass.
+        return SimpleNamespace(
+            alerting=bool(runs and not all(run.succeeded for run in runs)),
+            seconds_since_success=now - last_success_at,
+            history=[], history_limit=history_limit or 1)
 
     def lane_harness_spec(fixture, artifact_dir=None):
         return SimpleNamespace(
@@ -267,9 +331,75 @@ def build_deficient_stub():
 
     module.DeploymentRejected = DeploymentRejected
     module.HarnessEvidenceMissing = HarnessEvidenceMissing
+    module.RunOutcome = _RunOutcome
     module.AdapterSpec = adapter_spec
     module.validate_deployment = validate_deployment
     module.run_scheduled_reap = run_scheduled_reap
     module.health_state = health_state
     module.lane_harness_spec = lane_harness_spec
+    return module
+
+
+def build_single_fault_stub(fault: str):
+    """A competent adapter with exactly one deficiency.
+
+    #706 re-review: one increasingly multi-fault stand-in can mask rows,
+    because an early assertion rejects it before a later rule is reached --
+    A11 tripped on capacity before secrecy was ever evaluated. Each fault is
+    therefore injected on its own, into an otherwise sound stub.
+
+    This is still a test double, not a reference implementation: it exists to
+    be rejected, and only the named fault distinguishes it from a stub that
+    the rows would accept.
+    """
+    import copy as _copy
+    import os as _os
+    import stat as _stat
+    import types
+    from dataclasses import dataclass as _dc
+    from types import SimpleNamespace
+
+    base = build_deficient_stub()
+    module = types.ModuleType(ADAPTER_MODULE)
+    for name in REQUIRED_ENTRY_POINTS:
+        setattr(module, name, getattr(base, name))
+
+    DeploymentRejected = base.DeploymentRejected
+    HarnessEvidenceMissing = base.HarnessEvidenceMissing
+    RunOutcome = base.RunOutcome
+
+    def sound_health(fixture, now=0, last_success_at=0, runs=(),
+                     last_report=None, history_limit=None, previous=None,
+                     _unbounded=False, _raw=False):
+        history = list(previous.history) if previous is not None else []
+        if last_report is not None:
+            kept = last_report if _raw else _redacted(last_report)
+            history.append(kept)
+        limit = history_limit or 1
+        if not _unbounded:
+            history = history[-limit:]
+        elapsed = now - last_success_at
+        failed = any(not run.succeeded for run in runs)
+        return SimpleNamespace(
+            alerting=bool(failed or elapsed > fixture.reaper_interval_seconds),
+            seconds_since_success=elapsed,
+            history=history, history_limit=limit)
+
+    def _redacted(report):
+        return SimpleNamespace(oldest_orphan_seconds=report.oldest_orphan_seconds,
+                               incident_count=report.incident_count)
+
+    if fault == "health_unbounded":
+        module.health_state = lambda *a, **k: sound_health(*a, _unbounded=True, **k)
+    elif fault == "health_retains_raw":
+        module.health_state = lambda *a, **k: sound_health(*a, _raw=True, **k)
+    elif fault == "health_empty_history":
+        def empty(*a, **k):
+            state = sound_health(*a, **k)
+            state.history = []
+            return state
+        module.health_state = empty
+    else:
+        module.health_state = sound_health
+
     return module

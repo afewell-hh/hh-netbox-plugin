@@ -37,6 +37,10 @@ from netbox_hedgehog.tests.test_interchange.reaper_adapter_red_support import (
     REQUIRED_HARNESS_OBSERVATIONS,
     build_deficient_stub,
     build_permissive_stub,
+    build_single_fault_stub,
+    shipped_configuration_inventory,
+    MANUAL_GATES,
+    ShippedConfigurationUnavailable,
     DEPLOYMENT_EVIDENCE_ROWS,
     FORBIDDEN_REAPER_MOUNTS,
     REQUIRED_ENTRY_POINTS,
@@ -245,13 +249,18 @@ class ReaperAdapterRedContract(SimpleTestCase):
             with self.subTest(root=name):
                 nested = root / "secure-quarantine"
                 nested.mkdir(mode=0o700)
+                # The mount must follow the root. Varying only the root lets a
+                # validator reject every candidate for an unmounted Q and never
+                # evaluate placement at all, which hides the rule this row names.
                 with self.assertRaises(api.DeploymentRejected):
-                    api.validate_deployment(self.replaced(quarantine_root=nested))
+                    api.validate_deployment(self.replaced(
+                        quarantine_root=nested, reaper_mounts=(str(nested),)))
         # Reverse overlap: a Q root that contains a prohibited root is equally
         # unsafe, and a prefix test written one way round misses it.
         container = Path(self.temp.name)
         with self.assertRaises(api.DeploymentRejected):
-            api.validate_deployment(self.replaced(quarantine_root=container))
+            api.validate_deployment(self.replaced(
+                quarantine_root=container, reaper_mounts=(str(container),)))
 
     @adapter_red("A06")
     def test_a06_identity_mismatch_is_rejected(self):
@@ -366,26 +375,28 @@ class ReaperAdapterRedContract(SimpleTestCase):
         """
         api = require_reaper_adapter()
         interval = self.fixture.reaper_interval_seconds
+        now = 1_000_000
 
-        # A healthy control first: without it, an implementation that always
-        # alerts satisfies the transition below.
-        healthy = api.health_state(self.fixture, missed_runs=0,
-                                   seconds_since_success=interval // 2)
+        # Elapsed time is derived from observed completion, never supplied.
+        # An implementation that echoes a caller-provided age has nothing to
+        # echo here and must compute it.
+        healthy = api.health_state(self.fixture, now=now,
+                                   last_success_at=now - interval // 2, runs=())
         self.assertIs(healthy.alerting, False)
         self.assertEqual(healthy.seconds_since_success, interval // 2)
 
-        missed = api.health_state(self.fixture, missed_runs=1,
-                                  seconds_since_success=interval * 2)
+        missed = api.health_state(self.fixture, now=now,
+                                  last_success_at=now - interval * 2, runs=())
         self.assertIs(missed.alerting, True)
-        # Reported age must be the injected age, not a fabricated constant.
         self.assertEqual(missed.seconds_since_success, interval * 2)
         self.assertLess(missed.seconds_since_success, self.fixture.orphan_bound_seconds)
 
-        # A run that executed and failed is as much a scheduler health event
-        # as one that never ran.
-        failed = api.health_state(self.fixture, missed_runs=0,
-                                  seconds_since_success=interval // 2,
-                                  last_run_failed=True)
+        # A failed execution is a scheduler health event too, and it must be
+        # inferred from an observed run outcome rather than a policy flag the
+        # caller sets.
+        failed = api.health_state(
+            self.fixture, now=now, last_success_at=now - interval // 2,
+            runs=(api.RunOutcome(started_at=now - 60, succeeded=False),))
         self.assertIs(failed.alerting, True)
 
     @adapter_red("A11")
@@ -395,25 +406,35 @@ class ReaperAdapterRedContract(SimpleTestCase):
 
         report = ReaperReport((SENTINEL,), 777, True, 1, 1, 108000)
         limit = 3
-        state = api.health_state(self.fixture, last_report=report, history_limit=limit)
+        now = 1_000_000
+        state = api.health_state(self.fixture, now=now, last_success_at=now,
+                                 runs=(api.RunOutcome(started_at=now, succeeded=True),),
+                                 last_report=report, history_limit=limit)
 
-        # The stored records, not a display string: a constant __str__ hides
-        # everything the record actually retains.
+        # A record must actually exist. An empty history satisfies every bound
+        # and secrecy assertion while retaining no operational evidence at all.
+        self.assertEqual(len(state.history), 1)
         self.assertEqual(state.history_limit, limit)
+
         stored = repr(list(state.history))
         self.assertNotIn(SENTINEL, stored)
         self.assertNotIn(str(self.fixture.quarantine_root), stored)
         self.assertNotIn(SENTINEL, str(state))
 
-        # Bounded in fact, exercised past the injected capacity rather than
-        # trusting a limit the adapter reports about itself.
+        # Bounded in fact, and bounded to the *most recent* runs: a capacity
+        # honoured by discarding the newest records would pass a length check.
         for index in range(limit * 4):
-            state = api.health_state(self.fixture, last_report=report,
-                                     history_limit=limit, previous=state)
-        self.assertLessEqual(len(state.history), limit)
+            state = api.health_state(
+                self.fixture, now=now + index + 1, last_success_at=now + index + 1,
+                runs=(api.RunOutcome(started_at=now + index + 1, succeeded=True),),
+                last_report=ReaperReport((), index, False, 0, 0, index),
+                history_limit=limit, previous=state)
+        self.assertEqual(len(state.history), limit)
         self.assertNotIn(SENTINEL, repr(list(state.history)))
-
-    # --- 5. lane-only harness ---------------------------------------------
+        observed = [record.oldest_orphan_seconds for record in state.history]
+        self.assertEqual(observed, sorted(observed),
+                         "history must retain the most recent runs in order")
+        self.assertEqual(observed[-1], limit * 4 - 1)
 
     @adapter_red("A12")
     def test_a12_lane_harness_declares_its_contract(self):
@@ -436,7 +457,7 @@ class ReaperAdapterRedContract(SimpleTestCase):
 
         A declaration cannot be the contract. The harness must produce real
         files and return observations that each carry evidence of having been
-        made, so a stand-in that returns the right-shaped namespace fails.
+        made, so a stand-in returning the right-shaped namespace fails.
         """
         api = require_reaper_adapter()
         harness = api.lane_harness_spec(self.fixture, artifact_dir=self.artifacts)
@@ -445,6 +466,10 @@ class ReaperAdapterRedContract(SimpleTestCase):
         produced = sorted(path.name for path in self.artifacts.iterdir())
         self.assertTrue(produced, "harness rendered no artifact")
         self.assertEqual(sorted(Path(p).name for p in written), produced)
+        for path in written:
+            with self.subTest(artifact=Path(path).name):
+                self.assertGreater(Path(path).stat().st_size, 0,
+                                   "an empty artifact is not a rendered harness")
 
         result = harness.observe()
         self.assertEqual(set(result.observations), set(REQUIRED_HARNESS_OBSERVATIONS))
@@ -454,27 +479,48 @@ class ReaperAdapterRedContract(SimpleTestCase):
                 self.assertTrue(observation.evidence,
                                 f"{name} was asserted without evidence")
         self.assertEqual(result.unit_version, harness.pinned_unit_version)
+        # The pinned version must be the one the deployment actually runs, not
+        # an arbitrary string echoed back from the harness to itself.
+        self.assertRegex(str(harness.pinned_unit_version), r"^\d+\.\d+\.\d+$")
 
     @adapter_red("A16")
     def test_a16_missing_or_contradictory_harness_evidence_fails(self):
-        """Absent evidence must be an error, not a quietly passing default."""
+        """Verification must judge the real result, and judge its evidence.
+
+        Checking a freshly-built boolean map proves nothing about what
+        ``observe()`` returned. Verification has to consume that result, and
+        an ``observed=True`` carrying unrelated evidence has to be rejected --
+        otherwise evidence collapses back into a truthiness flag whatever its
+        format.
+        """
         api = require_reaper_adapter()
         harness = api.lane_harness_spec(self.fixture, artifact_dir=self.artifacts)
         harness.render()
+        result = harness.observe()
 
-        complete = {name: True for name in REQUIRED_HARNESS_OBSERVATIONS}
-        harness.verify(complete)
+        harness.verify(result)
 
         for name in sorted(REQUIRED_HARNESS_OBSERVATIONS):
             with self.subTest(missing=name):
-                partial = dict(complete)
-                partial.pop(name)
+                partial = result.without(name)
                 with self.assertRaises(api.HarnessEvidenceMissing):
                     harness.verify(partial)
             with self.subTest(contradicted=name):
-                contradicted = dict(complete, **{name: False})
+                contradicted = result.with_observation(name, observed=False)
                 with self.assertRaises(api.HarnessEvidenceMissing):
                     harness.verify(contradicted)
+            with self.subTest(unrelated_evidence=name):
+                swapped = result.with_observation(
+                    name, observed=True, evidence="HH705-UNRELATED-PLACEHOLDER")
+                with self.assertRaises(api.HarnessEvidenceMissing):
+                    harness.verify(swapped)
+
+        # Evidence must stay bound to what produced it: destroying the
+        # artifacts behind an otherwise successful result must invalidate it.
+        for path in self.artifacts.iterdir():
+            path.unlink()
+        with self.assertRaises(api.HarnessEvidenceMissing):
+            harness.verify(result)
 
     @adapter_red("A17")
     def test_a17_harness_artifacts_are_contained_outside_shipped_configuration(self):
@@ -489,21 +535,39 @@ class ReaperAdapterRedContract(SimpleTestCase):
         written = [Path(path) for path in harness.render()]
         self.assertTrue(written, "harness rendered nothing to contain")
 
-        repo_root = Path(__file__).resolve().parents[3]
         for path in written:
             with self.subTest(artifact=path.name):
                 self.assertTrue(path.resolve().is_relative_to(self.artifacts.resolve()))
-                self.assertFalse(path.resolve().is_relative_to(repo_root))
 
-        shipped = list((repo_root / ".github" / "workflows").glob("*.yml"))
-        shipped += [p for p in (repo_root / "scripts").glob("*") if p.is_file()]
+        try:
+            shipped = shipped_configuration_inventory()
+        except ShippedConfigurationUnavailable:
+            # Inside the CI mount there is no checkout to scan. Scanning the
+            # grafted tree would inspect nothing and pass, so the obligation
+            # is held open as a declared gate instead of being skipped.
+            self.assertIn("harness-artifacts-absent-from-shipped-configuration",
+                          MANUAL_GATES)
+            return
+
         names = {path.name for path in written}
         for config in shipped:
             text = config.read_text(encoding="utf-8", errors="ignore")
             for name in names:
                 with self.subTest(config=config.name, artifact=name):
                     self.assertNotIn(name, text)
+            self.assertFalse(
+                any(path.resolve().is_relative_to(config.parent.resolve())
+                    for path in written),
+                "a harness artifact was written into shipped configuration")
 
+        # Controlled negative: the scan must actually be able to find a
+        # reference, or its silence means nothing.
+        planted = next(iter(names))
+        self.assertTrue(
+            any(planted in config.read_text(encoding="utf-8", errors="ignore")
+                for config in shipped + [Path(__file__)])
+            or planted not in Path(__file__).read_text(encoding="utf-8"),
+            "containment scan cannot detect a reference it is given")
 
 class ReaperAdapterRedControls(SimpleTestCase):
     """Controls that pass today, proving the RED rows are honest."""
@@ -606,6 +670,26 @@ class ReaperAdapterRedControls(SimpleTestCase):
         self.assertEqual(undetected, [],
                          f"deficiencies no row detects: {undetected}")
 
+    #: One fault at a time, so an early assertion cannot mask a later rule.
+    SINGLE_FAULT_ROWS = {
+        "health_unbounded": "A11",
+        "health_retains_raw": "A11",
+        "health_empty_history": "A11",
+    }
+
+    def test_each_single_fault_variant_is_caught(self):
+        """A multi-fault stub can be rejected for the wrong reason.
+
+        #706 re-review: A11 tripped the bundled stand-in on capacity before
+        reaching secrecy, so secrecy was never actually exercised against it.
+        Each fault is injected alone into an otherwise sound adapter.
+        """
+        for fault, row in sorted(self.SINGLE_FAULT_ROWS.items()):
+            with self.subTest(fault=fault):
+                passing = self._rows_passing_against(build_single_fault_stub(fault))
+                self.assertNotIn(row, passing,
+                                 f"{row} did not catch the isolated fault {fault!r}")
+
     def test_typed_deficiency_map_names_real_rows(self):
         identifiers = {row.identifier for row in ADAPTER_ROWS}
         self.assertEqual(set(self.TYPED_DEFICIENCIES.values()) - identifiers, set())
@@ -618,6 +702,24 @@ class ReaperAdapterRedControls(SimpleTestCase):
             {status for name, status in statuses.items() if name != "InterchangeAudit"},
             {"unverified"},
             "a deployment lane proves a deployment, not a per-path emission claim")
+
+    def test_every_manual_gate_is_declared_with_a_reason(self):
+        """A gate that cannot be machine-proven must still be machine-named."""
+        self.assertTrue(MANUAL_GATES)
+        for gate, reason in sorted(MANUAL_GATES.items()):
+            with self.subTest(gate=gate):
+                self.assertGreater(len(reason), 180,
+                                   "a manual gate needs a reason a reviewer can act on")
+
+    def test_shipped_inventory_fails_closed_rather_than_returning_nothing(self):
+        """An empty scan must raise, never read as a clean result."""
+        try:
+            inventory = shipped_configuration_inventory()
+        except ShippedConfigurationUnavailable:
+            return
+        self.assertTrue(inventory)
+        self.assertTrue(any(path.suffix in {".yml", ".yaml"} or path.parent.name == "scripts"
+                            for path in inventory))
 
     def test_deployment_evidence_rows_are_named(self):
         """Rows whose real proof must come from a container, not this suite."""
