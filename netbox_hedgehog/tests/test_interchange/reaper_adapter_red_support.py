@@ -169,15 +169,44 @@ def rows_for(requirement: str, rows) -> tuple[AdapterRow, ...]:
 #: Evidence that cannot be produced from inside the plugin mount, with the
 #: reason. #705 requires such a gate to be named and machine-accounted rather
 #: than left to pass silently or to fail forever in the environment CI uses.
+@dataclass(frozen=True)
+class ManualGate:
+    """An obligation that cannot be machine-proven here, held open explicitly.
+
+    A declaration is weaker than an enforced check and is not a substitute
+    for one: nothing here fails if the obligation is never discharged. It
+    exists so the obligation is visible and owned rather than silently
+    discharged by a scan that inspected nothing.
+    """
+
+    reason: str
+    owner_issue: str
+    responsible_role: str
+    status: str
+    acceptance_criterion: str
+
+
+#: Obligations deferred out of this RED phase. The owner issue must outlive
+#: this PR -- #705 closes with it, so pointing the gate at #705 would leave no
+#: surviving obligation.
 MANUAL_GATES = {
-    "harness-artifacts-absent-from-shipped-configuration": (
-        "The CI job mounts only netbox_hedgehog/ into the container, so no "
-        "repository checkout is reachable from the test process and the "
-        "shipped workflow/script/compose inventory cannot be read. Scanning "
-        "the grafted tree instead would inspect an empty collection and pass "
-        "vacuously. A17 performs the scan wherever a checkout exists and "
-        "otherwise requires this gate to stay declared, so the obligation is "
-        "visible rather than skipped."
+    "harness-artifacts-absent-from-shipped-configuration": ManualGate(
+        reason=(
+            "The CI job mounts only netbox_hedgehog/ into the container, so no "
+            "repository checkout is reachable from the test process: the scan "
+            "roots at /opt/netbox/netbox, which holds zero workflows and a "
+            "scripts/ containing only __init__.py. Scanning that tree inspects "
+            "an effectively empty collection and passes vacuously, which is why "
+            "the inventory fails closed instead. A17 runs the scan wherever a "
+            "checkout is reachable and holds this half open otherwise."),
+        owner_issue="#678",
+        responsible_role="deployment/GREEN adapter implementer",
+        status="unresolved",
+        acceptance_criterion=(
+            "Exact-head evidence that no rendered harness artifact name appears "
+            "in any shipped workflow, script, or compose file, produced from a "
+            "real repository checkout, is required before the GREEN deployment "
+            "gate may close. A declared gate does not satisfy it."),
     ),
 }
 
@@ -276,6 +305,23 @@ def build_deficient_stub():
         started_at: int
         succeeded: bool
 
+    class _HarnessResult:
+        """The result shape A16 consumes, so the row can reach its assertion."""
+
+        def __init__(self, observations, unit_version):
+            self.observations = dict(observations)
+            self.unit_version = unit_version
+
+        def without(self, name):
+            remaining = dict(self.observations)
+            remaining.pop(name, None)
+            return _HarnessResult(remaining, self.unit_version)
+
+        def with_observation(self, name, observed=True, evidence="no"):
+            replaced = dict(self.observations)
+            replaced[name] = SimpleNamespace(observed=observed, evidence=evidence)
+            return _HarnessResult(replaced, self.unit_version)
+
     def adapter_spec(fixture):
         return SimpleNamespace(
             reaper_uid=fixture.reaper_uid,
@@ -319,6 +365,17 @@ def build_deficient_stub():
             history=[], history_limit=history_limit or 1)
 
     def lane_harness_spec(fixture, artifact_dir=None):
+        # A complete, correctly-shaped result whose verifier accepts anything.
+        # The deficiency under test is "treats missing evidence as success";
+        # an incomplete result shape would make the row fail with
+        # AttributeError instead, which is a plumbing error and not detection.
+        def _result():
+            return _HarnessResult(
+                observations={
+                    name: SimpleNamespace(observed=True, evidence="no")
+                    for name in REQUIRED_HARNESS_OBSERVATIONS},
+                unit_version="1.34.2")
+
         return SimpleNamespace(
             is_lane_only=True,
             unit_route_cap_bytes=fixture.unit_route_cap_bytes,
@@ -326,8 +383,8 @@ def build_deficient_stub():
             exposes_public_upload=False,
             pinned_unit_version="1.34.2",
             render=lambda: [],
-            observe=lambda: SimpleNamespace(observations={}, unit_version="1.34.2"),
-            verify=lambda evidence: True)
+            observe=_result,
+            verify=lambda result: True)
 
     module.DeploymentRejected = DeploymentRejected
     module.HarnessEvidenceMissing = HarnessEvidenceMissing

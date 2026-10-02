@@ -432,9 +432,12 @@ class ReaperAdapterRedContract(SimpleTestCase):
         self.assertEqual(len(state.history), limit)
         self.assertNotIn(SENTINEL, repr(list(state.history)))
         observed = [record.oldest_orphan_seconds for record in state.history]
-        self.assertEqual(observed, sorted(observed),
-                         "history must retain the most recent runs in order")
-        self.assertEqual(observed[-1], limit * 4 - 1)
+        # The exact sequence. Length, ordering and a final value are all
+        # satisfied by an aliased history such as [11, 11, 11]; only the
+        # expected run identities rule that out.
+        expected = list(range(limit * 4 - limit, limit * 4))
+        self.assertEqual(observed, expected,
+                         "history must retain the most recent runs, distinctly and in order")
 
     @adapter_red("A12")
     def test_a12_lane_harness_declares_its_contract(self):
@@ -545,8 +548,10 @@ class ReaperAdapterRedContract(SimpleTestCase):
             # Inside the CI mount there is no checkout to scan. Scanning the
             # grafted tree would inspect nothing and pass, so the obligation
             # is held open as a declared gate instead of being skipped.
-            self.assertIn("harness-artifacts-absent-from-shipped-configuration",
-                          MANUAL_GATES)
+            gate = MANUAL_GATES["harness-artifacts-absent-from-shipped-configuration"]
+            self.assertEqual(gate.status, "unresolved")
+            self.assertNotEqual(gate.owner_issue, "#705",
+                                "this PR closes #705; the obligation needs an issue that outlives it")
             return
 
         names = {path.name for path in written}
@@ -560,14 +565,18 @@ class ReaperAdapterRedContract(SimpleTestCase):
                     for path in written),
                 "a harness artifact was written into shipped configuration")
 
-        # Controlled negative: the scan must actually be able to find a
-        # reference, or its silence means nothing.
-        planted = next(iter(names))
-        self.assertTrue(
-            any(planted in config.read_text(encoding="utf-8", errors="ignore")
-                for config in shipped + [Path(__file__)])
-            or planted not in Path(__file__).read_text(encoding="utf-8"),
-            "containment scan cannot detect a reference it is given")
+        # Controlled negative: the scan must be able to find a reference when
+        # one exists, or its silence proves nothing. A real file is written
+        # into a disposable copy of the inventory rather than into anything
+        # the repository ships.
+        planted_name = next(iter(names))
+        decoy_dir = Path(self.temp.name) / "decoy-shipped"
+        decoy_dir.mkdir()
+        decoy = decoy_dir / "workflow.yml"
+        decoy.write_text(f"jobs:\n  run:\n    script: {planted_name}\n", encoding="utf-8")
+        self.assertIn(planted_name, decoy.read_text(encoding="utf-8"))
+        with self.assertRaises(AssertionError):
+            self.assertNotIn(planted_name, decoy.read_text(encoding="utf-8"))
 
 class ReaperAdapterRedControls(SimpleTestCase):
     """Controls that pass today, proving the RED rows are honest."""
@@ -677,6 +686,20 @@ class ReaperAdapterRedControls(SimpleTestCase):
         "health_empty_history": "A11",
     }
 
+    def test_sound_health_stub_passes_the_health_rows(self):
+        """The positive half, committed.
+
+        Demanding only failures is satisfied by an implementation that always
+        raises: the faults would look discriminating while the rows rejected
+        everything. Only the health rows are claimed -- the sound stub's other
+        entry points stay deliberately deficient.
+        """
+        passing = set(self._rows_passing_against(build_single_fault_stub("none")))
+        for row in ("A10", "A11"):
+            with self.subTest(row=row):
+                self.assertIn(row, passing,
+                              f"{row} rejects a sound health implementation")
+
     def test_each_single_fault_variant_is_caught(self):
         """A multi-fault stub can be rejected for the wrong reason.
 
@@ -703,13 +726,27 @@ class ReaperAdapterRedControls(SimpleTestCase):
             {"unverified"},
             "a deployment lane proves a deployment, not a per-path emission claim")
 
-    def test_every_manual_gate_is_declared_with_a_reason(self):
-        """A gate that cannot be machine-proven must still be machine-named."""
+    def test_every_manual_gate_carries_an_owner_and_acceptance_criterion(self):
+        """A gate that cannot be machine-proven must still be machine-owned.
+
+        Length is a weak proxy for a real reason and cannot be anything else
+        here -- a filler string of the right size passes. The fields that can
+        be checked are checked: a surviving owner issue, a named role, an
+        unresolved status, and a stated acceptance criterion. Whether the gate
+        is ever discharged is a lead/process matter, not something this suite
+        can enforce, and it is recorded as a deferral rather than as proof.
+        """
         self.assertTrue(MANUAL_GATES)
-        for gate, reason in sorted(MANUAL_GATES.items()):
-            with self.subTest(gate=gate):
-                self.assertGreater(len(reason), 180,
-                                   "a manual gate needs a reason a reviewer can act on")
+        for name, gate in sorted(MANUAL_GATES.items()):
+            with self.subTest(gate=name):
+                self.assertRegex(gate.owner_issue, r"^#\d+$")
+                self.assertNotEqual(
+                    gate.owner_issue, "#705",
+                    "#705 closes with this PR; its gate needs a surviving owner")
+                self.assertTrue(gate.responsible_role)
+                self.assertEqual(gate.status, "unresolved")
+                self.assertGreater(len(gate.acceptance_criterion), 80)
+                self.assertGreater(len(gate.reason), 180)
 
     def test_shipped_inventory_fails_closed_rather_than_returning_nothing(self):
         """An empty scan must raise, never read as a clean result."""
