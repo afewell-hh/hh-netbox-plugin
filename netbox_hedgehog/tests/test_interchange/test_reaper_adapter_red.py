@@ -749,6 +749,43 @@ class ReaperAdapterRedControls(SimpleTestCase):
                 self.assertGreater(len(gate.acceptance_criterion), 80)
                 self.assertGreater(len(gate.reason), 180)
 
+    def test_scanner_fails_closed_on_unreadable_or_missing_configuration(self):
+        """An unsearched file must not read as a searched one.
+
+        The scanner previously swallowed OSError and continued, so a config
+        it could not open reported clean -- including one that contained an
+        artifact name. "No violations" then meant "nothing was looked at",
+        which is the hollow result this scanner exists to prevent.
+        """
+        names = {"lane-harness.yml"}
+        with tempfile.TemporaryDirectory(prefix="hh705-scan-") as temp:
+            root = Path(temp)
+
+            clean = root / "clean.yml"
+            clean.write_text("jobs: {}\n", encoding="utf-8")
+            self.assertEqual(scan_for_artifact_references(names, [clean]), [])
+
+            missing = root / "vanished.yml"
+            with self.assertRaises(ShippedConfigurationUnavailable):
+                scan_for_artifact_references(names, [missing])
+
+            unreadable = root / "unreadable.yml"
+            unreadable.write_text("jobs:\n  run: lane-harness.yml\n", encoding="utf-8")
+            os.chmod(unreadable, 0o000)
+            try:
+                if os.geteuid() == 0:
+                    # Root reads it regardless, so the permission half cannot
+                    # be exercised here; the missing-file case above still
+                    # covers the fail-closed contract.
+                    self.assertEqual(
+                        scan_for_artifact_references(names, [unreadable]),
+                        [f"unreadable.yml: lane-harness.yml"])
+                else:
+                    with self.assertRaises(ShippedConfigurationUnavailable):
+                        scan_for_artifact_references(names, [unreadable])
+            finally:
+                os.chmod(unreadable, 0o600)
+
     def test_shipped_inventory_fails_closed_rather_than_returning_nothing(self):
         """An empty scan must raise, never read as a clean result."""
         try:

@@ -265,8 +265,16 @@ def scan_for_artifact_references(artifact_names, config_files) -> list[str]:
     for config in config_files:
         try:
             text = config.read_text(encoding="utf-8", errors="ignore")
-        except OSError:
-            continue
+        except OSError as exc:
+            # Fail closed. A file the scan could not read is a file it did not
+            # search, and "no violations found" would then be indistinguishable
+            # from "nothing was looked at" -- the same hollow result this
+            # scanner exists to prevent. Verified: an unreadable config
+            # containing an artifact name previously reported clean.
+            raise ShippedConfigurationUnavailable(
+                f"cannot read shipped configuration {config}: {exc}; "
+                "containment is unproven while any inventory file is "
+                "unreadable or missing") from exc
         for name in artifact_names:
             if name in text:
                 violations.append(f"{config.name}: {name}")
