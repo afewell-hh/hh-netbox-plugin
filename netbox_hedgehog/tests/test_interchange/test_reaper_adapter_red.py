@@ -41,7 +41,6 @@ from netbox_hedgehog.tests.test_interchange.reaper_adapter_red_support import (
     shipped_configuration_inventory,
     scan_for_artifact_references,
     check_shipped_artifact_containment,
-    MANUAL_GATES,
     ShippedConfigurationUnavailable,
     DEPLOYMENT_EVIDENCE_ROWS,
     FORBIDDEN_REAPER_MOUNTS,
@@ -560,17 +559,7 @@ class ReaperAdapterRedContract(SimpleTestCase):
                          [f"workflow.yml: {planted_name}"],
                          "the scanner cannot detect a reference it is given")
 
-        try:
-            shipped = shipped_configuration_inventory()
-        except ShippedConfigurationUnavailable:
-            # Inside the CI mount there is no checkout to scan. Scanning the
-            # grafted tree would inspect nothing and pass, so the obligation
-            # is held open as a declared gate instead of being skipped.
-            gate = MANUAL_GATES["harness-artifacts-absent-from-shipped-configuration"]
-            self.assertEqual(gate.status, "unresolved")
-            self.assertNotEqual(gate.owner_issue, "#705",
-                                "this PR closes #705; the obligation needs an issue that outlives it")
-            return
+        shipped = shipped_configuration_inventory()
 
         self.assertEqual(check_shipped_artifact_containment(names), len(shipped))
         for config in shipped:
@@ -727,28 +716,6 @@ class ReaperAdapterRedControls(SimpleTestCase):
             {"unverified"},
             "a deployment lane proves a deployment, not a per-path emission claim")
 
-    def test_every_manual_gate_carries_an_owner_and_acceptance_criterion(self):
-        """A gate that cannot be machine-proven must still be machine-owned.
-
-        Length is a weak proxy for a real reason and cannot be anything else
-        here -- a filler string of the right size passes. The fields that can
-        be checked are checked: a surviving owner issue, a named role, an
-        unresolved status, and a stated acceptance criterion. Whether the gate
-        is ever discharged is a lead/process matter, not something this suite
-        can enforce, and it is recorded as a deferral rather than as proof.
-        """
-        self.assertTrue(MANUAL_GATES)
-        for name, gate in sorted(MANUAL_GATES.items()):
-            with self.subTest(gate=name):
-                self.assertRegex(gate.owner_issue, r"^#\d+$")
-                self.assertNotEqual(
-                    gate.owner_issue, "#705",
-                    "#705 closes with this PR; its gate needs a surviving owner")
-                self.assertTrue(gate.responsible_role)
-                self.assertEqual(gate.status, "unresolved")
-                self.assertGreater(len(gate.acceptance_criterion), 80)
-                self.assertGreater(len(gate.reason), 180)
-
     def test_scanner_fails_closed_on_unreadable_or_missing_configuration(self):
         """An unsearched file must not read as a searched one.
 
@@ -788,10 +755,7 @@ class ReaperAdapterRedControls(SimpleTestCase):
 
     def test_shipped_inventory_fails_closed_rather_than_returning_nothing(self):
         """An empty scan must raise, never read as a clean result."""
-        try:
-            inventory = shipped_configuration_inventory()
-        except ShippedConfigurationUnavailable:
-            return
+        inventory = shipped_configuration_inventory()
         self.assertTrue(inventory)
         self.assertTrue(any(path.suffix in {".yml", ".yaml"} or path.parent.name == "scripts"
                             for path in inventory))

@@ -166,63 +166,19 @@ def rows_for(requirement: str, rows) -> tuple[AdapterRow, ...]:
     return tuple(row for row in rows if row.requirement == requirement)
 
 
-#: Evidence that cannot be produced from inside the plugin mount, with the
-#: reason. #705 requires such a gate to be named and machine-accounted rather
-#: than left to pass silently or to fail forever in the environment CI uses.
-@dataclass(frozen=True)
-class ManualGate:
-    """An obligation that cannot be machine-proven here, held open explicitly.
-
-    A declaration is weaker than an enforced check and is not a substitute
-    for one: nothing here fails if the obligation is never discharged. It
-    exists so the obligation is visible and owned rather than silently
-    discharged by a scan that inspected nothing.
-    """
-
-    reason: str
-    owner_issue: str
-    responsible_role: str
-    status: str
-    acceptance_criterion: str
-
-
-#: Obligations deferred out of this RED phase. The owner issue must outlive
-#: this PR -- #705 closes with it, so pointing the gate at #705 would leave no
-#: surviving obligation.
-MANUAL_GATES = {
-    "harness-artifacts-absent-from-shipped-configuration": ManualGate(
-        reason=(
-            "The CI job mounts only netbox_hedgehog/ into the container, so no "
-            "repository checkout is reachable from the test process: the scan "
-            "roots at /opt/netbox/netbox, which holds zero workflows and a "
-            "scripts/ containing only __init__.py. Scanning that tree inspects "
-            "an effectively empty collection and passes vacuously, which is why "
-            "the inventory fails closed instead. A17 runs the scan wherever a "
-            "checkout is reachable and holds this half open otherwise."),
-        owner_issue="#678",
-        responsible_role="deployment/GREEN adapter implementer",
-        status="unresolved",
-        acceptance_criterion=(
-            "Exact-head evidence that no rendered harness artifact name appears "
-            "in any shipped workflow, script, or compose file, produced from a "
-            "real repository checkout, is required before the GREEN deployment "
-            "gate may close. A declared gate does not satisfy it."),
-    ),
-}
-
-
 class ShippedConfigurationUnavailable(AssertionError):
     """The repository checkout could not be located, so containment is unproven."""
 
 
 def repository_checkout_root(root=None) -> Path:
-    """Find the real checkout, walking up from this file.
+    """Use an explicit root/environment input, otherwise walk this file's parents.
 
     Under the CI mount the package is grafted into the NetBox tree, so
     ``parents[3]`` is ``/opt/netbox/netbox`` -- a directory with no workflows
     and a ``scripts/`` holding one ``__init__.py``. A containment scan rooted
     there silently inspects nothing and passes. Locate a checkout marker
-    instead, and fail closed when there is none.
+    instead, and fail closed when there is none. An invalid explicit root
+    never falls back to a different checkout.
     """
     explicit = root if root is not None else os.environ.get("HNP_TEST_CHECKOUT_ROOT")
     candidates = [Path(explicit)] if explicit is not None else Path(__file__).resolve().parents
