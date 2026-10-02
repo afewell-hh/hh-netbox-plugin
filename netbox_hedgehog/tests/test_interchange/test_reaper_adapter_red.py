@@ -40,6 +40,7 @@ from netbox_hedgehog.tests.test_interchange.reaper_adapter_red_support import (
     build_single_fault_stub,
     shipped_configuration_inventory,
     scan_for_artifact_references,
+    check_shipped_artifact_containment,
     MANUAL_GATES,
     ShippedConfigurationUnavailable,
     DEPLOYMENT_EVIDENCE_ROWS,
@@ -571,8 +572,7 @@ class ReaperAdapterRedContract(SimpleTestCase):
                                 "this PR closes #705; the obligation needs an issue that outlives it")
             return
 
-        self.assertEqual(scan_for_artifact_references(names, shipped), [],
-                         "a harness artifact name appears in shipped configuration")
+        self.assertEqual(check_shipped_artifact_containment(names), len(shipped))
         for config in shipped:
             self.assertFalse(
                 any(path.resolve().is_relative_to(config.parent.resolve())
