@@ -1,0 +1,62 @@
+# Reference profile, not an upload deployment. Q/state must already be private,
+# owned by UID 999, and excluded from ordinary storage/backups by the operator.
+# No automatic chown/chmod/init container is provided. No public port is exposed.
+services:
+  raw-ingress-listener:
+    # Opt-in reference capability only. No published port or shared socket;
+    # exposing it publicly requires the later upload UX/API decision.
+    profiles: [isolated-listener]
+    image: netboxcommunity/netbox:v4.4-3.4.2@sha256:14c2de3f179d8ed5b5722a76b6d7389c8c95bb8be46c600f3d7fe1f7698b4574
+    user: "999:0"
+    read_only: true
+    network_mode: none
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    entrypoint: [/opt/netbox/venv/bin/python, -m, netbox_hedgehog.reference_listener]
+    command: [--config, /etc/hnp-reaper.json]
+    tmpfs:
+      - /run/hnp-listener:rw,noexec,nosuid,nodev,size=16777216,mode=0700,uid=999,gid=0
+    environment:
+      SECRET_KEY: ${REAPER_DJANGO_SECRET_KEY:?supply an isolated Django bootstrap key}
+      DB_HOST: localhost
+      DB_NAME: unused
+      DB_USER: unused
+      DB_PASSWORD: unused
+      REDIS_HOST: localhost
+      REDIS_CACHE_HOST: localhost
+    volumes:
+      - ${REAPER_PLUGIN_DIR:?plugin package}:/opt/netbox/netbox/netbox_hedgehog:ro
+      - ${REAPER_NETBOX_CONFIG_DIR:?read-only NetBox config}:/etc/netbox/config:ro
+      - ${REAPER_CONFIG_FILE:?read-only reaper JSON}:/etc/hnp-reaper.json:ro
+  ingress-reaper:
+    profiles: [isolated-reaper]
+    image: netboxcommunity/netbox:v4.4-3.4.2@sha256:14c2de3f179d8ed5b5722a76b6d7389c8c95bb8be46c600f3d7fe1f7698b4574
+    user: "999:0"
+    read_only: true
+    network_mode: none
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    pids_limit: 64
+    entrypoint: [/opt/netbox/venv/bin/python, /opt/netbox/netbox/manage.py]
+    command: [isolated_ingress_reaper, --config, /etc/hnp-reaper.json, --state-dir, /reaper-state]
+    environment:
+      # Django bootstrap only. The reaper does not query a database or host
+      # Scripts. No database least-privilege claim is made for other deployments.
+      SECRET_KEY: ${REAPER_DJANGO_SECRET_KEY:?supply an isolated Django bootstrap key}
+      DB_HOST: localhost
+      DB_NAME: unused
+      DB_USER: unused
+      DB_PASSWORD: unused
+      REDIS_HOST: localhost
+      REDIS_CACHE_HOST: localhost
+    volumes:
+      - ${REAPER_QUARANTINE_DIR:?operator-created private Q}:/secure-quarantine:rw
+      - ${REAPER_STATE_DIR:?operator-created private state}:/reaper-state:rw
+      - ${REAPER_PLUGIN_DIR:?plugin package}:/opt/netbox/netbox/netbox_hedgehog:ro
+      - ${REAPER_NETBOX_CONFIG_DIR:?read-only NetBox config}:/etc/netbox/config:ro
+      - ${REAPER_CONFIG_FILE:?read-only reaper JSON}:/etc/hnp-reaper.json:ro
+    healthcheck:
+      test: [CMD, /opt/netbox/venv/bin/python, /opt/netbox/netbox/manage.py, isolated_ingress_reaper, --config, /etc/hnp-reaper.json, --state-dir, /reaper-state, --mode, health]
+      interval: 60s
+      timeout: 15s
+      retries: 1

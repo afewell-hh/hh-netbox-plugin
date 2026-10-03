@@ -42,7 +42,9 @@ jobs:
             netbox:
               environment:
                 HNP_TEST_CHECKOUT_ROOT: /opt/hnp-test-checkout
+                HNP_REAPER_CONTAINER_EVIDENCE: /opt/hnp-reaper-evidence.json
               volumes:
+                - ./reaper-container-evidence.json:/opt/hnp-reaper-evidence.json:ro
                 - ../hh-netbox-plugin/netbox_hedgehog:/opt/netbox/netbox/netbox_hedgehog:ro
                 # Separate from the import mount: repository-level containment
                 # checks need actual workflows/scripts/deployment files.
@@ -62,6 +64,13 @@ jobs:
               }
           }
           EOF
+
+      - name: Prove isolated reaper and private listener processes
+        working-directory: hh-netbox-plugin
+        run: |
+          set -o pipefail
+          python3 scripts/prove_reaper_lane.py --output ../netbox-docker/reaper-container-evidence.json \
+            2>&1 | tee ../netbox-docker/reaper-process-evidence.log
 
       - name: Start isolated NetBox and verify migrations
         run: |
@@ -112,6 +121,8 @@ jobs:
             netbox-docker/interchange-security.log
             netbox-docker/netbox-startup.log
             netbox-docker/migration-state.txt
+            netbox-docker/reaper-container-evidence.json
+            netbox-docker/reaper-process-evidence.log
           if-no-files-found: ignore
           retention-days: 14
 

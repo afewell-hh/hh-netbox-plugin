@@ -1,0 +1,22 @@
+{
+  "quarantine_root": "/secure-quarantine",
+  "web_uid": 999,
+  "reaper_uid": 999,
+  "unit_route_cap_bytes": 10485760,
+  "max_raw_bytes": 10485760,
+  "body_buffer_size": 10485760,
+  "max_concurrent_bodies": 8,
+  "capacity_budget_bytes": 83886080,
+  "active_write_grace_seconds": 300,
+  "clock_skew_seconds": 60,
+  "reaper_interval_seconds": 3600,
+  "orphan_bound_seconds": 86400,
+  "forbidden_roots": {
+    "media": "/opt/netbox/netbox/media",
+    "static": "/opt/netbox/netbox/static",
+    "scripts": "/opt/netbox/netbox/scripts",
+    "reports": "/opt/netbox/netbox/reports",
+    "default_storage": "/opt/netbox/netbox/media",
+    "ordinary_temp": "/tmp"
+  }
+}
