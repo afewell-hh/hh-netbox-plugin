@@ -181,6 +181,10 @@ def repository_checkout_root(root=None) -> Path:
     never falls back to a different checkout.
     """
     explicit = root if root is not None else os.environ.get("HNP_TEST_CHECKOUT_ROOT")
+    if explicit is None:
+        # Supplied by the local test wrapper: an explicit temporary snapshot,
+        # not a claim that a live CI mount exists. Invalid CI roots never fall back.
+        explicit = os.environ.get("HNP_TEST_LOCAL_CHECKOUT_ROOT")
     candidates = [Path(explicit)] if explicit is not None else Path(__file__).resolve().parents
     for candidate in candidates:
         # Identify this repository, not NetBox or an unrelated pyproject above
