@@ -1,19 +1,9 @@
-"""#705 RED contract for the deployable isolated reaper adapter.
+"""#705 adapter contract, converted to required GREEN assertions by #709.
 
-Test-only. No deployment adapter, Compose file, CI change, public route, UI,
-multipart surface, or `secure_ingress` behaviour change is added here.
-
-#703 merged the internal quarantine service and proved its deployment shape in
-a lane that was deleted afterwards. Everything that lane demonstrated -- a
-non-root reaper identity matching the Q owner, a Q-only mount, a pinned Unit
-cap that does not spool, a health signal when a run is missed -- is currently
-an assumption. This module turns each into a row that fails until an adapter
-satisfies it.
-
-Structure mirrors #701, which worked: twelve expected-failure rows against one
-named seam, plus controls that pass today and prove the observers are real.
-Two things are added from reviewing #701/#703, because both were found there
-the hard way:
+Historical module/class/row identifiers remain stable for evidence accounting.
+All seventeen rows now require the implementation and paired lane evidence;
+none may be skipped or marked expectedFailure. No public upload is registered.
+Controls retained from the RED phase include:
 
 * a vacuity control that installs a permissive stub and requires every row to
   keep failing, so no row can go green against a do-nothing adapter;
@@ -92,17 +82,15 @@ SENTINEL = "HH705_RAW_MUST_NOT_REACH_HEALTH"
 
 
 def adapter_red(row: str):
-    """Mark a claim expected-failure, retaining a machine-readable row id."""
+    """Retain the historical RED row ID; #709 now requires an ordinary pass."""
     def decorate(method):
         method._adapter_red_row = row
-        wrapped = unittest.expectedFailure(method)
-        wrapped._adapter_red_row = row
-        return wrapped
+        return method
     return decorate
 
 
 class ReaperAdapterRedContract(SimpleTestCase):
-    """Expected failures that become ordinary tests only in #705 GREEN.
+    """Ordinary required tests implementing the accepted #705 contract.
 
     SimpleTestCase deliberately: every claim here is about deployment shape,
     configuration, and process state. A row needing the database would be a
@@ -194,6 +182,8 @@ class ReaperAdapterRedContract(SimpleTestCase):
         doubled = self.replaced(
             unit_route_cap_bytes=TEST_UNIT_CAP_BYTES * 2,
             max_raw_bytes=TEST_UNIT_CAP_BYTES * 2,
+            body_buffer_size=TEST_UNIT_CAP_BYTES * 2,
+            capacity_budget_bytes=TEST_UNIT_CAP_BYTES * 2 * 8,
             reaper_interval_seconds=V1_DEFAULTS["reaper_interval_seconds"] * 2,
             orphan_bound_seconds=V1_DEFAULTS["orphan_bound_seconds"] * 2,
         )
@@ -571,12 +561,10 @@ class ReaperAdapterRedContract(SimpleTestCase):
 class ReaperAdapterRedControls(SimpleTestCase):
     """Controls that pass today, proving the RED rows are honest."""
 
-    def test_red_phase_has_no_adapter_module(self):
-        with self.assertRaises(AdapterAbsent) as caught:
-            require_reaper_adapter()
-        self.assertIn(ADAPTER_MODULE, str(caught.exception))
+    def test_green_phase_has_complete_adapter_module(self):
+        self.assertEqual(require_reaper_adapter().__name__, ADAPTER_MODULE)
 
-    def test_every_row_is_accounted_and_expected_to_fail(self):
+    def test_every_row_is_accounted_and_required_to_pass(self):
         methods = {name: getattr(ReaperAdapterRedContract, name)
                    for name in dir(ReaperAdapterRedContract) if name.startswith("test_")}
         declared = {row.method for row in ADAPTER_ROWS}
@@ -586,7 +574,7 @@ class ReaperAdapterRedControls(SimpleTestCase):
         self.assertEqual(len({row.identifier for row in ADAPTER_ROWS}), len(ADAPTER_ROWS))
         for row in ADAPTER_ROWS:
             with self.subTest(row=row.identifier):
-                self.assertTrue(getattr(methods[row.method],
+                self.assertFalse(getattr(methods[row.method],
                                         "__unittest_expecting_failure__", False))
 
     def test_every_requirement_area_has_at_least_one_row(self):

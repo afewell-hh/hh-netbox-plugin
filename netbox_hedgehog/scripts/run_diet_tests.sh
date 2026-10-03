@@ -35,6 +35,10 @@ cd "$NETBOX_DOCKER_DIR"
 # not the live CI mount (whose separate environment variable retains statvfs).
 for argument in "$@"; do
     if [[ "$argument" == netbox_hedgehog.tests.test_interchange* ]]; then
+        evidence_dir=$(mktemp -d /tmp/hnp-reaper-evidence.XXXXXXXX)
+        trap 'rmdir "$evidence_dir" 2>/dev/null || true' EXIT
+        python3 "$REPO_DIR/scripts/prove_reaper_lane.py" \
+            --output "$evidence_dir/reaper-container-evidence.json"
         snapshot_files=(AGENTS.md netbox_hedgehog/__init__.py
             netbox_hedgehog/tests/test_interchange/test_checkout_containment.py)
         for relative in .github scripts netbox_hedgehog/scripts deploy deployment deployments docker dev-setup; do
@@ -45,7 +49,8 @@ for argument in "$@"; do
                       "$REPO_DIR"/compose*.yml "$REPO_DIR"/compose*.yaml; do
             snapshot_files+=("${source#"$REPO_DIR/"}")
         done
-        tar -C "$REPO_DIR" --exclude=__pycache__ --exclude=.git -cf - "${snapshot_files[@]}" |
+        tar -C "$REPO_DIR" --exclude=__pycache__ --exclude=.git -cf - "${snapshot_files[@]}" \
+            -C "$evidence_dir" reaper-container-evidence.json |
             docker compose exec -T netbox sh -c '
                 set -eu
                 snapshot=$(mktemp -d /tmp/hnp-checkout.XXXXXXXX)
@@ -61,7 +66,10 @@ for argument in "$@"; do
                 export HNP_TEST_LOCAL_CHECKOUT_ROOT="$snapshot"
                 python -u manage.py test "$@"
             ' sh "$@" "--testrunner=$TEST_RUNNER"
-        exit $?
+        rm -- "$evidence_dir/reaper-container-evidence.json"
+        rmdir -- "$evidence_dir"
+        trap - EXIT
+        exit 0
     fi
 done
 exec docker compose exec -T netbox python -u manage.py test "$@" \

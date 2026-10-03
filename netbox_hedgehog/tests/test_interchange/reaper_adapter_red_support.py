@@ -111,6 +111,9 @@ class DeploymentFixture:
     orphan_bound_seconds: int
     exposes_public_upload: bool = False
     quarantine_mount_is_dedicated: bool = True
+    body_buffer_size: int = 10485760
+    max_concurrent_bodies: int = 8
+    capacity_budget_bytes: int = 83886080
 
     @property
     def derived_eligibility_seconds(self) -> int:
