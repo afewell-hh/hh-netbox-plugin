@@ -98,6 +98,7 @@ def main():
             assert '"interval_seconds": 3600' in preflight
             # Actual wall-clock scheduled invocations: only these injected test
             # timings differ; the approved default cadence was checked above.
+            approved_config = dict(config)
             config.update(reaper_interval_seconds=2, active_write_grace_seconds=1,
                           clock_skew_seconds=0, orphan_bound_seconds=5)
             config_file.write_text(json.dumps(config))
@@ -120,6 +121,10 @@ def main():
                 process.communicate(timeout=10)
             time.sleep(3)
             command(cli + ['--mode', 'health'], expected=1)
+            # Recovery uses the approved hourly cadence, not a race between
+            # two separate Django bootstraps and the accelerated two-second
+            # interval. The missed-run observation above remains real.
+            config_file.write_text(json.dumps(approved_config))
             command(cli + ['--mode', 'once'])
             command(cli + ['--mode', 'health'])
             listener_name = project + '-listener'
