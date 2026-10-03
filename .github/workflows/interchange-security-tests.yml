@@ -16,6 +16,9 @@ jobs:
         uses: actions/checkout@v4
         with:
           path: hh-netbox-plugin
+          # This checkout is mounted into the test container; do not persist a
+          # GitHub authentication header in its .git/config.
+          persist-credentials: false
 
       - name: Checkout pinned NetBox Docker
         uses: actions/checkout@v4
@@ -37,8 +40,13 @@ jobs:
           cat > docker-compose.override.yml << 'EOF'
           services:
             netbox:
+              environment:
+                HNP_TEST_CHECKOUT_ROOT: /opt/hnp-test-checkout
               volumes:
                 - ../hh-netbox-plugin/netbox_hedgehog:/opt/netbox/netbox/netbox_hedgehog:ro
+                # Separate from the import mount: repository-level containment
+                # checks need actual workflows/scripts/deployment files.
+                - ../hh-netbox-plugin:/opt/hnp-test-checkout:ro
           EOF
           mkdir -p configuration
           cat > configuration/plugins.py << 'EOF'

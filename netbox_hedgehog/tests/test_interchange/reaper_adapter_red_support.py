@@ -166,87 +166,77 @@ def rows_for(requirement: str, rows) -> tuple[AdapterRow, ...]:
     return tuple(row for row in rows if row.requirement == requirement)
 
 
-#: Evidence that cannot be produced from inside the plugin mount, with the
-#: reason. #705 requires such a gate to be named and machine-accounted rather
-#: than left to pass silently or to fail forever in the environment CI uses.
-@dataclass(frozen=True)
-class ManualGate:
-    """An obligation that cannot be machine-proven here, held open explicitly.
-
-    A declaration is weaker than an enforced check and is not a substitute
-    for one: nothing here fails if the obligation is never discharged. It
-    exists so the obligation is visible and owned rather than silently
-    discharged by a scan that inspected nothing.
-    """
-
-    reason: str
-    owner_issue: str
-    responsible_role: str
-    status: str
-    acceptance_criterion: str
-
-
-#: Obligations deferred out of this RED phase. The owner issue must outlive
-#: this PR -- #705 closes with it, so pointing the gate at #705 would leave no
-#: surviving obligation.
-MANUAL_GATES = {
-    "harness-artifacts-absent-from-shipped-configuration": ManualGate(
-        reason=(
-            "The CI job mounts only netbox_hedgehog/ into the container, so no "
-            "repository checkout is reachable from the test process: the scan "
-            "roots at /opt/netbox/netbox, which holds zero workflows and a "
-            "scripts/ containing only __init__.py. Scanning that tree inspects "
-            "an effectively empty collection and passes vacuously, which is why "
-            "the inventory fails closed instead. A17 runs the scan wherever a "
-            "checkout is reachable and holds this half open otherwise."),
-        owner_issue="#678",
-        responsible_role="deployment/GREEN adapter implementer",
-        status="unresolved",
-        acceptance_criterion=(
-            "Exact-head evidence that no rendered harness artifact name appears "
-            "in any shipped workflow, script, or compose file, produced from a "
-            "real repository checkout, is required before the GREEN deployment "
-            "gate may close. A declared gate does not satisfy it."),
-    ),
-}
-
-
 class ShippedConfigurationUnavailable(AssertionError):
     """The repository checkout could not be located, so containment is unproven."""
 
 
-def repository_checkout_root() -> Path:
-    """Find the real checkout, walking up from this file.
+def repository_checkout_root(root=None) -> Path:
+    """Use an explicit root/environment input, otherwise walk this file's parents.
 
     Under the CI mount the package is grafted into the NetBox tree, so
     ``parents[3]`` is ``/opt/netbox/netbox`` -- a directory with no workflows
     and a ``scripts/`` holding one ``__init__.py``. A containment scan rooted
     there silently inspects nothing and passes. Locate a checkout marker
-    instead, and fail closed when there is none.
+    instead, and fail closed when there is none. An invalid explicit root
+    never falls back to a different checkout.
     """
-    for candidate in Path(__file__).resolve().parents:
-        if (candidate / ".git").exists() or (candidate / "pyproject.toml").exists():
-            return candidate
+    explicit = root if root is not None else os.environ.get("HNP_TEST_CHECKOUT_ROOT")
+    if explicit is None:
+        # Supplied by the local test wrapper: an explicit temporary snapshot,
+        # not a claim that a live CI mount exists. Invalid CI roots never fall back.
+        explicit = os.environ.get("HNP_TEST_LOCAL_CHECKOUT_ROOT")
+    candidates = [Path(explicit)] if explicit is not None else Path(__file__).resolve().parents
+    for candidate in candidates:
+        # Identify this repository, not NetBox or an unrelated pyproject above
+        # a grafted package. The explicit CI input never falls back elsewhere.
+        if (candidate.is_absolute()
+                and (candidate / "AGENTS.md").is_file()
+                and (candidate / "netbox_hedgehog/__init__.py").is_file()
+                and (candidate / ".github/workflows").is_dir()
+                and (candidate / "scripts").is_dir()):
+            return candidate.resolve(strict=True)
     raise ShippedConfigurationUnavailable(
         "no repository checkout found above "
         f"{Path(__file__).resolve()}; containment cannot be demonstrated from "
         "a grafted package mount, so this must fail rather than pass vacuously")
 
 
-def shipped_configuration_inventory() -> list[Path]:
+SHIPPED_CONFIGURATION_TREES = (
+    ".github", "scripts", "netbox_hedgehog/scripts", "deploy", "deployment",
+    "deployments", "docker", "dev-setup",
+)
+
+
+def shipped_configuration_inventory(root=None) -> list[Path]:
     """Every shipped file a harness artifact must not appear in.
 
     Fails closed: an empty inventory means the scan found nothing to check,
     which is indistinguishable from a clean result and must not be reported
     as one.
     """
-    root = repository_checkout_root()
-    files = sorted((root / ".github" / "workflows").glob("*.y*ml"))
-    scripts = root / "scripts"
-    if scripts.is_dir():
-        files += sorted(path for path in scripts.iterdir() if path.is_file())
-    compose = sorted(root.glob("docker-compose*.y*ml"))
-    inventory = files + compose
+    root = repository_checkout_root(root)
+    selected = set()
+    for relative in SHIPPED_CONFIGURATION_TREES:
+        tree = root / relative
+        if tree.is_symlink():
+            raise ShippedConfigurationUnavailable("shipped inventory tree must not be a symlink")
+        if not tree.exists():
+            continue
+        # os.walk's default silently ignores inaccessible directories. Inventory
+        # errors must not produce an apparently clean, partial scan.
+        def unavailable(error):
+            raise ShippedConfigurationUnavailable("cannot enumerate shipped inventory") from error
+        for parent, directories, files in os.walk(tree, onerror=unavailable):
+            for name in directories + files:
+                entry = Path(parent) / name
+                if entry.is_symlink():
+                    raise ShippedConfigurationUnavailable("shipped inventory must not contain symlinks")
+            selected.update(Path(parent) / name for name in files)
+    for pattern in ("docker-compose*.yml", "docker-compose*.yaml", "compose*.yml", "compose*.yaml"):
+        selected.update(root.glob(pattern))
+    inventory = sorted(selected)
+    if any(path.is_symlink() or not path.is_file() for path in inventory):
+        raise ShippedConfigurationUnavailable("shipped inventory contains a non-regular file")
     if not inventory:
         raise ShippedConfigurationUnavailable(
             f"no shipped workflow, script, or compose file found under {root}")
@@ -276,9 +266,29 @@ def scan_for_artifact_references(artifact_names, config_files) -> list[str]:
                 "containment is unproven while any inventory file is "
                 "unreadable or missing") from exc
         for name in artifact_names:
-            if name in text:
+            if name == config.name or name in text:
                 violations.append(f"{config.name}: {name}")
     return violations
+
+
+class ArtifactContainmentViolation(AssertionError):
+    """A lane-only artifact or reference was found in shipped configuration."""
+
+
+def check_shipped_artifact_containment(artifact_names, root=None) -> int:
+    """Shared by A17 and the always-running #707 CI control.
+
+    Names come from the rendered lane artifacts, not a guessed name convention.
+    Check both misplaced files and references. Return only the inventory count;
+    diagnostics never copy source contents or evidence payloads into CI logs.
+    """
+    names = set(artifact_names)
+    if not names or any(not isinstance(name, str) or not name or Path(name).name != name for name in names):
+        raise ShippedConfigurationUnavailable("non-empty artifact basenames are required")
+    inventory = shipped_configuration_inventory(root)
+    if scan_for_artifact_references(names, inventory):
+        raise ArtifactContainmentViolation("lane-only artifact or reference in shipped configuration")
+    return len(inventory)
 
 
 # --- deficient stand-ins used by the vacuity controls ---------------------
