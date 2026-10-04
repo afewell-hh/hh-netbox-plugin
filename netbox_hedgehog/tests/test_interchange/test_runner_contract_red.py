@@ -265,10 +265,25 @@ class RunnerContractRedTests(SimpleTestCase):
         record = load_driver_evidence("broad_supported", selection)
         self.assertTrue(record["prepared"],
                         "the supported wrapper must prepare a broad selection")
-        self.assertEqual(record["returncode"], 0,
-                         f"the supported broad selection failed: {record['stderr_tail'][-300:]}")
         self.assertGreater(record["tests_executed"], 0,
                            "preparation that executes nothing is not preparation")
+        # Deliberately NOT asserting returncode == 0. A broad interchange
+        # selection includes this RED suite, whose rows are expected to fail,
+        # so requiring a clean exit would make the row unpassable by
+        # construction rather than by the contract's absence. The claim here
+        # is that the wrapper *prepares and executes*, not that every test in
+        # the package passes; refusal is what must not happen.
+        self.assertFalse(record.get("timed_out"), "the broad selection timed out")
+        self.assertIn(
+            record["returncode"], (0, 1),
+            f"exit {record['returncode']} is not a test result: 2 is a usage error, "
+            "137 a kill, -1 a timeout. Only a clean run or ordinary test failures "
+            "count as the wrapper having executed the selection.")
+        if record["returncode"] == 1:
+            self.assertIn(
+                "test_runner_contract_red", record["stdout_tail"] + record["stderr_tail"],
+                "the broad selection failed, but not with this suite's expected RED "
+                "rows; an unidentified failure is not an accepted outcome")
 
     def test_r19_fast_path_creates_no_preparation_containers(self):
         """T10/T02-negative: the topology fast path prepares nothing.
@@ -282,10 +297,11 @@ class RunnerContractRedTests(SimpleTestCase):
                          "the fast path triggered preparation it does not need")
         self.assertEqual(record["returncode"], 0, record["stderr_tail"][-300:])
         self.assertGreater(record["tests_executed"], 0)
+        self.assertEqual(
+            list(record["attributed_containers"]), [],
+            f"the fast path created preparation containers: "
+            f"{record['attributed_containers']}")
         notes = json.loads(record["notes"])
-        created = [event for event in notes["lifecycle"] if event["action"] == "create"]
-        self.assertEqual(created, [],
-                         f"the fast path created preparation containers: {created}")
         print(f"\n      [R19] fast path elapsed {notes['elapsed_seconds']}s (reported, not gated)")
 
     def test_r20_lifecycle_observer_detects_real_preparation(self):
@@ -296,15 +312,24 @@ class RunnerContractRedTests(SimpleTestCase):
         must show create/start events in its own window.
         """
         record = load_driver_evidence("declared_ok", (PROTECTED,))
-        notes = json.loads(record["notes"])
         self.assertTrue(
-            notes["lifecycle"],
-            "the lifecycle observer saw no container events for a selection that "
-            "prepares; R19's negative is worthless unless this positive holds")
+            record["attributed_containers"],
+            "the observer attributed no preparation container to a selection that "
+            "prepares. R19's zero is worthless unless this positive fires: an "
+            "observer that detects nothing reports 'no containers' either way.")
 
     def test_r21_no_argument_invocation_keeps_topology_default(self):
         """T11: bare invocation keeps its explicit topology default."""
         record = load_driver_evidence("no_argument_default", ())
+        notes = json.loads(record["notes"])
+        self.assertEqual(
+            notes["common_args_applied"], [],
+            "options were injected into the bare invocation, so this no longer "
+            "tests bare invocation: the wrapper substitutes its default only "
+            "when $# -eq 0, and one extra argument made it discover the whole tree")
+        self.assertEqual(
+            len(notes["argv"]), 1,
+            f"the recorded argv is not a bare invocation: {notes['argv']}")
         self.assertEqual(record["returncode"], 0, record["stderr_tail"][-300:])
         self.assertGreater(record["tests_executed"], 0,
                            "the no-argument default executed nothing")
@@ -512,6 +537,10 @@ class RunnerContractRedTests(SimpleTestCase):
         record = load_driver_evidence("declared_ok", (PROTECTED,))
         self.assertTrue(record["prepared"],
                         "the wrapper must prepare a correctly declared module")
+        self.assertTrue(
+            record["prepared_artifact"],
+            "a preparation banner is not proof of preparation: no fresh evidence "
+            "artifact identity was observed for this run")
         self.assertEqual(record["returncode"], 0,
                          f"the declared case failed: {record['stderr_tail'][-300:]}")
         self.assertGreater(record["tests_executed"], 0,

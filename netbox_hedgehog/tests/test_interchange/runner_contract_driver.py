@@ -45,6 +45,33 @@ from pathlib import Path
 
 
 GUARD_VARIABLE = "HH711_DRIVER_ACTIVE"
+
+#: Appended to most wrapper invocations and recorded in the evidence, but
+#: deliberately NOT part of any scenario's recorded selection: these are
+#: infrastructure necessities, not semantic choices.
+#:
+#: `--noinput` because Django otherwise stops on "Type 'yes' ... deleting the
+#: test database", which blocked seven of nine scenarios. `--keepdb` because
+#: dropping it then failed with "There is 1 other session using the
+#: database" -- the lane's own application holds a connection.
+#:
+#: Not applied to `no_argument_default`. The wrapper substitutes its default
+#: label only `if [[ $# -eq 0 ]]`, so appending anything at all turns the
+#: no-argument case into a selection and Django discovers the whole tree --
+#: 10,770 tests. Adding these args silently destroyed the one scenario that
+#: exists to test bare invocation.
+WRAPPER_COMMON_ARGS = ("--keepdb", "--noinput")
+
+#: Markers proving the wrapper's preparation step actually ran. `prepared`
+#: previously looked only for "prove_reaper_lane"/"snapshot" and reported
+#: False for a run whose output plainly carried the lane evidence banner.
+#: prove_reaper_lane.py names its disposable container `hh709-<run_id[:12]>`.
+#: That prefix plus the scenario's time window is what binds an observed
+#: container to this preparation run rather than to another lane's activity.
+PREPARATION_CONTAINER_PREFIX = "hh709-"
+
+PREPARATION_MARKERS = ("prove_reaper_lane", "HH709_CONTAINER",
+                       "HNP_TEST_LOCAL_CHECKOUT_ROOT", "snapshot")
 DRIVER_SUITE = "netbox_hedgehog.tests.test_interchange.test_runner_contract_red"
 EVIDENCE_VERSION = 1
 
@@ -54,6 +81,22 @@ EVIDENCE_VERSION = 1
 WRAPPER_SELECTION_GUARD = "netbox_hedgehog.tests.test_interchange"
 
 
+def _fresh_artifact_identity(text: str) -> str:
+    """The identity of the evidence artifact this run produced, if any.
+
+    A preparation banner says the step ran; it does not say a *fresh*
+    artifact was produced, nor that anything consumed it. Dev B's point:
+    banners are supporting evidence, not sufficient alone. The run id the
+    lane evidence carries is the identity a row can compare against.
+    """
+    import re
+    match = re.search(r"HH709_CONTAINER[^\n]*?run[_=]?id[=:]?\s*([0-9a-f]{6,})", text)
+    if match:
+        return match.group(1)
+    match = re.search(r"wrote\s+(\S*reaper-container-evidence\S*)", text)
+    return match.group(1) if match else ""
+
+
 @dataclass
 class ScenarioRecord:
     name: str
@@ -61,6 +104,8 @@ class ScenarioRecord:
     returncode: int
     tests_executed: int
     prepared: bool
+    prepared_artifact: str
+    attributed_containers: tuple
     markers: tuple[str, ...]
     remediation: str
     stdout_tail: str
@@ -77,6 +122,9 @@ class DriverEvidence:
     run_id: str
     observed_at: int
     scenarios: dict = field(default_factory=dict)
+    #: Recorded so a reader can see exactly what was appended to every
+    #: invocation beyond the scenario's own selection.
+    common_args: tuple = WRAPPER_COMMON_ARGS
 
 
 def _run(argv, cwd=None, env=None, timeout=1800):
@@ -194,11 +242,28 @@ def observe_lifecycle(lane: str, since: float, until: float) -> list:
          "--filter", "event=create", "--filter", "event=start", "--format",
          "{{.Action}} {{.Actor.Attributes.name}}"],
         capture_output=True, text=True, timeout=120)
+    # Every lifecycle count read zero because this filtered on the lane name.
+    # Preparation containers are created by prove_reaper_lane.py and are not
+    # named after the Compose project, so they were all discarded. Reporting
+    # "no containers" would have been my filter, not the system's behaviour --
+    # and R20 exists precisely to stop a zero from an observer that sees
+    # nothing being read as evidence. All events in the window are recorded;
+    # the lane-named ones are tagged rather than used as a gate.
+    # Filtering on the lane name discarded everything, because preparation
+    # containers are created by prove_reaper_lane.py as `hh709-<run_id[:12]>`
+    # and are not named after the Compose project. Removing the filter
+    # entirely would have counted unrelated containers from the 80-odd other
+    # lanes on this host, so events are instead *attributed*: in this
+    # scenario's own window AND bearing the preparation prefix, which encodes
+    # the run identity. Everything else is retained but marked unattributed,
+    # so a reader can see what was rejected rather than trust a filtered zero.
     events = []
     for line in done.stdout.splitlines():
         parts = line.split(None, 1)
-        if len(parts) == 2 and lane in parts[1]:
-            events.append({"action": parts[0], "name": parts[1]})
+        if len(parts) == 2:
+            name = parts[1]
+            events.append({"action": parts[0], "name": name,
+                           "attributed": name.startswith(PREPARATION_CONTAINER_PREFIX)})
     return events
 
 
@@ -212,9 +277,15 @@ def run_scenarios(checkout: Path, netbox_docker: Path, lane: str,
     records = {}
     for name, (selection, broad) in selections.items():
         _assert_recursion_safe(name, selection, broad)
+        # Bare invocation must stay bare; see WRAPPER_COMMON_ARGS.
+        common = () if name == "no_argument_default" else WRAPPER_COMMON_ARGS
         env = {"NETBOX_DOCKER_DIR": str(netbox_docker), "COMPOSE_PROJECT_NAME": lane}
         started = time.time()
-        code, out, err = _run([str(wrapper), *selection], cwd=checkout, env=env)
+        argv = [str(wrapper), *selection, *common]
+        # The bare invocation runs the full topology default (~870 tests) and
+        # timed out at the 1800s default, recorded as rc=-1.
+        budget = 5400 if name == "no_argument_default" else 1800
+        code, out, err = _run(argv, cwd=checkout, env=env, timeout=budget)
         elapsed = time.time() - started
         combined = f"{out}\n{err}"
         lifecycle = observe_lifecycle(lane, started, time.time() + 1)
@@ -230,13 +301,23 @@ def run_scenarios(checkout: Path, netbox_docker: Path, lane: str,
             selection=tuple(selection),
             returncode=code,
             tests_executed=_tests_executed(combined),
-            prepared="prove_reaper_lane" in combined or "snapshot" in combined,
+            prepared=any(marker in combined for marker in PREPARATION_MARKERS),
+            prepared_artifact=_fresh_artifact_identity(combined),
+            attributed_containers=tuple(
+                event["name"] for event in lifecycle if event["attributed"]),
             markers=markers,
             remediation=remediation,
             stdout_tail=out[-2000:],
             stderr_tail=err[-2000:],
             notes=json.dumps({"elapsed_seconds": round(elapsed, 1),
-                              "lifecycle": lifecycle}),
+                              "lifecycle": lifecycle,
+                              "common_args_applied": list(common),
+                              # Recorded verbatim so a row can prove no
+                              # option was injected into the invocation it
+                              # claims to test. Appending even one argument
+                              # silently turned the bare-invocation scenario
+                              # into a 10,770-test whole-tree discovery.
+                              "argv": argv}),
         ))
     return records
 
@@ -279,7 +360,7 @@ def observe_preflight_then_invalidate(checkout: Path, netbox_docker: Path,
 
     consumer_code, consumer_out, consumer_err = _run(
         ["docker", "compose", "exec", "-T", "netbox", "python", "-u", "manage.py",
-         "test", *selection, "--keepdb"],
+         "test", *selection, "--keepdb", *WRAPPER_COMMON_ARGS],
         cwd=netbox_docker,
         env={"COMPOSE_PROJECT_NAME": lane,
              "HNP_REAPER_CONTAINER_EVIDENCE": str(evidence_path)},
@@ -316,7 +397,7 @@ def observe_remediation_round_trip(checkout: Path, netbox_docker: Path, lane: st
     # Provoke the refusal on the raw path, which is what prints remediation.
     raw_code, raw_out, raw_err = _run(
         ["docker", "compose", "exec", "-T", "netbox", "python", "-u", "manage.py",
-         "test", *selection, "--keepdb"],
+         "test", *selection, "--keepdb", *WRAPPER_COMMON_ARGS],
         cwd=netbox_docker, env={"COMPOSE_PROJECT_NAME": lane}, timeout=900)
     raw_combined = f"{raw_out}\n{raw_err}"
 
@@ -376,15 +457,15 @@ def observe_declaration_removal(checkout: Path, netbox_docker: Path, lane: str,
     syntax = subprocess.run(["bash", "-n", str(wrapper)], capture_output=True, text=True)
     try:
         removed_code, removed_out, removed_err = _run(
-            [str(checkout / "scripts" / "run_diet_tests.sh"), protected_module],
-            cwd=checkout, env=env, timeout=1800)
+            [str(checkout / "scripts" / "run_diet_tests.sh"), protected_module,
+             *WRAPPER_COMMON_ARGS], cwd=checkout, env=env, timeout=1800)
         removed_combined = f"{removed_out}\n{removed_err}"
     finally:
         wrapper.write_text(original, encoding="utf-8")
 
     restored_code, restored_out, restored_err = _run(
-        [str(checkout / "scripts" / "run_diet_tests.sh"), protected_module],
-        cwd=checkout, env=env, timeout=1800)
+        [str(checkout / "scripts" / "run_diet_tests.sh"), protected_module,
+         *WRAPPER_COMMON_ARGS], cwd=checkout, env=env, timeout=1800)
     restored_combined = f"{restored_out}\n{restored_err}"
     return {
         "name": "declaration_removed",
@@ -394,10 +475,10 @@ def observe_declaration_removal(checkout: Path, netbox_docker: Path, lane: str,
         "mutated_script_syntax_error": syntax.stderr[-300:],
         "removed_returncode": removed_code,
         "removed_tests": _tests_executed(removed_combined),
-        "removed_prepared": "prove_reaper_lane" in removed_combined,
+        "removed_prepared": any(m in removed_combined for m in PREPARATION_MARKERS),
         "restored_returncode": restored_code,
         "restored_tests": _tests_executed(restored_combined),
-        "restored_prepared": "prove_reaper_lane" in restored_combined,
+        "restored_prepared": any(m in restored_combined for m in PREPARATION_MARKERS),
         "stdout_tail": removed_out[-2000:],
         "stderr_tail": removed_err[-2000:],
     }
@@ -422,6 +503,20 @@ def main(argv=None) -> int:
     if args.lane in ("netbox-docker", ""):
         print("refusing to drive the shared stack", file=sys.stderr)
         return 2
+
+    # Verify the lane before observing anything. A previous run produced nine
+    # scenarios, every one of them a record of `service "netbox" is not
+    # running`, because the lane had exited before it started. The consumer
+    # rejects such evidence, but producing it at all wastes an hour and
+    # invites someone to read infrastructure failure as behaviour.
+    probe = subprocess.run(
+        ["docker", "compose", "exec", "-T", "netbox", "python", "-c", "pass"],
+        cwd=str(args.netbox_docker), capture_output=True, text=True,
+        env={**os.environ, "COMPOSE_PROJECT_NAME": args.lane}, timeout=120)
+    if probe.returncode != 0:
+        print(f"lane {args.lane!r} is not serving: {probe.stderr.strip()[:200]}\n"
+              "refusing to observe; bring the lane up first", file=sys.stderr)
+        return 3
 
     head = subprocess.run(["git", "rev-parse", "HEAD"], cwd=str(args.checkout),
                           capture_output=True, text=True, check=True).stdout.strip()
