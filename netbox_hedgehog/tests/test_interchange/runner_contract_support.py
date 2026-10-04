@@ -37,6 +37,7 @@ REQUIRED_ENTRY_POINTS = (
     "PREREQUISITE_EXIT_CODE",
     "remediation_command",
     "ContractDeclarationInvalid",
+    "wrapper_prepares_selection",
 )
 
 #: Modules that need externally prepared lane evidence. Named as strings and
@@ -56,6 +57,20 @@ UNPROTECTED_MODULES = (
 
 #: An unrelated suite, to prove the hook does not leak beyond interchange.
 UNRELATED_MODULE = "netbox_hedgehog.tests.test_topology_planning.test_port_allocator"
+
+#: A selection two levels above a protected module. Dev B's acceptance lists
+#: grandparent alongside parent, so it is probed as its own raw selector
+#: rather than inferred from the parent row.
+GRANDPARENT_SELECTION = "netbox_hedgehog.tests"
+
+#: Everything that could supply evidence to a child process and so conceal a
+#: missing declaration. `raw_django` scrubs all of these; T04d additionally
+#: proves the scrub was effective rather than assuming it.
+EVIDENCE_VARIABLES = (
+    "HNP_TEST_CHECKOUT_ROOT",
+    "HNP_TEST_LOCAL_CHECKOUT_ROOT",
+    "HNP_REAPER_CONTAINER_EVIDENCE",
+)
 
 
 class RunnerContractAbsent(AssertionError):
@@ -124,9 +139,8 @@ def raw_django(*labels: str, extra: tuple[str, ...] = (), env: dict | None = Non
     """
     argv = [sys.executable, "manage.py", "test", *labels, "--keepdb", *extra]
     environment = dict(os.environ)
-    environment.pop("HNP_TEST_CHECKOUT_ROOT", None)
-    environment.pop("HNP_TEST_LOCAL_CHECKOUT_ROOT", None)
-    environment.pop("HNP_REAPER_CONTAINER_EVIDENCE", None)
+    for name in EVIDENCE_VARIABLES:
+        environment.pop(name, None)
     if env:
         environment.update(env)
     def _text(value):
@@ -160,15 +174,39 @@ def import_in_fresh_process(module: str, env: dict | None = None,
         "        print('LOADED:' + _m)\n"
     )
     environment = dict(os.environ)
-    environment.pop("HNP_TEST_CHECKOUT_ROOT", None)
-    environment.pop("HNP_TEST_LOCAL_CHECKOUT_ROOT", None)
-    environment.pop("HNP_REAPER_CONTAINER_EVIDENCE", None)
+    for name in EVIDENCE_VARIABLES:
+        environment.pop(name, None)
     if env:
         environment.update(env)
     done = subprocess.run([sys.executable, "-c", code], capture_output=True,
                           text=True, timeout=timeout, env=environment)
     return RunOutcome((sys.executable, "-c", f"import {module}"),
                       done.returncode, done.stdout, done.stderr)
+
+
+def evidence_visible_to_child(timeout: int = 60) -> dict:
+    """What evidence a freshly spawned child can actually see.
+
+    T04d requires the omission to be demonstrated with "neither inherited CI
+    evidence variables nor usable residual evidence". Asserting that
+    `raw_django` scrubs is not the same as observing that the child saw
+    nothing, so the child reports its own view and the row checks that.
+    """
+    code = (
+        "import json, os\n"
+        f"names = {list(EVIDENCE_VARIABLES)!r}\n"
+        "seen = {n: os.environ.get(n) for n in names if os.environ.get(n)}\n"
+        "print('EVIDENCE_SEEN=' + json.dumps(seen))\n"
+    )
+    environment = dict(os.environ)
+    for name in EVIDENCE_VARIABLES:
+        environment.pop(name, None)
+    done = subprocess.run([sys.executable, "-c", code], capture_output=True,
+                          text=True, timeout=timeout, env=environment)
+    for line in done.stdout.splitlines():
+        if line.startswith("EVIDENCE_SEEN="):
+            return json.loads(line.split("=", 1)[1])
+    raise AssertionError(f"evidence probe produced no reading: {done.stdout!r} {done.stderr!r}")
 
 
 @dataclass(frozen=True)

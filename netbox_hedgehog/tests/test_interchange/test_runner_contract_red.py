@@ -32,12 +32,15 @@ from django.test import SimpleTestCase
 
 from netbox_hedgehog.tests.test_interchange.runner_contract_support import (
     CONTRACT_MODULE,
+    EVIDENCE_VARIABLES,
+    GRANDPARENT_SELECTION,
     PROTECTED_MODULES,
     REQUIRED_ENTRY_POINTS,
     UNPROTECTED_MODULES,
     UNRELATED_MODULE,
     ContractRow,
     RunnerContractAbsent,
+    evidence_visible_to_child,
     import_in_fresh_process,
     raw_django,
     require_runner_contract,
@@ -61,6 +64,10 @@ CONTRACT_ROWS = (
     ContractRow("R12", "test_r12_deleting_a_declaration_fails_closed", "deletion fails closed", "declaration"),
     ContractRow("R13", "test_r13_selection_matching_is_dot_component_aware", "no substring match", "selector"),
     ContractRow("R14", "test_r14_import_hook_scope_is_fresh_process_only", "fresh-process scope", "boundary"),
+    ContractRow("R15", "test_r15_grandparent_selection_is_refused", "grandparent label", "selector"),
+    ContractRow("R16", "test_r16_wrapper_broad_selection_prepares", "wrapper prepares", "compatibility"),
+    ContractRow("R17", "test_r17_preflight_is_not_an_integrity_exemption", "no exemption", "boundary"),
+    ContractRow("R18", "test_r18_declared_case_consumes_fresh_evidence", "paired positive", "declaration"),
 )
 
 AREAS = ("selector", "compatibility", "boundary", "remediation", "declaration")
@@ -124,6 +131,16 @@ class RunnerContractRedTests(SimpleTestCase):
         self.assertTrue(contract.selection_requires_evidence(
             (f"{PROTECTED}.ReaperAdapterRedContract.test_a01_distinct_execution_identities",)))
 
+    def test_r15_grandparent_selection_is_refused(self):
+        """Two levels up still reaches protected modules.
+
+        Listed separately from the parent row in Dev B's acceptance, and not
+        inferable from it: a mechanism could match the immediate package and
+        miss `netbox_hedgehog.tests`.
+        """
+        self.assert_refused(raw_django(GRANDPARENT_SELECTION, extra=("--exclude-tag=slow",)),
+                            "grandparent")
+
     # --- compatibility: the contract must not become a blanket refusal ----
 
     def test_r06_unprotected_interchange_modules_still_run_raw(self):
@@ -137,6 +154,22 @@ class RunnerContractRedTests(SimpleTestCase):
         outcome = raw_django(UNRELATED_MODULE)
         self.assertEqual(outcome.returncode, 0, outcome.combined[-400:])
         self.assertTrue(outcome.reported_a_test_result)
+
+    def test_r16_wrapper_broad_selection_prepares(self):
+        """Raw broad discovery refuses; the supported wrapper must prepare.
+
+        This is the distinction Dev B asked to be falsifiable. R04/R05/R15
+        pin the raw side, and without this row a contract that refused broad
+        selection everywhere -- wrapper included -- would satisfy all of
+        them while making the supported command unusable.
+        """
+        contract = require_runner_contract()
+        for selection in (GRANDPARENT_SELECTION, "netbox_hedgehog.tests.test_interchange"):
+            with self.subTest(selection=selection):
+                prepared = contract.wrapper_prepares_selection((selection,))
+                self.assertTrue(prepared.prepared,
+                                f"the wrapper must prepare {selection}, not refuse it")
+                self.assertFalse(getattr(prepared, "refused", False))
 
     # --- the boundary ----------------------------------------------------
 
@@ -177,6 +210,25 @@ class RunnerContractRedTests(SimpleTestCase):
 
     # --- remediation -----------------------------------------------------
 
+    def test_r17_preflight_is_not_an_integrity_exemption(self):
+        """Passing preflight must not switch off the real evidence checks.
+
+        Dev B's wording: a successful early preflight is not a permanent
+        exemption from freshness, read-only-mount or integrity validation.
+        The failure this guards against is a contract that satisfies itself
+        by making the protected module's own assertions conditional, so a
+        prepared run with deliberately corrupt evidence must still fail.
+        """
+        contract = require_runner_contract()
+        prepared = contract.wrapper_prepares_selection((PROTECTED,))
+        corrupted = dict(prepared.evidence)
+        corrupted["HNP_TEST_CHECKOUT_ROOT"] = "/nonexistent-hh711-integrity-probe"
+        outcome = raw_django(PROTECTED, env=corrupted)
+        self.assertNotEqual(outcome.returncode, 0,
+                            "corrupt evidence passed preflight and was never revalidated")
+        self.assertNotIn(contract.PREREQUISITE_DIAGNOSTIC, outcome.combined,
+                         "this must fail integrity validation, not the preflight gate")
+
     def test_r10_remediation_names_a_runnable_command(self):
         """The printed command must be the supported one, and host-side.
 
@@ -209,16 +261,53 @@ class RunnerContractRedTests(SimpleTestCase):
         self.assertEqual(set(contract.EVIDENCE_REQUIREMENTS), set(PROTECTED_MODULES))
 
     def test_r12_deleting_a_declaration_fails_closed(self):
-        """Removing a requirement must not silently mean 'needs none'.
+        """An omitted declaration must stay visible in a bare lane.
 
-        The declaration drives preparation and the module drives refusal, so a
-        deleted entry has to surface as a loud failure on the raw path rather
-        than a fast-path pass. Exercised by asking the contract directly, since
-        editing the real declaration from a test would mutate the tree.
+        Dev B's acceptance is specific: the omission has to be demonstrated
+        with neither inherited CI evidence variables nor usable residual
+        evidence, because either can conceal missing preparation and turn a
+        silent fast-path pass into something that looks correct.
+
+        So this row does three things rather than one. It observes, from the
+        child's own side, that no evidence variable survived into the fresh
+        process -- scrubbing in the parent is not evidence that the child saw
+        nothing. It then requires the protected module to refuse anyway, which
+        is the independent refusal that makes an omission loud while
+        preserving #699. Only then does it check that the declaration API
+        itself rejects an empty declaration instead of reading it as
+        "needs none".
         """
+        seen = evidence_visible_to_child()
+        self.assertEqual(seen, {},
+                         f"a bare lane still exposed evidence: {seen}; an omitted "
+                         "declaration could be concealed by it")
+
         contract = require_runner_contract()
+        outcome = raw_django(PROTECTED)
+        self.assert_refused(outcome, "undeclared module in a bare lane")
+
         with self.assertRaises(contract.ContractDeclarationInvalid):
             contract.selection_requires_evidence((PROTECTED,), declared=())
+
+    def test_r18_declared_case_consumes_fresh_evidence(self):
+        """The paired positive: correctly declared, and actually prepared.
+
+        Required alongside R12. Without it, "omission refuses" is satisfiable
+        by a contract that refuses unconditionally, and the declaration would
+        prove nothing. The declared module must pass *and* show it consumed
+        freshly prepared evidence rather than a residue.
+        """
+        contract = require_runner_contract()
+        self.assertIn(PROTECTED, contract.EVIDENCE_REQUIREMENTS)
+        prepared = contract.wrapper_prepares_selection((PROTECTED,))
+        self.assertTrue(prepared.prepared,
+                        "the supported wrapper must prepare a declared module")
+        self.assertTrue(set(prepared.evidence) & set(EVIDENCE_VARIABLES),
+                        "preparation must supply the evidence the module consumes")
+        outcome = raw_django(PROTECTED, env=prepared.evidence)
+        self.assertEqual(outcome.returncode, 0, outcome.combined[-400:])
+        self.assertTrue(outcome.reported_a_test_result,
+                        "a prepared run must reach real bodies, not refuse")
 
 
 class RunnerContractRedControls(SimpleTestCase):
