@@ -32,6 +32,9 @@ from django.test import SimpleTestCase
 
 from netbox_hedgehog.tests.test_interchange.runner_contract_support import (
     CONTRACT_MODULE,
+    ORDINARY_MARKER,
+    PROTECTED_MARKER,
+    build_fixture_tree,
     EVIDENCE_VARIABLES,
     GRANDPARENT_SELECTION,
     PROTECTED_MODULES,
@@ -76,35 +79,75 @@ AREAS = ("selector", "compatibility", "boundary", "remediation", "declaration")
 class RunnerContractRedTests(SimpleTestCase):
     """Rows that fail until #711 Phase D implements the contract."""
 
-    def assert_refused(self, outcome, label):
+    @classmethod
+    def setUpClass(cls):
+        super().setUpClass()
+        cls._tree_dir = tempfile.TemporaryDirectory(prefix="hh711-tree-")
+        cls.tree = build_fixture_tree(Path(cls._tree_dir.name))
+
+    @classmethod
+    def tearDownClass(cls):
+        cls._tree_dir.cleanup()
+        super().tearDownClass()
+
+    def fixture_env(self):
+        """PYTHONPATH for the disposable tree; no evidence for its protected module."""
+        return {"PYTHONPATH": str(self.tree.root)}
+
+    def assert_refused(self, outcome, label, marker_bearing=True):
+        """A refusal, observed by markers rather than by a missing summary.
+
+        B3: `Ran 0 tests` is a summary and an executed body can leave none, so
+        absence of a summary proves nothing in either direction. Fixture
+        bodies announce themselves, and a genuine pre-execution refusal means
+        neither marker appears.
+        """
         contract = require_runner_contract()
         self.assertFalse(
             outcome.timed_out,
             f"{label}: no refusal within the bound; the selection ran instead")
         self.assertEqual(
+            outcome.survivors, 0,
+            f"{label}: {outcome.survivors} descendant(s) survived the bound")
+        self.assertEqual(
             outcome.returncode, contract.PREREQUISITE_EXIT_CODE,
             f"{label}: expected the prerequisite exit code, got {outcome.returncode}")
         self.assertIn(contract.PREREQUISITE_DIAGNOSTIC, outcome.combined,
                       f"{label}: refusal must carry the stable diagnostic token")
-        self.assertFalse(
-            outcome.reported_a_test_result,
-            f"{label}: a result line means bodies were reached before refusal")
+        if marker_bearing:
+            self.assertFalse(outcome.body_ran(ORDINARY_MARKER),
+                             f"{label}: an ordinary body ran before the refusal")
+            self.assertFalse(outcome.body_ran(PROTECTED_MARKER),
+                             f"{label}: the protected body ran")
+        self.assertEqual(outcome.tests_executed, 0,
+                         f"{label}: {outcome.tests_executed} test(s) executed before refusal")
+
+    def fixture_run(self, *labels, **kwargs):
+        """Drive the real loader against the disposable tree.
+
+        B2: parent, grandparent and options-only selections discover every
+        sibling of their target. Against the real tree that rediscovers this
+        driver and respawns it -- measured four levels deep. This tree names
+        nothing in the suite, so it cannot.
+        """
+        kwargs.setdefault("env", self.fixture_env())
+        kwargs.setdefault("keepdb", False)
+        kwargs.setdefault("timeout", 120)
+        return raw_django(*labels, **kwargs)
 
     # --- selector shapes -------------------------------------------------
 
     def test_r01_module_selection_is_refused(self):
-        self.assert_refused(raw_django(PROTECTED), "module")
+        self.assert_refused(self.fixture_run(self.tree.protected), "module")
 
     def test_r02_class_selection_is_refused(self):
-        self.assert_refused(raw_django(f"{PROTECTED}.ReaperAdapterRedContract"), "class")
+        self.assert_refused(self.fixture_run(self.tree.protected_class), "class")
 
     def test_r03_method_selection_is_refused(self):
-        self.assert_refused(
-            raw_django(f"{PROTECTED}.ReaperAdapterRedContract."
-                       "test_a01_distinct_execution_identities"), "method")
+        self.assert_refused(self.fixture_run(self.tree.protected_method), "method")
 
     def test_r04_parent_package_selection_is_refused(self):
-        self.assert_refused(raw_django("netbox_hedgehog.tests.test_interchange"), "parent")
+        self.assert_refused(self.fixture_run(self.tree.parent), "parent")
 
     def test_r05_options_only_invocation_is_refused(self):
         """No labels means Django's broad discovery, which reaches protected modules.
@@ -114,7 +157,8 @@ class RunnerContractRedTests(SimpleTestCase):
         # Bounded deliberately: with the contract absent this invocation
         # discovers and runs the entire tree. A timeout is reported as
         # "did not refuse" rather than hanging the suite.
-        self.assert_refused(raw_django(timeout=90), "options-only")
+        self.assert_refused(
+            self.fixture_run(cwd=self.tree.root, timeout=90), "options-only")
 
     def test_r13_selection_matching_is_dot_component_aware(self):
         """`test_interchange_audit_retention` is not inside `test_interchange`.
@@ -138,8 +182,7 @@ class RunnerContractRedTests(SimpleTestCase):
         inferable from it: a mechanism could match the immediate package and
         miss `netbox_hedgehog.tests`.
         """
-        self.assert_refused(raw_django(GRANDPARENT_SELECTION, extra=("--exclude-tag=slow",)),
-                            "grandparent")
+        self.assert_refused(self.fixture_run(self.tree.grandparent), "grandparent")
 
     # --- compatibility: the contract must not become a blanket refusal ----
 
@@ -148,12 +191,14 @@ class RunnerContractRedTests(SimpleTestCase):
             with self.subTest(module=module):
                 outcome = raw_django(module)
                 self.assertEqual(outcome.returncode, 0, outcome.combined[-400:])
-                self.assertTrue(outcome.reported_a_test_result)
+                self.assertGreater(outcome.tests_executed, 0,
+                                   "a compatibility row must show real execution")
 
     def test_r07_unrelated_suite_still_runs_raw(self):
         outcome = raw_django(UNRELATED_MODULE)
         self.assertEqual(outcome.returncode, 0, outcome.combined[-400:])
-        self.assertTrue(outcome.reported_a_test_result)
+        self.assertGreater(outcome.tests_executed, 0,
+                           "a compatibility row must show real execution")
 
     def test_r16_wrapper_broad_selection_prepares(self):
         """Raw broad discovery refuses; the supported wrapper must prepare.
@@ -180,14 +225,13 @@ class RunnerContractRedTests(SimpleTestCase):
         a per-module error: unittest turns a load-time raise into a placeholder
         and keeps going, so earlier bodies still execute.
         """
-        outcome = raw_django(UNPROTECTED_MODULES[0], PROTECTED)
+        outcome = self.fixture_run(self.tree.ordinary, self.tree.protected)
         self.assert_refused(outcome, "mixed selection")
-        self.assertNotIn("OK", outcome.combined)
 
     def test_r09_refusal_is_distinct_from_a_crash(self):
         """An unrelated failure must not be mistaken for the contract firing."""
         contract = require_runner_contract()
-        outcome = raw_django("netbox_hedgehog.tests.does_not_exist_hh711")
+        outcome = self.fixture_run("hh711_root.pkg.does_not_exist")
         self.assertNotEqual(outcome.returncode, contract.PREREQUISITE_EXIT_CODE)
         self.assertNotIn(contract.PREREQUISITE_DIAGNOSTIC, outcome.combined)
 
@@ -204,9 +248,13 @@ class RunnerContractRedTests(SimpleTestCase):
         contract = require_runner_contract()
         self.assertEqual(outcome.returncode, contract.PREREQUISITE_EXIT_CODE)
         self.assertNotIn("IMPORT_COMPLETED", outcome.combined)
-        import sys as _sys
-        self.assertNotIn(PROTECTED, _sys.modules,
-                         "this suite must never import a protected module in-process")
+
+        # B4: no assertion here about the *parent* interpreter's sys.modules.
+        # A supported package run legitimately imports the protected sibling
+        # during Django discovery, so requiring its absence would fail a
+        # correctly prepared run for the selection's own imports rather than
+        # for any runner defect. Import-graph ownership belongs to the
+        # isolated-module control, which checks only what this module does.
 
     # --- remediation -----------------------------------------------------
 
@@ -306,8 +354,9 @@ class RunnerContractRedTests(SimpleTestCase):
                         "preparation must supply the evidence the module consumes")
         outcome = raw_django(PROTECTED, env=prepared.evidence)
         self.assertEqual(outcome.returncode, 0, outcome.combined[-400:])
-        self.assertTrue(outcome.reported_a_test_result,
-                        "a prepared run must reach real bodies, not refuse")
+        self.assertGreater(outcome.tests_executed, 0,
+                           "a prepared run must execute real bodies, not refuse; "
+                           "`Ran 0 tests / OK` is not preparation working")
 
 
 class RunnerContractRedControls(SimpleTestCase):
@@ -377,6 +426,80 @@ class RunnerContractRedControls(SimpleTestCase):
             with self.subTest(statement=module):
                 self.assertNotIn(module, imported)
 
+    def test_timeout_reaps_the_whole_descendant_tree(self):
+        """Harness control for B2: a bound that cannot reap is not a bound.
+
+        The measured failure was a parent killing only its immediate child
+        and orphaning three levels beneath it. This drives a child that
+        deliberately spawns a tree, lets the bound expire, and requires both
+        the reported survivor count and the live process table to agree that
+        nothing is left.
+        """
+        import subprocess as sp
+        import time
+        from netbox_hedgehog.tests.test_interchange.runner_contract_support import (
+            _process_state, _reap_group, _running_in_group)
+
+        child = sp.Popen(["bash", "-c", "sleep 120 & sleep 120 & sleep 120"],
+                         stdout=sp.PIPE, stderr=sp.PIPE, start_new_session=True)
+        time.sleep(1)
+        group = os.getpgid(child.pid)
+        before = _running_in_group(group)
+        self.assertGreater(before, 1, "the control must actually build a tree to reap")
+
+        survivors = _reap_group(child)
+        time.sleep(0.5)
+        self.assertEqual(survivors, 0, "the reaper reported running survivors")
+        self.assertEqual(_running_in_group(group), 0,
+                         "a descendant outlived the reap")
+
+        # The count must mean "still executing", not "no /proc entry". Inside
+        # this container PID 1 does not reap orphans, so the killed tree
+        # remains visible as zombies; if the counter regressed to counting
+        # entries, it would report survivors for a tree it had just killed.
+        entries = [d for d in Path("/proc").glob("[0-9]*")
+                   if (_process_state(d) or (None, None))[0] == group]
+        self.assertTrue(
+            all((_process_state(d) or (None, "Z"))[1] == "Z" for d in entries),
+            "every remaining entry for the reaped group must be a zombie")
+
+    def test_observers_reject_single_fault_outcomes(self):
+        """B3: typed adversaries, committed so they cannot silently rot.
+
+        Each row below is one deficiency Dev B supplied that the previous
+        assertions accepted. They target the discriminators directly rather
+        than whole rows, because a row first requires the absent contract and
+        would pass for that reason instead of for the fault under test.
+        """
+        from netbox_hedgehog.tests.test_interchange.runner_contract_support import RunOutcome
+
+        def outcome(**kwargs):
+            base = dict(argv=("x",), returncode=0, stdout="", stderr="")
+            base.update(kwargs)
+            return RunOutcome(**base)
+
+        with self.subTest("zero-test success is not execution"):
+            vacuous = outcome(stdout="Ran 0 tests in 0.001s\n\nOK\n")
+            self.assertEqual(vacuous.tests_executed, 0,
+                             "`Ran 0 tests` must not satisfy a positive row")
+
+        with self.subTest("a real run reports a nonzero count"):
+            self.assertEqual(outcome(stdout="Ran 7 tests in 1s\n\nOK\n").tests_executed, 7)
+
+        with self.subTest("a body that ran is visible without any summary"):
+            # SystemExit can suppress the summary entirely; the marker cannot.
+            self.assertTrue(outcome(stdout=f"{ORDINARY_MARKER}\n").body_ran(ORDINARY_MARKER))
+            self.assertEqual(outcome(stdout=f"{ORDINARY_MARKER}\n").tests_executed, 0)
+
+        with self.subTest("a summary with no body is not a body"):
+            self.assertFalse(outcome(stdout="Ran 3 tests\nOK\n").body_ran(ORDINARY_MARKER))
+
+        with self.subTest("a timeout is not a refusal and not a failure signal"):
+            expired = outcome(returncode=-1, timed_out=True, survivors=2)
+            self.assertTrue(expired.timed_out)
+            self.assertNotEqual(expired.survivors, 0,
+                                "survivors must be observable, not assumed zero")
+
     def test_subprocess_observer_detects_a_known_outcome(self):
         """The harness must be able to see a result it is given.
 
@@ -384,7 +507,7 @@ class RunnerContractRedControls(SimpleTestCase):
         refusal row pass for the wrong reason.
         """
         outcome = raw_django(UNRELATED_MODULE)
-        self.assertTrue(outcome.reported_a_test_result)
+        self.assertGreater(outcome.tests_executed, 0)
         self.assertEqual(outcome.returncode, 0)
         missing = raw_django("netbox_hedgehog.tests.does_not_exist_hh711")
         self.assertNotEqual(missing.returncode, 0)

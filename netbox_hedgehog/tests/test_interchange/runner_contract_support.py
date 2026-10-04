@@ -18,9 +18,13 @@ from __future__ import annotations
 
 import importlib
 import json
+import re
 import os
+import signal
 import subprocess
 import sys
+import textwrap
+import time
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -91,6 +95,85 @@ def require_runner_contract():
     return module
 
 
+#: Markers a fixture body writes to stdout. B3: a unittest summary is not a
+#: body observer in either direction -- `Ran 0 tests` counts as a summary, and
+#: a body can run before a SystemExit suppresses one -- so bodies say so
+#: themselves and rows assert on these.
+ORDINARY_MARKER = "HH711_ORDINARY_BODY_RAN"
+PROTECTED_MARKER = "HH711_PROTECTED_BODY_RAN"
+
+
+@dataclass(frozen=True)
+class FixtureTree:
+    """A disposable importable test tree that cannot rediscover the driver.
+
+    B2: broad selections -- parent, grandparent, options-only -- necessarily
+    discover every sibling of their target. Pointed at the real tree they
+    rediscover `test_runner_contract_red` and respawn it, which was measured
+    four levels deep and still descending. Pointed here they cannot: nothing
+    in this tree names or imports the driver.
+
+    Every case is a `SimpleTestCase`, so Django creates no test database for
+    these children. That removes the `--keepdb` sharing hazard at the root
+    rather than coordinating around it.
+    """
+
+    root: Path
+    grandparent: str
+    parent: str
+    protected: str
+    ordinary: str
+
+    @property
+    def protected_class(self) -> str:
+        return f"{self.protected}.ProtectedFixture"
+
+    @property
+    def protected_method(self) -> str:
+        return f"{self.protected_class}.test_body_must_not_run"
+
+
+def build_fixture_tree(root: Path) -> FixtureTree:
+    """Write the disposable tree. Caller owns `root` and its removal."""
+    pkg = root / "hh711_root"
+    sub = pkg / "pkg"
+    sub.mkdir(parents=True)
+    (pkg / "__init__.py").write_text("", encoding="utf-8")
+    (sub / "__init__.py").write_text("", encoding="utf-8")
+
+    (sub / "test_ordinary.py").write_text(textwrap.dedent(f"""
+        from django.test import SimpleTestCase
+
+
+        class OrdinaryFixture(SimpleTestCase):
+            def test_body_runs(self):
+                # Listed before the protected module so an early refusal must
+                # prevent this from printing. Its presence is the falsifiable
+                # evidence that bodies were reached.
+                print("{ORDINARY_MARKER}", flush=True)
+    """).lstrip(), encoding="utf-8")
+
+    (sub / "test_protected.py").write_text(textwrap.dedent(f"""
+        import os
+
+        from django.test import SimpleTestCase
+
+        # Stands in for a real evidence-requiring module: it refuses at import
+        # time when its prerequisite is absent, which is the behaviour the
+        # contract must produce on the raw path.
+        if not os.environ.get("HH711_FIXTURE_EVIDENCE"):
+            raise RuntimeError("HH711_FIXTURE_PREREQUISITE_MISSING")
+
+
+        class ProtectedFixture(SimpleTestCase):
+            def test_body_must_not_run(self):
+                print("{PROTECTED_MARKER}", flush=True)
+    """).lstrip(), encoding="utf-8")
+    return FixtureTree(root=root, grandparent="hh711_root", parent="hh711_root.pkg",
+                       protected="hh711_root.pkg.test_protected",
+                       ordinary="hh711_root.pkg.test_ordinary")
+
+
 @dataclass(frozen=True)
 class RunOutcome:
     """What a fresh raw-Django process actually did.
@@ -107,19 +190,34 @@ class RunOutcome:
     stdout: str
     stderr: str
     timed_out: bool = False
+    #: Descendants still alive after the bound expired and the group was
+    #: signalled. B2: killing the immediate child is not proof the tree
+    #: stopped, so this is observed rather than assumed, and a harness
+    #: control asserts it is zero.
+    survivors: int = 0
 
     @property
     def combined(self) -> str:
         return f"{self.stdout}\n{self.stderr}"
 
     @property
-    def reported_a_test_result(self) -> bool:
-        """True if unittest printed a result line -- i.e. bodies were reached.
+    def tests_executed(self) -> int:
+        """How many tests unittest reported running, parsed, not matched.
 
-        Checked instead of 'ok' counts because verbosity can hide those, and a
-        refusal must happen before any result line exists at all.
+        B3: `reported_a_test_result` returned true for `Ran 0 tests`, so a
+        vacuous success satisfied every positive row. Positive rows now
+        require a nonzero count from this.
         """
-        return "Ran " in self.combined and " test" in self.combined
+        match = re.search(r"^Ran (\d+) test", self.combined, re.MULTILINE)
+        return int(match.group(1)) if match else 0
+
+    def body_ran(self, marker: str) -> bool:
+        """Did a fixture body actually execute and say so?
+
+        B3: the only direction-safe observer. A summary can exist with zero
+        bodies, and bodies can run with no summary when SystemExit intervenes.
+        """
+        return marker in self.combined
 
     def wrote(self, marker: Path) -> bool:
         return marker.exists()
@@ -129,33 +227,117 @@ def manage_py() -> Path:
     return Path(sys.executable).parent.parent / "netbox" / "manage.py"
 
 
-def raw_django(*labels: str, extra: tuple[str, ...] = (), env: dict | None = None,
-               timeout: int = 300) -> RunOutcome:
-    """Run `manage.py test` in a genuinely fresh process.
+def _reap_group(process) -> int:
+    """Kill the child's whole process group and report what survived.
 
-    Fresh because the import hook under contract can only fire once per
-    interpreter; an in-process check would pass or fail for reasons unrelated
-    to the behaviour being claimed.
+    B2: `Popen.kill()` signals only the immediate child. A Django test child
+    that has itself spawned is left running, which is how four orphaned
+    levels accumulated. The child is started in its own session so the entire
+    descendant tree can be signalled as one group, and the survivor count is
+    observed afterwards rather than assumed to be zero.
     """
-    argv = [sys.executable, "manage.py", "test", *labels, "--keepdb", *extra]
+    try:
+        group = os.getpgid(process.pid)
+    except OSError:
+        return 0
+
+    def alive() -> int:
+        return _running_in_group(group)
+
+    # Poll the GROUP, not the immediate child. Waiting on `process` only
+    # reports that the direct child exited, which is exactly the mistake this
+    # function exists to prevent: the first version broke out of its escalation
+    # loop on `process.wait()` and reported zero survivors while three
+    # descendants were still running. The harness control caught it.
+    for sig in (signal.SIGTERM, signal.SIGKILL):
+        try:
+            os.killpg(group, sig)
+        except OSError:
+            break
+        deadline = time.monotonic() + 10
+        while time.monotonic() < deadline:
+            if alive() == 0:
+                try:
+                    process.wait(timeout=1)
+                except subprocess.TimeoutExpired:
+                    pass
+                return 0
+            time.sleep(0.1)
+    return alive()
+
+
+def _process_state(proc_dir: Path) -> tuple[int, str] | None:
+    """`(process group, state)` for one /proc entry, or None if unreadable.
+
+    Deliberately not swallowed into "assume it is gone": an entry that cannot
+    be read is reported as None and excluded, which the caller treats as not
+    running. That is sound here because the caller's question is "is anything
+    still executing", and it is the narrow case -- unlike a blanket
+    `except OSError: continue` over an inventory, which is the pattern that
+    made a scan look clean in #706.
+    """
+    try:
+        stat = (proc_dir / "stat").read_text()
+        after_comm = stat.rsplit(")", 1)[1].split()
+        return int(after_comm[2]), after_comm[0]
+    except (OSError, ValueError, IndexError):
+        return None
+
+
+def _running_in_group(group: int) -> int:
+    """Count processes in `group` that are actually still executing.
+
+    Zombies are excluded, and that distinction is load-bearing rather than
+    cosmetic. Inside the test container PID 1 is the Django process, not an
+    init that reaps orphans, so a SIGKILLed descendant stays in /proc in
+    state `Z` indefinitely. Counting those reported four survivors for a tree
+    that had in fact been killed -- a dead process holds a PID slot, no CPU,
+    and cannot spawn. On the host systemd reaps immediately, so the naive
+    count passed there and failed only in the container.
+    """
+    total = 0
+    for entry in Path("/proc").glob("[0-9]*"):
+        state = _process_state(entry)
+        if state and state[0] == group and state[1] != "Z":
+            total += 1
+    return total
+
+
+def raw_django(*labels: str, extra: tuple[str, ...] = (), env: dict | None = None,
+               timeout: int = 300, cwd: Path | None = None,
+               keepdb: bool = True) -> RunOutcome:
+    """Run `manage.py test` in a genuinely fresh, group-isolated process.
+
+    Fresh because the import hook under contract fires once per interpreter.
+    Group-isolated because broad selections spawn, and a bound that cannot
+    reap descendants is not a bound (B2).
+
+    `keepdb` is opt-out: fixture-tree children are all `SimpleTestCase`, so
+    Django builds no test database for them and they must not join the
+    parent's `--keepdb` identity.
+    """
+    argv = [sys.executable, "manage.py", "test", *labels]
+    if keepdb:
+        argv.append("--keepdb")
+    argv.extend(extra)
     environment = dict(os.environ)
     for name in EVIDENCE_VARIABLES:
         environment.pop(name, None)
     if env:
         environment.update(env)
-    def _text(value):
-        if isinstance(value, bytes):
-            return value.decode(errors="replace")
-        return value or ""
 
+    process = subprocess.Popen(
+        argv, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
+        cwd=str(cwd or Path(__file__).resolve().parents[3]),
+        env=environment, start_new_session=True)
     try:
-        done = subprocess.run(argv, capture_output=True, text=True, timeout=timeout,
-                              cwd=str(Path(__file__).resolve().parents[3]),
-                              env=environment)
-    except subprocess.TimeoutExpired as expired:
-        return RunOutcome(tuple(argv), -1, _text(expired.stdout),
-                          _text(expired.stderr), timed_out=True)
-    return RunOutcome(tuple(argv), done.returncode, done.stdout, done.stderr)
+        stdout, stderr = process.communicate(timeout=timeout)
+    except subprocess.TimeoutExpired:
+        survivors = _reap_group(process)
+        stdout, stderr = process.communicate()
+        return RunOutcome(tuple(argv), -1, stdout or "", stderr or "",
+                          timed_out=True, survivors=survivors)
+    return RunOutcome(tuple(argv), process.returncode, stdout, stderr)
 
 
 def import_in_fresh_process(module: str, env: dict | None = None,
