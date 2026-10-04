@@ -31,17 +31,21 @@ from pathlib import Path
 
 CONTRACT_MODULE = "netbox_hedgehog.tests.test_interchange.runner_contract"
 
-#: What Phase D must expose. Checked in both directions by a control, so an
-#: incomplete seam fails as "contract absent" rather than AttributeError --
-#: the #702 lesson.
+#: What Phase D must expose -- and no more. This list shrank from seven to
+#: three when the wrapper rows stopped asking the contract about itself and
+#: started judging what the real command did (Dev B's disposition on #713).
+#: `selection_requires_evidence`, `remediation_command` and
+#: `ContractDeclarationInvalid` are gone from it because R13, R10 and R12 now
+#: observe behaviour through the supported wrapper instead of consulting an
+#: API that would have been free to agree with itself.
+#:
+#: Checked in both directions by a control, so an incomplete seam fails as
+#: "contract absent" rather than AttributeError, and a declared-but-unused
+#: entry point cannot quietly widen the surface Phase D has to build.
 REQUIRED_ENTRY_POINTS = (
     "EVIDENCE_REQUIREMENTS",
-    "selection_requires_evidence",
     "PREREQUISITE_DIAGNOSTIC",
     "PREREQUISITE_EXIT_CODE",
-    "remediation_command",
-    "ContractDeclarationInvalid",
-    "wrapper_prepares_selection",
 )
 
 #: Modules that need externally prepared lane evidence. Named as strings and
@@ -75,6 +79,107 @@ EVIDENCE_VARIABLES = (
     "HNP_TEST_LOCAL_CHECKOUT_ROOT",
     "HNP_REAPER_CONTAINER_EVIDENCE",
 )
+
+
+#: Where the host-side driver publishes what it observed, and how long an
+#: observation stays usable. The window matches the lane convention already
+#: in `reaper_lane.py`; an observation older than this is not evidence about
+#: the current tree.
+DRIVER_EVIDENCE_VARIABLE = "HH711_DRIVER_EVIDENCE"
+DRIVER_EVIDENCE_MAX_AGE = 3600
+SHARED_STACK_LANE = "netbox-docker"
+
+
+class DriverEvidenceUnusable(AssertionError):
+    """Driver evidence is absent, stale, or not bound to this run.
+
+    Separate from `RunnerContractAbsent` on purpose: "nobody ran the host
+    driver" and "the contract is not implemented" are different facts, and a
+    row that cannot tell them apart reports the wrong thing.
+    """
+
+
+def load_driver_evidence(scenario: str, expected_selection: tuple[str, ...]) -> dict:
+    """Return one driver observation, or refuse to return anything.
+
+    Every binding Dev B required is checked here, and each failure is loud.
+    There is no path that returns a record when a binding cannot be
+    established -- including the case where the expected head is simply
+    unknown, which fails closed rather than skipping the check.
+    """
+    location = os.environ.get(DRIVER_EVIDENCE_VARIABLE)
+    if not location:
+        raise DriverEvidenceUnusable(
+            f"{DRIVER_EVIDENCE_VARIABLE} is unset: the host-side driver "
+            "(runner_contract_driver.py) has not published observations for "
+            "this lane; wrapper rows cannot be judged without them")
+    path = Path(location)
+    try:
+        evidence = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError) as exc:
+        raise DriverEvidenceUnusable(f"driver evidence at {path} unreadable: {exc}") from None
+
+    age = time.time() - evidence.get("observed_at", 0)
+    if not 0 <= age <= DRIVER_EVIDENCE_MAX_AGE:
+        raise DriverEvidenceUnusable(
+            f"driver evidence is {int(age)}s old (window {DRIVER_EVIDENCE_MAX_AGE}s); "
+            "re-run the host driver rather than trusting a previous lane")
+
+    lane = evidence.get("lane")
+    if not lane or lane == SHARED_STACK_LANE:
+        raise DriverEvidenceUnusable(
+            f"driver evidence names lane {lane!r}; observations must come from an "
+            "isolated lane, never the shared stack")
+
+    expected_head = _expected_head()
+    if evidence.get("head") != expected_head:
+        raise DriverEvidenceUnusable(
+            f"driver evidence is bound to head {evidence.get('head')!r}, but this "
+            f"tree is {expected_head!r}; evidence from another commit is not "
+            "evidence about this one")
+
+    if not evidence.get("run_id"):
+        raise DriverEvidenceUnusable("driver evidence carries no run identity")
+
+    record = (evidence.get("scenarios") or {}).get(scenario)
+    if record is None:
+        raise DriverEvidenceUnusable(
+            f"driver evidence has no scenario {scenario!r}; it was produced by a "
+            "driver that does not observe what this row claims")
+    if tuple(record.get("selection") or ()) != tuple(expected_selection):
+        raise DriverEvidenceUnusable(
+            f"scenario {scenario!r} observed selection {record.get('selection')!r}, "
+            f"but this row claims {list(expected_selection)!r}")
+    record = dict(record)
+    record["_run_id"] = evidence["run_id"]
+    record["_lane"] = lane
+    return record
+
+
+def _expected_head() -> str:
+    """The commit this tree actually is, or a loud failure.
+
+    Fails closed. An unknown head would otherwise turn the strongest binding
+    into a no-op, which is the "clean result that examined nothing" shape
+    this programme keeps finding.
+    """
+    pinned = os.environ.get("HH711_EXPECTED_HEAD")
+    if pinned:
+        return pinned
+    root = os.environ.get("HNP_TEST_CHECKOUT_ROOT") or os.environ.get(
+        "HNP_TEST_LOCAL_CHECKOUT_ROOT")
+    if root:
+        try:
+            done = subprocess.run(["git", "rev-parse", "HEAD"], cwd=root,
+                                  capture_output=True, text=True, timeout=30)
+            if done.returncode == 0 and done.stdout.strip():
+                return done.stdout.strip()
+        except (OSError, subprocess.SubprocessError):
+            pass
+    raise DriverEvidenceUnusable(
+        "cannot establish this tree's head: set HH711_EXPECTED_HEAD or provide a "
+        "checkout root with git metadata; an unverifiable head binding is not a "
+        "binding")
 
 
 class RunnerContractAbsent(AssertionError):

@@ -35,6 +35,7 @@ from netbox_hedgehog.tests.test_interchange.runner_contract_support import (
     ORDINARY_MARKER,
     PROTECTED_MARKER,
     build_fixture_tree,
+    load_driver_evidence,
     EVIDENCE_VARIABLES,
     GRANDPARENT_SELECTION,
     PROTECTED_MODULES,
@@ -74,6 +75,47 @@ CONTRACT_ROWS = (
 )
 
 AREAS = ("selector", "compatibility", "boundary", "remediation", "declaration")
+
+#: Accepted Phase B amendments mapped to the tests that carry them, or named
+#: as still-open gates. Dev B's point: area and entry-point coverage cannot
+#: prove these obligations exist, because both are satisfied by a suite that
+#: never expresses them. A row here is either a method that must exist -- the
+#: control below fails if one is renamed away -- or an explicit gate with a
+#: reason, which is a visible debt rather than a silent omission.
+#:
+#: Rows marked OPEN are not claimed as covered. Several are genuinely not yet
+#: expressible, and two (T03, T07, T10-T12) I could not resolve from the issue
+#: thread; I would rather name that than map them to something approximate.
+AMENDMENT_MAP = {
+    "T01": ("test_r18_declared_case_consumes_fresh_evidence",
+            "test_r12_deleting_a_declaration_fails_closed"),
+    "T02": ("OPEN: container lifecycle create/start events attributable to the run "
+            "are recorded by the driver but no row yet asserts them; an end-of-run "
+            "check would be the vacuous version Dev B named",),
+    "T03": ("OPEN: could not resolve T03a/T03b from the issue thread; not claimed",),
+    "T04a": ("test_r11_declaration_matches_discovered_modules",),
+    "T04b": ("test_r13_selection_matching_is_dot_component_aware",),
+    "T04c": ("test_r12_deleting_a_declaration_fails_closed",),
+    "T04d": ("test_r12_deleting_a_declaration_fails_closed",),
+    "T05a": ("test_r01_module_selection_is_refused",),
+    "T05b": ("test_r02_class_selection_is_refused",),
+    "T05c": ("test_r03_method_selection_is_refused",),
+    "T05d": ("test_r04_parent_package_selection_is_refused",),
+    "T05e": ("test_r15_grandparent_selection_is_refused",),
+    "T05f": ("test_r05_options_only_invocation_is_refused",),
+    "T05g": ("test_r06_unprotected_interchange_modules_still_run_raw",),
+    "T05h": ("test_r07_unrelated_suite_still_runs_raw",),
+    "T05i": ("test_r09_refusal_is_distinct_from_a_crash",),
+    "T05j": ("test_r16_wrapper_broad_selection_prepares",),
+    "T06": ("test_r10_remediation_names_a_runnable_command",),
+    "T07": ("OPEN: could not resolve T07 from the issue thread; not claimed",),
+    "T08": ("test_every_row_is_declared_and_exists",
+            "test_observers_reject_single_fault_outcomes"),
+    "T09": ("test_r17_preflight_is_not_an_integrity_exemption",),
+    "T10": ("OPEN: could not resolve T10 from the issue thread; not claimed",),
+    "T11": ("OPEN: could not resolve T11 from the issue thread; not claimed",),
+    "T12": ("OPEN: could not resolve T12 from the issue thread; not claimed",),
+}
 
 
 class RunnerContractRedTests(SimpleTestCase):
@@ -166,14 +208,15 @@ class RunnerContractRedTests(SimpleTestCase):
         Today's wrapper matches it by string prefix and prepares needlessly;
         the contract must compare dot components.
         """
-        contract = require_runner_contract()
-        self.assertFalse(contract.selection_requires_evidence(
-            ("netbox_hedgehog.tests.test_interchange_audit_retention",)))
-        self.assertTrue(contract.selection_requires_evidence((PROTECTED,)))
-        self.assertTrue(contract.selection_requires_evidence(
-            ("netbox_hedgehog.tests",)))
-        self.assertTrue(contract.selection_requires_evidence(
-            (f"{PROTECTED}.ReaperAdapterRedContract.test_a01_distinct_execution_identities",)))
+        sibling = ("netbox_hedgehog.tests.test_interchange_audit_retention",)
+        record = load_driver_evidence("sibling_not_inside", sibling)
+        self.assertFalse(
+            record["prepared"],
+            "the wrapper prepared a module that only shares a name prefix; "
+            "`run_diet_tests.sh` matches with == netbox_hedgehog.tests.test_interchange* "
+            "so test_interchange_audit_retention is treated as inside the package")
+        self.assertEqual(record["returncode"], 0, record["stderr_tail"][-300:])
+        self.assertGreater(record["tests_executed"], 0)
 
     def test_r15_grandparent_selection_is_refused(self):
         """Two levels up still reaches protected modules.
@@ -208,13 +251,14 @@ class RunnerContractRedTests(SimpleTestCase):
         selection everywhere -- wrapper included -- would satisfy all of
         them while making the supported command unusable.
         """
-        contract = require_runner_contract()
-        for selection in (GRANDPARENT_SELECTION, "netbox_hedgehog.tests.test_interchange"):
-            with self.subTest(selection=selection):
-                prepared = contract.wrapper_prepares_selection((selection,))
-                self.assertTrue(prepared.prepared,
-                                f"the wrapper must prepare {selection}, not refuse it")
-                self.assertFalse(getattr(prepared, "refused", False))
+        selection = ("netbox_hedgehog.tests.test_interchange",)
+        record = load_driver_evidence("broad_supported", selection)
+        self.assertTrue(record["prepared"],
+                        "the supported wrapper must prepare a broad selection")
+        self.assertEqual(record["returncode"], 0,
+                         f"the supported broad selection failed: {record['stderr_tail'][-300:]}")
+        self.assertGreater(record["tests_executed"], 0,
+                           "preparation that executes nothing is not preparation")
 
     # --- the boundary ----------------------------------------------------
 
@@ -267,29 +311,45 @@ class RunnerContractRedTests(SimpleTestCase):
         by making the protected module's own assertions conditional, so a
         prepared run with deliberately corrupt evidence must still fail.
         """
-        contract = require_runner_contract()
-        prepared = contract.wrapper_prepares_selection((PROTECTED,))
-        corrupted = dict(prepared.evidence)
-        corrupted["HNP_TEST_CHECKOUT_ROOT"] = "/nonexistent-hh711-integrity-probe"
-        outcome = raw_django(PROTECTED, env=corrupted)
-        self.assertNotEqual(outcome.returncode, 0,
-                            "corrupt evidence passed preflight and was never revalidated")
-        self.assertNotIn(contract.PREREQUISITE_DIAGNOSTIC, outcome.combined,
-                         "this must fail integrity validation, not the preflight gate")
+        sound = load_driver_evidence("declared_ok", (PROTECTED,))
+        self.assertEqual(sound["returncode"], 0,
+                         "the paired sound-evidence case must pass, or a later "
+                         "rejection proves nothing about exemption")
+        self.assertGreater(sound["tests_executed"], 0)
+
+        record = load_driver_evidence("preflight_then_invalidated", (PROTECTED,))
+        self.assertTrue(record["preflight_ok"],
+                        "preflight did not succeed, so this run cannot show that a "
+                        "successful preflight fails to exempt later checks")
+        self.assertTrue(record["invalidated"],
+                        "the evidence was never actually invalidated")
+        self.assertFalse(record["timed_out"],
+                         "a timeout is not an integrity rejection")
+        self.assertNotEqual(record["returncode"], 0,
+                            "the consumer accepted evidence invalidated after preflight")
+        self.assertTrue(record["integrity_token_seen"],
+                        "the consumer must fail with an identifiable integrity error "
+                        "from the real checker, not an unrelated crash")
 
     def test_r10_remediation_names_a_runnable_command(self):
-        """The printed command must be the supported one, and host-side.
+        """The printed command must work when run, not merely read correctly.
 
-        A message printed from inside the container has to say so, or a
-        contributor pastes it where it cannot work.
+        Substring checks pass on a command that cannot execute. The driver
+        takes the exact string the refusal emits and runs it verbatim in the
+        same isolated lane; this row judges that execution.
         """
-        contract = require_runner_contract()
-        outcome = raw_django(PROTECTED)
-        remediation = contract.remediation_command((PROTECTED,))
-        self.assertIn("run_diet_tests.sh", remediation)
-        self.assertIn(PROTECTED, remediation)
-        self.assertIn(remediation, outcome.combined,
-                      "the refusal must print the command the contract recommends")
+        record = load_driver_evidence("remediation_round_trip", (PROTECTED,))
+        self.assertTrue(record["emitted"],
+                        "the refusal printed no remediation command to run")
+        self.assertIn("run_diet_tests.sh", record["emitted"])
+        self.assertIn(PROTECTED, record["emitted"],
+                      "remediation must name the selection the user asked for")
+        self.assertEqual(
+            record["executed_returncode"], 0,
+            f"the emitted command failed when executed: {record['stderr_tail'][-300:]}")
+        self.assertGreater(
+            record["executed_tests"], 0,
+            "remediation that executes no tests has not remediated anything")
 
     # --- declaration -----------------------------------------------------
 
@@ -309,33 +369,41 @@ class RunnerContractRedTests(SimpleTestCase):
         self.assertEqual(set(contract.EVIDENCE_REQUIREMENTS), set(PROTECTED_MODULES))
 
     def test_r12_deleting_a_declaration_fails_closed(self):
-        """An omitted declaration must stay visible in a bare lane.
+        """Remove one real declaration, drive the real wrapper, see it refuse.
 
-        Dev B's acceptance is specific: the omission has to be demonstrated
-        with neither inherited CI evidence variables nor usable residual
-        evidence, because either can conceal missing preparation and turn a
-        silent fast-path pass into something that looks correct.
+        The earlier version asked the contract in-process with an empty
+        declaration, which a wrapper ignoring its metadata entirely would
+        have survived. The driver now removes one genuine declaration from a
+        disposable worktree -- never the shared checkout -- runs the actual
+        supported command there with no inherited or residual evidence, and
+        requires the protected child to refuse rather than quietly take the
+        fast path.
 
-        So this row does three things rather than one. It observes, from the
-        child's own side, that no evidence variable survived into the fresh
-        process -- scrubbing in the parent is not evidence that the child saw
-        nothing. It then requires the protected module to refuse anyway, which
-        is the independent refusal that makes an omission loud while
-        preserving #699. Only then does it check that the declaration API
-        itself rejects an empty declaration instead of reading it as
-        "needs none".
+        Restoring the declaration must produce real preparation and nonzero
+        execution; without that pair, "omission refuses" is satisfied by a
+        wrapper that refuses unconditionally.
         """
         seen = evidence_visible_to_child()
         self.assertEqual(seen, {},
                          f"a bare lane still exposed evidence: {seen}; an omitted "
                          "declaration could be concealed by it")
 
-        contract = require_runner_contract()
-        outcome = raw_django(PROTECTED)
-        self.assert_refused(outcome, "undeclared module in a bare lane")
+        record = load_driver_evidence("declaration_removed", (PROTECTED,))
+        self.assertTrue(record["declaration_actually_removed"],
+                        "no declaration was removed, so this proves nothing")
+        self.assertFalse(record["removed_prepared"],
+                         "the wrapper prepared a module whose declaration was removed")
+        self.assertNotEqual(record["removed_returncode"], 0,
+                            "an undeclared protected module ran instead of refusing")
+        self.assertEqual(record["removed_tests"], 0,
+                         "bodies executed despite the declaration being removed")
 
-        with self.assertRaises(contract.ContractDeclarationInvalid):
-            contract.selection_requires_evidence((PROTECTED,), declared=())
+        self.assertTrue(record["restored_prepared"],
+                        "restoring the declaration did not restore preparation")
+        self.assertEqual(record["restored_returncode"], 0,
+                         f"the restored case failed: {record['stderr_tail'][-300:]}")
+        self.assertGreater(record["restored_tests"], 0,
+                           "the restored case executed nothing")
 
     def test_r18_declared_case_consumes_fresh_evidence(self):
         """The paired positive: correctly declared, and actually prepared.
@@ -345,18 +413,13 @@ class RunnerContractRedTests(SimpleTestCase):
         prove nothing. The declared module must pass *and* show it consumed
         freshly prepared evidence rather than a residue.
         """
-        contract = require_runner_contract()
-        self.assertIn(PROTECTED, contract.EVIDENCE_REQUIREMENTS)
-        prepared = contract.wrapper_prepares_selection((PROTECTED,))
-        self.assertTrue(prepared.prepared,
-                        "the supported wrapper must prepare a declared module")
-        self.assertTrue(set(prepared.evidence) & set(EVIDENCE_VARIABLES),
-                        "preparation must supply the evidence the module consumes")
-        outcome = raw_django(PROTECTED, env=prepared.evidence)
-        self.assertEqual(outcome.returncode, 0, outcome.combined[-400:])
-        self.assertGreater(outcome.tests_executed, 0,
-                           "a prepared run must execute real bodies, not refuse; "
-                           "`Ran 0 tests / OK` is not preparation working")
+        record = load_driver_evidence("declared_ok", (PROTECTED,))
+        self.assertTrue(record["prepared"],
+                        "the wrapper must prepare a correctly declared module")
+        self.assertEqual(record["returncode"], 0,
+                         f"the declared case failed: {record['stderr_tail'][-300:]}")
+        self.assertGreater(record["tests_executed"], 0,
+                           "`Ran 0 tests / OK` is not a consumed-evidence positive")
 
 
 class RunnerContractRedControls(SimpleTestCase):
@@ -372,6 +435,30 @@ class RunnerContractRedControls(SimpleTestCase):
         declared = {row.method for row in CONTRACT_ROWS}
         self.assertEqual(declared, methods)
         self.assertEqual(len({row.identifier for row in CONTRACT_ROWS}), len(CONTRACT_ROWS))
+
+    def test_amendment_map_names_tests_that_exist(self):
+        """Every accepted amendment maps to a real test or a named open gate.
+
+        The failure this prevents is a mapping that drifts: a method renamed
+        or deleted while the map still claims the obligation is met. Open
+        gates are allowed through deliberately -- an acknowledged debt is
+        honest, a stale claim of coverage is not.
+        """
+        known = {name for name in dir(RunnerContractRedTests) if name.startswith("test_")}
+        known |= {name for name in dir(RunnerContractRedControls) if name.startswith("test_")}
+        open_gates = []
+        for amendment, entries in sorted(AMENDMENT_MAP.items()):
+            for entry in entries:
+                with self.subTest(amendment=amendment, entry=entry[:40]):
+                    if entry.startswith("OPEN:"):
+                        open_gates.append(amendment)
+                        self.assertGreater(len(entry), len("OPEN: "),
+                                           "an open gate must state why")
+                    else:
+                        self.assertIn(entry, known,
+                                      f"{amendment} maps to {entry}, which does not exist")
+        self.assertTrue(open_gates, "the map claims full coverage; say so explicitly "
+                                    "rather than leaving this control trivially true")
 
     def test_every_area_is_covered(self):
         self.assertEqual({row.area for row in CONTRACT_ROWS}, set(AREAS))
