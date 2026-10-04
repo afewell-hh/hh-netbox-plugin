@@ -138,6 +138,28 @@ def load_driver_evidence(scenario: str, expected_selection: tuple[str, ...]) -> 
             f"tree is {expected_head!r}; evidence from another commit is not "
             "evidence about this one")
 
+    # An observation that never reached the system under test is not an
+    # observation of it. Without this, a broken lane produces records that
+    # satisfy every binding -- correct head, correct selection, correct lane,
+    # fresh timestamp -- while every field describes infrastructure failing.
+    # A first driver run did exactly that: six scenarios, all
+    # `service "netbox" is not running`, all perfectly bound. The rows would
+    # have read "the wrapper did not prepare" and been wrong about why.
+    infrastructure_failures = (
+        'service "netbox" is not running',
+        "no such service",
+        "Cannot connect to the Docker daemon",
+        "dependency failed to start",
+    )
+    for scenario_name, scenario in (evidence.get("scenarios") or {}).items():
+        text = f"{scenario.get('stderr_tail', '')}{scenario.get('stdout_tail', '')}"
+        for marker in infrastructure_failures:
+            if marker in text:
+                raise DriverEvidenceUnusable(
+                    f"scenario {scenario_name!r} never reached the system under "
+                    f"test ({marker!r}); the lane was broken, so nothing here is "
+                    "evidence about the contract")
+
     if not evidence.get("run_id"):
         raise DriverEvidenceUnusable("driver evidence carries no run identity")
 

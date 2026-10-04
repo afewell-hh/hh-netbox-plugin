@@ -388,9 +388,14 @@ class RunnerContractRedTests(SimpleTestCase):
                          f"a bare lane still exposed evidence: {seen}; an omitted "
                          "declaration could be concealed by it")
 
-        record = load_driver_evidence("declaration_removed", (PROTECTED,))
+        declared = "netbox_hedgehog.tests.test_interchange.test_checkout_containment"
+        record = load_driver_evidence("declaration_removed", (declared,))
         self.assertTrue(record["declaration_actually_removed"],
                         "no declaration was removed, so this proves nothing")
+        self.assertTrue(
+            record["mutated_script_still_parses"],
+            "the mutated wrapper does not parse, so any refusal below is bash "
+            f"failing to read it, not the contract: {record['mutated_script_syntax_error']}")
         self.assertFalse(record["removed_prepared"],
                          "the wrapper prepared a module whose declaration was removed")
         self.assertNotEqual(record["removed_returncode"], 0,

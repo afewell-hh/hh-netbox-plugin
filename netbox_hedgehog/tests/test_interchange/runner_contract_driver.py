@@ -298,12 +298,25 @@ def observe_declaration_removal(checkout: Path, netbox_docker: Path, lane: str,
     wrapper = checkout / "netbox_hedgehog" / "scripts" / "run_diet_tests.sh"
     original = wrapper.read_text(encoding="utf-8")
     env = {"NETBOX_DOCKER_DIR": str(netbox_docker), "COMPOSE_PROJECT_NAME": lane}
-    tail = protected_module.rsplit(".", 1)[-1]
+    # The wrapper declares evidence-requiring modules by source path, e.g.
+    # `netbox_hedgehog/tests/test_interchange/test_checkout_containment.py`,
+    # not by dotted name. A first version searched for the dotted tail,
+    # matched nothing, and reported declaration_actually_removed=False --
+    # the row asserted that flag and failed loudly rather than passing on a
+    # mutation that never happened.
+    declared_path = protected_module.replace(".", "/") + ".py"
 
-    removed_lines = [line for line in original.splitlines(keepends=True)
-                     if tail not in line]
-    actually_removed = len(removed_lines) != len(original.splitlines(keepends=True))
-    wrapper.write_text("".join(removed_lines), encoding="utf-8")
+    # Substitute, do not delete. The declaration sits inside a shell `case`
+    # arm, and deleting the line left `run_diet_tests.sh` with a syntax error
+    # at line 43 -- so the previous run observed bash failing to parse the
+    # script, not the wrapper failing to prepare. Replacing the path with a
+    # name that matches nothing removes the declaration while keeping the
+    # script valid, which is the mutation actually intended.
+    sentinel = "netbox_hedgehog/tests/test_interchange/hh711_no_such_declaration.py"
+    mutated = original.replace(declared_path, sentinel)
+    actually_removed = mutated != original
+    wrapper.write_text(mutated, encoding="utf-8")
+    syntax = subprocess.run(["bash", "-n", str(wrapper)], capture_output=True, text=True)
     try:
         removed_code, removed_out, removed_err = _run(
             [str(checkout / "scripts" / "run_diet_tests.sh"), protected_module],
@@ -320,6 +333,8 @@ def observe_declaration_removal(checkout: Path, netbox_docker: Path, lane: str,
         "name": "declaration_removed",
         "selection": [protected_module],
         "declaration_actually_removed": actually_removed,
+        "mutated_script_still_parses": syntax.returncode == 0,
+        "mutated_script_syntax_error": syntax.stderr[-300:],
         "removed_returncode": removed_code,
         "removed_tests": _tests_executed(removed_combined),
         "removed_prepared": "prove_reaper_lane" in removed_combined,
@@ -370,8 +385,13 @@ def main(argv=None) -> int:
         protected = "netbox_hedgehog.tests.test_interchange.test_reaper_adapter_red"
         scenarios["remediation_round_trip"] = observe_remediation_round_trip(
             disposable, args.netbox_docker, args.lane, (protected,))
+        # The wrapper declares exactly one evidence-requiring module by path,
+        # so that is the declaration a removal test can genuinely remove.
+        # Targeting a module the wrapper never declared would mutate nothing
+        # and prove nothing.
+        declared = "netbox_hedgehog.tests.test_interchange.test_checkout_containment"
         scenarios["declaration_removed"] = observe_declaration_removal(
-            disposable, args.netbox_docker, args.lane, protected)
+            disposable, args.netbox_docker, args.lane, declared)
         scenarios["preflight_then_invalidated"] = observe_preflight_then_invalidate(
             disposable, args.netbox_docker, args.lane,
             ("netbox_hedgehog.tests.test_interchange.test_reaper_adapter_red",))
