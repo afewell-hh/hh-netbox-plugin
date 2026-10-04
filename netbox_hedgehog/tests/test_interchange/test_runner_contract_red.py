@@ -23,6 +23,7 @@ Three things this suite does deliberately, each from review:
 
 from __future__ import annotations
 
+import json
 import os
 import tempfile
 import unittest
@@ -72,6 +73,11 @@ CONTRACT_ROWS = (
     ContractRow("R16", "test_r16_wrapper_broad_selection_prepares", "wrapper prepares", "compatibility"),
     ContractRow("R17", "test_r17_preflight_is_not_an_integrity_exemption", "no exemption", "boundary"),
     ContractRow("R18", "test_r18_declared_case_consumes_fresh_evidence", "paired positive", "declaration"),
+    ContractRow("R19", "test_r19_fast_path_creates_no_preparation_containers", "no needless prep", "compatibility"),
+    ContractRow("R20", "test_r20_lifecycle_observer_detects_real_preparation", "observer positive", "compatibility"),
+    ContractRow("R21", "test_r21_no_argument_invocation_keeps_topology_default", "default kept", "remediation"),
+    ContractRow("R22", "test_r22_option_value_resembling_a_label_does_not_prepare", "option value", "selector"),
+    ContractRow("R23", "test_r23_ci_membership_is_independent_of_evidence_metadata", "ci membership", "declaration"),
 )
 
 AREAS = ("selector", "compatibility", "boundary", "remediation", "declaration")
@@ -89,10 +95,9 @@ AREAS = ("selector", "compatibility", "boundary", "remediation", "declaration")
 AMENDMENT_MAP = {
     "T01": ("test_r18_declared_case_consumes_fresh_evidence",
             "test_r12_deleting_a_declaration_fails_closed"),
-    "T02": ("OPEN: container lifecycle create/start events attributable to the run "
-            "are recorded by the driver but no row yet asserts them; an end-of-run "
-            "check would be the vacuous version Dev B named",),
-    "T03": ("OPEN: could not resolve T03a/T03b from the issue thread; not claimed",),
+    "T02": ("test_r19_fast_path_creates_no_preparation_containers",
+            "test_r20_lifecycle_observer_detects_real_preparation"),
+    "T03": ("test_r23_ci_membership_is_independent_of_evidence_metadata",),
     "T04a": ("test_r11_declaration_matches_discovered_modules",),
     "T04b": ("test_r13_selection_matching_is_dot_component_aware",),
     "T04c": ("test_r12_deleting_a_declaration_fails_closed",),
@@ -108,13 +113,15 @@ AMENDMENT_MAP = {
     "T05i": ("test_r09_refusal_is_distinct_from_a_crash",),
     "T05j": ("test_r16_wrapper_broad_selection_prepares",),
     "T06": ("test_r10_remediation_names_a_runnable_command",),
-    "T07": ("OPEN: could not resolve T07 from the issue thread; not claimed",),
+    "T07": ("test_r06_unprotected_interchange_modules_still_run_raw",
+            "test_r07_unrelated_suite_still_runs_raw"),
     "T08": ("test_every_row_is_declared_and_exists",
             "test_observers_reject_single_fault_outcomes"),
     "T09": ("test_r17_preflight_is_not_an_integrity_exemption",),
-    "T10": ("OPEN: could not resolve T10 from the issue thread; not claimed",),
-    "T11": ("OPEN: could not resolve T11 from the issue thread; not claimed",),
-    "T12": ("OPEN: could not resolve T12 from the issue thread; not claimed",),
+    "T10": ("test_r19_fast_path_creates_no_preparation_containers",),
+    "T11": ("test_r05_options_only_invocation_is_refused",
+            "test_r21_no_argument_invocation_keeps_topology_default"),
+    "T12": ("test_r22_option_value_resembling_a_label_does_not_prepare",),
 }
 
 
@@ -251,7 +258,10 @@ class RunnerContractRedTests(SimpleTestCase):
         selection everywhere -- wrapper included -- would satisfy all of
         them while making the supported command unusable.
         """
-        selection = ("netbox_hedgehog.tests.test_interchange",)
+        # Broad, but slow-tagged cases excluded: the claim is that a broad
+        # supported selection *prepares*, not that the heaviest suite fits
+        # in the lane. The full package SIGKILLed it at rc=137.
+        selection = ("netbox_hedgehog.tests.test_interchange", "--exclude-tag", "slow")
         record = load_driver_evidence("broad_supported", selection)
         self.assertTrue(record["prepared"],
                         "the supported wrapper must prepare a broad selection")
@@ -259,6 +269,87 @@ class RunnerContractRedTests(SimpleTestCase):
                          f"the supported broad selection failed: {record['stderr_tail'][-300:]}")
         self.assertGreater(record["tests_executed"], 0,
                            "preparation that executes nothing is not preparation")
+
+    def test_r19_fast_path_creates_no_preparation_containers(self):
+        """T10/T02-negative: the topology fast path prepares nothing.
+
+        Timing is recorded and reported, never gated on a ratio -- a ratio
+        would fail or pass on machine load rather than on behaviour.
+        """
+        selection = ("netbox_hedgehog.tests.test_topology_planning.test_port_allocator",)
+        record = load_driver_evidence("topology_fast_path", selection)
+        self.assertFalse(record["prepared"],
+                         "the fast path triggered preparation it does not need")
+        self.assertEqual(record["returncode"], 0, record["stderr_tail"][-300:])
+        self.assertGreater(record["tests_executed"], 0)
+        notes = json.loads(record["notes"])
+        created = [event for event in notes["lifecycle"] if event["action"] == "create"]
+        self.assertEqual(created, [],
+                         f"the fast path created preparation containers: {created}")
+        print(f"\n      [R19] fast path elapsed {notes['elapsed_seconds']}s (reported, not gated)")
+
+    def test_r20_lifecycle_observer_detects_real_preparation(self):
+        """T02-positive: prove the observer can see what R19 says is absent.
+
+        Without this, R19 passes on an observer that never detects anything
+        -- the vacuous half of the pair. A selection that genuinely prepares
+        must show create/start events in its own window.
+        """
+        record = load_driver_evidence("declared_ok", (PROTECTED,))
+        notes = json.loads(record["notes"])
+        self.assertTrue(
+            notes["lifecycle"],
+            "the lifecycle observer saw no container events for a selection that "
+            "prepares; R19's negative is worthless unless this positive holds")
+
+    def test_r21_no_argument_invocation_keeps_topology_default(self):
+        """T11: bare invocation keeps its explicit topology default."""
+        record = load_driver_evidence("no_argument_default", ())
+        self.assertEqual(record["returncode"], 0, record["stderr_tail"][-300:])
+        self.assertGreater(record["tests_executed"], 0,
+                           "the no-argument default executed nothing")
+        self.assertFalse(record["prepared"],
+                         "the topology default must not trigger preparation")
+
+    def test_r22_option_value_resembling_a_label_does_not_prepare(self):
+        """T12: an option *value* that looks like a protected label is not one.
+
+        The wrapper matches arguments positionally today, so a supported
+        option whose value happens to spell a protected package can be read
+        as a selection and prepare needlessly.
+        """
+        selection = ("netbox_hedgehog.tests.test_topology_planning.test_port_allocator",
+                     "--exclude-tag", "netbox_hedgehog.tests.test_interchange")
+        record = load_driver_evidence("option_value_lookalike", selection)
+        self.assertFalse(record["prepared"],
+                         "an option value was mistaken for a protected selection")
+        self.assertEqual(record["returncode"], 0, record["stderr_tail"][-300:])
+        self.assertGreater(record["tests_executed"], 0)
+
+    def test_r23_ci_membership_is_independent_of_evidence_metadata(self):
+        """T03: discovery governs CI membership; metadata governs preparation.
+
+        Security modules must stay CI-enforced whether or not they require
+        evidence, so membership is derived from source discovery and never
+        from the evidence declaration. A declared requirement additionally
+        triggers preparation -- the two must not collapse into one list.
+        """
+        contract = require_runner_contract()
+        here = Path(__file__).resolve().parent
+        discovered = {f"netbox_hedgehog.tests.test_interchange.{path.stem}"
+                      for path in here.glob("test_*.py")}
+        self.assertTrue(discovered, "discovery found no interchange test modules")
+
+        declared = set(contract.EVIDENCE_REQUIREMENTS)
+        self.assertTrue(declared.issubset(discovered),
+                        f"declared modules not discoverable from source: {declared - discovered}")
+        self.assertTrue(discovered - declared,
+                        "every discovered module requires evidence, so this control "
+                        "cannot show membership is independent of the declaration")
+
+        record = load_driver_evidence("declared_ok", (PROTECTED,))
+        self.assertTrue(record["prepared"],
+                        "a declared requirement must additionally trigger preparation")
 
     # --- the boundary ----------------------------------------------------
 
@@ -462,8 +553,11 @@ class RunnerContractRedControls(SimpleTestCase):
                     else:
                         self.assertIn(entry, known,
                                       f"{amendment} maps to {entry}, which does not exist")
-        self.assertTrue(open_gates, "the map claims full coverage; say so explicitly "
-                                    "rather than leaving this control trivially true")
+        # Every amendment now maps to a real test. The control's value is no
+        # longer "an open gate exists" but that nothing claims coverage by
+        # naming a method that does not.
+        self.assertEqual(open_gates, [],
+                         f"amendments still unmapped: {sorted(set(open_gates))}")
 
     def test_every_area_is_covered(self):
         self.assertEqual({row.area for row in CONTRACT_ROWS}, set(AREAS))

@@ -105,9 +105,39 @@ def _tests_executed(text: str) -> int:
     return int(match.group(1)) if match else 0
 
 
+#: Supported options that take a separate value. The value after one of
+#: these is an argument to the option, never a test label.
+OPTIONS_WITH_VALUES = ("--exclude-tag", "--tag", "--parallel", "--settings",
+                       "--pythonpath", "--testrunner", "-k")
+
+
+def positional_labels(selection) -> tuple:
+    """The test labels in an argv, excluding options and their values.
+
+    This exists because the first version did not have it, and the guard
+    below refused the `option_value_lookalike` scenario -- reading
+    `--exclude-tag netbox_hedgehog.tests.test_interchange` as a selection of
+    that package. That is exactly the defect T12 describes: an option value
+    that resembles a protected label is not a selection of it. The guard
+    made the mistake the row exists to catch.
+    """
+    labels, skip_next = [], False
+    for argument in selection:
+        if skip_next:
+            skip_next = False
+            continue
+        if argument in OPTIONS_WITH_VALUES:
+            skip_next = True
+            continue
+        if argument.startswith("-"):
+            continue
+        labels.append(argument)
+    return tuple(labels)
+
+
 def _reaches_driver_suite(selection) -> bool:
     return any(label == DRIVER_SUITE or DRIVER_SUITE.startswith(f"{label}.")
-               for label in selection)
+               for label in positional_labels(selection))
 
 
 def _assert_recursion_safe(name: str, selection, broad: bool) -> None:
@@ -150,6 +180,28 @@ def make_disposable_checkout(source: Path, head: str, destination: Path) -> Path
     return destination
 
 
+def observe_lifecycle(lane: str, since: float, until: float) -> list:
+    """Container create/start events attributable to one scenario's window.
+
+    Dev B's T02 is explicit that an end-of-run `docker ps` is the vacuous
+    version: real preparation creates containers and removes them again, so
+    a snapshot afterwards sees nothing and a check built on one passes
+    whether or not preparation ever happened. Events are read for the
+    scenario's own time window instead.
+    """
+    done = subprocess.run(
+        ["docker", "events", "--since", str(int(since)), "--until", str(int(until)),
+         "--filter", "event=create", "--filter", "event=start", "--format",
+         "{{.Action}} {{.Actor.Attributes.name}}"],
+        capture_output=True, text=True, timeout=120)
+    events = []
+    for line in done.stdout.splitlines():
+        parts = line.split(None, 1)
+        if len(parts) == 2 and lane in parts[1]:
+            events.append({"action": parts[0], "name": parts[1]})
+    return events
+
+
 def run_scenarios(checkout: Path, netbox_docker: Path, lane: str,
                   selections: dict) -> dict:
     """Invoke the real wrapper once per scenario and record what happened."""
@@ -161,8 +213,11 @@ def run_scenarios(checkout: Path, netbox_docker: Path, lane: str,
     for name, (selection, broad) in selections.items():
         _assert_recursion_safe(name, selection, broad)
         env = {"NETBOX_DOCKER_DIR": str(netbox_docker), "COMPOSE_PROJECT_NAME": lane}
+        started = time.time()
         code, out, err = _run([str(wrapper), *selection], cwd=checkout, env=env)
+        elapsed = time.time() - started
         combined = f"{out}\n{err}"
+        lifecycle = observe_lifecycle(lane, started, time.time() + 1)
         markers = tuple(m for m in ("HH711_ORDINARY_BODY_RAN", "HH711_PROTECTED_BODY_RAN")
                         if m in combined)
         remediation = ""
@@ -180,6 +235,8 @@ def run_scenarios(checkout: Path, netbox_docker: Path, lane: str,
             remediation=remediation,
             stdout_tail=out[-2000:],
             stderr_tail=err[-2000:],
+            notes=json.dumps({"elapsed_seconds": round(elapsed, 1),
+                              "lifecycle": lifecycle}),
         ))
     return records
 
@@ -377,9 +434,22 @@ def main(argv=None) -> int:
         selections = {
             "declared_ok": (
                 ("netbox_hedgehog.tests.test_interchange.test_reaper_adapter_red",), False),
-            "broad_supported": (("netbox_hedgehog.tests.test_interchange",), True),
+            "broad_supported": (("netbox_hedgehog.tests.test_interchange",
+                                 "--exclude-tag", "slow"), True),
             "sibling_not_inside": (
                 ("netbox_hedgehog.tests.test_interchange_audit_retention",), False),
+            # T10/T02-negative: the topology fast path must stay fast and
+            # create no preparation containers. Timing is reported, not gated
+            # on a ratio, per Dev B.
+            "topology_fast_path": (
+                ("netbox_hedgehog.tests.test_topology_planning.test_port_allocator",), False),
+            # T12: a supported option whose *value* resembles a protected
+            # label must not trigger preparation.
+            "option_value_lookalike": (
+                ("netbox_hedgehog.tests.test_topology_planning.test_port_allocator",
+                 "--exclude-tag", "netbox_hedgehog.tests.test_interchange"), False),
+            # T11: no-argument invocation keeps its explicit topology default.
+            "no_argument_default": ((), False),
         }
         scenarios = run_scenarios(disposable, args.netbox_docker, args.lane, selections)
         protected = "netbox_hedgehog.tests.test_interchange.test_reaper_adapter_red"
