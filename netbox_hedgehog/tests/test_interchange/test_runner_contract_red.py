@@ -92,6 +92,27 @@ AREAS = ("selector", "compatibility", "boundary", "remediation", "declaration")
 #: Rows marked OPEN are not claimed as covered. Several are genuinely not yet
 #: expressible, and two (T03, T07, T10-T12) I could not resolve from the issue
 #: thread; I would rather name that than map them to something approximate.
+#: Rows whose evidence cannot be produced until #715 lands. They are left
+#: failing and annotated -- never skipped, xfailed, or rewritten to pass
+#: against a weaker observation. Each needs the supported wrapper to run the
+#: declared protected module, which is SimpleTestCase-only and therefore
+#: cannot run today: DietTestRunner asks the DIET-643 guard about an alias
+#: Django never prepared, and the guard correctly refuses.
+#:
+#: Measured in #715 Phase A: SimpleTestCase-only gives get_databases()==[]
+#: and setup_databases()==[], leaving connections['default'] on 'netbox'.
+BLOCKED_BY_715 = {
+    "test_r16_wrapper_broad_selection_prepares":
+        "a broad interchange selection includes the SimpleTestCase-only "
+        "protected module, so the run cannot complete through the wrapper",
+    "test_r17_preflight_is_not_an_integrity_exemption":
+        "its sound-evidence pair is declared_ok, which cannot run; the "
+        "post-preflight integrity rejection was independently observed and "
+        "stands as regression evidence, but does not substitute for the pair",
+    "test_r18_declared_case_consumes_fresh_evidence":
+        "declared_ok is the declared protected module itself",
+}
+
 AMENDMENT_MAP = {
     "T01": ("test_r18_declared_case_consumes_fresh_evidence",
             "test_r12_deleting_a_declaration_fails_closed"),
@@ -587,6 +608,28 @@ class RunnerContractRedControls(SimpleTestCase):
         # naming a method that does not.
         self.assertEqual(open_gates, [],
                          f"amendments still unmapped: {sorted(set(open_gates))}")
+
+    def test_blocked_rows_are_annotated_not_suppressed(self):
+        """Blocked rows stay failing and say why; nothing is suppressed.
+
+        The control exists so "blocked by #715" cannot drift into a silent
+        exemption. Each named row must still exist, must still be a declared
+        contract row, and must carry no skip/xfail decoration -- the issue
+        and the standing constraints forbid conditional suppression, so a
+        blocked row fails loudly with a recorded reason instead.
+        """
+        declared = {row.method for row in CONTRACT_ROWS}
+        for method, reason in sorted(BLOCKED_BY_715.items()):
+            with self.subTest(row=method):
+                self.assertIn(method, declared,
+                              f"{method} is marked blocked but is not a contract row")
+                self.assertTrue(hasattr(RunnerContractRedTests, method))
+                function = getattr(RunnerContractRedTests, method)
+                self.assertFalse(getattr(function, "__unittest_skip__", False),
+                                 f"{method} is skipped; blocked rows must fail, not skip")
+                self.assertFalse(getattr(function, "__unittest_expecting_failure__", False),
+                                 f"{method} is xfailed; blocked rows must fail, not xfail")
+                self.assertGreater(len(reason), 40, "a blocked row needs a real reason")
 
     def test_every_area_is_covered(self):
         self.assertEqual({row.area for row in CONTRACT_ROWS}, set(AREAS))
