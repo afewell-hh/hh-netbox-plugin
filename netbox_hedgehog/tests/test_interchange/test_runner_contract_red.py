@@ -78,6 +78,7 @@ CONTRACT_ROWS = (
     ContractRow("R21", "test_r21_no_argument_invocation_keeps_topology_default", "default kept", "remediation"),
     ContractRow("R22", "test_r22_option_value_resembling_a_label_does_not_prepare", "option value", "selector"),
     ContractRow("R23", "test_r23_ci_membership_is_independent_of_evidence_metadata", "ci membership", "declaration"),
+    ContractRow("R24", "test_r24_hold_persists_while_host_is_not_observing", "hold persists", "boundary"),
 )
 
 AREAS = ("selector", "compatibility", "boundary", "remediation", "declaration")
@@ -140,6 +141,7 @@ AMENDMENT_MAP = {
             "test_observers_reject_single_fault_outcomes"),
     "T09": ("test_r17_preflight_is_not_an_integrity_exemption",),
     "T10": ("test_r19_fast_path_creates_no_preparation_containers",),
+    "T13": ("test_r24_hold_persists_while_host_is_not_observing",),
     "T11": ("test_r05_options_only_invocation_is_refused",
             "test_r21_no_argument_invocation_keeps_topology_default"),
     "T12": ("test_r22_option_value_resembling_a_label_does_not_prepare",),
@@ -238,6 +240,10 @@ class RunnerContractRedTests(SimpleTestCase):
         """
         sibling = ("netbox_hedgehog.tests.test_interchange_audit_retention",)
         record = load_driver_evidence("sibling_not_inside", sibling)
+        self.assertEqual(record["verdict"], "held",
+                         f"the decision was not observable: {record['verdict_reasons']}")
+        self.assertEqual(record["group_survivors_after_cleanup"], 0,
+                         "the observation left processes behind")
         self.assertFalse(
             record["prepared"],
             "the wrapper prepared a module that only shares a name prefix; "
@@ -309,21 +315,39 @@ class RunnerContractRedTests(SimpleTestCase):
     def test_r19_fast_path_creates_no_preparation_containers(self):
         """T10/T02-negative: the topology fast path prepares nothing.
 
-        Timing is recorded and reported, never gated on a ratio -- a ratio
-        would fail or pass on machine load rather than on behaviour.
+        Observed at the barrier, so no body executes to establish it. Timing
+        is reported, never gated on a ratio -- a ratio fails on machine load
+        rather than on behaviour.
         """
         selection = ("netbox_hedgehog.tests.test_topology_planning.test_port_allocator",)
         record = load_driver_evidence("topology_fast_path", selection)
+        self.assertEqual(record["verdict"], "held",
+                         f"the decision was not observable: {record['verdict_reasons']}")
         self.assertFalse(record["prepared"],
                          "the fast path triggered preparation it does not need")
-        self.assertEqual(record["returncode"], 0, record["stderr_tail"][-300:])
-        self.assertGreater(record["tests_executed"], 0)
-        self.assertEqual(
-            list(record["attributed_containers"]), [],
-            f"the fast path created preparation containers: "
-            f"{record['attributed_containers']}")
-        notes = json.loads(record["notes"])
-        print(f"\n      [R19] fast path elapsed {notes['elapsed_seconds']}s (reported, not gated)")
+        self.assertEqual(record["group_survivors_after_cleanup"], 0)
+        print(f"\n      [R19] reached barrier in {record['elapsed_to_barrier']}s "
+              "(reported, not gated)")
+
+    def test_r24_hold_persists_while_host_is_not_observing(self):
+        """The only row that pays the persistence gap.
+
+        A hold that survives only while the host watches is not a hold. This
+        control alone requires the 125s unobserved gap; every other held row
+        asserts marker, binding, no bodies and a live child without waiting,
+        because re-proving persistence per row would add a minute of sleeping
+        each for a property established once.
+        """
+        selection = ("netbox_hedgehog.tests.test_topology_planning.test_port_allocator",)
+        record = load_driver_evidence("held_while_unobserved", selection)
+        self.assertEqual(record["verdict"], "held",
+                         f"not certified as held: {record['verdict_reasons']}")
+        self.assertIsNotNone(record["persistence_gap"],
+                             "this control must record an observation gap")
+        self.assertGreaterEqual(
+            record["persistence_gap"], 125,
+            "the gap is too short to show the hold persists unobserved")
+        self.assertEqual(record["group_survivors_after_cleanup"], 0)
 
     def test_r20_lifecycle_observer_detects_real_preparation(self):
         """T02-positive: prove the observer can see what R19 says is absent.
@@ -332,12 +356,21 @@ class RunnerContractRedTests(SimpleTestCase):
         -- the vacuous half of the pair. A selection that genuinely prepares
         must show create/start events in its own window.
         """
-        record = load_driver_evidence("declared_ok", (PROTECTED,))
+        sibling = ("netbox_hedgehog.tests.test_interchange_audit_retention",)
+        record = load_driver_evidence("sibling_not_inside", sibling)
         self.assertTrue(
-            record["attributed_containers"],
-            "the observer attributed no preparation container to a selection that "
-            "prepares. R19's zero is worthless unless this positive fires: an "
-            "observer that detects nothing reports 'no containers' either way.")
+            record["prepared"],
+            "no preparation was detected for a selection that demonstrably "
+            "prepares. R19's negative is worthless unless this positive fires: "
+            "a detector that sees nothing reports 'no preparation' either way.")
+        fast = load_driver_evidence(
+            "topology_fast_path",
+            ("netbox_hedgehog.tests.test_topology_planning.test_port_allocator",))
+        self.assertGreater(
+            record["elapsed_to_barrier"], fast["elapsed_to_barrier"],
+            "a preparing selection must take measurably longer to reach the "
+            "barrier than one that prepares nothing; equal timings would mean "
+            "the preparation flag rests on the banner alone")
 
     def test_r21_no_argument_invocation_keeps_topology_default(self):
         """T11: bare invocation keeps its explicit topology default."""
@@ -367,10 +400,11 @@ class RunnerContractRedTests(SimpleTestCase):
         selection = ("netbox_hedgehog.tests.test_topology_planning.test_port_allocator",
                      "--exclude-tag", "netbox_hedgehog.tests.test_interchange")
         record = load_driver_evidence("option_value_lookalike", selection)
+        self.assertEqual(record["verdict"], "held",
+                         f"the decision was not observable: {record['verdict_reasons']}")
         self.assertFalse(record["prepared"],
                          "an option value was mistaken for a protected selection")
-        self.assertEqual(record["returncode"], 0, record["stderr_tail"][-300:])
-        self.assertGreater(record["tests_executed"], 0)
+        self.assertEqual(record["group_survivors_after_cleanup"], 0)
 
     def test_r23_ci_membership_is_independent_of_evidence_metadata(self):
         """T03: discovery governs CI membership; metadata governs preparation.

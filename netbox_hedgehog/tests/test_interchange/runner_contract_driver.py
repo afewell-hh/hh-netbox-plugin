@@ -44,6 +44,33 @@ from dataclasses import asdict, dataclass, field
 from pathlib import Path
 
 
+def _load_support():
+    """Load the shared evaluator without importing the plugin package.
+
+    This driver runs on the host, where NetBox is not installed, so
+    `import netbox_hedgehog...` fails at the package __init__. Loading the
+    module by path keeps one source of truth for `evaluate_hold` -- the
+    container-side rows and this host-side driver must judge a hold by the
+    same rule, which was the whole point of replacing per-row eyeballing.
+    """
+    import importlib.util
+    path = Path(__file__).resolve().parent / "runner_contract_support.py"
+    spec = importlib.util.spec_from_file_location("hh711_support", path)
+    module = importlib.util.module_from_spec(spec)
+    sys.modules["hh711_support"] = module
+    spec.loader.exec_module(module)
+    return module
+
+
+_SUPPORT = _load_support()
+PERSISTENCE_GAP_SECONDS = _SUPPORT.PERSISTENCE_GAP_SECONDS
+evaluate_hold = _SUPPORT.evaluate_hold
+# Host-side reaping uses the same implementation the container-side rows use.
+# A second copy here would be a second thing to get wrong, and this reaper has
+# already shipped three broken versions.
+_reap_group = _SUPPORT._reap_group
+_running_in_group = _SUPPORT._running_in_group
+
 GUARD_VARIABLE = "HH711_DRIVER_ACTIVE"
 
 #: Appended to most wrapper invocations and recorded in the evidence, but
@@ -495,6 +522,114 @@ def observe_declaration_removal(checkout: Path, netbox_docker: Path, lane: str,
     }
 
 
+def observe_decision(checkout: Path, netbox_docker: Path, lane: str, selection,
+                     invocation: str, persistence: bool = False) -> dict:
+    """Drive the real wrapper, stop at the barrier, judge with the evaluator.
+
+    This is the restructure the lead approved: the claims these rows make --
+    did the wrapper prepare, what selection did it resolve -- are settled
+    before any body runs, so executing the suite buys nothing. Previously
+    `sibling_not_inside` ran 22 tests and `option_value_lookalike` ran 8
+    purely to watch a decision already taken.
+
+    `persistence` is set for exactly one control. Requiring the 125s gap on
+    every held row would add a minute of sleeping per row to re-prove a
+    property established once.
+    """
+    wrapper = checkout / "scripts" / "run_diet_tests.sh"
+    env = {"NETBOX_DOCKER_DIR": str(netbox_docker), "COMPOSE_PROJECT_NAME": lane}
+    compose = ["docker", "compose"]
+
+    def in_lane(command, timeout=120):
+        return subprocess.run(
+            compose + ["exec", "-T", "netbox", "sh", "-c", command],
+            cwd=str(netbox_docker), capture_output=True, text=True,
+            env={**os.environ, "COMPOSE_PROJECT_NAME": lane}, timeout=timeout)
+
+    in_lane("rm -f /tmp/hh711_barrier; touch /tmp/hh711_barrier.hold")
+    log = Path(f"/tmp/hh711-decision-{uuid.uuid4().hex[:8]}.log")
+    started = time.time()
+    child = subprocess.Popen(
+        [str(wrapper), *selection, *WRAPPER_COMMON_ARGS],
+        stdout=log.open("w"), stderr=subprocess.STDOUT,
+        cwd=str(checkout), env={**os.environ, **env}, start_new_session=True)
+
+    marker, acknowledged = "", None
+    deadline = time.time() + 900
+    while time.time() < deadline:
+        probe = in_lane("cat /tmp/hh711_barrier 2>/dev/null")
+        if probe.stdout.strip():
+            marker, acknowledged = probe.stdout.strip(), time.time()
+            break
+        if child.poll() is not None:
+            break
+        time.sleep(5)
+
+    gap = None
+    if acknowledged and persistence:
+        time.sleep(PERSISTENCE_GAP_SECONDS + 5)
+        gap = int(time.time() - acknowledged)
+
+    text = log.read_text(errors="replace") if log.exists() else ""
+    alive = False
+    pgid = None
+    if marker:
+        try:
+            pgid = json.loads(marker)["pgid"]
+            alive = in_lane(
+                f"ps -eo pgid | awk -v g={pgid} '$1==g' | wc -l").stdout.strip() not in ("", "0")
+        except (ValueError, KeyError):
+            pass
+
+    verdict, reasons = evaluate_hold(marker, text, alive, gap,
+                                     require_persistence=persistence)
+
+    survivors = -1
+    if pgid is not None:
+        in_lane(f"kill -9 -{pgid} 2>/dev/null; true")
+        time.sleep(3)
+        survivors = int(in_lane(
+            f"ps -eo pgid | awk -v g={pgid} '$1==g' | wc -l").stdout.strip() or -1)
+    _reap_group(child)
+    in_lane("rm -f /tmp/hh711_barrier.hold /tmp/hh711_barrier")
+    log.unlink(missing_ok=True)
+
+    return {
+        "name": "decision",
+        "selection": list(selection),
+        "invocation": invocation,
+        "verdict": verdict,
+        "verdict_reasons": reasons,
+        "marker": marker,
+        "prepared": any(m in text for m in PREPARATION_MARKERS),
+        "elapsed_to_barrier": round((acknowledged or time.time()) - started, 1),
+        "persistence_gap": gap,
+        "group_survivors_after_cleanup": survivors,
+        "stdout_tail": text[-2000:],
+    }
+
+
+def database_state(netbox_docker: Path, lane: str) -> dict:
+    """Read test-database state from PostgreSQL directly.
+
+    Never from runner output. Django printed "Using existing test database"
+    for a database that did not exist when the run began; the only reliable
+    source is `pg_database`.
+    """
+    def psql(sql):
+        done = subprocess.run(
+            ["docker", "compose", "exec", "-T", "postgres", "psql", "-U", "netbox",
+             "-d", "postgres", "-t", "-c", sql],
+            cwd=str(netbox_docker), capture_output=True, text=True,
+            env={**os.environ, "COMPOSE_PROJECT_NAME": lane}, timeout=120)
+        return done.stdout.strip()
+    return {
+        "test_db_present": psql(
+            "SELECT count(*) FROM pg_database WHERE datname='test_netbox';") == "1",
+        "source": "pg_database",
+    }
+
+
 def main(argv=None) -> int:
     if os.environ.get(GUARD_VARIABLE):
         print(f"{GUARD_VARIABLE} is set: refusing to run the driver inside itself",
@@ -535,42 +670,48 @@ def main(argv=None) -> int:
     workdir = args.workdir or Path(f"/tmp/hh711-driver-{uuid.uuid4().hex[:8]}")
     disposable = make_disposable_checkout(args.checkout, head, workdir / "checkout")
     try:
-        # (selection, broad): `broad` marks a scenario that must select
-        # widely enough to include this suite. See _assert_recursion_safe.
-        selections = {
-            "declared_ok": (
-                ("netbox_hedgehog.tests.test_interchange.test_reaper_adapter_red",), False),
-            "broad_supported": (("netbox_hedgehog.tests.test_interchange",
-                                 "--exclude-tag", "slow"), True),
+        scenarios = {}
+
+        # Blocked by #715, recorded rather than executed. The declared
+        # protected module is SimpleTestCase-only, so DietTestRunner asks the
+        # DIET-643 guard about an alias Django never prepared and the guard
+        # correctly refuses. Not worked around; see #715 Phase A.
+        protected = "netbox_hedgehog.tests.test_interchange.test_reaper_adapter_red"
+        for blocked in ("declared_ok", "declaration_removed", "broad_supported",
+                        "preflight_then_invalidated", "remediation_round_trip"):
+            scenarios[blocked] = {
+                "name": blocked,
+                "selection": [protected],
+                "blocked_by": 715,
+                "reason": "SimpleTestCase-only selection trips the DIET-643 guard; "
+                          "the supported wrapper cannot run the declared protected "
+                          "module until #715 lands",
+            }
+
+        # Decision rows: stop at the barrier. Their claims are settled before
+        # any body runs, so executing the selection buys nothing.
+        invocation = uuid.uuid4().hex[:12]
+        decisions = {
             "sibling_not_inside": (
                 ("netbox_hedgehog.tests.test_interchange_audit_retention",), False),
-            # T10/T02-negative: the topology fast path must stay fast and
-            # create no preparation containers. Timing is reported, not gated
-            # on a ratio, per Dev B.
-            "topology_fast_path": (
-                ("netbox_hedgehog.tests.test_topology_planning.test_port_allocator",), False),
-            # T12: a supported option whose *value* resembles a protected
-            # label must not trigger preparation.
             "option_value_lookalike": (
                 ("netbox_hedgehog.tests.test_topology_planning.test_port_allocator",
                  "--exclude-tag", "netbox_hedgehog.tests.test_interchange"), False),
-            # T11: no-argument invocation keeps its explicit topology default.
-            "no_argument_default": ((), False),
+            "topology_fast_path": (
+                ("netbox_hedgehog.tests.test_topology_planning.test_port_allocator",), False),
+            # The single control that pays the persistence gap.
+            "held_while_unobserved": (
+                ("netbox_hedgehog.tests.test_topology_planning.test_port_allocator",), True),
         }
-        scenarios = run_scenarios(disposable, args.netbox_docker, args.lane, selections)
-        protected = "netbox_hedgehog.tests.test_interchange.test_reaper_adapter_red"
-        scenarios["remediation_round_trip"] = observe_remediation_round_trip(
-            disposable, args.netbox_docker, args.lane, (protected,))
-        # The wrapper declares exactly one evidence-requiring module by path,
-        # so that is the declaration a removal test can genuinely remove.
-        # Targeting a module the wrapper never declared would mutate nothing
-        # and prove nothing.
-        declared = "netbox_hedgehog.tests.test_interchange.test_checkout_containment"
-        scenarios["declaration_removed"] = observe_declaration_removal(
-            disposable, args.netbox_docker, args.lane, declared)
-        scenarios["preflight_then_invalidated"] = observe_preflight_then_invalidate(
-            disposable, args.netbox_docker, args.lane,
-            ("netbox_hedgehog.tests.test_interchange.test_reaper_adapter_red",))
+        for name, (selection, persistence) in decisions.items():
+            _assert_recursion_safe(name, selection, broad=False)
+            record = observe_decision(disposable, args.netbox_docker, args.lane,
+                                      selection, invocation, persistence)
+            record["name"] = name
+            scenarios[name] = record
+
+        # Database state is read from PostgreSQL, never from runner output.
+        scenarios["database_state"] = database_state(args.netbox_docker, args.lane)
 
         evidence = DriverEvidence(
             version=EVIDENCE_VERSION, head=head, lane=args.lane,

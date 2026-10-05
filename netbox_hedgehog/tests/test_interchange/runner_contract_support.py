@@ -151,12 +151,16 @@ def load_driver_evidence(scenario: str, expected_selection: tuple[str, ...]) -> 
         "Cannot connect to the Docker daemon",
         "dependency failed to start",
     )
-    for scenario_name, scenario in (evidence.get("scenarios") or {}).items():
-        text = f"{scenario.get('stderr_tail', '')}{scenario.get('stdout_tail', '')}"
+    # Loop variables deliberately not named `scenario`: an earlier version
+    # shadowed this function's own parameter, so by the time the record was
+    # looked up the name held the last dict from this loop. Every evidence
+    # consumer failed with "unhashable type: 'dict'".
+    for other_name, other in (evidence.get("scenarios") or {}).items():
+        text = f"{other.get('stderr_tail', '')}{other.get('stdout_tail', '')}"
         for marker in infrastructure_failures:
             if marker in text:
                 raise DriverEvidenceUnusable(
-                    f"scenario {scenario_name!r} never reached the system under "
+                    f"scenario {other_name!r} never reached the system under "
                     f"test ({marker!r}); the lane was broken, so nothing here is "
                     "evidence about the contract")
 
@@ -168,6 +172,15 @@ def load_driver_evidence(scenario: str, expected_selection: tuple[str, ...]) -> 
         raise DriverEvidenceUnusable(
             f"driver evidence has no scenario {scenario!r}; it was produced by a "
             "driver that does not observe what this row claims")
+    # A scenario the driver recorded as blocked is not evidence of anything,
+    # and must not reach a row as a KeyError. Blocked rows then fail with the
+    # block cited, which is what "annotated, not suppressed" means in
+    # practice: loud, specific, and obviously not a contract finding.
+    if record.get("blocked_by"):
+        raise DriverEvidenceUnusable(
+            f"scenario {scenario!r} is blocked by #{record['blocked_by']}: "
+            f"{record.get('reason', 'no reason recorded')}")
+
     if tuple(record.get("selection") or ()) != tuple(expected_selection):
         raise DriverEvidenceUnusable(
             f"scenario {scenario!r} observed selection {record.get('selection')!r}, "
@@ -524,3 +537,57 @@ class ContractRow:
     method: str
     claim: str
     area: str
+
+
+# --- hold evaluation -------------------------------------------------------
+
+#: Binding a barrier observation must carry before it can be certified. Any
+#: one of these alone can be satisfied by a different run; together with the
+#: invocation id they cannot. The first mechanical use of this list caught an
+#: observation whose `invocation` was empty -- raw fields had looked fine.
+REQUIRED_BINDING = ("invocation", "pid", "pgid", "sid", "argv",
+                    "resolved_ids", "resolved_modules", "test_count")
+
+#: Only the dedicated persistence control waits this long. Applying it to
+#: every held row would add a minute of pure sleeping per row for a property
+#: that needs proving once -- the same mistake as re-running an 870-test
+#: default to re-learn a resolved label.
+PERSISTENCE_GAP_SECONDS = 125
+
+
+def evaluate_hold(marker_text, log_text, process_alive, observation_gap_s=None,
+                  require_persistence=False):
+    """Judge one barrier observation. Returns (verdict, reasons).
+
+    Three verdicts, not two. "The barrier never engaged" and "it engaged and
+    failed to hold" are different facts; collapsing them is how a timeout
+    once read as a successful hold.
+    """
+    if not marker_text:
+        return "rejected", ["no barrier marker: the run was never held"]
+    try:
+        marker = json.loads(marker_text)
+    except ValueError:
+        return "unresolved", ["marker present but unparseable"]
+
+    missing = [name for name in REQUIRED_BINDING if not marker.get(name)]
+    if missing:
+        return "unresolved", [f"marker lacks binding fields: {missing}"]
+
+    reasons = []
+    if "Ran " in log_text and " test" in log_text:
+        return "rejected", ["a result line exists: bodies ran despite the marker"]
+    reasons.append("no result line in log")
+
+    if not process_alive:
+        return "rejected", ["the child is gone: a dead process is not a held one"]
+    reasons.append("child alive at marker pid")
+
+    if require_persistence:
+        if observation_gap_s is None or observation_gap_s < PERSISTENCE_GAP_SECONDS:
+            return "unresolved", [
+                f"observation gap {observation_gap_s}s is below "
+                f"{PERSISTENCE_GAP_SECONDS}s; too short to show the hold persists "
+                "while the host is not watching"]
+        reasons.append(f"still held {observation_gap_s}s after acknowledgement, unobserved")
+    return "held", reasons
