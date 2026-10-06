@@ -80,6 +80,7 @@ CONTRACT_ROWS = (
     ContractRow("R23", "test_r23_ci_membership_is_independent_of_evidence_metadata", "ci membership", "declaration"),
     ContractRow("R24", "test_r24_hold_persists_while_host_is_not_observing", "hold persists", "boundary"),
     ContractRow("R25", "test_r25_every_selector_shape_reaches_the_prerequisite_seam", "seam plumbing", "selector"),
+    ContractRow("R26", "test_r26_the_boundary_and_its_binding_are_load_bearing", "seam mutations", "selector"),
 )
 
 AREAS = ("selector", "compatibility", "boundary", "remediation", "declaration")
@@ -275,59 +276,125 @@ class RunnerContractRedTests(SimpleTestCase):
         self.assert_refused(self.fixture_run(self.tree.grandparent), "grandparent")
 
     def test_r25_every_selector_shape_reaches_the_prerequisite_seam(self):
-        """Each selector shape must actually reach the decision point.
+        """Each selector shape reaches the boundary, bound, and completes.
 
-        The fixture no longer decides its own fate: it delegates to an
-        injected prerequisite-decision seam. This row proves the plumbing —
-        that module, class, method, parent and grandparent selections all
-        arrive at that seam naming the protected module — using a sound
-        adapter that records and returns normally.
+        A sound boundary ALLOWS, so the child must run to completion: exit 0
+        and real bodies. The earlier version checked only that a ledger entry
+        existed, which an assertion-level probe passed with exit 3, zero
+        tests and a refusal after the write -- a boundary could be reached,
+        refuse, and still satisfy it.
 
-        The adapter deliberately cannot satisfy the refusal rows. If a
-        stand-in could, those rows would be measuring the stand-in. This
-        separation is what the previous fixture lacked: it failed for a
-        reason no implementation could change, which made R01-R05/R08/R15
-        unsatisfiable rather than merely red.
+        Binding is per shape: the recorded decision must echo this run's
+        invocation and the selection as the boundary normalized it, so five
+        shapes cannot write five indistinguishable entries.
         """
         from netbox_hedgehog.tests.test_interchange.runner_contract_seam_adapter import (
-            LEDGER_VARIABLE, record_only)
+            LEDGER_VARIABLE, normalize_selection)
         from netbox_hedgehog.tests.test_interchange.runner_contract_support import (
-            SEAM_VARIABLE)
+            INVOCATION_VARIABLE, SEAM_VARIABLE)
 
+        sound = ("netbox_hedgehog.tests.test_interchange."
+                 "runner_contract_seam_adapter.sound_decision")
+        shapes = {
+            "module": (self.tree.protected,),
+            "class": (self.tree.protected_class,),
+            "method": (self.tree.protected_method,),
+            "parent": (self.tree.parent,),
+            "grandparent": (self.tree.grandparent,),
+            "options-only-ish": (self.tree.parent, "--exclude-tag", "slow"),
+            "mixed": (self.tree.ordinary, self.tree.protected),
+        }
         with tempfile.TemporaryDirectory(prefix="hh711-seam-") as workspace:
-            ledger = Path(workspace) / "ledger.json"
-            adapter = ("netbox_hedgehog.tests.test_interchange."
-                       "runner_contract_seam_adapter.record_only")
-            shapes = {
-                "module": self.tree.protected,
-                "class": self.tree.protected_class,
-                "method": self.tree.protected_method,
-                "parent": self.tree.parent,
-                "grandparent": self.tree.grandparent,
-            }
-            for shape, label in shapes.items():
+            for shape, labels in shapes.items():
                 with self.subTest(shape=shape):
-                    ledger.unlink(missing_ok=True)
-                    outcome = self.fixture_run(label, env={
-                        "PYTHONPATH": str(self.tree.root),
-                        SEAM_VARIABLE: adapter,
+                    invocation = f"inv-{shape}-{os.getpid()}"
+                    ledger = Path(workspace) / f"{shape}.json"
+                    outcome = self.fixture_run(*labels, env={
+                        "PYTHONPATH": f"{self.tree.root}:{Path(__file__).resolve().parents[3]}",
+                        SEAM_VARIABLE: sound,
+                        INVOCATION_VARIABLE: invocation,
                         LEDGER_VARIABLE: str(ledger),
                     })
                     self.assertFalse(outcome.timed_out, f"{shape}: timed out")
-                    self.assertTrue(
-                        ledger.exists(),
-                        f"{shape}: the selection never reached the prerequisite "
-                        f"seam, so no implementation of the contract could act "
-                        f"on it")
+                    self.assertTrue(ledger.exists(),
+                                    f"{shape}: the selection never reached the boundary")
                     entries = json.loads(ledger.read_text(encoding="utf-8"))
+
+                    bound = [e for e in entries
+                             if e["decision"]["invocation"] == invocation]
                     self.assertTrue(
-                        any(e["module"] == self.tree.protected for e in entries),
-                        f"{shape}: the seam was reached for {entries}, not for "
-                        f"the protected module")
+                        bound,
+                        f"{shape}: no decision carried this run's invocation "
+                        f"{invocation!r}; entries={entries}")
+                    self.assertEqual(
+                        tuple(bound[0]["decision"]["normalized_selection"]),
+                        normalize_selection(labels),
+                        f"{shape}: the boundary recorded a different selection")
 
-        self.assertIsNotNone(record_only, "the sound adapter must exist")
+                    # A sound boundary allows, so the child must complete.
+                    self.assertEqual(
+                        outcome.returncode, 0,
+                        f"{shape}: a sound ALLOW decision did not complete: "
+                        f"{outcome.combined[-300:]}")
+                    self.assertGreater(
+                        outcome.tests_executed, 0,
+                        f"{shape}: no bodies executed under a sound ALLOW; a "
+                        "boundary that is reached and then refuses must not "
+                        "satisfy this row")
 
-    # --- compatibility: the contract must not become a blanket refusal ----
+    def test_r26_the_boundary_and_its_binding_are_load_bearing(self):
+        """Mutations the fixture and rows must reject.
+
+        Three, each targeting a way the previous version could be satisfied
+        without the boundary doing anything real.
+        """
+        from netbox_hedgehog.tests.test_interchange.runner_contract_seam_adapter import (
+            LEDGER_VARIABLE)
+        from netbox_hedgehog.tests.test_interchange.runner_contract_support import (
+            INVOCATION_VARIABLE, SEAM_VARIABLE)
+
+        plugin_root = str(Path(__file__).resolve().parents[3])
+
+        with self.subTest(mutation="boundary call removed"):
+            # No seam injected: the fixture must delegate to the production
+            # contract module, whose absence is the contract-absent form --
+            # not an unrelated fixture error.
+            outcome = self.fixture_run(self.tree.protected, env={
+                "PYTHONPATH": f"{self.tree.root}:{plugin_root}"})
+            self.assertNotEqual(outcome.returncode, 0,
+                                "an absent contract must not be a passing run")
+            self.assertIn(
+                "runner_contract", outcome.combined,
+                "the default path must fail by reaching for the production "
+                "contract module, so implementing it changes this path; "
+                f"got: {outcome.combined[-300:]}")
+
+        with self.subTest(mutation="unbound emitter substituted"):
+            with tempfile.TemporaryDirectory(prefix="hh711-mut-") as workspace:
+                ledger = Path(workspace) / "ledger.json"
+                outcome = self.fixture_run(self.tree.protected, env={
+                    "PYTHONPATH": f"{self.tree.root}:{plugin_root}",
+                    SEAM_VARIABLE: ("netbox_hedgehog.tests.test_interchange."
+                                    "runner_contract_seam_adapter.unbound_emitter"),
+                    INVOCATION_VARIABLE: "inv-mutation",
+                    LEDGER_VARIABLE: str(ledger),
+                })
+                self.assertTrue(ledger.exists(), "the emitter never ran")
+                entries = json.loads(ledger.read_text(encoding="utf-8"))
+                decision = entries[0]["decision"]
+                self.assertFalse(
+                    decision["invocation"],
+                    "the mutation target must carry no invocation binding")
+                self.assertFalse(
+                    decision["normalized_selection"],
+                    "the mutation target must carry no normalized selection")
+                self.assertEqual(
+                    outcome.tests_executed, 0,
+                    "a fabricated refusal still stopped the child, so a row "
+                    "checking only 'did it refuse' cannot tell it from a real "
+                    "contract decision; binding is what distinguishes them")
+
+    # --- compatibility: the contract must not become a blanket refusal ----    # --- compatibility: the contract must not become a blanket refusal ----
 
     def test_r06_unprotected_interchange_modules_still_run_raw(self):
         for module in UNPROTECTED_MODULES:
@@ -708,6 +775,37 @@ class RunnerContractRedControls(SimpleTestCase):
         # naming a method that does not.
         self.assertEqual(open_gates, [],
                          f"amendments still unmapped: {sorted(set(open_gates))}")
+
+    #: Declared independently of BLOCKED_BY_715 so the registry is checked
+    #: against something, not against itself. Removing an entry from the
+    #: registry, or adding a `blocked_by` marker to an unrelated evidence
+    #: record, must both be visible rather than silently accepted.
+    EXPECTED_BLOCKED_ROWS = frozenset({
+        "test_r10_remediation_names_a_runnable_command",
+        "test_r12_deleting_a_declaration_fails_closed",
+        "test_r16_wrapper_broad_selection_prepares",
+        "test_r17_preflight_is_not_an_integrity_exemption",
+        "test_r18_declared_case_consumes_fresh_evidence",
+        "test_r20_lifecycle_observer_detects_real_preparation",
+    })
+
+    def test_blocked_registry_agrees_with_the_expected_set(self):
+        """The registry must match an independently declared expectation.
+
+        The previous control validated only the entries that happened to be
+        present, so deleting one was invisible and adding a `blocked_by`
+        marker elsewhere was accepted as a new block. Unknown, missing and
+        mismatched are now distinct failures.
+        """
+        declared = set(BLOCKED_BY_715)
+        expected = set(self.EXPECTED_BLOCKED_ROWS)
+        self.assertEqual(
+            declared - expected, set(),
+            "rows claim a #715 block that the expected set does not list")
+        self.assertEqual(
+            expected - declared, set(),
+            "rows are expected to be blocked by #715 but are not registered; "
+            "a removed entry must fail, not silently become unblocked")
 
     def test_blocked_rows_are_annotated_not_suppressed(self):
         """Blocked rows stay failing and say why; nothing is suppressed.

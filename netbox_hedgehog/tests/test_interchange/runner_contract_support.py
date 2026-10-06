@@ -244,6 +244,10 @@ def require_runner_contract():
 #: implements the real mechanism is what must make the selector rows green.
 SEAM_VARIABLE = "HH711_PREREQUISITE_SEAM"
 
+#: Carries the child-side invocation identity into the fixture, so a decision
+#: can be bound to the run that produced it rather than merely recorded.
+INVOCATION_VARIABLE = "HH711_INVOCATION"
+
 ORDINARY_MARKER = "HH711_ORDINARY_BODY_RAN"
 PROTECTED_MARKER = "HH711_PROTECTED_BODY_RAN"
 
@@ -299,41 +303,58 @@ def build_fixture_tree(root: Path) -> FixtureTree:
     """).lstrip(), encoding="utf-8")
 
     (sub / "test_protected.py").write_text(textwrap.dedent(f"""
-        import importlib
-        import os
+        from django.test import SimpleTestCase
 
-        # Stands in for a real evidence-requiring module. It does NOT decide
-        # its own fate: it delegates to an injected prerequisite-decision
-        # seam, and whatever that seam does is what this module does.
+        import importlib
+        import json
+        import os
+        import sys
+
+        # This module decides nothing. It asks a prerequisite boundary and
+        # applies whatever that boundary returns.
         #
-        # The previous version raised a hardcoded RuntimeError when a private
-        # fixture variable was absent. That made the selector rows
-        # unsatisfiable: they demand the contract's exit code and diagnostic,
-        # and no implementation of the contract could ever change what this
-        # fixture did. Rows that cannot go green by implementing the thing
-        # under test are not a specification of it.
+        # DEFAULT PATH: with no seam injected it delegates to the production
+        # contract module, {CONTRACT_MODULE!r}. While that module does not
+        # exist the import fails, and *that* is the contract-absent form the
+        # rows are specified against -- not an unrelated fixture error.
+        # Implementing the contract is therefore sufficient to change this
+        # path, which is what makes the selector rows satisfiable.
         #
-        # Nothing here hardcodes the target exit code, diagnostic text, or
-        # any private environment behaviour. Those belong to the mechanism
-        # being specified, not to its fixture.
+        # A previous version raised a hardcoded RuntimeError here, then a
+        # differently hardcoded RuntimeError when a seam was absent. Both
+        # made the rows unsatisfiable: no implementation of the contract
+        # could alter what this fixture did.
+        _request = {{
+            "module": "hh711_root.pkg.test_protected",
+            "invocation": os.environ.get("{INVOCATION_VARIABLE}", ""),
+            "selection": sys.argv[2:],
+            "evidence_context": {{
+                name: os.environ.get(name, "")
+                for name in {list(EVIDENCE_VARIABLES)!r}
+            }},
+        }}
+
         _seam = os.environ.get("{SEAM_VARIABLE}")
-        if not _seam:
-            raise RuntimeError(
-                "HH711_NO_PREREQUISITE_SEAM: no prerequisite-decision seam was "
-                "injected, so this module cannot reach the mechanism under test")
-        _module_name, _, _attribute = _seam.rpartition(".")
-        _decide = getattr(importlib.import_module(_module_name), _attribute)
-        _decide("hh711_root.pkg.test_protected")
+        if _seam:
+            _module_name, _, _attribute = _seam.rpartition(".")
+            _decide = getattr(importlib.import_module(_module_name), _attribute)
+        else:
+            _contract = importlib.import_module("{CONTRACT_MODULE}")
+            _decide = _contract.prerequisite_decision
+
+        _decision = _decide(_request)
+
+        # The boundary owns the outcome. Nothing here invents an exit code or
+        # a diagnostic; both come from the decision.
+        if not getattr(_decision, "allow", False):
+            print(getattr(_decision, "diagnostic", ""), flush=True)
+            sys.exit(getattr(_decision, "exit_code", 1))
 
 
         class ProtectedFixture(SimpleTestCase):
             def test_body_must_not_run(self):
                 print("{PROTECTED_MARKER}", flush=True)
     """).lstrip(), encoding="utf-8")
-    # SimpleTestCase import must survive the seam call failing at import time.
-    (sub / "test_protected.py").write_text(
-        "from django.test import SimpleTestCase\n\n"
-        + (sub / "test_protected.py").read_text(encoding="utf-8"), encoding="utf-8")
     return FixtureTree(root=root, grandparent="hh711_root", parent="hh711_root.pkg",
                        protected="hh711_root.pkg.test_protected",
                        ordinary="hh711_root.pkg.test_ordinary")
