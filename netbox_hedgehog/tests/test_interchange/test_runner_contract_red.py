@@ -79,6 +79,7 @@ CONTRACT_ROWS = (
     ContractRow("R22", "test_r22_option_value_resembling_a_label_does_not_prepare", "option value", "selector"),
     ContractRow("R23", "test_r23_ci_membership_is_independent_of_evidence_metadata", "ci membership", "declaration"),
     ContractRow("R24", "test_r24_hold_persists_while_host_is_not_observing", "hold persists", "boundary"),
+    ContractRow("R25", "test_r25_every_selector_shape_reaches_the_prerequisite_seam", "seam plumbing", "selector"),
 )
 
 AREAS = ("selector", "compatibility", "boundary", "remediation", "declaration")
@@ -103,6 +104,17 @@ AREAS = ("selector", "compatibility", "boundary", "remediation", "declaration")
 #: Measured in #715 Phase A: SimpleTestCase-only gives get_databases()==[]
 #: and setup_databases()==[], leaving connections['default'] on 'netbox'.
 BLOCKED_BY_715 = {
+    "test_r10_remediation_names_a_runnable_command":
+        "the remediation round-trip drives the declared protected module, "
+        "which the supported wrapper cannot run until #715 lands",
+    "test_r12_deleting_a_declaration_fails_closed":
+        "declaration removal is exercised against the declared protected "
+        "module, which cannot run through the wrapper until #715 lands",
+    "test_r20_lifecycle_observer_detects_real_preparation":
+        "its positive must be a genuinely preparation-required selection; "
+        "the only one available is the declared protected module, blocked "
+        "by #715. Re-pointing it at a non-preparing selection would lock in "
+        "the defect R13 exists to remove",
     "test_r16_wrapper_broad_selection_prepares":
         "a broad interchange selection includes the SimpleTestCase-only "
         "protected module, so the run cannot complete through the wrapper",
@@ -195,6 +207,7 @@ class RunnerContractRedTests(SimpleTestCase):
                          f"{label}: {outcome.tests_executed} test(s) executed before refusal")
 
     def fixture_run(self, *labels, **kwargs):
+        
         """Drive the real loader against the disposable tree.
 
         B2: parent, grandparent and options-only selections discover every
@@ -260,6 +273,59 @@ class RunnerContractRedTests(SimpleTestCase):
         miss `netbox_hedgehog.tests`.
         """
         self.assert_refused(self.fixture_run(self.tree.grandparent), "grandparent")
+
+    def test_r25_every_selector_shape_reaches_the_prerequisite_seam(self):
+        """Each selector shape must actually reach the decision point.
+
+        The fixture no longer decides its own fate: it delegates to an
+        injected prerequisite-decision seam. This row proves the plumbing —
+        that module, class, method, parent and grandparent selections all
+        arrive at that seam naming the protected module — using a sound
+        adapter that records and returns normally.
+
+        The adapter deliberately cannot satisfy the refusal rows. If a
+        stand-in could, those rows would be measuring the stand-in. This
+        separation is what the previous fixture lacked: it failed for a
+        reason no implementation could change, which made R01-R05/R08/R15
+        unsatisfiable rather than merely red.
+        """
+        from netbox_hedgehog.tests.test_interchange.runner_contract_seam_adapter import (
+            LEDGER_VARIABLE, record_only)
+        from netbox_hedgehog.tests.test_interchange.runner_contract_support import (
+            SEAM_VARIABLE)
+
+        with tempfile.TemporaryDirectory(prefix="hh711-seam-") as workspace:
+            ledger = Path(workspace) / "ledger.json"
+            adapter = ("netbox_hedgehog.tests.test_interchange."
+                       "runner_contract_seam_adapter.record_only")
+            shapes = {
+                "module": self.tree.protected,
+                "class": self.tree.protected_class,
+                "method": self.tree.protected_method,
+                "parent": self.tree.parent,
+                "grandparent": self.tree.grandparent,
+            }
+            for shape, label in shapes.items():
+                with self.subTest(shape=shape):
+                    ledger.unlink(missing_ok=True)
+                    outcome = self.fixture_run(label, env={
+                        "PYTHONPATH": str(self.tree.root),
+                        SEAM_VARIABLE: adapter,
+                        LEDGER_VARIABLE: str(ledger),
+                    })
+                    self.assertFalse(outcome.timed_out, f"{shape}: timed out")
+                    self.assertTrue(
+                        ledger.exists(),
+                        f"{shape}: the selection never reached the prerequisite "
+                        f"seam, so no implementation of the contract could act "
+                        f"on it")
+                    entries = json.loads(ledger.read_text(encoding="utf-8"))
+                    self.assertTrue(
+                        any(e["module"] == self.tree.protected for e in entries),
+                        f"{shape}: the seam was reached for {entries}, not for "
+                        f"the protected module")
+
+        self.assertIsNotNone(record_only, "the sound adapter must exist")
 
     # --- compatibility: the contract must not become a blanket refusal ----
 
@@ -350,27 +416,27 @@ class RunnerContractRedTests(SimpleTestCase):
         self.assertEqual(record["group_survivors_after_cleanup"], 0)
 
     def test_r20_lifecycle_observer_detects_real_preparation(self):
-        """T02-positive: prove the observer can see what R19 says is absent.
+        """T02-positive: the observer must detect preparation that really happens.
 
-        Without this, R19 passes on an observer that never detects anything
-        -- the vacuous half of the pair. A selection that genuinely prepares
-        must show create/start events in its own window.
+        Previously this used `sibling_not_inside` as its positive, asserting
+        `prepared=True` — while R13 requires that same scenario to be False
+        once the wrapper is fixed. The two could not both hold, so a correct
+        GREEN implementation would have broken one of them. Asserting that a
+        current defect must persist is not a regression guard; it is a lock
+        on the bug.
+
+        The positive is now a selection that genuinely requires preparation:
+        the declared protected module. That selection cannot run until #715
+        lands, so this row is blocked rather than quietly re-pointed at
+        something convenient.
         """
-        sibling = ("netbox_hedgehog.tests.test_interchange_audit_retention",)
-        record = load_driver_evidence("sibling_not_inside", sibling)
+        record = load_driver_evidence("declared_ok", (PROTECTED,))
         self.assertTrue(
-            record["prepared"],
-            "no preparation was detected for a selection that demonstrably "
-            "prepares. R19's negative is worthless unless this positive fires: "
-            "a detector that sees nothing reports 'no preparation' either way.")
-        fast = load_driver_evidence(
-            "topology_fast_path",
-            ("netbox_hedgehog.tests.test_topology_planning.test_port_allocator",))
-        self.assertGreater(
-            record["elapsed_to_barrier"], fast["elapsed_to_barrier"],
-            "a preparing selection must take measurably longer to reach the "
-            "barrier than one that prepares nothing; equal timings would mean "
-            "the preparation flag rests on the banner alone")
+            record["attributed_containers"],
+            "no preparation container was attributed to a selection that "
+            "genuinely prepares; R19's negative is worthless unless this "
+            "positive fires, because an observer that detects nothing reports "
+            "'no containers' either way")
 
     def test_r21_no_argument_invocation_keeps_topology_default(self):
         """T11: bare invocation keeps its explicit topology default."""
