@@ -37,6 +37,7 @@ from netbox_hedgehog.tests.test_interchange.runner_contract_support import (
     ORDINARY_MARKER,
     PROTECTED_MARKER,
     build_fixture_tree,
+    decisions_from_output,
     load_driver_evidence,
     validate_decision_binding,
     EVIDENCE_VARIABLES,
@@ -182,26 +183,35 @@ class RunnerContractRedTests(SimpleTestCase):
         return {"PYTHONPATH": str(self.tree.root)}
 
     def assert_refused(self, outcome, label, marker_bearing=True,
-                       ledger=None, invocation=None, selection=None):
-        """A refusal, observed by markers rather than by a missing summary.
+                       invocation=None, selection=None):
+        """A refusal, observed by markers and backed by a bound decision.
 
-        B3: `Ran 0 tests` is a summary and an executed body can leave none, so
-        absence of a summary proves nothing in either direction. Fixture
-        bodies announce themselves, and a genuine pre-execution refusal means
-        neither marker appears.
+        Order matters. Binding is checked FIRST, against what the child
+        itself published, because that is the evidence that changes when the
+        contract is implemented. Checking `require_runner_contract()` first
+        made the binding check unreachable for every core row: the contract
+        is absent today, so the row raised before binding was ever examined,
+        and the validator guarded nothing.
         """
-        contract = require_runner_contract()
         self.assertFalse(
             outcome.timed_out,
             f"{label}: no refusal within the bound; the selection ran instead")
         self.assertEqual(
             outcome.survivors, 0,
             f"{label}: {outcome.survivors} descendant(s) survived the bound")
-        self.assertEqual(
-            outcome.returncode, contract.PREREQUISITE_EXIT_CODE,
-            f"{label}: expected the prerequisite exit code, got {outcome.returncode}")
-        self.assertIn(contract.PREREQUISITE_DIAGNOSTIC, outcome.combined,
-                      f"{label}: refusal must carry the stable diagnostic token")
+
+        self.assertIsNotNone(
+            invocation,
+            f"{label}: no invocation was supplied, so this refusal cannot be "
+            "bound to the run that produced it")
+        published = [{"request": {"module": d.get("module")}, "decision": d}
+                     for d in decisions_from_output(outcome.combined)]
+        bound, reasons = validate_decision_binding(
+            published, invocation, selection or (), self.tree.protected)
+        self.assertTrue(
+            bound, f"{label}: the refusal is not backed by a bound decision: "
+                   f"{reasons}")
+
         if marker_bearing:
             self.assertFalse(outcome.body_ran(ORDINARY_MARKER),
                              f"{label}: an ordinary body ran before the refusal")
@@ -210,20 +220,16 @@ class RunnerContractRedTests(SimpleTestCase):
         self.assertEqual(outcome.tests_executed, 0,
                          f"{label}: {outcome.tests_executed} test(s) executed before refusal")
 
-        # Exit code, diagnostic token and absence of bodies are all forgeable
-        # together: an emitter inventing a refusal from a private variable
-        # produces exactly those three, and this method passed such an
-        # outcome when Dev B ran it. A refusal must additionally be backed by
-        # a decision bound to this run.
-        if ledger is not None:
-            entries = []
-            if Path(ledger).exists():
-                entries = json.loads(Path(ledger).read_text(encoding="utf-8"))
-            ok, reasons = validate_decision_binding(
-                entries, invocation, selection or (), self.tree.protected)
-            self.assertTrue(
-                ok, f"{label}: the refusal is not backed by a bound decision: "
-                    f"{reasons}")
+        contract = require_runner_contract()
+        self.assertEqual(
+            outcome.returncode, contract.PREREQUISITE_EXIT_CODE,
+            f"{label}: expected the prerequisite exit code, got {outcome.returncode}")
+        self.assertIn(contract.PREREQUISITE_DIAGNOSTIC, outcome.combined,
+                      f"{label}: refusal must carry the stable diagnostic token")
+
+    def refusal_invocation(self, shape):
+        """A per-row invocation id, so each refusal binds to its own run."""
+        return f"inv-{shape}-{os.getpid()}"
 
     def fixture_run(self, *labels, **kwargs):
         
@@ -242,16 +248,32 @@ class RunnerContractRedTests(SimpleTestCase):
     # --- selector shapes -------------------------------------------------
 
     def test_r01_module_selection_is_refused(self):
-        self.assert_refused(self.fixture_run(self.tree.protected), "module")
+        invocation = self.refusal_invocation("module")
+        self.assert_refused(
+            self.fixture_run(self.tree.protected, env={**self.fixture_env(),
+                                   "HH711_INVOCATION": invocation}),
+            "module", invocation=invocation, selection=(self.tree.protected,))
 
     def test_r02_class_selection_is_refused(self):
-        self.assert_refused(self.fixture_run(self.tree.protected_class), "class")
+        invocation = self.refusal_invocation("class")
+        self.assert_refused(
+            self.fixture_run(self.tree.protected_class, env={**self.fixture_env(),
+                                   "HH711_INVOCATION": invocation}),
+            "class", invocation=invocation, selection=(self.tree.protected_class,))
 
     def test_r03_method_selection_is_refused(self):
-        self.assert_refused(self.fixture_run(self.tree.protected_method), "method")
+        invocation = self.refusal_invocation("method")
+        self.assert_refused(
+            self.fixture_run(self.tree.protected_method, env={**self.fixture_env(),
+                                   "HH711_INVOCATION": invocation}),
+            "method", invocation=invocation, selection=(self.tree.protected_method,))
 
     def test_r04_parent_package_selection_is_refused(self):
-        self.assert_refused(self.fixture_run(self.tree.parent), "parent")
+        invocation = self.refusal_invocation("parent")
+        self.assert_refused(
+            self.fixture_run(self.tree.parent, env={**self.fixture_env(),
+                                   "HH711_INVOCATION": invocation}),
+            "parent", invocation=invocation, selection=(self.tree.parent,))
 
     def test_r05_options_only_invocation_is_refused(self):
         """No labels means Django's broad discovery, which reaches protected modules.
@@ -261,8 +283,12 @@ class RunnerContractRedTests(SimpleTestCase):
         # Bounded deliberately: with the contract absent this invocation
         # discovers and runs the entire tree. A timeout is reported as
         # "did not refuse" rather than hanging the suite.
+        invocation = self.refusal_invocation("options-only")
         self.assert_refused(
-            self.fixture_run(cwd=self.tree.root, timeout=90), "options-only")
+            self.fixture_run(cwd=self.tree.root, timeout=90,
+                             env={**self.fixture_env(),
+                                  "HH711_INVOCATION": invocation}),
+            "options-only", invocation=invocation, selection=())
 
     def test_r13_selection_matching_is_dot_component_aware(self):
         """`test_interchange_audit_retention` is not inside `test_interchange`.
@@ -291,7 +317,13 @@ class RunnerContractRedTests(SimpleTestCase):
         inferable from it: a mechanism could match the immediate package and
         miss `netbox_hedgehog.tests`.
         """
-        self.assert_refused(self.fixture_run(self.tree.grandparent), "grandparent")
+        invocation = self.refusal_invocation("grandparent")
+        self.assert_refused(
+            self.fixture_run(self.tree.grandparent,
+                             env={**self.fixture_env(),
+                                  "HH711_INVOCATION": invocation}),
+            "grandparent", invocation=invocation,
+            selection=(self.tree.grandparent,))
 
     def test_r25_every_selector_shape_reaches_the_prerequisite_seam(self):
         """Each selector shape reaches the boundary, bound, and completes.
@@ -421,12 +453,36 @@ class RunnerContractRedTests(SimpleTestCase):
                                 "the mutation removed nothing")
             protected_source.write_text(without, encoding="utf-8")
             try:
+                invocation = self.refusal_invocation("boundary-removed")
                 outcome = self.fixture_run(self.tree.protected, env={
-                    "PYTHONPATH": f"{self.tree.root}:{plugin_root}"})
-                # The child now completes with no boundary consulted at all.
-                # The core refusal path must reject that, not accept it.
-                with self.assertRaises(AssertionError):
-                    self.assert_refused(outcome, "boundary removed")
+                    "PYTHONPATH": f"{self.tree.root}:{plugin_root}",
+                    "HH711_INVOCATION": invocation})
+
+                # Examine the mutation's own outcome. A previous version did
+                # `assertRaises(AssertionError)` around assert_refused, which
+                # caught RunnerContractAbsent -- raised before any check ran --
+                # so the mutation was never examined and the control passed
+                # on contract absence instead.
+                published = decisions_from_output(outcome.combined)
+                self.assertEqual(
+                    published, [],
+                    "a boundary-free child still published a decision")
+                ok, reasons = validate_decision_binding(
+                    [{"request": {"module": d.get("module")}, "decision": d}
+                     for d in published],
+                    invocation, (self.tree.protected,), self.tree.protected)
+                self.assertFalse(
+                    ok,
+                    "a child that consulted no boundary was accepted as bound")
+                self.assertIn(
+                    "no decision was recorded", " ".join(reasons),
+                    f"the rejection must be about the missing boundary, not "
+                    f"about the contract being absent: {reasons}")
+                self.assertGreater(
+                    outcome.tests_executed, 0,
+                    "with the boundary removed the child should run freely; "
+                    "if it did not, this mutation is not exercising what it "
+                    "claims")
             finally:
                 protected_source.write_text(original, encoding="utf-8")
 
@@ -649,8 +705,12 @@ class RunnerContractRedTests(SimpleTestCase):
         a per-module error: unittest turns a load-time raise into a placeholder
         and keeps going, so earlier bodies still execute.
         """
-        outcome = self.fixture_run(self.tree.ordinary, self.tree.protected)
-        self.assert_refused(outcome, "mixed selection")
+        invocation = self.refusal_invocation("mixed")
+        outcome = self.fixture_run(
+            self.tree.ordinary, self.tree.protected,
+            env={**self.fixture_env(), "HH711_INVOCATION": invocation})
+        self.assert_refused(outcome, "mixed selection", invocation=invocation,
+                            selection=(self.tree.ordinary, self.tree.protected))
 
     def test_r09_refusal_is_distinct_from_a_crash(self):
         """An unrelated failure must not be mistaken for the contract firing."""

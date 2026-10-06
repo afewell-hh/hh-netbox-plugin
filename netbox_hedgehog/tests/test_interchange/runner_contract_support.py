@@ -357,6 +357,17 @@ def build_fixture_tree(root: Path) -> FixtureTree:
 
         _decision = _decide(_request)
 
+        # Publish the decision this child actually applied, so a row can
+        # validate its binding without a test-only side channel. A ledger
+        # cannot serve that purpose against a real implementation.
+        import json as _json
+        print("{DECISION_MARKER}" + _json.dumps({{
+            "allow": getattr(_decision, "allow", None),
+            "invocation": getattr(_decision, "invocation", ""),
+            "normalized_selection": list(getattr(_decision, "normalized_selection", ())),
+            "module": _request["module"],
+        }}), flush=True)
+
         # The boundary owns the outcome. Nothing here invents an exit code or
         # a diagnostic; both come from the decision.
         if not getattr(_decision, "allow", False):
@@ -659,6 +670,29 @@ def evaluate_hold(marker_text, log_text, process_alive, observation_gap_s=None,
 
 # --- decision binding ------------------------------------------------------
 
+DECISION_MARKER = "HH711_DECISION="
+
+
+def decisions_from_output(text):
+    """Structured decisions the child emitted, parsed from its own output.
+
+    A ledger is a test-only channel: a production boundary would never write
+    to one, so a row that validated binding only via a ledger could not
+    validate a real implementation at all -- and core rows that omitted the
+    ledger skipped validation entirely. The fixture now serializes whatever
+    decision it applied onto its own stdout, so the same check works against
+    a stand-in and against the real contract.
+    """
+    found = []
+    for line in (text or "").splitlines():
+        if line.startswith(DECISION_MARKER):
+            try:
+                found.append(json.loads(line[len(DECISION_MARKER):]))
+            except ValueError:
+                continue
+    return found
+
+
 def validate_decision_binding(ledger_entries, expected_invocation,
                               expected_selection, expected_module):
     """Is this refusal backed by a decision bound to *this* run?
@@ -673,6 +707,11 @@ def validate_decision_binding(ledger_entries, expected_invocation,
     decision that echoes the invocation this run generated and the selection
     the boundary itself normalized.
     """
+    if not expected_invocation:
+        return False, [
+            "no expected invocation was supplied, so nothing can be bound to "
+            "this run. An empty expected value matching an empty recorded "
+            "value is not agreement -- it is two absences."]
     if not ledger_entries:
         return False, ["no decision was recorded: the refusal is unattributed"]
     bound = [entry for entry in ledger_entries
