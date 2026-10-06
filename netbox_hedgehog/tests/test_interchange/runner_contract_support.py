@@ -85,6 +85,14 @@ EVIDENCE_VARIABLES = (
 #: observation stays usable. The window matches the lane convention already
 #: in `reaper_lane.py`; an observation older than this is not evidence about
 #: the current tree.
+#: Scenarios the lead has authorized as #715-blocked. The loader consults
+#: this, so adding `blocked_by` to any other evidence record is rejected
+#: rather than silently excusing a row.
+AUTHORIZED_BLOCKED_SCENARIOS = frozenset({
+    "declared_ok", "declaration_removed", "broad_supported",
+    "preflight_then_invalidated", "remediation_round_trip",
+})
+
 DRIVER_EVIDENCE_VARIABLE = "HH711_DRIVER_EVIDENCE"
 DRIVER_EVIDENCE_MAX_AGE = 3600
 SHARED_STACK_LANE = "netbox-docker"
@@ -176,6 +184,11 @@ def load_driver_evidence(scenario: str, expected_selection: tuple[str, ...]) -> 
     # and must not reach a row as a KeyError. Blocked rows then fail with the
     # block cited, which is what "annotated, not suppressed" means in
     # practice: loud, specific, and obviously not a contract finding.
+    if record.get("blocked_by") and scenario not in AUTHORIZED_BLOCKED_SCENARIOS:
+        raise DriverEvidenceUnusable(
+            f"scenario {scenario!r} claims blocked_by #{record['blocked_by']} but "
+            "is not an authorized #715 block; an injected block marker must not "
+            "excuse a row")
     if record.get("blocked_by"):
         raise DriverEvidenceUnusable(
             f"scenario {scenario!r} is blocked by #{record['blocked_by']}: "
@@ -502,7 +515,12 @@ def raw_django(*labels: str, extra: tuple[str, ...] = (), env: dict | None = Non
     Django builds no test database for them and they must not join the
     parent's `--keepdb` identity.
     """
-    argv = [sys.executable, "manage.py", "test", *labels]
+    # Absolute, because `cwd` is overridden for the options-only shape:
+    # discovery with no labels must start in the fixture tree, and a relative
+    # "manage.py" simply does not exist there. The run failed before Django
+    # started, which read as "the selection never reached the boundary".
+    repository_root = Path(__file__).resolve().parents[3]
+    argv = [sys.executable, str(repository_root / "manage.py"), "test", *labels]
     if keepdb:
         argv.append("--keepdb")
     argv.extend(extra)
@@ -637,3 +655,48 @@ def evaluate_hold(marker_text, log_text, process_alive, observation_gap_s=None,
                 "while the host is not watching"]
         reasons.append(f"still held {observation_gap_s}s after acknowledgement, unobserved")
     return "held", reasons
+
+
+# --- decision binding ------------------------------------------------------
+
+def validate_decision_binding(ledger_entries, expected_invocation,
+                              expected_selection, expected_module):
+    """Is this refusal backed by a decision bound to *this* run?
+
+    Returns (ok, reasons). Exists because exit code, diagnostic token and an
+    absence of bodies are all forgeable: a stand-in that invents a refusal
+    from a private variable produces exactly those three. Dev B demonstrated
+    it against `assert_refused`, which passed an emitter-shaped outcome with
+    matching exit and token and no binding at all.
+
+    What cannot be forged without actually reaching the boundary is a
+    decision that echoes the invocation this run generated and the selection
+    the boundary itself normalized.
+    """
+    if not ledger_entries:
+        return False, ["no decision was recorded: the refusal is unattributed"]
+    bound = [entry for entry in ledger_entries
+             if (entry.get("decision") or {}).get("invocation") == expected_invocation]
+    if not bound:
+        seen = sorted({(e.get("decision") or {}).get("invocation", "")
+                       for e in ledger_entries})
+        return False, [
+            f"no decision carried this run's invocation {expected_invocation!r}; "
+            f"saw {seen}. A refusal whose decision is not bound to this run "
+            "could have been fabricated by anything."]
+    decision = bound[0]["decision"]
+    request = bound[0].get("request") or {}
+    reasons = [f"decision bound to {expected_invocation!r}"]
+
+    if tuple(decision.get("normalized_selection") or ()) != tuple(expected_selection):
+        return False, [
+            f"decision normalized the selection to "
+            f"{tuple(decision.get('normalized_selection') or ())!r}, expected "
+            f"{tuple(expected_selection)!r}"]
+    reasons.append("normalized selection matches")
+
+    if request.get("module") != expected_module:
+        return False, [f"decision was made for module {request.get('module')!r}, "
+                       f"expected {expected_module!r}"]
+    reasons.append("decision made for the protected module")
+    return True, reasons

@@ -26,6 +26,7 @@ from __future__ import annotations
 import json
 import os
 import tempfile
+import time
 import unittest
 from pathlib import Path
 
@@ -37,6 +38,7 @@ from netbox_hedgehog.tests.test_interchange.runner_contract_support import (
     PROTECTED_MARKER,
     build_fixture_tree,
     load_driver_evidence,
+    validate_decision_binding,
     EVIDENCE_VARIABLES,
     GRANDPARENT_SELECTION,
     PROTECTED_MODULES,
@@ -179,7 +181,8 @@ class RunnerContractRedTests(SimpleTestCase):
         """PYTHONPATH for the disposable tree; no evidence for its protected module."""
         return {"PYTHONPATH": str(self.tree.root)}
 
-    def assert_refused(self, outcome, label, marker_bearing=True):
+    def assert_refused(self, outcome, label, marker_bearing=True,
+                       ledger=None, invocation=None, selection=None):
         """A refusal, observed by markers rather than by a missing summary.
 
         B3: `Ran 0 tests` is a summary and an executed body can leave none, so
@@ -206,6 +209,21 @@ class RunnerContractRedTests(SimpleTestCase):
                              f"{label}: the protected body ran")
         self.assertEqual(outcome.tests_executed, 0,
                          f"{label}: {outcome.tests_executed} test(s) executed before refusal")
+
+        # Exit code, diagnostic token and absence of bodies are all forgeable
+        # together: an emitter inventing a refusal from a private variable
+        # produces exactly those three, and this method passed such an
+        # outcome when Dev B ran it. A refusal must additionally be backed by
+        # a decision bound to this run.
+        if ledger is not None:
+            entries = []
+            if Path(ledger).exists():
+                entries = json.loads(Path(ledger).read_text(encoding="utf-8"))
+            ok, reasons = validate_decision_binding(
+                entries, invocation, selection or (), self.tree.protected)
+            self.assertTrue(
+                ok, f"{label}: the refusal is not backed by a bound decision: "
+                    f"{reasons}")
 
     def fixture_run(self, *labels, **kwargs):
         
@@ -289,27 +307,38 @@ class RunnerContractRedTests(SimpleTestCase):
         shapes cannot write five indistinguishable entries.
         """
         from netbox_hedgehog.tests.test_interchange.runner_contract_seam_adapter import (
-            LEDGER_VARIABLE, normalize_selection)
+            LEDGER_VARIABLE)
         from netbox_hedgehog.tests.test_interchange.runner_contract_support import (
             INVOCATION_VARIABLE, SEAM_VARIABLE)
 
         sound = ("netbox_hedgehog.tests.test_interchange."
                  "runner_contract_seam_adapter.sound_decision")
+        # Expected normalized selections are written out per shape rather
+        # than computed with the adapter's own helper. Validating the
+        # adapter's output with the adapter's normalizer is circular: a bug
+        # in the helper would satisfy both sides.
         shapes = {
-            "module": (self.tree.protected,),
-            "class": (self.tree.protected_class,),
-            "method": (self.tree.protected_method,),
-            "parent": (self.tree.parent,),
-            "grandparent": (self.tree.grandparent,),
-            "options-only-ish": (self.tree.parent, "--exclude-tag", "slow"),
-            "mixed": (self.tree.ordinary, self.tree.protected),
+            "module": ((self.tree.protected,), (self.tree.protected,), None),
+            "class": ((self.tree.protected_class,), (self.tree.protected_class,), None),
+            "method": ((self.tree.protected_method,), (self.tree.protected_method,), None),
+            "parent": ((self.tree.parent,), (self.tree.parent,), None),
+            "grandparent": ((self.tree.grandparent,), (self.tree.grandparent,), None),
+            # Genuinely no labels: discovery from the tree root. The previous
+            # "options-only-ish" shape passed an explicit parent label, which
+            # is a parent-plus-option invocation, not the shape R05 exercises.
+            "options-only": ((), (), self.tree.root),
+            "parent-plus-option": (
+                (self.tree.parent, "--exclude-tag", "slow"), (self.tree.parent,), None),
+            "mixed": ((self.tree.ordinary, self.tree.protected),
+                      (self.tree.ordinary, self.tree.protected), None),
         }
         with tempfile.TemporaryDirectory(prefix="hh711-seam-") as workspace:
-            for shape, labels in shapes.items():
+            for shape, (labels, expected_selection, cwd) in shapes.items():
                 with self.subTest(shape=shape):
                     invocation = f"inv-{shape}-{os.getpid()}"
                     ledger = Path(workspace) / f"{shape}.json"
-                    outcome = self.fixture_run(*labels, env={
+                    extra = {"cwd": cwd} if cwd else {}
+                    outcome = self.fixture_run(*labels, **extra, env={
                         "PYTHONPATH": f"{self.tree.root}:{Path(__file__).resolve().parents[3]}",
                         SEAM_VARIABLE: sound,
                         INVOCATION_VARIABLE: invocation,
@@ -326,10 +355,28 @@ class RunnerContractRedTests(SimpleTestCase):
                         bound,
                         f"{shape}: no decision carried this run's invocation "
                         f"{invocation!r}; entries={entries}")
+                    decision, request = bound[0]["decision"], bound[0]["request"]
+
                     self.assertEqual(
-                        tuple(bound[0]["decision"]["normalized_selection"]),
-                        normalize_selection(labels),
-                        f"{shape}: the boundary recorded a different selection")
+                        tuple(decision["normalized_selection"]),
+                        tuple(expected_selection),
+                        f"{shape}: the boundary normalized the selection to "
+                        f"{decision['normalized_selection']!r}, expected "
+                        f"{list(expected_selection)!r}")
+                    # Restored: the regression R25 originally caught was the
+                    # fixture naming a literal '{module}' placeholder, which a
+                    # completing child would otherwise hide.
+                    self.assertEqual(
+                        request["module"], self.tree.protected,
+                        f"{shape}: the boundary was consulted for "
+                        f"{request['module']!r}, not the protected module")
+                    self.assertEqual(
+                        tuple(request["selection"]), tuple(labels),
+                        f"{shape}: the request carried a different selection")
+                    self.assertIn("evidence_context", request,
+                                  f"{shape}: the request carried no evidence context")
+                    self.assertTrue(decision["allow"],
+                                    f"{shape}: the sound boundary did not allow")
 
                     # A sound boundary allows, so the child must complete.
                     self.assertEqual(
@@ -343,10 +390,12 @@ class RunnerContractRedTests(SimpleTestCase):
                         "satisfy this row")
 
     def test_r26_the_boundary_and_its_binding_are_load_bearing(self):
-        """Mutations the fixture and rows must reject.
+        """Mutations that the core refusal path must reject.
 
-        Three, each targeting a way the previous version could be satisfied
-        without the boundary doing anything real.
+        Each previously had a weaker form: the first observed normal RED
+        absence instead of removing anything, and the second merely recorded
+        that the emitter's fields were empty, which certifies the fault was
+        constructed rather than that anything rejects it.
         """
         from netbox_hedgehog.tests.test_interchange.runner_contract_seam_adapter import (
             LEDGER_VARIABLE)
@@ -354,47 +403,74 @@ class RunnerContractRedTests(SimpleTestCase):
             INVOCATION_VARIABLE, SEAM_VARIABLE)
 
         plugin_root = str(Path(__file__).resolve().parents[3])
+        protected_source = (self.tree.root / "hh711_root" / "pkg" /
+                            "test_protected.py")
+        sound = ("netbox_hedgehog.tests.test_interchange."
+                 "runner_contract_seam_adapter.sound_decision")
+        emitter = ("netbox_hedgehog.tests.test_interchange."
+                   "runner_contract_seam_adapter.unbound_emitter")
 
-        with self.subTest(mutation="boundary call removed"):
-            # No seam injected: the fixture must delegate to the production
-            # contract module, whose absence is the contract-absent form --
-            # not an unrelated fixture error.
-            outcome = self.fixture_run(self.tree.protected, env={
-                "PYTHONPATH": f"{self.tree.root}:{plugin_root}"})
-            self.assertNotEqual(outcome.returncode, 0,
-                                "an absent contract must not be a passing run")
-            self.assertIn(
-                "runner_contract", outcome.combined,
-                "the default path must fail by reaching for the production "
-                "contract module, so implementing it changes this path; "
-                f"got: {outcome.combined[-300:]}")
+        with self.subTest(mutation="boundary call actually removed"):
+            original = protected_source.read_text(encoding="utf-8")
+            without = "\n".join(
+                line for line in original.splitlines()
+                if "_decision = _decide(" not in line
+                and not line.startswith("if not getattr(_decision")
+                and 'getattr(_decision' not in line)
+            self.assertNotEqual(without, original,
+                                "the mutation removed nothing")
+            protected_source.write_text(without, encoding="utf-8")
+            try:
+                outcome = self.fixture_run(self.tree.protected, env={
+                    "PYTHONPATH": f"{self.tree.root}:{plugin_root}"})
+                # The child now completes with no boundary consulted at all.
+                # The core refusal path must reject that, not accept it.
+                with self.assertRaises(AssertionError):
+                    self.assert_refused(outcome, "boundary removed")
+            finally:
+                protected_source.write_text(original, encoding="utf-8")
 
-        with self.subTest(mutation="unbound emitter substituted"):
+        with self.subTest(mutation="unbound emitter must be REJECTED"):
             with tempfile.TemporaryDirectory(prefix="hh711-mut-") as workspace:
                 ledger = Path(workspace) / "ledger.json"
+                invocation = f"inv-emitter-{os.getpid()}"
                 outcome = self.fixture_run(self.tree.protected, env={
                     "PYTHONPATH": f"{self.tree.root}:{plugin_root}",
-                    SEAM_VARIABLE: ("netbox_hedgehog.tests.test_interchange."
-                                    "runner_contract_seam_adapter.unbound_emitter"),
-                    INVOCATION_VARIABLE: "inv-mutation",
+                    SEAM_VARIABLE: emitter,
+                    INVOCATION_VARIABLE: invocation,
                     LEDGER_VARIABLE: str(ledger),
                 })
-                self.assertTrue(ledger.exists(), "the emitter never ran")
                 entries = json.loads(ledger.read_text(encoding="utf-8"))
-                decision = entries[0]["decision"]
+                ok, reasons = validate_decision_binding(
+                    entries, invocation, (self.tree.protected,),
+                    self.tree.protected)
                 self.assertFalse(
-                    decision["invocation"],
-                    "the mutation target must carry no invocation binding")
-                self.assertFalse(
-                    decision["normalized_selection"],
-                    "the mutation target must carry no normalized selection")
-                self.assertEqual(
-                    outcome.tests_executed, 0,
-                    "a fabricated refusal still stopped the child, so a row "
-                    "checking only 'did it refuse' cannot tell it from a real "
-                    "contract decision; binding is what distinguishes them")
+                    ok,
+                    "a fabricated refusal with no binding was accepted; exit "
+                    "code, diagnostic and absence of bodies are all forgeable "
+                    f"together, so only binding separates them: {reasons}")
+                self.assertEqual(outcome.tests_executed, 0,
+                                 "the emitter did stop the child, which is why "
+                                 "body-count alone cannot discriminate")
 
-    # --- compatibility: the contract must not become a blanket refusal ----    # --- compatibility: the contract must not become a blanket refusal ----
+        with self.subTest(positive="a bound decision is accepted"):
+            with tempfile.TemporaryDirectory(prefix="hh711-pos-") as workspace:
+                ledger = Path(workspace) / "ledger.json"
+                invocation = f"inv-sound-{os.getpid()}"
+                self.fixture_run(self.tree.protected, env={
+                    "PYTHONPATH": f"{self.tree.root}:{plugin_root}",
+                    SEAM_VARIABLE: sound,
+                    INVOCATION_VARIABLE: invocation,
+                    LEDGER_VARIABLE: str(ledger),
+                })
+                entries = json.loads(ledger.read_text(encoding="utf-8"))
+                ok, reasons = validate_decision_binding(
+                    entries, invocation, (self.tree.protected,),
+                    self.tree.protected)
+                self.assertTrue(ok, f"a genuinely bound decision was rejected: "
+                                    f"{reasons}")
+
+    # --- compatibility: the contract must not become a blanket refusal ----    # --- compatibility: the contract must not become a blanket refusal ----    # --- compatibility: the contract must not become a blanket refusal ----
 
     def test_r06_unprotected_interchange_modules_still_run_raw(self):
         for module in UNPROTECTED_MODULES:
@@ -788,6 +864,46 @@ class RunnerContractRedControls(SimpleTestCase):
         "test_r18_declared_case_consumes_fresh_evidence",
         "test_r20_lifecycle_observer_detects_real_preparation",
     })
+
+    def test_loader_rejects_an_unauthorized_block_marker(self):
+        """An injected `blocked_by` must not excuse an arbitrary scenario.
+
+        The registry set protects the Python side only. The loader reads
+        evidence, and previously honoured a `blocked_by` key on any record,
+        so marking an unrelated scenario blocked would have silently excused
+        whichever row consumed it.
+        """
+        from netbox_hedgehog.tests.test_interchange.runner_contract_support import (
+            AUTHORIZED_BLOCKED_SCENARIOS,
+            DRIVER_EVIDENCE_VARIABLE as _EVIDENCE_VAR,
+            DriverEvidenceUnusable,
+            load_driver_evidence)
+
+        self.assertIn("declared_ok", AUTHORIZED_BLOCKED_SCENARIOS)
+        self.assertNotIn("topology_fast_path", AUTHORIZED_BLOCKED_SCENARIOS,
+                         "a decision scenario must never be an authorized block")
+
+        with tempfile.TemporaryDirectory(prefix="hh711-block-") as workspace:
+            forged = Path(workspace) / "evidence.json"
+            forged.write_text(json.dumps({
+                "version": 1, "head": os.environ.get("HH711_EXPECTED_HEAD", ""),
+                "lane": "diet711drv", "run_id": "forged",
+                "observed_at": int(time.time()),
+                "scenarios": {"topology_fast_path": {
+                    "name": "topology_fast_path", "selection": ["x"],
+                    "blocked_by": 715, "reason": "injected"}},
+            }), encoding="utf-8")
+            previous = os.environ.get(_EVIDENCE_VAR)
+            os.environ[_EVIDENCE_VAR] = str(forged)
+            try:
+                with self.assertRaises(DriverEvidenceUnusable) as caught:
+                    load_driver_evidence("topology_fast_path", ("x",))
+                self.assertIn("not an authorized", str(caught.exception))
+            finally:
+                if previous is None:
+                    os.environ.pop(_EVIDENCE_VAR, None)
+                else:
+                    os.environ[_EVIDENCE_VAR] = previous
 
     def test_blocked_registry_agrees_with_the_expected_set(self):
         """The registry must match an independently declared expectation.
