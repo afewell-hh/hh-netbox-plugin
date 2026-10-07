@@ -310,13 +310,24 @@ def classify_not_found(stderr: str, container_id: str) -> bool:
     if not stderr or not container_id:
         return False
 
-    matched = False
-    for raw in stderr.splitlines():
-        match = NOT_FOUND_LINE.match(raw.strip())
-        if match and match.group("target").rstrip(".") == container_id:
-            matched = True
-            break
-    if not matched:
+    lines = [line.strip() for line in stderr.splitlines() if line.strip()]
+    if not lines:
+        return False
+
+    # EVERY line must be a recognized diagnostic. The previous version
+    # scanned for a matching line and returned on the first hit, ignoring
+    # everything else -- so a permission error accompanied by a valid
+    # not-found line reported absence, when in fact the daemon could not be
+    # consulted. Unrecognized output means the observation is UNKNOWN,
+    # whatever else is present.
+    matches = []
+    for line in lines:
+        match = NOT_FOUND_LINE.match(line)
+        if not match:
+            return False
+        matches.append(match.group("target").rstrip("."))
+
+    if container_id not in matches:
         return False
     if any(phrase in stderr for phrase in PRESENCE_CONTRADICTIONS):
         return False

@@ -162,6 +162,17 @@ class ProverSafetyControls(SimpleTestCase):
             # contradictory: also asserts the container exists
             f"No such container: {ours}\nStatus: running": False,
             f"No such container: {ours}\ncannot remove a running container": False,
+            # unrecognized ADDITIONAL output means the observation is
+            # unknown, whatever else is present. The previous classifier
+            # returned on the first matching line and ignored the rest, so a
+            # permission error alongside a valid not-found line reported
+            # absence -- while the daemon could not actually be consulted.
+            f"permission denied while connecting to the Docker daemon socket"
+            f"\nNo such container: {ours}": False,
+            f"No such container: {ours}\npermission denied": False,
+            f"Cannot connect to the Docker daemon"
+            f"\nNo such container: {ours}": False,
+            f"warning: deprecated flag\nNo such container: {ours}": False,
             # marker with no target
             "Error response from daemon: No such container": False,
             # unrelated failure that merely mentions our id
