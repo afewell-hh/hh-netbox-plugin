@@ -442,47 +442,58 @@ class RunnerContractRedTests(SimpleTestCase):
         emitter = ("netbox_hedgehog.tests.test_interchange."
                    "runner_contract_seam_adapter.unbound_emitter")
 
-        with self.subTest(mutation="boundary call actually removed"):
+        with self.subTest(mutation="boundary removed, child runs freely"):
             original = protected_source.read_text(encoding="utf-8")
-            without = "\n".join(
-                line for line in original.splitlines()
-                if "_decision = _decide(" not in line
-                and not line.startswith("if not getattr(_decision")
-                and 'getattr(_decision' not in line)
-            self.assertNotEqual(without, original,
-                                "the mutation removed nothing")
-            protected_source.write_text(without, encoding="utf-8")
+            # Remove the ENTIRE boundary block, not just the _decide() call.
+            # Stripping only the call left the contract import in place, so
+            # the child still died on the missing module: the mutation never
+            # produced a boundary-free run, and `Ran 1 test` was counting
+            # unittest's failed-loader placeholder rather than a body.
+            class_at = original.index("class ProtectedFixture")
+            boundary_free = ("from django.test import SimpleTestCase\n\n\n"
+                             + original[class_at:])
+            self.assertNotIn("_decide(", boundary_free,
+                             "the mutation left the boundary call in place")
+            self.assertNotIn("import_module", boundary_free,
+                             "the mutation left the contract import in place, so "
+                             "the child would fail on that rather than run freely")
+            protected_source.write_text(boundary_free, encoding="utf-8")
             try:
                 invocation = self.refusal_invocation("boundary-removed")
                 outcome = self.fixture_run(self.tree.protected, env={
                     "PYTHONPATH": f"{self.tree.root}:{plugin_root}",
                     "HH711_INVOCATION": invocation})
 
-                # Examine the mutation's own outcome. A previous version did
-                # `assertRaises(AssertionError)` around assert_refused, which
-                # caught RunnerContractAbsent -- raised before any check ran --
-                # so the mutation was never examined and the control passed
-                # on contract absence instead.
-                published = decisions_from_output(outcome.combined)
+                # The mutation must produce a SUCCESSFUL boundary-free run.
+                # Anything less and this is not exercising what it claims.
                 self.assertEqual(
-                    published, [],
-                    "a boundary-free child still published a decision")
-                ok, reasons = validate_decision_binding(
-                    [{"request": {"module": d.get("module")}, "decision": d}
-                     for d in published],
-                    invocation, (self.tree.protected,), self.tree.protected)
-                self.assertFalse(
-                    ok,
-                    "a child that consulted no boundary was accepted as bound")
+                    outcome.returncode, 0,
+                    f"the boundary-free child did not complete cleanly: "
+                    f"{outcome.combined[-400:]}")
+                self.assertTrue(
+                    outcome.body_ran(PROTECTED_MARKER),
+                    "the protected body did not run, so no real execution "
+                    "occurred; a loader placeholder counts in tests_executed "
+                    "but is not a body")
+                self.assertGreater(outcome.tests_executed, 0)
+                self.assertEqual(
+                    decisions_from_output(outcome.combined), [],
+                    "a boundary-free child published a decision")
+
+                # Now the shared core checker must reject that completion,
+                # and for the right reason.
+                with self.assertRaises(AssertionError) as caught:
+                    self.assert_refused(
+                        outcome, "boundary removed", invocation=invocation,
+                        selection=(self.tree.protected,))
+                message = str(caught.exception)
+                self.assertNotIn(
+                    "runner contract absent", message,
+                    "the checker rejected on contract absence, not on the "
+                    f"mutation: {message}")
                 self.assertIn(
-                    "no decision was recorded", " ".join(reasons),
-                    f"the rejection must be about the missing boundary, not "
-                    f"about the contract being absent: {reasons}")
-                self.assertGreater(
-                    outcome.tests_executed, 0,
-                    "with the boundary removed the child should run freely; "
-                    "if it did not, this mutation is not exercising what it "
-                    "claims")
+                    "not backed by a bound decision", message,
+                    f"the rejection must name the missing binding: {message}")
             finally:
                 protected_source.write_text(original, encoding="utf-8")
 
