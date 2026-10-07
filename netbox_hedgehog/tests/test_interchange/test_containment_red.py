@@ -78,6 +78,9 @@ CONTAINMENT_ROWS = (
                    "positive completion path"),
     ContainmentRow("C11", "test_c11_scenario_verifies_its_own_compose_identity", 11,
                    "dedicated project verified before action"),
+    ContainmentRow("C12", "test_c12_heuristic_ownership_is_rejected", 3,
+                   "prefix/time-window selection must fail; exact run-bound "
+                   "identity only"),
 )
 
 
@@ -146,6 +149,58 @@ class ContainmentRedTests(ContainmentFixture):
                 self.assertIn(population, state.registered,
                               f"{population} is neither registered nor unresolved; "
                               "prefix or time-window guessing is not ownership")
+
+    def test_c12_heuristic_ownership_is_rejected(self):
+        """Gate 3, strengthened: a heuristic implementation must FAIL here.
+
+        The lane holds two preparation-shaped processes created in the same
+        window. One carries this run's binding; the decoy wears the same
+        recognizable `hh709-` prefix and carries none. A contract selecting
+        by prefix, or by "started recently", takes both. Only exact
+        run-bound identity takes one.
+
+        Identity here is immutable -- container id plus pid plus start-time
+        ticks -- because a display name is not an identity and a pid alone
+        is reusable.
+        """
+        trap = self.evidence["heuristic_trap"]
+
+        # The decoy must actually be a trap, or this row proves nothing.
+        self.assertGreater(
+            trap["prefix_would_match"], 1,
+            "a prefix matcher does not select more than the bound resource "
+            "here, so this row cannot discriminate a heuristic contract")
+        self.assertEqual(len(trap["legitimate"]), 1,
+                         "exactly one run-bound resource must exist")
+        self.assertEqual(len(trap["decoy"]), 1,
+                         "the unrelated prefix-sharing decoy must exist")
+        self.assertNotEqual(trap["legitimate_tag"], trap["decoy_tag"])
+        for entry in trap["legitimate"] + trap["decoy"]:
+            self.assertTrue(entry["start_ticks"],
+                            "no start-time recorded, so pid reuse is undetectable")
+
+        contract = require_containment()
+        reconciled = contract.lane_state(lane=LANE).reconcile_preparation(
+            run_id=trap["run_id"], container_id=self.container_id)
+
+        # A prefix or time-window implementation returns both.
+        self.assertEqual(
+            len(reconciled), 1,
+            f"the contract reconciled {len(reconciled)} resources where exactly "
+            "one carries this run's binding; prefix or time-window selection "
+            "is not ownership")
+        owned = reconciled[0]
+        self.assertEqual(owned.run_id, trap["run_id"])
+        self.assertEqual(owned.container_id, self.container_id,
+                         "ownership must bind immutable container identity, "
+                         "not a display name")
+        self.assertEqual(owned.pid, trap["legitimate"][0]["pid"])
+        self.assertEqual(
+            str(owned.start_ticks), trap["legitimate"][0]["start_ticks"],
+            "ownership must bind process start time; a pid alone is reusable")
+        self.assertNotEqual(
+            owned.pid, trap["decoy"][0]["pid"],
+            "the contract selected the unrelated prefix-sharing decoy")
 
     def test_c04_deficient_ownership_records_authorize_no_signal(self):
         """Gate 4: seven deficiency shapes, none may authorize a signal."""
@@ -256,6 +311,23 @@ class ContainmentRedControls(ContainmentFixture):
     def test_every_gate_point_is_covered(self):
         self.assertEqual({row.gate_point for row in CONTAINMENT_ROWS},
                          set(range(1, 12)))
+
+    def test_the_heuristic_decoy_is_a_real_trap(self):
+        """The decoy must be indistinguishable from the real thing by prefix.
+
+        Without this, C12 could pass against a decoy a prefix matcher would
+        never have selected -- certifying discrimination that was never
+        tested.
+        """
+        trap = self.evidence["heuristic_trap"]
+        prefix = "hh709-"
+        self.assertTrue(trap["legitimate_tag"].startswith(prefix))
+        self.assertTrue(trap["decoy_tag"].startswith(prefix),
+                        "the decoy does not share the prefix, so a prefix "
+                        "matcher would not have been fooled by it")
+        self.assertGreaterEqual(
+            trap["prefix_would_match"], 2,
+            "a prefix matcher selected fewer than both, so the trap is inert")
 
     def test_every_row_is_declared_and_exists(self):
         declared = {row.method for row in CONTAINMENT_ROWS}

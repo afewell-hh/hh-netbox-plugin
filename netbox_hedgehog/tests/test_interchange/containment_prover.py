@@ -91,6 +91,67 @@ def observe_baseline(netbox_docker: Path, lane: str) -> dict:
     }
 
 
+#: The recognizable preparation prefix a heuristic implementation would
+#: reach for. prove_reaper_lane.py names its containers `hh709-<run>`, so a
+#: prefix matcher looks plausible until something else wears the same name.
+PREPARATION_PREFIX = "hh709-"
+
+
+def observe_heuristic_trap(netbox_docker: Path, lane: str, run_id: str) -> dict:
+    """Two preparation-shaped processes: one bound to this run, one not.
+
+    The decoy shares the recognizable prefix and is created inside the same
+    time window, but carries no run binding. A contract selecting by prefix
+    or by "started recently" takes both; a contract comparing exact
+    run-bound identity takes one.
+
+    Immutable identity is recorded per process -- pid plus start-time ticks
+    from /proc, which together survive PID reuse -- because a display name
+    is not an identity.
+    """
+    legitimate_tag = f"{PREPARATION_PREFIX}{run_id[:12]}"
+    decoy_tag = f"{PREPARATION_PREFIX}unrelated0000"
+
+    for tag in (legitimate_tag, decoy_tag):
+        _compose(netbox_docker, lane, ["-d", "netbox", "sh", "-c",
+                                       f"sleep 900 # {tag}"])
+    time.sleep(3)
+
+    def identify(tag):
+        done = _compose(netbox_docker, lane, [
+            "netbox", "sh", "-c",
+            f"for p in $(pgrep -f '[{tag[0]}]{tag[1:]}'); do "
+            f"echo \"$p $(awk '{{print $22}}' /proc/$p/stat 2>/dev/null)\"; done"])
+        rows = []
+        for line in done.stdout.strip().splitlines():
+            parts = line.split()
+            if len(parts) == 2 and parts[0].isdigit():
+                rows.append({"pid": int(parts[0]), "start_ticks": parts[1],
+                             "name": tag})
+        return rows
+
+    legitimate = identify(legitimate_tag)
+    decoy = identify(decoy_tag)
+
+    # What a prefix matcher would select, measured rather than asserted.
+    prefix_done = _compose(netbox_docker, lane, [
+        "netbox", "sh", "-c",
+        f"pgrep -f '[{PREPARATION_PREFIX[0]}]{PREPARATION_PREFIX[1:]}' | wc -l"])
+    prefix_matches = int(prefix_done.stdout.strip() or 0)
+
+    for tag in (legitimate_tag, decoy_tag):
+        _compose(netbox_docker, lane, ["netbox", "sh", "-c",
+                                       f"pkill -9 -f {tag} || true"])
+    return {
+        "run_id": run_id,
+        "legitimate_tag": legitimate_tag,
+        "decoy_tag": decoy_tag,
+        "legitimate": legitimate,
+        "decoy": decoy,
+        "prefix_would_match": prefix_matches,
+    }
+
+
 def observe_unreachable_probe(netbox_docker: Path) -> dict:
     """Gate 6/8: a probe against a lane that does not exist must be unknown."""
     known, value = _count(netbox_docker, "hh716-definitely-no-such-lane", SUBJECT_TAG)
@@ -122,8 +183,11 @@ def main(argv=None) -> int:
         "run_id": uuid.uuid4().hex,
         "observed_at": int(time.time()),
         "baseline": observe_baseline(args.netbox_docker, args.lane),
+        "heuristic_trap": None,   # filled below, needs the run id
         "unreachable_probe": observe_unreachable_probe(args.netbox_docker),
     }
+    evidence["heuristic_trap"] = observe_heuristic_trap(
+        args.netbox_docker, args.lane, evidence["run_id"])
     args.output.parent.mkdir(parents=True, exist_ok=True)
     args.output.write_text(json.dumps(evidence, indent=2, sort_keys=True),
                            encoding="utf-8")
