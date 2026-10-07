@@ -105,8 +105,18 @@ def create_scenario_container(image: str, run_id: str, registry=None,
     evidence was written and the container was left running.
     """
     def note(event):
+        # Snapshot the ACTUAL registry at each step. Hand-placed labels can
+        # be left in position while the real `registry.containers.append`
+        # moves after start, which the previous label-only control could
+        # not detect. The snapshot makes the claim falsifiable: if
+        # registration has not happened yet, the id is simply not here.
         if order is not None:
-            order.append({"event": event, "at": time.time()})
+            order.append({
+                "event": event,
+                "at": time.time(),
+                "registered_containers": list(
+                    registry.containers if registry is not None else []),
+            })
 
     try:
         created = subprocess.run(
@@ -204,11 +214,13 @@ def launch_owned_subject(container_id: str, registry: Registry, marker: str,
         created_at=int(time.time()))))
     registry.launches[-1]["expected_argv"] = expected_argv
     if order is not None:
-        order.append({"event": f"launch_register:{nonce}", "at": time.time()})
+        order.append({"event": f"launch_register:{nonce}", "at": time.time(),
+                      "registered_nonces": [l["nonce"] for l in registry.launches]})
     in_scenario(container_id, ["sh", "-c", script], detach=True,
                 env={"HH716_NONCE": nonce})
     if order is not None:
-        order.append({"event": f"launch_start:{nonce}", "at": time.time()})
+        order.append({"event": f"launch_start:{nonce}", "at": time.time(),
+                      "registered_nonces": [l["nonce"] for l in registry.launches]})
     return nonce
 
 

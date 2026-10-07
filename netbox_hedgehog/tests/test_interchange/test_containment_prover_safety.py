@@ -130,43 +130,48 @@ class ProverSafetyControls(SimpleTestCase):
             "B1a attempted a host-kill baseline; induction is held until "
             "B1a is accepted")
 
-    def test_registration_precedes_start_in_recorded_order(self):
-        """Ordering, not final membership.
+    def test_registration_precedes_start_in_recorded_state(self):
+        """Read the registry state captured at each step, not the labels.
 
-        The previous control asserted the container id ended up in the
-        registry, which a prover that registered everything at the end would
-        also satisfy. Ordering is what makes a resource recoverable, so the
-        prover records each lifecycle step as it happens and this control
-        reads that sequence.
+        A label-only control compares the positions of hand-written event
+        names, so moving the real `registry.containers.append` after start
+        while leaving `note("register")` in place would still pass. Each
+        lifecycle entry now carries a snapshot of the actual registry, which
+        makes the claim falsifiable: if registration has not happened, the
+        id is simply absent from that snapshot.
         """
-        order = [entry["event"] for entry in self.b1a["lifecycle_order"]]
-        self.assertTrue(order, "no lifecycle order was recorded")
+        container_id = self.b1a["container_id"]
+        entries = {e["event"]: e for e in self.b1a["lifecycle_order"]
+                   if "registered_containers" in e}
+        for step in ("create", "register", "verify", "start"):
+            self.assertIn(step, entries, f"no snapshot recorded at {step}")
 
-        for earlier, later in (("create", "register"), ("register", "start")):
-            with self.subTest(step=f"{earlier} before {later}"):
-                self.assertIn(earlier, order)
-                self.assertIn(later, order)
-                self.assertLess(
-                    order.index(earlier), order.index(later),
-                    f"{earlier} did not precede {later}: {order}")
+        # Falsifiability: the snapshot must vary. If the id were present at
+        # every step the check below would be vacuous.
+        self.assertNotIn(
+            container_id, entries["create"]["registered_containers"],
+            "the id was already registered at create, so these snapshots "
+            "cannot distinguish registration order")
 
-        # Registration must precede verification too: a failed verify must
-        # not strand an unregistered container.
-        self.assertLess(order.index("register"), order.index("verify"),
-                        f"registration did not precede verification: {order}")
+        for step in ("register", "verify", "start"):
+            with self.subTest(step=step):
+                self.assertIn(
+                    container_id, entries[step]["registered_containers"],
+                    f"the container was NOT registered by {step}; an "
+                    "unregistered resource cannot be torn down")
 
-        # Every launch is registered before it starts.
-        launches = [e for e in order if e.startswith("launch_")]
-        self.assertTrue(launches, "no launches were recorded")
-        for nonce in {e.split(":", 1)[1] for e in launches}:
-            with self.subTest(nonce=nonce[:18]):
-                self.assertLess(
-                    order.index(f"launch_register:{nonce}"),
-                    order.index(f"launch_start:{nonce}"),
-                    "a child started before it was registered")
+        # Each child is registered in the real launch list before it starts.
+        launches = [e for e in self.b1a["lifecycle_order"]
+                    if e["event"].startswith("launch_start:")]
+        self.assertTrue(launches, "no child launches were recorded")
+        for entry in launches:
+            nonce = entry["event"].split(":", 1)[1]
+            with self.subTest(nonce=nonce[:20]):
+                self.assertIn(
+                    nonce, entry["registered_nonces"],
+                    "a child started while absent from the launch registry")
 
-        self.assertTrue(self.b1a.get("container_id"))
-        self.assertIn(self.b1a["container_id"], self.b1a["registry"]["containers"])
+        self.assertIn(container_id, self.b1a["registry"]["containers"])
 
     def test_every_adversary_mutates_exactly_one_field(self):
         """A rejection must be attributable to the field it violates.
