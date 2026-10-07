@@ -28,6 +28,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import re
 import subprocess
 import sys
 import time
@@ -277,24 +278,49 @@ def bind(registry: Registry, publication):
 NOT_FOUND_MARKERS = ("No such container", "No such object")
 
 
+#: A complete, recognized not-found diagnostic. Anchored, so the whole line
+#: must be the diagnostic -- a quoted mention inside a larger message does
+#: not match -- and the target is captured for exact comparison rather than
+#: substring containment.
+NOT_FOUND_LINE = re.compile(
+    r"^(?:Error(?:\s+response\s+from\s+daemon)?:\s*)?"
+    r"No such (?:container|object):\s*(?P<target>\S+)\.?$")
+
+#: Phrases that assert the container does exist. If any appears, a
+#: co-present not-found line is contradictory and the state is not absence.
+PRESENCE_CONTRADICTIONS = ("is running", "already exists", "is already in use",
+                           "cannot remove a running", "State:", "Status:")
+
+
 def classify_not_found(stderr: str, container_id: str) -> bool:
-    """Does `stderr` state that THIS container is unknown to the daemon?
+    """Does `stderr` carry a complete not-found diagnostic for exactly this id?
 
-    A pure function so it can be exercised by a committed control. The
-    previous logic lived inline in `_inspect_state` and tested two
-    independent conditions -- marker present, id present -- which accepted
-    "No such container: <other-id>" alongside an incidental mention of ours.
-    The marker must be bound to our id in the same phrase.
+    Substring matching was not sufficient. `f"{marker}: {id}" in stderr`
+    accepted three shapes that are not observations of our absence:
 
-    It is pure and separately named because my last attempt at this fix
-    silently failed to apply, and the probe I ran rebuilt the intended
-    logic inline instead of calling the real code, so the unchanged
-    function reported as fixed.
+    * a **suffix target** -- the phrase appearing before a longer id, so the
+      diagnostic was about a different container whose id begins with ours;
+    * a **quoted non-observation** -- the phrase embedded in some other
+      message, such as an error echoing a previous command;
+    * a **contradictory** stderr that also states the container exists.
+
+    So the whole line must be a recognized diagnostic, the target must equal
+    our id exactly, and nothing in stderr may contradict it.
     """
     if not stderr or not container_id:
         return False
-    return any(f"{marker}: {container_id}" in stderr
-               for marker in NOT_FOUND_MARKERS)
+
+    matched = False
+    for raw in stderr.splitlines():
+        match = NOT_FOUND_LINE.match(raw.strip())
+        if match and match.group("target").rstrip(".") == container_id:
+            matched = True
+            break
+    if not matched:
+        return False
+    if any(phrase in stderr for phrase in PRESENCE_CONTRADICTIONS):
+        return False
+    return True
 
 
 def _inspect_state(container_id: str):

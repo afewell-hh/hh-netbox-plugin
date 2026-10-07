@@ -148,11 +148,24 @@ class ProverSafetyControls(SimpleTestCase):
         ours = "a" * 64
         other = "b" * 64
         cases = {
-            f"No such container: {ours}": True,
+            # recognized, complete, exact target
+            f"Error response from daemon: No such container: {ours}": True,
             f"No such object: {ours}": True,
-            f"No such container: {other}\nwhile reconciling {ours}": False,
+            f"No such container: {ours}.": True,
+            # suffix target: the diagnostic is about a longer id beginning
+            # with ours, not about ours
+            f"No such container: {ours}{'c' * 8}": False,
+            # a different container entirely
+            f"No such container: {other}": False,
+            # a quoted non-observation inside another message
+            f'Error: cannot replay "No such container: {ours}"': False,
+            # contradictory: also asserts the container exists
+            f"No such container: {ours}\nStatus: running": False,
+            f"No such container: {ours}\ncannot remove a running container": False,
+            # marker with no target
             "Error response from daemon: No such container": False,
-            f"daemon busy; could not reach {ours}": False,
+            # unrelated failure that merely mentions our id
+            f"daemon unreachable while inspecting {ours}": False,
             "": False,
         }
         for stderr, expected in cases.items():
