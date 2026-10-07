@@ -216,6 +216,12 @@ def launch_owned_subject(container_id: str, registry: Registry, marker: str,
     if order is not None:
         order.append({"event": f"launch_register:{nonce}", "at": time.time(),
                       "registered_nonces": [l["nonce"] for l in registry.launches]})
+        # Snapshot immediately BEFORE the exec. The launch_start snapshot is
+        # taken after it, so moving the append to sit between the exec and
+        # that note would still have shown the nonce registered. This entry
+        # is the one that cannot be satisfied by a late append.
+        order.append({"event": f"launch_pre_exec:{nonce}", "at": time.time(),
+                      "registered_nonces": [l["nonce"] for l in registry.launches]})
     in_scenario(container_id, ["sh", "-c", script], detach=True,
                 env={"HH716_NONCE": nonce})
     if order is not None:
@@ -271,6 +277,26 @@ def bind(registry: Registry, publication):
 NOT_FOUND_MARKERS = ("No such container", "No such object")
 
 
+def classify_not_found(stderr: str, container_id: str) -> bool:
+    """Does `stderr` state that THIS container is unknown to the daemon?
+
+    A pure function so it can be exercised by a committed control. The
+    previous logic lived inline in `_inspect_state` and tested two
+    independent conditions -- marker present, id present -- which accepted
+    "No such container: <other-id>" alongside an incidental mention of ours.
+    The marker must be bound to our id in the same phrase.
+
+    It is pure and separately named because my last attempt at this fix
+    silently failed to apply, and the probe I ran rebuilt the intended
+    logic inline instead of calling the real code, so the unchanged
+    function reported as fixed.
+    """
+    if not stderr or not container_id:
+        return False
+    return any(f"{marker}: {container_id}" in stderr
+               for marker in NOT_FOUND_MARKERS)
+
+
 def _inspect_state(container_id: str):
     """'present' | 'absent' | 'unknown'.
 
@@ -293,12 +319,11 @@ def _inspect_state(container_id: str):
     # some other id would otherwise be accepted as proof of our absence.
     # The full id only. A 12-character prefix is not unique: another
     # container sharing those leading characters would have satisfied it.
-    names_this = container_id in stderr
-    if any(marker in stderr for marker in NOT_FOUND_MARKERS) and names_this:
-        return "absent", stderr.strip()[:120]
+    if classify_not_found(stderr, container_id):
+        return "absent", stderr.strip()[:160]
     if any(marker in stderr for marker in NOT_FOUND_MARKERS):
-        return "unknown", ("not-found diagnostic did not name this container: "
-                           + stderr.strip()[:100])
+        return "unknown", ("a not-found diagnostic was present but not bound "
+                           "to this id: " + stderr.strip()[:120])
     return "unknown", f"inspect exited {done.returncode}: {stderr.strip()[:120]}"
 
 

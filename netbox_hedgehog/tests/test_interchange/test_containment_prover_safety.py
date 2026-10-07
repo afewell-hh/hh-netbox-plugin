@@ -121,6 +121,46 @@ class ProverSafetyControls(SimpleTestCase):
             "B1a must contain no host-side termination at all; induction is "
             "held until B1a is accepted")
 
+    # --- source-level controls on the real functions ---------------------
+
+    def test_not_found_association_is_enforced_by_the_real_function(self):
+        """Call the committed function, not a reimplementation of it.
+
+        My previous report of this fix was wrong twice over: the edit had not
+        applied, and the probe I ran rebuilt the intended logic inline rather
+        than calling `classify_not_found`, so an unchanged function appeared
+        to pass. This control calls the real thing.
+        """
+        import importlib.util
+        import sys
+
+        # Register before exec: dataclass processing resolves the module
+        # through sys.modules, and a module built from a spec without being
+        # registered raises AttributeError on the first @dataclass.
+        spec = importlib.util.spec_from_file_location("hh716_prover", PROVER)
+        prover = importlib.util.module_from_spec(spec)
+        sys.modules["hh716_prover"] = prover
+        try:
+            spec.loader.exec_module(prover)
+        finally:
+            sys.modules.pop("hh716_prover", None)
+
+        ours = "a" * 64
+        other = "b" * 64
+        cases = {
+            f"No such container: {ours}": True,
+            f"No such object: {ours}": True,
+            f"No such container: {other}\nwhile reconciling {ours}": False,
+            "Error response from daemon: No such container": False,
+            f"daemon busy; could not reach {ours}": False,
+            "": False,
+        }
+        for stderr, expected in cases.items():
+            with self.subTest(stderr=stderr[:44]):
+                self.assertEqual(
+                    prover.classify_not_found(stderr, ours), expected,
+                    f"classify_not_found({stderr[:40]!r}) should be {expected}")
+
     # --- behavioural controls, enforcing the B1a artifact ---------------
 
     def test_b1a_induces_no_host_kill_baseline(self):
@@ -160,16 +200,27 @@ class ProverSafetyControls(SimpleTestCase):
                     f"the container was NOT registered by {step}; an "
                     "unregistered resource cannot be torn down")
 
-        # Each child is registered in the real launch list before it starts.
-        launches = [e for e in self.b1a["lifecycle_order"]
-                    if e["event"].startswith("launch_start:")]
-        self.assertTrue(launches, "no child launches were recorded")
-        for entry in launches:
+        # Each child must be registered BEFORE its exec. The launch_start
+        # snapshot is taken after the exec, so an append moved to sit between
+        # the exec and that note would still satisfy it. The pre-exec
+        # snapshot is the one that cannot be.
+        pre_exec = [e for e in self.b1a["lifecycle_order"]
+                    if e["event"].startswith("launch_pre_exec:")]
+        self.assertTrue(pre_exec, "no pre-exec snapshots were recorded")
+        for entry in pre_exec:
             nonce = entry["event"].split(":", 1)[1]
             with self.subTest(nonce=nonce[:20]):
                 self.assertIn(
                     nonce, entry["registered_nonces"],
-                    "a child started while absent from the launch registry")
+                    "the child was not in the launch registry immediately "
+                    "before its exec; a late append would be invisible to "
+                    "the post-exec snapshot")
+
+        starts = [e for e in self.b1a["lifecycle_order"]
+                  if e["event"].startswith("launch_start:")]
+        self.assertEqual(
+            len(starts), len(pre_exec),
+            "every launch must have both a pre-exec and a start snapshot")
 
         self.assertIn(container_id, self.b1a["registry"]["containers"])
 
