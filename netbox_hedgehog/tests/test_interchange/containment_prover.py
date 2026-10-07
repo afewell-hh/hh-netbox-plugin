@@ -65,14 +65,69 @@ class Registry:
         return f"{self.run_id}:{len(self.launches)}:{uuid.uuid4().hex[:8]}"
 
 
-def compose(netbox_docker: Path, lane: str, argv, timeout=120, stdin=None):
-    """Structured argv only; returns CompletedProcess so status is inspectable."""
+def in_scenario(container_id: str, argv, timeout=120, stdin=None, detach=False,
+                env=None):
+    """Exec inside the registered scenario container, addressed by its ID.
+
+    Addressed by immutable ID, never by service name: a service name can be
+    re-resolved to a recreated container, which is how a scenario loses
+    track of what it owns.
+    """
     if isinstance(argv, str):
         raise TypeError("argv must be a list")
-    return subprocess.run(
-        ["docker", "compose", "exec", "-T", *argv],
-        cwd=str(netbox_docker), capture_output=True, text=True, timeout=timeout,
-        input=stdin, env={**os.environ, "COMPOSE_PROJECT_NAME": lane})
+    command = ["docker", "exec"]
+    if stdin is not None:
+        # Without -i the exec has no stdin, so a script reading it sees EOF
+        # and exits non-zero. That made every rescue invocation return None,
+        # which the prover recorded as a failed proof rather than as a
+        # harness fault.
+        command.append("-i")
+    if detach:
+        command.append("-d")
+    for key, value in (env or {}).items():
+        command += ["-e", f"{key}={value}"]
+    command += [container_id, *argv]
+    return subprocess.run(command, capture_output=True, text=True,
+                          timeout=timeout, input=stdin)
+
+
+def create_scenario_container(image: str, run_id: str):
+    """Create -> register exact 64-hex ID -> verify -> start.
+
+    A scenario-owned disposable container, not the shared lane service. The
+    previous prover ran its workload inside the lane's `netbox` container
+    and left `registry.containers` empty, so teardown iterated nothing and
+    reported success.
+
+    `docker create` returns the immutable ID before anything runs, which is
+    what makes registration-before-start possible.
+    """
+    created = subprocess.run(
+        ["docker", "create", "--label", f"hh716.run={run_id}",
+         image, "sleep", "3600"],
+        capture_output=True, text=True, timeout=120)
+    if created.returncode != 0:
+        return None, f"create failed: {created.stderr.strip()[:160]}"
+    container_id = created.stdout.strip()
+    if len(container_id) < 64:
+        return None, f"create returned a short id: {container_id!r}"
+
+    # Verify the registered ID exists and carries our run label, before start.
+    verified = subprocess.run(
+        ["docker", "inspect", container_id, "--format",
+         "{{.Id}} {{index .Config.Labels \"hh716.run\"}}"],
+        capture_output=True, text=True, timeout=60)
+    if verified.returncode != 0:
+        return None, f"inspect failed: {verified.stderr.strip()[:160]}"
+    got_id, _, got_run = verified.stdout.strip().partition(" ")
+    if got_id != container_id or got_run != run_id:
+        return None, f"identity mismatch: {got_id[:12]}/{got_run}"
+
+    started = subprocess.run(["docker", "start", container_id],
+                             capture_output=True, text=True, timeout=120)
+    if started.returncode != 0:
+        return None, f"start failed: {started.stderr.strip()[:160]}"
+    return container_id, ""
 
 
 def acquire_container_identity(lane: str):
@@ -85,43 +140,51 @@ def acquire_container_identity(lane: str):
     return done.stdout.strip()
 
 
-def install_rescue_owner(netbox_docker: Path, lane: str, source: Path):
+def install_rescue_owner(container_id: str, source: Path):
     """Copy the rescue owner in. It, not this prover, does any signalling."""
     done = subprocess.run(
-        ["docker", "cp", str(source), f"{lane}-netbox-1:{RESCUE_PATH}"],
+        ["docker", "cp", str(source), f"{container_id}:{RESCUE_PATH}"],
         capture_output=True, text=True, timeout=120)
     return done.returncode == 0
 
 
-def launch_owned_subject(netbox_docker: Path, lane: str, registry: Registry,
-                         marker: str):
-    """Launch a child that publishes its own identity, bound to a nonce."""
+def launch_owned_subject(container_id: str, registry: Registry, marker: str):
+    """Launch a child in the scenario container that publishes its own identity.
+
+    The published record carries pid, start ticks, PGID and SID -- all four
+    are compared by exact equality later, and PGID/SID were named in the
+    accepted design but absent from the first implementation.
+    """
     nonce = registry.next_nonce()
-    # A long-lived process whose argv carries the marker. `sleep 900 <marker>`
-    # was not that: GNU sleep rejects a non-numeric interval, so every subject
-    # died at once and the rescue proof failed with ENOENT -- correctly
-    # marking the lane dirty and skipping the orphan, but for a fixture bug
-    # rather than a containment finding.
-    expected = f"hh716-subject-{marker}"
+    expected_argv = ["python3", "-c", "import time; time.sleep(900)", marker]
+    # /proc/<pid>/stat field 2 is the parenthesised comm, so splitting the
+    # whole line on whitespace misaligns every later index -- the first
+    # version published start_ticks="(python3)2". Strip through the closing
+    # paren first, exactly as the rescue owner does with rsplit(")", 1).
+    # After the strip: $1 state, $2 ppid, $3 pgrp, $4 session, $20 starttime.
     script = (
         f"mkdir -p {PUBLICATION_DIR}; "
-        f"ticks=$(awk '{{print $22}}' /proc/$$/stat); "
-        f"printf '%s' \"{{\\\"nonce\\\":\\\"{nonce}\\\",\\\"pid\\\":$$,"
-        f"\\\"start_ticks\\\":\\\"$ticks\\\"}}\" > {PUBLICATION_DIR}/{nonce}.json; "
-        f"exec python3 -c 'import time; time.sleep(900)' {expected}")
-    compose(netbox_docker, lane,
-            ["-d", "-e", f"HH716_NONCE={nonce}", "netbox", "sh", "-c", script])
+        f"stat=$(cat /proc/$$/stat); "
+        f"set -- ${{stat#*) }}; "
+        f"printf '%s' "
+        f"\"{{\\\"nonce\\\":\\\"{nonce}\\\",\\\"pid\\\":$$,"
+        f"\\\"start_ticks\\\":\\\"${{20}}\\\","
+        f"\\\"pgid\\\":\\\"$3\\\",\\\"sid\\\":\\\"$4\\\"}}\" "
+        f"> {PUBLICATION_DIR}/{nonce}.json; "
+        f"exec python3 -c 'import time; time.sleep(900)' {marker}")
+    in_scenario(container_id, ["sh", "-c", script], detach=True,
+                env={"HH716_NONCE": nonce})
     registry.launches.append(asdict(LaunchRecord(
         nonce=nonce, sequence=len(registry.launches),
-        container_id=registry.container_id, expected_cmdline=expected,
+        container_id=container_id, expected_cmdline=" ".join(expected_argv),
         created_at=int(time.time()))))
+    registry.launches[-1]["expected_argv"] = expected_argv
     return nonce
 
 
-def read_publication(netbox_docker: Path, lane: str, nonce: str):
+def read_publication(container_id: str, nonce: str):
     """The child's own claim. Absent or unreadable is UNKNOWN, not absent."""
-    done = compose(netbox_docker, lane,
-                   ["netbox", "cat", f"{PUBLICATION_DIR}/{nonce}.json"])
+    done = in_scenario(container_id, ["cat", f"{PUBLICATION_DIR}/{nonce}.json"])
     if done.returncode != 0:
         return None, f"publication unreadable: {done.stderr.strip()[:120]}"
     try:
@@ -130,11 +193,10 @@ def read_publication(netbox_docker: Path, lane: str, nonce: str):
         return None, f"publication malformed: {exc}"
 
 
-def run_rescue(netbox_docker: Path, lane: str, entries, send_signal: bool):
+def run_rescue(container_id: str, entries, send_signal: bool):
     """Invoke the in-container rescue owner. Never signals from the host."""
     payload = json.dumps({"entries": entries, "send_signal": send_signal})
-    done = compose(netbox_docker, lane, ["netbox", "python", RESCUE_PATH],
-                   stdin=payload)
+    done = in_scenario(container_id, ["python3", RESCUE_PATH], stdin=payload)
     if done.returncode != 0:
         return None, f"rescue owner failed: {done.stderr.strip()[:200]}"
     try:
@@ -154,7 +216,40 @@ def bind(registry: Registry, publication):
     launch = matching[0]
     if launch["container_id"] != registry.container_id:
         return None, "publication observed in a container the registry did not record"
-    return {**publication, "expected_cmdline": launch["expected_cmdline"]}, ""
+    # expected_argv is what the rescue owner compares by exact equality. An
+    # earlier edit to add it here silently failed to apply, so every entry
+    # carried no expected argv and the rescue owner compared the real argv
+    # against [] -- rejecting the legitimate subject on every run while the
+    # adversaries were "correctly" rejected for the same wrong reason.
+    return {**publication,
+            "expected_cmdline": launch["expected_cmdline"],
+            "expected_argv": launch.get("expected_argv", [])}, ""
+
+
+NOT_FOUND_MARKERS = ("No such container", "No such object")
+
+
+def _inspect_state(container_id: str):
+    """'present' | 'absent' | 'unknown'.
+
+    A nonzero `docker inspect` exit does not prove absence: a daemon
+    failure, a timeout and a permission denial all exit nonzero too. Only a
+    nonzero exit whose stderr explicitly reports the container is unknown to
+    the daemon counts as confirmed absence; everything else is UNKNOWN.
+    """
+    try:
+        done = subprocess.run(["docker", "inspect", container_id],
+                              capture_output=True, text=True, timeout=60)
+    except subprocess.TimeoutExpired:
+        return "unknown", "inspect timed out"
+    except OSError as exc:
+        return "unknown", f"inspect could not run: {exc}"
+    if done.returncode == 0:
+        return "present", ""
+    stderr = done.stderr or ""
+    if any(marker in stderr for marker in NOT_FOUND_MARKERS):
+        return "absent", stderr.strip()[:120]
+    return "unknown", f"inspect exited {done.returncode}: {stderr.strip()[:120]}"
 
 
 def teardown_registered_containers(registry: Registry):
@@ -165,126 +260,206 @@ def teardown_registered_containers(registry: Registry):
     candidate found by label that is not in the registry is reported
     unregistered -- neither destroyed nor ignored.
     """
-    destroyed, failed = [], []
+    if not registry.containers:
+        # An empty registry is not a successful teardown. The previous
+        # version iterated nothing, found no failures, and returned
+        # proved=True -- a teardown that destroyed nothing reporting success.
+        return {"destroyed": [], "failed": [], "proved": False,
+                "outcome": UNKNOWN,
+                "reason": "no immutable container ID was registered; teardown "
+                          "cannot be proved against an empty registry"}
+    destroyed, failed, unknown = [], [], []
     for container_id in registry.containers:
-        done = subprocess.run(["docker", "rm", "-f", container_id],
-                              capture_output=True, text=True, timeout=120)
-        (destroyed if done.returncode == 0 else failed).append(container_id)
-    return {"destroyed": destroyed, "failed": failed,
-            "proved": not failed}
+        # A registered ID that is absent BEFORE teardown is not a success.
+        # The registry asserts this prover created it; if the daemon has
+        # never heard of it, the two disagree and that is UNKNOWN. Without
+        # this, an ID that never existed read as "destroyed" -- which is how
+        # the failure control reported proved=True.
+        state, _ = _inspect_state(container_id)
+        if state != "present":
+            unknown.append(container_id)
+            continue
+        subprocess.run(["docker", "rm", "-f", container_id],
+                       capture_output=True, text=True, timeout=120)
+        # `docker rm -f` exits 0 even for a container that does not exist,
+        # so its status proves nothing. Measured: removing an absent
+        # all-zeros ID returns 0 with "No such container" on stderr. Absence
+        # is therefore confirmed by inspection, not by the remove's exit code.
+        state, detail = _inspect_state(container_id)
+        if state == "absent":
+            destroyed.append(container_id)
+        elif state == "present":
+            failed.append(container_id)
+        else:
+            unknown.append({"id": container_id, "why": detail})
+    # Only a verified-absent set counts. Anything unverifiable is UNKNOWN,
+    # which is not a successful teardown.
+    proved = bool(destroyed) and not failed and not unknown
+    return {"destroyed": destroyed, "failed": failed, "unknown": unknown,
+            "proved": proved,
+            "outcome": "destroyed" if proved else UNKNOWN}
 
 
 def main(argv=None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--netbox-docker", type=Path, required=True)
     parser.add_argument("--lane", required=True)
+    parser.add_argument("--image", default="netbox:latest-plugins-dev")
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument(
         "--force-rescue-unproven", action="store_true",
-        help="deliberately fail the rescue proof, to evidence that orphan "
-             "induction does not start when rescue is unproven")
+        help="deliberately fail the rescue proof, evidencing that nothing "
+             "downstream of it proceeds")
     args = parser.parse_args(argv)
 
     if not args.lane or args.lane == SHARED_PROJECT:
         print(f"refusing lane {args.lane!r}: shared stack", file=sys.stderr)
         return 2
 
-    container_id = acquire_container_identity(args.lane)
-    if not container_id:
-        print(f"lane {args.lane!r}: no immutable container identity", file=sys.stderr)
-        return 3
+    run_id = uuid.uuid4().hex
+    docker_version = subprocess.run(
+        ["docker", "version", "--format", "{{.Server.Version}}"],
+        capture_output=True, text=True, timeout=60).stdout.strip()
 
-    registry = Registry(run_id=uuid.uuid4().hex, lane=args.lane,
-                        container_id=container_id)
-    evidence = {"version": 2, "lane": args.lane, "container_id": container_id,
-                "run_id": registry.run_id, "observed_at": int(time.time()),
-                "lane_dirty": False, "dirty_reasons": []}
+    evidence = {"version": 3, "step": "B1a", "lane": args.lane,
+                "environment": {
+                    "docker_server_version": docker_version,
+                    "rm_f_exit_on_absent_container": 0,
+                    "rm_f_note": "Observed in THIS environment only: "
+                                 "`docker rm -f <absent id>` exits 0 with "
+                                 "'No such container' on stderr. Absence is "
+                                 "therefore confirmed by inspection, not by "
+                                 "the remove's exit status. Not asserted as "
+                                 "universal Docker behaviour.",
+                },
+                "run_id": run_id, "observed_at": int(time.time()),
+                "lane_dirty": False, "dirty_reasons": [],
+                "host_kill_baseline_attempted": False}
 
     def mark_dirty(reason):
         evidence["lane_dirty"] = True
         evidence["dirty_reasons"].append(reason)
 
-    rescue_source = Path(__file__).resolve().parent / "containment_rescue.py"
-    if not install_rescue_owner(args.netbox_docker, args.lane, rescue_source):
-        mark_dirty("rescue owner could not be installed")
-        evidence["rescue_owner_ready"] = False
+    # ---- B1a.1: scenario-owned container, created and registered before use
+    container_id, why = create_scenario_container(args.image, run_id)
+    registry = Registry(run_id=run_id, lane=args.lane, container_id=container_id or "")
+    if not container_id:
+        mark_dirty(f"scenario container unavailable: {why}")
+        evidence["registry"] = asdict(registry)
+        evidence["teardown"] = teardown_registered_containers(registry)
         args.output.parent.mkdir(parents=True, exist_ok=True)
         args.output.write_text(json.dumps(evidence, indent=2, sort_keys=True))
-        print("rescue owner unavailable; lane marked dirty", file=sys.stderr)
+        print(f"wrote {args.output} (dirty=True, no scenario container)")
         return 4
-    evidence["rescue_owner_ready"] = True
+    registry.containers.append(container_id)
+    evidence["container_id"] = container_id
 
     try:
-        # ---- the rescue owner is PROVEN before any orphan is induced ----
-        proof_nonce = launch_owned_subject(args.netbox_docker, args.lane,
-                                           registry, "rescueproof")
-        time.sleep(2)
-        publication, why = read_publication(args.netbox_docker, args.lane, proof_nonce)
-        bound, bind_why = bind(registry, publication)
-        if not bound:
-            mark_dirty(f"rescue proof unbound: {why or bind_why}")
+        rescue_source = Path(__file__).resolve().parent / "containment_rescue.py"
+        if not install_rescue_owner(container_id, rescue_source):
+            mark_dirty("rescue owner could not be installed")
+            evidence["rescue_owner_ready"] = False
         else:
-            verified, _ = run_rescue(args.netbox_docker, args.lane, [bound], False)
-            evidence["rescue_owner_verifies_without_signalling"] = verified
-            cleaned, _ = run_rescue(args.netbox_docker, args.lane, [bound], True)
-            evidence["rescue_owner_proof"] = cleaned
-            proven = (cleaned
-                      and cleaned["reports"][0]["outcome"] in ("reaped",
-                                                               "terminated_zombie"))
-            if args.force_rescue_unproven:
-                proven = False
-                mark_dirty("rescue proof deliberately forced unproven")
-            if not proven:
-                mark_dirty("rescue owner could not clean its own proof subject")
+            evidence["rescue_owner_ready"] = True
 
-        # ---- a deficient record must authorize no signal ----
-        if bound:
-            forged = {**bound, "nonce": "not-a-registered-nonce"}
-            report, _ = run_rescue(args.netbox_docker, args.lane, [forged], True)
-            evidence["forged_nonce_rejected"] = report
-
-        # ---- only now: the controlled host-exec orphan ----
-        # Regression control: the first real run of this prover failed its
-        # rescue proof (an invalid subject command) and correctly skipped
-        # this block. That ordering is recorded explicitly so it cannot
-        # regress into "induce first, rescue later".
-        evidence["orphan_induction_started"] = not evidence["lane_dirty"]
-        if not evidence["lane_dirty"]:
-            bystander_nonce = launch_owned_subject(
-                args.netbox_docker, args.lane, registry, "bystander")
-            orphan_nonce = launch_owned_subject(
-                args.netbox_docker, args.lane, registry, "orphan")
+            # ---- B1a.6: rescue owner proven before anything else ----
+            nonce = launch_owned_subject(container_id, registry, "rescueproof")
             time.sleep(2)
-            orphan_pub, _ = read_publication(args.netbox_docker, args.lane,
-                                             orphan_nonce)
-            orphan_bound, _ = bind(registry, orphan_pub)
+            publication, why = read_publication(container_id, nonce)
+            bound, bind_why = bind(registry, publication)
+            if not bound:
+                mark_dirty(f"rescue proof unbound: {why or bind_why}")
+            else:
+                verified, _ = run_rescue(container_id, [bound], False)
+                evidence["verifies_without_signalling"] = verified
 
-            host_child = subprocess.Popen(
-                ["docker", "compose", "exec", "-T", "netbox", "sh", "-c",
-                 "sleep 60 hh716-hostside"],
-                cwd=str(args.netbox_docker), stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE, start_new_session=True,
-                env={**os.environ, "COMPOSE_PROJECT_NAME": args.lane})
-            time.sleep(3)
-            host_child.kill()
-            host_child.communicate()
+                # ---- B1a.3: adversaries that must NOT verify ----
+                # Each adversary mutates EXACTLY ONE identity field and
+                # leaves every other field valid. Without that, a rejection
+                # could come from any of several faults and would not
+                # demonstrate the specific check.
+                adversaries_expect = {
+                    "nonce_prefix": "nonce_exact",
+                    "nonce_superstring": "nonce_exact",
+                    "argv_substring": "argv_exact",
+                    "wrong_pgid": "pgid_exact",
+                    "wrong_sid": "sid_exact",
+                    "wrong_start_ticks": "start_ticks",
+                }
+                adversaries = {
+                    "nonce_prefix": {**bound, "nonce": bound["nonce"][:-2]},
+                    "nonce_superstring": {**bound,
+                                          "nonce": bound["nonce"] + "XY"},
+                    "argv_substring": {
+                        **bound,
+                        "expected_argv": (bound.get("expected_argv") or [])[:1]},
+                    "wrong_pgid": {**bound, "pgid": "999999"},
+                    "wrong_sid": {**bound, "sid": "999999"},
+                    "wrong_start_ticks": {**bound, "start_ticks": "1"},
+                }
+                rejected = {}
+                for name, entry in adversaries.items():
+                    report, _ = run_rescue(container_id, [entry], True)
+                    record = report["reports"][0] if report else None
+                    if record:
+                        checks = record.get("checks") or {}
+                        record["mutated_field"] = adversaries_expect[name]
+                        record["failing_checks"] = sorted(
+                            k for k, v in checks.items() if not v)
+                        record["unrelated_fields_valid"] = (
+                            record["failing_checks"] == [adversaries_expect[name]])
+                    rejected[name] = record
+                evidence["adversaries_rejected"] = rejected
 
-            still_there, _ = run_rescue(args.netbox_docker, args.lane,
-                                        [orphan_bound], False)
-            evidence["orphan_survives_host_kill"] = still_there
+                # ---- observation-error controls: UNKNOWN, never a result ----
+                observation_errors = {}
 
-            rescued, _ = run_rescue(args.netbox_docker, args.lane,
-                                    [orphan_bound], True)
-            evidence["orphan_rescued"] = rescued
+                # (a) a subject that has already exited cannot be pinned.
+                gone_nonce = launch_owned_subject(container_id, registry, "gonesoon")
+                time.sleep(2)
+                gone_pub, _ = read_publication(container_id, gone_nonce)
+                gone_bound, _ = bind(registry, gone_pub)
+                if gone_bound:
+                    run_rescue(container_id, [gone_bound], True)   # terminate it
+                    time.sleep(1)
+                    again, _ = run_rescue(container_id, [gone_bound], True)
+                    observation_errors["already_exited"] = (
+                        again["reports"][0] if again else None)
 
-            bystander_pub, _ = read_publication(args.netbox_docker, args.lane,
-                                                bystander_nonce)
-            bystander_bound, _ = bind(registry, bystander_pub)
-            intact, _ = run_rescue(args.netbox_docker, args.lane,
-                                   [bystander_bound], False)
-            evidence["bystander_intact"] = intact
-            if bystander_bound:
-                run_rescue(args.netbox_docker, args.lane, [bystander_bound], True)
+                # (b) a publication whose pid cannot be read at all.
+                unreadable = {**bound, "pid": 999999}
+                report, _ = run_rescue(container_id, [unreadable], True)
+                observation_errors["unpinnable_pid"] = (
+                    report["reports"][0] if report else None)
+
+                # (c) a malformed publication.
+                malformed = {**bound, "pid": "not-an-int"}
+                report, _ = run_rescue(container_id, [malformed], True)
+                observation_errors["malformed_pid"] = (
+                    report["reports"][0] if report else None)
+                evidence["observation_errors"] = observation_errors
+
+                cleaned, _ = run_rescue(container_id, [bound], True)
+                evidence["rescue_owner_proof"] = cleaned
+                proven = (cleaned and cleaned["reports"][0]["outcome"]
+                          in ("reaped", "terminated_zombie"))
+                if args.force_rescue_unproven:
+                    proven = False
+                    mark_dirty("rescue proof deliberately forced unproven")
+                if not proven:
+                    mark_dirty("rescue owner could not clean its own subject")
+                evidence["rescue_owner_proven"] = bool(proven)
+
+        # B1a ends here. No host-exec termination, by construction.
+        evidence["host_kill_baseline_attempted"] = False
+        # ---- teardown-failure evidence, on a throwaway registry ----
+        # Successful disposal alone does not show the failure path works.
+        bogus = Registry(run_id=run_id, lane=args.lane, container_id="")
+        bogus.containers.append("0" * 64)          # a well-formed, absent ID
+        evidence["teardown_failure_control"] = teardown_registered_containers(bogus)
+        empty = Registry(run_id=run_id, lane=args.lane, container_id="")
+        evidence["teardown_empty_registry_control"] = (
+            teardown_registered_containers(empty))
     finally:
         evidence["registry"] = asdict(registry)
         evidence["teardown"] = teardown_registered_containers(registry)
