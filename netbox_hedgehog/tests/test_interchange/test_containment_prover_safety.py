@@ -130,8 +130,41 @@ class ProverSafetyControls(SimpleTestCase):
             "B1a attempted a host-kill baseline; induction is held until "
             "B1a is accepted")
 
-    def test_the_scenario_container_is_registered_before_it_can_run(self):
-        """Registration precedes start, so nothing runs unowned."""
+    def test_registration_precedes_start_in_recorded_order(self):
+        """Ordering, not final membership.
+
+        The previous control asserted the container id ended up in the
+        registry, which a prover that registered everything at the end would
+        also satisfy. Ordering is what makes a resource recoverable, so the
+        prover records each lifecycle step as it happens and this control
+        reads that sequence.
+        """
+        order = [entry["event"] for entry in self.b1a["lifecycle_order"]]
+        self.assertTrue(order, "no lifecycle order was recorded")
+
+        for earlier, later in (("create", "register"), ("register", "start")):
+            with self.subTest(step=f"{earlier} before {later}"):
+                self.assertIn(earlier, order)
+                self.assertIn(later, order)
+                self.assertLess(
+                    order.index(earlier), order.index(later),
+                    f"{earlier} did not precede {later}: {order}")
+
+        # Registration must precede verification too: a failed verify must
+        # not strand an unregistered container.
+        self.assertLess(order.index("register"), order.index("verify"),
+                        f"registration did not precede verification: {order}")
+
+        # Every launch is registered before it starts.
+        launches = [e for e in order if e.startswith("launch_")]
+        self.assertTrue(launches, "no launches were recorded")
+        for nonce in {e.split(":", 1)[1] for e in launches}:
+            with self.subTest(nonce=nonce[:18]):
+                self.assertLess(
+                    order.index(f"launch_register:{nonce}"),
+                    order.index(f"launch_start:{nonce}"),
+                    "a child started before it was registered")
+
         self.assertTrue(self.b1a.get("container_id"))
         self.assertIn(self.b1a["container_id"], self.b1a["registry"]["containers"])
 

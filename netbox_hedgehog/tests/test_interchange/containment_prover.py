@@ -91,50 +91,65 @@ def in_scenario(container_id: str, argv, timeout=120, stdin=None, detach=False,
                           timeout=timeout, input=stdin)
 
 
-def create_scenario_container(image: str, run_id: str, registry=None):
-    """Create -> register exact 64-hex ID -> verify -> start.
+def create_scenario_container(image: str, run_id: str, registry=None,
+                              order=None):
+    """Create -> register -> verify -> start, recording the order as it happens.
 
-    A scenario-owned disposable container, not the shared lane service. The
-    previous prover ran its workload inside the lane's `netbox` container
-    and left `registry.containers` empty, so teardown iterated nothing and
-    reported success.
+    Registration happens immediately after `docker create`, before anything
+    else can fail. A previous version verified first and registered second,
+    so a failed verification returned without registering a container that
+    had already been created -- an orphan the registry could not name.
 
-    `docker create` returns the immutable ID before anything runs, which is
-    what makes registration-before-start possible.
+    `docker start` is wrapped: a timeout previously propagated out of this
+    function and out of `main` before the try/finally was entered, so no
+    evidence was written and the container was left running.
     """
-    created = subprocess.run(
-        ["docker", "create", "--label", f"hh716.run={run_id}",
-         image, "sleep", "3600"],
-        capture_output=True, text=True, timeout=120)
+    def note(event):
+        if order is not None:
+            order.append({"event": event, "at": time.time()})
+
+    try:
+        created = subprocess.run(
+            ["docker", "create", "--label", f"hh716.run={run_id}",
+             image, "sleep", "3600"],
+            capture_output=True, text=True, timeout=120)
+    except (subprocess.SubprocessError, OSError) as exc:
+        return None, f"create raised: {exc}"
     if created.returncode != 0:
         return None, f"create failed: {created.stderr.strip()[:160]}"
     container_id = created.stdout.strip()
     if len(container_id) < 64:
         return None, f"create returned a short id: {container_id!r}"
+    note("create")
 
-    # Verify the registered ID exists and carries our run label, before start.
-    verified = subprocess.run(
-        ["docker", "inspect", container_id, "--format",
-         "{{.Id}} {{index .Config.Labels \"hh716.run\"}}"],
-        capture_output=True, text=True, timeout=60)
+    # Register FIRST. Everything after this point is recoverable because the
+    # registry can name what to destroy.
+    if registry is not None:
+        registry.containers.append(container_id)
+    note("register")
+
+    try:
+        verified = subprocess.run(
+            ["docker", "inspect", container_id, "--format",
+             "{{.Id}} {{index .Config.Labels \"hh716.run\"}}"],
+            capture_output=True, text=True, timeout=60)
+    except (subprocess.SubprocessError, OSError) as exc:
+        return None, f"inspect raised after create: {exc}"
     if verified.returncode != 0:
         return None, f"inspect failed: {verified.stderr.strip()[:160]}"
     got_id, _, got_run = verified.stdout.strip().partition(" ")
     if got_id != container_id or got_run != run_id:
         return None, f"identity mismatch: {got_id[:12]}/{got_run}"
+    note("verify")
 
-    # Register BEFORE start. The previous order created, verified, started,
-    # and only then appended to the registry, so a container that started
-    # and then failed to register was unowned and untearable. Registration
-    # is what makes a resource disposable, so it must precede anything that
-    # can run.
-    if registry is not None:
-        registry.containers.append(container_id)
-
-    started = subprocess.run(["docker", "start", container_id],
-                             capture_output=True, text=True, timeout=120)
+    try:
+        started = subprocess.run(["docker", "start", container_id],
+                                 capture_output=True, text=True, timeout=120)
+    except (subprocess.SubprocessError, OSError) as exc:
+        return None, f"start raised: {exc}"
     if started.returncode != 0:
         return None, f"start failed: {started.stderr.strip()[:160]}"
+    note("start")
     return container_id, ""
 
 
@@ -156,7 +171,8 @@ def install_rescue_owner(container_id: str, source: Path):
     return done.returncode == 0
 
 
-def launch_owned_subject(container_id: str, registry: Registry, marker: str):
+def launch_owned_subject(container_id: str, registry: Registry, marker: str,
+                         order=None):
     """Launch a child in the scenario container that publishes its own identity.
 
     The published record carries pid, start ticks, PGID and SID -- all four
@@ -187,8 +203,12 @@ def launch_owned_subject(container_id: str, registry: Registry, marker: str):
         container_id=container_id, expected_cmdline=" ".join(expected_argv),
         created_at=int(time.time()))))
     registry.launches[-1]["expected_argv"] = expected_argv
+    if order is not None:
+        order.append({"event": f"launch_register:{nonce}", "at": time.time()})
     in_scenario(container_id, ["sh", "-c", script], detach=True,
                 env={"HH716_NONCE": nonce})
+    if order is not None:
+        order.append({"event": f"launch_start:{nonce}", "at": time.time()})
     return nonce
 
 
@@ -259,7 +279,9 @@ def _inspect_state(container_id: str):
     stderr = done.stderr or ""
     # The diagnostic must name THIS container. A daemon message mentioning
     # some other id would otherwise be accepted as proof of our absence.
-    names_this = container_id[:12] in stderr or container_id in stderr
+    # The full id only. A 12-character prefix is not unique: another
+    # container sharing those leading characters would have satisfied it.
+    names_this = container_id in stderr
     if any(marker in stderr for marker in NOT_FOUND_MARKERS) and names_this:
         return "absent", stderr.strip()[:120]
     if any(marker in stderr for marker in NOT_FOUND_MARKERS):
@@ -364,7 +386,10 @@ def main(argv=None) -> int:
 
     # ---- B1a.1: scenario-owned container, created and registered before use
     registry = Registry(run_id=run_id, lane=args.lane, container_id="")
-    container_id, why = create_scenario_container(args.image, run_id, registry)
+    lifecycle = []
+    evidence["lifecycle_order"] = lifecycle
+    container_id, why = create_scenario_container(args.image, run_id, registry,
+                                                  lifecycle)
     registry.container_id = container_id or ""
     if not container_id:
         mark_dirty(f"scenario container unavailable: {why}")
@@ -385,7 +410,8 @@ def main(argv=None) -> int:
             evidence["rescue_owner_ready"] = True
 
             # ---- B1a.6: rescue owner proven before anything else ----
-            nonce = launch_owned_subject(container_id, registry, "rescueproof")
+            nonce = launch_owned_subject(container_id, registry, "rescueproof",
+                                             lifecycle)
             time.sleep(2)
             publication, why = read_publication(container_id, nonce)
             bound, bind_why = bind(registry, publication)
@@ -437,7 +463,8 @@ def main(argv=None) -> int:
                 observation_errors = {}
 
                 # (a) a subject that has already exited cannot be pinned.
-                gone_nonce = launch_owned_subject(container_id, registry, "gonesoon")
+                gone_nonce = launch_owned_subject(container_id, registry, "gonesoon",
+                                                  lifecycle)
                 time.sleep(2)
                 gone_pub, _ = read_publication(container_id, gone_nonce)
                 gone_bound, _ = bind(registry, gone_pub)
