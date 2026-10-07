@@ -91,7 +91,7 @@ def in_scenario(container_id: str, argv, timeout=120, stdin=None, detach=False,
                           timeout=timeout, input=stdin)
 
 
-def create_scenario_container(image: str, run_id: str):
+def create_scenario_container(image: str, run_id: str, registry=None):
     """Create -> register exact 64-hex ID -> verify -> start.
 
     A scenario-owned disposable container, not the shared lane service. The
@@ -122,6 +122,14 @@ def create_scenario_container(image: str, run_id: str):
     got_id, _, got_run = verified.stdout.strip().partition(" ")
     if got_id != container_id or got_run != run_id:
         return None, f"identity mismatch: {got_id[:12]}/{got_run}"
+
+    # Register BEFORE start. The previous order created, verified, started,
+    # and only then appended to the registry, so a container that started
+    # and then failed to register was unowned and untearable. Registration
+    # is what makes a resource disposable, so it must precede anything that
+    # can run.
+    if registry is not None:
+        registry.containers.append(container_id)
 
     started = subprocess.run(["docker", "start", container_id],
                              capture_output=True, text=True, timeout=120)
@@ -172,13 +180,15 @@ def launch_owned_subject(container_id: str, registry: Registry, marker: str):
         f"\\\"pgid\\\":\\\"$3\\\",\\\"sid\\\":\\\"$4\\\"}}\" "
         f"> {PUBLICATION_DIR}/{nonce}.json; "
         f"exec python3 -c 'import time; time.sleep(900)' {marker}")
-    in_scenario(container_id, ["sh", "-c", script], detach=True,
-                env={"HH716_NONCE": nonce})
+    # Register the launch BEFORE starting the child, for the same reason:
+    # a child that starts and is then not recorded is unowned.
     registry.launches.append(asdict(LaunchRecord(
         nonce=nonce, sequence=len(registry.launches),
         container_id=container_id, expected_cmdline=" ".join(expected_argv),
         created_at=int(time.time()))))
     registry.launches[-1]["expected_argv"] = expected_argv
+    in_scenario(container_id, ["sh", "-c", script], detach=True,
+                env={"HH716_NONCE": nonce})
     return nonce
 
 
@@ -247,8 +257,14 @@ def _inspect_state(container_id: str):
     if done.returncode == 0:
         return "present", ""
     stderr = done.stderr or ""
-    if any(marker in stderr for marker in NOT_FOUND_MARKERS):
+    # The diagnostic must name THIS container. A daemon message mentioning
+    # some other id would otherwise be accepted as proof of our absence.
+    names_this = container_id[:12] in stderr or container_id in stderr
+    if any(marker in stderr for marker in NOT_FOUND_MARKERS) and names_this:
         return "absent", stderr.strip()[:120]
+    if any(marker in stderr for marker in NOT_FOUND_MARKERS):
+        return "unknown", ("not-found diagnostic did not name this container: "
+                           + stderr.strip()[:100])
     return "unknown", f"inspect exited {done.returncode}: {stderr.strip()[:120]}"
 
 
@@ -279,8 +295,14 @@ def teardown_registered_containers(registry: Registry):
         if state != "present":
             unknown.append(container_id)
             continue
-        subprocess.run(["docker", "rm", "-f", container_id],
-                       capture_output=True, text=True, timeout=120)
+        try:
+            subprocess.run(["docker", "rm", "-f", container_id],
+                           capture_output=True, text=True, timeout=120)
+        except (subprocess.SubprocessError, OSError) as exc:
+            # A cleanup exception must become UNKNOWN, not escape the
+            # teardown and prevent the evidence from being written at all.
+            unknown.append({"id": container_id, "why": f"remove raised: {exc}"})
+            continue
         # `docker rm -f` exits 0 even for a container that does not exist,
         # so its status proves nothing. Measured: removing an absent
         # all-zeros ID returns 0 with "No such container" on stderr. Absence
@@ -341,8 +363,9 @@ def main(argv=None) -> int:
         evidence["dirty_reasons"].append(reason)
 
     # ---- B1a.1: scenario-owned container, created and registered before use
-    container_id, why = create_scenario_container(args.image, run_id)
-    registry = Registry(run_id=run_id, lane=args.lane, container_id=container_id or "")
+    registry = Registry(run_id=run_id, lane=args.lane, container_id="")
+    container_id, why = create_scenario_container(args.image, run_id, registry)
+    registry.container_id = container_id or ""
     if not container_id:
         mark_dirty(f"scenario container unavailable: {why}")
         evidence["registry"] = asdict(registry)
@@ -351,7 +374,6 @@ def main(argv=None) -> int:
         args.output.write_text(json.dumps(evidence, indent=2, sort_keys=True))
         print(f"wrote {args.output} (dirty=True, no scenario container)")
         return 4
-    registry.containers.append(container_id)
     evidence["container_id"] = container_id
 
     try:

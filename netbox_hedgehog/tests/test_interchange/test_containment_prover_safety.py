@@ -38,8 +38,10 @@ class ProverSafetyControls(SimpleTestCase):
     @classmethod
     def setUpClass(cls):
         super().setUpClass()
-        cls.healthy = _evidence("HH716_CONTAINMENT_EVIDENCE")
-        cls.unproven = _evidence("HH716_CONTAINMENT_UNPROVEN")
+        # The B1a artifact. These controls previously read the superseded
+        # B1 evidence, so the new adversaries and observation-error cases
+        # were recorded in the artifact and enforced by nothing.
+        cls.b1a = _evidence("HH716_B1A_EVIDENCE")
 
     # --- source controls ---------------------------------------------------
 
@@ -106,83 +108,92 @@ class ProverSafetyControls(SimpleTestCase):
         killers = [n.value.id for n in ast.walk(tree)
                    if isinstance(n, ast.Attribute) and n.attr == "kill"
                    and isinstance(n.value, ast.Name)]
-        self.assertEqual(
-            killers, ["host_child"],
+        # B1a removes host-kill induction entirely, so the permitted set is
+        # empty here; B1b will reintroduce exactly one kill, of the prover's
+        # own exec handle. A subset assertion covers both without loosening
+        # the prohibition -- anything other than `host_child` still fails.
+        self.assertLessEqual(
+            set(killers), {"host_child"},
             f"unexpected kill target(s) {killers}; the only host-side "
             "termination permitted is of the prover's own exec handle")
-
-    # --- behavioural controls ---------------------------------------------
-
-    def test_orphan_induction_never_starts_when_rescue_is_unproven(self):
-        """Regression control for the first real run of this prover.
-
-        That run's rescue proof failed on an invalid subject command, and
-        the prover correctly skipped orphan induction. The ordering is now
-        asserted so it cannot regress into induce-first-rescue-later.
-        """
-        self.assertTrue(self.unproven["lane_dirty"])
-        self.assertFalse(
-            self.unproven["orphan_induction_started"],
-            "an orphan was induced while the rescue owner was unproven")
-        for stage in ("orphan_survives_host_kill", "orphan_rescued"):
-            self.assertNotIn(stage, self.unproven,
-                             f"{stage} ran despite an unproven rescue owner")
-
-        # Paired positive: a proven rescue does proceed.
-        self.assertFalse(self.healthy["lane_dirty"])
-        self.assertTrue(self.healthy["orphan_induction_started"],
-                        "a proven rescue owner must not block induction; the "
-                        "gate is not a blanket refusal")
-
-    def test_verification_happens_without_signalling(self):
-        """Verification must be separable from signalling."""
-        report = self.healthy["orphan_survives_host_kill"]["reports"][0]
-        self.assertTrue(report["verified"])
-        self.assertFalse(report["signalled"],
-                         "verification signalled; it must be observable alone")
-        self.assertEqual(report["outcome"], "verified_not_signalled")
-
-    def test_an_unregistered_nonce_authorizes_no_signal(self):
-        """Two-sided ownership: a forged claim is not ownership."""
-        report = self.healthy["forged_nonce_rejected"]["reports"][0]
-        self.assertFalse(report["verified"])
-        self.assertFalse(report["signalled"],
-                         "a record with no registry agreement authorized a signal")
-
-    def test_terminated_is_distinguished_from_fully_reaped(self):
-        """"Nothing is running" is not "nothing is there".
-
-        A zombie holds a PID slot with no live execution. Collapsing it into
-        the same outcome as a reaped process loses a fact the lane's
-        operator needs, and it is the distinction that produced the opposite
-        error in #711, where counting zombies reported survivors for a tree
-        already killed.
-        """
-        from netbox_hedgehog.tests.test_interchange import containment_rescue
-        source = Path(containment_rescue.__file__).read_text(encoding="utf-8")
-        self.assertIn('"terminated_zombie"', source)
-        self.assertIn('"reaped"', source)
-        outcome = self.healthy["orphan_rescued"]["reports"][0]["outcome"]
-        self.assertIn(outcome, ("reaped", "terminated_zombie"),
-                      f"cleanup outcome {outcome!r} is neither reaped nor "
-                      "terminated; a cleanup claim must say which")
-
-    def test_the_bystander_is_never_touched(self):
-        report = self.healthy["bystander_intact"]["reports"][0]
-        self.assertTrue(report["verified"], "the bystander was not observable")
-        self.assertFalse(report["signalled"], "an unrelated subject was signalled")
-
-    def test_teardown_destroys_only_registered_identities(self):
-        """Teardown is bounded by the registry, not by a label query."""
-        registry = self.healthy["registry"]
-        teardown = self.healthy["teardown"]
-        self.assertTrue(teardown["proved"])
         self.assertEqual(
-            set(teardown["destroyed"]) - set(registry["containers"]), set(),
-            "teardown destroyed something the registry never recorded creating")
+            killers, [],
+            "B1a must contain no host-side termination at all; induction is "
+            "held until B1a is accepted")
 
-    def test_cleanup_failure_would_leave_the_lane_dirty(self):
-        """An unproved teardown must not read as clean."""
-        self.assertIn("lane_dirty", self.healthy)
-        self.assertTrue(self.unproven["dirty_reasons"],
-                        "a dirty lane recorded no reason")
+    # --- behavioural controls, enforcing the B1a artifact ---------------
+
+    def test_b1a_induces_no_host_kill_baseline(self):
+        """B1a must not terminate a host exec at all."""
+        self.assertFalse(
+            self.b1a["host_kill_baseline_attempted"],
+            "B1a attempted a host-kill baseline; induction is held until "
+            "B1a is accepted")
+
+    def test_the_scenario_container_is_registered_before_it_can_run(self):
+        """Registration precedes start, so nothing runs unowned."""
+        self.assertTrue(self.b1a.get("container_id"))
+        self.assertIn(self.b1a["container_id"], self.b1a["registry"]["containers"])
+
+    def test_every_adversary_mutates_exactly_one_field(self):
+        """A rejection must be attributable to the field it violates.
+
+        Without this, six rejections could all come from one unrelated
+        fault -- which is exactly what happened when a failed `bind()` edit
+        left every entry with no expected argv: all six were rejected, for
+        the wrong reason, and it looked like success.
+        """
+        adversaries = self.b1a["adversaries_rejected"]
+        self.assertGreaterEqual(len(adversaries), 6)
+        for name, record in sorted(adversaries.items()):
+            with self.subTest(adversary=name):
+                self.assertIsNotNone(record, f"{name} produced no report")
+                self.assertFalse(record["verified"])
+                self.assertFalse(record["signalled"],
+                                 f"{name} authorized a signal")
+                self.assertTrue(
+                    record["unrelated_fields_valid"],
+                    f"{name} failed checks {record['failing_checks']}, not only "
+                    f"{record['mutated_field']}; the rejection is not "
+                    "attributable to the mutated field")
+                self.assertEqual(record["failing_checks"],
+                                 [record["mutated_field"]])
+
+    def test_a_sound_positive_is_paired_with_the_negatives(self):
+        """All-negatives-pass is indistinguishable from a broken comparison."""
+        verified = self.b1a["verifies_without_signalling"]["reports"][0]
+        self.assertTrue(verified["verified"],
+                        "no sound positive: the negatives prove nothing alone")
+        self.assertFalse(verified["signalled"])
+        self.assertTrue(self.b1a["rescue_owner_proven"])
+
+    def test_observation_errors_are_unknown_never_a_result(self):
+        errors = self.b1a["observation_errors"]
+        for case in ("already_exited", "unpinnable_pid", "malformed_pid"):
+            with self.subTest(case=case):
+                record = errors.get(case)
+                self.assertIsNotNone(record, f"{case} was not exercised")
+                self.assertEqual(
+                    record["outcome"], "unknown",
+                    f"{case} produced {record['outcome']!r}; a failed "
+                    "observation must never read as reaped or clean")
+                self.assertFalse(record["signalled"])
+
+    def test_teardown_failure_and_empty_registry_do_not_prove(self):
+        """Successful disposal alone does not show the failure path works."""
+        self.assertTrue(self.b1a["teardown"]["proved"],
+                        "the real teardown must prove, or the positive is absent")
+        self.assertFalse(
+            self.b1a["teardown_failure_control"]["proved"],
+            "a registered ID that never existed was reported as destroyed")
+        self.assertEqual(self.b1a["teardown_failure_control"]["outcome"], "unknown")
+        self.assertFalse(
+            self.b1a["teardown_empty_registry_control"]["proved"],
+            "an empty registry reported a successful teardown")
+
+    def test_the_rm_f_observation_is_scoped_to_this_environment(self):
+        """A local daemon behaviour must not be recorded as universal."""
+        environment = self.b1a["environment"]
+        self.assertTrue(environment["docker_server_version"])
+        self.assertIn("not asserted as universal",
+                      environment["rm_f_note"].lower())
