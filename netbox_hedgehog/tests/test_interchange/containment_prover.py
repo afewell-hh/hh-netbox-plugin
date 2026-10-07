@@ -320,14 +320,26 @@ def classify_not_found(stderr: str, container_id: str) -> bool:
     # not-found line reported absence, when in fact the daemon could not be
     # consulted. Unrecognized output means the observation is UNKNOWN,
     # whatever else is present.
-    matches = []
+    targets = []
     for line in lines:
         match = NOT_FOUND_LINE.match(line)
         if not match:
             return False
-        matches.append(match.group("target").rstrip("."))
+        targets.append(match.group("target"))
 
-    if container_id not in matches:
+    def names_this(target):
+        # Exactly our id, or our id with a single trailing period as
+        # sentence punctuation. `rstrip(".")` was wrong: it normalized
+        # "<ours>..." to "<ours>", and a trailing ellipsis is a truncation
+        # marker, meaning the real target continues beyond what we were
+        # shown.
+        return target == container_id or target == f"{container_id}."
+
+    # EVERY recognized diagnostic must name this id. Requiring only that
+    # ours appears somewhere accepted a second not-found line about a
+    # different container -- output describing two containers is not a
+    # clean observation about one of them.
+    if not targets or not all(names_this(target) for target in targets):
         return False
     if any(phrase in stderr for phrase in PRESENCE_CONTRADICTIONS):
         return False

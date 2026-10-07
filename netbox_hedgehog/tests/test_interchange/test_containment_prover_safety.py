@@ -157,6 +157,14 @@ class ProverSafetyControls(SimpleTestCase):
             f"No such container: {ours}{'c' * 8}": False,
             # a different container entirely
             f"No such container: {other}": False,
+            # a SECOND recognized diagnostic naming another target: output
+            # describing two containers is not a clean observation of one
+            f"No such container: {ours}\nNo such container: {other}": False,
+            f"No such container: {other}\nNo such container: {ours}": False,
+            # trailing ellipsis is a truncation marker, not punctuation; a
+            # previous rstrip(".") normalized it away
+            f"No such container: {ours}...": False,
+            f"No such container: {ours}..": False,
             # a quoted non-observation inside another message
             f'Error: cannot replay "No such container: {ours}"': False,
             # contradictory: also asserts the container exists
