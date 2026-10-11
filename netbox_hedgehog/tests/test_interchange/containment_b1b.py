@@ -53,6 +53,24 @@ PUBLICATION_DIR = PROVER.PUBLICATION_DIR
 # deliberate absence from the registry, that makes it a trap.
 
 
+def _observe(argv, timeout=60):
+    """Run a read-only command and report whether the observation happened.
+
+    Returns {"ok": bool, "out": str, "why": str}. `ok` is False for a
+    non-zero exit, a timeout or an OSError, so a caller cannot mistake a
+    failed observation for an empty result.
+    """
+    try:
+        done = subprocess.run(argv, capture_output=True, text=True,
+                              timeout=timeout)
+    except (subprocess.SubprocessError, OSError) as exc:
+        return {"ok": False, "out": "", "why": f"{type(exc).__name__}: {exc}"}
+    if done.returncode != 0:
+        return {"ok": False, "out": "",
+                "why": f"exit {done.returncode}: {done.stderr.strip()[:120]}"}
+    return {"ok": True, "out": done.stdout.strip(), "why": ""}
+
+
 def prove_rescue_readiness(container_id, registry, lifecycle):
     """Readiness means the owner RAN and cleaned a disposable subject.
 
@@ -90,11 +108,12 @@ def preflight(image, lane, run_id, evidence, registry, lifecycle):
     checks = {}
 
     # The lane must be a real Compose project that is not the shared one.
-    projects = subprocess.run(
+    projects = _observe(
         ["docker", "ps", "--filter", f"label=com.docker.compose.project={lane}",
-         "--format", "{{.ID}}"], capture_output=True, text=True, timeout=60)
-    checks["lane_is_a_real_compose_project"] = (
-        projects.returncode == 0 and bool(projects.stdout.strip()))
+         "--format", "{{.ID}}"])
+    checks["lane_observed"] = projects["ok"]
+    checks["lane_is_a_real_compose_project"] = projects["ok"] and bool(
+        projects["out"])
     checks["lane_is_not_the_shared_project"] = lane != "netbox-docker"
 
     # A worktree distinct from the primary checkout, asserted via git.
@@ -122,16 +141,22 @@ def preflight(image, lane, run_id, evidence, registry, lifecycle):
     checks["immutable_id_is_64_hex"] = len(container_id) == 64
 
     # Its Compose/ownership labels must not be the shared project's.
-    labels = subprocess.run(
+    # Each observation's status is checked. Previously a failed inspect
+    # produced "" which merely differed from "netbox-docker", so the check
+    # passed on an observation that never happened.
+    label_probe = _observe(
         ["docker", "inspect", container_id, "--format",
-         "{{index .Config.Labels \"com.docker.compose.project\"}}"],
-        capture_output=True, text=True, timeout=60).stdout.strip()
-    checks["scenario_not_in_shared_project"] = labels != "netbox-docker"
-    shared = subprocess.run(
-        ["docker", "ps", "-aq", "--filter", "name=netbox-docker-"],
-        capture_output=True, text=True, timeout=60).stdout.split()
-    checks["no_shared_container_is_a_target"] = all(
-        not container_id.startswith(entry) for entry in shared)
+         "{{index .Config.Labels \"com.docker.compose.project\"}}"])
+    checks["scenario_project_label_observed"] = label_probe["ok"]
+    checks["scenario_not_in_shared_project"] = (
+        label_probe["ok"] and label_probe["out"] != "netbox-docker")
+
+    shared_probe = _observe(
+        ["docker", "ps", "-aq", "--filter", "name=netbox-docker-"])
+    checks["shared_containers_observed"] = shared_probe["ok"]
+    checks["no_shared_container_is_a_target"] = shared_probe["ok"] and all(
+        not container_id.startswith(entry)
+        for entry in shared_probe["out"].split())
 
     if not PROVER.install_rescue_owner(container_id,
                                        _HERE / "containment_rescue.py"):
@@ -146,18 +171,36 @@ def preflight(image, lane, run_id, evidence, registry, lifecycle):
     evidence["rescue_readiness"] = detail
 
     # An unregistered decoy wearing the run's ACTUAL label.
-    bystander = subprocess.run(
-        ["docker", "run", "-d", "--label", f"hh716.run={run_id}",
-         image, "sleep", "600"],
-        capture_output=True, text=True, timeout=180)
-    decoy_id = bystander.stdout.strip()
+    # Name the decoy BEFORE creating it. A post-creation timeout previously
+    # lost its identity entirely: TimeoutExpired propagated, `decoy_id`
+    # stayed unset, and a container that may well have been created had no
+    # cleanup identity at all.
+    decoy_name = f"hh716-decoy-{run_id[:16]}"
+    evidence.setdefault("cleanup_identities", {})["decoy_name"] = decoy_name
+    try:
+        bystander = subprocess.run(
+            ["docker", "run", "-d", "--name", decoy_name,
+             "--label", f"hh716.run={run_id}", image, "sleep", "600"],
+            capture_output=True, text=True, timeout=180)
+        decoy_id = bystander.stdout.strip()
+    except (subprocess.SubprocessError, OSError) as exc:
+        checks["decoy_created_without_timeout"] = False
+        evidence["decoy_create_error"] = str(exc)[:200]
+        # Recover the id by the name chosen in advance.
+        recovered = subprocess.run(
+            ["docker", "inspect", decoy_name, "--format", "{{.Id}}"],
+            capture_output=True, text=True, timeout=60)
+        decoy_id = recovered.stdout.strip() if recovered.returncode == 0 else ""
+        evidence["decoy_recovered_by_name"] = bool(decoy_id)
+    else:
+        checks["decoy_created_without_timeout"] = True
     checks["same_label_decoy_live"] = len(decoy_id) >= 12
     checks["decoy_is_not_registered"] = decoy_id not in registry.containers
 
-    discovered = subprocess.run(
-        ["docker", "ps", "-q", "--filter", f"label=hh716.run={run_id}"],
-        capture_output=True, text=True, timeout=60).stdout.split()
-    short = {entry[:12] for entry in discovered}
+    discovery = _observe(
+        ["docker", "ps", "-q", "--filter", f"label=hh716.run={run_id}"])
+    checks["label_discovery_observed"] = discovery["ok"]
+    short = {entry[:12] for entry in discovery["out"].split()} if discovery["ok"] else set()
     checks["label_discovery_would_select_decoy"] = decoy_id[:12] in short
     checks["label_discovery_selects_more_than_registered"] = len(short) > 1
 
@@ -258,13 +301,26 @@ def alive_in(container_id, pid):
         result = json.loads(done.stdout.strip())
     except ValueError:
         return UNKNOWN, f"probe output unparseable: {done.stdout.strip()[:80]}"
+    if not isinstance(result, dict):
+        return UNKNOWN, f"probe returned {type(result).__name__}, not an object"
     if "error" in result:
         return UNKNOWN, f"read failed: {result['error']} errno={result.get('errno')}"
-    if not result.get("found"):
+
+    # Strict schema. Valid JSON is not a valid observation: `{}` made
+    # `found` falsy and reported absence, and `{"found": true}` with no
+    # state reported liveness. Anything that does not match exactly is
+    # UNKNOWN.
+    found = result.get("found")
+    if not isinstance(found, bool):
+        return UNKNOWN, f"probe omitted a boolean 'found': {result!r}"
+    if not found:
         return "false", "no process entry (reaped)"
-    if result.get("state") == "Z":
+    state = result.get("state")
+    if not isinstance(state, str) or not state:
+        return UNKNOWN, f"probe reported found without a state: {result!r}"
+    if state == "Z":
         return "false", "terminated (zombie: entry remains, not executing)"
-    return "true", f"state={result.get('state')}"
+    return "true", f"state={state}"
 
 
 def main(argv=None) -> int:
@@ -379,7 +435,14 @@ def main(argv=None) -> int:
 
         kill_at = time.time()
         client.kill()
-        client.communicate()
+        try:
+            # Bounded. An unbounded communicate() on the main path can hang
+            # after the kill, leaving the baseline stalled with a live
+            # orphan and no evidence written.
+            client.communicate(timeout=60)
+        except subprocess.TimeoutExpired:
+            dirty("host client did not finish within 60s of termination")
+            return 15
         evidence["timing"]["host_client_terminated_after_seconds"] = round(
             kill_at - launch_at, 1)
         evidence["host_client_returncode"] = client.returncode
