@@ -125,24 +125,67 @@ class B1bNegativeControls(SimpleTestCase):
 
     # --- (1) the decoy's cleanup identity precedes its creation ----------
 
-    def test_decoy_cleanup_identity_is_chosen_before_creation(self):
-        """A post-creation timeout must not lose the identity.
+    def test_unrecognized_process_state_is_unknown(self):
+        """A state token outside proc(5) must not report liveness.
 
-        The name is derived from the run id and recorded before the create
-        call, so the container can be found and disposed even when the call
-        that created it never returned.
+        Requiring only a non-empty string let any token -- "Q", "hello" --
+        pass as alive.
         """
-        source = (MODULE_DIR / "containment_b1b.py").read_text(encoding="utf-8")
-        self.assertIn('decoy_name = f"hh716-decoy-', source)
-        name_at = source.index("decoy_name = f")
-        record_at = source.index('["decoy_name"] = decoy_name')
-        create_at = source.index('"docker", "run", "-d", "--name", decoy_name')
-        self.assertLess(name_at, create_at,
-                        "the decoy is created before its name is chosen")
-        self.assertLess(record_at, create_at,
-                        "the cleanup identity is recorded after creation")
-        self.assertIn("decoy_recovered_by_name", source,
-                      "no recovery path by pre-chosen name")
+        for token in ("Q", "hello", "ZZ", "s", "1", " "):
+            with self.subTest(state=token):
+                outcome, detail = self._probe_with(
+                    stdout=json.dumps({"found": True, "state": token}),
+                    returncode=0)
+                self.assertEqual(
+                    outcome, self.b1b.UNKNOWN,
+                    f"state {token!r} reported {outcome!r} ({detail})")
+
+    def test_recognized_states_still_discriminate(self):
+        for token, expected in (("R", "true"), ("S", "true"), ("D", "true"),
+                                ("Z", "false"), ("T", "true"), ("I", "true")):
+            with self.subTest(state=token):
+                outcome, _ = self._probe_with(
+                    stdout=json.dumps({"found": True, "state": token}),
+                    returncode=0)
+                self.assertEqual(outcome, expected)
+
+    def test_fixture_disposal_targets_registered_ids_only(self):
+        """Host-observed: a same-named stranger survives a disposal pass.
+
+        These two negatives need Docker, and this suite must never have it.
+        I mounted the socket twice while building B1b and both times only
+        the missing CLI stopped it, so the Docker-dependent work is
+        host-side in `containment_b1b_negative_prover.py` and asserted here
+        from its evidence.
+        """
+        record = self._negatives()["foreign_name_not_adopted"]
+        self.assertTrue(record["ok"], record)
+        self.assertTrue(record["registry_was_empty"],
+                        "the registry was not empty, so nothing was at risk")
+        self.assertEqual(
+            record["state_after_disposal_pass"], "present",
+            "a foreign container sharing the decoy name was destroyed; "
+            "disposal must go by registered immutable id")
+
+    def test_a_post_creation_failure_still_leaves_a_registered_id(self):
+        """Host-observed: registering before start survives a later failure."""
+        record = self._negatives()["post_creation_failure_keeps_id"]
+        self.assertTrue(record["ok"], record)
+        self.assertTrue(record["retained"],
+                        "a post-creation failure lost the id, so the "
+                        "container could not have been disposed")
+        self.assertEqual(record["state_after"], "absent",
+                         "the retained id could not be disposed")
+
+    def _negatives(self):
+        import os
+
+        location = os.environ.get("HH716_B1B_NEGATIVES")
+        if not location:
+            raise AssertionError(
+                "HH716_B1B_NEGATIVES is unset; run "
+                "containment_b1b_negative_prover.py host-side first")
+        return json.loads(Path(location).read_text(encoding="utf-8"))
 
     # --- (4) no unbounded wait on the main path --------------------------
 

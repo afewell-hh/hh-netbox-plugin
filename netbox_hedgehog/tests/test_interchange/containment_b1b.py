@@ -97,7 +97,8 @@ def prove_rescue_readiness(container_id, registry, lifecycle):
         "verify": verified["reports"][0], "clean": cleaned["reports"][0]}
 
 
-def preflight(image, lane, run_id, evidence, registry, lifecycle):
+def preflight(image, lane, run_id, evidence, registry, lifecycle,
+              fixture_registry):
     """Every item verified, through B1a registration, before any launch.
 
     Each check below can fail. The previous set could not: a typo'd lane
@@ -171,31 +172,31 @@ def preflight(image, lane, run_id, evidence, registry, lifecycle):
     evidence["rescue_readiness"] = detail
 
     # An unregistered decoy wearing the run's ACTUAL label.
-    # Name the decoy BEFORE creating it. A post-creation timeout previously
-    # lost its identity entirely: TimeoutExpired propagated, `decoy_id`
-    # stayed unset, and a container that may well have been created had no
-    # cleanup identity at all.
-    decoy_name = f"hh716-decoy-{run_id[:16]}"
-    evidence.setdefault("cleanup_identities", {})["decoy_name"] = decoy_name
-    try:
-        bystander = subprocess.run(
-            ["docker", "run", "-d", "--name", decoy_name,
-             "--label", f"hh716.run={run_id}", image, "sleep", "600"],
-            capture_output=True, text=True, timeout=180)
-        decoy_id = bystander.stdout.strip()
-    except (subprocess.SubprocessError, OSError) as exc:
-        checks["decoy_created_without_timeout"] = False
-        evidence["decoy_create_error"] = str(exc)[:200]
-        # Recover the id by the name chosen in advance.
-        recovered = subprocess.run(
-            ["docker", "inspect", decoy_name, "--format", "{{.Id}}"],
-            capture_output=True, text=True, timeout=60)
-        decoy_id = recovered.stdout.strip() if recovered.returncode == 0 else ""
-        evidence["decoy_recovered_by_name"] = bool(decoy_id)
+    # The decoy is created the same way the scenario container is:
+    # `docker create` returns the immutable id synchronously, the id is
+    # registered in a fixture registry, and only then is it started.
+    #
+    # Name-based recovery is gone. It resolved a name to whatever id
+    # currently held it, so a foreign container left by an earlier run -- or
+    # belonging to someone else -- would have been adopted and deleted. A
+    # name is not ownership, for the same reason a label is not.
+    decoy_id = ""
+    created = _observe(
+        ["docker", "create", "--label", f"hh716.run={run_id}",
+         "--label", f"hh716.fixture={run_id}", image, "sleep", "600"])
+    checks["decoy_create_observed"] = created["ok"]
+    if created["ok"] and len(created["out"]) == 64:
+        decoy_id = created["out"]
+        fixture_registry.append(decoy_id)          # registered BEFORE start
+        evidence.setdefault("fixture_registry", []).append(decoy_id)
+        started = _observe(["docker", "start", decoy_id])
+        checks["decoy_started"] = started["ok"]
     else:
-        checks["decoy_created_without_timeout"] = True
-    checks["same_label_decoy_live"] = len(decoy_id) >= 12
-    checks["decoy_is_not_registered"] = decoy_id not in registry.containers
+        checks["decoy_started"] = False
+
+    checks["same_label_decoy_live"] = bool(decoy_id)
+    checks["decoy_is_not_in_scenario_registry"] = decoy_id not in registry.containers
+    checks["decoy_is_in_fixture_registry"] = decoy_id in fixture_registry
 
     discovery = _observe(
         ["docker", "ps", "-q", "--filter", f"label=hh716.run={run_id}"])
@@ -258,6 +259,10 @@ def read_json_in(container_id, path):
         return None, f"malformed: {exc}"
 
 
+#: Linux process states from proc(5). Anything outside this set means the
+#: observation was not understood, which is UNKNOWN rather than alive.
+KNOWN_PROCESS_STATES = frozenset("RSDZTtWXxKPI")
+
 PROBE_SOURCE = """
 import json, os, sys
 pid = int(sys.argv[1])
@@ -318,6 +323,10 @@ def alive_in(container_id, pid):
     state = result.get("state")
     if not isinstance(state, str) or not state:
         return UNKNOWN, f"probe reported found without a state: {result!r}"
+    # An unrecognized state is UNKNOWN, not alive. Requiring only a
+    # non-empty string let any token -- "Q", "hello" -- report liveness.
+    if state not in KNOWN_PROCESS_STATES:
+        return UNKNOWN, f"unrecognized process state {state!r}"
     if state == "Z":
         return "false", "terminated (zombie: entry remains, not executing)"
     return "true", f"state={state}"
@@ -346,6 +355,10 @@ def main(argv=None) -> int:
     # B1a registry and lifecycle, so ownership goes through the reviewed path
     # rather than being tracked in local variables.
     registry = PROVER.Registry(run_id=run_id, lane=args.lane, container_id="")
+    # Fixture resources are registered separately by immutable id. They must
+    # never be destroyed by the rescue path, and must still be disposed by
+    # this script -- so they need their own registry rather than a name.
+    fixture_registry = []
     lifecycle = []
     evidence["lifecycle_order"] = lifecycle
 
@@ -354,7 +367,8 @@ def main(argv=None) -> int:
 
     try:
         container_id, decoy_id, checks = preflight(
-            args.image, args.lane, run_id, evidence, registry, lifecycle)
+            args.image, args.lane, run_id, evidence, registry, lifecycle,
+            fixture_registry)
         if not container_id or not all(checks.values()):
             failed = [name for name, ok in checks.items() if not ok]
             dirty(f"preflight incomplete: {failed}")
@@ -526,18 +540,23 @@ def main(argv=None) -> int:
         except Exception as exc:              # noqa: BLE001
             dirty(f"registered teardown raised: {exc}")
 
-        if decoy_id:
+        # Fixture disposal, by registered immutable id only. Every id here
+        # was recorded before its container was started, so a post-creation
+        # exception cannot lose one.
+        evidence["fixture_cleanup"] = []
+        for fixture_id in fixture_registry:
+            entry = {"id": fixture_id}
             try:
-                subprocess.run(["docker", "rm", "-f", decoy_id],
+                subprocess.run(["docker", "rm", "-f", fixture_id],
                                capture_output=True, text=True, timeout=120)
-                state, detail = PROVER._inspect_state(decoy_id)
-                evidence["decoy_fixture_cleanup"] = {"id": decoy_id,
-                                                     "state_after": state,
-                                                     "detail": detail}
+                state, detail = PROVER._inspect_state(fixture_id)
+                entry.update(state_after=state, detail=detail)
                 if state != "absent":
-                    dirty("the decoy was not verifiably disposed")
+                    dirty(f"fixture {fixture_id[:12]} not verifiably disposed")
             except Exception as exc:          # noqa: BLE001
-                dirty(f"decoy cleanup raised: {exc}")
+                entry.update(state_after="unknown", detail=f"raised: {exc}")
+                dirty(f"fixture cleanup raised for {fixture_id[:12]}: {exc}")
+            evidence["fixture_cleanup"].append(entry)
 
         evidence["timing"]["total_seconds"] = round(time.time() - started_at, 1)
         try:
