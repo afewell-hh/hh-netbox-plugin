@@ -20,6 +20,24 @@ from django.test import SimpleTestCase
 from netbox_hedgehog.tests.test_interchange import containment_b1b_harness as H
 
 
+# Keys recorded for a human reading the artifact, not claims a control can
+# falsify: traces, timings, diagnostic strings and failure-path records
+# whose own guards are asserted elsewhere. Anything NOT listed here must be
+# read by a control -- enforced by
+# test_every_recorded_fact_is_read_or_declared_diagnostic.
+DIAGNOSTIC_ONLY = (
+    "stages",                  # ordered human-readable trace
+    "lifecycle_order",         # docker event ordering, for the artifact
+    "preflight_failure",       # string; the shortfall itself is asserted
+    "registry",                # serialised; teardown proof is asserted
+    "host_client_pid",         # identity input, not a conclusion
+    "host_client_returncode",  # client exit code, diagnostic
+    "expected_argv",           # asserted through binding.expected_argv
+    "unhandled_exception",     # crash record; its recovery path is a #717
+                               # row, not a claim this baseline reports
+)
+
+
 class B1bBehaviourControls(SimpleTestCase):
 
     @staticmethod
@@ -290,3 +308,187 @@ class B1bBehaviourControls(SimpleTestCase):
         claim = evidence["inner_subject_after_host_kill"]["claim"]
         self.assertIn("did not propagate", claim)
         self.assertIn("not caused by the termination", claim)
+
+    # ------------------------------------------------------------------
+    # Ownership ordering: the rescue owner must be proven by execution
+    # BEFORE any orphan is induced. This is a precondition, so asserting
+    # only that readiness happened is not enough -- it has to happen first.
+    # ------------------------------------------------------------------
+
+    def test_rescue_readiness_is_proven_before_the_orphan_is_induced(self):
+        """A rescue owner proven only afterwards leaves a window with a
+        live orphan and no demonstrated means of removing it."""
+        _, code, evidence, recorded = self._run()
+        self.assertEqual(code, 0, evidence.get("dirty_reasons"))
+        events = recorded["events"]
+        self.assertIn(("launch", "readiness"), events,
+                      "no readiness subject was ever launched")
+        self.assertIn(("rescue_signal", "readiness"), events,
+                      "readiness was never proven by an actual signal")
+        self.assertIn(("launch", "baseline"), events,
+                      "no baseline subject was launched")
+        proof = events.index(("rescue_signal", "readiness"))
+        induced = events.index(("launch", "baseline"))
+        self.assertLess(
+            proof, induced,
+            f"the rescue owner was proven at event {proof} but the orphan "
+            f"was induced at event {induced}; readiness must precede it")
+        self.assertTrue(evidence["rescue_readiness"]["clean"]["signalled"],
+                        "readiness recorded without a signal having been sent")
+
+    def test_a_readiness_failure_prevents_the_orphan_from_being_induced(self):
+        """If readiness cannot be proven, nothing may be orphaned at all."""
+        _, code, evidence, recorded = self._run(readiness_outcome="skipped")
+        self.assertNotEqual(code, 0, "an unproven owner still induced")
+        self.assertTrue(evidence["lane_dirty"])
+        self.assertNotIn("baseline_complete", evidence)
+        self.assertNotIn("baseline", recorded["launches"],
+                         "an orphan was induced without a proven owner")
+
+    def test_ownership_is_verified_before_termination(self):
+        """The pre-termination verification is the ownership gate."""
+        _, code, evidence, _ = self._run()
+        self.assertEqual(code, 0, evidence.get("dirty_reasons"))
+        report = evidence["pre_termination_verification"]["reports"][0]
+        self.assertTrue(report["verified"])
+        self.assertFalse(report["signalled"],
+                         "the verification pass sent a signal")
+        self.assertEqual(report["pid"], H.CHILD_PID)
+        # Both sides of the binding are recorded, and agree.
+        self.assertEqual(evidence["publication"]["child"]["pid"], H.CHILD_PID)
+        self.assertEqual(evidence["publication"]["parent"]["nonce"],
+                         evidence["publication"]["child"]["nonce"])
+        self.assertEqual(evidence["binding"]["nonce"],
+                         evidence["publication"]["child"]["nonce"])
+        self.assertTrue(evidence["binding"]["expected_argv"],
+                        "bound without an expected argv to compare against")
+
+    def test_unverified_ownership_blocks_the_termination(self):
+        """The gate must stop the run, not merely be recorded.
+
+        Asserting only that the recorded report says `verified` left the
+        gate untested: the fixture always reported success, so removing the
+        gate changed nothing observable.
+        """
+        _, code, evidence, recorded = self._run(verification_verified=False)
+        self.assertNotEqual(code, 0, "termination proceeded unverified")
+        self.assertTrue(evidence["lane_dirty"])
+        self.assertNotIn("baseline_complete", evidence)
+        self.assertTrue(any("ownership not verified" in r
+                            for r in evidence["dirty_reasons"]),
+                        evidence["dirty_reasons"])
+        self.assertFalse(
+            [c for c in recorded["rescue_calls"] if c["send_signal"]
+             and any(e.get("pid") == H.CHILD_PID for e in c["entries"])],
+            "the baseline child was signalled without verified ownership")
+
+    def test_every_recorded_fact_is_read_or_declared_diagnostic(self):
+        """Standing guard against the gap this suite was just missing.
+
+        A static audit found 17 of 28 evidence keys recorded but read by no
+        control, so conclusions went unfalsified while the path was
+        verified. This fails when a new key is added without either a
+        control reading it or an explicit diagnostic declaration.
+
+        Only the control modules count as readers -- not the harness, which
+        reads keys to drive injections rather than to falsify them.
+        """
+        import ast
+        here = Path(__file__).parent
+        subject = ast.parse((here / "containment_b1b.py").read_text())
+
+        written = set()
+        for node in ast.walk(subject):
+            target = None
+            if isinstance(node, ast.Assign) and len(node.targets) == 1:
+                target = node.targets[0]
+            elif isinstance(node, ast.AugAssign):
+                target = node.target
+            if (isinstance(target, ast.Subscript)
+                    and isinstance(target.value, ast.Name)
+                    and target.value.id == "evidence"
+                    and isinstance(target.slice, ast.Constant)):
+                written.add(target.slice.value)
+            if isinstance(node, ast.Call) and isinstance(node.func,
+                                                         ast.Attribute):
+                value = node.func.value
+                if (node.func.attr == "setdefault"
+                        and isinstance(value, ast.Name)
+                        and value.id == "evidence" and node.args
+                        and isinstance(node.args[0], ast.Constant)):
+                    written.add(node.args[0].value)
+                if (isinstance(value, ast.Subscript)
+                        and isinstance(value.value, ast.Name)
+                        and value.value.id == "evidence"
+                        and isinstance(value.slice, ast.Constant)):
+                    written.add(value.slice.value)
+
+        # Read strings from the control modules, EXCLUDING this test's own
+        # declaration list. Including it would make every declared key look
+        # read and the whole check vacuous -- the self-matching trap that
+        # has bitten this suite before.
+        read = set()
+        for name in ("test_containment_b1b_behaviour.py",
+                     "test_containment_b1b_negatives.py"):
+            tree = ast.parse((here / name).read_text())
+            # Prune the declaration's whole SUBTREE. Skipping only the
+            # Assign node leaves its string Constants reachable, since
+            # ast.walk visits them independently -- the sentinel below
+            # caught exactly that.
+            excluded = set()
+            for node in ast.walk(tree):
+                if (isinstance(node, ast.Assign) and len(node.targets) == 1
+                        and isinstance(node.targets[0], ast.Name)
+                        and node.targets[0].id == "DIAGNOSTIC_ONLY"):
+                    excluded.update(id(inner) for inner in ast.walk(node))
+            # An ACCESS on `evidence`, not any string that happens to
+            # appear. A bare-constant collector credited prose and nested
+            # key names as reads, which inflated coverage.
+            def direct(node):
+                return isinstance(node, ast.Name) and node.id == "evidence"
+
+            for node in ast.walk(tree):
+                if id(node) in excluded:
+                    continue
+                if (isinstance(node, ast.Subscript)
+                        and isinstance(node.slice, ast.Constant)
+                        and isinstance(node.slice.value, str)
+                        and direct(node.value)):
+                    read.add(node.slice.value)
+                if (isinstance(node, ast.Call)
+                        and isinstance(node.func, ast.Attribute)
+                        and node.func.attr in ("get", "setdefault")
+                        and node.args
+                        and isinstance(node.args[0], ast.Constant)
+                        and direct(node.func.value)):
+                    read.add(node.args[0].value)
+                if (isinstance(node, ast.Call)
+                        and isinstance(node.func, ast.Attribute)
+                        and node.func.attr in ("assertIn", "assertNotIn")
+                        and len(node.args) >= 2
+                        and isinstance(node.args[0], ast.Constant)
+                        and isinstance(node.args[0].value, str)
+                        and direct(node.args[1])):
+                    read.add(node.args[0].value)
+
+        # Canary against an over-broad collector, which would make this
+        # control pass vacuously. `stages` is written by the subject and
+        # appears in prose and in the declaration, but is never accessed on
+        # `evidence`, so a collector that credits bare strings picks it up.
+        self.assertNotIn("stages", read,
+                         "the collector credited a string that is never "
+                         "accessed on `evidence`; coverage is inflated")
+        self.assertGreaterEqual(len(read), 15,
+                                f"the collector found only {len(read)} reads; "
+                                "it is probably not matching accesses")
+
+        unfalsified = sorted(written - read - set(DIAGNOSTIC_ONLY))
+        self.assertEqual(
+            unfalsified, [],
+            "these evidence keys are recorded but no control reads them, so "
+            "their value is unfalsified. Either assert them or add them to "
+            f"DIAGNOSTIC_ONLY with a reason: {unfalsified}")
+
+        stale = sorted(set(DIAGNOSTIC_ONLY) - written)
+        self.assertEqual(stale, [],
+                         f"DIAGNOSTIC_ONLY names keys nothing records: {stale}")

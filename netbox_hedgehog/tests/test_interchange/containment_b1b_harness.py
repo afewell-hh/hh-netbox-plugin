@@ -75,7 +75,8 @@ def install(b1b, *, published_child_nonce=None, published_parent_nonce=None,
             observed_start_ticks=None, scenario_id=SCENARIO_ID,
             after_kill_state="S", after_rescue_found=False,
             rescue_outcome="reaped", decoy_state_after_rescue="present",
-            child_found_after_kill=True, probe_unknown_after_kill=False):
+            child_found_after_kill=True, probe_unknown_after_kill=False,
+            readiness_outcome="reaped", verification_verified=True):
     """Patch every outward call of the module under test.
 
     Returns a dict of recorders so a control can assert what the real code
@@ -84,8 +85,11 @@ def install(b1b, *, published_child_nonce=None, published_parent_nonce=None,
     # Container-aware. A previous version recorded only the entries, so
     # redirecting the rescue to the decoy container was invisible to every
     # control.
+    # `events` is an ORDERED log. Ownership ordering -- readiness proven by
+    # execution before any orphan is induced -- cannot be read off
+    # unordered per-kind lists.
     recorded = {"removed": [], "signalled": [], "bind_calls": [],
-                "rescue_calls": []}
+                "rescue_calls": [], "events": [], "launches": []}
 
     def _baseline_signalled():
         return any(entry.get("pid") == CHILD_PID
@@ -154,17 +158,28 @@ def install(b1b, *, published_child_nonce=None, published_parent_nonce=None,
             recorded["rescue_calls"].append({"container_id": container_id,
                                              "send_signal": bool(send),
                                              "entries": entries})
+            is_baseline = bool(entries) and entries[0].get("pid") == CHILD_PID
             if send:
                 recorded["signalled"].append(entries)
-            is_baseline = bool(entries) and entries[0].get("pid") == CHILD_PID
+                pids = [e.get("pid") for e in entries]
+                kind = "baseline" if CHILD_PID in pids else "readiness"
+                recorded["events"].append(("rescue_signal", kind))
             if not send:
                 outcome = "verified_not_signalled"
             elif is_baseline:
                 outcome = rescue_outcome
             else:
-                outcome = "reaped"        # preflight readiness, never injected
+                outcome = readiness_outcome        # preflight readiness
+            # The verification pass can report NOT verified; without that
+            # injection the ownership gate was never exercised and removing
+            # it changed nothing observable.
+            # Scoped to the BASELINE child, like rescue_outcome: applied to
+            # preflight readiness too, the run aborts in preflight and the
+            # control passes for the wrong reason.
+            verified_flag = (verification_verified
+                             if (not send and is_baseline) else True)
             return Completed(stdout=json.dumps({"reports": [{
-                "verified": True, "signalled": bool(send),
+                "verified": verified_flag, "signalled": bool(send),
                 "outcome": outcome,
                 "nonce": entries[0].get("nonce") if entries else None,
                 "pid": CHILD_PID, "reasons": []}]}))
@@ -246,8 +261,22 @@ def install(b1b, *, published_child_nonce=None, published_parent_nonce=None,
     b1b.PROVER.in_scenario = fake_in_scenario
     b1b.PROVER.install_rescue_owner = lambda *a, **k: True
     b1b.PROVER.create_scenario_container = fake_create
-    b1b.launch_inner_subject_non_detached = (
-        lambda *a, **k: (FakeClient(), ["python3", "-c", "x", "m"]))
+    def fake_baseline_launch(*a, **k):
+        recorded["events"].append(("launch", "baseline"))
+        recorded["launches"].append("baseline")
+        return FakeClient(), ["python3", "-c", "x", "m"]
+
+    original_launch_owned = b1b.PROVER.launch_owned_subject
+
+    def fake_launch_owned(container_id, registry, role, lifecycle=None,
+                          *a, **k):
+        recorded["events"].append(("launch", role))
+        recorded["launches"].append(role)
+        return original_launch_owned(container_id, registry, role,
+                                     lifecycle, *a, **k)
+
+    b1b.launch_inner_subject_non_detached = fake_baseline_launch
+    b1b.PROVER.launch_owned_subject = fake_launch_owned
     return recorded
 
 
