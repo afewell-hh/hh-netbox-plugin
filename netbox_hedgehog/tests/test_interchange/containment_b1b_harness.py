@@ -80,7 +80,11 @@ def install(b1b, *, published_child_nonce=None, published_parent_nonce=None,
     Returns a dict of recorders so a control can assert what the real code
     did, not what a reimplementation would have done.
     """
-    recorded = {"removed": [], "signalled": [], "bind_calls": []}
+    # Container-aware. A previous version recorded only the entries, so
+    # redirecting the rescue to the decoy container was invisible to every
+    # control.
+    recorded = {"removed": [], "signalled": [], "bind_calls": [],
+                "rescue_calls": []}
 
     def fake_run(argv, **kwargs):
         if not isinstance(argv, list):
@@ -134,6 +138,9 @@ def install(b1b, *, published_child_nonce=None, published_parent_nonce=None,
             entries = payload.get("entries", [])
             recorded["bind_calls"].append(entries)
             send = payload.get("send_signal")
+            recorded["rescue_calls"].append({"container_id": container_id,
+                                             "send_signal": bool(send),
+                                             "entries": entries})
             if send:
                 recorded["signalled"].append(entries)
             return Completed(stdout=json.dumps({"reports": [{

@@ -127,14 +127,55 @@ class B1bBehaviourControls(SimpleTestCase):
         self.assertIn(H.DECOY_ID, disposed,
                       "fixture cleanup did not report the decoy")
 
-    def test_the_rescue_path_never_targets_the_decoy(self):
-        """Only the registered scenario child may be signalled."""
-        _, _, _, recorded = self._run()
-        for entries in recorded["signalled"]:
-            for entry in entries:
+    def test_every_rescue_call_targets_the_scenario_container(self):
+        """Container-aware: redirecting the rescue to the decoy must fail.
+
+        The previous control compared a pid against a container id, which
+        could never match, so redirecting the rescue to the decoy container
+        was invisible to it.
+        """
+        _, code, evidence, recorded = self._run()
+        self.assertEqual(code, 0, evidence.get("dirty_reasons"))
+        self.assertTrue(recorded["rescue_calls"], "the rescue never ran")
+        preflight = evidence["preflight"]
+        scenario = preflight["container_id"]
+        decoy = preflight["decoy_container_id"]
+        self.assertNotEqual(scenario, decoy, "fixture collapsed the two ids")
+        # Both the pre-termination verification and the signalling call must
+        # be aimed at the scenario container.
+        self.assertGreaterEqual(
+            len(recorded["rescue_calls"]), 2,
+            "expected a verification call and a signalling call")
+        self.assertTrue(any(c["send_signal"] for c in recorded["rescue_calls"]),
+                        "no rescue call ever sent a signal")
+        for index, call in enumerate(recorded["rescue_calls"]):
+            with self.subTest(call=index, send_signal=call["send_signal"]):
+                self.assertEqual(
+                    call["container_id"], scenario,
+                    f"rescue call {index} targeted "
+                    f"{call['container_id'][:12]}, not the scenario "
+                    f"container {scenario[:12]}")
                 self.assertNotEqual(
-                    entry.get("pid"), H.DECOY_ID,
-                    "the rescue path targeted the unregistered decoy")
+                    call["container_id"], decoy,
+                    f"rescue call {index} was pointed at the unregistered "
+                    f"decoy {decoy[:12]}")
+
+    def test_the_decoy_is_registered_before_it_is_started(self):
+        """Registering after start must fail.
+
+        Asserting only that the id ends up registered is satisfied by
+        registering after start. This reads the registry's real contents at
+        the start boundary.
+        """
+        _, code, evidence, _ = self._run()
+        self.assertEqual(code, 0, evidence.get("dirty_reasons"))
+        snapshot = evidence.get("fixture_registry_at_decoy_start")
+        self.assertIsNotNone(
+            snapshot, "no registry snapshot was taken at the start boundary")
+        self.assertIn(
+            H.DECOY_ID, snapshot,
+            "the decoy was not in the fixture registry when it was started; "
+            "a container that starts before it is registered is unowned")
 
     # --- the hex check must be the implementation's, not a copy ----------
 

@@ -191,6 +191,10 @@ def preflight(image, lane, run_id, evidence, registry, lifecycle,
         decoy_id = created["out"]
         fixture_registry.append(decoy_id)          # registered BEFORE start
         evidence.setdefault("fixture_registry", []).append(decoy_id)
+        # The registry's real contents at the moment the container is
+        # started. Asserting only that the id ends up registered is
+        # satisfied by registering after start; this snapshot is not.
+        evidence["fixture_registry_at_decoy_start"] = list(fixture_registry)
         started = _observe(["docker", "start", decoy_id])
         checks["decoy_started"] = started["ok"]
     else:
