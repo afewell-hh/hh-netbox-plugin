@@ -139,7 +139,9 @@ def preflight(image, lane, run_id, evidence, registry, lifecycle,
 
     state, _ = PROVER._inspect_state(container_id)
     checks["container_present_and_identified"] = state == "present"
-    checks["immutable_id_is_64_hex"] = len(container_id) == 64
+    checks["immutable_id_is_64_hex"] = (
+        len(container_id) == 64
+        and all(character in "0123456789abcdef" for character in container_id))
 
     # Its Compose/ownership labels must not be the shared project's.
     # Each observation's status is checked. Previously a failed inspect
@@ -263,6 +265,34 @@ def read_json_in(container_id, path):
 #: observation was not understood, which is UNKNOWN rather than alive.
 KNOWN_PROCESS_STATES = frozenset("RSDZTtWXxKPI")
 
+#: Every preflight key that must be present AND literally True. `all(
+#: checks.values())` passed when a key was simply absent -- an early return
+#: that skipped adding one satisfied the gate.
+REQUIRED_PREFLIGHT_CHECKS = (
+    "lane_observed", "lane_is_a_real_compose_project",
+    "lane_is_not_the_shared_project", "is_a_dedicated_worktree",
+    "scenario_container_created_and_registered",
+    "container_present_and_identified", "immutable_id_is_64_hex",
+    "scenario_project_label_observed", "scenario_not_in_shared_project",
+    "shared_containers_observed", "no_shared_container_is_a_target",
+    "rescue_owner_installed", "rescue_owner_proven_by_execution",
+    "decoy_create_observed", "decoy_started", "same_label_decoy_live",
+    "decoy_is_not_in_scenario_registry", "decoy_is_in_fixture_registry",
+    "label_discovery_observed", "label_discovery_would_select_decoy",
+    "label_discovery_selects_more_than_registered",
+)
+
+
+def preflight_shortfall(checks):
+    """Missing or non-True required checks. Empty means the gate is satisfied."""
+    missing = [name for name in REQUIRED_PREFLIGHT_CHECKS if name not in checks]
+    untrue = [name for name in REQUIRED_PREFLIGHT_CHECKS
+              if checks.get(name) is not True]
+    unexpected_false = [name for name, value in checks.items() if value is not True]
+    return {"missing": missing, "not_literally_true": untrue,
+            "any_false": sorted(set(unexpected_false) - set(missing))}
+
+
 PROBE_SOURCE = """
 import json, os, sys
 pid = int(sys.argv[1])
@@ -281,11 +311,12 @@ try:
 except IndexError:
     print(json.dumps({"error": "unparseable"}))
     raise SystemExit(0)
-print(json.dumps({"found": True, "state": state}))
+ticks = raw.rsplit(")", 1)[1].split()[19]
+print(json.dumps({"found": True, "state": state, "start_ticks": ticks}))
 """
 
 
-def alive_in(container_id, pid):
+def alive_in(container_id, pid, expected_start_ticks=None):
     """TRUE / FALSE / UNKNOWN for a pid, with no failure collapsed into absence.
 
     The previous version ran `cat /proc/<pid>/stat 2>/dev/null || echo
@@ -319,6 +350,12 @@ def alive_in(container_id, pid):
     if not isinstance(found, bool):
         return UNKNOWN, f"probe omitted a boolean 'found': {result!r}"
     if not found:
+        # A record claiming absence must not also describe a live state.
+        # `{"found": false, "state": "S"}` previously reported absence while
+        # carrying contradictory data.
+        if result.get("state") or result.get("start_ticks"):
+            return UNKNOWN, (f"contradictory record: found=false with "
+                             f"{ {k: v for k, v in result.items() if k != 'found'} }")
         return "false", "no process entry (reaped)"
     state = result.get("state")
     if not isinstance(state, str) or not state:
@@ -327,9 +364,20 @@ def alive_in(container_id, pid):
     # non-empty string let any token -- "Q", "hello" -- report liveness.
     if state not in KNOWN_PROCESS_STATES:
         return UNKNOWN, f"unrecognized process state {state!r}"
+    # Instance identity. Without comparing start ticks this interface cannot
+    # establish that the SAME process survived: a recycled pid presents as a
+    # live process at the same number.
+    observed_ticks = result.get("start_ticks")
+    if expected_start_ticks is not None:
+        if not isinstance(observed_ticks, str) or not observed_ticks:
+            return UNKNOWN, "no start identity published; instance cannot be bound"
+        if observed_ticks != str(expected_start_ticks):
+            return UNKNOWN, (f"pid {pid} now holds a different instance "
+                             f"(start_ticks {observed_ticks} != "
+                             f"{expected_start_ticks})")
     if state == "Z":
         return "false", "terminated (zombie: entry remains, not executing)"
-    return "true", f"state={state}"
+    return "true", f"state={state} start_ticks={observed_ticks}"
 
 
 def main(argv=None) -> int:
@@ -369,11 +417,12 @@ def main(argv=None) -> int:
         container_id, decoy_id, checks = preflight(
             args.image, args.lane, run_id, evidence, registry, lifecycle,
             fixture_registry)
-        if not container_id or not all(checks.values()):
-            failed = [name for name, ok in checks.items() if not ok]
-            dirty(f"preflight incomplete: {failed}")
-            stage("preflight", passed=False, failed=failed)
-            print(f"PREFLIGHT FAILED {failed}; subject never launched",
+        shortfall = preflight_shortfall(checks)
+        evidence["preflight_shortfall"] = shortfall
+        if not container_id or any(shortfall.values()):
+            dirty(f"preflight incomplete: {shortfall}")
+            stage("preflight", passed=False, shortfall=shortfall)
+            print(f"PREFLIGHT FAILED {shortfall}; subject never launched",
                   file=sys.stderr)
             return 3
         stage("preflight", passed=True)
@@ -429,8 +478,24 @@ def main(argv=None) -> int:
         evidence["inner_parent_child_verified"] = True
         stage("inner_parent_child", verified=True)
 
+        # Validate what the CHILD published. The previous version built the
+        # publication with the nonce from a local variable, so bind() never
+        # saw the child's own value and a wrong published nonce could not be
+        # detected. The launch record is the authority.
+        launch = [l for l in registry.launches if l["nonce"] == nonce]
+        published_nonce = child.get("nonce")
+        if published_nonce != nonce or len(launch) != 1:
+            dirty(f"published nonce {published_nonce!r} does not match the "
+                  f"launch record {nonce!r}")
+            return 16
+        if parent.get("nonce") != nonce:
+            dirty(f"exec parent published nonce {parent.get('nonce')!r}, "
+                  f"expected {nonce!r}")
+            return 17
+        evidence["published_nonce_validated"] = True
+
         bound, bind_why = PROVER.bind(registry, {
-            "nonce": nonce, "pid": child["pid"],
+            "nonce": published_nonce, "pid": child["pid"],
             "start_ticks": child["start_ticks"], "pgid": child["pgid"],
             "sid": child["sid"]})
         if not bound:
@@ -464,7 +529,8 @@ def main(argv=None) -> int:
         stage("host_client_terminated", pid=client.pid,
               returncode=client.returncode)
 
-        state, detail = alive_in(container_id, child["pid"])
+        state, detail = alive_in(container_id, child["pid"],
+                                 child["start_ticks"])
         evidence["inner_subject_after_host_kill"] = {
             "alive": state, "detail": detail,
             "claim": "host-client termination did not propagate to its inner "
@@ -489,7 +555,8 @@ def main(argv=None) -> int:
                   "not a cleanup")
             return 11
 
-        after, after_detail = alive_in(container_id, child["pid"])
+        after, after_detail = alive_in(container_id, child["pid"],
+                                       child["start_ticks"])
         evidence["owned_membership_after_rescue"] = {"alive": after,
                                                      "detail": after_detail}
         if after == UNKNOWN:

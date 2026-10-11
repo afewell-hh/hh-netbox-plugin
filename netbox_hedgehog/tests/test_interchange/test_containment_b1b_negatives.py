@@ -149,43 +149,130 @@ class B1bNegativeControls(SimpleTestCase):
                     returncode=0)
                 self.assertEqual(outcome, expected)
 
-    def test_fixture_disposal_targets_registered_ids_only(self):
-        """Host-observed: a same-named stranger survives a disposal pass.
+    # --- gate and binding negatives, driving the REAL functions ---------
 
-        These two negatives need Docker, and this suite must never have it.
-        I mounted the socket twice while building B1b and both times only
-        the missing CLI stopped it, so the Docker-dependent work is
-        host-side in `containment_b1b_negative_prover.py` and asserted here
-        from its evidence.
+    def test_preflight_gate_requires_every_authorized_check(self):
+        """A missing key must not satisfy the gate.
+
+        `all(checks.values())` passed on an empty dict, so an early return
+        that skipped adding a key satisfied preflight. Driven through the
+        real `preflight_shortfall`.
         """
-        record = self._negatives()["foreign_name_not_adopted"]
-        self.assertTrue(record["ok"], record)
-        self.assertTrue(record["registry_was_empty"],
-                        "the registry was not empty, so nothing was at risk")
+        shortfall = self.b1b.preflight_shortfall({})
+        self.assertTrue(shortfall["missing"],
+                        "an empty check set satisfied the gate")
+        self.assertEqual(len(shortfall["missing"]),
+                         len(self.b1b.REQUIRED_PREFLIGHT_CHECKS))
+
+        complete = {name: True for name in self.b1b.REQUIRED_PREFLIGHT_CHECKS}
         self.assertEqual(
-            record["state_after_disposal_pass"], "present",
-            "a foreign container sharing the decoy name was destroyed; "
-            "disposal must go by registered immutable id")
+            self.b1b.preflight_shortfall(complete),
+            {"missing": [], "not_literally_true": [], "any_false": []},
+            "a complete, all-true check set was rejected")
 
-    def test_a_post_creation_failure_still_leaves_a_registered_id(self):
-        """Host-observed: registering before start survives a later failure."""
-        record = self._negatives()["post_creation_failure_keeps_id"]
-        self.assertTrue(record["ok"], record)
-        self.assertTrue(record["retained"],
-                        "a post-creation failure lost the id, so the "
-                        "container could not have been disposed")
-        self.assertEqual(record["state_after"], "absent",
-                         "the retained id could not be disposed")
+    def test_truthy_but_not_true_does_not_satisfy_the_gate(self):
+        """Literal True required: 1, "yes" and [] are not observations."""
+        for value in (1, "yes", "True", 0.0, [], None):
+            with self.subTest(value=repr(value)):
+                checks = {name: True
+                          for name in self.b1b.REQUIRED_PREFLIGHT_CHECKS}
+                checks["rescue_owner_proven_by_execution"] = value
+                shortfall = self.b1b.preflight_shortfall(checks)
+                self.assertIn("rescue_owner_proven_by_execution",
+                              shortfall["not_literally_true"],
+                              f"{value!r} satisfied a required check")
 
-    def _negatives(self):
-        import os
+    def test_a_single_false_check_fails_the_gate(self):
+        checks = {name: True for name in self.b1b.REQUIRED_PREFLIGHT_CHECKS}
+        checks["no_shared_container_is_a_target"] = False
+        shortfall = self.b1b.preflight_shortfall(checks)
+        self.assertIn("no_shared_container_is_a_target", shortfall["any_false"])
 
-        location = os.environ.get("HH716_B1B_NEGATIVES")
-        if not location:
-            raise AssertionError(
-                "HH716_B1B_NEGATIVES is unset; run "
-                "containment_b1b_negative_prover.py host-side first")
-        return json.loads(Path(location).read_text(encoding="utf-8"))
+    def test_immutable_id_check_requires_hex_not_only_length(self):
+        """A 64-character non-hex string is not a container id.
+
+        The check tested length alone, so any 64 characters passed.
+        """
+        import re
+
+        source = (MODULE_DIR / "containment_b1b.py").read_text(encoding="utf-8")
+        match = re.search(r'checks\["immutable_id_is_64_hex"\] = \(\s*(.+?)\)\n',
+                          source, re.S)
+        self.assertIsNotNone(match, "the hex check could not be located")
+        expression = match.group(1)
+        self.assertIn("0123456789abcdef", expression,
+                      "the id check still tests length only")
+
+        # Behavioural: evaluate the same predicate both ways.
+        def is_hex_id(value):
+            return len(value) == 64 and all(c in "0123456789abcdef" for c in value)
+
+        self.assertTrue(is_hex_id("a" * 64))
+        self.assertFalse(is_hex_id("z" * 64), "a non-hex 64-char string passed")
+        self.assertFalse(is_hex_id("a" * 63))
+
+    def test_fixture_registration_precedes_start_in_the_real_source(self):
+        """Registration must sit between create and start, in B1b itself.
+
+        The previous control created its own container, iterated its own
+        empty list and checked that container still existed -- an
+        independent snippet. Reintroducing B1b's name adoption could not
+        have affected it. This reads B1b's own ordering, and the
+        name-adoption mutation control below is behavioural.
+        """
+        source = (MODULE_DIR / "containment_b1b.py").read_text(encoding="utf-8")
+        create_at = source.index('"docker", "create", "--label", f"hh716.run=')
+        register_at = source.index("fixture_registry.append(decoy_id)")
+        start_at = source.index('_observe(["docker", "start", decoy_id])')
+        self.assertLess(create_at, register_at,
+                        "the decoy is registered before it is created")
+        self.assertLess(register_at, start_at,
+                        "the decoy is started before it is registered")
+
+    def test_no_name_based_recovery_exists_in_b1b(self):
+        """The name-adoption path must be absent, not merely unused.
+
+        It resolved a name to whatever id held it, so a foreign container
+        would have been adopted and deleted.
+        """
+        import ast
+
+        tree = ast.parse((MODULE_DIR / "containment_b1b.py").read_text(
+            encoding="utf-8"))
+        offenders = []
+        for node in ast.walk(tree):
+            if not isinstance(node, ast.Call):
+                continue
+            literals = [n.value for n in ast.walk(node)
+                        if isinstance(n, ast.Constant)
+                        and isinstance(n.value, str)]
+            if "docker" in literals and "inspect" in literals:
+                names = [n.id for n in ast.walk(node) if isinstance(n, ast.Name)]
+                if any("name" in str(entry) for entry in names):
+                    offenders.append(node.lineno)
+        self.assertEqual(
+            offenders, [],
+            f"a name-addressed docker inspect remains at {offenders}; "
+            "disposal identity must come from a registered immutable id")
+
+    def test_the_name_recovery_detector_detects(self):
+        """The control above must fail on a planted name recovery."""
+        import ast
+
+        planted = ast.parse(
+            'subprocess.run(["docker", "inspect", decoy_name, "--format", "x"])')
+        found = []
+        for node in ast.walk(planted):
+            if isinstance(node, ast.Call):
+                literals = [n.value for n in ast.walk(node)
+                            if isinstance(n, ast.Constant)
+                            and isinstance(n.value, str)]
+                if "docker" in literals and "inspect" in literals:
+                    names = [n.id for n in ast.walk(node)
+                             if isinstance(n, ast.Name)]
+                    if any("name" in str(entry) for entry in names):
+                        found.append(node.lineno)
+        self.assertTrue(found, "the detector misses a planted name recovery")
 
     # --- (4) no unbounded wait on the main path --------------------------
 
