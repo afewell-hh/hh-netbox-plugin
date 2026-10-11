@@ -423,39 +423,191 @@ def evidence_read_paths(paths):
     return out
 
 
-def deeper_write_chains(path, max_depth=2):
-    """Write chains deeper than the collectors track, so the boundary is
-    enforced rather than assumed."""
-    tree = ast.parse(pathlib.Path(path).read_text())
-    deep = set()
-    for n in ast.walk(tree):
-        tgt = (n.targets[0] if isinstance(n, ast.Assign) and len(n.targets) == 1
-               else n.target if isinstance(n, ast.AugAssign) else None)
-        if tgt is None or not isinstance(tgt, ast.Subscript):
-            continue
-        ch = _chain(tgt)
-        if ch is not None and len(ch) > max_depth:
-            deep.add(".".join(ch))
-            continue
-        # A chain rooted at evidence whose keys are not all literals.
-        node, depth = tgt, 0
-        while isinstance(node, ast.Subscript):
-            depth += 1
-            node = node.value
-        if (isinstance(node, ast.Name) and node.id == "evidence"
-                and ch is None):
-            deep.add(f"<non-literal key at depth {depth}>")
-    return sorted(deep)
+# ----------------------------------------------------------------------
+# Evidence-coverage: a BOUNDED SUPPORTED GRAMMAR.
+#
+# Three rounds of enumerate-the-bypass-and-patch each left another form
+# uncounted, because an unrecognised write was silently invisible. The
+# burden is inverted here: every construct that stores into `evidence`
+# must match one of the forms below, and anything else is reported as a
+# violation that fails the control. A new form cannot slip past by being
+# unrecognised -- being unrecognised is itself the failure.
+#
+# SUPPORTED WRITE FORMS (keys must be string literals; paths <= depth 2):
+#   W1  evidence = {...}                     initialiser
+#   W2  evidence["k"] = expr                 top-level assignment
+#   W3  evidence["k"]["j"] = expr            nested assignment
+#   W4  evidence.setdefault("k", expr)       with expr's dict keys counted
+#   W5  evidence["k"].update({...})          and evidence.update({...})
+#   W6  evidence["k"].append(...) / .extend(...)   mutates a value, adds
+#                                            no key
+#   In W2/W4/W5, a dict-literal value contributes its own nested paths.
+#
+# REJECTED (each fails the control rather than going uncounted):
+#   keyword form          evidence.update(k=1)
+#   computed key          evidence[expr] = v, {expr: v}
+#   dict unpacking        evidence.update({**other})
+#   depth overflow        any path deeper than 2
+#   aliasing              ev = evidence; ev["k"] = v
+#   name escape           evidence passed to a local function whose
+#                         parameter is not also named `evidence`
+# ----------------------------------------------------------------------
+
+MAX_PATH_DEPTH = 2
+_MUTATORS = ("append", "extend")
 
 
-def non_literal_evidence_keys(path):
-    """Writes whose key is an expression rather than a string literal."""
+def _ev_chain(node, root="evidence"):
+    """['a','b'] for <root>['a']['b']; None if not rooted at <root>, and
+    ('COMPUTED', depth) if rooted there through a non-literal key."""
+    parts, computed = [], False
+    while isinstance(node, ast.Subscript):
+        if (isinstance(node.slice, ast.Constant)
+                and isinstance(node.slice.value, str)):
+            parts.append(node.slice.value)
+        else:
+            computed = True
+            parts.append(None)
+        node = node.value
+    if isinstance(node, ast.Name) and node.id == root:
+        if computed:
+            return ("COMPUTED", len(parts))
+        return list(reversed(parts))
+    return None
+
+
+def _dict_literal_paths(prefix, node, out, bad, where):
+    if not isinstance(node, ast.Dict):
+        return
+    for key, value in zip(node.keys, node.values):
+        if key is None:
+            bad.append(f"{where}: dict unpacking inside an evidence literal")
+            continue
+        if not (isinstance(key, ast.Constant) and isinstance(key.value, str)):
+            bad.append(f"{where}: computed key inside an evidence "
+                       f"dict literal")
+            continue
+        path = prefix + [key.value]
+        if len(path) > MAX_PATH_DEPTH:
+            bad.append(f"{where}: path {'.'.join(path)} is deeper than "
+                       f"{MAX_PATH_DEPTH}")
+            continue
+        out.add(".".join(path))
+        _dict_literal_paths(path, value, out, bad, where)
+
+
+def evidence_grammar_scan(path):
+    """(write_paths, violations) for the subject at `path`."""
     tree = ast.parse(pathlib.Path(path).read_text())
-    out = []
-    for n in ast.walk(tree):
-        if (isinstance(n, ast.Subscript) and isinstance(n.value, ast.Name)
-                and n.value.id == "evidence"
-                and not (isinstance(n.slice, ast.Constant)
-                         and isinstance(n.slice.value, str))):
-            out.append(f"line {n.lineno}")
-    return out
+    paths, bad = set(), []
+
+    # Name escapes: `evidence` handed to a local function under another
+    # parameter name would be written there invisibly.
+    local_funcs = {n.name: n for n in ast.walk(tree)
+                   if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef))}
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Call) and isinstance(node.func, ast.Name):
+            fn = local_funcs.get(node.func.id)
+            if fn is None:
+                continue
+            params = [a.arg for a in fn.args.args]
+            for i, arg in enumerate(node.args):
+                if (isinstance(arg, ast.Name) and arg.id == "evidence"
+                        and i < len(params) and params[i] != "evidence"):
+                    bad.append(f"line {node.lineno}: `evidence` passed to "
+                               f"{fn.name}() as `{params[i]}`; writes there "
+                               f"are invisible")
+            for kw in node.keywords:
+                if (isinstance(kw.value, ast.Name)
+                        and kw.value.id == "evidence"
+                        and kw.arg not in (None, "evidence")):
+                    bad.append(f"line {node.lineno}: `evidence` passed to "
+                               f"{fn.name}() as `{kw.arg}`")
+
+    for node in ast.walk(tree):
+        where = f"line {getattr(node, 'lineno', '?')}"
+
+        # Aliasing: `ev = evidence`
+        if (isinstance(node, ast.Assign) and len(node.targets) == 1
+                and isinstance(node.targets[0], ast.Name)
+                and isinstance(node.value, ast.Name)
+                and node.value.id == "evidence"):
+            bad.append(f"{where}: `evidence` aliased to "
+                       f"`{node.targets[0].id}`; writes through an alias are "
+                       f"invisible")
+
+        # W1: the initialiser
+        if (isinstance(node, ast.Assign) and len(node.targets) == 1
+                and isinstance(node.targets[0], ast.Name)
+                and node.targets[0].id == "evidence"):
+            if isinstance(node.value, ast.Dict):
+                _dict_literal_paths([], node.value, paths, bad, where)
+            elif not isinstance(node.value, ast.Name):
+                bad.append(f"{where}: `evidence` bound to an unsupported "
+                           f"expression ({type(node.value).__name__})")
+
+        # W2 / W3: subscript assignment
+        target = (node.targets[0]
+                  if isinstance(node, ast.Assign) and len(node.targets) == 1
+                  else node.target if isinstance(node, ast.AugAssign) else None)
+        if isinstance(target, ast.Subscript):
+            chain = _ev_chain(target)
+            if isinstance(chain, tuple):
+                bad.append(f"{where}: computed key in an evidence write")
+            elif chain is not None:
+                if len(chain) > MAX_PATH_DEPTH:
+                    bad.append(f"{where}: write to "
+                               f"{'.'.join(chain)} is deeper than "
+                               f"{MAX_PATH_DEPTH}")
+                else:
+                    paths.add(".".join(chain))
+                    _dict_literal_paths(chain, getattr(node, "value", None),
+                                        paths, bad, where)
+
+        # W4 / W5 / W6: method calls on evidence or on a value of it
+        if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute):
+            base = _ev_chain(node.func.value)
+            if base is None:
+                continue
+            if isinstance(base, tuple):
+                bad.append(f"{where}: computed key in an evidence "
+                           f".{node.func.attr}() call")
+                continue
+            attr = node.func.attr
+            if attr == "setdefault":
+                if not (node.args and isinstance(node.args[0], ast.Constant)
+                        and isinstance(node.args[0].value, str)):
+                    bad.append(f"{where}: setdefault with a computed key")
+                    continue
+                if node.keywords:
+                    bad.append(f"{where}: setdefault with keyword arguments")
+                chain = base + [node.args[0].value]
+                if len(chain) > MAX_PATH_DEPTH:
+                    bad.append(f"{where}: setdefault path "
+                               f"{'.'.join(chain)} is deeper than "
+                               f"{MAX_PATH_DEPTH}")
+                else:
+                    paths.add(".".join(chain))
+                    if len(node.args) > 1:
+                        _dict_literal_paths(chain, node.args[1], paths, bad,
+                                            where)
+            elif attr == "update":
+                if node.keywords:
+                    bad.append(f"{where}: update() in keyword form; its keys "
+                               f"are not collected")
+                if not node.args:
+                    continue
+                if not isinstance(node.args[0], ast.Dict):
+                    bad.append(f"{where}: update() with a non-literal "
+                               f"mapping ({type(node.args[0]).__name__})")
+                else:
+                    _dict_literal_paths(base, node.args[0], paths, bad, where)
+            elif attr in _MUTATORS:
+                pass                       # mutates a value, adds no key
+            elif attr in ("get", "pop", "keys", "items", "values", "copy"):
+                pass                       # reads
+            else:
+                bad.append(f"{where}: unsupported evidence method "
+                           f".{attr}()")
+
+    return paths, sorted(set(bad))

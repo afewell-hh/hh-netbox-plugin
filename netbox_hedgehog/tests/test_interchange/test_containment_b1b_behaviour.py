@@ -26,30 +26,29 @@ from netbox_hedgehog.tests.test_interchange import containment_b1b_harness as H
 # read by a control -- enforced by
 # test_every_recorded_fact_is_read_or_declared_diagnostic.
 DIAGNOSTIC_ONLY = (
-    # Run identity and traces written for a human reading the artifact.
+    # Run identity and traces, written for a human reading the artifact.
     "step", "lane", "run_id", "observed_at",
     "stages",                   # ordered human-readable trace
     "lifecycle_order",          # docker event ordering
-    "timing",                   # durations, all three fields
+    "timing",                   # durations
     "timing.publication_seconds",
     "timing.host_client_terminated_after_seconds",
     "timing.total_seconds",
+    "preflight.lane",
+    "preflight.observation_deadline_seconds",
     # Identity inputs, not conclusions.
     "host_client_pid",
     "host_client_returncode",
     "expected_argv",            # asserted through binding.expected_argv
-    "preflight.lane", "preflight.run_id",
-    "preflight.observation_deadline_seconds",
-    # Diagnostic strings accompanying a conclusion that IS asserted.
+    # Diagnostic strings beside a conclusion that IS asserted.
     "inner_subject_after_host_kill.detail",
     "owned_membership_after_rescue.detail",
     "same_label_decoy_after_rescue.detail",
     "same_label_decoy_after_rescue.note",
     "preflight_failure",
     "registry",                 # serialised; teardown proof is asserted
-    # The checks dict: its shortfall is asserted, by name, in the
-    # negatives suite, and preflight refuses unless every required check
-    # is literally True.
+    # The checks dict: its shortfall is asserted by name in the negatives
+    # suite, and preflight refuses unless every required check is True.
     "preflight.checks",
     "preflight.label_discovery_candidates",
     # Crash record. Its recovery path is a #717 row, not a claim this
@@ -416,13 +415,19 @@ class B1bBehaviourControls(SimpleTestCase):
         no control, so conclusions went unverified while the path was
         checked. This fails when a key is added that no control reads.
 
-        The first version saw only direct top-level subscript writes, so
-        keys added by the `evidence = {...}` initialiser, by `setdefault`
-        or `update`, by nested writes, or inside assigned dict literals
-        slipped past it. It now collects all of those to depth 2, and
-        ENFORCES that boundary rather than documenting it: a write deeper
-        than the collectors track, or under a computed key, fails here
-        instead of being skipped in silence.
+        Enumerating bypasses and patching them failed three times: the
+        initialiser, nested writes and assigned dict literals first; then
+        keyword `update`, computed dict keys, a deep initialiser, alias
+        writes and `setdefault` defaults. Each round left another form
+        silently uncounted, because an unrecognised write was invisible.
+
+        So the collector now works from a declared grammar
+        (`evidence_grammar_scan`): every construct storing into
+        `evidence` must match a supported form, and anything else is
+        reported as a violation that fails this control. A new write form
+        cannot pass by being unrecognised -- being unrecognised IS the
+        failure. The grammar and its rejections are documented beside the
+        scanner in the harness.
 
         Only the control modules count as readers -- not the harness,
         which reads keys to drive injections, not to falsify them.
@@ -430,18 +435,15 @@ class B1bBehaviourControls(SimpleTestCase):
         here = Path(__file__).parent
         subject = str(here / "containment_b1b.py")
 
-        deeper = H.deeper_write_chains(subject)
+        written, violations = H.evidence_grammar_scan(subject)
+        # Anything the grammar does not recognise is a violation, not a
+        # silent omission. Three rounds of patching individual bypasses
+        # each left another form uncounted; this inverts the burden.
         self.assertEqual(
-            deeper, [],
-            "these writes are deeper than the coverage collectors track, "
-            f"so this control cannot speak for them: {deeper}")
-        computed = H.non_literal_evidence_keys(subject)
-        self.assertEqual(
-            computed, [],
-            f"evidence keys built from expressions are untrackable: "
-            f"{computed}")
+            violations, [],
+            "these constructs fall outside the supported evidence-write "
+            f"grammar, so this control cannot speak for them: {violations}")
 
-        written = H.evidence_write_paths(subject)
         read = H.evidence_read_paths([
             str(here / "test_containment_b1b_behaviour.py"),
             str(here / "test_containment_b1b_negatives.py")])
