@@ -14,7 +14,9 @@ signals.
 
 from __future__ import annotations
 
+import ast
 import json
+import pathlib
 import subprocess
 import sys
 import time as _real_time
@@ -282,3 +284,178 @@ def install(b1b, *, published_child_nonce=None, published_parent_nonce=None,
 
 def run_main(b1b, output, lane="diet716-mock"):
     return b1b.main(["--lane", lane, "--output", str(output)])
+
+
+# ----------------------------------------------------------------------
+# Evidence-coverage collectors.
+#
+# A recorded fact no control reads is an unfalsified claim. These collect
+# what the subject WRITES and what the controls READ so a control can
+# require every written path to be read or explicitly declared diagnostic.
+#
+# GUARANTEE AND ITS BOUNDARY. Tracked: direct subscript assignment, the
+# `evidence = {...}` initialiser, `setdefault`, `update`, nested writes
+# `evidence[a][b] = v`, and nested keys inside assigned dict literals --
+# to a depth of 2. Reads resolve one level of local aliasing
+# (`p = evidence["preflight"]` then `p["container_id"]`).
+#
+# NOT tracked: writes deeper than depth 2, aliases of aliases, and keys
+# built from non-literal expressions. The first is not merely documented
+# -- `deeper_write_chains` reports any such write so the control can fail
+# rather than silently skip it. The last two cannot arise while the
+# subject uses literal keys, which the same control checks.
+# ----------------------------------------------------------------------
+
+def _chain(node):
+    """['a','b'] for evidence['a']['b'], or None if not rooted at evidence."""
+    parts = []
+    while isinstance(node, ast.Subscript):
+        if not (isinstance(node.slice, ast.Constant)
+                and isinstance(node.slice.value, str)):
+            return None
+        parts.append(node.slice.value)
+        node = node.value
+    if isinstance(node, ast.Name) and node.id == "evidence":
+        return list(reversed(parts))
+    return None
+
+def _dict_paths(prefix, node, out, depth):
+    if not isinstance(node, ast.Dict) or depth <= 0:
+        return
+    for k, v in zip(node.keys, node.values):
+        if isinstance(k, ast.Constant) and isinstance(k.value, str):
+            path = prefix + [k.value]
+            out.add(".".join(path))
+            _dict_paths(path, v, out, depth - 1)
+
+def _chain_via_alias(node, alias):
+    parts = []
+    while isinstance(node, ast.Subscript):
+        if not (isinstance(node.slice, ast.Constant)
+                and isinstance(node.slice.value, str)):
+            return None
+        parts.append(node.slice.value)
+        node = node.value
+    if isinstance(node, ast.Name) and node.id in alias:
+        return alias[node.id] + list(reversed(parts))
+    return None
+
+
+def evidence_write_paths(path, max_depth=2):
+    tree = ast.parse(pathlib.Path(path).read_text())
+    out = set()
+    for n in ast.walk(tree):
+        # evidence = {...}
+        if (isinstance(n, ast.Assign) and len(n.targets) == 1
+                and isinstance(n.targets[0], ast.Name)
+                and n.targets[0].id == "evidence"):
+            _dict_paths([], n.value, out, max_depth)
+        tgt = (n.targets[0] if isinstance(n, ast.Assign) and len(n.targets) == 1
+               else n.target if isinstance(n, ast.AugAssign) else None)
+        if tgt is not None:
+            ch = _chain(tgt)
+            if ch:
+                out.add(".".join(ch))
+                _dict_paths(ch, getattr(n, "value", None), out,
+                            max_depth - len(ch) + 1)
+        if isinstance(n, ast.Call) and isinstance(n.func, ast.Attribute):
+            base = _chain(n.func.value)
+            if n.func.attr == "setdefault" and n.args and isinstance(
+                    n.args[0], ast.Constant):
+                if isinstance(n.func.value, ast.Name) and \
+                        n.func.value.id == "evidence":
+                    out.add(n.args[0].value)
+                elif base:
+                    out.add(".".join(base + [n.args[0].value]))
+            if n.func.attr == "update" and n.args:
+                root = ([] if (isinstance(n.func.value, ast.Name)
+                               and n.func.value.id == "evidence") else base)
+                if root is not None:
+                    _dict_paths(root, n.args[0], out, max_depth)
+    return out
+
+def evidence_read_paths(paths):
+    out = set()
+    for p in paths:
+        tree = ast.parse(pathlib.Path(p).read_text())
+        # One level of alias resolution: `x = evidence["a"]` then `x["b"]`
+        # is a read of a.b. Without this, genuinely asserted keys look
+        # unread, and declaring them diagnostic would be wrong.
+        alias = {}
+        for n in ast.walk(tree):
+            if (isinstance(n, ast.Assign) and len(n.targets) == 1
+                    and isinstance(n.targets[0], ast.Name)):
+                ch = _chain(n.value)
+                if ch:
+                    alias[n.targets[0].id] = ch
+        excl = set()
+        for n in ast.walk(tree):
+            if (isinstance(n, ast.Assign) and len(n.targets) == 1
+                    and isinstance(n.targets[0], ast.Name)
+                    and n.targets[0].id == "DIAGNOSTIC_ONLY"):
+                excl.update(id(i) for i in ast.walk(n))
+        for n in ast.walk(tree):
+            if id(n) in excl:
+                continue
+            if isinstance(n, ast.Subscript):
+                ch = _chain(n) or _chain_via_alias(n, alias)
+                if ch:
+                    for i in range(1, len(ch) + 1):
+                        out.add(".".join(ch[:i]))
+            if isinstance(n, ast.Call) and isinstance(n.func, ast.Attribute):
+                if n.func.attr in ("get", "setdefault") and n.args and \
+                        isinstance(n.args[0], ast.Constant):
+                    base = _chain(n.func.value)
+                    if isinstance(n.func.value, ast.Name) and \
+                            n.func.value.id == "evidence":
+                        out.add(n.args[0].value)
+                    elif base:
+                        out.add(".".join(base + [n.args[0].value]))
+                if n.func.attr in ("assertIn", "assertNotIn") and \
+                        len(n.args) >= 2 and isinstance(n.args[0], ast.Constant) \
+                        and isinstance(n.args[0].value, str):
+                    base = _chain(n.args[1])
+                    if isinstance(n.args[1], ast.Name) and \
+                            n.args[1].id == "evidence":
+                        out.add(n.args[0].value)
+                    elif base:
+                        out.add(".".join(base + [n.args[0].value]))
+    return out
+
+
+def deeper_write_chains(path, max_depth=2):
+    """Write chains deeper than the collectors track, so the boundary is
+    enforced rather than assumed."""
+    tree = ast.parse(pathlib.Path(path).read_text())
+    deep = set()
+    for n in ast.walk(tree):
+        tgt = (n.targets[0] if isinstance(n, ast.Assign) and len(n.targets) == 1
+               else n.target if isinstance(n, ast.AugAssign) else None)
+        if tgt is None or not isinstance(tgt, ast.Subscript):
+            continue
+        ch = _chain(tgt)
+        if ch is not None and len(ch) > max_depth:
+            deep.add(".".join(ch))
+            continue
+        # A chain rooted at evidence whose keys are not all literals.
+        node, depth = tgt, 0
+        while isinstance(node, ast.Subscript):
+            depth += 1
+            node = node.value
+        if (isinstance(node, ast.Name) and node.id == "evidence"
+                and ch is None):
+            deep.add(f"<non-literal key at depth {depth}>")
+    return sorted(deep)
+
+
+def non_literal_evidence_keys(path):
+    """Writes whose key is an expression rather than a string literal."""
+    tree = ast.parse(pathlib.Path(path).read_text())
+    out = []
+    for n in ast.walk(tree):
+        if (isinstance(n, ast.Subscript) and isinstance(n.value, ast.Name)
+                and n.value.id == "evidence"
+                and not (isinstance(n.slice, ast.Constant)
+                         and isinstance(n.slice.value, str))):
+            out.append(f"line {n.lineno}")
+    return out

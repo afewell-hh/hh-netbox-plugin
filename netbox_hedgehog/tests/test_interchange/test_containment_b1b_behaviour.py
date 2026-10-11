@@ -26,15 +26,37 @@ from netbox_hedgehog.tests.test_interchange import containment_b1b_harness as H
 # read by a control -- enforced by
 # test_every_recorded_fact_is_read_or_declared_diagnostic.
 DIAGNOSTIC_ONLY = (
-    "stages",                  # ordered human-readable trace
-    "lifecycle_order",         # docker event ordering, for the artifact
-    "preflight_failure",       # string; the shortfall itself is asserted
-    "registry",                # serialised; teardown proof is asserted
-    "host_client_pid",         # identity input, not a conclusion
-    "host_client_returncode",  # client exit code, diagnostic
-    "expected_argv",           # asserted through binding.expected_argv
-    "unhandled_exception",     # crash record; its recovery path is a #717
-                               # row, not a claim this baseline reports
+    # Run identity and traces written for a human reading the artifact.
+    "step", "lane", "run_id", "observed_at",
+    "stages",                   # ordered human-readable trace
+    "lifecycle_order",          # docker event ordering
+    "timing",                   # durations, all three fields
+    "timing.publication_seconds",
+    "timing.host_client_terminated_after_seconds",
+    "timing.total_seconds",
+    # Identity inputs, not conclusions.
+    "host_client_pid",
+    "host_client_returncode",
+    "expected_argv",            # asserted through binding.expected_argv
+    "preflight.lane", "preflight.run_id",
+    "preflight.observation_deadline_seconds",
+    # Diagnostic strings accompanying a conclusion that IS asserted.
+    "inner_subject_after_host_kill.detail",
+    "owned_membership_after_rescue.detail",
+    "same_label_decoy_after_rescue.detail",
+    "same_label_decoy_after_rescue.note",
+    "preflight_failure",
+    "registry",                 # serialised; teardown proof is asserted
+    # The checks dict: its shortfall is asserted, by name, in the
+    # negatives suite, and preflight refuses unless every required check
+    # is literally True.
+    "preflight.checks",
+    "preflight.label_discovery_candidates",
+    # Crash record. Its recovery path is a #717 row, not a claim this
+    # baseline reports.
+    "unhandled_exception",
+    "unhandled_exception.type",
+    "unhandled_exception.message",
 )
 
 
@@ -301,8 +323,13 @@ class B1bBehaviourControls(SimpleTestCase):
         self.assertEqual(
             evidence["owned_membership_after_rescue"]["alive"], "false")
         # ...and the same-label bystander was untouched.
-        self.assertEqual(
-            evidence["same_label_decoy_after_rescue"]["state"], "present")
+        decoy = evidence["same_label_decoy_after_rescue"]
+        self.assertEqual(decoy["state"], "present")
+        # The discrimination only means anything if the bystander really
+        # carried the registered container's own label.
+        self.assertEqual(decoy["label"],
+                         f"hh716.run={evidence['preflight']['run_id']}",
+                         "the decoy did not carry this run's actual label")
         self.assertTrue(evidence["teardown_registered"]["proved"])
         # The claim is scoped to non-propagation, not causation.
         claim = evidence["inner_subject_after_host_kill"]["claim"]
@@ -383,112 +410,66 @@ class B1bBehaviourControls(SimpleTestCase):
             "the baseline child was signalled without verified ownership")
 
     def test_every_recorded_fact_is_read_or_declared_diagnostic(self):
-        """Standing guard against the gap this suite was just missing.
+        """Standing guard against unfalsified claims.
 
-        A static audit found 17 of 28 evidence keys recorded but read by no
-        control, so conclusions went unfalsified while the path was
-        verified. This fails when a new key is added without either a
-        control reading it or an explicit diagnostic declaration.
+        A static audit found 17 of 28 evidence keys recorded but read by
+        no control, so conclusions went unverified while the path was
+        checked. This fails when a key is added that no control reads.
 
-        Only the control modules count as readers -- not the harness, which
-        reads keys to drive injections rather than to falsify them.
+        The first version saw only direct top-level subscript writes, so
+        keys added by the `evidence = {...}` initialiser, by `setdefault`
+        or `update`, by nested writes, or inside assigned dict literals
+        slipped past it. It now collects all of those to depth 2, and
+        ENFORCES that boundary rather than documenting it: a write deeper
+        than the collectors track, or under a computed key, fails here
+        instead of being skipped in silence.
+
+        Only the control modules count as readers -- not the harness,
+        which reads keys to drive injections, not to falsify them.
         """
-        import ast
         here = Path(__file__).parent
-        subject = ast.parse((here / "containment_b1b.py").read_text())
+        subject = str(here / "containment_b1b.py")
 
-        written = set()
-        for node in ast.walk(subject):
-            target = None
-            if isinstance(node, ast.Assign) and len(node.targets) == 1:
-                target = node.targets[0]
-            elif isinstance(node, ast.AugAssign):
-                target = node.target
-            if (isinstance(target, ast.Subscript)
-                    and isinstance(target.value, ast.Name)
-                    and target.value.id == "evidence"
-                    and isinstance(target.slice, ast.Constant)):
-                written.add(target.slice.value)
-            if isinstance(node, ast.Call) and isinstance(node.func,
-                                                         ast.Attribute):
-                value = node.func.value
-                if (node.func.attr == "setdefault"
-                        and isinstance(value, ast.Name)
-                        and value.id == "evidence" and node.args
-                        and isinstance(node.args[0], ast.Constant)):
-                    written.add(node.args[0].value)
-                if (isinstance(value, ast.Subscript)
-                        and isinstance(value.value, ast.Name)
-                        and value.value.id == "evidence"
-                        and isinstance(value.slice, ast.Constant)):
-                    written.add(value.slice.value)
+        deeper = H.deeper_write_chains(subject)
+        self.assertEqual(
+            deeper, [],
+            "these writes are deeper than the coverage collectors track, "
+            f"so this control cannot speak for them: {deeper}")
+        computed = H.non_literal_evidence_keys(subject)
+        self.assertEqual(
+            computed, [],
+            f"evidence keys built from expressions are untrackable: "
+            f"{computed}")
 
-        # Read strings from the control modules, EXCLUDING this test's own
-        # declaration list. Including it would make every declared key look
-        # read and the whole check vacuous -- the self-matching trap that
-        # has bitten this suite before.
-        read = set()
-        for name in ("test_containment_b1b_behaviour.py",
-                     "test_containment_b1b_negatives.py"):
-            tree = ast.parse((here / name).read_text())
-            # Prune the declaration's whole SUBTREE. Skipping only the
-            # Assign node leaves its string Constants reachable, since
-            # ast.walk visits them independently -- the sentinel below
-            # caught exactly that.
-            excluded = set()
-            for node in ast.walk(tree):
-                if (isinstance(node, ast.Assign) and len(node.targets) == 1
-                        and isinstance(node.targets[0], ast.Name)
-                        and node.targets[0].id == "DIAGNOSTIC_ONLY"):
-                    excluded.update(id(inner) for inner in ast.walk(node))
-            # An ACCESS on `evidence`, not any string that happens to
-            # appear. A bare-constant collector credited prose and nested
-            # key names as reads, which inflated coverage.
-            def direct(node):
-                return isinstance(node, ast.Name) and node.id == "evidence"
-
-            for node in ast.walk(tree):
-                if id(node) in excluded:
-                    continue
-                if (isinstance(node, ast.Subscript)
-                        and isinstance(node.slice, ast.Constant)
-                        and isinstance(node.slice.value, str)
-                        and direct(node.value)):
-                    read.add(node.slice.value)
-                if (isinstance(node, ast.Call)
-                        and isinstance(node.func, ast.Attribute)
-                        and node.func.attr in ("get", "setdefault")
-                        and node.args
-                        and isinstance(node.args[0], ast.Constant)
-                        and direct(node.func.value)):
-                    read.add(node.args[0].value)
-                if (isinstance(node, ast.Call)
-                        and isinstance(node.func, ast.Attribute)
-                        and node.func.attr in ("assertIn", "assertNotIn")
-                        and len(node.args) >= 2
-                        and isinstance(node.args[0], ast.Constant)
-                        and isinstance(node.args[0].value, str)
-                        and direct(node.args[1])):
-                    read.add(node.args[0].value)
+        written = H.evidence_write_paths(subject)
+        read = H.evidence_read_paths([
+            str(here / "test_containment_b1b_behaviour.py"),
+            str(here / "test_containment_b1b_negatives.py")])
 
         # Canary against an over-broad collector, which would make this
         # control pass vacuously. `stages` is written by the subject and
-        # appears in prose and in the declaration, but is never accessed on
-        # `evidence`, so a collector that credits bare strings picks it up.
+        # appears in prose and in the declaration, but is never accessed
+        # on `evidence`, so a collector crediting bare strings picks it up.
         self.assertNotIn("stages", read,
                          "the collector credited a string that is never "
                          "accessed on `evidence`; coverage is inflated")
-        self.assertGreaterEqual(len(read), 15,
-                                f"the collector found only {len(read)} reads; "
-                                "it is probably not matching accesses")
+        self.assertGreaterEqual(
+            len(read), 30,
+            f"the collector found only {len(read)} reads; it is probably "
+            "not matching accesses")
+        self.assertGreaterEqual(
+            len(written), 50,
+            f"the collector found only {len(written)} writes; it is "
+            "probably not matching assignments")
 
         unfalsified = sorted(written - read - set(DIAGNOSTIC_ONLY))
         self.assertEqual(
             unfalsified, [],
-            "these evidence keys are recorded but no control reads them, so "
-            "their value is unfalsified. Either assert them or add them to "
-            f"DIAGNOSTIC_ONLY with a reason: {unfalsified}")
+            "these evidence paths are recorded but no control reads them, "
+            "so their value is unfalsified. Either assert them or add them "
+            f"to DIAGNOSTIC_ONLY with a reason: {unfalsified}")
 
         stale = sorted(set(DIAGNOSTIC_ONLY) - written)
-        self.assertEqual(stale, [],
-                         f"DIAGNOSTIC_ONLY names keys nothing records: {stale}")
+        self.assertEqual(
+            stale, [],
+            f"DIAGNOSTIC_ONLY names paths nothing records: {stale}")
