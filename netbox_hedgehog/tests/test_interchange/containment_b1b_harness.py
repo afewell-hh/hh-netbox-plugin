@@ -17,6 +17,7 @@ from __future__ import annotations
 import json
 import subprocess
 import sys
+import time as _real_time
 from pathlib import Path
 
 _HERE = Path(__file__).resolve().parent
@@ -180,12 +181,26 @@ def install(b1b, *, published_child_nonce=None, published_parent_nonce=None,
             return Completed(stdout=json.dumps({"found": False}))
         return Completed()
 
-    b1b.subprocess.run = fake_run
-    b1b.PROVER.in_scenario = fake_in_scenario
-    b1b.PROVER.install_rescue_owner = lambda *a, **k: True
-    b1b.launch_inner_subject_non_detached = (
-        lambda *a, **k: (FakeClient(), ["python3", "-c", "x", "m"]))
-    b1b.time.sleep = lambda *a, **k: None
+    # Replace the MODULE REFERENCES, never attributes on the shared stdlib
+    # modules. A previous version did `b1b.subprocess.run = fake_run` and
+    # `b1b.time.sleep = ...`, which mutates the real `subprocess` and `time`
+    # for the whole test process: each suite passed alone and two failed
+    # when run together, because the fakes leaked into every other test.
+    class _SubprocessShim:
+        run = staticmethod(fake_run)
+        PIPE = subprocess.PIPE
+        STDOUT = subprocess.STDOUT
+        SubprocessError = subprocess.SubprocessError
+        TimeoutExpired = subprocess.TimeoutExpired
+        CalledProcessError = subprocess.CalledProcessError
+        Popen = staticmethod(lambda *a, **k: FakeClient())
+
+    class _TimeShim:
+        sleep = staticmethod(lambda *a, **k: None)
+        time = staticmethod(_real_time.time)
+        monotonic = staticmethod(_real_time.monotonic)
+        gmtime = staticmethod(_real_time.gmtime)
+        strftime = staticmethod(_real_time.strftime)
 
     original_create = b1b.PROVER.create_scenario_container
 
@@ -193,8 +208,14 @@ def install(b1b, *, published_child_nonce=None, published_parent_nonce=None,
         b1b_run_id[0] = run_id
         return original_create(image, run_id, registry, order)
 
+    b1b.subprocess = _SubprocessShim
+    b1b.time = _TimeShim
+    b1b.PROVER.subprocess = _SubprocessShim
+    b1b.PROVER.in_scenario = fake_in_scenario
+    b1b.PROVER.install_rescue_owner = lambda *a, **k: True
     b1b.PROVER.create_scenario_container = fake_create
-    b1b.PROVER.subprocess.run = fake_run
+    b1b.launch_inner_subject_non_detached = (
+        lambda *a, **k: (FakeClient(), ["python3", "-c", "x", "m"]))
     return recorded
 
 

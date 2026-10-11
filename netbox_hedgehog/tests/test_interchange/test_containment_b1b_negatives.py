@@ -197,13 +197,6 @@ class B1bNegativeControls(SimpleTestCase):
         shortfall = self.b1b.preflight_shortfall(checks)
         self.assertIn("no_shared_container_is_a_target", shortfall["any_false"])
 
-    def is_hex_id(value):
-            return len(value) == 64 and all(c in "0123456789abcdef" for c in value)
-
-        self.assertTrue(is_hex_id("a" * 64))
-        self.assertFalse(is_hex_id("z" * 64), "a non-hex 64-char string passed")
-        self.assertFalse(is_hex_id("a" * 63))
-
     def test_no_name_based_recovery_exists_in_b1b(self):
         """The name-adoption path must be absent, not merely unused.
 
