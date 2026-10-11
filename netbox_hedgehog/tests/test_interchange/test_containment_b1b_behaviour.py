@@ -191,3 +191,102 @@ class B1bBehaviourControls(SimpleTestCase):
         self.assertIn("immutable_id_is_64_hex",
                       shortfall["any_false"] + shortfall["not_literally_true"],
                       shortfall)
+
+    # ------------------------------------------------------------------
+    # Conclusion-bearing evidence.
+    #
+    # A static audit of this module against containment_b1b showed that 17
+    # of 28 top-level evidence keys were recorded but read by no control,
+    # including every key the baseline exists to report. The module's own
+    # guards covered them, so a mutation removing a guard AND recording the
+    # wrong conclusion passed all 36 controls. These read those keys.
+    # ------------------------------------------------------------------
+
+    def test_a_child_that_did_not_survive_cannot_report_success(self):
+        """The baseline's entire claim is that the child outlived the client.
+
+        If it did not, this run demonstrates nothing and must not report a
+        completed baseline -- the distinction between observing survival and
+        attributing it to the termination.
+        """
+        _, code, evidence, _ = self._run(child_found_after_kill=False)
+        self.assertNotEqual(code, 0, "a non-surviving child reported success")
+        self.assertTrue(evidence["lane_dirty"])
+        self.assertNotIn("baseline_complete", evidence)
+        observed = evidence["inner_subject_after_host_kill"]
+        self.assertEqual(observed["alive"], "false")
+        self.assertTrue(any("did not survive" in r
+                            for r in evidence["dirty_reasons"]),
+                        evidence["dirty_reasons"])
+
+    def test_an_unknown_probe_after_the_kill_is_not_a_clean_result(self):
+        """UNKNOWN must stay UNKNOWN, never collapse to survived-or-not."""
+        b1b, code, evidence, _ = self._run(probe_unknown_after_kill=True)
+        self.assertNotEqual(code, 0, "an UNKNOWN probe reported success")
+        self.assertTrue(evidence["lane_dirty"])
+        self.assertNotIn("baseline_complete", evidence)
+        self.assertEqual(
+            evidence["inner_subject_after_host_kill"]["alive"],
+            b1b.UNKNOWN,
+            "a probe that could not run was recorded as a definite state")
+
+    def test_a_destroyed_same_label_decoy_fails_the_baseline(self):
+        """Disposal goes by registered id; a same-label bystander survives.
+
+        If the decoy is gone, disposal reached an unregistered resource and
+        the run must not report success.
+        """
+        _, code, evidence, _ = self._run(decoy_state_after_rescue="absent")
+        self.assertNotEqual(code, 0,
+                            "destroying an unregistered resource passed")
+        self.assertTrue(evidence["lane_dirty"])
+        self.assertNotIn("baseline_complete", evidence)
+        self.assertEqual(
+            evidence["same_label_decoy_after_rescue"]["state"], "absent")
+
+    def test_a_rescue_outcome_that_is_not_a_cleanup_fails(self):
+        """Only `reaped` or `terminated_zombie` are cleanups."""
+        _, code, evidence, _ = self._run(rescue_outcome="skipped")
+        self.assertNotEqual(code, 0, "a non-cleanup outcome passed")
+        self.assertTrue(evidence["lane_dirty"])
+        self.assertNotIn("baseline_complete", evidence)
+        # It must reach the baseline rescue and fail THERE. Injected into
+        # preflight readiness as well, this run aborted before the rescue
+        # and the assertions above passed for the wrong reason.
+        self.assertTrue(evidence["preflight_passed"],
+                        "the run never reached the baseline rescue")
+        self.assertEqual(evidence["rescue"]["reports"][0]["outcome"],
+                         "skipped")
+        self.assertTrue(any("not a cleanup" in r
+                            for r in evidence["dirty_reasons"]),
+                        evidence["dirty_reasons"])
+
+    def test_the_sound_run_records_every_conclusion_it_claims(self):
+        """The positive, read through the reported conclusions.
+
+        Previously the positive asserted only exit 0, so a run that
+        completed while recording nothing would have passed.
+        """
+        _, code, evidence, _ = self._run()
+        self.assertEqual(code, 0, evidence.get("dirty_reasons"))
+        self.assertFalse(evidence["lane_dirty"])
+        self.assertTrue(evidence["baseline_complete"])
+        self.assertTrue(evidence["preflight_passed"])
+        self.assertTrue(evidence["published_nonce_validated"])
+        self.assertTrue(evidence["inner_parent_child_verified"])
+        # The child outlived the host client...
+        self.assertEqual(
+            evidence["inner_subject_after_host_kill"]["alive"], "true")
+        # ...the rescue cleaned it up...
+        self.assertIn(evidence["rescue"]["reports"][0]["outcome"],
+                      ("reaped", "terminated_zombie"))
+        self.assertEqual(
+            evidence["owned_membership_after_rescue"]["alive"], "false")
+        # ...and the same-label bystander was untouched.
+        self.assertEqual(
+            evidence["same_label_decoy_after_rescue"]["state"], "present")
+        self.assertTrue(evidence["teardown_registered"]["proved"])
+        # The claim is scoped to non-propagation, not causation.
+        claim = evidence["inner_subject_after_host_kill"]["claim"]
+        self.assertIn("did not propagate", claim)
+        self.assertIn("not caused by the termination", claim)

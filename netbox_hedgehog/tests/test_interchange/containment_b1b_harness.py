@@ -74,7 +74,8 @@ class FakeClient:
 def install(b1b, *, published_child_nonce=None, published_parent_nonce=None,
             observed_start_ticks=None, scenario_id=SCENARIO_ID,
             after_kill_state="S", after_rescue_found=False,
-            rescue_outcome="reaped", decoy_state_after_rescue="present"):
+            rescue_outcome="reaped", decoy_state_after_rescue="present",
+            child_found_after_kill=True, probe_unknown_after_kill=False):
     """Patch every outward call of the module under test.
 
     Returns a dict of recorders so a control can assert what the real code
@@ -85,6 +86,10 @@ def install(b1b, *, published_child_nonce=None, published_parent_nonce=None,
     # control.
     recorded = {"removed": [], "signalled": [], "bind_calls": [],
                 "rescue_calls": []}
+
+    def _baseline_signalled():
+        return any(entry.get("pid") == CHILD_PID
+                   for entries in recorded["signalled"] for entry in entries)
 
     def fake_run(argv, **kwargs):
         if not isinstance(argv, list):
@@ -112,6 +117,14 @@ def install(b1b, *, published_child_nonce=None, published_parent_nonce=None,
             if "com.docker.compose.project" in text:
                 return Completed(stdout=lane_holder[0])
             if target in recorded["removed"]:
+                return Completed(stderr=f"No such container: {target}",
+                                 returncode=1)
+            # Decoy destruction, injected through the real `_inspect_state`
+            # rather than by patching it: `decoy_state_after_rescue` was
+            # previously accepted and never used, so a control passing it
+            # injected nothing at all.
+            if (decoy_state_after_rescue == "absent" and target == DECOY_ID
+                    and _baseline_signalled()):
                 return Completed(stderr=f"No such container: {target}",
                                  returncode=1)
             return Completed(stdout=target)
@@ -143,9 +156,16 @@ def install(b1b, *, published_child_nonce=None, published_parent_nonce=None,
                                              "entries": entries})
             if send:
                 recorded["signalled"].append(entries)
+            is_baseline = bool(entries) and entries[0].get("pid") == CHILD_PID
+            if not send:
+                outcome = "verified_not_signalled"
+            elif is_baseline:
+                outcome = rescue_outcome
+            else:
+                outcome = "reaped"        # preflight readiness, never injected
             return Completed(stdout=json.dumps({"reports": [{
                 "verified": True, "signalled": bool(send),
-                "outcome": rescue_outcome if send else "verified_not_signalled",
+                "outcome": outcome,
                 "nonce": entries[0].get("nonce") if entries else None,
                 "pid": CHILD_PID, "reasons": []}]}))
         if argv and argv[0] == "cat":
@@ -175,10 +195,15 @@ def install(b1b, *, published_child_nonce=None, published_parent_nonce=None,
             # readiness subject signals first.
             ticks = (observed_start_ticks if observed_start_ticks is not None
                      else START_TICKS)
-            baseline_signalled = any(
-                entry.get("pid") == CHILD_PID
-                for entries in recorded["signalled"] for entry in entries)
-            if not baseline_signalled:
+            if not _baseline_signalled():
+                # A probe that could not run at all -> UNKNOWN, which must
+                # never read as a clean result.
+                if probe_unknown_after_kill:
+                    return Completed(returncode=1, stderr="probe failed")
+                # The child not surviving host termination means the
+                # baseline did not reproduce the defect it reports.
+                if not child_found_after_kill:
+                    return Completed(stdout=json.dumps({"found": False}))
                 return Completed(stdout=json.dumps(
                     {"found": True, "state": after_kill_state,
                      "start_ticks": ticks}))
