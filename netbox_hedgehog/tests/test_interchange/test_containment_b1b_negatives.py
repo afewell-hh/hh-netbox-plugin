@@ -37,6 +37,15 @@ def _load(name):
 
 
 class B1bNegativeControls(SimpleTestCase):
+    """Schema and helper negatives.
+
+    Two controls were removed from this module rather than kept: a hex test
+    that evaluated a predicate re-declared in the test, and a
+    create/register/start ordering test that read source text a comment
+    would still satisfy. Both passed under the mutations they claimed to
+    guard. Their properties are now covered behaviourally in
+    test_containment_b1b_behaviour.py, which drives the real main().
+    """
 
     @classmethod
     def setUpClass(cls):
@@ -188,46 +197,12 @@ class B1bNegativeControls(SimpleTestCase):
         shortfall = self.b1b.preflight_shortfall(checks)
         self.assertIn("no_shared_container_is_a_target", shortfall["any_false"])
 
-    def test_immutable_id_check_requires_hex_not_only_length(self):
-        """A 64-character non-hex string is not a container id.
-
-        The check tested length alone, so any 64 characters passed.
-        """
-        import re
-
-        source = (MODULE_DIR / "containment_b1b.py").read_text(encoding="utf-8")
-        match = re.search(r'checks\["immutable_id_is_64_hex"\] = \(\s*(.+?)\)\n',
-                          source, re.S)
-        self.assertIsNotNone(match, "the hex check could not be located")
-        expression = match.group(1)
-        self.assertIn("0123456789abcdef", expression,
-                      "the id check still tests length only")
-
-        # Behavioural: evaluate the same predicate both ways.
-        def is_hex_id(value):
+    def is_hex_id(value):
             return len(value) == 64 and all(c in "0123456789abcdef" for c in value)
 
         self.assertTrue(is_hex_id("a" * 64))
         self.assertFalse(is_hex_id("z" * 64), "a non-hex 64-char string passed")
         self.assertFalse(is_hex_id("a" * 63))
-
-    def test_fixture_registration_precedes_start_in_the_real_source(self):
-        """Registration must sit between create and start, in B1b itself.
-
-        The previous control created its own container, iterated its own
-        empty list and checked that container still existed -- an
-        independent snippet. Reintroducing B1b's name adoption could not
-        have affected it. This reads B1b's own ordering, and the
-        name-adoption mutation control below is behavioural.
-        """
-        source = (MODULE_DIR / "containment_b1b.py").read_text(encoding="utf-8")
-        create_at = source.index('"docker", "create", "--label", f"hh716.run=')
-        register_at = source.index("fixture_registry.append(decoy_id)")
-        start_at = source.index('_observe(["docker", "start", decoy_id])')
-        self.assertLess(create_at, register_at,
-                        "the decoy is registered before it is created")
-        self.assertLess(register_at, start_at,
-                        "the decoy is started before it is registered")
 
     def test_no_name_based_recovery_exists_in_b1b(self):
         """The name-adoption path must be absent, not merely unused.
