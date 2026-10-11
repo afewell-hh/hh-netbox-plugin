@@ -53,46 +53,107 @@ PUBLICATION_DIR = PROVER.PUBLICATION_DIR
 # deliberate absence from the registry, that makes it a trap.
 
 
-def preflight(image, lane, run_id, evidence):
-    """Every item verified before anything is launched. Abort on any unknown."""
+def prove_rescue_readiness(container_id, registry, lifecycle):
+    """Readiness means the owner RAN and cleaned a disposable subject.
+
+    The previous check asserted `docker cp` exited 0, which is installation.
+    A syntactically broken or non-runnable owner passed preflight, and
+    preflight's whole job is to refuse launch unless rescue is known to
+    work.
+    """
+    nonce = PROVER.launch_owned_subject(container_id, registry, "readiness",
+                                        lifecycle)
+    time.sleep(2)
+    publication, why = PROVER.read_publication(container_id, nonce)
+    bound, bind_why = PROVER.bind(registry, publication)
+    if not bound:
+        return False, {"stage": "bind", "why": why or bind_why}
+    verified, vwhy = PROVER.run_rescue(container_id, [bound], False)
+    if not verified or not verified["reports"][0]["verified"]:
+        return False, {"stage": "verify", "report": verified or vwhy}
+    cleaned, cwhy = PROVER.run_rescue(container_id, [bound], True)
+    if not cleaned:
+        return False, {"stage": "signal", "why": cwhy}
+    outcome = cleaned["reports"][0]["outcome"]
+    return outcome in ("reaped", "terminated_zombie"), {
+        "verify": verified["reports"][0], "clean": cleaned["reports"][0]}
+
+
+def preflight(image, lane, run_id, evidence, registry, lifecycle):
+    """Every item verified, through B1a registration, before any launch.
+
+    Each check below can fail. The previous set could not: a typo'd lane
+    name passed `dedicated_lane`, a substring match passed `worktree`, a
+    freshly created id trivially passed `no_shared_target`, and
+    `rescue_owner_ready` only meant a file had been copied.
+    """
     checks = {}
 
-    checks["dedicated_lane"] = lane not in ("netbox-docker", "")
-    checks["worktree"] = (_HERE.parents[2].name.startswith("wt")
-                          or "wt716" in str(_HERE))
+    # The lane must be a real Compose project that is not the shared one.
+    projects = subprocess.run(
+        ["docker", "ps", "--filter", f"label=com.docker.compose.project={lane}",
+         "--format", "{{.ID}}"], capture_output=True, text=True, timeout=60)
+    checks["lane_is_a_real_compose_project"] = (
+        projects.returncode == 0 and bool(projects.stdout.strip()))
+    checks["lane_is_not_the_shared_project"] = lane != "netbox-docker"
 
+    # A worktree distinct from the primary checkout, asserted via git.
+    toplevel = subprocess.run(["git", "rev-parse", "--show-toplevel"],
+                              cwd=str(_HERE), capture_output=True, text=True,
+                              timeout=60).stdout.strip()
+    common = subprocess.run(["git", "rev-parse", "--git-common-dir"],
+                            cwd=str(_HERE), capture_output=True, text=True,
+                            timeout=60).stdout.strip()
+    checks["is_a_dedicated_worktree"] = bool(toplevel) and bool(common) and (
+        Path(common).resolve() != Path(toplevel, ".git").resolve())
+
+    # Scenario container, created and REGISTERED through B1a.
     container_id, why = PROVER.create_scenario_container(
-        image, run_id, registry=None, order=None)
-    checks["scenario_container_created"] = bool(container_id)
+        image, run_id, registry, lifecycle)
+    checks["scenario_container_created_and_registered"] = bool(
+        container_id) and container_id in registry.containers
     if not container_id:
         evidence["preflight_failure"] = f"scenario container: {why}"
         return None, None, checks
+    registry.container_id = container_id
 
-    state, detail = PROVER._inspect_state(container_id)
+    state, _ = PROVER._inspect_state(container_id)
     checks["container_present_and_identified"] = state == "present"
     checks["immutable_id_is_64_hex"] = len(container_id) == 64
 
-    # The scenario must not target shared resources.
+    # Its Compose/ownership labels must not be the shared project's.
+    labels = subprocess.run(
+        ["docker", "inspect", container_id, "--format",
+         "{{index .Config.Labels \"com.docker.compose.project\"}}"],
+        capture_output=True, text=True, timeout=60).stdout.strip()
+    checks["scenario_not_in_shared_project"] = labels != "netbox-docker"
     shared = subprocess.run(
-        ["docker", "ps", "-q", "--filter", "name=netbox-docker-"],
+        ["docker", "ps", "-aq", "--filter", "name=netbox-docker-"],
         capture_output=True, text=True, timeout=60).stdout.split()
-    checks["no_shared_target"] = container_id not in shared
+    checks["no_shared_container_is_a_target"] = all(
+        not container_id.startswith(entry) for entry in shared)
 
-    rescue_ready = PROVER.install_rescue_owner(
-        container_id, _HERE / "containment_rescue.py")
-    checks["rescue_owner_ready"] = rescue_ready
+    if not PROVER.install_rescue_owner(container_id,
+                                       _HERE / "containment_rescue.py"):
+        checks["rescue_owner_installed"] = False
+        evidence["preflight"] = {"checks": checks, "container_id": container_id}
+        return container_id, None, checks
+    checks["rescue_owner_installed"] = True
 
-    # A live unrelated bystander, and an unregistered decoy wearing a copied
-    # label, both independently identified as NOT owned by this run.
+    # READINESS BY EXECUTION, before the baseline subject exists.
+    ready, detail = prove_rescue_readiness(container_id, registry, lifecycle)
+    checks["rescue_owner_proven_by_execution"] = ready
+    evidence["rescue_readiness"] = detail
+
+    # An unregistered decoy wearing the run's ACTUAL label.
     bystander = subprocess.run(
         ["docker", "run", "-d", "--label", f"hh716.run={run_id}",
          image, "sleep", "600"],
         capture_output=True, text=True, timeout=180)
     decoy_id = bystander.stdout.strip()
     checks["same_label_decoy_live"] = len(decoy_id) >= 12
-    checks["decoy_is_not_registered"] = decoy_id != container_id
+    checks["decoy_is_not_registered"] = decoy_id not in registry.containers
 
-    # Prove the decoy really is selectable by label, or it is not a trap.
     discovered = subprocess.run(
         ["docker", "ps", "-q", "--filter", f"label=hh716.run={run_id}"],
         capture_output=True, text=True, timeout=60).stdout.split()
@@ -102,7 +163,7 @@ def preflight(image, lane, run_id, evidence):
 
     evidence["preflight"] = {
         "checks": checks,
-        "label_discovery_candidates": sorted(short) if 'short' in dir() else [],
+        "label_discovery_candidates": sorted(short),
         "container_id": container_id,
         "decoy_container_id": decoy_id,
         "lane": lane,
@@ -154,23 +215,56 @@ def read_json_in(container_id, path):
         return None, f"malformed: {exc}"
 
 
+PROBE_SOURCE = """
+import json, os, sys
+pid = int(sys.argv[1])
+try:
+    with open("/proc/%d/stat" % pid, "rb") as handle:
+        raw = handle.read().decode("utf-8", "replace")
+except FileNotFoundError:
+    print(json.dumps({"found": False}))
+    raise SystemExit(0)
+except OSError as exc:
+    print(json.dumps({"error": "%s" % exc.__class__.__name__,
+                      "errno": exc.errno}))
+    raise SystemExit(0)
+try:
+    state = raw.rsplit(")", 1)[1].split()[0]
+except IndexError:
+    print(json.dumps({"error": "unparseable"}))
+    raise SystemExit(0)
+print(json.dumps({"found": True, "state": state}))
+"""
+
+
 def alive_in(container_id, pid):
-    """TRUE/FALSE/UNKNOWN for a pid, excluding zombies from 'alive'."""
+    """TRUE / FALSE / UNKNOWN for a pid, with no failure collapsed into absence.
+
+    The previous version ran `cat /proc/<pid>/stat 2>/dev/null || echo
+    MISSING`, which discarded the failure reason and turned ANY read error
+    -- permission, I/O, an unreadable /proc -- into the same token reported
+    as absence. The inner read's status was thrown away while only the outer
+    exec's was checked: the Phase A collapse, reintroduced here after being
+    fixed twice elsewhere.
+
+    The probe now distinguishes not-found from a read error explicitly, and
+    a read error is UNKNOWN.
+    """
     done = PROVER.in_scenario(
-        container_id,
-        ["sh", "-c", f"cat /proc/{int(pid)}/stat 2>/dev/null || echo MISSING"])
-    text = done.stdout.strip()
+        container_id, ["python3", "-c", PROBE_SOURCE, str(int(pid))])
     if done.returncode != 0:
-        return UNKNOWN, f"probe exited {done.returncode}"
-    if text == "MISSING" or not text:
-        return "false", "no process entry"
+        return UNKNOWN, f"probe exited {done.returncode}: {done.stderr.strip()[:120]}"
     try:
-        state = text.rsplit(")", 1)[1].split()[0]
-    except IndexError:
-        return UNKNOWN, f"unparseable stat: {text[:60]}"
-    if state == "Z":
+        result = json.loads(done.stdout.strip())
+    except ValueError:
+        return UNKNOWN, f"probe output unparseable: {done.stdout.strip()[:80]}"
+    if "error" in result:
+        return UNKNOWN, f"read failed: {result['error']} errno={result.get('errno')}"
+    if not result.get("found"):
+        return "false", "no process entry (reaped)"
+    if result.get("state") == "Z":
         return "false", "terminated (zombie: entry remains, not executing)"
-    return "true", f"state={state}"
+    return "true", f"state={result.get('state')}"
 
 
 def main(argv=None) -> int:
@@ -184,155 +278,213 @@ def main(argv=None) -> int:
     started_at = time.time()
     evidence = {"step": "B1b", "lane": args.lane, "run_id": run_id,
                 "observed_at": int(started_at), "lane_dirty": False,
-                "dirty_reasons": [], "timing": {}}
+                "dirty_reasons": [], "timing": {}, "stages": []}
 
     def dirty(reason):
         evidence["lane_dirty"] = True
         evidence["dirty_reasons"].append(reason)
 
-    container_id, decoy_id, checks = preflight(
-        args.image, args.lane, run_id, evidence)
+    def stage(name, **data):
+        evidence["stages"].append({"stage": name, **data})
 
-    def finish(code):
+    # B1a registry and lifecycle, so ownership goes through the reviewed path
+    # rather than being tracked in local variables.
+    registry = PROVER.Registry(run_id=run_id, lane=args.lane, container_id="")
+    lifecycle = []
+    evidence["lifecycle_order"] = lifecycle
+
+    container_id = decoy_id = None
+    client = None
+
+    try:
+        container_id, decoy_id, checks = preflight(
+            args.image, args.lane, run_id, evidence, registry, lifecycle)
+        if not container_id or not all(checks.values()):
+            failed = [name for name, ok in checks.items() if not ok]
+            dirty(f"preflight incomplete: {failed}")
+            stage("preflight", passed=False, failed=failed)
+            print(f"PREFLIGHT FAILED {failed}; subject never launched",
+                  file=sys.stderr)
+            return 3
+        stage("preflight", passed=True)
+        evidence["preflight_passed"] = True
+
+        marker = f"hh716b1b-{uuid.uuid4().hex[:8]}"
+        expected_argv = ["python3", "-c", "import time; time.sleep(900)", marker]
+        nonce = registry.next_nonce()
+        registry.launches.append(PROVER.asdict(PROVER.LaunchRecord(
+            nonce=nonce, sequence=len(registry.launches),
+            container_id=container_id,
+            expected_cmdline=" ".join(expected_argv),
+            created_at=int(time.time()))))
+        registry.launches[-1]["expected_argv"] = expected_argv
+        lifecycle.append({"event": f"baseline_register:{nonce}",
+                          "at": time.time(),
+                          "registered_nonces": [l["nonce"]
+                                                for l in registry.launches]})
+
+        launch_at = time.time()
+        client, _ = launch_inner_subject_non_detached(
+            container_id, run_id, nonce, marker)
+        lifecycle.append({"event": f"baseline_start:{nonce}", "at": time.time(),
+                          "registered_nonces": [l["nonce"]
+                                                for l in registry.launches]})
+        evidence["host_client_pid"] = client.pid
+        evidence["expected_argv"] = expected_argv
+
+        deadline = launch_at + evidence["preflight"]["observation_deadline_seconds"]
+        parent = child = None
+        while time.time() < deadline:
+            parent, _ = read_json_in(container_id,
+                                     f"{PUBLICATION_DIR}/{nonce}.parent.json")
+            child, _ = read_json_in(container_id,
+                                    f"{PUBLICATION_DIR}/{nonce}.child.json")
+            if parent and child:
+                break
+            time.sleep(2)
+        evidence["timing"]["publication_seconds"] = round(
+            time.time() - launch_at, 1)
+
+        if not (parent and child):
+            dirty("publication did not appear before the observation deadline")
+            stage("publication", ok=False)
+            return 4
+        evidence["publication"] = {"parent": parent, "child": child}
+        stage("publication", ok=True)
+
+        if str(child.get("ppid")) != str(parent.get("pid")):
+            dirty(f"child ppid {child.get('ppid')} is not the exec parent "
+                  f"{parent.get('pid')}")
+            return 5
+        evidence["inner_parent_child_verified"] = True
+        stage("inner_parent_child", verified=True)
+
+        bound, bind_why = PROVER.bind(registry, {
+            "nonce": nonce, "pid": child["pid"],
+            "start_ticks": child["start_ticks"], "pgid": child["pgid"],
+            "sid": child["sid"]})
+        if not bound:
+            dirty(f"baseline child did not bind to the registry: {bind_why}")
+            return 6
+        evidence["binding"] = {"nonce": bound["nonce"],
+                               "expected_argv": bound.get("expected_argv")}
+        stage("two_sided_binding", ok=True)
+
+        verified, why = PROVER.run_rescue(container_id, [bound], False)
+        evidence["pre_termination_verification"] = verified or {"error": why}
+        if not verified or not verified["reports"][0]["verified"]:
+            dirty("ownership not verified before termination")
+            return 7
+        stage("pre_termination_verification", verified=True)
+
+        kill_at = time.time()
+        client.kill()
+        client.communicate()
+        evidence["timing"]["host_client_terminated_after_seconds"] = round(
+            kill_at - launch_at, 1)
+        evidence["host_client_returncode"] = client.returncode
+        time.sleep(3)
+        stage("host_client_terminated", pid=client.pid,
+              returncode=client.returncode)
+
+        state, detail = alive_in(container_id, child["pid"])
+        evidence["inner_subject_after_host_kill"] = {
+            "alive": state, "detail": detail,
+            "claim": "host-client termination did not propagate to its inner "
+                     "child; survival is not caused by the termination",
+        }
+        if state == UNKNOWN:
+            dirty(f"inner subject state unknown after host kill: {detail}")
+            return 8
+        if state != "true":
+            dirty("the inner subject did not survive host termination; this "
+                  "baseline does not demonstrate the defect it claims")
+            return 9
+
+        rescued, why = PROVER.run_rescue(container_id, [bound], True)
+        evidence["rescue"] = rescued or {"error": why}
+        if not rescued:
+            dirty(f"rescue owner failed: {why}")
+            return 10
+        if rescued["reports"][0]["outcome"] not in ("reaped",
+                                                     "terminated_zombie"):
+            dirty(f"rescue outcome {rescued['reports'][0]['outcome']!r} is "
+                  "not a cleanup")
+            return 11
+
+        after, after_detail = alive_in(container_id, child["pid"])
+        evidence["owned_membership_after_rescue"] = {"alive": after,
+                                                     "detail": after_detail}
+        if after == UNKNOWN:
+            dirty(f"survivor state unknown after rescue: {after_detail}")
+            return 12
+        if after != "false":
+            dirty("an owned member survived the rescue")
+            return 13
+
+        decoy_state, decoy_detail = PROVER._inspect_state(decoy_id)
+        evidence["same_label_decoy_after_rescue"] = {
+            "state": decoy_state, "detail": decoy_detail,
+            "label": f"hh716.run={run_id}",
+            "note": "identical label to the registered scenario container, "
+                    "and absent from the registry; survives because disposal "
+                    "goes by exact registered ID, not label discovery",
+        }
+        if decoy_state != "present":
+            dirty("an unregistered same-label resource was destroyed by the "
+                  "rescue path")
+            return 14
+
+        evidence["baseline_complete"] = True
+        return 0
+    except BaseException as exc:
+        # Nothing may escape without disposal and evidence. The previous
+        # main() had no try/finally, so an exception anywhere left a live
+        # orphan, no artifact and no teardown -- in the one script that
+        # creates an orphan on purpose.
+        dirty(f"unhandled {type(exc).__name__}: {exc}")
+        evidence["unhandled_exception"] = {"type": type(exc).__name__,
+                                           "message": str(exc)[:300]}
+        raise
+    finally:
+        if client is not None and client.poll() is None:
+            try:
+                client.kill()
+                client.communicate(timeout=30)
+            except Exception as exc:          # noqa: BLE001
+                dirty(f"host client could not be terminated: {exc}")
+
+        try:
+            evidence["registry"] = PROVER.asdict(registry)
+            evidence["teardown_registered"] = (
+                PROVER.teardown_registered_containers(registry))
+            if not evidence["teardown_registered"]["proved"]:
+                dirty("registered teardown could not be proved")
+        except Exception as exc:              # noqa: BLE001
+            dirty(f"registered teardown raised: {exc}")
+
+        if decoy_id:
+            try:
+                subprocess.run(["docker", "rm", "-f", decoy_id],
+                               capture_output=True, text=True, timeout=120)
+                state, detail = PROVER._inspect_state(decoy_id)
+                evidence["decoy_fixture_cleanup"] = {"id": decoy_id,
+                                                     "state_after": state,
+                                                     "detail": detail}
+                if state != "absent":
+                    dirty("the decoy was not verifiably disposed")
+            except Exception as exc:          # noqa: BLE001
+                dirty(f"decoy cleanup raised: {exc}")
+
         evidence["timing"]["total_seconds"] = round(time.time() - started_at, 1)
-        # Reconcile and dispose only registered scenario resources, by exact ID.
-        disposal = {}
-        # Fixture disposal, by exact ID, AFTER evidence capture. Distinct
-        # from the rescue path, which must never have touched the decoy.
-        for label, cid in (("scenario_registered", container_id),
-                           ("decoy_unregistered_fixture_cleanup", decoy_id)):
-            if not cid:
-                continue
-            removed = subprocess.run(["docker", "rm", "-f", cid],
-                                     capture_output=True, text=True, timeout=120)
-            state, detail = PROVER._inspect_state(cid)
-            disposal[label] = {"id": cid, "state_after": state, "detail": detail}
-            if state != "absent":
-                dirty(f"{label} resource {cid[:12]} not verifiably disposed")
-        evidence["disposal"] = disposal
-        args.output.parent.mkdir(parents=True, exist_ok=True)
-        args.output.write_text(json.dumps(evidence, indent=2, sort_keys=True),
-                               encoding="utf-8")
-        print(f"wrote {args.output} (dirty={evidence['lane_dirty']})")
-        return code
-
-    if not container_id or not all(checks.values()):
-        failed = [name for name, ok in checks.items() if not ok]
-        dirty(f"preflight incomplete: {failed}")
-        print(f"PREFLIGHT FAILED {failed}; subject never launched", file=sys.stderr)
-        return finish(3)
-    evidence["preflight_passed"] = True
-
-    nonce = f"{run_id}:0:{uuid.uuid4().hex[:8]}"
-    marker = f"hh716b1b-{nonce.split(':')[-1]}"
-
-    # --- one non-detached exec, which launches the registered inner child ---
-    launch_at = time.time()
-    client, expected_argv = launch_inner_subject_non_detached(
-        container_id, run_id, nonce, marker)
-    evidence["host_client_pid"] = client.pid
-    evidence["expected_argv"] = expected_argv
-
-    deadline = launch_at + evidence["preflight"]["observation_deadline_seconds"]
-    parent = child = None
-    while time.time() < deadline:
-        parent, _ = read_json_in(container_id, f"{PUBLICATION_DIR}/{nonce}.parent.json")
-        child, _ = read_json_in(container_id, f"{PUBLICATION_DIR}/{nonce}.child.json")
-        if parent and child:
-            break
-        time.sleep(2)
-    evidence["timing"]["publication_seconds"] = round(time.time() - launch_at, 1)
-
-    if not (parent and child):
-        dirty("publication did not appear before the observation deadline")
-        client.kill(); client.communicate()
-        return finish(4)
-
-    evidence["publication"] = {"parent": parent, "child": child}
-    # Inner parent/child relationship must be real, not assumed.
-    if str(child.get("ppid")) != str(parent.get("pid")):
-        dirty(f"child ppid {child.get('ppid')} is not the exec parent "
-              f"{parent.get('pid')}")
-        client.kill(); client.communicate()
-        return finish(5)
-    evidence["inner_parent_child_verified"] = True
-
-    # --- verify with the B1a rescue owner BEFORE terminating anything ---
-    entry = {"nonce": nonce, "pid": child["pid"],
-             "start_ticks": child["start_ticks"], "pgid": child["pgid"],
-             "sid": child["sid"], "expected_argv": expected_argv}
-    verified, why = PROVER.run_rescue(container_id, [entry], False)
-    evidence["pre_termination_verification"] = verified or {"error": why}
-    if not verified or not verified["reports"][0]["verified"]:
-        dirty("ownership not verified before termination")
-        client.kill(); client.communicate()
-        return finish(6)
-
-    # --- terminate the exact host-side compose-exec client ---
-    kill_at = time.time()
-    client.kill()
-    client.communicate()
-    evidence["timing"]["host_client_terminated_after_seconds"] = round(
-        kill_at - launch_at, 1)
-    evidence["host_client_returncode"] = client.returncode
-    time.sleep(3)
-
-    # --- the defect: host-client termination does not PROPAGATE inward ---
-    # Stated carefully. The child's survival is not *caused* by the
-    # termination; it would have run on regardless. What this shows is that
-    # terminating the host-side client did not terminate its own inner
-    # child -- the kill failed to cross the container boundary.
-    state, detail = alive_in(container_id, child["pid"])
-    evidence["inner_subject_after_host_kill"] = {
-        "alive": state, "detail": detail,
-        "claim": "host-client termination did not propagate to its inner "
-                 "child; survival is not caused by the termination",
-    }
-    if state == UNKNOWN:
-        dirty("could not determine whether the inner subject survived")
-        return finish(7)
-    if state != "true":
-        dirty("the inner subject did not survive host termination; this "
-              "baseline does not demonstrate the defect it claims")
-        return finish(8)
-
-    # --- rescue, via the B1a verified exact-ID/pidfd path only ---
-    rescued, why = PROVER.run_rescue(container_id, [entry], True)
-    evidence["rescue"] = rescued or {"error": why}
-    if not rescued:
-        dirty(f"rescue owner failed: {why}")
-        return finish(9)
-    report = rescued["reports"][0]
-    if report["outcome"] not in ("reaped", "terminated_zombie"):
-        dirty(f"rescue outcome {report['outcome']!r} is not a cleanup")
-        return finish(10)
-
-    after, after_detail = alive_in(container_id, child["pid"])
-    evidence["owned_membership_after_rescue"] = {"alive": after,
-                                                 "detail": after_detail}
-    if after == UNKNOWN:
-        dirty("survivor state unknown after rescue")
-        return finish(11)
-    if after != "false":
-        dirty("an owned member survived the rescue")
-        return finish(12)
-
-    # --- the same-label, unregistered decoy must survive the rescue ---
-    decoy_state, decoy_detail = PROVER._inspect_state(decoy_id)
-    evidence["same_label_decoy_after_rescue"] = {
-        "state": decoy_state, "detail": decoy_detail,
-        "label": f"hh716.run={run_id}",
-        "note": "identical label to the registered scenario container, and "
-                "absent from the registry; survives because disposal goes by "
-                "exact registered ID, not by label discovery",
-    }
-    if decoy_state != "present":
-        dirty("an unregistered same-label resource was destroyed by the "
-              "rescue path")
-        return finish(13)
-
-    evidence["baseline_complete"] = True
-    return finish(0)
+        try:
+            args.output.parent.mkdir(parents=True, exist_ok=True)
+            args.output.write_text(
+                json.dumps(evidence, indent=2, sort_keys=True),
+                encoding="utf-8")
+            print(f"wrote {args.output} (dirty={evidence['lane_dirty']})")
+        except Exception as exc:              # noqa: BLE001
+            print(f"EVIDENCE WRITE FAILED: {exc}", file=sys.stderr)
 
 
 if __name__ == "__main__":
