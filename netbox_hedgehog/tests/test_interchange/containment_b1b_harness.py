@@ -441,6 +441,7 @@ def evidence_read_paths(paths):
 #   W5  evidence["k"].update({...})          and evidence.update({...})
 #   W6  evidence["k"].append(...) / .extend(...)   mutates a value, adds
 #                                            no key
+#   W7  evidence.setdefault("k", []).append(...)   same, on the result
 #   In W2/W4/W5, a dict-literal value contributes its own nested paths.
 #
 # REJECTED (each fails the control rather than going uncounted):
@@ -449,6 +450,9 @@ def evidence_read_paths(paths):
 #   dict unpacking        evidence.update({**other})
 #   depth overflow        any path deeper than 2
 #   aliasing              ev = evidence; ev["k"] = v
+#   nested aliasing       p = evidence["k"]; p["j"] = v
+#   escaped setdefault    evidence.setdefault(...) bound to a name, or
+#                         mutated by anything but append/extend
 #   name escape           evidence passed to a local function whose
 #                         parameter is not also named `evidence`
 # ----------------------------------------------------------------------
@@ -496,6 +500,15 @@ def _dict_literal_paths(prefix, node, out, bad, where):
         _dict_literal_paths(path, value, out, bad, where)
 
 
+def _is_evidence_accessor_call(node):
+    """`evidence.setdefault(...)` / `evidence["k"].get(...)` -- a call
+    returning an object that lives inside evidence."""
+    return (isinstance(node, ast.Call)
+            and isinstance(node.func, ast.Attribute)
+            and node.func.attr in ("setdefault", "get")
+            and _ev_chain(node.func.value) is not None)
+
+
 def evidence_grammar_scan(path):
     """(write_paths, violations) for the subject at `path`."""
     tree = ast.parse(pathlib.Path(path).read_text())
@@ -527,14 +540,20 @@ def evidence_grammar_scan(path):
     for node in ast.walk(tree):
         where = f"line {getattr(node, 'lineno', '?')}"
 
-        # Aliasing: `ev = evidence`
-        if (isinstance(node, ast.Assign) and len(node.targets) == 1
-                and isinstance(node.targets[0], ast.Name)
-                and isinstance(node.value, ast.Name)
-                and node.value.id == "evidence"):
-            bad.append(f"{where}: `evidence` aliased to "
-                       f"`{node.targets[0].id}`; writes through an alias are "
-                       f"invisible")
+        # Aliasing, bare or nested: binding `evidence` OR any sub-object
+        # of it to a name. Writes through either are invisible.
+        if isinstance(node, (ast.Assign, ast.AnnAssign)):
+            bound_to = (node.targets if isinstance(node, ast.Assign)
+                        else [node.target])
+            value = node.value
+            is_ev_expr = (
+                (isinstance(value, ast.Name) and value.id == "evidence")
+                or (value is not None and _ev_chain(value) is not None)
+                or _is_evidence_accessor_call(value))
+            for t in bound_to:
+                if isinstance(t, ast.Name) and is_ev_expr:
+                    bad.append(f"{where}: an `evidence` object is bound to "
+                               f"`{t.id}`; writes through it are invisible")
 
         # W1: the initialiser
         if (isinstance(node, ast.Assign) and len(node.targets) == 1
@@ -546,11 +565,33 @@ def evidence_grammar_scan(path):
                 bad.append(f"{where}: `evidence` bound to an unsupported "
                            f"expression ({type(node.value).__name__})")
 
-        # W2 / W3: subscript assignment
-        target = (node.targets[0]
-                  if isinstance(node, ast.Assign) and len(node.targets) == 1
-                  else node.target if isinstance(node, ast.AugAssign) else None)
-        if isinstance(target, ast.Subscript):
+        # W2 / W3: subscript assignment. EVERY store target counts --
+        # annotated assignment, chained targets `a = b = v`, and tuple
+        # unpacking were each invisible when only targets[0] of a plain
+        # Assign was examined.
+        targets = []
+        if isinstance(node, ast.Assign):
+            targets = list(node.targets)
+        elif isinstance(node, (ast.AugAssign, ast.AnnAssign)):
+            targets = [node.target]
+        flat = []
+        for t in targets:
+            if isinstance(t, (ast.Tuple, ast.List)):
+                flat.extend(t.elts)
+            elif isinstance(t, ast.Starred):
+                flat.append(t.value)
+            else:
+                flat.append(t)
+        for target in flat:
+            if not isinstance(target, ast.Subscript):
+                continue
+            inner = target
+            while isinstance(inner, ast.Subscript):
+                inner = inner.value
+            if _is_evidence_accessor_call(inner):
+                bad.append(f"{where}: store into the result of an evidence "
+                           f"accessor; the key is invisible")
+                continue
             chain = _ev_chain(target)
             if isinstance(chain, tuple):
                 bad.append(f"{where}: computed key in an evidence write")
@@ -566,6 +607,16 @@ def evidence_grammar_scan(path):
 
         # W4 / W5 / W6: method calls on evidence or on a value of it
         if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute):
+            # Mutating whatever setdefault()/get() handed back. Only
+            # append/extend are safe: they add no key. The subject relies
+            # on `evidence.setdefault("fixture_registry", []).append(...)`,
+            # whose key is already recorded by the setdefault itself.
+            if _is_evidence_accessor_call(node.func.value):
+                if node.func.attr not in _MUTATORS:
+                    bad.append(f"{where}: .{node.func.attr}() on the result "
+                               f"of an evidence accessor; any key it adds is "
+                               f"invisible")
+                continue
             base = _ev_chain(node.func.value)
             if base is None:
                 continue
