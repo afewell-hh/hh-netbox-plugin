@@ -415,19 +415,21 @@ class B1bBehaviourControls(SimpleTestCase):
         no control, so conclusions went unverified while the path was
         checked. This fails when a key is added that no control reads.
 
-        Enumerating bypasses and patching them failed three times: the
-        initialiser, nested writes and assigned dict literals first; then
-        keyword `update`, computed dict keys, a deep initialiser, alias
-        writes and `setdefault` defaults. Each round left another form
-        silently uncounted, because an unrecognised write was invisible.
+        Enumerating write forms and patching the gaps failed four times
+        running, because the scanner looked for shapes it knew and an
+        unrecognised construct was simply absent rather than rejected.
 
-        So the collector now works from a declared grammar
-        (`evidence_grammar_scan`): every construct storing into
-        `evidence` must match a supported form, and anything else is
-        reported as a violation that fails this control. A new write form
-        cannot pass by being unrecognised -- being unrecognised IS the
-        failure. The grammar and its rejections are documented beside the
-        scanner in the harness.
+        `evidence_grammar_scan` now classifies at the NODE level: every
+        maximal `evidence`-rooted expression in the module is located and
+        classified, and the last branch is `else: violation`. Stores are
+        keyed on `ctx`, not on statement type, so every store position --
+        assignment, augmented, annotated, chained, `for` target, `with
+        ... as`, comprehension target, and tuple/list targets nested to
+        any depth -- is recorded by construction rather than by having
+        been anticipated. Loads that merely inspect are allowed; loads
+        that RETAIN the object (a container, a return, a yield, a
+        closure, a foreign callable) are rejected, since a write through
+        a retained reference is as invisible as an alias write.
 
         Only the control modules count as readers -- not the harness,
         which reads keys to drive injections, not to falsify them.

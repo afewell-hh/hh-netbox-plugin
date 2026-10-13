@@ -459,6 +459,21 @@ def evidence_read_paths(paths):
 
 MAX_PATH_DEPTH = 2
 _MUTATORS = ("append", "extend")
+_READ_METHODS = ("get", "pop", "keys", "items", "values", "copy")
+# Foreign callables that may receive `evidence` whole. Anything else
+# outside the module could retain it and write through the reference,
+# which the scanner cannot see -- so it is rejected rather than assumed
+# safe. Local functions are checked separately, by parameter name.
+_SAFE_FOREIGN_CALLS = ("json.dump", "json.dumps", "len", "bool", "repr",
+                       "sorted", "id", "print")
+# Non-retaining uses: they inspect the object and let no reference
+# outlive the expression. RETAINING uses -- a container, a return, a
+# yield, a closure -- are rejected instead, because a write through the
+# retained reference is invisible exactly as an alias write is.
+_READ_CONTEXTS = (ast.Compare, ast.BoolOp, ast.UnaryOp, ast.BinOp,
+                  ast.IfExp, ast.FormattedValue, ast.JoinedStr,
+                  ast.Expr, ast.Assert, ast.Subscript,
+                  ast.For, ast.If, ast.While)
 
 
 def _ev_chain(node, root="evidence"):
@@ -510,155 +525,230 @@ def _is_evidence_accessor_call(node):
 
 
 def evidence_grammar_scan(path):
-    """(write_paths, violations) for the subject at `path`."""
+    """(write_paths, violations) for the subject at `path`.
+
+    NODE-LEVEL CLASSIFICATION. Every maximal `evidence`-rooted expression
+    in the module is located and classified, and the final branch is
+    `else: violation`. Earlier versions enumerated statement shapes, so a
+    form the walker never looked for -- a loop target, a nested tuple
+    target, an annotated assignment -- was neither recorded nor rejected.
+    Keying stores on `ctx` instead of on statement type makes every store
+    position fall out by construction: assignment, augmented, annotated,
+    chained, `for` target, `with ... as`, comprehension target, and
+    tuple/list targets nested to any depth.
+    """
     tree = ast.parse(pathlib.Path(path).read_text())
     paths, bad = set(), []
 
-    # Name escapes: `evidence` handed to a local function under another
-    # parameter name would be written there invisibly.
+    parent = {}
+    for node in ast.walk(tree):
+        for child in ast.iter_child_nodes(node):
+            parent[child] = node
+
     local_funcs = {n.name: n for n in ast.walk(tree)
                    if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef))}
-    for node in ast.walk(tree):
-        if isinstance(node, ast.Call) and isinstance(node.func, ast.Name):
-            fn = local_funcs.get(node.func.id)
-            if fn is None:
-                continue
-            params = [a.arg for a in fn.args.args]
-            for i, arg in enumerate(node.args):
-                if (isinstance(arg, ast.Name) and arg.id == "evidence"
-                        and i < len(params) and params[i] != "evidence"):
-                    bad.append(f"line {node.lineno}: `evidence` passed to "
-                               f"{fn.name}() as `{params[i]}`; writes there "
-                               f"are invisible")
-            for kw in node.keywords:
-                if (isinstance(kw.value, ast.Name)
-                        and kw.value.id == "evidence"
-                        and kw.arg not in (None, "evidence")):
-                    bad.append(f"line {node.lineno}: `evidence` passed to "
-                               f"{fn.name}() as `{kw.arg}`")
+
+    def maximal(node):
+        """An evidence-rooted expression not contained in a larger one."""
+        if not isinstance(node, (ast.Name, ast.Subscript)):
+            return False
+        probe = node
+        while isinstance(probe, ast.Subscript):
+            probe = probe.value
+        if not (isinstance(probe, ast.Name) and probe.id == "evidence"):
+            return False
+        up = parent.get(node)
+        return not (isinstance(up, ast.Subscript) and up.value is node)
+
+    def record(expr, where, value=None):
+        chain = _ev_chain(expr)
+        if chain is None:                       # the bare name as a target
+            bad.append(f"{where}: `evidence` itself rebound")
+            return
+        if isinstance(chain, tuple):
+            bad.append(f"{where}: computed key in an evidence write")
+            return
+        if len(chain) > MAX_PATH_DEPTH:
+            bad.append(f"{where}: write to {'.'.join(chain)} is deeper "
+                       f"than {MAX_PATH_DEPTH}")
+            return
+        paths.add(".".join(chain))
+        if value is not None:
+            _dict_literal_paths(chain, value, paths, bad, where)
 
     for node in ast.walk(tree):
+        if not maximal(node):
+            continue
         where = f"line {getattr(node, 'lineno', '?')}"
+        up = parent.get(node)
+        ctx = getattr(node, "ctx", None)
 
-        # Aliasing, bare or nested: binding `evidence` OR any sub-object
-        # of it to a name. Writes through either are invisible.
-        if isinstance(node, (ast.Assign, ast.AnnAssign)):
-            bound_to = (node.targets if isinstance(node, ast.Assign)
-                        else [node.target])
-            value = node.value
-            is_ev_expr = (
-                (isinstance(value, ast.Name) and value.id == "evidence")
-                or (value is not None and _ev_chain(value) is not None)
-                or _is_evidence_accessor_call(value))
-            for t in bound_to:
-                if isinstance(t, ast.Name) and is_ev_expr:
-                    bad.append(f"{where}: an `evidence` object is bound to "
-                               f"`{t.id}`; writes through it are invisible")
-
-        # W1: the initialiser
-        if (isinstance(node, ast.Assign) and len(node.targets) == 1
-                and isinstance(node.targets[0], ast.Name)
-                and node.targets[0].id == "evidence"):
-            if isinstance(node.value, ast.Dict):
-                _dict_literal_paths([], node.value, paths, bad, where)
-            elif not isinstance(node.value, ast.Name):
-                bad.append(f"{where}: `evidence` bound to an unsupported "
-                           f"expression ({type(node.value).__name__})")
-
-        # W2 / W3: subscript assignment. EVERY store target counts --
-        # annotated assignment, chained targets `a = b = v`, and tuple
-        # unpacking were each invisible when only targets[0] of a plain
-        # Assign was examined.
-        targets = []
-        if isinstance(node, ast.Assign):
-            targets = list(node.targets)
-        elif isinstance(node, (ast.AugAssign, ast.AnnAssign)):
-            targets = [node.target]
-        flat = []
-        for t in targets:
-            if isinstance(t, (ast.Tuple, ast.List)):
-                flat.extend(t.elts)
-            elif isinstance(t, ast.Starred):
-                flat.append(t.value)
+        # ---- stores: every position, by ctx ----
+        if isinstance(ctx, ast.Store):
+            value = None
+            if isinstance(up, (ast.Assign, ast.AnnAssign)):
+                # Nested-literal collection only when this IS the whole
+                # target; through unpacking the value cannot be mapped.
+                if isinstance(up, ast.AnnAssign) or any(
+                        t is node for t in up.targets):
+                    value = up.value
+            if isinstance(node, ast.Name):
+                if isinstance(up, ast.Assign) and isinstance(value, ast.Dict):
+                    _dict_literal_paths([], value, paths, bad, where)
+                elif isinstance(up, ast.Assign) and isinstance(value, ast.Name):
+                    pass                      # evidence = evidence
+                else:
+                    bad.append(f"{where}: `evidence` bound to an unsupported "
+                               f"expression "
+                               f"({type(value).__name__ if value else '?'})")
             else:
-                flat.append(t)
-        for target in flat:
-            if not isinstance(target, ast.Subscript):
-                continue
-            inner = target
-            while isinstance(inner, ast.Subscript):
-                inner = inner.value
-            if _is_evidence_accessor_call(inner):
-                bad.append(f"{where}: store into the result of an evidence "
-                           f"accessor; the key is invisible")
-                continue
-            chain = _ev_chain(target)
-            if isinstance(chain, tuple):
-                bad.append(f"{where}: computed key in an evidence write")
-            elif chain is not None:
-                if len(chain) > MAX_PATH_DEPTH:
-                    bad.append(f"{where}: write to "
-                               f"{'.'.join(chain)} is deeper than "
-                               f"{MAX_PATH_DEPTH}")
-                else:
-                    paths.add(".".join(chain))
-                    _dict_literal_paths(chain, getattr(node, "value", None),
-                                        paths, bad, where)
+                record(node, where, value)
+            continue
 
-        # W4 / W5 / W6: method calls on evidence or on a value of it
-        if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute):
-            # Mutating whatever setdefault()/get() handed back. Only
-            # append/extend are safe: they add no key. The subject relies
-            # on `evidence.setdefault("fixture_registry", []).append(...)`,
-            # whose key is already recorded by the setdefault itself.
-            if _is_evidence_accessor_call(node.func.value):
-                if node.func.attr not in _MUTATORS:
-                    bad.append(f"{where}: .{node.func.attr}() on the result "
-                               f"of an evidence accessor; any key it adds is "
-                               f"invisible")
+        if isinstance(ctx, ast.Del):
+            continue                           # removes a key, adds none
+
+        # ---- loads ----
+        if isinstance(up, ast.Attribute):
+            call = parent.get(up)
+            if not (isinstance(call, ast.Call) and call.func is up):
+                bad.append(f"{where}: attribute `.{up.attr}` taken on "
+                           f"evidence without calling it")
                 continue
-            base = _ev_chain(node.func.value)
-            if base is None:
-                continue
-            if isinstance(base, tuple):
-                bad.append(f"{where}: computed key in an evidence "
-                           f".{node.func.attr}() call")
-                continue
-            attr = node.func.attr
-            if attr == "setdefault":
-                if not (node.args and isinstance(node.args[0], ast.Constant)
-                        and isinstance(node.args[0].value, str)):
-                    bad.append(f"{where}: setdefault with a computed key")
-                    continue
-                if node.keywords:
-                    bad.append(f"{where}: setdefault with keyword arguments")
-                chain = base + [node.args[0].value]
-                if len(chain) > MAX_PATH_DEPTH:
-                    bad.append(f"{where}: setdefault path "
-                               f"{'.'.join(chain)} is deeper than "
-                               f"{MAX_PATH_DEPTH}")
-                else:
-                    paths.add(".".join(chain))
-                    if len(node.args) > 1:
-                        _dict_literal_paths(chain, node.args[1], paths, bad,
-                                            where)
-            elif attr == "update":
-                if node.keywords:
-                    bad.append(f"{where}: update() in keyword form; its keys "
-                               f"are not collected")
-                if not node.args:
-                    continue
-                if not isinstance(node.args[0], ast.Dict):
-                    bad.append(f"{where}: update() with a non-literal "
-                               f"mapping ({type(node.args[0]).__name__})")
-                else:
-                    _dict_literal_paths(base, node.args[0], paths, bad, where)
-            elif attr in _MUTATORS:
-                pass                       # mutates a value, adds no key
-            elif attr in ("get", "pop", "keys", "items", "values", "copy"):
-                pass                       # reads
-            else:
-                bad.append(f"{where}: unsupported evidence method "
-                           f".{attr}()")
+            _classify_method(node, up, call, where, paths, bad)
+            # What happens to what the call RETURNED. setdefault/get/pop
+            # hand back an object living inside evidence; a write through
+            # it is invisible. The node-level rewrite initially lost this
+            # check, because the result is a Call and so is not itself an
+            # evidence-rooted expression that the walker would classify.
+            if up.attr in ("setdefault",) + _READ_METHODS:
+                _classify_result_use(call, parent, where, bad)
+            continue
+
+        if isinstance(up, (ast.Assign, ast.AnnAssign)) and up.value is node:
+            targets = (up.targets if isinstance(up, ast.Assign)
+                       else [up.target])
+            if any(isinstance(t, ast.Name) for t in targets):
+                bad.append(f"{where}: an `evidence` object is bound to a "
+                           f"name; writes through it are invisible")
+            continue
+
+        # `f(x=evidence)`: the parent is the keyword, not the call.
+        if isinstance(up, ast.keyword):
+            call = parent.get(up)
+            if isinstance(call, ast.Call) and isinstance(call.func, ast.Name):
+                fn = local_funcs.get(call.func.id)
+                if fn is not None and up.arg not in (None, "evidence"):
+                    bad.append(f"{where}: `evidence` passed to {fn.name}() "
+                               f"as `{up.arg}`")
+            continue
+
+        if isinstance(up, ast.Call):
+            callee = _callee_name(up.func)
+            fn = (local_funcs.get(up.func.id)
+                  if isinstance(up.func, ast.Name) else None)
+            if fn is not None:
+                params = [a.arg for a in fn.args.args]
+                for i, arg in enumerate(up.args):
+                    if arg is node and i < len(params) and \
+                            params[i] != "evidence":
+                        bad.append(f"{where}: `evidence` passed to "
+                                   f"{fn.name}() as `{params[i]}`; "
+                                   f"writes there are invisible")
+            elif callee not in _SAFE_FOREIGN_CALLS:
+                # A foreign callable could retain the reference and write
+                # through it; the scanner cannot follow that.
+                bad.append(f"{where}: `evidence` passed whole to "
+                           f"{callee or 'an unnamed callable'}(), which is "
+                           f"not a declared-safe recipient")
+            continue
+
+        if isinstance(up, _READ_CONTEXTS):
+            continue
+
+        # ---- the else that makes this bounded ----
+        bad.append(f"{where}: unclassified `evidence` use in "
+                   f"{type(up).__name__}; the coverage guard cannot speak "
+                   f"for it")
 
     return paths, sorted(set(bad))
+
+
+def _callee_name(func):
+    parts = []
+    while isinstance(func, ast.Attribute):
+        parts.append(func.attr)
+        func = func.value
+    if isinstance(func, ast.Name):
+        parts.append(func.id)
+        return ".".join(reversed(parts))
+    return None
+
+
+def _classify_result_use(call, parent, where, bad):
+    up = parent.get(call)
+    if isinstance(up, ast.Attribute):
+        outer = parent.get(up)
+        if not (isinstance(outer, ast.Call) and outer.func is up):
+            bad.append(f"{where}: attribute `.{up.attr}` taken on an "
+                       f"evidence accessor result without calling it")
+        elif up.attr not in _MUTATORS:
+            bad.append(f"{where}: .{up.attr}() on the result of an evidence "
+                       f"accessor; any key it adds is invisible")
+        return
+    if isinstance(up, ast.Subscript):
+        if isinstance(getattr(up, "ctx", None), (ast.Store, ast.Del)):
+            bad.append(f"{where}: store into the result of an evidence "
+                       f"accessor; the key is invisible")
+        return
+    if isinstance(up, (ast.Assign, ast.AnnAssign)) and up.value is call:
+        targets = up.targets if isinstance(up, ast.Assign) else [up.target]
+        if any(isinstance(t, ast.Name) for t in targets):
+            bad.append(f"{where}: an evidence accessor result is bound to a "
+                       f"name; writes through it are invisible")
+        return
+    if isinstance(up, (ast.Tuple, ast.List, ast.Dict, ast.Set, ast.Return,
+                       ast.Yield, ast.YieldFrom, ast.Lambda)):
+        bad.append(f"{where}: an evidence accessor result is retained in "
+                   f"{type(up).__name__}; writes through it are invisible")
+
+
+def _classify_method(expr, attr_node, call, where, paths, bad):
+    base = _ev_chain(expr)
+    if isinstance(base, tuple):
+        bad.append(f"{where}: computed key in an evidence "
+                   f".{attr_node.attr}() call")
+        return
+    if base is None:
+        base = []
+    name = attr_node.attr
+    if name == "setdefault":
+        if not (call.args and isinstance(call.args[0], ast.Constant)
+                and isinstance(call.args[0].value, str)):
+            bad.append(f"{where}: setdefault with a computed key")
+            return
+        if call.keywords:
+            bad.append(f"{where}: setdefault with keyword arguments")
+        chain = base + [call.args[0].value]
+        if len(chain) > MAX_PATH_DEPTH:
+            bad.append(f"{where}: setdefault path {'.'.join(chain)} is "
+                       f"deeper than {MAX_PATH_DEPTH}")
+            return
+        paths.add(".".join(chain))
+        if len(call.args) > 1:
+            _dict_literal_paths(chain, call.args[1], paths, bad, where)
+    elif name == "update":
+        if call.keywords:
+            bad.append(f"{where}: update() in keyword form; its keys are "
+                       f"not collected")
+        if not call.args:
+            return
+        if not isinstance(call.args[0], ast.Dict):
+            bad.append(f"{where}: update() with a non-literal mapping "
+                       f"({type(call.args[0]).__name__})")
+        else:
+            _dict_literal_paths(base, call.args[0], paths, bad, where)
+    elif name in _MUTATORS or name in _READ_METHODS:
+        pass
+    else:
+        bad.append(f"{where}: unsupported evidence method .{name}()")
