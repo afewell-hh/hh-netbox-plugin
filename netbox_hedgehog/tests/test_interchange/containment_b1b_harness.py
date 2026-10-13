@@ -622,56 +622,112 @@ def evidence_grammar_scan(path):
             # check, because the result is a Call and so is not itself an
             # evidence-rooted expression that the walker would classify.
             if up.attr in ("setdefault",) + _READ_METHODS:
-                _classify_result_use(call, parent, where, bad)
+                _classify_result_use(call, parent, local_funcs, where, bad)
             continue
 
-        if isinstance(up, (ast.Assign, ast.AnnAssign)) and up.value is node:
-            targets = (up.targets if isinstance(up, ast.Assign)
-                       else [up.target])
-            if any(isinstance(t, ast.Name) for t in targets):
-                bad.append(f"{where}: an `evidence` object is bound to a "
-                           f"name; writes through it are invisible")
-            continue
-
-        # `f(x=evidence)`: the parent is the keyword, not the call.
-        if isinstance(up, ast.keyword):
-            call = parent.get(up)
-            if isinstance(call, ast.Call) and isinstance(call.func, ast.Name):
-                fn = local_funcs.get(call.func.id)
-                if fn is not None and up.arg not in (None, "evidence"):
-                    bad.append(f"{where}: `evidence` passed to {fn.name}() "
-                               f"as `{up.arg}`")
-            continue
-
-        if isinstance(up, ast.Call):
-            callee = _callee_name(up.func)
-            fn = (local_funcs.get(up.func.id)
-                  if isinstance(up.func, ast.Name) else None)
-            if fn is not None:
-                params = [a.arg for a in fn.args.args]
-                for i, arg in enumerate(up.args):
-                    if arg is node and i < len(params) and \
-                            params[i] != "evidence":
-                        bad.append(f"{where}: `evidence` passed to "
-                                   f"{fn.name}() as `{params[i]}`; "
-                                   f"writes there are invisible")
-            elif callee not in _SAFE_FOREIGN_CALLS:
-                # A foreign callable could retain the reference and write
-                # through it; the scanner cannot follow that.
-                bad.append(f"{where}: `evidence` passed whole to "
-                           f"{callee or 'an unnamed callable'}(), which is "
-                           f"not a declared-safe recipient")
-            continue
-
-        if isinstance(up, _READ_CONTEXTS):
-            continue
-
-        # ---- the else that makes this bounded ----
-        bad.append(f"{where}: unclassified `evidence` use in "
-                   f"{type(up).__name__}; the coverage guard cannot speak "
-                   f"for it")
+        _classify_value_use(node, parent, local_funcs, where, bad,
+                            "an `evidence` object")
 
     return paths, sorted(set(bad))
+
+
+# Value-propagating parents: the enclosing expression can evaluate TO the
+# object, so the real use is further up. `evidence or {}` bound to a name
+# retains evidence exactly as `ev = evidence` does; classifying the
+# immediate parent (a BoolOp, allowed as an inspection) missed it.
+_VALUE_PROPAGATORS = (ast.BoolOp, ast.IfExp, ast.NamedExpr)
+
+# Terminal uses that only inspect: they consume the object and let no
+# reference outlive the expression.
+_INSPECTING = (ast.Compare, ast.UnaryOp, ast.BinOp, ast.FormattedValue,
+               ast.JoinedStr, ast.Expr, ast.Assert, ast.Subscript,
+               ast.If, ast.While, ast.For, ast.comprehension)
+
+# Terminal uses that retain a reference.
+_RETAINING = (ast.Tuple, ast.List, ast.Dict, ast.Set, ast.Return,
+              ast.Yield, ast.YieldFrom, ast.Lambda, ast.arguments,
+              ast.GeneratorExp, ast.ListComp, ast.SetComp, ast.DictComp,
+              ast.Starred, ast.Await)
+
+
+def _terminal_use(node, parent):
+    """Climb while the parent evaluates to this node's value."""
+    cur = node
+    while True:
+        up = parent.get(cur)
+        if isinstance(up, ast.BoolOp):
+            cur = up
+        elif isinstance(up, ast.IfExp) and (up.body is cur or up.orelse is cur):
+            cur = up
+        else:
+            return up, cur
+
+
+def _classify_value_use(node, parent, local_funcs, where, bad, what):
+    """Classify what finally happens to an evidence-derived object.
+
+    Shared by evidence-rooted expressions and by accessor-call results:
+    they were classified separately before, and the two code paths did
+    not cover the same terminal forms.
+    """
+    up, cur = _terminal_use(node, parent)
+
+    if isinstance(up, ast.NamedExpr) and up.value is cur:
+        bad.append(f"{where}: {what} captured by a walrus binding; writes "
+                   f"through it are invisible")
+        return
+    if isinstance(up, (ast.Assign, ast.AnnAssign)) and up.value is cur:
+        targets = up.targets if isinstance(up, ast.Assign) else [up.target]
+        if any(isinstance(t, (ast.Name, ast.Tuple, ast.List))
+               for t in targets):
+            bad.append(f"{where}: {what} is bound to a name; writes through "
+                       f"it are invisible")
+        return
+    if isinstance(up, ast.keyword):
+        call = parent.get(up)
+        _classify_call_recipient(call, up.arg, local_funcs, where, bad, what,
+                                 parent)
+        return
+    if isinstance(up, ast.Call):
+        if up.func is cur:
+            return                       # calling it, not passing it
+        index = next((i for i, a in enumerate(up.args) if a is cur), None)
+        _classify_call_recipient(up, index, local_funcs, where, bad, what,
+                                 parent)
+        return
+    if isinstance(up, _RETAINING):
+        bad.append(f"{where}: {what} is retained in "
+                   f"{type(up).__name__}; writes through it are invisible")
+        return
+    if isinstance(up, _INSPECTING):
+        return
+    bad.append(f"{where}: unclassified use of {what} in "
+               f"{type(up).__name__}; the coverage guard cannot speak for it")
+
+
+def _classify_call_recipient(call, where_in_call, local_funcs, where, bad,
+                             what, parent):
+    """A callable receiving the object may retain and write through it."""
+    if call is None:
+        bad.append(f"{where}: {what} passed to an unresolvable call")
+        return
+    callee = _callee_name(call.func)
+    fn = local_funcs.get(call.func.id) if isinstance(call.func,
+                                                     ast.Name) else None
+    if fn is not None:
+        params = [a.arg for a in fn.args.args]
+        if isinstance(where_in_call, int) and where_in_call < len(params):
+            name = params[where_in_call]
+        else:
+            name = where_in_call
+        if name not in (None, "evidence"):
+            bad.append(f"{where}: {what} passed to {fn.name}() as "
+                       f"`{name}`; writes there are invisible")
+        return
+    if callee not in _SAFE_FOREIGN_CALLS:
+        bad.append(f"{where}: {what} passed to "
+                   f"{callee or 'an unnamed callable'}(), which is not a "
+                   f"declared-safe recipient")
 
 
 def _callee_name(func):
@@ -685,7 +741,14 @@ def _callee_name(func):
     return None
 
 
-def _classify_result_use(call, parent, where, bad):
+def _classify_result_use(call, parent, local_funcs, where, bad):
+    """What happens to what an accessor returned.
+
+    Routed through the same classifier as evidence-rooted expressions:
+    the two paths previously enumerated different terminal forms, so an
+    accessor result handed to an undeclared callable was accepted while
+    the bare object was rejected.
+    """
     up = parent.get(call)
     if isinstance(up, ast.Attribute):
         outer = parent.get(up)
@@ -701,16 +764,8 @@ def _classify_result_use(call, parent, where, bad):
             bad.append(f"{where}: store into the result of an evidence "
                        f"accessor; the key is invisible")
         return
-    if isinstance(up, (ast.Assign, ast.AnnAssign)) and up.value is call:
-        targets = up.targets if isinstance(up, ast.Assign) else [up.target]
-        if any(isinstance(t, ast.Name) for t in targets):
-            bad.append(f"{where}: an evidence accessor result is bound to a "
-                       f"name; writes through it are invisible")
-        return
-    if isinstance(up, (ast.Tuple, ast.List, ast.Dict, ast.Set, ast.Return,
-                       ast.Yield, ast.YieldFrom, ast.Lambda)):
-        bad.append(f"{where}: an evidence accessor result is retained in "
-                   f"{type(up).__name__}; writes through it are invisible")
+    _classify_value_use(call, parent, local_funcs, where, bad,
+                        "an evidence accessor result")
 
 
 def _classify_method(expr, attr_node, call, where, paths, bad):
