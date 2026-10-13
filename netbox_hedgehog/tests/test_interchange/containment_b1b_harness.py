@@ -547,6 +547,7 @@ def evidence_grammar_scan(path):
 
     local_funcs = {n.name: n for n in ast.walk(tree)
                    if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef))}
+    trusted = _untouched_imports(tree)
 
     def maximal(node):
         """An evidence-rooted expression not contained in a larger one."""
@@ -622,11 +623,12 @@ def evidence_grammar_scan(path):
             # check, because the result is a Call and so is not itself an
             # evidence-rooted expression that the walker would classify.
             if up.attr in ("setdefault",) + _READ_METHODS:
-                _classify_result_use(call, parent, local_funcs, where, bad)
+                _classify_result_use(call, parent, local_funcs, where, bad,
+                                     trusted)
             continue
 
         _classify_value_use(node, parent, local_funcs, where, bad,
-                            "an `evidence` object")
+                            "an `evidence` object", trusted)
 
     return paths, sorted(set(bad))
 
@@ -663,7 +665,8 @@ def _terminal_use(node, parent):
             return up, cur
 
 
-def _classify_value_use(node, parent, local_funcs, where, bad, what):
+def _classify_value_use(node, parent, local_funcs, where, bad, what,
+                        trusted=()):
     """Classify what finally happens to an evidence-derived object.
 
     Shared by evidence-rooted expressions and by accessor-call results:
@@ -677,23 +680,25 @@ def _classify_value_use(node, parent, local_funcs, where, bad, what):
                    f"through it are invisible")
         return
     if isinstance(up, (ast.Assign, ast.AnnAssign)) and up.value is cur:
+        # ANY target retains the reference. Restricting this to
+        # Name/Tuple/List let `box["e"] = evidence` and `obj.attr =
+        # evidence` store it in a container slot and write through it.
         targets = up.targets if isinstance(up, ast.Assign) else [up.target]
-        if any(isinstance(t, (ast.Name, ast.Tuple, ast.List))
-               for t in targets):
-            bad.append(f"{where}: {what} is bound to a name; writes through "
-                       f"it are invisible")
+        kinds = ", ".join(sorted({type(t).__name__ for t in targets}))
+        bad.append(f"{where}: {what} is stored into a {kinds} target; "
+                   f"writes through it are invisible")
         return
     if isinstance(up, ast.keyword):
         call = parent.get(up)
         _classify_call_recipient(call, up.arg, local_funcs, where, bad, what,
-                                 parent)
+                                 parent, trusted)
         return
     if isinstance(up, ast.Call):
         if up.func is cur:
             return                       # calling it, not passing it
         index = next((i for i, a in enumerate(up.args) if a is cur), None)
         _classify_call_recipient(up, index, local_funcs, where, bad, what,
-                                 parent)
+                                 parent, trusted)
         return
     if isinstance(up, _RETAINING):
         bad.append(f"{where}: {what} is retained in "
@@ -706,7 +711,7 @@ def _classify_value_use(node, parent, local_funcs, where, bad, what):
 
 
 def _classify_call_recipient(call, where_in_call, local_funcs, where, bad,
-                             what, parent):
+                             what, parent, trusted=()):
     """A callable receiving the object may retain and write through it."""
     if call is None:
         bad.append(f"{where}: {what} passed to an unresolvable call")
@@ -728,6 +733,14 @@ def _classify_call_recipient(call, where_in_call, local_funcs, where, bad,
         bad.append(f"{where}: {what} passed to "
                    f"{callee or 'an unnamed callable'}(), which is not a "
                    f"declared-safe recipient")
+    elif callee.split(".")[0] not in trusted:
+        # The allowlist matches by NAME, and a name can be rebound:
+        # `json = something_else` then `json.dumps(evidence)` reaches an
+        # arbitrary callable. A safe name must be import-bound and never
+        # reassigned in the module.
+        bad.append(f"{where}: {what} passed to {callee}(), whose name "
+                   f"`{callee.split('.')[0]}` is not an untouched import; "
+                   f"the allowlist cannot vouch for it")
 
 
 def _callee_name(func):
@@ -741,7 +754,34 @@ def _callee_name(func):
     return None
 
 
-def _classify_result_use(call, parent, local_funcs, where, bad):
+def _untouched_imports(tree):
+    """Names bound by an import and never reassigned in the module."""
+    imported, rebound = set(), set()
+    for node in ast.walk(tree):
+        if isinstance(node, (ast.Import, ast.ImportFrom)):
+            for alias in node.names:
+                imported.add((alias.asname or alias.name).split(".")[0])
+        elif isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef,
+                               ast.ClassDef)):
+            rebound.add(node.name)
+        elif isinstance(node, (ast.Assign, ast.AnnAssign, ast.AugAssign,
+                               ast.For, ast.AsyncFor)):
+            targets = (node.targets if isinstance(node, ast.Assign)
+                       else [node.target])
+            for target in targets:
+                for sub in ast.walk(target):
+                    if isinstance(sub, ast.Name):
+                        rebound.add(sub.id)
+        elif isinstance(node, ast.withitem) and node.optional_vars is not None:
+            for sub in ast.walk(node.optional_vars):
+                if isinstance(sub, ast.Name):
+                    rebound.add(sub.id)
+        elif isinstance(node, ast.ExceptHandler) and node.name:
+            rebound.add(node.name)
+    return imported - rebound
+
+
+def _classify_result_use(call, parent, local_funcs, where, bad, trusted=()):
     """What happens to what an accessor returned.
 
     Routed through the same classifier as evidence-rooted expressions:
@@ -763,9 +803,15 @@ def _classify_result_use(call, parent, local_funcs, where, bad):
         if isinstance(getattr(up, "ctx", None), (ast.Store, ast.Del)):
             bad.append(f"{where}: store into the result of an evidence "
                        f"accessor; the key is invisible")
+            return
+        # A Load subscript yields a deeper object still inside evidence.
+        # Returning here let `held = evidence.setdefault("k", {})["j"]`
+        # retain it unclassified.
+        _classify_value_use(up, parent, local_funcs, where, bad,
+                            "an indexed evidence accessor result", trusted)
         return
     _classify_value_use(call, parent, local_funcs, where, bad,
-                        "an evidence accessor result")
+                        "an evidence accessor result", trusted)
 
 
 def _classify_method(expr, attr_node, call, where, paths, bad):
