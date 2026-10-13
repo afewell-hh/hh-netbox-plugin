@@ -341,39 +341,6 @@ def _chain_via_alias(node, alias):
     return None
 
 
-def evidence_write_paths(path, max_depth=2):
-    tree = ast.parse(pathlib.Path(path).read_text())
-    out = set()
-    for n in ast.walk(tree):
-        # evidence = {...}
-        if (isinstance(n, ast.Assign) and len(n.targets) == 1
-                and isinstance(n.targets[0], ast.Name)
-                and n.targets[0].id == "evidence"):
-            _dict_paths([], n.value, out, max_depth)
-        tgt = (n.targets[0] if isinstance(n, ast.Assign) and len(n.targets) == 1
-               else n.target if isinstance(n, ast.AugAssign) else None)
-        if tgt is not None:
-            ch = _chain(tgt)
-            if ch:
-                out.add(".".join(ch))
-                _dict_paths(ch, getattr(n, "value", None), out,
-                            max_depth - len(ch) + 1)
-        if isinstance(n, ast.Call) and isinstance(n.func, ast.Attribute):
-            base = _chain(n.func.value)
-            if n.func.attr == "setdefault" and n.args and isinstance(
-                    n.args[0], ast.Constant):
-                if isinstance(n.func.value, ast.Name) and \
-                        n.func.value.id == "evidence":
-                    out.add(n.args[0].value)
-                elif base:
-                    out.add(".".join(base + [n.args[0].value]))
-            if n.func.attr == "update" and n.args:
-                root = ([] if (isinstance(n.func.value, ast.Name)
-                               and n.func.value.id == "evidence") else base)
-                if root is not None:
-                    _dict_paths(root, n.args[0], out, max_depth)
-    return out
-
 def evidence_read_paths(paths):
     out = set()
     for p in paths:
@@ -423,62 +390,95 @@ def evidence_read_paths(paths):
     return out
 
 
-# ----------------------------------------------------------------------
-# Evidence-coverage: a BOUNDED SUPPORTED GRAMMAR.
+# ======================================================================
+# Evidence-coverage: a MANIFEST-BASED, FAIL-CLOSED collector boundary.
 #
-# Three rounds of enumerate-the-bypass-and-patch each left another form
-# uncounted, because an unrecognised write was silently invisible. The
-# burden is inverted here: every construct that stores into `evidence`
-# must match one of the forms below, and anything else is reported as a
-# violation that fails the control. A new form cannot slip past by being
-# unrecognised -- being unrecognised is itself the failure.
+# CLAIM, precisely. For the versioned collector module under analysis,
+# every evidence-derived reference is classified into an approved
+# grammar production with declared path semantics, or the scan fails.
+# The scanner does NOT claim to prove behaviour in foreign or dynamic
+# code outside the declared boundary, and no runtime recorder exists.
 #
-# SUPPORTED WRITE FORMS (keys must be string literals; paths <= depth 2):
-#   W1  evidence = {...}                     initialiser
-#   W2  evidence["k"] = expr                 top-level assignment
-#   W3  evidence["k"]["j"] = expr            nested assignment
-#   W4  evidence.setdefault("k", expr)       with expr's dict keys counted
-#   W5  evidence["k"].update({...})          and evidence.update({...})
-#   W6  evidence["k"].append(...) / .extend(...)   mutates a value, adds
-#                                            no key
-#   W7  evidence.setdefault("k", []).append(...)   same, on the result
-#   In W2/W4/W5, a dict-literal value contributes its own nested paths.
+# The manifest below is derived from the collector module's ACTUAL
+# permitted evidence operations -- an inventory of the module found 39
+# references in 8 shapes -- not from a hand-curated list of Python
+# constructs that might be harmless. There is deliberately NO generic
+# "inspection is safe" production: a reference that matches nothing in
+# the manifest is a violation, including constructs neither author
+# anticipated.
 #
-# REJECTED (each fails the control rather than going uncounted):
-#   keyword form          evidence.update(k=1)
-#   computed key          evidence[expr] = v, {expr: v}
-#   dict unpacking        evidence.update({**other})
-#   depth overflow        any path deeper than 2
-#   aliasing              ev = evidence; ev["k"] = v
-#   nested aliasing       p = evidence["k"]; p["j"] = v
-#   escaped setdefault    evidence.setdefault(...) bound to a name, or
-#                         mutated by anything but append/extend
-#   name escape           evidence passed to a local function whose
-#                         parameter is not also named `evidence`
-# ----------------------------------------------------------------------
+# Because of that, the propagation machinery of earlier versions is
+# gone. `evidence or {}` is not "a BoolOp that must be followed to its
+# terminal use"; it is simply unmatched, and therefore a violation.
+# ======================================================================
+
+GRAMMAR_VERSION = "2026-10-13.1"
+
+#: Dotted callables that may receive the whole dict. The spelling alone
+#: is never sufficient -- the root name must also be import-bound and
+#: never rebound anywhere in the module.
+_SERIALIZERS = ("json.dumps",)
 
 MAX_PATH_DEPTH = 2
-_MUTATORS = ("append", "extend")
-_READ_METHODS = ("get", "pop", "keys", "items", "values", "copy")
-# Foreign callables that may receive `evidence` whole. Anything else
-# outside the module could retain it and write through the reference,
-# which the scanner cannot see -- so it is rejected rather than assumed
-# safe. Local functions are checked separately, by parameter name.
-_SAFE_FOREIGN_CALLS = ("json.dump", "json.dumps", "len", "bool", "repr",
-                       "sorted", "id", "print")
-# Non-retaining uses: they inspect the object and let no reference
-# outlive the expression. RETAINING uses -- a container, a return, a
-# yield, a closure -- are rejected instead, because a write through the
-# retained reference is invisible exactly as an alias write is.
-_READ_CONTEXTS = (ast.Compare, ast.BoolOp, ast.UnaryOp, ast.BinOp,
-                  ast.IfExp, ast.FormattedValue, ast.JoinedStr,
-                  ast.Expr, ast.Assert, ast.Subscript,
-                  ast.For, ast.If, ast.While)
 
 
-def _ev_chain(node, root="evidence"):
-    """['a','b'] for <root>['a']['b']; None if not rooted at <root>, and
-    ('COMPUTED', depth) if rooted there through a non-literal key."""
+class Production:
+    """One approved evidence operation, with its declared semantics.
+
+    effect:
+      records  -- introduces evidence paths, which must then be read by
+                  a control or declared diagnostic
+      reads    -- consumes an already-recorded path, introduces none
+      observes -- hands the object to a declared-identity recipient
+                  without retaining a reference
+    """
+
+    def __init__(self, pid, shape, consumer, depth, key_form, effect,
+                 identity=None):
+        self.id = pid
+        self.shape = shape
+        self.consumer = consumer
+        self.depth = depth
+        self.key_form = key_form
+        self.effect = effect
+        self.identity = identity
+
+    def __repr__(self):                                   # pragma: no cover
+        return f"<Production {self.id}>"
+
+
+MANIFEST = (
+    Production("INIT", "evidence = {...}", "Assign value", 2,
+               "str-literal", "records"),
+    Production("ASSIGN_D1", 'evidence["k"] = expr', "Assign target", 1,
+               "str-literal", "records"),
+    Production("ASSIGN_D2", 'evidence["k"]["j"] = expr', "Assign target", 2,
+               "str-literal", "records"),
+    Production("APPEND_D1", 'evidence["k"].append(arg)', "Call on Attribute",
+               1, "str-literal", "reads"),
+    Production("SETDEFAULT_APPEND", 'evidence.setdefault("k", []).append(a)',
+               "Call on Attribute of accessor result", 1, "str-literal",
+               "records", identity="result consumed only by .append()"),
+    Production("ARG_LOCAL_FN", "localfn(..., evidence, ...)", "Call argument",
+               0, "n/a", "observes",
+               identity="module-local function, parameter named `evidence`"),
+    Production("ARG_SERIALIZER", "json.dumps(evidence, ...)", "Call argument",
+               0, "n/a", "observes",
+               identity="import-bound, never rebound, in _SERIALIZERS"),
+    Production("READ_BINOP", 'evidence[...] inside a BinOp', "BinOp", 2,
+               "str-literal", "reads"),
+    Production("READ_UNARYOP", 'evidence[...] inside a UnaryOp', "UnaryOp", 2,
+               "str-literal", "reads"),
+    Production("READ_FSTRING", 'evidence[...] in an f-string', "FormattedValue",
+               2, "str-literal", "reads"),
+)
+
+_BY_ID = {p.id: p for p in MANIFEST}
+
+
+def _literal_chain(node):
+    """['a','b'] for evidence['a']['b']; None if not evidence-rooted;
+    ('COMPUTED', n) if rooted but a key is not a string literal."""
     parts, computed = [], False
     while isinstance(node, ast.Subscript):
         if (isinstance(node.slice, ast.Constant)
@@ -488,14 +488,12 @@ def _ev_chain(node, root="evidence"):
             computed = True
             parts.append(None)
         node = node.value
-    if isinstance(node, ast.Name) and node.id == root:
-        if computed:
-            return ("COMPUTED", len(parts))
-        return list(reversed(parts))
+    if isinstance(node, ast.Name) and node.id == "evidence":
+        return ("COMPUTED", len(parts)) if computed else list(reversed(parts))
     return None
 
 
-def _dict_literal_paths(prefix, node, out, bad, where):
+def _literal_dict_paths(prefix, node, out, bad, where):
     if not isinstance(node, ast.Dict):
         return
     for key, value in zip(node.keys, node.values):
@@ -503,8 +501,8 @@ def _dict_literal_paths(prefix, node, out, bad, where):
             bad.append(f"{where}: dict unpacking inside an evidence literal")
             continue
         if not (isinstance(key, ast.Constant) and isinstance(key.value, str)):
-            bad.append(f"{where}: computed key inside an evidence "
-                       f"dict literal")
+            bad.append(f"{where}: computed key inside an evidence dict "
+                       f"literal")
             continue
         path = prefix + [key.value]
         if len(path) > MAX_PATH_DEPTH:
@@ -512,246 +510,7 @@ def _dict_literal_paths(prefix, node, out, bad, where):
                        f"{MAX_PATH_DEPTH}")
             continue
         out.add(".".join(path))
-        _dict_literal_paths(path, value, out, bad, where)
-
-
-def _is_evidence_accessor_call(node):
-    """`evidence.setdefault(...)` / `evidence["k"].get(...)` -- a call
-    returning an object that lives inside evidence."""
-    return (isinstance(node, ast.Call)
-            and isinstance(node.func, ast.Attribute)
-            and node.func.attr in ("setdefault", "get")
-            and _ev_chain(node.func.value) is not None)
-
-
-def evidence_grammar_scan(path):
-    """(write_paths, violations) for the subject at `path`.
-
-    NODE-LEVEL CLASSIFICATION. Every maximal `evidence`-rooted expression
-    in the module is located and classified, and the final branch is
-    `else: violation`. Earlier versions enumerated statement shapes, so a
-    form the walker never looked for -- a loop target, a nested tuple
-    target, an annotated assignment -- was neither recorded nor rejected.
-    Keying stores on `ctx` instead of on statement type makes every store
-    position fall out by construction: assignment, augmented, annotated,
-    chained, `for` target, `with ... as`, comprehension target, and
-    tuple/list targets nested to any depth.
-    """
-    tree = ast.parse(pathlib.Path(path).read_text())
-    paths, bad = set(), []
-
-    parent = {}
-    for node in ast.walk(tree):
-        for child in ast.iter_child_nodes(node):
-            parent[child] = node
-
-    local_funcs = {n.name: n for n in ast.walk(tree)
-                   if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef))}
-    trusted = _untouched_imports(tree)
-
-    def maximal(node):
-        """An evidence-rooted expression not contained in a larger one."""
-        if not isinstance(node, (ast.Name, ast.Subscript)):
-            return False
-        probe = node
-        while isinstance(probe, ast.Subscript):
-            probe = probe.value
-        if not (isinstance(probe, ast.Name) and probe.id == "evidence"):
-            return False
-        up = parent.get(node)
-        return not (isinstance(up, ast.Subscript) and up.value is node)
-
-    def record(expr, where, value=None):
-        chain = _ev_chain(expr)
-        if chain is None:                       # the bare name as a target
-            bad.append(f"{where}: `evidence` itself rebound")
-            return
-        if isinstance(chain, tuple):
-            bad.append(f"{where}: computed key in an evidence write")
-            return
-        if len(chain) > MAX_PATH_DEPTH:
-            bad.append(f"{where}: write to {'.'.join(chain)} is deeper "
-                       f"than {MAX_PATH_DEPTH}")
-            return
-        paths.add(".".join(chain))
-        if value is not None:
-            _dict_literal_paths(chain, value, paths, bad, where)
-
-    for node in ast.walk(tree):
-        if not maximal(node):
-            continue
-        where = f"line {getattr(node, 'lineno', '?')}"
-        up = parent.get(node)
-        ctx = getattr(node, "ctx", None)
-
-        # ---- stores: every position, by ctx ----
-        if isinstance(ctx, ast.Store):
-            value = None
-            if isinstance(up, (ast.Assign, ast.AnnAssign)):
-                # Nested-literal collection only when this IS the whole
-                # target; through unpacking the value cannot be mapped.
-                if isinstance(up, ast.AnnAssign) or any(
-                        t is node for t in up.targets):
-                    value = up.value
-            if isinstance(node, ast.Name):
-                if isinstance(up, ast.Assign) and isinstance(value, ast.Dict):
-                    _dict_literal_paths([], value, paths, bad, where)
-                elif isinstance(up, ast.Assign) and isinstance(value, ast.Name):
-                    pass                      # evidence = evidence
-                else:
-                    bad.append(f"{where}: `evidence` bound to an unsupported "
-                               f"expression "
-                               f"({type(value).__name__ if value else '?'})")
-            else:
-                record(node, where, value)
-            continue
-
-        if isinstance(ctx, ast.Del):
-            continue                           # removes a key, adds none
-
-        # ---- loads ----
-        if isinstance(up, ast.Attribute):
-            call = parent.get(up)
-            if not (isinstance(call, ast.Call) and call.func is up):
-                bad.append(f"{where}: attribute `.{up.attr}` taken on "
-                           f"evidence without calling it")
-                continue
-            _classify_method(node, up, call, where, paths, bad)
-            # What happens to what the call RETURNED. setdefault/get/pop
-            # hand back an object living inside evidence; a write through
-            # it is invisible. The node-level rewrite initially lost this
-            # check, because the result is a Call and so is not itself an
-            # evidence-rooted expression that the walker would classify.
-            if up.attr in ("setdefault",) + _READ_METHODS:
-                _classify_result_use(call, parent, local_funcs, where, bad,
-                                     trusted)
-            continue
-
-        _classify_value_use(node, parent, local_funcs, where, bad,
-                            "an `evidence` object", trusted)
-
-    return paths, sorted(set(bad))
-
-
-# Value-propagating parents: the enclosing expression can evaluate TO the
-# object, so the real use is further up. `evidence or {}` bound to a name
-# retains evidence exactly as `ev = evidence` does; classifying the
-# immediate parent (a BoolOp, allowed as an inspection) missed it.
-_VALUE_PROPAGATORS = (ast.BoolOp, ast.IfExp, ast.NamedExpr)
-
-# Terminal uses that only inspect: they consume the object and let no
-# reference outlive the expression.
-_INSPECTING = (ast.Compare, ast.UnaryOp, ast.BinOp, ast.FormattedValue,
-               ast.JoinedStr, ast.Expr, ast.Assert, ast.Subscript,
-               ast.If, ast.While, ast.For, ast.comprehension)
-
-# Terminal uses that retain a reference.
-_RETAINING = (ast.Tuple, ast.List, ast.Dict, ast.Set, ast.Return,
-              ast.Yield, ast.YieldFrom, ast.Lambda, ast.arguments,
-              ast.GeneratorExp, ast.ListComp, ast.SetComp, ast.DictComp,
-              ast.Starred, ast.Await)
-
-
-def _terminal_use(node, parent):
-    """Climb while the parent evaluates to this node's value."""
-    cur = node
-    while True:
-        up = parent.get(cur)
-        if isinstance(up, ast.BoolOp):
-            cur = up
-        elif isinstance(up, ast.IfExp) and (up.body is cur or up.orelse is cur):
-            cur = up
-        else:
-            return up, cur
-
-
-def _classify_value_use(node, parent, local_funcs, where, bad, what,
-                        trusted=()):
-    """Classify what finally happens to an evidence-derived object.
-
-    Shared by evidence-rooted expressions and by accessor-call results:
-    they were classified separately before, and the two code paths did
-    not cover the same terminal forms.
-    """
-    up, cur = _terminal_use(node, parent)
-
-    if isinstance(up, ast.NamedExpr) and up.value is cur:
-        bad.append(f"{where}: {what} captured by a walrus binding; writes "
-                   f"through it are invisible")
-        return
-    if isinstance(up, (ast.Assign, ast.AnnAssign)) and up.value is cur:
-        # ANY target retains the reference. Restricting this to
-        # Name/Tuple/List let `box["e"] = evidence` and `obj.attr =
-        # evidence` store it in a container slot and write through it.
-        targets = up.targets if isinstance(up, ast.Assign) else [up.target]
-        kinds = ", ".join(sorted({type(t).__name__ for t in targets}))
-        bad.append(f"{where}: {what} is stored into a {kinds} target; "
-                   f"writes through it are invisible")
-        return
-    if isinstance(up, ast.keyword):
-        call = parent.get(up)
-        _classify_call_recipient(call, up.arg, local_funcs, where, bad, what,
-                                 parent, trusted)
-        return
-    if isinstance(up, ast.Call):
-        if up.func is cur:
-            return                       # calling it, not passing it
-        index = next((i for i, a in enumerate(up.args) if a is cur), None)
-        _classify_call_recipient(up, index, local_funcs, where, bad, what,
-                                 parent, trusted)
-        return
-    if isinstance(up, _RETAINING):
-        bad.append(f"{where}: {what} is retained in "
-                   f"{type(up).__name__}; writes through it are invisible")
-        return
-    if isinstance(up, _INSPECTING):
-        return
-    bad.append(f"{where}: unclassified use of {what} in "
-               f"{type(up).__name__}; the coverage guard cannot speak for it")
-
-
-def _classify_call_recipient(call, where_in_call, local_funcs, where, bad,
-                             what, parent, trusted=()):
-    """A callable receiving the object may retain and write through it."""
-    if call is None:
-        bad.append(f"{where}: {what} passed to an unresolvable call")
-        return
-    callee = _callee_name(call.func)
-    fn = local_funcs.get(call.func.id) if isinstance(call.func,
-                                                     ast.Name) else None
-    if fn is not None:
-        params = [a.arg for a in fn.args.args]
-        if isinstance(where_in_call, int) and where_in_call < len(params):
-            name = params[where_in_call]
-        else:
-            name = where_in_call
-        if name not in (None, "evidence"):
-            bad.append(f"{where}: {what} passed to {fn.name}() as "
-                       f"`{name}`; writes there are invisible")
-        return
-    if callee not in _SAFE_FOREIGN_CALLS:
-        bad.append(f"{where}: {what} passed to "
-                   f"{callee or 'an unnamed callable'}(), which is not a "
-                   f"declared-safe recipient")
-    elif callee.split(".")[0] not in trusted:
-        # The allowlist matches by NAME, and a name can be rebound:
-        # `json = something_else` then `json.dumps(evidence)` reaches an
-        # arbitrary callable. A safe name must be import-bound and never
-        # reassigned in the module.
-        bad.append(f"{where}: {what} passed to {callee}(), whose name "
-                   f"`{callee.split('.')[0]}` is not an untouched import; "
-                   f"the allowlist cannot vouch for it")
-
-
-def _callee_name(func):
-    parts = []
-    while isinstance(func, ast.Attribute):
-        parts.append(func.attr)
-        func = func.value
-    if isinstance(func, ast.Name):
-        parts.append(func.id)
-        return ".".join(reversed(parts))
-    return None
+        _literal_dict_paths(path, value, out, bad, where)
 
 
 def _untouched_imports(tree):
@@ -781,75 +540,270 @@ def _untouched_imports(tree):
     return imported - rebound
 
 
-def _classify_result_use(call, parent, local_funcs, where, bad, trusted=()):
-    """What happens to what an accessor returned.
+def _callee_name(func):
+    parts = []
+    while isinstance(func, ast.Attribute):
+        parts.append(func.attr)
+        func = func.value
+    if isinstance(func, ast.Name):
+        parts.append(func.id)
+        return ".".join(reversed(parts))
+    return None
 
-    Routed through the same classifier as evidence-rooted expressions:
-    the two paths previously enumerated different terminal forms, so an
-    accessor result handed to an undeclared callable was accepted while
-    the bare object was rejected.
+
+# ----------------------------------------------------------------------
+# Recognizers. One per production id. A recognizer returns
+# (matched, paths_to_record, violations) and is consulted ONLY when its
+# id appears in MANIFEST -- so adding a recognizer without declaring the
+# production leaves the operation unclassified, which is a violation.
+# ----------------------------------------------------------------------
+
+def _r_init(ctxt):
+    node, up = ctxt.node, ctxt.parent_of_node
+    if not (isinstance(node, ast.Name)
+            and isinstance(getattr(node, "ctx", None), ast.Store)
+            and isinstance(up, ast.Assign) and any(t is node
+                                                   for t in up.targets)):
+        return None
+    out, bad = set(), []
+    if not isinstance(up.value, ast.Dict):
+        return (True, out, [f"{ctxt.where}: `evidence` bound to "
+                            f"{type(up.value).__name__}, not a dict literal"])
+    _literal_dict_paths([], up.value, out, bad, ctxt.where)
+    return (True, out, bad)
+
+
+def _r_assign(ctxt, want_depth):
+    node, up = ctxt.node, ctxt.parent_of_node
+    if not (isinstance(node, ast.Subscript)
+            and isinstance(getattr(node, "ctx", None), ast.Store)):
+        return None
+    if not (isinstance(up, ast.Assign) and any(t is node for t in up.targets)):
+        return None                       # chained/unpacked/annotated/loop
+    chain = _literal_chain(node)
+    if isinstance(chain, tuple):
+        return (True, set(), [f"{ctxt.where}: computed key in an evidence "
+                              f"write"])
+    if chain is None or len(chain) != want_depth:
+        return None
+    out, bad = {".".join(chain)}, []
+    _literal_dict_paths(chain, up.value, out, bad, ctxt.where)
+    return (True, out, bad)
+
+
+def _r_append_d1(ctxt):
+    node, up = ctxt.node, ctxt.parent_of_node
+    if not (isinstance(node, ast.Subscript)
+            and isinstance(getattr(node, "ctx", None), ast.Load)
+            and isinstance(up, ast.Attribute) and up.attr == "append"):
+        return None
+    call = ctxt.parent.get(up)
+    if not (isinstance(call, ast.Call) and call.func is up
+            and len(call.args) == 1 and not call.keywords):
+        return None
+    chain = _literal_chain(node)
+    if isinstance(chain, tuple) or chain is None or len(chain) != 1:
+        return None
+    return (True, set(), [])              # reads; adds no key
+
+
+def _r_setdefault_append(ctxt):
+    node, up = ctxt.node, ctxt.parent_of_node
+    if not (isinstance(node, ast.Name)
+            and isinstance(getattr(node, "ctx", None), ast.Load)
+            and isinstance(up, ast.Attribute) and up.attr == "setdefault"):
+        return None
+    call = ctxt.parent.get(up)
+    if not (isinstance(call, ast.Call) and call.func is up):
+        return None
+    where = ctxt.where
+    if call.keywords or len(call.args) != 2:
+        return (True, set(), [f"{where}: setdefault must take exactly two "
+                              f"positional arguments"])
+    key = call.args[0]
+    if not (isinstance(key, ast.Constant) and isinstance(key.value, str)):
+        return (True, set(), [f"{where}: setdefault with a computed key"])
+    # The declared identity: the result may be consumed ONLY by .append().
+    outer_attr = ctxt.parent.get(call)
+    outer_call = ctxt.parent.get(outer_attr) if outer_attr is not None else None
+    if not (isinstance(outer_attr, ast.Attribute)
+            and outer_attr.value is call
+            and outer_attr.attr == "append"
+            and isinstance(outer_call, ast.Call)
+            and outer_call.func is outer_attr):
+        return (True, set(), [f"{where}: the setdefault result is not "
+                              f"consumed by .append(); its fate is "
+                              f"undeclared"])
+    out, bad = {key.value}, []
+    _literal_dict_paths([key.value], call.args[1], out, bad, where)
+    return (True, out, bad)
+
+
+def _r_arg_local_fn(ctxt):
+    node, up = ctxt.node, ctxt.parent_of_node
+    if not (isinstance(node, ast.Name)
+            and isinstance(getattr(node, "ctx", None), ast.Load)
+            and isinstance(up, ast.Call) and up.func is not node):
+        return None
+    if not isinstance(up.func, ast.Name):
+        return None
+    fn = ctxt.local_funcs.get(up.func.id)
+    if fn is None:
+        return None
+    params = [a.arg for a in fn.args.args]
+    for i, arg in enumerate(up.args):
+        if arg is node:
+            name = params[i] if i < len(params) else None
+            if name != "evidence":
+                return (True, set(),
+                        [f"{ctxt.where}: `evidence` passed to {fn.name}() as "
+                         f"`{name}`; writes there are invisible"])
+            return (True, set(), [])
+    for kw in up.keywords:
+        if kw.value is node:
+            if kw.arg != "evidence":
+                return (True, set(),
+                        [f"{ctxt.where}: `evidence` passed to {fn.name}() as "
+                         f"`{kw.arg}`"])
+            return (True, set(), [])
+    return None
+
+
+def _r_arg_serializer(ctxt):
+    node, up = ctxt.node, ctxt.parent_of_node
+    if not (isinstance(node, ast.Name)
+            and isinstance(getattr(node, "ctx", None), ast.Load)
+            and isinstance(up, ast.Call) and up.func is not node):
+        return None
+    callee = _callee_name(up.func)
+    if callee not in _SERIALIZERS:
+        return None
+    if not any(a is node for a in up.args):
+        return (True, set(), [f"{ctxt.where}: `evidence` passed to {callee}() "
+                              f"other than positionally"])
+    root = callee.split(".")[0]
+    if root not in ctxt.trusted:
+        return (True, set(),
+                [f"{ctxt.where}: `{root}` is not an untouched import, so "
+                 f"{callee}() has no stable identity; a spelling alone is "
+                 f"never safe"])
+    return (True, set(), [])
+
+
+def _r_read_in(ctxt, consumer):
+    node, up = ctxt.node, ctxt.parent_of_node
+    if not (isinstance(node, ast.Subscript)
+            and isinstance(getattr(node, "ctx", None), ast.Load)
+            and isinstance(up, consumer)):
+        return None
+    chain = _literal_chain(node)
+    if isinstance(chain, tuple):
+        return (True, set(), [f"{ctxt.where}: computed key in an evidence "
+                              f"read"])
+    if chain is None or len(chain) > MAX_PATH_DEPTH:
+        return None
+    return (True, set(), [])
+
+
+RECOGNIZERS = {
+    "INIT": _r_init,
+    "ASSIGN_D1": lambda c: _r_assign(c, 1),
+    "ASSIGN_D2": lambda c: _r_assign(c, 2),
+    "APPEND_D1": _r_append_d1,
+    "SETDEFAULT_APPEND": _r_setdefault_append,
+    "ARG_LOCAL_FN": _r_arg_local_fn,
+    "ARG_SERIALIZER": _r_arg_serializer,
+    "READ_BINOP": lambda c: _r_read_in(c, ast.BinOp),
+    "READ_UNARYOP": lambda c: _r_read_in(c, ast.UnaryOp),
+    "READ_FSTRING": lambda c: _r_read_in(c, ast.FormattedValue),
+}
+
+
+class _Ctxt:
+    def __init__(self, node, parent, local_funcs, trusted, where):
+        self.node = node
+        self.parent = parent
+        self.parent_of_node = parent.get(node)
+        self.local_funcs = local_funcs
+        self.trusted = trusted
+        self.where = where
+
+
+def evidence_grammar_scan(path, *, check_manifest_usage=True):
+    """(write_paths, violations) under the manifest, fail-closed.
+
+    `check_manifest_usage` asserts the manifest describes exactly the
+    operations the DESIGNATED collector module performs. It is on by
+    default and switched off only when scanning a throwaway snippet in
+    a control, which exercises a few productions by construction.
+
+    Every maximal evidence-rooted reference must match exactly one
+    declared production. There is no default-allow branch: the final
+    `else` records a violation, and a control asserts that branch still
+    fires.
     """
-    up = parent.get(call)
-    if isinstance(up, ast.Attribute):
-        outer = parent.get(up)
-        if not (isinstance(outer, ast.Call) and outer.func is up):
-            bad.append(f"{where}: attribute `.{up.attr}` taken on an "
-                       f"evidence accessor result without calling it")
-        elif up.attr not in _MUTATORS:
-            bad.append(f"{where}: .{up.attr}() on the result of an evidence "
-                       f"accessor; any key it adds is invisible")
-        return
-    if isinstance(up, ast.Subscript):
-        if isinstance(getattr(up, "ctx", None), (ast.Store, ast.Del)):
-            bad.append(f"{where}: store into the result of an evidence "
-                       f"accessor; the key is invisible")
-            return
-        # A Load subscript yields a deeper object still inside evidence.
-        # Returning here let `held = evidence.setdefault("k", {})["j"]`
-        # retain it unclassified.
-        _classify_value_use(up, parent, local_funcs, where, bad,
-                            "an indexed evidence accessor result", trusted)
-        return
-    _classify_value_use(call, parent, local_funcs, where, bad,
-                        "an evidence accessor result", trusted)
+    tree = ast.parse(pathlib.Path(path).read_text())
+    paths, bad, used = set(), [], set()
 
+    parent = {}
+    for node in ast.walk(tree):
+        for child in ast.iter_child_nodes(node):
+            parent[child] = node
 
-def _classify_method(expr, attr_node, call, where, paths, bad):
-    base = _ev_chain(expr)
-    if isinstance(base, tuple):
-        bad.append(f"{where}: computed key in an evidence "
-                   f".{attr_node.attr}() call")
-        return
-    if base is None:
-        base = []
-    name = attr_node.attr
-    if name == "setdefault":
-        if not (call.args and isinstance(call.args[0], ast.Constant)
-                and isinstance(call.args[0].value, str)):
-            bad.append(f"{where}: setdefault with a computed key")
-            return
-        if call.keywords:
-            bad.append(f"{where}: setdefault with keyword arguments")
-        chain = base + [call.args[0].value]
-        if len(chain) > MAX_PATH_DEPTH:
-            bad.append(f"{where}: setdefault path {'.'.join(chain)} is "
-                       f"deeper than {MAX_PATH_DEPTH}")
-            return
-        paths.add(".".join(chain))
-        if len(call.args) > 1:
-            _dict_literal_paths(chain, call.args[1], paths, bad, where)
-    elif name == "update":
-        if call.keywords:
-            bad.append(f"{where}: update() in keyword form; its keys are "
-                       f"not collected")
-        if not call.args:
-            return
-        if not isinstance(call.args[0], ast.Dict):
-            bad.append(f"{where}: update() with a non-literal mapping "
-                       f"({type(call.args[0]).__name__})")
-        else:
-            _dict_literal_paths(base, call.args[0], paths, bad, where)
-    elif name in _MUTATORS or name in _READ_METHODS:
-        pass
-    else:
-        bad.append(f"{where}: unsupported evidence method .{name}()")
+    local_funcs = {n.name: n for n in ast.walk(tree)
+                   if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef))}
+    trusted = _untouched_imports(tree)
+
+    for node in ast.walk(tree):
+        if not isinstance(node, (ast.Name, ast.Subscript)):
+            continue
+        if _literal_chain(node) is None:
+            continue
+        up = parent.get(node)
+        if isinstance(up, ast.Subscript) and up.value is node:
+            continue                       # not maximal
+        where = f"line {getattr(node, 'lineno', '?')}"
+        ctxt = _Ctxt(node, parent, local_funcs, trusted, where)
+
+        matched = None
+        for production in MANIFEST:        # manifest order IS the grammar
+            recognizer = RECOGNIZERS.get(production.id)
+            if recognizer is None:
+                bad.append(f"manifest declares {production.id} with no "
+                           f"recognizer")
+                continue
+            result = recognizer(ctxt)
+            if result is None:
+                continue
+            _, recorded, problems = result
+            matched = production.id
+            used.add(production.id)
+            paths.update(recorded)
+            bad.extend(problems)
+            break
+
+        if matched is None:
+            # THE FAIL-CLOSED DEFAULT. Everything unmatched lands here,
+            # including forms neither author anticipated.
+            bad.append(f"{where}: evidence reference in "
+                       f"{type(up).__name__} matches no declared production "
+                       f"({GRAMMAR_VERSION}); the collector boundary cannot "
+                       f"speak for it")
+
+    # Manifest-vs-subject: a production the module no longer performs must
+    # not linger as standing permission.
+    for production in MANIFEST if check_manifest_usage else ():
+        if production.id not in used:
+            bad.append(f"manifest declares {production.id} but the module "
+                       f"performs no such operation; permission must track "
+                       f"the actual collector operations")
+
+    # A recognizer without a manifest entry can never accept anything, but
+    # say so loudly rather than leaving dead code that looks protective.
+    for pid in RECOGNIZERS:
+        if pid not in _BY_ID:
+            bad.append(f"recognizer {pid} is not declared in the manifest; "
+                       f"an operation cannot be accepted by recognition "
+                       f"alone")
+
+    return paths, sorted(set(bad))

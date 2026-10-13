@@ -477,3 +477,123 @@ class B1bBehaviourControls(SimpleTestCase):
         self.assertEqual(
             stale, [],
             f"DIAGNOSTIC_ONLY names paths nothing records: {stale}")
+
+    # ------------------------------------------------------------------
+    # The manifest boundary itself. The coverage control above can only
+    # be trusted if the scan is fail-closed, if permission tracks the
+    # module's actual operations, and if recognition alone cannot grant
+    # acceptance.
+    # ------------------------------------------------------------------
+
+    def _scan_snippet(self, body):
+        """Scan a throwaway module containing `body` inside a function."""
+        source = (
+            "import json\n\n\n"
+            "def main():\n"
+            '    evidence = {"step": "x"}\n'
+            f"    {body}\n"
+            "    return json.dumps(evidence)\n")
+        with tempfile.TemporaryDirectory(prefix="hh716-grammar-") as work:
+            path = Path(work) / "subject.py"
+            path.write_text(source, encoding="utf-8")
+            # A snippet exercises a handful of productions by
+            # construction, so the manifest-vs-subject check -- which is
+            # about the designated collector module -- is not applied.
+            return H.evidence_grammar_scan(str(path),
+                                           check_manifest_usage=False)
+
+    def test_the_fail_closed_default_rejects_an_undeclared_operation(self):
+        """An operation matching no production must be REJECTED, not
+        silently uncounted.
+
+        This is the branch that makes the boundary fail-closed, so it is
+        exercised directly rather than inferred: broadening or deleting
+        it makes this control fail even though the real subject would
+        still scan clean.
+        """
+        for body in ('box = [evidence]',
+                     'ev = evidence or {}',
+                     'evidence.update({"k": 1})',
+                     'for evidence["k"] in range(2): pass',
+                     'held = evidence.setdefault("k", {})["j"]'):
+            with self.subTest(body=body):
+                _, violations = self._scan_snippet(body)
+                self.assertTrue(
+                    violations,
+                    f"{body!r} matched no production yet produced no "
+                    f"violation; the default-allow branch is back")
+                self.assertTrue(
+                    any(H.GRAMMAR_VERSION in v or "no declared production" in v
+                        or "invisible" in v or "undeclared" in v
+                        for v in violations),
+                    f"violations do not name the boundary: {violations}")
+
+    def test_permission_tracks_the_modules_actual_operations(self):
+        """Manifest vs subject, in both directions.
+
+        A production nobody performs is standing permission for an
+        operation the module does not make, and a production the module
+        does perform must be declared rather than merely recognised.
+        """
+        here = Path(__file__).parent
+        subject = str(here / "containment_b1b.py")
+        _, violations = H.evidence_grammar_scan(subject)
+        self.assertEqual(violations, [], violations)
+
+        declared = {p.id for p in H.MANIFEST}
+        self.assertEqual(
+            declared, set(H.RECOGNIZERS),
+            "every declared production needs a recognizer and every "
+            "recognizer needs a declaration")
+        for production in H.MANIFEST:
+            with self.subTest(production=production.id):
+                self.assertIn(production.effect,
+                              ("records", "reads", "observes"))
+                self.assertTrue(production.shape and production.consumer)
+
+    def test_a_production_the_module_never_performs_is_rejected(self):
+        """Stale permission must fail rather than sit unused."""
+        extra = H.Production("NEVER_USED", "unused shape", "nothing", 1,
+                             "str-literal", "records")
+        original = H.MANIFEST
+        H.MANIFEST = original + (extra,)
+        H.RECOGNIZERS["NEVER_USED"] = lambda ctxt: None
+        try:
+            here = Path(__file__).parent
+            _, violations = H.evidence_grammar_scan(
+                str(here / "containment_b1b.py"))
+            self.assertTrue(
+                any("NEVER_USED" in v for v in violations),
+                f"a production nothing performs was accepted: {violations}")
+        finally:
+            H.MANIFEST = original
+            H.RECOGNIZERS.pop("NEVER_USED", None)
+
+    def test_recognition_alone_cannot_accept_an_operation(self):
+        """A recognizer without a manifest entry must not grant acceptance.
+
+        Otherwise a newly introduced collector operation becomes allowed
+        the moment scanner logic happens to match it, with no deliberate
+        declaration of its path semantics.
+        """
+        H.RECOGNIZERS["UNDECLARED"] = lambda ctxt: (True, set(), [])
+        try:
+            here = Path(__file__).parent
+            _, violations = H.evidence_grammar_scan(
+                str(here / "containment_b1b.py"))
+            self.assertTrue(
+                any("UNDECLARED" in v for v in violations),
+                f"an undeclared recognizer passed unnoticed: {violations}")
+        finally:
+            H.RECOGNIZERS.pop("UNDECLARED", None)
+
+    def test_a_safe_recipient_needs_a_stable_identity_not_a_spelling(self):
+        """The serializer allowlist matches names, and names can be
+        rebound."""
+        _, clean = self._scan_snippet('pass')
+        self.assertEqual(clean, [], clean)
+        _, violations = self._scan_snippet('json = len')
+        self.assertTrue(
+            any("untouched import" in v or "stable identity" in v
+                for v in violations),
+            f"a rebound serializer name was still trusted: {violations}")
