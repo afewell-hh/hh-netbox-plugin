@@ -57,6 +57,13 @@ DIAGNOSTIC_ONLY = (
     "unhandled_exception",
     "unhandled_exception.type",
     "unhandled_exception.message",
+    # Compose teardown by project NAME, which runs only after the
+    # registry has disposed of the exact IDs it owns. Its ok/why are a
+    # record of that follow-up step, not a safety claim.
+    "compose_down",
+    "compose_down.project",
+    "compose_down.ok",
+    "compose_down.why",
 )
 
 
@@ -1281,3 +1288,151 @@ class B1bBehaviourControls(SimpleTestCase):
                     path.write_text(source, encoding="utf-8")
                     H.evidence_grammar_scan(str(path),
                                             check_manifest_usage=False)
+
+    # ------------------------------------------------------------------
+    # Compose fidelity (#716 lead disposition).
+    #
+    # The supported wrapper reaches NetBox through `docker compose exec`,
+    # so a plain `docker exec` client demonstrates the wrong boundary.
+    # The subject is launched and terminated through one
+    # `docker compose -p <project> exec <service>` invocation, and the
+    # service must resolve to the registered exact immutable ID.
+    # ------------------------------------------------------------------
+
+    def test_the_subject_is_launched_through_compose_exec(self):
+        """Fails if the baseline command becomes a plain docker exec."""
+        _, code, evidence, recorded = self._run()
+        self.assertEqual(code, 0, evidence.get("dirty_reasons"))
+        argv = evidence["client_argv"]
+        self.assertEqual(
+            argv[:3], ["docker", "compose", "-p"],
+            f"the baseline client is not a compose invocation: {argv[:4]}")
+        self.assertIn("exec", argv, f"not an exec invocation: {argv}")
+        self.assertNotEqual(
+            argv[:2], ["docker", "exec"],
+            "the baseline reverted to a plain docker exec client")
+        preflight = evidence["preflight"]
+        self.assertEqual(argv[3], preflight["compose_project"],
+                         "the exec ran against a different project")
+        self.assertIn(preflight["compose_service"], argv,
+                      "the exec did not name the scenario service")
+        # The client that is terminated must be the one that was launched.
+        self.assertEqual(recorded["client_argv"][-1], argv,
+                         "the recorded client differs from the reported one")
+
+    def test_the_compose_project_is_scenario_specific(self):
+        """A fresh project per run, never the shared lane."""
+        _, code, evidence, _ = self._run()
+        self.assertEqual(code, 0, evidence.get("dirty_reasons"))
+        preflight = evidence["preflight"]
+        project = preflight["compose_project"]
+        self.assertTrue(project.startswith("hh716b-"), project)
+        self.assertNotEqual(project, preflight["lane"],
+                            "the scenario reused the lane's own project")
+        self.assertNotEqual(project, "netbox-docker",
+                            "the scenario ran in the shared project")
+
+    def test_a_service_resolving_to_another_id_is_not_adopted(self):
+        """A recreated service container answers to the same service
+        name under a different id. Adopting it silently is the failure
+        this exists to refuse."""
+        _, code, evidence, recorded = self._run(
+            recreated_service_id="c" * 64)
+        self.assertNotEqual(code, 0, "a recreated service was adopted")
+        self.assertTrue(evidence["lane_dirty"])
+        self.assertNotIn("baseline_complete", evidence)
+        shortfall = evidence["preflight_shortfall"]
+        self.assertIn(
+            "compose_service_resolves_to_registered_id",
+            shortfall["any_false"] + shortfall["not_literally_true"],
+            shortfall)
+        self.assertNotIn("baseline", recorded["launches"],
+                         "a subject was launched against an unowned id")
+
+    def test_identity_failure_stops_preflight_before_any_further_work(self):
+        """The early return must stop preflight, not merely record a
+        false check.
+
+        Asserting only the exit code and the shortfall passed with the
+        early return deleted: `main`'s shortfall gate stopped the run
+        anyway, so the mutation changed nothing observable. These
+        assert the later preflight steps never happened.
+        """
+        _, code, evidence, recorded = self._run(
+            compose_project_label="someone-elses-project")
+        self.assertNotEqual(code, 0)
+        checks = evidence["preflight_shortfall"]
+        for later in ("rescue_owner_installed",
+                      "rescue_owner_proven_by_execution",
+                      "decoy_create_observed"):
+            with self.subTest(step=later):
+                self.assertIn(
+                    later, checks["missing"],
+                    f"preflight continued to {later} after the compose "
+                    f"identity check failed")
+        self.assertEqual(recorded["launches"], [],
+                         "something was launched after an identity failure")
+
+    def test_inspect_reporting_another_id_is_refused(self):
+        """`docker inspect` must confirm the id it was asked about."""
+        _, code, evidence, recorded = self._run(
+            inspect_id_override="d" * 64)
+        self.assertNotEqual(code, 0, "inspect reported a different id and "
+                                     "the scenario proceeded")
+        shortfall = evidence["preflight_shortfall"]
+        self.assertIn(
+            "compose_identity_matches_project_and_service",
+            shortfall["any_false"] + shortfall["not_literally_true"],
+            shortfall)
+        self.assertNotIn("baseline", recorded["launches"])
+
+    def test_identity_must_match_the_project_and_the_service(self):
+        """The resolved container must BE the registered id and belong
+        to this project and service."""
+        for label, options in (
+                ("a foreign project",
+                 {"compose_project_label": "someone-elses-project"}),
+                ("a foreign service",
+                 {"compose_service_label": "not-the-subject"})):
+            with self.subTest(mismatch=label):
+                _, code, evidence, recorded = self._run(**options)
+                self.assertNotEqual(code, 0, f"{label} was accepted")
+                shortfall = evidence["preflight_shortfall"]
+                self.assertIn(
+                    "compose_identity_matches_project_and_service",
+                    shortfall["any_false"]
+                    + shortfall["not_literally_true"], shortfall)
+                self.assertNotIn("baseline", recorded["launches"])
+
+    def test_the_docker_cli_is_not_used_as_a_launch_boundary(self):
+        """Docker CLI stays for read-only inspection and exact-ID
+        teardown. It must never carry the subject."""
+        _, code, evidence, recorded = self._run()
+        self.assertEqual(code, 0, evidence.get("dirty_reasons"))
+        for call in recorded["compose_calls"]:
+            self.assertEqual(call[:3], ["docker", "compose", "-p"], call)
+        launches = [argv for argv in recorded["client_argv"]]
+        self.assertTrue(launches, "no subject was launched")
+        for argv in launches:
+            self.assertNotEqual(
+                argv[:2], ["docker", "exec"],
+                "a subject was launched through a plain docker exec")
+
+    def test_compose_argv_is_the_single_invocation_shape(self):
+        """Every Compose call is built by `compose_argv`, so the client
+        boundary cannot be changed without that function changing."""
+        import inspect as _inspect           # test-only source read
+        source = Path(H.__file__).parent / "containment_b1b.py"
+        tree = ast.parse(source.read_text(encoding="utf-8"))
+        literal_compose = []
+        for node in ast.walk(tree):
+            if not isinstance(node, ast.List):
+                continue
+            head = [e.value for e in node.elts[:2]
+                    if isinstance(e, ast.Constant)]
+            if head[:2] == ["docker", "compose"]:
+                literal_compose.append(node.lineno)
+        self.assertEqual(
+            len(literal_compose), 1,
+            f"compose argv is built in {len(literal_compose)} places; it "
+            f"must be built only by compose_argv: lines {literal_compose}")

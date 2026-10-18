@@ -77,6 +77,8 @@ def install(b1b, *, published_child_nonce=None, published_parent_nonce=None,
             observed_start_ticks=None, scenario_id=SCENARIO_ID,
             after_kill_state="S", after_rescue_found=False,
             rescue_outcome="reaped", decoy_state_after_rescue="present",
+            recreated_service_id=None, compose_project_label=None,
+            compose_service_label=None, inspect_id_override=None,
             child_found_after_kill=True, probe_unknown_after_kill=False,
             readiness_outcome="reaped", verification_verified=True):
     """Patch every outward call of the module under test.
@@ -91,7 +93,8 @@ def install(b1b, *, published_child_nonce=None, published_parent_nonce=None,
     # execution before any orphan is induced -- cannot be read off
     # unordered per-kind lists.
     recorded = {"removed": [], "signalled": [], "bind_calls": [],
-                "rescue_calls": [], "events": [], "launches": []}
+                "rescue_calls": [], "events": [], "launches": [],
+                "compose_calls": [], "client_argv": []}
 
     def _baseline_signalled():
         return any(entry.get("pid") == CHILD_PID
@@ -107,6 +110,34 @@ def install(b1b, *, published_child_nonce=None, published_parent_nonce=None,
                              else scenario_id)
         if argv[:2] == ["docker", "start"]:
             return Completed()
+        if argv[:3] == ["docker", "compose", "-p"]:
+            project = argv[3]
+            # The project name is learned HERE, from the real
+            # invocation, because the Compose repair removed the
+            # `create_scenario_container` hook the run id came from.
+            compose_project_seen[0] = project
+            recorded["compose_calls"].append(list(argv))
+            if "create" in argv:
+                return Completed()
+            if "ps" in argv and "-q" in argv:
+                # The service resolves to the scenario id -- or, when a
+                # control asks for it, to a DIFFERENT id, standing for a
+                # service container recreated behind the same name.
+                # `scenario_id` is what the service resolves to;
+                # `recreated_service_id` makes the SECOND resolve differ,
+                # standing for a service container recreated behind the
+                # same name between creation and preflight.
+                resolve_count[0] += 1
+                if recreated_service_id and resolve_count[0] > 1:
+                    return Completed(stdout=recreated_service_id + "\n")
+                return Completed(stdout=scenario_id + "\n")
+            if "start" in argv or "down" in argv:
+                return Completed()
+            if "exec" in argv:
+                recorded["events"].append(("launch", "baseline"))
+                recorded["launches"].append("baseline")
+                return Completed()
+            return Completed()
         if argv[:2] == ["docker", "rm"]:
             recorded["removed"].append(argv[-1])
             return Completed()
@@ -118,6 +149,19 @@ def install(b1b, *, published_child_nonce=None, published_parent_nonce=None,
             # branch: a previous version let the decoy branch intercept it,
             # so create_scenario_container saw an identity mismatch and the
             # whole harness aborted in preflight.
+            # The compose IDENTITY query must be answered before the
+            # generic verifying query, whose pattern it also matches --
+            # the same interception that aborted preflight once before,
+            # in the other direction.
+            if ("com.docker.compose.project" in text
+                    and "com.docker.compose.service" in text):
+                project = compose_project_label or compose_project_seen[0]
+                service = compose_service_label or b1b.SCENARIO_SERVICE
+                # `inspect_id_override` makes inspect report a DIFFERENT
+                # id than the one asked about, which is the only way the
+                # resolved-id comparison is exercised.
+                reported = inspect_id_override or target
+                return Completed(stdout=f"{reported} {project} {service}")
             if "{{.Id}} {{index" in text:
                 return Completed(stdout=f"{target} {b1b_run_id[0]}")
             if "com.docker.compose.project" in text:
@@ -147,6 +191,8 @@ def install(b1b, *, published_child_nonce=None, published_parent_nonce=None,
         return Completed()
 
     b1b_run_id = [""]
+    compose_project_seen = [""]
+    resolve_count = [0]
     lane_holder = ["diet716-mock"]
 
     def fake_in_scenario(container_id, argv, timeout=120, stdin=None,
@@ -263,10 +309,20 @@ def install(b1b, *, published_child_nonce=None, published_parent_nonce=None,
     b1b.PROVER.in_scenario = fake_in_scenario
     b1b.PROVER.install_rescue_owner = lambda *a, **k: True
     b1b.PROVER.create_scenario_container = fake_create
-    def fake_baseline_launch(*a, **k):
+    original_launch = b1b.launch_inner_subject_non_detached
+
+    def fake_baseline_launch(project, workspace, nonce, marker):
+        """Builds the REAL argv through the module's own compose_argv,
+        so a control can assert the client boundary rather than trust
+        a fixture's idea of it."""
+        argv = b1b.compose_argv(project, workspace, "exec", "-T",
+                                "-e", f"HH716_NONCE={nonce}",
+                                b1b.SCENARIO_SERVICE, "sh", "-c",
+                                b1b._subject_script(nonce, marker))
         recorded["events"].append(("launch", "baseline"))
         recorded["launches"].append("baseline")
-        return FakeClient(), ["python3", "-c", "x", "m"]
+        recorded["client_argv"].append(argv)
+        return (FakeClient(), ["python3", "-c", "x", marker], argv)
 
     original_launch_owned = b1b.PROVER.launch_owned_subject
 
@@ -282,8 +338,10 @@ def install(b1b, *, published_child_nonce=None, published_parent_nonce=None,
     return recorded
 
 
-def run_main(b1b, output, lane="diet716-mock"):
-    return b1b.main(["--lane", lane, "--output", str(output)])
+def run_main(b1b, output, lane="diet716-mock", workspace=None):
+    argv = ["--lane", lane, "--output", str(output),
+            "--workspace", str(workspace or Path(output).parent)]
+    return b1b.main(argv)
 
 
 # ----------------------------------------------------------------------

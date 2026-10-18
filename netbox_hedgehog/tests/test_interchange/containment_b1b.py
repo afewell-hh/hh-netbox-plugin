@@ -98,7 +98,7 @@ def prove_rescue_readiness(container_id, registry, lifecycle):
 
 
 def preflight(image, lane, run_id, evidence, registry, lifecycle,
-              fixture_registry):
+              fixture_registry, workspace):
     """Every item verified, through B1a registration, before any launch.
 
     Each check below can fail. The previous set could not: a typo'd lane
@@ -127,15 +127,36 @@ def preflight(image, lane, run_id, evidence, registry, lifecycle,
     checks["is_a_dedicated_worktree"] = bool(toplevel) and bool(common) and (
         Path(common).resolve() != Path(toplevel, ".git").resolve())
 
-    # Scenario container, created and REGISTERED through B1a.
-    container_id, why = PROVER.create_scenario_container(
-        image, run_id, registry, lifecycle)
+    # Scenario SERVICE, created through Compose and registered by its
+    # resolved exact immutable ID. The supported wrapper reaches NetBox
+    # through compose exec, so the subject boundary must be the same;
+    # the Docker CLI stays for read-only inspection and exact-ID
+    # teardown only.
+    project, container_id, why = create_scenario_compose_service(
+        image, run_id, workspace, registry, lifecycle)
+    checks["compose_project_is_scenario_specific"] = (
+        project == compose_project_name(run_id) and project != lane)
     checks["scenario_container_created_and_registered"] = bool(
         container_id) and container_id in registry.containers
     if not container_id:
-        evidence["preflight_failure"] = f"scenario container: {why}"
-        return None, None, checks
+        evidence["preflight_failure"] = f"compose scenario service: {why}"
+        return None, None, checks, project
     registry.container_id = container_id
+
+    # The service must STILL resolve to the registered id. Re-resolved
+    # here rather than reused from creation: a recreated service
+    # container answers to the same service name under a different id,
+    # and adopting it silently is the failure this proves against.
+    resolved, resolve_why = resolve_compose_container(project, workspace)
+    checks["compose_service_resolves_to_registered_id"] = (
+        resolved == container_id)
+    identity_ok, identity_why = verify_compose_identity(container_id, project)
+    checks["compose_identity_matches_project_and_service"] = identity_ok
+    if resolved != container_id or not identity_ok:
+        evidence["preflight_failure"] = (
+            f"compose identity: resolved={resolved} "
+            f"registered={container_id} {resolve_why or identity_why}")
+        return None, None, checks, project
 
     state, _ = PROVER._inspect_state(container_id)
     checks["container_present_and_identified"] = state == "present"
@@ -165,7 +186,7 @@ def preflight(image, lane, run_id, evidence, registry, lifecycle,
                                        _HERE / "containment_rescue.py"):
         checks["rescue_owner_installed"] = False
         evidence["preflight"] = {"checks": checks, "container_id": container_id}
-        return container_id, None, checks
+        return container_id, None, checks, project
     checks["rescue_owner_installed"] = True
 
     # READINESS BY EXECUTION, before the baseline subject exists.
@@ -215,23 +236,20 @@ def preflight(image, lane, run_id, evidence, registry, lifecycle,
         "checks": checks,
         "label_discovery_candidates": sorted(short),
         "container_id": container_id,
+        "compose_project": project,
+        "compose_service": SCENARIO_SERVICE,
         "decoy_container_id": decoy_id,
         "lane": lane,
         "run_id": run_id,
         "observation_deadline_seconds": 180,
     }
-    return container_id, decoy_id, checks
+    return container_id, decoy_id, checks, project
 
 
-def launch_inner_subject_non_detached(container_id, run_id, nonce, marker):
-    """ONE non-detached exec which itself launches the registered inner child.
-
-    The exec'd shell publishes its own identity, spawns the inner subject,
-    publishes the child's identity including its ppid, then waits. Because
-    the exec is not detached, the host holds a client process -- the exact
-    one that gets terminated.
-    """
-    expected_argv = ["python3", "-c", "import time; time.sleep(900)", marker]
+def _subject_script(nonce, marker):
+    """The shell the exec runs: publish self, spawn child, publish
+    child, wait. Unchanged by the Compose repair -- only the client
+    boundary that carries it changed."""
     script = (
         f"mkdir -p {PUBLICATION_DIR}; "
         f"pstat=$(cat /proc/$$/stat); set -- ${{pstat#*) }}; "
@@ -248,12 +266,166 @@ def launch_inner_subject_non_detached(container_id, run_id, nonce, marker):
         f"\\\"sid\\\":\\\"$4\\\"}}\" "
         f"> {PUBLICATION_DIR}/{nonce}.child.json; "
         f"wait")
-    client = subprocess.Popen(
-        ["docker", "exec", "-e", f"HH716_NONCE={nonce}", container_id,
-         "sh", "-c", script],
-        stdout=subprocess.PIPE, stderr=subprocess.PIPE, start_new_session=True)
-    return client, expected_argv
+    return script
 
+
+# ----------------------------------------------------------------------
+# Compose fidelity (#716 lead disposition).
+#
+# The supported wrapper reaches NetBox through `docker compose exec`, so
+# a plain `docker exec` client cannot establish the behaviour of the
+# client boundary this baseline exists to demonstrate. The subject is
+# launched and terminated through one `docker compose -p <project> exec
+# <service>` invocation.
+#
+# The Docker CLI remains only for read-only exact-ID inspection and
+# registry-authorized exact-ID teardown. It is never a substitute
+# subject-launch or host-client boundary.
+# ----------------------------------------------------------------------
+
+#: One service, named once, so the name cannot drift between the file,
+#: the resolve step and the exec.
+SCENARIO_SERVICE = "subject"
+
+
+def compose_project_name(run_id):
+    """A fresh project per run, so nothing is shared or reused."""
+    return f"hh716b-{run_id[:12]}"
+
+
+def compose_file_text(image):
+    return (
+        "services:\n"
+        f"  {SCENARIO_SERVICE}:\n"
+        f"    image: {image}\n"
+        '    command: ["sleep", "3600"]\n'
+        "    labels:\n"
+        "      hh716.role: scenario-subject\n")
+
+
+def compose_argv(project, workspace, *rest):
+    """The ONE canonical Compose invocation shape.
+
+    Every Compose call in this module is built here, so a control can
+    assert the baseline command is a compose exec and cannot be swapped
+    for plain `docker exec` without this function changing.
+    """
+    return ["docker", "compose", "-p", project,
+            "-f", str(workspace / "compose.yaml"), *rest]
+
+
+def resolve_compose_container(project, workspace):
+    """The exact immutable ID Compose resolved for the service."""
+    done = _observe(compose_argv(project, workspace, "ps", "-q",
+                                 SCENARIO_SERVICE))
+    if not done["ok"]:
+        return None, f"compose ps failed: {done['why']}"
+    ids = [line.strip() for line in done["out"].splitlines() if line.strip()]
+    if len(ids) != 1:
+        return None, f"compose ps resolved {len(ids)} containers, not 1"
+    container_id = ids[0]
+    if len(container_id) != 64 or any(
+            c not in "0123456789abcdef" for c in container_id):
+        return None, f"compose ps returned a non-exact id: {container_id!r}"
+    return container_id, ""
+
+
+def verify_compose_identity(container_id, project):
+    """The container must BE the registered id and belong to this
+    project and service.
+
+    Checked by inspecting the resolved id, not by trusting the name
+    Compose was asked about: a recreated service container answers to
+    the same service name under a different id, which is exactly the
+    adoption this must refuse.
+    """
+    done = _observe([
+        "docker", "inspect", container_id, "--format",
+        '{{.Id}} {{index .Config.Labels "com.docker.compose.project"}} '
+        '{{index .Config.Labels "com.docker.compose.service"}}'])
+    if not done["ok"]:
+        return False, f"inspect failed: {done['why']}"
+    parts = done["out"].split()
+    if len(parts) != 3:
+        return False, f"inspect returned {len(parts)} fields, not 3"
+    got_id, got_project, got_service = parts
+    if got_id != container_id:
+        return False, f"inspect id {got_id[:12]} != {container_id[:12]}"
+    if got_project != project:
+        return False, f"project {got_project!r} != {project!r}"
+    if got_service != SCENARIO_SERVICE:
+        return False, f"service {got_service!r} != {SCENARIO_SERVICE!r}"
+    return True, ""
+
+
+def create_scenario_compose_service(image, run_id, workspace, registry,
+                                    lifecycle=None):
+    """create -> resolve exact ID -> register -> verify identity -> start.
+
+    Registration happens as soon as an exact ID exists and before any
+    verification, so a failed check never leaves an unnameable
+    container, which is the ordering B1a already established.
+    """
+    project = compose_project_name(run_id)
+
+    def note(event, container_id=None):
+        if lifecycle is not None:
+            lifecycle.append({
+                "event": event, "at": time.time(), "project": project,
+                "service": SCENARIO_SERVICE, "container_id": container_id,
+                "registered_containers": list(
+                    registry.containers if registry is not None else []),
+            })
+
+    try:
+        (workspace / "compose.yaml").write_text(compose_file_text(image),
+                                                encoding="utf-8")
+    except OSError as exc:
+        return None, None, f"could not write the compose file: {exc}"
+
+    created = _observe(compose_argv(project, workspace, "create",
+                                    SCENARIO_SERVICE))
+    if not created["ok"]:
+        return project, None, f"compose create failed: {created['why']}"
+    note("compose_create")
+
+    container_id, why = resolve_compose_container(project, workspace)
+    if container_id is None:
+        return project, None, why
+
+    if registry is not None:
+        registry.containers.append(container_id)
+    note("register", container_id)
+
+    ok, why = verify_compose_identity(container_id, project)
+    if not ok:
+        return project, container_id, f"compose identity: {why}"
+    note("verify_identity", container_id)
+
+    started = _observe(compose_argv(project, workspace, "start",
+                                    SCENARIO_SERVICE))
+    if not started["ok"]:
+        return project, container_id, f"compose start failed: {started['why']}"
+    note("compose_start", container_id)
+    return project, container_id, ""
+
+
+def launch_inner_subject_non_detached(project, workspace, nonce, marker):
+    """ONE non-detached `docker compose exec` which launches the child.
+
+    This is the client the host later terminates, and it is the same
+    boundary the supported wrapper uses. A plain `docker exec` here
+    would demonstrate the wrong boundary.
+    """
+    expected_argv = ["python3", "-c", "import time; time.sleep(900)", marker]
+    script = _subject_script(nonce, marker)
+    argv = compose_argv(project, workspace, "exec", "-T",
+                        "-e", f"HH716_NONCE={nonce}",
+                        SCENARIO_SERVICE, "sh", "-c", script)
+    client = subprocess.Popen(
+        argv, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+        start_new_session=True)
+    return client, expected_argv, argv
 
 def read_json_in(container_id, path):
     done = PROVER.in_scenario(container_id, ["cat", path])
@@ -275,6 +447,9 @@ KNOWN_PROCESS_STATES = frozenset("RSDZTtWXxKPI")
 REQUIRED_PREFLIGHT_CHECKS = (
     "lane_observed", "lane_is_a_real_compose_project",
     "lane_is_not_the_shared_project", "is_a_dedicated_worktree",
+    "compose_project_is_scenario_specific",
+    "compose_service_resolves_to_registered_id",
+    "compose_identity_matches_project_and_service",
     "scenario_container_created_and_registered",
     "container_present_and_identified", "immutable_id_is_64_hex",
     "scenario_project_label_observed", "scenario_not_in_shared_project",
@@ -389,10 +564,14 @@ def main(argv=None) -> int:
     parser.add_argument("--lane", required=True)
     parser.add_argument("--image", default="netbox:latest-plugins-dev")
     parser.add_argument("--output", type=Path, required=True)
+    parser.add_argument("--workspace", type=Path, required=True,
+                        help="scratch directory for this run's compose file")
     args = parser.parse_args(argv)
 
     run_id = uuid.uuid4().hex
     started_at = time.time()
+    workspace = args.workspace
+    workspace.mkdir(parents=True, exist_ok=True)
     evidence = {"step": "B1b", "lane": args.lane, "run_id": run_id,
                 "observed_at": int(started_at), "lane_dirty": False,
                 "dirty_reasons": [], "timing": {}, "stages": []}
@@ -415,12 +594,15 @@ def main(argv=None) -> int:
     evidence["lifecycle_order"] = lifecycle
 
     container_id = decoy_id = None
+    # Bound before the try so the finally can tear the project down even
+    # if preflight raises before returning it.
+    project = None
     client = None
 
     try:
-        container_id, decoy_id, checks = preflight(
+        container_id, decoy_id, checks, project = preflight(
             args.image, args.lane, run_id, evidence, registry, lifecycle,
-            fixture_registry)
+            fixture_registry, workspace)
         shortfall = preflight_shortfall(checks)
         evidence["preflight_shortfall"] = shortfall
         if not container_id or any(shortfall.values()):
@@ -447,8 +629,10 @@ def main(argv=None) -> int:
                                                 for l in registry.launches]})
 
         launch_at = time.time()
-        client, _ = launch_inner_subject_non_detached(
-            container_id, run_id, nonce, marker)
+        # The SAME compose exec client that is terminated below.
+        client, _, client_argv = launch_inner_subject_non_detached(
+            project, workspace, nonce, marker)
+        evidence["client_argv"] = client_argv
         lifecycle.append({"event": f"baseline_start:{nonce}", "at": time.time(),
                           "registered_nonces": [l["nonce"]
                                                 for l in registry.launches]})
@@ -614,6 +798,15 @@ def main(argv=None) -> int:
         # Fixture disposal, by registered immutable id only. Every id here
         # was recorded before its container was started, so a post-creation
         # exception cannot lose one.
+        # The Compose project is torn down by NAME after the registry has
+        # disposed of the exact IDs it owns: name-based teardown may only
+        # follow id-based disposal, never replace it.
+        if project:
+            down = _observe(compose_argv(project, workspace, "down",
+                                         "--remove-orphans", "-t", "5"))
+            evidence["compose_down"] = {"project": project,
+                                        "ok": down["ok"],
+                                        "why": down["why"]}
         evidence["fixture_cleanup"] = []
         for fixture_id in fixture_registry:
             entry = {"id": fixture_id}
