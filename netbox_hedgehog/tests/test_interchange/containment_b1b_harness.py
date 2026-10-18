@@ -393,11 +393,16 @@ def evidence_read_paths(paths):
 # ======================================================================
 # Evidence-coverage: a MANIFEST-BASED, FAIL-CLOSED collector boundary.
 #
-# CLAIM, precisely. For the versioned collector module under analysis,
+# CLAIM, precisely. For the versioned collector module under analysis:
 # every evidence-derived reference is classified into an approved
-# grammar production with declared path semantics, or the scan fails.
-# The scanner does NOT claim to prove behaviour in foreign or dynamic
-# code outside the declared boundary, and no runtime recorder exists.
+# grammar production with declared path semantics, AND the module
+# performs no reflective or indirect-reachability operation outside the
+# three declared reflection productions -- or the scan fails.
+#
+# The claim is STATIC and MODULE-SCOPED. It does not extend to foreign
+# code, to behaviour at runtime, or to a module that reaches a binding
+# namespace: such a module fails the scan rather than being analysed.
+# No runtime recorder exists and none is claimed.
 #
 # The manifest below is derived from the collector module's ACTUAL
 # permitted evidence operations -- an inventory of the module found 39
@@ -412,7 +417,7 @@ def evidence_read_paths(paths):
 # terminal use"; it is simply unmatched, and therefore a violation.
 # ======================================================================
 
-GRAMMAR_VERSION = "2026-10-13.1"
+GRAMMAR_VERSION = "2026-10-18.1"
 
 #: Dotted callables that may receive the whole dict. The spelling alone
 #: is never sufficient -- the root name must also be import-bound and
@@ -540,6 +545,231 @@ def _untouched_imports(tree):
     return imported - rebound
 
 
+# ======================================================================
+# Bounded reflection prohibition.
+#
+# Five successive versions of a namespace-risk predicate were each
+# escaped by a spelling it did not match: a subscript store, then
+# mapping-method mutation, then `builtins.globals`, then import
+# aliases, then `getattr(sys.modules["builtins"], "globals")`. The last
+# escape used a key built at runtime -- `"glo" + "bals"` -- where the
+# attribute name appears nowhere in the source, which no rule that
+# matches names, attributes or resolved spellings can ever catch.
+#
+# So the collector module is no longer ANALYSED for what its reflection
+# might reach. Reflection is PROHIBITED, with an allowlist of the three
+# exact productions the module already performs. Each is matched on
+# construct AND context; anything else reflective fails the scan. The
+# question "what can this reach?" -- the step that failed five times --
+# is never asked.
+# ======================================================================
+
+#: Callables and attributes that read or rewrite bindings, resolve names
+#: at runtime, or walk the object graph to a namespace. Rejected
+#: wherever they appear, in any spelling, unless an allowlisted
+#: production matches the exact node.
+_REFLECTIVE_CALLS = (
+    "getattr", "setattr", "delattr", "hasattr",
+    "globals", "locals", "vars", "dir",
+    "exec", "eval", "compile", "__import__",
+    "import_module", "reload", "__build_class__",
+)
+_REFLECTIVE_ATTRS = (
+    "__dict__", "__globals__", "__builtins__", "__class__", "__bases__",
+    "__base__", "__subclasses__", "__mro__", "__code__", "__closure__",
+    "__func__", "__self__", "__getattribute__", "__getattr__",
+    "__setattr__", "__delattr__", "__reduce__", "__init_subclass__",
+    "modules", "import_module", "reload",
+)
+#: `type` is reflective in general; only `type(x).__name__` is allowed.
+_GUARDED_BUILTINS = ("type",)
+
+
+class ReflectionProduction:
+    """One permitted reflective operation, matched on shape and context."""
+
+    def __init__(self, pid, shape, rationale):
+        self.id = pid
+        self.shape = shape
+        self.rationale = rationale
+
+
+REFLECTION_MANIFEST = (
+    ReflectionProduction(
+        "RFL_IMPORTLIB_LOAD",
+        "importlib.util.spec_from_file_location(...) | "
+        "importlib.util.module_from_spec(...) | spec.loader.exec_module(m)",
+        "loads the sibling prover/rescue modules by path"),
+    ReflectionProduction(
+        "RFL_SYS_MODULES_REGISTER",
+        'sys.modules[<expr>] = <name>   (Store only)',
+        "registers the module just built by RFL_IMPORTLIB_LOAD"),
+    ReflectionProduction(
+        "RFL_TYPE_NAME",
+        "type(<expr>).__name__   (read position only)",
+        "names an exception class in diagnostic text"),
+)
+
+_REFLECTION_IDS = {p.id for p in REFLECTION_MANIFEST}
+
+
+def _dotted(node):
+    parts = []
+    while isinstance(node, ast.Attribute):
+        parts.append(node.attr)
+        node = node.value
+    if isinstance(node, ast.Name):
+        parts.append(node.id)
+        return ".".join(reversed(parts))
+    return None
+
+
+def _is_importlib_load(node, parent):
+    """RFL_IMPORTLIB_LOAD: the two importlib.util constructors, and the
+    loader call that completes them."""
+    if not isinstance(node, ast.Attribute):
+        return False
+    call = parent.get(node)
+    if not (isinstance(call, ast.Call) and call.func is node):
+        return False
+    dotted = _dotted(node)
+    if dotted in ("importlib.util.spec_from_file_location",
+                  "importlib.util.module_from_spec"):
+        return True
+    # `spec.loader.exec_module(module)`: the loader comes from the call
+    # above, and the attribute chain is local, not a namespace walk.
+    return dotted is not None and dotted.endswith(".loader.exec_module")
+
+
+def _is_sys_modules_register(node, parent):
+    """RFL_SYS_MODULES_REGISTER: a STORE into sys.modules, nothing else.
+
+    A read of `sys.modules` is the first half of the escape Dev B found
+    and is not permitted.
+    """
+    if not (isinstance(node, ast.Attribute) and node.attr == "modules"):
+        return False
+    if _dotted(node) != "sys.modules":
+        return False
+    subscript = parent.get(node)
+    if not (isinstance(subscript, ast.Subscript) and subscript.value is node):
+        return False
+    return isinstance(getattr(subscript, "ctx", None), ast.Store)
+
+
+def _is_type_name(node, parent):
+    """RFL_TYPE_NAME: `type(x).__name__`, read position only."""
+    if isinstance(node, ast.Name) and node.id == "type":
+        call = parent.get(node)
+        if not (isinstance(call, ast.Call) and call.func is node):
+            return False
+        attribute = parent.get(call)
+        return (isinstance(attribute, ast.Attribute)
+                and attribute.value is call
+                and attribute.attr == "__name__"
+                and isinstance(getattr(attribute, "ctx", None), ast.Load))
+    if isinstance(node, ast.Attribute) and node.attr == "__name__":
+        inner = node.value
+        return (isinstance(inner, ast.Call)
+                and isinstance(inner.func, ast.Name)
+                and inner.func.id == "type"
+                and isinstance(getattr(node, "ctx", None), ast.Load))
+    return False
+
+
+_REFLECTION_MATCHERS = {
+    "RFL_IMPORTLIB_LOAD": _is_importlib_load,
+    "RFL_SYS_MODULES_REGISTER": _is_sys_modules_register,
+    "RFL_TYPE_NAME": _is_type_name,
+}
+
+
+def reflection_scan(tree, *, check_manifest_usage=True):
+    """Violations for every reflective construct outside the allowlist.
+
+    `check_manifest_usage` asserts the reflection manifest describes
+    exactly the productions the DESIGNATED collector module performs.
+    Off only when scanning a throwaway snippet, which exercises a
+    subset by construction.
+    """
+    violations, used = [], set()
+    parent = {}
+    for node in ast.walk(tree):
+        for child in ast.iter_child_nodes(node):
+            parent[child] = node
+
+    # Pass 1: mark every node an allowlisted production matches, and
+    # record which productions the module actually performs. Usage must
+    # be collected here rather than inside the reflective-construct
+    # check: RFL_IMPORTLIB_LOAD trips none of the reflective lists, so
+    # consulting the matchers only on flagged nodes left it looking
+    # unused and failed the manifest-vs-subject check.
+    allowed = set()
+    for node in ast.walk(tree):
+        for pid, matcher in _REFLECTION_MATCHERS.items():
+            if pid not in _REFLECTION_IDS:
+                continue              # recognition never grants permission
+            if matcher(node, parent):
+                allowed.add(id(node))
+                used.add(pid)
+
+    def permitted(node):
+        return id(node) in allowed
+
+    for node in ast.walk(tree):
+        where = f"line {getattr(node, 'lineno', '?')}"
+        if isinstance(node, ast.Name):
+            if node.id in _REFLECTIVE_CALLS:
+                if not permitted(node):
+                    violations.append(
+                        f"{where}: `{node.id}` is reflective and is not a "
+                        f"permitted production")
+            elif node.id in _GUARDED_BUILTINS:
+                if not permitted(node):
+                    violations.append(
+                        f"{where}: `{node.id}` is permitted only as "
+                        f"`type(x).__name__`")
+        elif isinstance(node, ast.Attribute):
+            if (node.attr in _REFLECTIVE_ATTRS
+                    or node.attr in _REFLECTIVE_CALLS):
+                if not permitted(node):
+                    violations.append(
+                        f"{where}: attribute `{node.attr}` is reflective and "
+                        f"is not a permitted production")
+            elif node.attr == "__name__" and not permitted(node):
+                violations.append(
+                    f"{where}: `__name__` is permitted only as "
+                    f"`type(x).__name__`")
+        elif isinstance(node, (ast.Import, ast.ImportFrom)):
+            module = getattr(node, "module", None) or ""
+            names = [(a.asname or a.name) for a in node.names]
+            roots = [a.name.split(".")[0] for a in node.names]
+            if "builtins" in roots or module == "builtins":
+                violations.append(
+                    f"{where}: importing `builtins` hands out every "
+                    f"reflective callable under a name of the author's "
+                    f"choosing")
+            for name in names:
+                if name in _REFLECTIVE_CALLS:
+                    violations.append(
+                        f"{where}: `{name}` is imported, which is reflective "
+                        f"and is not a permitted production")
+
+    for production in REFLECTION_MANIFEST if check_manifest_usage else ():
+        if production.id not in used:
+            violations.append(
+                f"reflection manifest declares {production.id} but the "
+                f"module performs no such operation; permission must track "
+                f"the actual collector operations")
+    for pid in _REFLECTION_MATCHERS:
+        if pid not in _REFLECTION_IDS:
+            violations.append(
+                f"reflection matcher {pid} is not declared in the "
+                f"manifest; an operation cannot be permitted by "
+                f"recognition alone")
+    return sorted(set(violations))
+
+
 def _rebound_names(tree):
     """Every name the module binds, by any means.
 
@@ -653,6 +883,13 @@ def _namespace_rebinding_risk(tree):
 
 
 def _namespace_is_writable(tree):
+    """Retained as a second, independent line of defence.
+
+    `reflection_scan` now prohibits this whole surface outright, so a
+    module reaching it fails the scan regardless. This predicate still
+    withdraws callable-identity trust, so a single mistake in the
+    prohibition cannot by itself make a rebound callable look stable.
+    """
     return bool(_namespace_rebinding_risk(tree))
 
 
@@ -901,6 +1138,10 @@ def evidence_grammar_scan(path, *, check_manifest_usage=True):
             parent[child] = node
 
     # Identity-stable local callables only.
+    # Reflection is prohibited outside the three declared productions,
+    # so these violations are part of the scan's verdict, not advisory.
+    bad.extend(reflection_scan(tree,
+                               check_manifest_usage=check_manifest_usage))
     local_funcs = _stable_local_functions(tree)
     declared_funcs = {n.name for n in ast.walk(tree)
                       if isinstance(n, (ast.FunctionDef,

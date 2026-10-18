@@ -434,6 +434,11 @@ class B1bBehaviourControls(SimpleTestCase):
 
         Only the control modules count as readers -- not the harness,
         which reads keys to drive injections, not to falsify them.
+
+        The scan also fails if the module performs any reflective or
+        indirect-reachability operation outside the three declared
+        reflection productions, so the coverage claim rests on a module
+        that cannot reach a binding namespace in the first place.
         """
         here = Path(__file__).parent
         subject = str(here / "containment_b1b.py")
@@ -759,3 +764,210 @@ class B1bBehaviourControls(SimpleTestCase):
             "the collector module itself uses a namespace or dynamic "
             "binding form; it needs a declared production, not a looser "
             "default")
+
+    # ------------------------------------------------------------------
+    # Bounded reflection prohibition (#716 lead decision).
+    #
+    # Five successive namespace-risk predicates were each escaped by a
+    # spelling they did not match, the last using an attribute name
+    # built at runtime -- which no name-matching rule can ever catch. So
+    # reflection is prohibited rather than analysed, with an allowlist
+    # of the three productions the collector already performs.
+    # ------------------------------------------------------------------
+
+    #: Exercises all three permitted productions and nothing else.
+    PERMITTED_REFLECTION = (
+        "import importlib.util\n"
+        "import sys\n\n\n"
+        "def _load(name):\n"
+        '    spec = importlib.util.spec_from_file_location(f"p_{name}",\n'
+        '                                                  "/tmp/x.py")\n'
+        "    module = importlib.util.module_from_spec(spec)\n"
+        '    sys.modules[f"p_{name}"] = module\n'
+        "    spec.loader.exec_module(module)\n"
+        "    return module\n\n\n"
+        "def main():\n"
+        "    try:\n"
+        "        pass\n"
+        "    except Exception as exc:\n"
+        '        return f"{type(exc).__name__}"\n')
+
+    def test_the_three_permitted_reflection_productions_are_accepted(self):
+        """The positives. Without these the prohibition could be
+        satisfied by rejecting everything, including the collector's own
+        module loading and its exception-name diagnostics."""
+        violations = H.reflection_scan(ast.parse(self.PERMITTED_REFLECTION))
+        self.assertEqual(violations, [], violations)
+
+        declared = {p.id for p in H.REFLECTION_MANIFEST}
+        self.assertEqual(declared, set(H._REFLECTION_MATCHERS),
+                         "every declared reflection production needs a "
+                         "matcher and every matcher a declaration")
+        for production in H.REFLECTION_MANIFEST:
+            with self.subTest(production=production.id):
+                self.assertTrue(production.shape and production.rationale)
+
+    def test_the_collector_performs_only_permitted_reflection(self):
+        here = Path(__file__).parent
+        subject = ast.parse(
+            (here / "containment_b1b.py").read_text(encoding="utf-8"))
+        self.assertEqual(H.reflection_scan(subject), [])
+
+    def test_indirect_reachability_forms_are_prohibited(self):
+        """The five escapes, preserved as regressions.
+
+        S5 is the decisive one: the attribute name is assembled at
+        runtime, so it appears nowhere in the source. It is caught
+        because `getattr` is prohibited outright, not because anything
+        inspected what it reaches.
+        """
+        leaks = {
+            "S1 sys.modules subscript": (
+                "    import sys\n"
+                '    getattr(sys.modules["builtins"], "globals")()\n',
+                "`getattr`"),
+            "S2 sys.modules via a variable": (
+                "    import sys\n    mods = sys.modules\n"
+                '    getattr(mods["builtins"], "globals")()\n',
+                "`modules`"),
+            "S3 importlib.import_module": (
+                "    import importlib\n"
+                '    getattr(importlib.import_module("builtins"), "g")()\n',
+                "`import_module`"),
+            "S4 __subclasses__ graph walk": (
+                '    getattr([].__class__.__base__.__subclasses__()[0], "x")\n',
+                "`__subclasses__`"),
+            "S5 attribute name built at runtime": (
+                "    import sys\n"
+                '    n = "glo" + "bals"\n'
+                '    getattr(sys.modules["builtins"], n)()\n',
+                "`getattr`"),
+            # Reached through no reflective CONSTRUCT at all, so only
+            # the import rejection can catch these. Without them that
+            # branch is redundant with the others and could be deleted
+            # with no control failing.
+            "S6 builtins imported, never used reflectively": (
+                "    import builtins\n    _ = builtins\n",
+                "importing `builtins`"),
+            "S7 a builtin imported by name": (
+                "    from builtins import globals as g\n    _ = g\n",
+                "importing `builtins`"),
+            # An ordinary import ALIASED to a reflective name: the
+            # module now binds `eval`, and anything later reaching for
+            # it gets whatever was aliased. Only the import-name branch
+            # sees this, so without it that branch is redundant with
+            # the builtins-module branch.
+            "S8 an import aliased to a reflective name": (
+                "    from json import loads as eval\n    _ = 1\n",
+                "`eval` is imported"),
+            "S9 an import aliased to getattr": (
+                "    from json import loads as getattr\n    _ = 1\n",
+                "`getattr` is imported"),
+        }
+        for label, (body, reason) in leaks.items():
+            with self.subTest(leak=label):
+                source = "def main():\n" + body
+                # `check_manifest_usage=False`: a snippet performs none
+                # of the three permitted productions, so the usage check
+                # would make every one of these pass for the wrong
+                # reason -- as it did, until mutations that permit the
+                # construct outright were found still passing.
+                violations = H.reflection_scan(ast.parse(source),
+                                               check_manifest_usage=False)
+                self.assertTrue(
+                    violations,
+                    f"{label}: reached a namespace with no violation")
+                self.assertTrue(
+                    any(reason in v for v in violations),
+                    f"{label}: rejected, but not for the stated reason "
+                    f"({reason!r}): {violations}")
+
+    def test_near_misses_of_the_permitted_forms_are_prohibited(self):
+        """The allowlist matches shape AND context, not a module name."""
+        base = self.PERMITTED_REFLECTION
+        near_misses = {
+            "sys.modules read instead of store":
+                (base, 'sys.modules[f"p_{name}"] = module',
+                 'module = sys.modules["builtins"]', "`modules`"),
+            "type() without .__name__":
+                (base, 'f"{type(exc).__name__}"', "type(exc)", "`type`"),
+            "__name__ off another object":
+                (base, 'f"{type(exc).__name__}"',
+                 'f"{exc.__class__.__name__}"', "__name__"),
+            "importlib.import_module":
+                (base, "importlib.util.module_from_spec(spec)",
+                 'importlib.import_module("x")', "`import_module`"),
+            "getattr anywhere":
+                (base, "    return module", '    return getattr(module, "x")',
+                 "`getattr`"),
+        }
+        for label, (source, old, new, reason) in near_misses.items():
+            with self.subTest(near_miss=label):
+                self.assertIn(old, source, f"{label}: fixture drifted")
+                # `check_manifest_usage=False`: replacing a permitted
+                # form removes it, so the usage check would fire and the
+                # assertion would pass for the wrong reason -- it did,
+                # until two mutations that disable the real rules were
+                # found still passing.
+                violations = H.reflection_scan(
+                    ast.parse(source.replace(old, new, 1)),
+                    check_manifest_usage=False)
+                self.assertTrue(
+                    violations,
+                    f"{label}: a near miss of a permitted production was "
+                    f"accepted")
+                self.assertTrue(
+                    any(reason in v for v in violations),
+                    f"{label}: rejected, but not for the stated reason "
+                    f"({reason!r}): {violations}")
+
+    def test_reflection_permission_tracks_the_module(self):
+        """Stale permission, and permission by recognition alone."""
+        here = Path(__file__).parent
+        subject = ast.parse(
+            (here / "containment_b1b.py").read_text(encoding="utf-8"))
+
+        extra = H.ReflectionProduction("RFL_NEVER", "unused", "none")
+        original = H.REFLECTION_MANIFEST
+        H.REFLECTION_MANIFEST = original + (extra,)
+        H._REFLECTION_IDS.add("RFL_NEVER")
+        H._REFLECTION_MATCHERS["RFL_NEVER"] = lambda n, p: False
+        try:
+            self.assertTrue(
+                any("RFL_NEVER" in v for v in H.reflection_scan(subject)),
+                "a reflection production nothing performs was accepted")
+        finally:
+            H.REFLECTION_MANIFEST = original
+            H._REFLECTION_IDS.discard("RFL_NEVER")
+            H._REFLECTION_MATCHERS.pop("RFL_NEVER", None)
+
+        H._REFLECTION_MATCHERS["RFL_UNDECLARED"] = lambda n, p: True
+        try:
+            self.assertTrue(
+                any("RFL_UNDECLARED" in v
+                    for v in H.reflection_scan(subject)),
+                "an undeclared reflection matcher granted permission")
+        finally:
+            H._REFLECTION_MATCHERS.pop("RFL_UNDECLARED", None)
+
+    def test_reflection_violations_are_part_of_the_scan_verdict(self):
+        """The prohibition must reach `evidence_grammar_scan`.
+
+        The other reflection controls call `reflection_scan` directly,
+        so detaching it from the scan's verdict left them all passing
+        while the boundary no longer enforced anything.
+        """
+        source = (
+            "import json\n\n\n"
+            "def main():\n"
+            '    evidence = {"step": "x"}\n'
+            '    getattr(evidence, "keys")\n'
+            "    return json.dumps(evidence)\n")
+        with tempfile.TemporaryDirectory(prefix="hh716-rfl-") as work:
+            path = Path(work) / "subject.py"
+            path.write_text(source, encoding="utf-8")
+            _, violations = H.evidence_grammar_scan(
+                str(path), check_manifest_usage=False)
+        self.assertTrue(
+            any("getattr" in v for v in violations),
+            f"a reflective construct did not fail the scan: {violations}")
