@@ -1240,3 +1240,44 @@ class B1bBehaviourControls(SimpleTestCase):
                 self.assertTrue(
                     any(label in v for v in violations),
                     f"{label} alone was not prohibited: {violations}")
+
+    def test_every_scanner_entry_point_survives_a_hostile_module(self):
+        """No scanner path may raise instead of reporting.
+
+        A stray branch left in `_namespace_rebinding_risk` referenced an
+        undefined name. It fired only when a module assigned to an
+        attribute of an imported module -- which the collector never
+        does and no control exercised -- so the suite stayed green and
+        the crash shipped. This drives every entry point over modules
+        that trip each surface.
+        """
+        hostile = {
+            "attribute of an imported module":
+                "import sys\n\n\ndef f():\n    sys.modules = 1\n",
+            "importlib rebound":
+                "import importlib.util\n\n\ndef f():\n"
+                "    importlib = 1\n",
+            "namespace mutation":
+                "def f():\n    globals().update(a=1)\n",
+            "reflection via getattr":
+                'def f():\n    return getattr(object(), "x")\n',
+            "unapproved import":
+                "from pkgutil import resolve_name\n",
+            "evidence misuse":
+                'def f():\n    evidence = {}\n    box = [evidence]\n',
+        }
+        for label, source in hostile.items():
+            tree = ast.parse(source)
+            for entry in ("reflection_scan", "import_scan"):
+                with self.subTest(module=label, entry=entry):
+                    getattr(H, entry)(tree, check_manifest_usage=False)
+            with self.subTest(module=label, entry="_namespace_rebinding_risk"):
+                H._namespace_rebinding_risk(tree)
+            with self.subTest(module=label, entry="_stable_local_functions"):
+                H._stable_local_functions(tree)
+            with self.subTest(module=label, entry="evidence_grammar_scan"):
+                with tempfile.TemporaryDirectory(prefix="hh716-h-") as work:
+                    path = Path(work) / "subject.py"
+                    path.write_text(source, encoding="utf-8")
+                    H.evidence_grammar_scan(str(path),
+                                            check_manifest_usage=False)

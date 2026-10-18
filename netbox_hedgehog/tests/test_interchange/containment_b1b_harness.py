@@ -1105,15 +1105,6 @@ def _namespace_rebinding_risk(tree):
                 reasons.append(f"line {node.lineno}: `{node.id}` resolves to "
                                f"`{resolved}`, which can rebind names from "
                                f"data")
-        elif (isinstance(node, ast.Attribute)
-                and isinstance(getattr(node, "ctx", None),
-                               (ast.Store, ast.Del))
-                and _attribute_root(node) in _untouched_imports(tree)):
-            violations.append(
-                f"{where}: assigning to `{_attribute_root(node)}."
-                f"{node.attr}` rebinds an attribute of an imported "
-                f"module, so dotted paths through it are no longer "
-                f"identified by their spelling")
         elif isinstance(node, ast.Attribute) and node.attr in \
                 _RISKY_SPELLINGS:
             # Whatever the base: builtins.globals, b.globals,
