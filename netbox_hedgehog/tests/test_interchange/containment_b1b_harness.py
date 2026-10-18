@@ -580,6 +580,11 @@ _REFLECTIVE_ATTRS = (
     "__func__", "__self__", "__getattribute__", "__getattr__",
     "__setattr__", "__delattr__", "__reduce__", "__init_subclass__",
     "modules", "import_module", "reload",
+    # Executing module code. Prohibited unless the exact declared
+    # production matches: unmatched, `x.loader.exec_module(y)` runs
+    # arbitrary code, and leaving these out meant a refusal to MATCH
+    # produced no violation at all.
+    "loader", "exec_module",
 )
 #: `type` is reflective in general; only `type(x).__name__` is allowed.
 _GUARDED_BUILTINS = ("type",)
@@ -728,9 +733,66 @@ def _dotted(node):
     return None
 
 
-def _is_importlib_load(node, parent):
-    """RFL_IMPORTLIB_LOAD: the two importlib.util constructors, and the
-    loader call that completes them."""
+def _loader_bindings(tree):
+    """Per function: the names bound by the two declared constructors.
+
+    `spec` must come from `spec_from_file_location`, and `module` from
+    `module_from_spec(<that spec>)`. A name bound more than once is
+    excluded: a second assignment could substitute anything, and the
+    binding would no longer identify what the call receives.
+    """
+    bindings = {}
+    for fn in ast.walk(tree):
+        if not isinstance(fn, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            continue
+        counts, specs, modules = {}, {}, {}
+        for node in ast.walk(fn):
+            if not (isinstance(node, ast.Assign) and len(node.targets) == 1
+                    and isinstance(node.targets[0], ast.Name)):
+                continue
+            name = node.targets[0].id
+            counts[name] = counts.get(name, 0) + 1
+            value = node.value
+            if not (isinstance(value, ast.Call)
+                    and isinstance(value.func, ast.Attribute)):
+                continue
+            dotted = _dotted(value.func)
+            if dotted == "importlib.util.spec_from_file_location":
+                specs[name] = True
+            elif dotted == "importlib.util.module_from_spec":
+                if (len(value.args) == 1
+                        and isinstance(value.args[0], ast.Name)):
+                    modules[name] = value.args[0].id
+        single = {n for n, c in counts.items() if c == 1}
+        bindings[id(fn)] = (
+            {n for n in specs if n in single},
+            {n: s for n, s in modules.items() if n in single})
+    return bindings
+
+
+def _enclosing_function(node, parent):
+    probe = parent.get(node)
+    while probe is not None:
+        if isinstance(probe, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            return probe
+        probe = parent.get(probe)
+    return None
+
+
+def _is_importlib_load(node, parent, bindings=None):
+    """RFL_IMPORTLIB_LOAD, bound structurally.
+
+    The two constructors are matched by their exact dotted name. The
+    loader call is matched only as `<spec>.loader.exec_module(<module>)`
+    where `<spec>` is a name bound in the SAME function by
+    `spec_from_file_location`, and `<module>` is a name bound there by
+    `module_from_spec(<that same spec>)`.
+
+    A suffix test on `.loader.exec_module` was accepted here before,
+    which let any receiver execute any argument -- the declared
+    production named `spec` and `module`, and the matcher checked
+    neither.
+    """
     if not isinstance(node, ast.Attribute):
         return False
     call = parent.get(node)
@@ -740,9 +802,29 @@ def _is_importlib_load(node, parent):
     if dotted in ("importlib.util.spec_from_file_location",
                   "importlib.util.module_from_spec"):
         return True
-    # `spec.loader.exec_module(module)`: the loader comes from the call
-    # above, and the attribute chain is local, not a namespace walk.
-    return dotted is not None and dotted.endswith(".loader.exec_module")
+    if node.attr != "exec_module":
+        return False
+    # Shape: exactly `<name>.loader.exec_module(<name>)`.
+    loader = node.value
+    if not (isinstance(loader, ast.Attribute) and loader.attr == "loader"
+            and isinstance(loader.value, ast.Name)):
+        return False
+    if call.keywords or len(call.args) != 1:
+        return False
+    argument = call.args[0]
+    if not isinstance(argument, ast.Name):
+        return False
+    if bindings is None:
+        return False
+    fn = _enclosing_function(node, parent)
+    if fn is None:
+        return False
+    spec_names, module_names = bindings.get(id(fn), (set(), {}))
+    receiver = loader.value.id
+    if receiver not in spec_names:
+        return False
+    # The module must have been built from THIS spec.
+    return module_names.get(argument.id) == receiver
 
 
 def _is_sys_modules_register(node, parent):
@@ -782,7 +864,7 @@ def _is_type_name(node, parent):
 
 
 _REFLECTION_MATCHERS = {
-    "RFL_IMPORTLIB_LOAD": _is_importlib_load,
+    "RFL_IMPORTLIB_LOAD": _is_importlib_load,     # takes `bindings`
     "RFL_SYS_MODULES_REGISTER": _is_sys_modules_register,
     "RFL_TYPE_NAME": _is_type_name,
 }
@@ -801,6 +883,7 @@ def reflection_scan(tree, *, check_manifest_usage=True):
     for node in ast.walk(tree):
         for child in ast.iter_child_nodes(node):
             parent[child] = node
+    loader_bindings = _loader_bindings(tree)
 
     # Pass 1: mark every node an allowlisted production matches, and
     # record which productions the module actually performs. Usage must
@@ -813,8 +896,19 @@ def reflection_scan(tree, *, check_manifest_usage=True):
         for pid, matcher in _REFLECTION_MATCHERS.items():
             if pid not in _REFLECTION_IDS:
                 continue              # recognition never grants permission
-            if matcher(node, parent):
+            if pid == "RFL_IMPORTLIB_LOAD":
+                matched = matcher(node, parent, loader_bindings)
+            else:
+                matched = matcher(node, parent)
+            if matched:
                 allowed.add(id(node))
+                # `spec.loader.exec_module(module)` is two attribute
+                # nodes; permitting only the outer one leaves `loader`
+                # flagged and the declared form failing.
+                if (pid == "RFL_IMPORTLIB_LOAD"
+                        and isinstance(node, ast.Attribute)
+                        and node.attr == "exec_module"):
+                    allowed.add(id(node.value))
                 used.add(pid)
 
     def permitted(node):

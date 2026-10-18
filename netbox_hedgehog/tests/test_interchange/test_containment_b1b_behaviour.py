@@ -1062,3 +1062,95 @@ class B1bBehaviourControls(SimpleTestCase):
         self.assertTrue(
             any("resolve_name" in v for v in violations),
             f"an unapproved import did not fail the scan: {violations}")
+
+    # ------------------------------------------------------------------
+    # RFL_IMPORTLIB_LOAD, bound structurally.
+    #
+    # The matcher ended with `dotted.endswith(".loader.exec_module")`,
+    # so ANY receiver could execute ANY argument -- the declared
+    # production named `spec` and `module` and the matcher checked
+    # neither. The receiver must now be a name bound in the same
+    # function by spec_from_file_location, and the argument a name
+    # bound there by module_from_spec(<that same spec>).
+    # ------------------------------------------------------------------
+
+    LOADER_PRELUDE = (
+        "import importlib.util\n"
+        "import sys\n\n\n"
+        "def _load(name):\n"
+        '    spec = importlib.util.spec_from_file_location(f"p_{name}",\n'
+        '                                                  "/tmp/x.py")\n'
+        "    module = importlib.util.module_from_spec(spec)\n"
+        '    sys.modules[f"p_{name}"] = module\n')
+
+    def _loader_scan(self, body):
+        return H.reflection_scan(ast.parse(self.LOADER_PRELUDE + body),
+                                 check_manifest_usage=False)
+
+    def test_the_declared_loader_call_is_accepted(self):
+        """The positive. Without it the binding could be satisfied by
+        rejecting the collector's own module loading."""
+        self.assertEqual(
+            self._loader_scan("    spec.loader.exec_module(module)\n"
+                              "    return module\n"),
+            [])
+
+    def test_only_the_bound_spec_and_module_may_execute(self):
+        """Anything but the exact declared pairing must fail."""
+        declared = "    spec.loader.exec_module(module)\n"
+        negatives = {
+            "a foreign receiver":
+                declared + "    untrusted.loader.exec_module(module)\n",
+            "an untrusted argument":
+                "    spec.loader.exec_module(evil)\n",
+            "a deep foreign chain":
+                declared + "    a.b.c.loader.exec_module(payload)\n",
+            "a loader off an imported module":
+                "    import json\n    json.loader.exec_module(module)\n",
+            "a receiver not from spec_from_file_location":
+                "    spec2 = object()\n"
+                "    spec2.loader.exec_module(module)\n",
+            "a module built from a DIFFERENT spec":
+                '    other = importlib.util.spec_from_file_location("o",\n'
+                '                                                   "/o.py")\n'
+                "    m2 = importlib.util.module_from_spec(other)\n"
+                "    spec.loader.exec_module(m2)\n",
+            "the spec rebound after binding":
+                "    spec = object()\n"
+                "    spec.loader.exec_module(module)\n",
+            "the module rebound after binding":
+                "    module = object()\n"
+                "    spec.loader.exec_module(module)\n",
+            "a keyword argument":
+                "    spec.loader.exec_module(mod=module)\n",
+            "an extra argument":
+                "    spec.loader.exec_module(module, 1)\n",
+            "a call expression as receiver":
+                "    get_spec().loader.exec_module(module)\n",
+            "the loader taken without calling it":
+                declared + "    f = spec.loader\n",
+            # Reaching exec_module without ever naming `loader`, so
+            # only the `exec_module` prohibition catches these. Without
+            # them it is redundant with `loader` and could be dropped
+            # with no control failing.
+            "exec_module on a bare name":
+                declared + "    ldr.exec_module(payload)\n",
+            "exec_module on a call result":
+                declared + "    get().exec_module(payload)\n",
+            "exec_module straight off the constructor":
+                declared +
+                '    importlib.util.spec_from_file_location("a",\n'
+                '                                           "/b"'
+                ").exec_module(payload)\n",
+        }
+        for label, body in negatives.items():
+            with self.subTest(negative=label):
+                violations = self._loader_scan(body + "    return module\n")
+                self.assertTrue(
+                    violations,
+                    f"{label}: an undeclared loader call was accepted")
+                self.assertTrue(
+                    any("exec_module" in v or "loader" in v
+                        for v in violations),
+                    f"{label}: rejected, but not as a loader violation: "
+                    f"{violations}")
