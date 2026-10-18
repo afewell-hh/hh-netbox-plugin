@@ -846,23 +846,6 @@ class B1bBehaviourControls(SimpleTestCase):
             # the import rejection can catch these. Without them that
             # branch is redundant with the others and could be deleted
             # with no control failing.
-            "S6 builtins imported, never used reflectively": (
-                "    import builtins\n    _ = builtins\n",
-                "importing `builtins`"),
-            "S7 a builtin imported by name": (
-                "    from builtins import globals as g\n    _ = g\n",
-                "importing `builtins`"),
-            # An ordinary import ALIASED to a reflective name: the
-            # module now binds `eval`, and anything later reaching for
-            # it gets whatever was aliased. Only the import-name branch
-            # sees this, so without it that branch is redundant with
-            # the builtins-module branch.
-            "S8 an import aliased to a reflective name": (
-                "    from json import loads as eval\n    _ = 1\n",
-                "`eval` is imported"),
-            "S9 an import aliased to getattr": (
-                "    from json import loads as getattr\n    _ = 1\n",
-                "`getattr` is imported"),
         }
         for label, (body, reason) in leaks.items():
             with self.subTest(leak=label):
@@ -971,3 +954,111 @@ class B1bBehaviourControls(SimpleTestCase):
         self.assertTrue(
             any("getattr" in v for v in violations),
             f"a reflective construct did not fail the scan: {violations}")
+
+    # ------------------------------------------------------------------
+    # Approved import manifest.
+    #
+    # The import rule was a denylist of reflective module names.
+    # `from pkgutil import resolve_name` defeated it: resolve_name turns
+    # the string "builtins:globals" into the callable, naming nothing
+    # the denylist knew. pkgutil, ctypes, gc, inspect and pickle all
+    # reach a namespace and that list has no end, so imports became an
+    # allowlist of the exact forms this collector uses.
+    # ------------------------------------------------------------------
+
+    def _import_scan(self, source):
+        return H.import_scan(ast.parse(source), check_manifest_usage=False)
+
+    def test_any_unapproved_import_form_fails(self):
+        """Dev B's requested regression: a NEW import form fails unless
+        declared, whether or not anyone judged it reflective."""
+        unapproved = {
+            "pkgutil.resolve_name": "from pkgutil import resolve_name\n",
+            "ctypes": "import ctypes\n",
+            "gc": "import gc\n",
+            "inspect": "import inspect\n",
+            "pickle": "import pickle\n",
+            "operator.attrgetter": "from operator import attrgetter\n",
+            "builtins": "import builtins\n",
+            "a builtin by name": "from builtins import globals as g\n",
+            # Not reflective at all, and still rejected: the rule is the
+            # allowlist, not a judgement about what a module can reach.
+            "an unknown third party": "import requests\n",
+            "a star import": "from os import *\n",
+            "a relative import": "from . import siblings\n",
+            # A relative import whose (module, name) COLLIDES with an
+            # approved key: `.pathlib` is a sibling module, not the
+            # stdlib one, so without the relative-import branch this
+            # resolves to an approved form and shadows it.
+            "a relative import shadowing an approved form":
+                "from .pathlib import Path\n",
+            "a parent-relative import shadowing an approved form":
+                "from ..pathlib import Path\n",
+            # Approved module, unapproved SPELLING.
+            "an approved module under an alias": "import json as j\n",
+            "an approved name under an alias":
+                "from pathlib import Path as P\n",
+            "a different member of an approved module":
+                "from pathlib import PurePath\n",
+            "importlib without .util": "import importlib\n",
+        }
+        for label, source in unapproved.items():
+            with self.subTest(import_form=label):
+                violations = self._import_scan(source)
+                self.assertTrue(
+                    violations,
+                    f"{label}: an unapproved import form was accepted")
+                self.assertTrue(
+                    any("not an approved import form" in v
+                        for v in violations),
+                    f"{label}: rejected, but not as an unapproved import: "
+                    f"{violations}")
+
+    def test_the_approved_import_forms_are_accepted(self):
+        """The positives. Without them the allowlist could be satisfied
+        by rejecting every import, including the collector's own."""
+        for form in H.IMPORT_MANIFEST:
+            with self.subTest(form=form.spelling()):
+                self.assertEqual(
+                    self._import_scan(form.spelling() + "\n"), [],
+                    f"{form.spelling()} is declared but rejected")
+                self.assertTrue(form.rationale,
+                                "every approved import needs a rationale")
+
+    def test_the_collector_imports_exactly_the_approved_forms(self):
+        here = Path(__file__).parent
+        subject = ast.parse(
+            (here / "containment_b1b.py").read_text(encoding="utf-8"))
+        self.assertEqual(H.import_scan(subject), [])
+
+    def test_import_permission_tracks_the_module(self):
+        """A declared import the module does not perform is stale."""
+        extra = H.ImportForm("import", None, "never_imported", None, "none")
+        original = H.IMPORT_MANIFEST
+        H.IMPORT_MANIFEST = original + (extra,)
+        try:
+            here = Path(__file__).parent
+            subject = ast.parse(
+                (here / "containment_b1b.py").read_text(encoding="utf-8"))
+            self.assertTrue(
+                any("never_imported" in v for v in H.import_scan(subject)),
+                "a declared import nothing performs was accepted")
+        finally:
+            H.IMPORT_MANIFEST = original
+
+    def test_import_violations_are_part_of_the_scan_verdict(self):
+        """The allowlist must reach `evidence_grammar_scan`."""
+        source = (
+            "import json\n"
+            "from pkgutil import resolve_name\n\n\n"
+            "def main():\n"
+            '    evidence = {"step": "x"}\n'
+            "    return json.dumps(evidence)\n")
+        with tempfile.TemporaryDirectory(prefix="hh716-imp-") as work:
+            path = Path(work) / "subject.py"
+            path.write_text(source, encoding="utf-8")
+            _, violations = H.evidence_grammar_scan(
+                str(path), check_manifest_usage=False)
+        self.assertTrue(
+            any("resolve_name" in v for v in violations),
+            f"an unapproved import did not fail the scan: {violations}")

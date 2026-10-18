@@ -585,6 +585,110 @@ _REFLECTIVE_ATTRS = (
 _GUARDED_BUILTINS = ("type",)
 
 
+# ----------------------------------------------------------------------
+# Approved import manifest.
+#
+# The import rule was a DENYLIST: reject `builtins`, reject anything
+# aliased to a reflective name. `from pkgutil import resolve_name`
+# defeated it -- resolve_name turns the string "builtins:globals" into
+# the callable, naming nothing the denylist knew. Any finite denylist
+# loses this game: pkgutil, ctypes, gc, inspect and pickle all reach a
+# namespace, and that list has no end.
+#
+# So imports are an ALLOWLIST of the exact forms this collector uses.
+# A module importing anything else fails, whether or not the import is
+# reflective, and whether or not anyone has thought about it.
+# ----------------------------------------------------------------------
+
+class ImportForm:
+    """One approved import, matched exactly: kind, module, name, alias."""
+
+    def __init__(self, kind, module, name, asname, rationale):
+        self.kind = kind                  # "import" | "from"
+        self.module = module
+        self.name = name
+        self.asname = asname
+        self.rationale = rationale
+
+    @property
+    def key(self):
+        return (self.kind, self.module, self.name, self.asname)
+
+    def spelling(self):
+        text = (f"import {self.name}" if self.kind == "import"
+                else f"from {self.module} import {self.name}")
+        return text + (f" as {self.asname}" if self.asname else "")
+
+
+IMPORT_MANIFEST = (
+    ImportForm("from", "__future__", "annotations", None,
+               "postponed annotation evaluation"),
+    ImportForm("import", None, "argparse", None, "the CLI"),
+    ImportForm("import", None, "json", None, "evidence serialisation"),
+    ImportForm("import", None, "os", None, "environment and paths"),
+    ImportForm("import", None, "subprocess", None, "docker invocations"),
+    ImportForm("import", None, "sys", None, "module registration, exit"),
+    ImportForm("import", None, "time", None, "timings and waits"),
+    ImportForm("import", None, "uuid", None, "run identity"),
+    ImportForm("from", "pathlib", "Path", None, "filesystem paths"),
+    ImportForm("import", None, "importlib.util", None,
+               "RFL_IMPORTLIB_LOAD: loads the sibling modules by path"),
+)
+
+_IMPORT_KEYS = {form.key for form in IMPORT_MANIFEST}
+
+
+def _import_entries(tree):
+    """Every import in the module as (kind, module, name, asname, line)."""
+    entries = []
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Import):
+            for alias in node.names:
+                entries.append(("import", None, alias.name, alias.asname,
+                                node.lineno))
+        elif isinstance(node, ast.ImportFrom):
+            if node.level:
+                entries.append(("relative", "." * node.level,
+                                ", ".join(a.name for a in node.names), None,
+                                node.lineno))
+                continue
+            for alias in node.names:
+                entries.append(("from", node.module, alias.name,
+                                alias.asname, node.lineno))
+    return entries
+
+
+def import_scan(tree, *, check_manifest_usage=True):
+    """Violations for every import outside the approved manifest."""
+    violations, used = [], set()
+    for kind, module, name, asname, line in _import_entries(tree):
+        if kind == "relative":
+            violations.append(
+                f"line {line}: relative import `{module}` is not an "
+                f"approved import form")
+            continue
+        key = (kind, module, name, asname)
+        if key in _IMPORT_KEYS:
+            used.add(key)
+            continue
+        spelling = (f"import {name}" if kind == "import"
+                    else f"from {module} import {name}")
+        if asname:
+            spelling += f" as {asname}"
+        violations.append(
+            f"line {line}: `{spelling}` is not an approved import form; "
+            f"imports are an allowlist, so a new one must be declared with "
+            f"its rationale")
+
+    for form in IMPORT_MANIFEST if check_manifest_usage else ():
+        if form.key not in used:
+            violations.append(
+                f"import manifest declares `{form.spelling()}` but the "
+                f"module does not import it; permission must track the "
+                f"actual collector imports")
+    return sorted(set(violations))
+
+
 class ReflectionProduction:
     """One permitted reflective operation, matched on shape and context."""
 
@@ -740,20 +844,11 @@ def reflection_scan(tree, *, check_manifest_usage=True):
                 violations.append(
                     f"{where}: `__name__` is permitted only as "
                     f"`type(x).__name__`")
-        elif isinstance(node, (ast.Import, ast.ImportFrom)):
-            module = getattr(node, "module", None) or ""
-            names = [(a.asname or a.name) for a in node.names]
-            roots = [a.name.split(".")[0] for a in node.names]
-            if "builtins" in roots or module == "builtins":
-                violations.append(
-                    f"{where}: importing `builtins` hands out every "
-                    f"reflective callable under a name of the author's "
-                    f"choosing")
-            for name in names:
-                if name in _REFLECTIVE_CALLS:
-                    violations.append(
-                        f"{where}: `{name}` is imported, which is reflective "
-                        f"and is not a permitted production")
+        # Imports are not screened here. A denylist of reflective
+        # module names lost to `from pkgutil import resolve_name`, which
+        # resolves "builtins:globals" from a string. `import_scan`
+        # allowlists the exact forms this collector uses instead, so an
+        # unapproved import fails whether or not it is reflective.
 
     for production in REFLECTION_MANIFEST if check_manifest_usage else ():
         if production.id not in used:
@@ -1140,6 +1235,7 @@ def evidence_grammar_scan(path, *, check_manifest_usage=True):
     # Identity-stable local callables only.
     # Reflection is prohibited outside the three declared productions,
     # so these violations are part of the scan's verdict, not advisory.
+    bad.extend(import_scan(tree, check_manifest_usage=check_manifest_usage))
     bad.extend(reflection_scan(tree,
                                check_manifest_usage=check_manifest_usage))
     local_funcs = _stable_local_functions(tree)
