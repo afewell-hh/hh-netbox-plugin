@@ -79,6 +79,7 @@ def install(b1b, *, published_child_nonce=None, published_parent_nonce=None,
             rescue_outcome="reaped", decoy_state_after_rescue="present",
             recreated_service_id=None, compose_project_label=None,
             compose_service_label=None, inspect_id_override=None,
+            compose_never_creates=False,
             child_found_after_kill=True, probe_unknown_after_kill=False,
             readiness_outcome="reaped", verification_verified=True):
     """Patch every outward call of the module under test.
@@ -118,11 +119,23 @@ def install(b1b, *, published_child_nonce=None, published_parent_nonce=None,
             compose_project_seen[0] = project
             recorded["compose_calls"].append(list(argv))
             if "create" in argv:
+                # `compose_never_creates` leaves the service absent, so
+                # the resolve genuinely finds nothing -- the shape the
+                # live run hit, for a different reason.
+                if not compose_never_creates:
+                    compose_state[0] = "created"
                 return Completed()
             if "ps" in argv and "-q" in argv:
-                # The service resolves to the scenario id -- or, when a
-                # control asks for it, to a DIFFERENT id, standing for a
-                # service container recreated behind the same name.
+                # DAEMON-FAITHFUL. `docker compose ps` lists only
+                # RUNNING services; a created-but-unstarted container
+                # needs -a/--all. The previous fake answered regardless
+                # of state, so 76 tests passed over a create -> resolve
+                # sequence that returned nothing against a real daemon
+                # and aborted the one authorized live run at preflight.
+                if compose_state[0] == "absent":
+                    return Completed(stdout="")
+                if compose_state[0] == "created" and "-a" not in argv:
+                    return Completed(stdout="")
                 # `scenario_id` is what the service resolves to;
                 # `recreated_service_id` makes the SECOND resolve differ,
                 # standing for a service container recreated behind the
@@ -131,7 +144,11 @@ def install(b1b, *, published_child_nonce=None, published_parent_nonce=None,
                 if recreated_service_id and resolve_count[0] > 1:
                     return Completed(stdout=recreated_service_id + "\n")
                 return Completed(stdout=scenario_id + "\n")
-            if "start" in argv or "down" in argv:
+            if "start" in argv:
+                compose_state[0] = "running"
+                return Completed()
+            if "down" in argv:
+                compose_state[0] = "absent"
                 return Completed()
             if "exec" in argv:
                 recorded["events"].append(("launch", "baseline"))
@@ -193,6 +210,8 @@ def install(b1b, *, published_child_nonce=None, published_parent_nonce=None,
     b1b_run_id = [""]
     compose_project_seen = [""]
     resolve_count = [0]
+    #: absent -> created -> running -> absent, as the daemon sees it.
+    compose_state = ["absent"]
     lane_holder = ["diet716-mock"]
 
     def fake_in_scenario(container_id, argv, timeout=120, stdin=None,

@@ -315,8 +315,17 @@ def compose_argv(project, workspace, *rest):
 
 
 def resolve_compose_container(project, workspace):
-    """The exact immutable ID Compose resolved for the service."""
-    done = _observe(compose_argv(project, workspace, "ps", "-q",
+    """The exact immutable ID Compose resolved for the service.
+
+    `-a` is REQUIRED, not cosmetic. This runs between `create` and
+    `start`, and `docker compose ps` without `--all` lists only running
+    services -- so the resolve returned nothing, the registry was never
+    given an exact ID, and the one authorized live baseline aborted at
+    preflight. The mocked fake had answered regardless of container
+    state, so the whole suite passed over a sequence that cannot work
+    against a real daemon.
+    """
+    done = _observe(compose_argv(project, workspace, "ps", "-a", "-q",
                                  SCENARIO_SERVICE))
     if not done["ok"]:
         return None, f"compose ps failed: {done['why']}"

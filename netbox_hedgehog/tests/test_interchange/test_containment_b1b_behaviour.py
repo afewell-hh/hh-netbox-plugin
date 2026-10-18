@@ -1436,3 +1436,76 @@ class B1bBehaviourControls(SimpleTestCase):
             len(literal_compose), 1,
             f"compose argv is built in {len(literal_compose)} places; it "
             f"must be built only by compose_argv: lines {literal_compose}")
+
+    # ------------------------------------------------------------------
+    # create -> resolve -> register, against a daemon-faithful fake.
+    #
+    # The one authorized live baseline aborted at preflight because
+    # `resolve_compose_container` used `compose ps -q` between create
+    # and start, and `ps` without `-a` lists only RUNNING services. The
+    # mocked fake answered regardless of container state, so 76 tests
+    # passed over a sequence that returns nothing against a real
+    # daemon. The fake now models absent -> created -> running.
+    # ------------------------------------------------------------------
+
+    def test_the_resolve_step_asks_for_all_containers(self):
+        """`-a` is required, in the actual argv Compose receives."""
+        _, code, evidence, recorded = self._run()
+        self.assertEqual(code, 0, evidence.get("dirty_reasons"))
+        resolves = [argv for argv in recorded["compose_calls"]
+                    if "ps" in argv and "-q" in argv]
+        self.assertTrue(resolves, "the service was never resolved")
+        for argv in resolves:
+            with self.subTest(argv=" ".join(argv[-4:])):
+                self.assertIn(
+                    "-a", argv,
+                    "compose ps without -a cannot see a created-but-"
+                    "unstarted container, so the registry is never given "
+                    "an exact id")
+
+    def test_create_then_resolve_then_register_against_daemon_states(self):
+        """The ordering the live run proved cannot be assumed.
+
+        The resolve happens while the container is CREATED, not
+        running, and must still return the exact id and register it.
+        """
+        _, code, evidence, recorded = self._run()
+        self.assertEqual(code, 0, evidence.get("dirty_reasons"))
+
+        calls = [argv for argv in recorded["compose_calls"]]
+        def first(predicate):
+            for index, argv in enumerate(calls):
+                if predicate(argv):
+                    return index
+            return None
+
+        created = first(lambda a: "create" in a)
+        resolved = first(lambda a: "ps" in a and "-q" in a)
+        started = first(lambda a: "start" in a)
+        self.assertIsNotNone(created, "no compose create")
+        self.assertIsNotNone(resolved, "no compose resolve")
+        self.assertIsNotNone(started, "no compose start")
+        self.assertLess(created, resolved,
+                        "the service was resolved before it was created")
+        self.assertLess(resolved, started,
+                        "the exact id must be resolved and registered "
+                        "BEFORE start, so a failure after this point is "
+                        "always nameable")
+
+        preflight = evidence["preflight"]
+        self.assertEqual(preflight["container_id"], H.SCENARIO_ID,
+                         "the registered id is not the resolved one")
+        self.assertEqual(len(preflight["container_id"]), 64)
+
+    def test_a_service_that_never_materialises_aborts_cleanly(self):
+        """If the resolve genuinely finds nothing, preflight must abort
+        with that reason and launch nothing -- which is what the live
+        run did, correctly, once the defect made it unresolvable."""
+        _, code, evidence, recorded = self._run(compose_never_creates=True)
+        self.assertNotEqual(code, 0)
+        self.assertTrue(evidence["lane_dirty"])
+        self.assertNotIn("baseline_complete", evidence)
+        self.assertIn("resolved 0 containers",
+                      evidence.get("preflight_failure", ""))
+        self.assertEqual(recorded["launches"], [],
+                         "a subject was launched without a registered id")
