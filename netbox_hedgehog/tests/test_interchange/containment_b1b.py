@@ -411,6 +411,13 @@ def create_scenario_compose_service(image, run_id, workspace, registry,
         return project, container_id, f"compose identity: {why}"
     note("verify_identity", container_id)
 
+    # The registry's REAL contents at the moment the start is issued.
+    # Asserting the create/resolve/start call ordering is satisfied by
+    # registering after start -- an isolated mutation that moved the
+    # append below the start call passed every control. This snapshot
+    # is not: a container that starts before it is registered is
+    # unowned for that interval, however briefly.
+    note("before_compose_start", container_id)
     started = _observe(compose_argv(project, workspace, "start",
                                     SCENARIO_SERVICE))
     if not started["ok"]:

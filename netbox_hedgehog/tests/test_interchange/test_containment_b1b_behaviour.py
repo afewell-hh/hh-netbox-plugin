@@ -30,7 +30,6 @@ DIAGNOSTIC_ONLY = (
     # Run identity and traces, written for a human reading the artifact.
     "step", "lane", "run_id", "observed_at",
     "stages",                   # ordered human-readable trace
-    "lifecycle_order",          # docker event ordering
     "timing",                   # durations
     "timing.publication_seconds",
     "timing.host_client_terminated_after_seconds",
@@ -1509,3 +1508,71 @@ class B1bBehaviourControls(SimpleTestCase):
                       evidence.get("preflight_failure", ""))
         self.assertEqual(recorded["launches"], [],
                          "a subject was launched without a registered id")
+
+    def test_the_scenario_id_is_registered_before_the_service_starts(self):
+        """Registration must PRECEDE start, not merely accompany it.
+
+        The create -> resolve -> start call ordering is satisfied by
+        registering after start: an isolated mutation moving the append
+        below the start call passed all 68 controls. This reads the
+        registry's real contents at the moment start is issued, so a
+        container that runs before it is owned fails here.
+        """
+        _, code, evidence, recorded = self._run()
+        self.assertEqual(code, 0, evidence.get("dirty_reasons"))
+
+        # The primary check, observed from OUTSIDE the code under test:
+        # the harness reads the real registry at the instant the daemon
+        # is asked to start the service. The subject's own snapshot is
+        # checked too, below, but it cannot be the only witness -- a
+        # snapshot rebuilt from the local id, or moved to after the
+        # start call, would otherwise both pass.
+        observed = recorded["registry_at_compose_start"]
+        self.assertTrue(observed, "compose start was never issued")
+        container_id = evidence["preflight"]["container_id"]
+        for contents in observed:
+            self.assertIsNotNone(contents, "the registry was not observed")
+            self.assertIn(
+                container_id, contents,
+                "compose start was issued while the exact id was "
+                f"unregistered; the registry held {contents}")
+
+        lifecycle = evidence["lifecycle_order"]
+        by_event = {entry["event"]: entry for entry in lifecycle
+                    if "event" in entry}
+
+        self.assertIn("before_compose_start", by_event,
+                      "no registry snapshot was taken at the start "
+                      "boundary")
+        snapshot = by_event["before_compose_start"]["registered_containers"]
+        container_id = evidence["preflight"]["container_id"]
+        self.assertIn(
+            container_id, snapshot,
+            "the scenario service was started while its exact id was "
+            f"unregistered; registry held {snapshot}")
+
+        # And the snapshot must BE the registry, not a value rebuilt
+        # from the local id. With the registry holding exactly one
+        # container the two are indistinguishable, so this run seeds an
+        # unrelated id first: a fabricated snapshot cannot contain it.
+        sentinel = "e" * 64
+        _, seeded_code, seeded, _ = self._run(
+            preseed_registry_container=sentinel)
+        self.assertEqual(seeded_code, 0, seeded.get("dirty_reasons"))
+        seeded_snapshot = next(
+            entry["registered_containers"]
+            for entry in seeded["lifecycle_order"]
+            if entry.get("event") == "before_compose_start")
+        self.assertIn(
+            sentinel, seeded_snapshot,
+            "the start-boundary snapshot does not reflect the registry; "
+            "it appears to be rebuilt from the local container id")
+        self.assertIn(seeded["preflight"]["container_id"], seeded_snapshot)
+
+        # Ordering of the snapshots themselves, so a reordered
+        # lifecycle cannot satisfy this by accident.
+        events = [entry["event"] for entry in lifecycle if "event" in entry]
+        self.assertLess(events.index("register"),
+                        events.index("before_compose_start"))
+        self.assertLess(events.index("before_compose_start"),
+                        events.index("compose_start"))

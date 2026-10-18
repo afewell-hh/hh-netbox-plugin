@@ -79,7 +79,7 @@ def install(b1b, *, published_child_nonce=None, published_parent_nonce=None,
             rescue_outcome="reaped", decoy_state_after_rescue="present",
             recreated_service_id=None, compose_project_label=None,
             compose_service_label=None, inspect_id_override=None,
-            compose_never_creates=False,
+            compose_never_creates=False, preseed_registry_container=None,
             child_found_after_kill=True, probe_unknown_after_kill=False,
             readiness_outcome="reaped", verification_verified=True):
     """Patch every outward call of the module under test.
@@ -95,7 +95,8 @@ def install(b1b, *, published_child_nonce=None, published_parent_nonce=None,
     # unordered per-kind lists.
     recorded = {"removed": [], "signalled": [], "bind_calls": [],
                 "rescue_calls": [], "events": [], "launches": [],
-                "compose_calls": [], "client_argv": []}
+                "compose_calls": [], "client_argv": [],
+                "registry_at_compose_start": []}
 
     def _baseline_signalled():
         return any(entry.get("pid") == CHILD_PID
@@ -145,6 +146,11 @@ def install(b1b, *, published_child_nonce=None, published_parent_nonce=None,
                     return Completed(stdout=recreated_service_id + "\n")
                 return Completed(stdout=scenario_id + "\n")
             if "start" in argv:
+                # Observed independently, at the instant the daemon is
+                # asked to start the service.
+                recorded["registry_at_compose_start"].append(
+                    list(live_registry[-1].containers)
+                    if live_registry else None)
                 compose_state[0] = "running"
                 return Completed()
             if "down" in argv:
@@ -212,6 +218,7 @@ def install(b1b, *, published_child_nonce=None, published_parent_nonce=None,
     resolve_count = [0]
     #: absent -> created -> running -> absent, as the daemon sees it.
     compose_state = ["absent"]
+    live_registry = []
     lane_holder = ["diet716-mock"]
 
     def fake_in_scenario(container_id, argv, timeout=120, stdin=None,
@@ -321,6 +328,22 @@ def install(b1b, *, published_child_nonce=None, published_parent_nonce=None,
     def fake_create(image, run_id, registry=None, order=None):
         b1b_run_id[0] = run_id
         return original_create(image, run_id, registry, order)
+
+    # The registry instance is captured ALWAYS, so the harness can
+    # observe its real contents from outside the code under test at the
+    # moment Compose is asked to start. Relying on the subject's own
+    # lifecycle snapshot left two holes: a snapshot rebuilt from the
+    # local id, and a snapshot moved to after the start call.
+    original_registry = b1b.PROVER.Registry
+
+    def capturing_registry(*args, **kwargs):
+        registry = original_registry(*args, **kwargs)
+        if preseed_registry_container:
+            registry.containers.append(preseed_registry_container)
+        live_registry.append(registry)
+        return registry
+
+    b1b.PROVER.Registry = capturing_registry
 
     b1b.subprocess = _SubprocessShim
     b1b.time = _TimeShim
