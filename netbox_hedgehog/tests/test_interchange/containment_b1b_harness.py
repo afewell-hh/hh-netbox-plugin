@@ -519,29 +519,41 @@ def _literal_dict_paths(prefix, node, out, bad, where):
 
 
 def _untouched_imports(tree):
-    """Names bound by an import and never reassigned in the module."""
+    """Names bound by an import and never rebound in the module.
+
+    Rebinding is keyed on `ctx=Store` plus the non-expression binding
+    forms, and deliberately EXCLUDES the import statements themselves.
+
+    Two earlier versions were wrong in opposite directions. The first
+    collected every Name in an assignment TARGET subtree, so the
+    module's own `sys.modules[key] = module` counted as rebinding `sys`
+    and the approved production stopped matching. The second reused
+    `_rebound_names`, which includes import-bound names by design, and
+    then discarded every imported name from the rebound set -- which
+    also discarded genuine assignment rebinding, so `importlib = evil`
+    left `importlib` trusted.
+    """
     imported, rebound = set(), set()
     for node in ast.walk(tree):
         if isinstance(node, (ast.Import, ast.ImportFrom)):
             for alias in node.names:
                 imported.add((alias.asname or alias.name).split(".")[0])
+            continue
+        if isinstance(node, ast.Name) and isinstance(node.ctx, ast.Store):
+            rebound.add(node.id)
         elif isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef,
                                ast.ClassDef)):
             rebound.add(node.name)
-        elif isinstance(node, (ast.Assign, ast.AnnAssign, ast.AugAssign,
-                               ast.For, ast.AsyncFor)):
-            targets = (node.targets if isinstance(node, ast.Assign)
-                       else [node.target])
-            for target in targets:
-                for sub in ast.walk(target):
-                    if isinstance(sub, ast.Name):
-                        rebound.add(sub.id)
-        elif isinstance(node, ast.withitem) and node.optional_vars is not None:
-            for sub in ast.walk(node.optional_vars):
-                if isinstance(sub, ast.Name):
-                    rebound.add(sub.id)
+        elif isinstance(node, (ast.Global, ast.Nonlocal)):
+            rebound.update(node.names)
         elif isinstance(node, ast.ExceptHandler) and node.name:
             rebound.add(node.name)
+        elif isinstance(node, getattr(ast, "MatchAs", ())) and node.name:
+            rebound.add(node.name)
+        elif isinstance(node, getattr(ast, "MatchStar", ())) and node.name:
+            rebound.add(node.name)
+        elif isinstance(node, getattr(ast, "MatchMapping", ())) and node.rest:
+            rebound.add(node.rest)
     return imported - rebound
 
 
@@ -585,6 +597,11 @@ _REFLECTIVE_ATTRS = (
     # arbitrary code, and leaving these out meant a refusal to MATCH
     # produced no violation at all.
     "loader", "exec_module",
+    # The declared productions' own spellings. Prohibited unless the
+    # exact production matches -- without this a refusal to MATCH (a
+    # rebound `importlib`, say) produced no violation at all, so
+    # tightening a matcher changed nothing observable.
+    "spec_from_file_location", "module_from_spec",
 )
 #: `type` is reflective in general; only `type(x).__name__` is allowed.
 _GUARDED_BUILTINS = ("type",)
@@ -722,6 +739,12 @@ REFLECTION_MANIFEST = (
 _REFLECTION_IDS = {p.id for p in REFLECTION_MANIFEST}
 
 
+def _attribute_root(node):
+    while isinstance(node, ast.Attribute):
+        node = node.value
+    return node.id if isinstance(node, ast.Name) else None
+
+
 def _dotted(node):
     parts = []
     while isinstance(node, ast.Attribute):
@@ -779,7 +802,7 @@ def _enclosing_function(node, parent):
     return None
 
 
-def _is_importlib_load(node, parent, bindings=None):
+def _is_importlib_load(node, parent, bindings=None, trusted=()):
     """RFL_IMPORTLIB_LOAD, bound structurally.
 
     The two constructors are matched by their exact dotted name. The
@@ -801,7 +824,11 @@ def _is_importlib_load(node, parent, bindings=None):
     dotted = _dotted(node)
     if dotted in ("importlib.util.spec_from_file_location",
                   "importlib.util.module_from_spec"):
-        return True
+        # The SPELLING is not enough: `importlib` can be rebound after
+        # its approved import, and then this dotted path reaches
+        # whatever it was rebound to. Same rule as serializer and local
+        # callable identity -- a spelling alone is never safe.
+        return "importlib" in (trusted or ())
     if node.attr != "exec_module":
         return False
     # Shape: exactly `<name>.loader.exec_module(<name>)`.
@@ -827,15 +854,16 @@ def _is_importlib_load(node, parent, bindings=None):
     return module_names.get(argument.id) == receiver
 
 
-def _is_sys_modules_register(node, parent):
+def _is_sys_modules_register(node, parent, trusted=()):
     """RFL_SYS_MODULES_REGISTER: a STORE into sys.modules, nothing else.
 
     A read of `sys.modules` is the first half of the escape Dev B found
-    and is not permitted.
+    and is not permitted. `sys` must also be an untouched import, or
+    the dotted path reaches whatever `sys` was rebound to.
     """
     if not (isinstance(node, ast.Attribute) and node.attr == "modules"):
         return False
-    if _dotted(node) != "sys.modules":
+    if _dotted(node) != "sys.modules" or "sys" not in (trusted or ()):
         return False
     subscript = parent.get(node)
     if not (isinstance(subscript, ast.Subscript) and subscript.value is node):
@@ -843,7 +871,7 @@ def _is_sys_modules_register(node, parent):
     return isinstance(getattr(subscript, "ctx", None), ast.Store)
 
 
-def _is_type_name(node, parent):
+def _is_type_name(node, parent, trusted=()):
     """RFL_TYPE_NAME: `type(x).__name__`, read position only."""
     if isinstance(node, ast.Name) and node.id == "type":
         call = parent.get(node)
@@ -884,6 +912,9 @@ def reflection_scan(tree, *, check_manifest_usage=True):
         for child in ast.iter_child_nodes(node):
             parent[child] = node
     loader_bindings = _loader_bindings(tree)
+    # Only names bound by an import and never reassigned may anchor a
+    # dotted reflection production.
+    trusted_roots = _untouched_imports(tree)
 
     # Pass 1: mark every node an allowlisted production matches, and
     # record which productions the module actually performs. Usage must
@@ -897,9 +928,10 @@ def reflection_scan(tree, *, check_manifest_usage=True):
             if pid not in _REFLECTION_IDS:
                 continue              # recognition never grants permission
             if pid == "RFL_IMPORTLIB_LOAD":
-                matched = matcher(node, parent, loader_bindings)
+                matched = matcher(node, parent, loader_bindings,
+                                  trusted_roots)
             else:
-                matched = matcher(node, parent)
+                matched = matcher(node, parent, trusted_roots)
             if matched:
                 allowed.add(id(node))
                 # `spec.loader.exec_module(module)` is two attribute
@@ -928,7 +960,19 @@ def reflection_scan(tree, *, check_manifest_usage=True):
                         f"{where}: `{node.id}` is permitted only as "
                         f"`type(x).__name__`")
         elif isinstance(node, ast.Attribute):
-            if (node.attr in _REFLECTIVE_ATTRS
+            root = _attribute_root(node)
+            if (isinstance(getattr(node, "ctx", None), (ast.Store, ast.Del))
+                    and root in trusted_roots):
+                # `importlib.util = evil` / `del importlib.util`. The
+                # name stays an untouched import, so every dotted path
+                # through it still looks trustworthy while reaching
+                # something else.
+                violations.append(
+                    f"{where}: assigning to or deleting `{root}."
+                    f"{node.attr}` rebinds an attribute of an imported "
+                    f"module, so dotted paths through it are no longer "
+                    f"identified by their spelling")
+            elif (node.attr in _REFLECTIVE_ATTRS
                     or node.attr in _REFLECTIVE_CALLS):
                 if not permitted(node):
                     violations.append(
@@ -1061,6 +1105,15 @@ def _namespace_rebinding_risk(tree):
                 reasons.append(f"line {node.lineno}: `{node.id}` resolves to "
                                f"`{resolved}`, which can rebind names from "
                                f"data")
+        elif (isinstance(node, ast.Attribute)
+                and isinstance(getattr(node, "ctx", None),
+                               (ast.Store, ast.Del))
+                and _attribute_root(node) in _untouched_imports(tree)):
+            violations.append(
+                f"{where}: assigning to `{_attribute_root(node)}."
+                f"{node.attr}` rebinds an attribute of an imported "
+                f"module, so dotted paths through it are no longer "
+                f"identified by their spelling")
         elif isinstance(node, ast.Attribute) and node.attr in \
                 _RISKY_SPELLINGS:
             # Whatever the base: builtins.globals, b.globals,

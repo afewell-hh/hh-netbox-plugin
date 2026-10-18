@@ -914,7 +914,7 @@ class B1bBehaviourControls(SimpleTestCase):
         original = H.REFLECTION_MANIFEST
         H.REFLECTION_MANIFEST = original + (extra,)
         H._REFLECTION_IDS.add("RFL_NEVER")
-        H._REFLECTION_MATCHERS["RFL_NEVER"] = lambda n, p: False
+        H._REFLECTION_MATCHERS["RFL_NEVER"] = lambda n, p, t=(): False
         try:
             self.assertTrue(
                 any("RFL_NEVER" in v for v in H.reflection_scan(subject)),
@@ -924,7 +924,7 @@ class B1bBehaviourControls(SimpleTestCase):
             H._REFLECTION_IDS.discard("RFL_NEVER")
             H._REFLECTION_MATCHERS.pop("RFL_NEVER", None)
 
-        H._REFLECTION_MATCHERS["RFL_UNDECLARED"] = lambda n, p: True
+        H._REFLECTION_MATCHERS["RFL_UNDECLARED"] = lambda n, p, t=(): True
         try:
             self.assertTrue(
                 any("RFL_UNDECLARED" in v
@@ -1154,3 +1154,89 @@ class B1bBehaviourControls(SimpleTestCase):
                         for v in violations),
                     f"{label}: rejected, but not as a loader violation: "
                     f"{violations}")
+
+    # ------------------------------------------------------------------
+    # Stable identity for the importlib and sys paths.
+    #
+    # The matchers trusted the SPELLING `importlib.util.*`, so rebinding
+    # `importlib` after its approved import left every dotted path
+    # through it looking trustworthy while reaching something else. Same
+    # rule already applied to serializers and local callables.
+    # ------------------------------------------------------------------
+
+    IDENTITY_PRELUDE = (
+        "import importlib.util\n"
+        "import sys\n\n\n"
+        "def _load(name):\n"
+        "{EXTRA}"
+        '    spec = importlib.util.spec_from_file_location(f"p_{{name}}",\n'
+        '                                                  "/tmp/x.py")\n'
+        "    module = importlib.util.module_from_spec(spec)\n"
+        '    sys.modules[f"p_{{name}}"] = module\n'
+        "    spec.loader.exec_module(module)\n"
+        "    return module\n")
+
+    def _identity_scan(self, extra="", prefix=""):
+        source = prefix + self.IDENTITY_PRELUDE.replace("{EXTRA}", extra)
+        return H.reflection_scan(ast.parse(source),
+                                 check_manifest_usage=False)
+
+    def test_untouched_importlib_and_sys_are_accepted(self):
+        """The positive: the collector's own loading must still pass.
+
+        It briefly did not -- `_untouched_imports` counted the module's
+        own `sys.modules[key] = module` as rebinding `sys`.
+        """
+        self.assertEqual(self._identity_scan(), [])
+
+    def test_rebinding_importlib_or_sys_withdraws_the_production(self):
+        negatives = {
+            "importlib reassigned": ("    importlib = evil\n", ""),
+            "importlib.util reassigned":
+                ("    importlib.util = evil\n", ""),
+            "importlib.util deleted": ("    del importlib.util\n", ""),
+            "spec_from_file_location replaced":
+                ("    importlib.util.spec_from_file_location = evil\n", ""),
+            "importlib as a for target":
+                ("    for importlib in []:\n        pass\n", ""),
+            "importlib by walrus": ("    (importlib := evil)\n", ""),
+            "importlib tuple-unpacked":
+                ("    importlib, _z = evil, 1\n", ""),
+            "importlib via with-as":
+                ("    import contextlib\n"
+                 "    with contextlib.nullcontext(1) as importlib:\n"
+                 "        pass\n", ""),
+            "importlib declared global": ("    global importlib\n", ""),
+            "sys reassigned": ("    sys = evil\n", ""),
+            "sys.modules reassigned": ("    sys.modules = evil\n", ""),
+            "importlib shadowed by a def":
+                ("", "def importlib():\n    pass\n\n\n"),
+            "sys shadowed by a class": ("", "class sys:\n    pass\n\n\n"),
+        }
+        for label, (extra, prefix) in negatives.items():
+            with self.subTest(rebinding=label):
+                violations = self._identity_scan(extra, prefix)
+                self.assertTrue(
+                    violations,
+                    f"{label}: a rebound module path was still trusted")
+
+        # Each constructor alone, so neither spelling's prohibition is
+        # redundant with the other's.
+        alone = {
+            "spec_from_file_location":
+                "import importlib.util\n\n\ndef f():\n"
+                "    importlib = evil\n"
+                '    return importlib.util.spec_from_file_location("a",\n'
+                '                                                  "/b")\n',
+            "module_from_spec":
+                "import importlib.util\n\n\ndef f():\n"
+                "    importlib = evil\n"
+                "    return importlib.util.module_from_spec(spec)\n",
+        }
+        for label, source in alone.items():
+            with self.subTest(constructor_alone=label):
+                violations = H.reflection_scan(
+                    ast.parse(source), check_manifest_usage=False)
+                self.assertTrue(
+                    any(label in v for v in violations),
+                    f"{label} alone was not prohibited: {violations}")
