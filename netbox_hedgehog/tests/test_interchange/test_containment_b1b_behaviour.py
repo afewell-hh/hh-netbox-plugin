@@ -597,3 +597,91 @@ class B1bBehaviourControls(SimpleTestCase):
             any("untouched import" in v or "stable identity" in v
                 for v in violations),
             f"a rebound serializer name was still trusted: {violations}")
+
+    def test_a_local_callable_needs_a_stable_identity_not_a_spelling(self):
+        """Dev B's blocking finding on the manifest boundary.
+
+        ARG_LOCAL_FN resolved a call by matching the `def` name, so a
+        module that rebound that name leaked the evidence dict through
+        whatever it was rebound to, with a zero-violation scan. The same
+        identity rule already applied to serializer names had simply not
+        been applied here.
+        """
+        sound = (
+            "import json\n\n\n"
+            # The callee's parameter is named `evidence`, so its own
+            # body is scanned too; it must only record, never retain.
+            "def sink(evidence):\n"
+            '    evidence["seen"] = True\n\n\n'
+            "def main():\n"
+            '    evidence = {"step": "x"}\n'
+            "    sink(evidence)\n"
+            "    return json.dumps(evidence)\n")
+        leaks = {
+            "module-level rebind": "sink = print\n",
+            "shadowed by a second def": "def sink():\n    pass\n",
+            "shadowed by a class": "class sink:\n    pass\n",
+            # A `global` declaration announces that another scope may
+            # rebind the name, so its identity is not resolvable here
+            # even though this module contains no assignment to it.
+            "declared global elsewhere":
+                "def rebind():\n    global sink\n    sink = print\n",
+        }
+        # Binding forms that are NOT assignment statements. The identity
+        # helper first enumerated statement types and so missed every
+        # one of these -- the same mistake the scanner was rewritten to
+        # avoid, repeated in its own helper.
+        inline_leaks = {
+            "walrus": "    (sink := print)\n",
+            "comprehension target": "    [0 for sink in range(1)]\n",
+            "match capture": "    match 1:\n        case sink:\n"
+                             "            pass\n",
+            "match star": "    match [1]:\n        case [*sink]:\n"
+                          "            pass\n",
+            "match mapping rest": "    match {}:\n        case {**sink}:\n"
+                                  "            pass\n",
+            "for target": "    for sink in []:\n        pass\n",
+            "tuple unpacking": "    sink, _z = print, 1\n",
+        }
+
+        def scan(source):
+            with tempfile.TemporaryDirectory(prefix="hh716-ident-") as work:
+                path = Path(work) / "subject.py"
+                path.write_text(source, encoding="utf-8")
+                return H.evidence_grammar_scan(str(path),
+                                               check_manifest_usage=False)
+
+        _, clean = scan(sound)
+        self.assertEqual(clean, [],
+                         f"the sound positive must scan clean: {clean}")
+
+        for label, preamble in leaks.items():
+            with self.subTest(rebinding=label):
+                _, violations = scan(preamble + "\n\n" + sound)
+                self.assertTrue(
+                    violations,
+                    f"{label}: evidence leaked through a rebound callable "
+                    f"with a zero-violation scan")
+                self.assertTrue(
+                    any("stable identity" in v for v in violations),
+                    f"{label}: rejected, but not for the identity reason: "
+                    f"{violations}")
+
+        for label, statement in inline_leaks.items():
+            with self.subTest(inline_rebinding=label):
+                _, violations = scan(
+                    sound.replace("    sink(evidence)\n",
+                                  statement + "    sink(evidence)\n"))
+                self.assertTrue(
+                    any("stable identity" in v for v in violations),
+                    f"{label}: a non-assignment binding left the callable "
+                    f"trusted: {violations}")
+
+        # A namespace store can rebind any name, so nothing is stable.
+        _, violations = scan(
+            sound.replace("    sink(evidence)\n",
+                          '    globals()["sink"] = print\n'
+                          "    sink(evidence)\n"))
+        self.assertTrue(
+            any("stable identity" in v for v in violations),
+            f"a globals() store left callables trusted: {violations}")

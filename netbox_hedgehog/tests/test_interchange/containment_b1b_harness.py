@@ -540,6 +540,76 @@ def _untouched_imports(tree):
     return imported - rebound
 
 
+def _rebound_names(tree):
+    """Every name the module binds, by any means.
+
+    Keyed on `ctx=Store`, not on statement type. A first version
+    enumerated Assign/For/withitem/ExceptHandler and so missed walrus
+    bindings, comprehension targets and match-case captures -- the same
+    enumerate-the-shapes mistake the scanner itself was rewritten to
+    avoid, repeated in one of its helpers.
+    """
+    rebound = set()
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Name) and isinstance(node.ctx, ast.Store):
+            rebound.add(node.id)
+        elif isinstance(node, (ast.Import, ast.ImportFrom)):
+            for alias in node.names:
+                rebound.add((alias.asname or alias.name).split(".")[0])
+        elif isinstance(node, (ast.Global, ast.Nonlocal)):
+            rebound.update(node.names)
+        elif isinstance(node, ast.ExceptHandler) and node.name:
+            rebound.add(node.name)          # a plain str, not a Name node
+        elif isinstance(node, getattr(ast, "MatchAs", ())) and node.name:
+            rebound.add(node.name)
+        elif isinstance(node, getattr(ast, "MatchStar", ())) and node.name:
+            rebound.add(node.name)
+        elif isinstance(node, getattr(ast, "MatchMapping", ())) and node.rest:
+            rebound.add(node.rest)
+    return rebound
+
+
+def _namespace_is_writable(tree):
+    """True if the module stores into globals()/locals()/vars().
+
+    Such a store can rebind ANY name, so no callable in the module has
+    a stable identity and every identity-dependent production fails.
+    """
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Subscript):
+            continue
+        if not isinstance(getattr(node, "ctx", None), (ast.Store, ast.Del)):
+            continue
+        base = node.value
+        if (isinstance(base, ast.Call) and isinstance(base.func, ast.Name)
+                and base.func.id in ("globals", "locals", "vars")):
+            return True
+    return False
+
+
+def _stable_local_functions(tree):
+    """`def` names never reassigned anywhere in the module.
+
+    ARG_LOCAL_FN previously resolved a call by matching the `def` name,
+    so a module that rebound that name leaked the evidence dict through
+    whatever it was rebound to, with a zero-violation scan. This is the
+    same identity rule already applied to serializer names: a spelling
+    alone is never safe.
+    """
+    if _namespace_is_writable(tree):
+        return {}
+    defined, duplicated = {}, set()
+    for node in ast.walk(tree):
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            if node.name in defined:
+                duplicated.add(node.name)
+            defined[node.name] = node
+        elif isinstance(node, ast.ClassDef):
+            duplicated.add(node.name)
+    unstable = _rebound_names(tree) | duplicated
+    return {name: fn for name, fn in defined.items() if name not in unstable}
+
+
 def _callee_name(func):
     parts = []
     while isinstance(func, ast.Attribute):
@@ -649,6 +719,12 @@ def _r_arg_local_fn(ctxt):
         return None
     fn = ctxt.local_funcs.get(up.func.id)
     if fn is None:
+        if up.func.id in ctxt.declared_funcs:
+            return (True, set(),
+                    [f"{ctxt.where}: `evidence` passed to {up.func.id}(), "
+                     f"whose name is rebound in this module, so the callable "
+                     f"has no stable identity; a spelling alone is never "
+                     f"safe"])
         return None
     params = [a.arg for a in fn.args.args]
     for i, arg in enumerate(up.args):
@@ -720,13 +796,18 @@ RECOGNIZERS = {
 
 
 class _Ctxt:
-    def __init__(self, node, parent, local_funcs, trusted, where):
+    def __init__(self, node, parent, local_funcs, trusted, where,
+                 declared_funcs=frozenset()):
         self.node = node
         self.parent = parent
         self.parent_of_node = parent.get(node)
         self.local_funcs = local_funcs
         self.trusted = trusted
         self.where = where
+        #: every `def` name, stable or not, so a call to an unstable one
+        #: is reported as an identity failure rather than falling
+        #: through to the generic no-production message.
+        self.declared_funcs = declared_funcs
 
 
 def evidence_grammar_scan(path, *, check_manifest_usage=True):
@@ -750,8 +831,11 @@ def evidence_grammar_scan(path, *, check_manifest_usage=True):
         for child in ast.iter_child_nodes(node):
             parent[child] = node
 
-    local_funcs = {n.name: n for n in ast.walk(tree)
-                   if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef))}
+    # Identity-stable local callables only.
+    local_funcs = _stable_local_functions(tree)
+    declared_funcs = {n.name for n in ast.walk(tree)
+                      if isinstance(n, (ast.FunctionDef,
+                                        ast.AsyncFunctionDef))}
     trusted = _untouched_imports(tree)
 
     for node in ast.walk(tree):
@@ -763,7 +847,8 @@ def evidence_grammar_scan(path, *, check_manifest_usage=True):
         if isinstance(up, ast.Subscript) and up.value is node:
             continue                       # not maximal
         where = f"line {getattr(node, 'lineno', '?')}"
-        ctxt = _Ctxt(node, parent, local_funcs, trusted, where)
+        ctxt = _Ctxt(node, parent, local_funcs, trusted, where,
+                     declared_funcs)
 
         matched = None
         for production in MANIFEST:        # manifest order IS the grammar
