@@ -11,6 +11,7 @@ No Docker, no containers, no signals.
 
 from __future__ import annotations
 
+import ast
 import json
 import tempfile
 from pathlib import Path
@@ -677,11 +678,49 @@ class B1bBehaviourControls(SimpleTestCase):
                     f"{label}: a non-assignment binding left the callable "
                     f"trusted: {violations}")
 
-        # A namespace store can rebind any name, so nothing is stable.
-        _, violations = scan(
-            sound.replace("    sink(evidence)\n",
-                          '    globals()["sink"] = print\n'
-                          "    sink(evidence)\n"))
-        self.assertTrue(
-            any("stable identity" in v for v in violations),
-            f"a globals() store left callables trusted: {violations}")
+        # Namespace access of ANY kind can rebind any name, so nothing
+        # in the module is identity-stable. A first version looked only
+        # for a subscript store through `globals()`, so every
+        # mapping-method mutation walked past it -- Dev B's follow-up
+        # finding -- and the mapping could also be bound to a name or
+        # handed to a foreign callable first.
+        namespace_leaks = {
+            "subscript store": '    globals()["sink"] = print\n',
+            "update by keyword": "    globals().update(sink=print)\n",
+            "update by mapping": '    globals().update({"sink": print})\n',
+            "setdefault": '    globals().setdefault("sink", print)\n',
+            "pop": '    globals().pop("sink", None)\n',
+            "locals()": "    locals().update(sink=print)\n",
+            "vars()": "    vars().update(sink=print)\n",
+            "mapping bound to a name first":
+                "    g = globals()\n    g.update(sink=print)\n",
+            "mapping handed to a foreign callable":
+                "    import copy\n    copy.copy(globals())\n",
+            "exec": '    exec("sink = print")\n',
+            "setattr on this module":
+                "    import sys\n"
+                '    setattr(sys.modules[__name__], "sink", print)\n',
+            "module __dict__":
+                "    import sys\n"
+                '    sys.modules[__name__].__dict__["sink"] = print\n',
+        }
+        for label, statement in namespace_leaks.items():
+            with self.subTest(namespace_rebinding=label):
+                _, violations = scan(
+                    sound.replace("    sink(evidence)\n",
+                                  statement + "    sink(evidence)\n"))
+                self.assertTrue(
+                    any("stable identity" in v for v in violations),
+                    f"{label}: a namespace mutation left local callables "
+                    f"trusted: {violations}")
+
+        # The breadth is deliberate, and it must stay reported rather
+        # than inferred: the risk helper names its reasons.
+        here = Path(__file__).parent
+        subject = ast.parse(
+            (here / "containment_b1b.py").read_text(encoding="utf-8"))
+        self.assertEqual(
+            H._namespace_rebinding_risk(subject), [],
+            "the collector module itself uses a namespace or dynamic "
+            "binding form; it needs a declared production, not a looser "
+            "default")

@@ -569,22 +569,54 @@ def _rebound_names(tree):
     return rebound
 
 
-def _namespace_is_writable(tree):
-    """True if the module stores into globals()/locals()/vars().
+#: Builtins that expose or rewrite a binding namespace. A reference to
+#: any of them -- not merely a subscript store through one -- means the
+#: module can rebind names in ways this scanner cannot follow.
+_NAMESPACE_BUILTINS = ("globals", "locals", "vars")
 
-    Such a store can rebind ANY name, so no callable in the module has
-    a stable identity and every identity-dependent production fails.
+#: Builtins that can introduce or replace bindings from data.
+_DYNAMIC_BINDING_BUILTINS = ("exec", "eval", "compile", "setattr",
+                             "delattr", "__import__")
+
+#: Attributes that hand out a module or function namespace mapping.
+_NAMESPACE_ATTRS = ("__dict__", "__globals__")
+
+
+def _namespace_rebinding_risk(tree):
+    """Reasons the module's name bindings cannot be trusted.
+
+    Deliberately conservative. An earlier version looked only for a
+    SUBSCRIPT store through `globals()`, so every mapping-method
+    mutation walked past it -- `globals().update(sink=foreign)`,
+    `.setdefault`, `.pop`, the mapping bound to a name first, or the
+    mapping handed to a foreign callable. Rather than enumerate the
+    mutating methods, any reference to a namespace mapping at all
+    counts, because this scanner cannot follow what is done with one.
+
+    `exec`/`eval`/`compile`/`setattr`/`delattr`/`__import__` count too:
+    each can introduce or replace a binding from data.
+
+    The cost of this breadth is nil for the collector module, which
+    uses none of these forms. If one is ever needed, the right response
+    is a declared production for it, not a looser default.
     """
+    reasons = []
     for node in ast.walk(tree):
-        if not isinstance(node, ast.Subscript):
-            continue
-        if not isinstance(getattr(node, "ctx", None), (ast.Store, ast.Del)):
-            continue
-        base = node.value
-        if (isinstance(base, ast.Call) and isinstance(base.func, ast.Name)
-                and base.func.id in ("globals", "locals", "vars")):
-            return True
-    return False
+        if isinstance(node, ast.Name):
+            if node.id in _NAMESPACE_BUILTINS:
+                reasons.append(f"line {node.lineno}: `{node.id}` exposes a "
+                               f"binding namespace")
+            elif node.id in _DYNAMIC_BINDING_BUILTINS:
+                reasons.append(f"line {node.lineno}: `{node.id}` can rebind "
+                               f"names from data")
+        elif isinstance(node, ast.Attribute) and node.attr in _NAMESPACE_ATTRS:
+            reasons.append(f"line {node.lineno}: `{node.attr}` hands out a "
+                           f"namespace mapping")
+    return sorted(set(reasons))
+
+
+def _namespace_is_writable(tree):
+    return bool(_namespace_rebinding_risk(tree))
 
 
 def _stable_local_functions(tree):
