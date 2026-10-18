@@ -118,6 +118,17 @@ def install(b1b, *, published_child_nonce=None, published_parent_nonce=None,
                     key, _, value = argv[index + 1].partition("=")
                     labels[key] = value
             daemon_create(created_id, labels)
+            run_label = labels.get("hh716.run")
+            if run_label:
+                # Seed the extra labelled resources into the DAEMON
+                # MODEL, carrying this run's real label, at the first
+                # moment the run id appears in an actual invocation.
+                # They were previously appended straight to discovery
+                # output, which bypassed the model -- the exact defect
+                # this audit exists to end, reintroduced inside it.
+                for extra in extra_run_labelled_ids:
+                    if extra not in daemon["containers"]:
+                        daemon_create(extra, {"hh716.run": run_label})
             return Completed(stdout=created_id)
         if argv[:2] == ["docker", "start"]:
             return Completed()
@@ -239,8 +250,6 @@ def install(b1b, *, published_child_nonce=None, published_parent_nonce=None,
                 # exactly that.
                 wanted = text.split("label=hh716.run=", 1)[1].split()[0]
                 found = daemon_ids_with_label("hh716.run", wanted)
-                found += [cid for cid in extra_run_labelled_ids
-                          if cid not in found]
                 return Completed(stdout="".join(
                     cid[:12] + chr(10) for cid in found))
             if "label=com.docker.compose.project=" in text:

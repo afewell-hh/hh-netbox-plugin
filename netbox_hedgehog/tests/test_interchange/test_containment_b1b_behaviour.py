@@ -1700,3 +1700,51 @@ class B1bBehaviourControls(SimpleTestCase):
         self.assertEqual(
             probe["out"].split(), [],
             "discovery returned ids for a run label nothing carries")
+
+    def test_discovery_output_is_never_injected_past_the_daemon_model(self):
+        """Every id discovery returns must exist in the daemon model
+        carrying this run's real label.
+
+        The audit's first version appended `extra_run_labelled_ids`
+        straight to the discovery output, so a phantom container
+        appeared in results while existing nowhere -- the exact defect
+        the audit was written to end, reintroduced inside it.
+        """
+        sentinel = "9" * 64
+        b1b = H.load_b1b()
+        H.install(b1b, extra_run_labelled_ids=(sentinel,))
+
+        # Before any run id exists, discovery for an arbitrary label
+        # must return nothing: the seed cannot predate the label.
+        empty = b1b._observe(
+            ["docker", "ps", "-q", "--filter", "label=hh716.run=unused"])
+        self.assertEqual(
+            empty["out"].split(), [],
+            "discovery returned ids for a label nothing carries")
+
+        _, code, evidence, _ = self._run(
+            extra_run_labelled_ids=(sentinel,))
+        self.assertEqual(code, 0, evidence.get("dirty_reasons"))
+        candidates = evidence["preflight"]["label_discovery_candidates"]
+        self.assertIn(sentinel[:12], candidates)
+        self.assertIn(evidence["preflight"]["decoy_container_id"][:12],
+                      candidates)
+
+        # Every candidate must be inspectable, i.e. actually exist.
+        # A phantom appended to the output would not be.
+        run_id = evidence["run_id"]
+        fresh = H.load_b1b()
+        H.install(fresh, extra_run_labelled_ids=(sentinel,))
+        seeded = fresh._observe(
+            ["docker", "create", "--label", f"hh716.run={run_id}",
+             "--label", f"hh716.fixture={run_id}", "img", "sleep", "1"])
+        self.assertTrue(seeded["ok"])
+        for short in candidates:
+            with self.subTest(candidate=short):
+                found = fresh._observe(
+                    ["docker", "ps", "-q", "--filter",
+                     f"label=hh716.run={run_id}"])
+                self.assertIn(
+                    short, found["out"].split(),
+                    f"{short} appeared in discovery but not in the "
+                    f"daemon model")
