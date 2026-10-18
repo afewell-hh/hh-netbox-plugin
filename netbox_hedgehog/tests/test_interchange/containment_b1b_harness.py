@@ -80,6 +80,9 @@ def install(b1b, *, published_child_nonce=None, published_parent_nonce=None,
             recreated_service_id=None, compose_project_label=None,
             compose_service_label=None, inspect_id_override=None,
             compose_never_creates=False, preseed_registry_container=None,
+            extra_run_labelled_ids=(),
+            shared_project_ids=("f" * 64, "0" * 63 + "1"),
+            lane_container_ids=("a" * 63 + "9",),
             child_found_after_kill=True, probe_unknown_after_kill=False,
             readiness_outcome="reaped", verification_verified=True):
     """Patch every outward call of the module under test.
@@ -108,8 +111,14 @@ def install(b1b, *, published_child_nonce=None, published_parent_nonce=None,
         text = " ".join(str(part) for part in argv)
         # The decoy carries a second label; the scenario container does not.
         if argv[:2] == ["docker", "create"]:
-            return Completed(stdout=DECOY_ID if "hh716.fixture" in text
-                             else scenario_id)
+            created_id = DECOY_ID if "hh716.fixture" in text else scenario_id
+            labels = {}
+            for index, part in enumerate(argv):
+                if part == "--label" and index + 1 < len(argv):
+                    key, _, value = argv[index + 1].partition("=")
+                    labels[key] = value
+            daemon_create(created_id, labels)
+            return Completed(stdout=created_id)
         if argv[:2] == ["docker", "start"]:
             return Completed()
         if argv[:3] == ["docker", "compose", "-p"]:
@@ -125,6 +134,15 @@ def install(b1b, *, published_child_nonce=None, published_parent_nonce=None,
                 # live run hit, for a different reason.
                 if not compose_never_creates:
                     compose_state[0] = "created"
+                    # Compose sets ITS OWN labels and nothing else. The
+                    # scenario container therefore carries no
+                    # `hh716.run`, which is exactly why live run 2
+                    # failed check 24 and the old fake could not.
+                    daemon_create(scenario_id, {
+                        "com.docker.compose.project": project,
+                        "com.docker.compose.service": b1b.SCENARIO_SERVICE,
+                        "hh716.role": "scenario-subject",
+                    })
                 return Completed()
             if "ps" in argv and "-q" in argv:
                 # DAEMON-FAITHFUL. `docker compose ps` lists only
@@ -155,6 +173,7 @@ def install(b1b, *, published_child_nonce=None, published_parent_nonce=None,
                 return Completed()
             if "down" in argv:
                 compose_state[0] = "absent"
+                daemon_remove(scenario_id)
                 return Completed()
             if "exec" in argv:
                 recorded["events"].append(("launch", "baseline"))
@@ -163,8 +182,14 @@ def install(b1b, *, published_child_nonce=None, published_parent_nonce=None,
             return Completed()
         if argv[:2] == ["docker", "rm"]:
             recorded["removed"].append(argv[-1])
+            daemon_remove(argv[-1])
             return Completed()
         if argv[:2] == ["docker", "cp"]:
+            destination = argv[-1].split(":", 1)[0]
+            if destination and destination not in daemon["containers"]:
+                return Completed(
+                    returncode=1,
+                    stderr=f"Error: No such container: {destination}")
             return Completed()
         if argv[:2] == ["docker", "inspect"]:
             target = argv[2]
@@ -189,7 +214,10 @@ def install(b1b, *, published_child_nonce=None, published_parent_nonce=None,
                 return Completed(stdout=f"{target} {b1b_run_id[0]}")
             if "com.docker.compose.project" in text:
                 return Completed(stdout=lane_holder[0])
-            if target in recorded["removed"]:
+            if target not in daemon["containers"]:
+                # A real daemon returns [] and exits 1 for an id it does
+                # not know. The fake used to report EVERY id as present
+                # unless it had seen a `docker rm` for it.
                 return Completed(stderr=f"No such container: {target}",
                                  returncode=1)
             # Decoy destruction, injected through the real `_inspect_state`
@@ -203,11 +231,37 @@ def install(b1b, *, published_child_nonce=None, published_parent_nonce=None,
             return Completed(stdout=target)
         if argv[:2] == ["docker", "ps"]:
             if "label=hh716.run=" in text:
-                return Completed(
-                    stdout=DECOY_ID[:12] + chr(10) + scenario_id[:12])
+                # Answered from the daemon model, so whatever actually
+                # carries the label is what discovery returns. The old
+                # fake hand-wrote decoy+scenario, which concealed that
+                # the Compose scenario service carries no `hh716.run`
+                # at all -- live run 2 failed preflight check 24 on
+                # exactly that.
+                wanted = text.split("label=hh716.run=", 1)[1].split()[0]
+                found = daemon_ids_with_label("hh716.run", wanted)
+                found += [cid for cid in extra_run_labelled_ids
+                          if cid not in found]
+                return Completed(stdout="".join(
+                    cid[:12] + chr(10) for cid in found))
+            if "label=com.docker.compose.project=" in text:
+                # The preflight LANE: a real Compose project with one
+                # live placeholder container, which is what the live
+                # runs stand up. Answered from a model rather than a
+                # constant so an empty lane is representable.
+                wanted = text.split(
+                    "label=com.docker.compose.project=", 1)[1].split()[0]
+                if wanted == b1b.compose_project_name(b1b_run_id[0] or ""):
+                    return Completed(stdout="")
+                return Completed(stdout="".join(
+                    cid[:12] + chr(10) for cid in lane_container_ids))
             if "name=netbox-docker-" in text:
-                return Completed(stdout="")
-            return Completed(stdout="someid")
+                # The shared project really does exist on the hosts this
+                # runs on. Returning "" made `shared_containers_observed`
+                # and `no_shared_container_is_a_target` pass against an
+                # empty set, so neither said anything about the case
+                # they exist for.
+                return Completed(stdout=" ".join(shared_project_ids))
+            return Completed(stdout=" ".join(daemon["containers"]))
         if argv[:1] == ["git"]:
             return Completed(stdout="/tmp/wt716b" if "toplevel" in text
                              else "/repo/.git/worktrees/x")
@@ -218,6 +272,23 @@ def install(b1b, *, published_child_nonce=None, published_parent_nonce=None,
     resolve_count = [0]
     #: absent -> created -> running -> absent, as the daemon sees it.
     compose_state = ["absent"]
+    #: Which container ids the daemon actually knows about, and the
+    #: labels each carries. Before this, `docker inspect` reported
+    #: EVERY id as present and `docker ps --filter` answered from a
+    #: hand-written list, so the fakes could not disagree with the
+    #: subject about what exists. Two real-daemon divergences reached
+    #: live runs that way.
+    daemon = {"containers": {}}
+
+    def daemon_create(container_id, labels):
+        daemon["containers"][container_id] = dict(labels)
+
+    def daemon_remove(container_id):
+        daemon["containers"].pop(container_id, None)
+
+    def daemon_ids_with_label(key, value):
+        return [cid for cid, labels in daemon["containers"].items()
+                if labels.get(key) == value]
     live_registry = []
     lane_holder = ["diet716-mock"]
 

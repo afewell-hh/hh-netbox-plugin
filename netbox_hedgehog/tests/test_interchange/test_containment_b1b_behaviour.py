@@ -79,8 +79,24 @@ class B1bBehaviourControls(SimpleTestCase):
         return [entry for entries in recorded["signalled"] for entry in entries
                 if entry.get("pid") == H.CHILD_PID]
 
+    #: Live run 2 proved the subject cannot satisfy preflight check 24
+    #: on a real daemon: the Compose scenario service carries no
+    #: `hh716.run` label, so label discovery finds only the decoy and
+    #: `label_discovery_selects_more_than_registered` is unreachable.
+    #: The lead has NOT authorized adding that label.
+    #:
+    #: Controls that need a completed preflight therefore run in an
+    #: environment where a second labelled resource exists -- a real
+    #: possibility, and the condition check 24 exists to detect. They
+    #: do NOT claim the subject passes check 24 as it stands;
+    #: `test_check_24_is_unreachable_on_a_faithful_daemon` records that
+    #: it does not.
+    SECOND_LABELLED_RESOURCE = ("9" * 64,)
+
     def _run(self, **options):
         """Fresh module instance per control, so patches never leak."""
+        options.setdefault("extra_run_labelled_ids",
+                           self.SECOND_LABELLED_RESOURCE)
         b1b = H.load_b1b()
         recorded = H.install(b1b, **options)
         with tempfile.TemporaryDirectory(prefix="hh716-beh-") as workspace:
@@ -1576,3 +1592,111 @@ class B1bBehaviourControls(SimpleTestCase):
                         events.index("before_compose_start"))
         self.assertLess(events.index("before_compose_start"),
                         events.index("compose_start"))
+
+    # ------------------------------------------------------------------
+    # Fake-versus-daemon audit (#716 lead direction after live run 2).
+    #
+    # Two divergences between the fakes and a real daemon reached live
+    # runs: `compose ps -q` hiding a created container, and label
+    # discovery answering from a hand-written list. Each fake that
+    # substitutes Docker/Compose state now answers from a model, and
+    # each real-daemon semantic claim below has its own control.
+    # ------------------------------------------------------------------
+
+    def test_check_24_is_unreachable_on_a_faithful_daemon(self):
+        """Records the live run-2 finding as a reproducible failure.
+
+        No label is added -- the lead has not authorized that. With
+        label discovery answered faithfully, the Compose scenario
+        service carries no `hh716.run`, so discovery returns the decoy
+        alone and check 24 cannot pass. This control fails if that ever
+        silently starts passing, which would mean the fake drifted
+        back.
+        """
+        _, code, evidence, recorded = self._run(extra_run_labelled_ids=())
+        self.assertNotEqual(code, 0)
+        shortfall = evidence["preflight_shortfall"]
+        self.assertIn(
+            "label_discovery_selects_more_than_registered",
+            shortfall["any_false"] + shortfall["not_literally_true"],
+            shortfall)
+        # And the reason is the label, not a missing decoy.
+        self.assertIn("label_discovery_would_select_decoy",
+                      [name for name, value
+                       in evidence["preflight"]["checks"].items()
+                       if value is True])
+        candidates = evidence["preflight"]["label_discovery_candidates"]
+        self.assertEqual(
+            len(candidates), 1,
+            f"discovery returned {candidates}; live run 2 returned the "
+            f"decoy alone")
+        # Readiness launches at check 16, before discovery at 22-24, so
+        # its launch is expected; the BASELINE subject is not.
+        self.assertNotIn("baseline", recorded["launches"],
+                         "the baseline subject launched despite a failed "
+                         "preflight")
+
+    def test_inspect_reports_an_unknown_container_as_absent(self):
+        """F8: a real daemon returns [] and exits 1 for an id it does
+        not know. The fake reported EVERY id as present unless it had
+        seen a `docker rm`."""
+        b1b = H.load_b1b()
+        H.install(b1b)
+        state, detail = b1b.PROVER._inspect_state("7" * 64)
+        self.assertEqual(state, "absent", f"{state}: {detail}")
+
+    def test_cp_into_a_missing_container_fails(self):
+        """F7: the rescue owner cannot be installed into a container
+        that is gone.
+
+        The harness replaces `install_rescue_owner` with a stub that
+        returns True unconditionally, so the first version of this
+        control tested the stub rather than the function -- the same
+        defect class the audit is for. It is recorded as F15 and the
+        real function is exercised here by restoring it first.
+        """
+        b1b = H.load_b1b()
+        real_install = b1b.PROVER.install_rescue_owner
+        H.install(b1b)
+        self.assertIsNot(
+            b1b.PROVER.install_rescue_owner, real_install,
+            "the harness no longer stubs install_rescue_owner; this "
+            "control's premise has changed")
+        b1b.PROVER.install_rescue_owner = real_install
+        self.assertFalse(
+            b1b.PROVER.install_rescue_owner(
+                "7" * 64,
+                Path(b1b.__file__).parent / "containment_rescue.py"),
+            "installing into an absent container reported success")
+
+    def test_the_shared_project_is_not_modelled_as_empty(self):
+        """F10: the shared project exists on the hosts this runs on.
+
+        An empty answer made `shared_containers_observed` and
+        `no_shared_container_is_a_target` pass against nothing, so
+        neither said anything about the case they exist for.
+        """
+        _, code, evidence, _ = self._run()
+        self.assertEqual(code, 0, evidence.get("dirty_reasons"))
+        checks = evidence["preflight"]["checks"]
+        self.assertTrue(checks["shared_containers_observed"])
+        self.assertTrue(checks["no_shared_container_is_a_target"])
+        # The check must have had a non-empty set to be true about.
+        b1b = H.load_b1b()
+        H.install(b1b)
+        probe = b1b._observe(
+            ["docker", "ps", "-aq", "--filter", "name=netbox-docker-"])
+        self.assertTrue(
+            probe["out"].split(),
+            "the shared-project probe returned an empty set, so the "
+            "no-shared-target check proves nothing")
+
+    def test_label_discovery_answers_from_what_carries_the_label(self):
+        """F9: discovery must reflect labels, not a hand-written list."""
+        b1b = H.load_b1b()
+        H.install(b1b)
+        probe = b1b._observe(
+            ["docker", "ps", "-q", "--filter", "label=hh716.run=nothing"])
+        self.assertEqual(
+            probe["out"].split(), [],
+            "discovery returned ids for a run label nothing carries")
