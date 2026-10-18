@@ -703,6 +703,41 @@ class B1bBehaviourControls(SimpleTestCase):
             "module __dict__":
                 "    import sys\n"
                 '    sys.modules[__name__].__dict__["sink"] = print\n',
+            # Reaching the same builtins under another spelling. Three
+            # versions of the risk check were escaped this way, so these
+            # are matched on resolved identity, not on a bare name.
+            "builtins.globals()":
+                "    import builtins\n"
+                "    builtins.globals().update(sink=print)\n",
+            "builtins imported under an alias":
+                "    import builtins as b\n"
+                "    b.globals().update(sink=print)\n",
+            "globals imported from builtins":
+                "    from builtins import globals as g\n"
+                "    g().update(sink=print)\n",
+            "exec imported from builtins":
+                "    from builtins import exec as e\n"
+                '    e("sink = print")\n',
+            "globals bound to a local name":
+                "    g = globals\n    g().update(sink=print)\n",
+            "builtins.setattr":
+                "    import builtins, sys\n"
+                '    builtins.setattr(sys.modules[__name__], "sink", print)\n',
+            "__builtins__ mapping":
+                '    __builtins__["globals"]().update(sink=print)\n',
+            "importlib.reload":
+                "    import importlib, sys\n"
+                "    importlib.reload(sys.modules[__name__])\n",
+            # Reached without ever naming the attribute, so only the
+            # import itself can catch it. Without these two the
+            # import-flagging branch is redundant with the attribute
+            # branch and could be deleted with no control failing.
+            "getattr on the builtins module":
+                "    import builtins\n"
+                '    f = getattr(builtins, "globals")\n'
+                "    f().update(sink=print)\n",
+            "builtins imported and never named again":
+                "    import builtins\n    _ = builtins\n",
         }
         for label, statement in namespace_leaks.items():
             with self.subTest(namespace_rebinding=label):

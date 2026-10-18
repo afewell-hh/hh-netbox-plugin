@@ -569,49 +569,86 @@ def _rebound_names(tree):
     return rebound
 
 
-#: Builtins that expose or rewrite a binding namespace. A reference to
-#: any of them -- not merely a subscript store through one -- means the
-#: module can rebind names in ways this scanner cannot follow.
+#: Builtins that expose or rewrite a binding namespace.
 _NAMESPACE_BUILTINS = ("globals", "locals", "vars")
 
 #: Builtins that can introduce or replace bindings from data.
 _DYNAMIC_BINDING_BUILTINS = ("exec", "eval", "compile", "setattr",
-                             "delattr", "__import__")
+                             "delattr", "__import__", "reload")
 
-#: Attributes that hand out a module or function namespace mapping.
-_NAMESPACE_ATTRS = ("__dict__", "__globals__")
+#: Attributes and names that hand out, or are, a binding namespace.
+_NAMESPACE_ATTRS = ("__dict__", "__globals__", "__builtins__")
+
+#: Modules whose attributes reach the above by any spelling.
+_NAMESPACE_MODULES = ("builtins",)
+
+_RISKY_SPELLINGS = frozenset(
+    _NAMESPACE_BUILTINS + _DYNAMIC_BINDING_BUILTINS + _NAMESPACE_ATTRS)
 
 
 def _namespace_rebinding_risk(tree):
     """Reasons the module's name bindings cannot be trusted.
 
-    Deliberately conservative. An earlier version looked only for a
-    SUBSCRIPT store through `globals()`, so every mapping-method
-    mutation walked past it -- `globals().update(sink=foreign)`,
-    `.setdefault`, `.pop`, the mapping bound to a name first, or the
-    mapping handed to a foreign callable. Rather than enumerate the
-    mutating methods, any reference to a namespace mapping at all
-    counts, because this scanner cannot follow what is done with one.
+    Deliberately conservative, and matched on the RESOLVED identity
+    rather than a bare `Name`. Three successive versions of this check
+    were escaped by a spelling it did not look for: first a subscript
+    store only, then mapping-method mutation, then `builtins.globals()`
+    and its import aliases. So the rule is now:
 
-    `exec`/`eval`/`compile`/`setattr`/`delattr`/`__import__` count too:
-    each can introduce or replace a binding from data.
+      * any name that resolves to a namespace or dynamic-binding
+        builtin, including through `from builtins import globals as g`
+        and through a local alias `g = globals`;
+      * any ATTRIBUTE whose name is one of those spellings, whatever
+        the base object -- `builtins.globals`, `b.globals`,
+        `mod.__dict__`, `importlib.reload`;
+      * importing the `builtins` module at all, which hands over every
+        one of them under a name of the author's choosing.
 
-    The cost of this breadth is nil for the collector module, which
-    uses none of these forms. If one is ever needed, the right response
-    is a declared production for it, not a looser default.
+    The collector module uses none of these, and a control asserts
+    that. If one is ever needed, the answer is a declared production
+    for it, not a looser default here.
     """
     reasons = []
+    aliases = {}
+    for node in ast.walk(tree):
+        if isinstance(node, ast.ImportFrom) and node.module in \
+                _NAMESPACE_MODULES:
+            for alias in node.names:
+                if alias.name in _RISKY_SPELLINGS:
+                    aliases[alias.asname or alias.name] = alias.name
+        elif isinstance(node, ast.Import):
+            for alias in node.names:
+                root = alias.name.split(".")[0]
+                if root in _NAMESPACE_MODULES:
+                    reasons.append(
+                        f"line {node.lineno}: `{alias.name}` is imported, "
+                        f"which hands out namespace and dynamic-binding "
+                        f"builtins under any name")
+        elif (isinstance(node, ast.Assign) and len(node.targets) == 1
+                and isinstance(node.targets[0], ast.Name)
+                and isinstance(node.value, ast.Name)
+                and node.value.id in _RISKY_SPELLINGS):
+            aliases[node.targets[0].id] = node.value.id
+
     for node in ast.walk(tree):
         if isinstance(node, ast.Name):
-            if node.id in _NAMESPACE_BUILTINS:
-                reasons.append(f"line {node.lineno}: `{node.id}` exposes a "
-                               f"binding namespace")
-            elif node.id in _DYNAMIC_BINDING_BUILTINS:
-                reasons.append(f"line {node.lineno}: `{node.id}` can rebind "
-                               f"names from data")
-        elif isinstance(node, ast.Attribute) and node.attr in _NAMESPACE_ATTRS:
-            reasons.append(f"line {node.lineno}: `{node.attr}` hands out a "
-                           f"namespace mapping")
+            resolved = aliases.get(node.id, node.id)
+            if resolved in _NAMESPACE_BUILTINS or resolved in \
+                    _NAMESPACE_ATTRS:
+                reasons.append(f"line {node.lineno}: `{node.id}` resolves to "
+                               f"`{resolved}`, which exposes a binding "
+                               f"namespace")
+            elif resolved in _DYNAMIC_BINDING_BUILTINS:
+                reasons.append(f"line {node.lineno}: `{node.id}` resolves to "
+                               f"`{resolved}`, which can rebind names from "
+                               f"data")
+        elif isinstance(node, ast.Attribute) and node.attr in \
+                _RISKY_SPELLINGS:
+            # Whatever the base: builtins.globals, b.globals,
+            # mod.__dict__, importlib.reload.
+            reasons.append(f"line {node.lineno}: attribute `{node.attr}` "
+                           f"reaches a namespace or dynamic-binding "
+                           f"builtin")
     return sorted(set(reasons))
 
 
