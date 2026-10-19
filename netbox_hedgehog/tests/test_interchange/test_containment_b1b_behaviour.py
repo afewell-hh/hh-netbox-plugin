@@ -79,24 +79,8 @@ class B1bBehaviourControls(SimpleTestCase):
         return [entry for entries in recorded["signalled"] for entry in entries
                 if entry.get("pid") == H.CHILD_PID]
 
-    #: Live run 2 proved the subject cannot satisfy preflight check 24
-    #: on a real daemon: the Compose scenario service carries no
-    #: `hh716.run` label, so label discovery finds only the decoy and
-    #: `label_discovery_selects_more_than_registered` is unreachable.
-    #: The lead has NOT authorized adding that label.
-    #:
-    #: Controls that need a completed preflight therefore run in an
-    #: environment where a second labelled resource exists -- a real
-    #: possibility, and the condition check 24 exists to detect. They
-    #: do NOT claim the subject passes check 24 as it stands;
-    #: `test_check_24_is_unreachable_on_a_faithful_daemon` records that
-    #: it does not.
-    SECOND_LABELLED_RESOURCE = ("9" * 64,)
-
     def _run(self, **options):
         """Fresh module instance per control, so patches never leak."""
-        options.setdefault("extra_run_labelled_ids",
-                           self.SECOND_LABELLED_RESOURCE)
         b1b = H.load_b1b()
         recorded = H.install(b1b, **options)
         with tempfile.TemporaryDirectory(prefix="hh716-beh-") as workspace:
@@ -1603,38 +1587,30 @@ class B1bBehaviourControls(SimpleTestCase):
     # each real-daemon semantic claim below has its own control.
     # ------------------------------------------------------------------
 
-    def test_check_24_is_unreachable_on_a_faithful_daemon(self):
-        """Records the live run-2 finding as a reproducible failure.
+    def test_the_retired_count_proxy_is_gone(self):
+        """Replaces `test_check_24_is_unreachable_on_a_faithful_daemon`.
 
-        No label is added -- the lead has not authorized that. With
-        label discovery answered faithfully, the Compose scenario
-        service carries no `hh716.run`, so discovery returns the decoy
-        alone and check 24 cannot pass. This control fails if that ever
-        silently starts passing, which would mean the fake drifted
-        back.
+        That control recorded live run 2's failure against the count
+        proxy `len(short) > 1`. The lead amended check 24 to its
+        semantic form, so the failure it asserted is no longer the
+        expected behaviour and the control retires with the proxy.
+        What must not come back is the proxy itself.
         """
-        _, code, evidence, recorded = self._run(extra_run_labelled_ids=())
-        self.assertNotEqual(code, 0)
-        shortfall = evidence["preflight_shortfall"]
+        here = Path(__file__).parent
+        source = (here / "containment_b1b.py").read_text(encoding="utf-8")
+        self.assertNotIn(
+            "label_discovery_selects_more_than_registered", source,
+            "the retired count proxy is back in the subject")
         self.assertIn(
-            "label_discovery_selects_more_than_registered",
-            shortfall["any_false"] + shortfall["not_literally_true"],
-            shortfall)
-        # And the reason is the label, not a missing decoy.
-        self.assertIn("label_discovery_would_select_decoy",
-                      [name for name, value
-                       in evidence["preflight"]["checks"].items()
-                       if value is True])
-        candidates = evidence["preflight"]["label_discovery_candidates"]
-        self.assertEqual(
-            len(candidates), 1,
-            f"discovery returned {candidates}; live run 2 returned the "
-            f"decoy alone")
-        # Readiness launches at check 16, before discovery at 22-24, so
-        # its launch is expected; the BASELINE subject is not.
-        self.assertNotIn("baseline", recorded["launches"],
-                         "the baseline subject launched despite a failed "
-                         "preflight")
+            "label_discovery_selects_an_unowned_same_label_resource",
+            source)
+        # And the amended condition is required, not merely present.
+        b1b = H.load_b1b()
+        for name in ("label_discovery_selects_an_unowned_same_label"
+                     "_resource",
+                     "discovery_ids_are_not_in_the_teardown_set"):
+            with self.subTest(check=name):
+                self.assertIn(name, b1b.REQUIRED_PREFLIGHT_CHECKS)
 
     def test_inspect_reports_an_unknown_container_as_absent(self):
         """F8: a real daemon returns [] and exits 1 for an id it does
@@ -1766,3 +1742,105 @@ class B1bBehaviourControls(SimpleTestCase):
         self.assertEqual(
             state, "present",
             f"the seeded second resource does not exist: {detail}")
+
+    # ------------------------------------------------------------------
+    # Check 24, amended by purpose (#716 lead decision).
+    #
+    # The condition is: label discovery can see a same-label resource
+    # the scenario registry does not own. The former
+    # `len(short) > 1` was an implementation-era proxy that became
+    # false when the Compose service correctly stopped carrying the run
+    # label -- live run 2 failed on the proxy, not on the property.
+    # Matched on exact immutable ID, never a display name.
+    # ------------------------------------------------------------------
+
+    def test_the_semantic_discovery_condition_holds_without_a_phantom(self):
+        """The positive, on a faithful host with nothing extra seeded.
+
+        This is the environment live run 2 presented, where the old
+        count proxy was unreachable.
+        """
+        _, code, evidence, _ = self._run(extra_run_labelled_ids=())
+        self.assertEqual(code, 0, evidence.get("dirty_reasons"))
+        checks = evidence["preflight"]["checks"]
+        self.assertTrue(
+            checks["label_discovery_selects_an_unowned_same_label_resource"])
+        self.assertTrue(checks["discovery_ids_are_not_in_the_teardown_set"])
+        self.assertNotIn(
+            "label_discovery_selects_more_than_registered", checks,
+            "the retired count proxy is still being evaluated")
+
+    def test_changing_the_decoy_run_label_fails_the_condition(self):
+        """If the decoy no longer carries the run label, discovery
+        cannot select it and the condition must fail."""
+        for label, options in (
+                ("label changed", {"decoy_run_label": "a-different-run"}),
+                ("label removed", {"decoy_run_label": ""})):
+            with self.subTest(case=label):
+                _, code, evidence, recorded = self._run(
+                    extra_run_labelled_ids=(), **options)
+                self.assertNotEqual(code, 0, f"{label} was accepted")
+                shortfall = evidence["preflight_shortfall"]
+                self.assertIn(
+                    "label_discovery_selects_an_unowned_same_label_resource",
+                    shortfall["any_false"] + shortfall["not_literally_true"],
+                    shortfall)
+                self.assertNotIn("baseline", recorded["launches"])
+
+    def test_a_discovery_result_omitting_the_decoy_fails(self):
+        """Discovery that does not return the decoy fails, even though
+        the decoy still exists and carries the label.
+
+        Another unowned same-label resource IS returned, so the
+        condition cannot be satisfied by "some unowned id was seen":
+        it must be the known fixture decoy. Without that second
+        resource, discovery is simply empty and the control passes for
+        the weaker reason.
+        """
+        _, code, evidence, recorded = self._run(
+            extra_run_labelled_ids=("9" * 64,), discovery_omits_decoy=True)
+        self.assertNotEqual(code, 0)
+        shortfall = evidence["preflight_shortfall"]
+        for condition in ("label_discovery_would_select_decoy",
+                          "label_discovery_selects_an_unowned_same_label"
+                          "_resource"):
+            with self.subTest(condition=condition):
+                self.assertIn(
+                    condition,
+                    shortfall["any_false"] + shortfall["not_literally_true"],
+                    shortfall)
+        self.assertNotIn("baseline", recorded["launches"])
+
+    def test_the_decoy_in_the_scenario_registry_fails_non_ownership(self):
+        """If the decoy is owned by the scenario registry it is no
+        longer an unowned bystander, and it would also enter the
+        authorized teardown set."""
+        _, code, evidence, recorded = self._run(
+            extra_run_labelled_ids=(), decoy_enters_scenario_registry=True)
+        self.assertNotEqual(code, 0, "an owned decoy was accepted")
+        shortfall = evidence["preflight_shortfall"]
+        failed = shortfall["any_false"] + shortfall["not_literally_true"]
+        self.assertIn("decoy_is_not_in_scenario_registry", failed, shortfall)
+        self.assertIn(
+            "label_discovery_selects_an_unowned_same_label_resource",
+            failed, shortfall)
+        self.assertIn("discovery_ids_are_not_in_the_teardown_set", failed,
+                      shortfall)
+        self.assertNotIn("baseline", recorded["launches"])
+
+    def test_an_unregistered_copied_label_decoy_survives_teardown(self):
+        """Discovery-derived ids never enter the teardown set, so the
+        bystander is still there afterwards."""
+        _, code, evidence, recorded = self._run(extra_run_labelled_ids=())
+        self.assertEqual(code, 0, evidence.get("dirty_reasons"))
+        decoy_id = evidence["preflight"]["decoy_container_id"]
+        teardown = evidence["teardown_registered"]
+        self.assertNotIn(
+            decoy_id, teardown["destroyed"],
+            "the unregistered same-label decoy was destroyed by the "
+            "authorized teardown")
+        self.assertEqual(
+            evidence["same_label_decoy_after_rescue"]["state"], "present")
+        # It is disposed only by the FIXTURE registry, which owns it.
+        self.assertIn(decoy_id,
+                      [entry["id"] for entry in evidence["fixture_cleanup"]])

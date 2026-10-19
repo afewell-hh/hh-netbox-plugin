@@ -80,7 +80,8 @@ def install(b1b, *, published_child_nonce=None, published_parent_nonce=None,
             recreated_service_id=None, compose_project_label=None,
             compose_service_label=None, inspect_id_override=None,
             compose_never_creates=False, preseed_registry_container=None,
-            extra_run_labelled_ids=(),
+            extra_run_labelled_ids=(), decoy_run_label=None,
+            discovery_omits_decoy=False, decoy_enters_scenario_registry=False,
             shared_project_ids=("f" * 64, "0" * 63 + "1"),
             lane_container_ids=("a" * 63 + "9",),
             child_found_after_kill=True, probe_unknown_after_kill=False,
@@ -113,6 +114,12 @@ def install(b1b, *, published_child_nonce=None, published_parent_nonce=None,
         if argv[:2] == ["docker", "create"]:
             created_id = DECOY_ID if "hh716.fixture" in text else scenario_id
             labels = {}
+            if decoy_run_label is not None and "hh716.fixture" in text:
+                # The decoy's run label removed or changed at the
+                # daemon, so discovery genuinely cannot select it.
+                argv = [part if not str(part).startswith("hh716.run=")
+                        else f"hh716.run={decoy_run_label}" for part in argv]
+                text = " ".join(str(part) for part in argv)
             for index, part in enumerate(argv):
                 if part == "--label" and index + 1 < len(argv):
                     key, _, value = argv[index + 1].partition("=")
@@ -250,6 +257,8 @@ def install(b1b, *, published_child_nonce=None, published_parent_nonce=None,
                 # exactly that.
                 wanted = text.split("label=hh716.run=", 1)[1].split()[0]
                 found = daemon_ids_with_label("hh716.run", wanted)
+                if discovery_omits_decoy:
+                    found = [cid for cid in found if cid != DECOY_ID]
                 return Completed(stdout="".join(
                     cid[:12] + chr(10) for cid in found))
             if "label=com.docker.compose.project=" in text:
@@ -420,6 +429,11 @@ def install(b1b, *, published_child_nonce=None, published_parent_nonce=None,
         registry = original_registry(*args, **kwargs)
         if preseed_registry_container:
             registry.containers.append(preseed_registry_container)
+        if decoy_enters_scenario_registry:
+            # The decoy wrongly owned by the scenario registry, which
+            # must fail the non-ownership condition AND put it in the
+            # authorized teardown set.
+            registry.containers.append(DECOY_ID)
         live_registry.append(registry)
         return registry
 

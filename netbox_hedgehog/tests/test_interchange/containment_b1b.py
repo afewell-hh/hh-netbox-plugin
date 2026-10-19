@@ -228,9 +228,35 @@ def preflight(image, lane, run_id, evidence, registry, lifecycle,
     discovery = _observe(
         ["docker", "ps", "-q", "--filter", f"label=hh716.run={run_id}"])
     checks["label_discovery_observed"] = discovery["ok"]
-    short = {entry[:12] for entry in discovery["out"].split()} if discovery["ok"] else set()
+    discovered = discovery["out"].split() if discovery["ok"] else []
+    short = {entry[:12] for entry in discovered}
     checks["label_discovery_would_select_decoy"] = decoy_id[:12] in short
-    checks["label_discovery_selects_more_than_registered"] = len(short) > 1
+
+    # THE PURPOSE, stated directly: label discovery can see a same-label
+    # resource the scenario registry does not own.
+    #
+    # The former `len(short) > 1` was an implementation-era proxy. It
+    # held only because the scenario container was created by
+    # `docker create --label hh716.run=...`; once Compose correctly
+    # stopped carrying that label the count fell to one and the proxy
+    # became false while the property it stood for stayed true. Live
+    # run 2 failed on the proxy, not on the property.
+    #
+    # Matched on the exact immutable ID, never a display name, and the
+    # selected decoy must be absent from the scenario registry.
+    selected_unowned = [entry for entry in discovered
+                        if decoy_id.startswith(entry)
+                        and entry not in registry.containers
+                        and decoy_id not in registry.containers]
+    checks["label_discovery_selects_an_unowned_same_label_resource"] = (
+        discovery["ok"] and bool(selected_unowned))
+
+    # And discovery must never feed the authorized teardown set: that
+    # set is the registry, by exact registered ID, and nothing a filter
+    # returned may enter it.
+    checks["discovery_ids_are_not_in_the_teardown_set"] = not any(
+        any(candidate.startswith(entry) for entry in short)
+        for candidate in registry.containers)
 
     evidence["preflight"] = {
         "checks": checks,
@@ -474,7 +500,8 @@ REQUIRED_PREFLIGHT_CHECKS = (
     "decoy_create_observed", "decoy_started", "same_label_decoy_live",
     "decoy_is_not_in_scenario_registry", "decoy_is_in_fixture_registry",
     "label_discovery_observed", "label_discovery_would_select_decoy",
-    "label_discovery_selects_more_than_registered",
+    "label_discovery_selects_an_unowned_same_label_resource",
+    "discovery_ids_are_not_in_the_teardown_set",
 )
 
 
