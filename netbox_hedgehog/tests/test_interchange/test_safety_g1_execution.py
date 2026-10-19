@@ -115,4 +115,3 @@ class SafetyExecutionControls(SimpleTestCase):
         report["observer"] = "independent-execution-attestation"
         with self.assertRaisesRegex(AssertionError, "misrepresented"):
             S.reconcile(context, report, partitioned=True)
-

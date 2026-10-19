@@ -88,4 +88,3 @@ class IndependentSafetyInventory(SimpleTestCase):
         self.assertEqual(report["entries"], [])
         with self.assertRaisesRegex(AssertionError, "undiscovered/extra/duplicate"):
             S.reconcile(context, report, partitioned=True, missing=True)
-
