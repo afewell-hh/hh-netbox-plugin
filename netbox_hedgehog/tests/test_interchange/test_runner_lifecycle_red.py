@@ -13,9 +13,9 @@ from __future__ import annotations
 from django.test import SimpleTestCase
 
 from netbox_hedgehog.tests import runner as runner_module
-from .lifecycle_support import (
+from .runner_lifecycle_support import (
     FakeConnection, FakeConnections, LifecycleRecord, NotObserved,
-    observe_setup, require,
+    UnpreparedTarget, observe_setup, require,
 )
 
 LANE_DB = "netbox"
@@ -84,11 +84,22 @@ class DatabaseFreeSelection(SimpleTestCase):
         omitted = observe_setup(runner_module, lane_only(),
                                 aliases=None, omit_aliases=True,
                                 prepared=(("default", LANE_DB, True),))
+        # The argument really was passed differently...
         self.assertFalse(explicit.requested_was_omitted)
         self.assertTrue(omitted.requested_was_omitted)
+        self.assertEqual(explicit.requested_aliases, set())
+        self.assertIsNone(omitted.requested_aliases)
+        # ...and the two must produce DIFFERENT behaviour. Asserting
+        # only the recorded flags proved the harness passed the
+        # argument, not that the runner distinguishes the cases.
         self.assertEqual(
             explicit.guard_calls, [],
             "an explicitly empty alias set still reached the guard")
+        self.assertNotEqual(
+            explicit.guarded_aliases(), omitted.guarded_aliases(),
+            "explicit aliases=set() and an omitted argument produced "
+            "identical guard behaviour; Django treats the omitted case "
+            "as its default setup and they must not be conflated")
 
 
 class PreparedTargetsOnly(SimpleTestCase):
@@ -203,11 +214,14 @@ class FailClosedFamilies(SimpleTestCase):
         self.assertIsNotNone(
             record.failure,
             "a selection that required a database but got none continued")
-        self.assertNotIn(
-            "refusing to apply", str(record.failure),
-            "the run stopped because the guard rejected a name, not "
-            "because required setup was missing; a fix that skips "
-            "unprepared aliases would make this pass silently")
+        # POSITIVE attribution. Asserting only that the message is not
+        # the guard's name refusal would be satisfied by any unrelated
+        # exception, including a harness bug.
+        self.assertIsInstance(
+            record.failure, UnpreparedTarget,
+            f"expected the named reconciliation failure, got "
+            f"{type(record.failure).__name__}: {record.failure}")
+        self.assertEqual(record.failure.aliases, ["default"])
 
     def test_r10b_the_guard_is_not_consulted_when_setup_was_missing(self):
         """RED. The reconciliation must happen BEFORE the guard."""
@@ -229,12 +243,16 @@ class FailClosedFamilies(SimpleTestCase):
         self.assertIsNotNone(
             record.failure,
             "a required alias with no prepared target was accepted")
-        # Same wrong-reason trap as R10: today this fails on the
-        # ordinary NAME of `other`, not on the missing preparation.
-        self.assertNotIn(
-            "refusing to apply", str(record.failure),
-            "the run stopped on a name check, not on the unprepared "
-            "required alias")
+        # Same wrong-reason trap as R10, closed the same way: the
+        # failure must NAME the unprepared alias, not merely differ
+        # from the guard's refusal.
+        self.assertIsInstance(
+            record.failure, UnpreparedTarget,
+            f"expected the named reconciliation failure, got "
+            f"{type(record.failure).__name__}: {record.failure}")
+        self.assertEqual(
+            record.failure.aliases, ["other"],
+            "the failure must identify exactly the unprepared alias")
         # And it must stop before guarding the alias that WAS prepared,
         # so a later invalid alias is not discovered after ALTERs ran.
         self.assertEqual(
@@ -284,13 +302,23 @@ class FailClosedFamilies(SimpleTestCase):
         self.assertIs(record.failure, original)
 
     def test_r16_refusal_precedes_any_cursor(self):
-        """The low-level boundary: an ordinary database is refused before
-        a cursor is opened. FakeConnection raises if one ever is."""
+        """The low-level boundary, exercised through the SHIPPED guard.
+
+        `real_guard=True` calls `apply_autovacuum_guard` itself. An
+        earlier version reimplemented the refusal inside the fake and
+        asserted against that, which proved only that the fake was
+        written correctly. FakeConnection raises if a cursor is ever
+        opened, so "refused before any cursor" is observed.
+        """
         record = observe_setup(runner_module, lane_only(),
                                aliases={"default"},
-                               prepared=(("default", LANE_DB, True),))
+                               prepared=(("default", LANE_DB, True),),
+                               real_guard=True)
         self.assertIsInstance(record.failure, RuntimeError)
         self.assertIn("refusing to apply", str(record.failure))
+        self.assertNotIsInstance(
+            record.failure, AssertionError,
+            "a cursor was opened on an ordinary database before refusal")
 
 
 class ObservationIntegrity(SimpleTestCase):
@@ -312,14 +340,28 @@ class ObservationIntegrity(SimpleTestCase):
         self.assertEqual(runner_module.GUARDED_TABLES,
                          ("dcim_modulebay", "dcim_module", "dcim_device"))
 
-    def test_c04_the_low_level_guard_still_refuses_a_normal_name(self):
-        """Direct refusal, unchanged, independent of the runner."""
-        conn = FakeConnection("default", LANE_DB)
-        self.assertFalse(runner_module._is_test_database(conn))
-        self.assertTrue(
-            runner_module._is_test_database(FakeConnection("d", TEST_DB)))
+    def test_c04_the_shipped_guard_refuses_a_normal_database(self):
+        """Direct refusal through `apply_autovacuum_guard` itself.
+
+        An earlier version asserted only on the `_is_test_database`
+        predicate, which is a different function from the one that
+        protects the database.
+        """
+        from unittest import mock
+        conns = FakeConnections({"default": FakeConnection("default", LANE_DB)})
+        with mock.patch.object(runner_module, "connections", conns):
+            with self.assertRaises(RuntimeError) as caught:
+                runner_module.apply_autovacuum_guard("default")
+        self.assertIn("refusing to apply", str(caught.exception))
+        self.assertNotIsInstance(
+            caught.exception, AssertionError,
+            "the guard opened a cursor before refusing")
+
+    def test_c05_a_configured_test_name_is_a_valid_disposable_target(self):
+        """Not every disposable name begins with `test_`."""
         self.assertTrue(
             runner_module._is_test_database(
-                FakeConnection("d", "diet_disposable", test_name="diet_disposable")),
-            "a configured TEST.NAME that does not start with test_ must "
-            "still be recognised as a disposable target")
+                FakeConnection("d", "diet_disposable",
+                               test_name="diet_disposable")))
+        self.assertFalse(
+            runner_module._is_test_database(FakeConnection("d", LANE_DB)))

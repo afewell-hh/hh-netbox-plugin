@@ -56,12 +56,16 @@ class LifecycleRecord:
     altered: list = field(default_factory=list)
     #: SQL statements issued against each alias by the guard.
     sql: list = field(default_factory=list)
-    #: test bodies that actually executed.
-    bodies: list = field(default_factory=list)
     #: the exception that ended the run, if any.
     failure: BaseException | None = None
-    #: whether teardown ran, and for which aliases.
-    teardown_calls: list = field(default_factory=list)
+
+    # Deliberately ABSENT: body-execution and teardown observations.
+    # Earlier drafts declared `bodies` and `teardown_calls` that nothing
+    # ever populated, so a row could read an always-empty list as
+    # evidence that no body ran and no teardown was skipped. They are
+    # removed rather than left empty; the wrapper-subprocess rows that
+    # would populate them honestly are not yet implemented and are
+    # reported as an open gap, not as a passing row.
 
     def guarded_aliases(self) -> set:
         return {call["alias"] for call in self.guard_calls}
@@ -77,6 +81,24 @@ class LifecycleRecord:
         a guard built only for disposable ones.
         """
         return self.guarded_aliases() - self.prepared_aliases()
+
+
+class UnpreparedTarget(RuntimeError):
+    """The contract's named reconciliation failure.
+
+    The GREEN phase must raise this (or an equivalent dedicated type)
+    when a required alias has no genuinely prepared disposable target.
+    It exists here so RED rows can assert POSITIVE attribution: an
+    earlier version asserted only that the message was *not* the
+    guard's name refusal, which any unrelated exception -- including a
+    harness bug -- would have satisfied.
+    """
+
+    def __init__(self, aliases, detail=""):
+        self.aliases = sorted(aliases)
+        super().__init__(
+            f"required aliases with no prepared disposable target: "
+            f"{', '.join(self.aliases)}{(' (' + detail + ')') if detail else ''}")
 
 
 class NotObserved(AssertionError):
@@ -156,7 +178,7 @@ class FakeConnections:
 
 def observe_setup(runner_module, connections, *, aliases, omit_aliases=False,
                   prepared=(), setup_raises=None, guard_raises=None,
-                  guard_sql_raises=None):
+                  guard_sql_raises=None, real_guard=False):
     """Run the real `DietTestRunner.setup_databases` and record it.
 
     `prepared` is what Django's superclass setup reports having created,
@@ -182,6 +204,19 @@ def observe_setup(runner_module, connections, *, aliases, omit_aliases=False,
             config.append((connections[alias], old_name, destroy))
         return config
 
+    def recording_real_guard(alias="default"):
+        """The REAL `apply_autovacuum_guard`, merely recorded.
+
+        A row that asserts the refusal must exercise the shipped guard.
+        An earlier version reimplemented the refusal inside the fake and
+        then asserted against it, which proved only that the fake was
+        written correctly.
+        """
+        record.guard_calls.append(
+            {"alias": alias,
+             "name": connections[alias].settings_dict.get("NAME") or ""})
+        return real_apply(alias)
+
     def fake_guard(alias="default"):
         conn = connections[alias]
         name = conn.settings_dict.get("NAME") or ""
@@ -206,10 +241,12 @@ def observe_setup(runner_module, connections, *, aliases, omit_aliases=False,
             for t in altered]})
         return altered
 
+    real_apply = runner_module.apply_autovacuum_guard
+    guard = recording_real_guard if real_guard else fake_guard
     call = {} if omit_aliases else {"aliases": aliases}
     with mock.patch.object(runner_module, "connections", connections), \
             mock.patch.object(runner_module, "apply_autovacuum_guard",
-                              fake_guard), \
+                              guard), \
             mock.patch.object(
                 runner_module.DiscoverRunner, "setup_databases",
                 staticmethod(fake_super_setup)):
