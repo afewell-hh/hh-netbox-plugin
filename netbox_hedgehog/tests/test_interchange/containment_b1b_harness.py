@@ -55,16 +55,24 @@ START_TICKS = "777777"
 
 
 class FakeClient:
-    """Stands in for the non-detached host exec client."""
+    """Stands in for the non-detached host exec client.
 
-    def __init__(self):
+    `on_kill` lets the model advance at the termination boundary, so a
+    perturbation that happens AFTER the client dies -- pid reuse, for
+    instance -- occurs then rather than at launch.
+    """
+
+    def __init__(self, on_kill=None):
         self.pid = 99999
         self.returncode = None
         self.killed = False
+        self._on_kill = on_kill
 
     def kill(self):
         self.killed = True
         self.returncode = -9
+        if self._on_kill is not None:
+            self._on_kill()
 
     def communicate(self, timeout=None):
         return ("", "")
@@ -81,6 +89,7 @@ def install(b1b, *, published_child_nonce=None, published_parent_nonce=None,
             compose_service_label=None, inspect_id_override=None,
             compose_never_creates=False, preseed_registry_container=None,
             extra_run_labelled_ids=(), decoy_run_label=None,
+            child_publication=None,
             discovery_omits_decoy=False, decoy_enters_scenario_registry=False,
             shared_project_ids=("f" * 64, "0" * 63 + "1"),
             lane_container_ids=("a" * 63 + "9",),
@@ -100,7 +109,7 @@ def install(b1b, *, published_child_nonce=None, published_parent_nonce=None,
     recorded = {"removed": [], "signalled": [], "bind_calls": [],
                 "rescue_calls": [], "events": [], "launches": [],
                 "compose_calls": [], "client_argv": [],
-                "registry_at_compose_start": []}
+                "registry_at_compose_start": [], "inner": None}
 
     def _baseline_signalled():
         return any(entry.get("pid") == CHILD_PID
@@ -309,6 +318,79 @@ def install(b1b, *, published_child_nonce=None, published_parent_nonce=None,
                 if labels.get(key) == value]
     live_registry = []
     lane_holder = ["diet716-mock"]
+    # ------------------------------------------------------------------
+    # IN-CONTAINER STATE MODEL (#716 lead prerequisite).
+    #
+    # The publication reads, the /proc-derived liveness probe and the
+    # rescue owner used to WRITE their answers: `cat` fabricated a
+    # record from constants whether or not anything had been published,
+    # the probe keyed off "has the baseline been signalled", and the
+    # rescue report was crafted rather than derived. Those fakes first
+    # govern safety-critical decisions at induction, so each now
+    # derives its output from this model.
+    #
+    # Declared states for a process:
+    #   absent   -- no such pid
+    #   live     -- running (R/S/D...)
+    #   zombie   -- terminated, not reaped (Z)
+    #   reaped   -- terminated and reaped -> absent to any observer
+    #   unknown  -- the observation itself failed; never a clean answer
+    #
+    # Transitions:
+    #   launch(role, nonce, pid)        absent -> live, publishes a record
+    #   host_client_terminated()        live   -> live   (no propagation)
+    #   signal(pid)                     live   -> zombie | reaped
+    #   observation_failure             any    -> unknown (fail-closed)
+    # ------------------------------------------------------------------
+    inner = {
+        "processes": {},      # pid -> identity and state
+        "publications": {},   # nonce -> {"parent": rec|None, "child": rec|None}
+        "probe_fails": False,
+    }
+
+    def inner_launch(role, nonce, pid, ppid=None, start_ticks=START_TICKS,
+                     publish=True, published_nonce=None):
+        inner["processes"][pid] = {
+            "state": "live", "nonce": nonce, "start_ticks": start_ticks,
+            "pgid": str(PARENT_PID), "sid": str(PARENT_PID),
+            "ppid": str(ppid) if ppid else "1",
+            "argv": ["python3", "-c", "import time; time.sleep(900)"],
+        }
+        if not publish:
+            return
+        record = {
+            "role": role, "nonce": published_nonce or nonce, "pid": pid,
+            "start_ticks": start_ticks, "pgid": str(PARENT_PID),
+            "sid": str(PARENT_PID),
+        }
+        if ppid is not None:
+            record["ppid"] = str(ppid)
+        slot = "child" if role == "inner_child" else "parent"
+        inner["publications"].setdefault(nonce, {})[slot] = record
+
+    def inner_signal(pid, outcome):
+        process = inner["processes"].get(pid)
+        if process is None or process["state"] != "live":
+            return False
+        process["state"] = "zombie" if outcome == "terminated_zombie" \
+            else "reaped" if outcome == "reaped" else process["state"]
+        return True
+
+    def inner_observe(pid, expected_start_ticks=None):
+        """What a /proc probe would report. UNKNOWN is fail-closed."""
+        if inner["probe_fails"]:
+            return None
+        process = inner["processes"].get(pid)
+        if process is None or process["state"] in ("reaped",):
+            return {"found": False}
+        if (expected_start_ticks is not None
+                and process["start_ticks"] != expected_start_ticks):
+            # A different process instance at the same pid.
+            return {"found": True, "state": "S",
+                    "start_ticks": process["start_ticks"]}
+        state = "Z" if process["state"] == "zombie" else after_kill_state
+        return {"found": True, "state": state,
+                "start_ticks": process["start_ticks"]}
 
     def fake_in_scenario(container_id, argv, timeout=120, stdin=None,
                          detach=False, env=None):
@@ -327,68 +409,84 @@ def install(b1b, *, published_child_nonce=None, published_parent_nonce=None,
                 pids = [e.get("pid") for e in entries]
                 kind = "baseline" if CHILD_PID in pids else "readiness"
                 recorded["events"].append(("rescue_signal", kind))
+            # VERIFY against the model: the entry must match what the
+            # process actually is. Previously `verified` was an
+            # injected flag and the outcome a crafted string, so no
+            # mismatch could be represented.
+            entry = entries[0] if entries else {}
+            target = inner["processes"].get(entry.get("pid"))
+            reasons = []
+            if target is None:
+                reasons.append("no such process")
+            else:
+                for field in ("nonce", "start_ticks", "pgid", "sid"):
+                    if field in entry and str(entry[field]) != str(
+                            target.get(field)):
+                        reasons.append(f"{field} mismatch")
+                if ("expected_argv" in entry
+                        and list(entry["expected_argv"])[:3]
+                        != target["argv"][:3]):
+                    reasons.append("argv mismatch")
+            model_verified = not reasons
             if not send:
                 outcome = "verified_not_signalled"
             elif is_baseline:
                 outcome = rescue_outcome
             else:
                 outcome = readiness_outcome        # preflight readiness
+            if send and model_verified:
+                if after_rescue_found and entry.get("pid") == CHILD_PID:
+                    # The signal was delivered and the process did NOT
+                    # go away -- a survivor the subject must refuse to
+                    # call clean.
+                    pass
+                else:
+                    inner_signal(entry.get("pid"), outcome)
             # The verification pass can report NOT verified; without that
             # injection the ownership gate was never exercised and removing
             # it changed nothing observable.
             # Scoped to the BASELINE child, like rescue_outcome: applied to
             # preflight readiness too, the run aborts in preflight and the
             # control passes for the wrong reason.
-            verified_flag = (verification_verified
-                             if (not send and is_baseline) else True)
+            verified_flag = model_verified and (
+                verification_verified if (not send and is_baseline) else True)
             return Completed(stdout=json.dumps({"reports": [{
                 "verified": verified_flag, "signalled": bool(send),
-                "outcome": outcome,
+                "outcome": outcome, "reasons": reasons,
                 "nonce": entries[0].get("nonce") if entries else None,
-                "pid": CHILD_PID, "reasons": []}]}))
+                "pid": CHILD_PID}]}))
         if argv and argv[0] == "cat":
+            # Derived from what was actually published. The previous
+            # version fabricated a record from constants whether or not
+            # anything had been published, so absent, stale and
+            # malformed publications were unrepresentable.
             path = argv[1]
-            nonce = Path(path).name.split(".")[0]
-            if path.endswith(".parent.json"):
-                return Completed(stdout=json.dumps({
-                    "role": "exec_parent",
-                    "nonce": published_parent_nonce or nonce,
-                    "pid": PARENT_PID, "start_ticks": START_TICKS,
-                    "pgid": str(PARENT_PID), "sid": str(PARENT_PID)}))
-            if path.endswith(".child.json"):
-                return Completed(stdout=json.dumps({
-                    "role": "inner_child",
-                    "nonce": published_child_nonce or nonce,
-                    "pid": CHILD_PID, "ppid": str(PARENT_PID),
-                    "start_ticks": START_TICKS,
-                    "pgid": str(PARENT_PID), "sid": str(PARENT_PID)}))
-            if path.endswith(".json"):   # read_publication's plain record
-                return Completed(stdout=json.dumps(
-                    {"nonce": nonce, "pid": READINESS_PID,
-                     "start_ticks": START_TICKS, "pgid": "1", "sid": "1"}))
-            return Completed(returncode=1, stderr="no such file")
+            name = Path(path).name
+            nonce = name.split(".")[0]
+            slot = ("parent" if name.endswith(".parent.json")
+                    else "child" if name.endswith(".child.json")
+                    else "plain")
+            published = inner["publications"].get(nonce, {})
+            record = published.get(slot)
+            if record is None:
+                return Completed(returncode=1,
+                                 stderr=f"cat: {path}: No such file")
+            if record == "MALFORMED":
+                return Completed(stdout="{not json")
+            return Completed(stdout=json.dumps(record))
         if argv and argv[0] == "python3" and "PROBE" not in joined:
-            # The liveness probe. Keyed on whether the BASELINE child has
-            # been signalled, not on whether anything has: preflight's
-            # readiness subject signals first.
-            ticks = (observed_start_ticks if observed_start_ticks is not None
-                     else START_TICKS)
-            if not _baseline_signalled():
-                # A probe that could not run at all -> UNKNOWN, which must
-                # never read as a clean result.
-                if probe_unknown_after_kill:
-                    return Completed(returncode=1, stderr="probe failed")
-                # The child not surviving host termination means the
-                # baseline did not reproduce the defect it reports.
-                if not child_found_after_kill:
-                    return Completed(stdout=json.dumps({"found": False}))
-                return Completed(stdout=json.dumps(
-                    {"found": True, "state": after_kill_state,
-                     "start_ticks": ticks}))
-            if after_rescue_found:
-                return Completed(stdout=json.dumps(
-                    {"found": True, "state": "S", "start_ticks": ticks}))
-            return Completed(stdout=json.dumps({"found": False}))
+            # Derived from the process model, not from "has the
+            # baseline been signalled yet". A probe that cannot run is
+            # UNKNOWN, which the subject must never read as clean.
+            # argv is ["python3", "-c", PROBE_SOURCE, "<pid>"]. The
+            # start-ticks comparison is the SUBJECT's job, so the probe
+            # reports what the model holds and does not pre-judge it.
+            pid = next((int(part) for part in reversed(argv)
+                        if str(part).isdigit()), CHILD_PID)
+            observed = inner_observe(pid)
+            if observed is None:
+                return Completed(returncode=1, stderr="probe failed")
+            return Completed(stdout=json.dumps(observed))
         return Completed()
 
     # Replace the MODULE REFERENCES, never attributes on the shared stdlib
@@ -439,6 +537,13 @@ def install(b1b, *, published_child_nonce=None, published_parent_nonce=None,
 
     b1b.PROVER.Registry = capturing_registry
 
+    # The model itself, so controls can drive transitions and assert
+    # the fakes derive from it rather than from an injected answer.
+    recorded["inner"] = inner
+    recorded["inner_launch"] = inner_launch
+    recorded["inner_signal"] = inner_signal
+    recorded["inner_observe"] = inner_observe
+
     b1b.subprocess = _SubprocessShim
     b1b.time = _TimeShim
     b1b.PROVER.subprocess = _SubprocessShim
@@ -448,6 +553,32 @@ def install(b1b, *, published_child_nonce=None, published_parent_nonce=None,
     original_launch = b1b.launch_inner_subject_non_detached
 
     def fake_baseline_launch(project, workspace, nonce, marker):
+        inner_launch("exec_parent", nonce, PARENT_PID,
+                     published_nonce=published_parent_nonce)
+        inner_launch("inner_child", nonce, CHILD_PID, ppid=PARENT_PID,
+                     published_nonce=published_child_nonce)
+        if child_publication == "absent":
+            inner["publications"][nonce]["child"] = None
+        elif child_publication == "malformed":
+            inner["publications"][nonce]["child"] = "MALFORMED"
+        elif child_publication == "stale":
+            inner["publications"][nonce]["child"]["start_ticks"] = "1"
+        def on_kill():
+            # Applied at the TERMINATION boundary, not at launch.
+            # Perturbing at launch made the pre-termination ownership
+            # verification reject the entry first -- correct behaviour,
+            # but it meant the post-kill probe was never reached and
+            # the control passed for the wrong reason.
+            if observed_start_ticks is not None:
+                # PID REUSE: the pid now belongs to a DIFFERENT
+                # instance, so /proc diverges from what was published.
+                inner["processes"][CHILD_PID]["start_ticks"] = \
+                    observed_start_ticks
+            if not child_found_after_kill:
+                inner["processes"][CHILD_PID]["state"] = "reaped"
+            if probe_unknown_after_kill:
+                inner["probe_fails"] = True
+
         """Builds the REAL argv through the module's own compose_argv,
         so a control can assert the client boundary rather than trust
         a fixture's idea of it."""
@@ -458,7 +589,8 @@ def install(b1b, *, published_child_nonce=None, published_parent_nonce=None,
         recorded["events"].append(("launch", "baseline"))
         recorded["launches"].append("baseline")
         recorded["client_argv"].append(argv)
-        return (FakeClient(), ["python3", "-c", "x", marker], argv)
+        return (FakeClient(on_kill=on_kill),
+                ["python3", "-c", "x", marker], argv)
 
     original_launch_owned = b1b.PROVER.launch_owned_subject
 
@@ -466,8 +598,18 @@ def install(b1b, *, published_child_nonce=None, published_parent_nonce=None,
                           *a, **k):
         recorded["events"].append(("launch", role))
         recorded["launches"].append(role)
-        return original_launch_owned(container_id, registry, role,
-                                     lifecycle, *a, **k)
+        nonce = original_launch_owned(container_id, registry, role,
+                                      lifecycle, *a, **k)
+        inner_launch("readiness", nonce, READINESS_PID)
+        inner["publications"].setdefault(nonce, {})["plain"] = {
+            "nonce": nonce, "pid": READINESS_PID,
+            "start_ticks": START_TICKS, "pgid": str(PARENT_PID),
+            "sid": str(PARENT_PID)}
+        inner["processes"][READINESS_PID]["pgid"] = "1"
+        inner["processes"][READINESS_PID]["sid"] = "1"
+        inner["publications"][nonce]["plain"]["pgid"] = "1"
+        inner["publications"][nonce]["plain"]["sid"] = "1"
+        return nonce
 
     b1b.launch_inner_subject_non_detached = fake_baseline_launch
     b1b.PROVER.launch_owned_subject = fake_launch_owned

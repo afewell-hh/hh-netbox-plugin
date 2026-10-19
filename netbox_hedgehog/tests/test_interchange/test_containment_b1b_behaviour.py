@@ -1844,3 +1844,153 @@ class B1bBehaviourControls(SimpleTestCase):
         # It is disposed only by the FIXTURE registry, which owns it.
         self.assertIn(decoy_id,
                       [entry["id"] for entry in evidence["fixture_cleanup"]])
+
+    # ------------------------------------------------------------------
+    # In-container fake/state-model audit (#716 lead prerequisite).
+    #
+    # The publication reads, the /proc-derived liveness probe and the
+    # rescue owner used to WRITE their answers. They now derive from a
+    # declared model with explicit transitions:
+    #
+    #   absent -> live        launch(role, nonce, pid), publishes
+    #   live   -> live        host client terminated (no propagation)
+    #   live   -> zombie      signal, outcome terminated_zombie
+    #   live   -> reaped      signal, outcome reaped
+    #   any    -> unknown     observation failure, fail-closed
+    # ------------------------------------------------------------------
+
+    def _model(self, **options):
+        b1b = H.load_b1b()
+        recorded = H.install(b1b, **options)
+        return b1b, recorded
+
+    def test_publication_reads_derive_from_what_was_published(self):
+        """1: absent, malformed, valid. A read must reflect the model."""
+        b1b, rec = self._model()
+        nonce = "n1"
+        record, why = b1b.read_json_in("c", f"/pub/{nonce}.child.json")
+        self.assertIsNone(record, "an unpublished record was readable")
+        # The REASON must be a failed read, not a successfully parsed
+        # null: `json.dumps(None)` also yields None here, so asserting
+        # only the value let an absent-file mutation pass.
+        self.assertIn("No such file", why,
+                      f"an absent publication did not read as missing: "
+                      f"{why!r}")
+
+        rec["inner_launch"]("inner_child", nonce, 4242, ppid=1111)
+        record, why = b1b.read_json_in("c", f"/pub/{nonce}.child.json")
+        self.assertIsNotNone(record, why)
+        self.assertEqual(record["pid"], 4242)
+        self.assertEqual(record["nonce"], nonce)
+
+        rec["inner"]["publications"][nonce]["child"] = "MALFORMED"
+        bad, why = b1b.read_json_in("c", f"/pub/{nonce}.child.json")
+        self.assertIsNone(bad, "malformed JSON was accepted")
+
+    def test_a_wrong_nonce_publication_is_refused(self):
+        """1: a record published under another nonce must not bind."""
+        _, code, evidence, recorded = self._run(
+            published_child_nonce="someone-elses-nonce")
+        self.assertNotEqual(code, 0, "a foreign nonce was accepted")
+        self.assertTrue(evidence["lane_dirty"])
+        self.assertNotIn("baseline_complete", evidence)
+
+    def test_the_probe_derives_state_from_the_process_model(self):
+        """2: nonexistent, live, zombie, reaped, and failed observation."""
+        b1b, rec = self._model()
+        observe = rec["inner_observe"]
+        self.assertEqual(observe(404), {"found": False},
+                         "an unknown pid was reported as found")
+
+        rec["inner_launch"]("inner_child", "n2", 4242, ppid=1111)
+        live = observe(4242)
+        self.assertTrue(live["found"])
+        self.assertEqual(live["start_ticks"], H.START_TICKS)
+
+        rec["inner_signal"](4242, "terminated_zombie")
+        zombie = observe(4242)
+        self.assertEqual(zombie["state"], "Z",
+                         "a terminated-not-reaped process is not a zombie")
+
+        rec["inner_launch"]("inner_child", "n3", 4343, ppid=1111)
+        rec["inner_signal"](4343, "reaped")
+        self.assertEqual(observe(4343), {"found": False},
+                         "a reaped process is still visible")
+
+        rec["inner"]["probe_fails"] = True
+        self.assertIsNone(observe(4242),
+                          "a failed observation produced an answer")
+
+    def test_a_failed_probe_is_unknown_not_a_clean_answer(self):
+        """2: fail-closed. The subject must not read UNKNOWN as absent."""
+        b1b, rec = self._model()
+        rec["inner_launch"]("inner_child", "n4", 4242, ppid=1111)
+        rec["inner"]["probe_fails"] = True
+        state, detail = b1b.alive_in("c", 4242)
+        self.assertEqual(state, b1b.UNKNOWN, f"{state}: {detail}")
+
+    def test_pid_reuse_is_not_the_same_process(self):
+        """2: same pid, different start ticks -> not our process."""
+        b1b, rec = self._model()
+        rec["inner_launch"]("inner_child", "n5", 4242, ppid=1111)
+        rec["inner"]["processes"][4242]["start_ticks"] = "999999"
+        state, detail = b1b.alive_in("c", 4242,
+                                     expected_start_ticks=H.START_TICKS)
+        self.assertEqual(state, b1b.UNKNOWN, f"{state}: {detail}")
+
+    def test_the_rescue_owner_verifies_against_the_model(self):
+        """3: verification-only, and each identity field mismatching."""
+        b1b, rec = self._model()
+        nonce = "n6"
+        rec["inner_launch"]("inner_child", nonce, 4242, ppid=1111)
+        sound = {"pid": 4242, "nonce": nonce,
+                 "start_ticks": H.START_TICKS,
+                 "pgid": str(H.PARENT_PID), "sid": str(H.PARENT_PID)}
+
+        report, why = b1b.PROVER.run_rescue("c", [sound], False)
+        self.assertIsNotNone(report, why)
+        self.assertTrue(report["reports"][0]["verified"])
+        self.assertFalse(report["reports"][0]["signalled"],
+                         "a verification-only pass signalled")
+        self.assertEqual(rec["inner"]["processes"][4242]["state"], "live",
+                         "verification changed the process state")
+
+        for field, wrong in (("nonce", "other"), ("start_ticks", "1"),
+                             ("pgid", "7"), ("sid", "7")):
+            with self.subTest(mismatch=field):
+                entry = dict(sound, **{field: wrong})
+                report, why = b1b.PROVER.run_rescue("c", [entry], False)
+                self.assertIsNotNone(report, why)
+                self.assertFalse(
+                    report["reports"][0]["verified"],
+                    f"a {field} mismatch was verified")
+
+    def test_a_signal_transitions_the_model_and_only_when_verified(self):
+        """3: a valid signal reaps; an unverified one changes nothing."""
+        b1b, rec = self._model()
+        nonce = "n7"
+        rec["inner_launch"]("inner_child", nonce, 4242, ppid=1111)
+        wrong = {"pid": 4242, "nonce": "not-ours",
+                 "start_ticks": H.START_TICKS,
+                 "pgid": str(H.PARENT_PID), "sid": str(H.PARENT_PID)}
+        b1b.PROVER.run_rescue("c", [wrong], True)
+        self.assertEqual(
+            rec["inner"]["processes"][4242]["state"], "live",
+            "an unverified entry still signalled the process")
+
+        sound = dict(wrong, nonce=nonce)
+        report, why = b1b.PROVER.run_rescue("c", [sound], True)
+        self.assertIsNotNone(report, why)
+        self.assertEqual(rec["inner"]["processes"][4242]["state"], "reaped")
+        self.assertEqual(b1b.alive_in("c", 4242)[0], "false")
+
+        # Signalling an ALREADY-dead process must not transition it
+        # again. A model that lets a reaped process be re-signalled is
+        # more permissive than the kernel, where the pid is gone.
+        self.assertFalse(
+            rec["inner_signal"](4242, "reaped"),
+            "a reaped process accepted another signal")
+        self.assertEqual(rec["inner"]["processes"][4242]["state"], "reaped")
+        self.assertFalse(
+            rec["inner_signal"](999999, "reaped"),
+            "a nonexistent pid accepted a signal")
