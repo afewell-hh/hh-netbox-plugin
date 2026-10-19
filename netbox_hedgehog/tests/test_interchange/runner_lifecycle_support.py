@@ -83,22 +83,12 @@ class LifecycleRecord:
         return self.guarded_aliases() - self.prepared_aliases()
 
 
-class UnpreparedTarget(RuntimeError):
-    """The contract's named reconciliation failure.
-
-    The GREEN phase must raise this (or an equivalent dedicated type)
-    when a required alias has no genuinely prepared disposable target.
-    It exists here so RED rows can assert POSITIVE attribution: an
-    earlier version asserted only that the message was *not* the
-    guard's name refusal, which any unrelated exception -- including a
-    harness bug -- would have satisfied.
-    """
-
-    def __init__(self, aliases, detail=""):
-        self.aliases = sorted(aliases)
-        super().__init__(
-            f"required aliases with no prepared disposable target: "
-            f"{', '.join(self.aliases)}{(' (' + detail + ')') if detail else ''}")
+# NOTE: the reconciliation failure type is deliberately NOT defined
+# here. An earlier draft owned it in this test package, so a correct
+# fix raising its own runner-side type would have left the rows red --
+# the suite would have rejected the change it exists to require. The
+# rows now ask `netbox_hedgehog.tests.runner` for it; its absence is
+# the RED cause and defining it is part of GREEN.
 
 
 class NotObserved(AssertionError):

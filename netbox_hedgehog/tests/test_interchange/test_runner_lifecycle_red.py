@@ -15,8 +15,20 @@ from django.test import SimpleTestCase
 from netbox_hedgehog.tests import runner as runner_module
 from .runner_lifecycle_support import (
     FakeConnection, FakeConnections, LifecycleRecord, NotObserved,
-    UnpreparedTarget, observe_setup, require,
+    observe_setup, require,
 )
+
+
+def reconciliation_error():
+    """The contract type, which the RUNNER must own.
+
+    An earlier version asserted against a class defined in this test
+    package. A correct fix raising its own runner-side type would have
+    left the rows red, so the suite would have rejected the very change
+    it exists to require. The row now asks the runner module for the
+    type; its absence is the RED cause and defining it is part of GREEN.
+    """
+    return getattr(runner_module, "UnpreparedTarget", None)
 
 LANE_DB = "netbox"
 TEST_DB = "test_netbox"
@@ -79,9 +91,14 @@ class DatabaseFreeSelection(SimpleTestCase):
         that keys off "the set is falsy" would conflate them, so both
         are observed separately.
         """
+        # The omitted branch must model a LEGITIMATE default setup: a
+        # prepared disposable target. Pointing it at the ordinary lane
+        # database made the two branches differ because the omitted one
+        # FAILED, which would have been satisfied by the defect rather
+        # than by the distinction the row is about.
         explicit = observe_setup(runner_module, lane_only(),
                                  aliases=set(), prepared=())
-        omitted = observe_setup(runner_module, lane_only(),
+        omitted = observe_setup(runner_module, prepared_default(),
                                 aliases=None, omit_aliases=True,
                                 prepared=(("default", LANE_DB, True),))
         # The argument really was passed differently...
@@ -95,6 +112,13 @@ class DatabaseFreeSelection(SimpleTestCase):
         self.assertEqual(
             explicit.guard_calls, [],
             "an explicitly empty alias set still reached the guard")
+        # The omitted branch is a healthy default setup: it guards its
+        # prepared target and does not fail.
+        self.assertIsNone(
+            omitted.failure,
+            f"the omitted-alias control is not a healthy default setup: "
+            f"{omitted.failure}")
+        self.assertEqual(omitted.guarded_aliases(), {"default"})
         self.assertNotEqual(
             explicit.guarded_aliases(), omitted.guarded_aliases(),
             "explicit aliases=set() and an omitted argument produced "
@@ -214,14 +238,19 @@ class FailClosedFamilies(SimpleTestCase):
         self.assertIsNotNone(
             record.failure,
             "a selection that required a database but got none continued")
-        # POSITIVE attribution. Asserting only that the message is not
-        # the guard's name refusal would be satisfied by any unrelated
-        # exception, including a harness bug.
+        # POSITIVE attribution against a RUNNER-owned type. Asserting
+        # only that the message is not the guard's refusal would be
+        # satisfied by any unrelated exception, including a harness bug.
+        contract_type = reconciliation_error()
+        self.assertIsNotNone(
+            contract_type,
+            "netbox_hedgehog.tests.runner defines no UnpreparedTarget; "
+            "the reconciliation failure has no named, runner-owned type")
         self.assertIsInstance(
-            record.failure, UnpreparedTarget,
+            record.failure, contract_type,
             f"expected the named reconciliation failure, got "
             f"{type(record.failure).__name__}: {record.failure}")
-        self.assertEqual(record.failure.aliases, ["default"])
+        self.assertEqual(sorted(record.failure.aliases), ["default"])
 
     def test_r10b_the_guard_is_not_consulted_when_setup_was_missing(self):
         """RED. The reconciliation must happen BEFORE the guard."""
@@ -243,15 +272,18 @@ class FailClosedFamilies(SimpleTestCase):
         self.assertIsNotNone(
             record.failure,
             "a required alias with no prepared target was accepted")
-        # Same wrong-reason trap as R10, closed the same way: the
-        # failure must NAME the unprepared alias, not merely differ
-        # from the guard's refusal.
+        # Same wrong-reason trap as R10, closed the same way, and
+        # against the runner-owned type.
+        contract_type = reconciliation_error()
+        self.assertIsNotNone(
+            contract_type,
+            "netbox_hedgehog.tests.runner defines no UnpreparedTarget")
         self.assertIsInstance(
-            record.failure, UnpreparedTarget,
+            record.failure, contract_type,
             f"expected the named reconciliation failure, got "
             f"{type(record.failure).__name__}: {record.failure}")
         self.assertEqual(
-            record.failure.aliases, ["other"],
+            sorted(record.failure.aliases), ["other"],
             "the failure must identify exactly the unprepared alias")
         # And it must stop before guarding the alias that WAS prepared,
         # so a later invalid alias is not discovered after ALTERs ran.
@@ -314,11 +346,21 @@ class FailClosedFamilies(SimpleTestCase):
                                aliases={"default"},
                                prepared=(("default", LANE_DB, True),),
                                real_guard=True)
-        self.assertIsInstance(record.failure, RuntimeError)
-        self.assertIn("refusing to apply", str(record.failure))
+        # The property is "no cursor on an ordinary database, and the
+        # run stops" -- NOT "the guard's message appears". Requiring
+        # that message would reject a correct fix that validates the
+        # routing BEFORE calling the guard, in which case the guard is
+        # never reached. The low-level refusal itself is proven
+        # separately and directly by C04.
+        self.assertIsNotNone(
+            record.failure,
+            "an ordinary database was accepted as a guard target")
         self.assertNotIsInstance(
             record.failure, AssertionError,
             "a cursor was opened on an ordinary database before refusal")
+        self.assertEqual(
+            record.altered, [],
+            "tables were altered on an ordinary database")
 
 
 class ObservationIntegrity(SimpleTestCase):
