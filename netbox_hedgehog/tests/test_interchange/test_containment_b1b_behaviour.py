@@ -1730,8 +1730,12 @@ class B1bBehaviourControls(SimpleTestCase):
         self.assertIn(evidence["preflight"]["decoy_container_id"][:12],
                       candidates)
 
-        # Every candidate must be inspectable, i.e. actually exist.
-        # A phantom appended to the output would not be.
+        # Every candidate must survive an EXACT-ID `docker inspect`.
+        #
+        # Re-querying discovery proves nothing: a phantom injected
+        # selectively for the real run label appears in that output
+        # too. `inspect` is answered from container existence, so it
+        # is the query a phantom cannot satisfy.
         run_id = evidence["run_id"]
         fresh = H.load_b1b()
         H.install(fresh, extra_run_labelled_ids=(sentinel,))
@@ -1739,12 +1743,26 @@ class B1bBehaviourControls(SimpleTestCase):
             ["docker", "create", "--label", f"hh716.run={run_id}",
              "--label", f"hh716.fixture={run_id}", "img", "sleep", "1"])
         self.assertTrue(seeded["ok"])
+        decoy_id = seeded["out"]
+
+        known = {decoy_id[:12]: decoy_id, sentinel[:12]: sentinel}
+        self.assertEqual(
+            sorted(known), sorted(candidates),
+            f"discovery returned ids this control cannot resolve to a "
+            f"full id: {candidates}")
+
         for short in candidates:
             with self.subTest(candidate=short):
-                found = fresh._observe(
-                    ["docker", "ps", "-q", "--filter",
-                     f"label=hh716.run={run_id}"])
-                self.assertIn(
-                    short, found["out"].split(),
-                    f"{short} appeared in discovery but not in the "
-                    f"daemon model")
+                full = known[short]
+                state, detail = fresh.PROVER._inspect_state(full)
+                self.assertEqual(
+                    state, "present",
+                    f"{short} appeared in discovery but an exact-id "
+                    f"inspect of {full[:12]} reports {state}: {detail}")
+
+        # And the seeded resource specifically: it must exist as a
+        # container, not merely be named by the discovery branch.
+        state, detail = fresh.PROVER._inspect_state(sentinel)
+        self.assertEqual(
+            state, "present",
+            f"the seeded second resource does not exist: {detail}")
