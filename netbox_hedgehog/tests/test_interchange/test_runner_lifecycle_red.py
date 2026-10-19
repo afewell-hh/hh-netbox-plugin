@@ -14,8 +14,9 @@ from django.test import SimpleTestCase
 
 from netbox_hedgehog.tests import runner as runner_module
 from .runner_lifecycle_support import (
+    CASE_ALL_DATABASES, CASE_DB, CASE_SIMPLE, CASE_SIMPLE_WITH_DB,
     FakeConnection, FakeConnections, LifecycleRecord, NotObserved,
-    observe_setup, require,
+    observe_setup, require, run_supported_runner,
 )
 
 
@@ -407,3 +408,173 @@ class ObservationIntegrity(SimpleTestCase):
                                test_name="diet_disposable")))
         self.assertFalse(
             runner_module._is_test_database(FakeConnection("d", LANE_DB)))
+
+
+class SupportedRunnerSubprocess(SimpleTestCase):
+    """Real subprocess execution of the runner the wrapper selects.
+
+    Scope: these spawn `manage.py test <label>
+    --testrunner=DietTestRunner`, which is the runner selection
+    `run_diet_tests.sh` makes. They are NOT the full wrapper path,
+    which adds compose exec and reaper-evidence preparation; that
+    remains a declared gap.
+    """
+
+    def test_w01_database_free_selection_runs_bodies_through_the_runner(self):
+        """RED. The availability defect, end to end.
+
+        Measured against the current runner: rc=1, zero bodies, no test
+        database created, guard refused. This is the observation rows'
+        conclusion reproduced in a real subprocess with real bodies.
+        """
+        result = run_supported_runner([CASE_SIMPLE])
+        self.assertEqual(
+            result["returncode"], 0,
+            f"a database-free selection failed: "
+            f"{result['stderr'].strip().splitlines()[-1:] }")
+        self.assertEqual(result["body_names"], ["database_free"],
+                         "the body did not execute")
+        self.assertFalse(result["created_test_database"],
+                         "a test database was created for a selection "
+                         "that needs none")
+        self.assertFalse(result["guard_applied"],
+                         "the guard ran for a selection with no database")
+
+    def test_w02_database_backed_selection_still_works(self):
+        """CONTROL. Must keep passing: the DIET-643 protection path."""
+        result = run_supported_runner([CASE_DB])
+        self.assertEqual(result["returncode"], 0, result["stderr"][-400:])
+        self.assertEqual(result["body_names"], ["database_backed"])
+        self.assertTrue(result["created_test_database"])
+        self.assertTrue(result["guard_applied"],
+                        "the guard did not run for a database-backed "
+                        "selection; DIET-643 protection was lost")
+        for names in result["db_names"]:
+            self.assertNotEqual(
+                names.get("default"), LANE_DB,
+                "a body ran against the ordinary lane database")
+
+    def test_w03_a_simpletestcase_declaring_database_access(self):
+        """A SimpleTestCase subclass may request a database explicitly.
+
+        Class name is not the signal; `databases` is.
+        """
+        result = run_supported_runner([CASE_SIMPLE_WITH_DB])
+        self.assertEqual(result["returncode"], 0, result["stderr"][-400:])
+        self.assertEqual(result["body_names"], ["simple_declaring_db"])
+        self.assertTrue(
+            result["created_test_database"],
+            "a SimpleTestCase declaring databases={'default'} did not "
+            "get a disposable database")
+        self.assertTrue(result["guard_applied"])
+
+    def test_w04_databases_all(self):
+        """`databases = "__all__"` must prepare and guard every alias."""
+        result = run_supported_runner([CASE_ALL_DATABASES])
+        self.assertEqual(result["returncode"], 0, result["stderr"][-400:])
+        self.assertEqual(result["body_names"], ["all_databases"])
+        self.assertTrue(result["created_test_database"])
+        self.assertTrue(result["guard_applied"])
+
+    def test_w05_mixed_selection_runs_every_body(self):
+        """Mixed: one database-backed test is enough to prepare one."""
+        result = run_supported_runner([CASE_SIMPLE, CASE_DB])
+        self.assertEqual(result["returncode"], 0, result["stderr"][-400:])
+        self.assertEqual(sorted(result["body_names"]),
+                         ["database_backed", "database_free"])
+        self.assertTrue(result["created_test_database"])
+
+    def test_w06_keepdb_preserves_the_disposable_target(self):
+        """--keepdb reuses a disposable database; it must still guard,
+        and must never resolve to the ordinary one."""
+        result = run_supported_runner([CASE_DB], extra_args=("--keepdb",))
+        self.assertEqual(result["returncode"], 0, result["stderr"][-400:])
+        self.assertEqual(result["body_names"], ["database_backed"])
+        self.assertTrue(result["guard_applied"])
+        for names in result["db_names"]:
+            self.assertNotEqual(names.get("default"), LANE_DB)
+
+    def test_w07_an_empty_selection_is_not_body_evidence(self):
+        """An empty suite must not read as a successful run with bodies."""
+        result = run_supported_runner([], label="hh715_disposable.tests")
+        self.assertEqual(
+            result["body_names"], [],
+            "an empty selection produced body receipts")
+
+
+class MirrorsAndPartialSetup(SimpleTestCase):
+    """Mirror routing and multi-alias failure paths, observation level.
+
+    This lane configures one alias, so these use constructed mappings
+    and prove the runner's reconciliation logic. They are not live
+    multi-alias measurements and are not offered as such.
+    """
+
+    def test_r17_a_dangling_mirror_fails_closed(self):
+        """A mirror whose target was never prepared must not pass."""
+        connections = FakeConnections({
+            "default": FakeConnection("default", TEST_DB),
+            "mirror": FakeConnection("mirror", LANE_DB, mirror="absent"),
+        })
+        record = observe_setup(runner_module, connections,
+                               aliases={"default", "mirror"},
+                               prepared=(("default", LANE_DB, True),))
+        self.assertIsNotNone(
+            record.failure,
+            "a mirror pointing at an unprepared alias was accepted")
+
+    def test_r18_a_mirror_routed_to_an_ordinary_db_fails_closed(self):
+        """Valid mirror declaration, ordinary routing: still refused."""
+        connections = FakeConnections({
+            "default": FakeConnection("default", TEST_DB),
+            "mirror": FakeConnection("mirror", LANE_DB, mirror="default"),
+        })
+        record = observe_setup(runner_module, connections,
+                               aliases={"default", "mirror"},
+                               prepared=(("default", LANE_DB, True),))
+        self.assertIsNotNone(
+            record.failure,
+            "a mirror still routed to the ordinary database was guarded")
+        self.assertEqual(
+            record.altered, [],
+            "tables were altered before the mirror was validated")
+
+    def test_r19_a_configured_test_name_target_is_accepted(self):
+        """Not every disposable name starts with `test_`."""
+        connections = FakeConnections({
+            "default": FakeConnection("default", "diet_disposable",
+                                      test_name="diet_disposable"),
+        })
+        record = observe_setup(runner_module, connections,
+                               aliases={"default"},
+                               prepared=(("default", LANE_DB, True),))
+        self.assertIsNone(
+            record.failure,
+            f"a configured TEST.NAME target was rejected: {record.failure}")
+        self.assertEqual(record.guarded_aliases(), {"default"})
+
+    def test_r20_validation_precedes_every_alter(self):
+        """A later invalid alias must not be discovered after earlier
+        targets were already altered."""
+        connections = FakeConnections({
+            "aaa": FakeConnection("aaa", "test_aaa"),
+            "zzz": FakeConnection("zzz", LANE_DB),
+        })
+        record = observe_setup(runner_module, connections,
+                               aliases={"aaa", "zzz"},
+                               prepared=(("aaa", "aaa", True),
+                                         ("zzz", "zzz", True)))
+        self.assertIsNotNone(record.failure)
+        self.assertEqual(
+            record.altered, [],
+            "the full mapping was not validated before altering: "
+            f"{record.altered}")
+
+    def test_r21_the_original_failure_survives_cleanup(self):
+        """A post-setup refusal must preserve the first error."""
+        original = OSError("database vanished")
+        record = observe_setup(runner_module, lane_only(),
+                               aliases={"default"}, prepared=(),
+                               setup_raises=original)
+        self.assertIs(record.failure, original)
+        self.assertEqual(record.guard_calls, [])

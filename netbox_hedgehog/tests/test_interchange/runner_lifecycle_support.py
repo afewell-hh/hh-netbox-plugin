@@ -245,3 +245,140 @@ def observe_setup(runner_module, connections, *, aliases, omit_aliases=False,
         except BaseException as exc:          # recorded, never swallowed
             record.failure = exc
     return record
+
+
+# ----------------------------------------------------------------------
+# Real subprocess execution of the supported runner.
+#
+# These rows spawn `manage.py test <label> --testrunner=DietTestRunner`
+# -- the exact runner selection `run_diet_tests.sh` makes -- against a
+# DISPOSABLE module written to a temporary package.
+#
+# The module is disposable and named nothing this suite contains, for
+# the reason #711 discovered the hard way: a selection that re-discovers
+# the running suite respawns it, several levels deep, against one
+# --keepdb database.
+#
+# Scope limit, stated rather than implied: this exercises the runner and
+# real test bodies in a real subprocess. It is NOT the full
+# `run_diet_tests.sh` path, which additionally performs compose exec and
+# reaper-evidence preparation. Rows below say which of the two they
+# speak for.
+# ----------------------------------------------------------------------
+
+import json
+import os
+import subprocess
+import sys
+import tempfile
+import textwrap
+from pathlib import Path
+
+RUNNER_LABEL = "netbox_hedgehog.tests.runner.DietTestRunner"
+
+#: Written by each disposable body, so "the body ran" is a fact on disk
+#: rather than a count parsed from runner output.
+RECEIPT_VARIABLE = "HH715_BODY_RECEIPTS"
+
+_BODY = '''
+import json, os
+from django.test import SimpleTestCase, TestCase
+from django.db import connections
+
+def _receipt(name, extra=None):
+    path = os.environ.get("{receipt}")
+    if not path:
+        return
+    record = {{"body": name, "db_names": {{
+        alias: connections[alias].settings_dict.get("NAME")
+        for alias in connections}}}}
+    if extra:
+        record.update(extra)
+    with open(path, "a", encoding="utf-8") as handle:
+        handle.write(json.dumps(record) + "\\n")
+
+{cases}
+'''
+
+CASE_SIMPLE = '''
+class DatabaseFree(SimpleTestCase):
+    def test_body_runs_without_a_database(self):
+        _receipt("database_free")
+'''
+
+CASE_DB = '''
+class DatabaseBacked(TestCase):
+    def test_body_runs_with_a_database(self):
+        _receipt("database_backed")
+'''
+
+CASE_SIMPLE_WITH_DB = '''
+class SimpleButDeclaresDatabase(SimpleTestCase):
+    databases = {"default"}
+
+    def test_body_declares_database_access(self):
+        _receipt("simple_declaring_db")
+'''
+
+CASE_ALL_DATABASES = '''
+class DeclaresAllDatabases(SimpleTestCase):
+    databases = "__all__"
+
+    def test_body_declares_all_databases(self):
+        _receipt("all_databases")
+'''
+
+
+def run_supported_runner(cases, *, label=None, extra_args=(), timeout=600):
+    """Spawn the real runner on a disposable module and report facts."""
+    workspace = tempfile.mkdtemp(prefix="hh715-")
+    package = Path(workspace) / "hh715_disposable"
+    package.mkdir()
+    (package / "__init__.py").write_text("", encoding="utf-8")
+    (package / "tests.py").write_text(
+        _BODY.format(receipt=RECEIPT_VARIABLE,
+                     cases=textwrap.dedent("".join(cases))),
+        encoding="utf-8")
+    receipts = Path(workspace) / "receipts.jsonl"
+
+    environment = dict(os.environ)
+    environment["PYTHONPATH"] = workspace + os.pathsep + environment.get(
+        "PYTHONPATH", "")
+    environment[RECEIPT_VARIABLE] = str(receipts)
+
+    # --noinput: an existing disposable database otherwise makes Django
+    #   prompt, and the subprocess EOFs on stdin.
+    # --keepdb: so the subprocess REUSES that database instead of
+    #   dropping and recreating one the outer run may be using. Without
+    #   it a row here could destroy the database the suite runs on.
+    base = ["--noinput", "--keepdb"]
+    merged = [a for a in base if a not in extra_args] + list(extra_args)
+    argv = [sys.executable, "manage.py", "test",
+            label or "hh715_disposable.tests",
+            f"--testrunner={RUNNER_LABEL}", "-v", "1", *merged]
+    completed = subprocess.run(
+        argv, capture_output=True, text=True, timeout=timeout,
+        env=environment, cwd="/opt/netbox/netbox")
+
+    bodies = []
+    if receipts.exists():
+        for line in receipts.read_text(encoding="utf-8").splitlines():
+            if line.strip():
+                bodies.append(json.loads(line))
+    return {
+        "argv": argv,
+        "returncode": completed.returncode,
+        "stdout": completed.stdout,
+        "stderr": completed.stderr,
+        "bodies": bodies,
+        "body_names": [b["body"] for b in bodies],
+        "db_names": [b.get("db_names", {}) for b in bodies],
+        # With --keepdb Django reports reuse rather than creation; both
+        # mean "a disposable target was prepared for this run".
+        "created_test_database": any(
+            marker in (completed.stderr + completed.stdout)
+            for marker in ("Creating test database",
+                           "Using existing test database")),
+        "guard_applied": "DIET-643: autovacuum disabled" in (
+            completed.stdout + completed.stderr),
+    }
