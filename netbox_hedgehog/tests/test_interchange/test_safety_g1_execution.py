@@ -73,6 +73,7 @@ class SafetyExecutionControls(SimpleTestCase):
 
     def test_unknown_duplicate_missing_receipts_and_replay_are_rejected(self):
         context, original = S.invoke_probe(partition_model=True)
+        S.reconcile(context, original, partitioned=True)
         mutations = {}
         item = copy.deepcopy(original)
         item["receipts"].append({"id": "never.discovered.test_ghost", "outcome": "success"})
@@ -101,6 +102,7 @@ class SafetyExecutionControls(SimpleTestCase):
 
     def test_skip_or_expected_failure_is_never_execution_success(self):
         context, original = S.invoke_probe(partition_model=True)
+        S.reconcile(context, original, partitioned=True)
         for outcome in ("skip", "expectedFailure", "unexpectedSuccess", "error"):
             report = copy.deepcopy(original)
             report["outcomes"][0]["outcome"] = outcome

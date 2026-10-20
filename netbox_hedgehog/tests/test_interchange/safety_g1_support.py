@@ -15,7 +15,6 @@ from __future__ import annotations
 
 import hashlib
 import json
-import marshal
 import os
 from pathlib import Path
 import subprocess
@@ -73,6 +72,32 @@ def source_bytes(name):
     return data
 
 
+def callable_digest(code):
+    """Fingerprint code content, not marshal's process-local intern references.
+
+    Compile flags must also be explicit: the collector and parent have
+    different future imports. Include nested code, constants and location
+    metadata so a no-op under an original ID cannot retain its identity.
+    """
+    def value(item):
+        if isinstance(item, types.CodeType):
+            return ["code", {name: value(getattr(item, name)) for name in (
+                "co_argcount", "co_posonlyargcount", "co_kwonlyargcount",
+                "co_nlocals", "co_stacksize", "co_flags", "co_code",
+                "co_consts", "co_names", "co_varnames", "co_filename",
+                "co_name", "co_qualname", "co_firstlineno", "co_linetable",
+                "co_exceptiontable", "co_freevars", "co_cellvars")}]
+        if isinstance(item, bytes):
+            return ["bytes", item.hex()]
+        if isinstance(item, tuple):
+            return ["tuple", [value(part) for part in item]]
+        if isinstance(item, frozenset):
+            return ["frozenset", sorted((value(part) for part in item), key=repr)]
+        return [type(item).__name__, repr(item)]
+    encoded = json.dumps(value(code), sort_keys=True, separators=(",", ":"))
+    return hashlib.sha256(encoded.encode()).hexdigest()
+
+
 def reviewed_codes():
     """Compile, without executing, to derive expected callable identities.
 
@@ -80,10 +105,10 @@ def reviewed_codes():
     The trusted parent reads the pinned source, not child-supplied digests.
     """
     code = compile(source_bytes("test_containment_prover_safety.py"),
-                   "hh719-reviewed-safety", "exec")
+                   "hh719-reviewed-safety", "exec", dont_inherit=True)
     cls = next(c for c in code.co_consts
                if isinstance(c, types.CodeType) and c.co_name == ORIGINAL_CLASS)
-    return {c.co_name: hashlib.sha256(marshal.dumps(c)).hexdigest()
+    return {c.co_name: callable_digest(c)
             for c in cls.co_consts if isinstance(c, types.CodeType)
             and c.co_name.startswith("test_")}
 

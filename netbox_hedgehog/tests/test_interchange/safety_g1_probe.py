@@ -5,9 +5,7 @@ bindings and stream/result consistency, not independent Python execution.
 The partitioned positive is a deliberately named harness model, not the subject.
 """
 
-import hashlib
 import json
-import marshal
 import os
 from pathlib import Path
 import sys
@@ -33,7 +31,7 @@ def load_reference(root, partition_model):
     module.__file__ = str(root / "test_containment_prover_safety.py")
     sys.modules[S.MODULE] = module
     exec(compile(S.source_bytes("test_containment_prover_safety.py"),
-                 "hh719-reviewed-safety", "exec"), module.__dict__)
+                 "hh719-reviewed-safety", "exec", dont_inherit=True), module.__dict__)
     if partition_model:
         # Positive-control fixture only. Keep all eleven ORIGINAL callables;
         # don't rewrite their assertions or fabricate body-entry records.
@@ -155,7 +153,7 @@ def probe(request):
             method = getattr(test, getattr(test, "_testMethodName", ""), None)
             if getattr(method, "__code__", None) is frame.f_code:
                 entries.append({"id": test.id(),
-                                "code": hashlib.sha256(marshal.dumps(frame.f_code)).hexdigest()})
+                                "code": S.callable_digest(frame.f_code)})
 
         result = CapturedResult()
         if mutation == "noop-original-id":
