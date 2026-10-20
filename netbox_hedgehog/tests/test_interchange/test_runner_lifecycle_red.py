@@ -10,6 +10,9 @@ Nothing in `runner.py` or the guard is modified by this suite.
 
 from __future__ import annotations
 
+import os
+from pathlib import Path
+
 from django.test import SimpleTestCase
 
 from netbox_hedgehog.tests import runner as runner_module
@@ -500,6 +503,14 @@ class SupportedRunnerSubprocess(SimpleTestCase):
         self.assertEqual(
             result["body_names"], [],
             "an empty selection produced body receipts")
+        # Attribution: zero bodies must mean "nothing to run", not
+        # "the run collapsed". An unrelated failure would otherwise
+        # satisfy the row.
+        self.assertEqual(
+            result["returncode"], 0,
+            f"the empty selection failed rather than running nothing: "
+            f"{result['stderr'].strip().splitlines()[-1:]}")
+        self.assertIn("Ran 0 test", result["stderr"] + result["stdout"])
 
 
 class MirrorsAndPartialSetup(SimpleTestCase):
@@ -522,6 +533,14 @@ class MirrorsAndPartialSetup(SimpleTestCase):
         self.assertIsNotNone(
             record.failure,
             "a mirror pointing at an unprepared alias was accepted")
+        # Attribution: any unrelated exception would otherwise satisfy
+        # the row. It must name the dangling mirror alias.
+        contract_type = reconciliation_error()
+        self.assertIsNotNone(
+            contract_type,
+            "netbox_hedgehog.tests.runner defines no UnpreparedTarget")
+        self.assertIsInstance(record.failure, contract_type)
+        self.assertIn("mirror", record.failure.aliases)
 
     def test_r18_a_mirror_routed_to_an_ordinary_db_fails_closed(self):
         """Valid mirror declaration, ordinary routing: still refused."""
@@ -570,11 +589,102 @@ class MirrorsAndPartialSetup(SimpleTestCase):
             "the full mapping was not validated before altering: "
             f"{record.altered}")
 
-    def test_r21_the_original_failure_survives_cleanup(self):
-        """A post-setup refusal must preserve the first error."""
+    def test_r21_a_setup_failure_is_preserved_and_guards_nothing(self):
+        """Renamed. The old name promised cleanup it never observed.
+
+        This row is only about the setup-exception path: the original
+        error survives and the guard is never consulted. Cleanup is
+        R22/R23.
+        """
         original = OSError("database vanished")
         record = observe_setup(runner_module, lane_only(),
                                aliases={"default"}, prepared=(),
                                setup_raises=original)
         self.assertIs(record.failure, original)
         self.assertEqual(record.guard_calls, [])
+        self.assertEqual(
+            record.teardown_calls, [],
+            "nothing was prepared, so there is nothing to tear down")
+
+    def test_r22_a_post_setup_refusal_tears_down_prepared_targets(self):
+        """RED. Django's run_suite teardown does NOT run when setup
+        raises, so a refusal after preparation must dispose of what it
+        prepared rather than leaving a database behind."""
+        record = observe_setup(runner_module, lane_only(),
+                               aliases={"default"},
+                               prepared=(("default", LANE_DB, True),),
+                               teardown_on_failure=True)
+        self.assertIsNotNone(record.failure)
+        self.assertEqual(
+            record.teardown_calls, [["default"]],
+            "a prepared target was not torn down after the refusal")
+
+    def test_r23_a_cleanup_failure_does_not_replace_the_original(self):
+        """RED. If teardown itself fails, the FIRST error is the one
+        that must reach the caller."""
+        original = RuntimeError("primary refusal")
+        secondary = OSError("could not drop the test database")
+        record = observe_setup(runner_module, prepared_default(),
+                               aliases={"default"},
+                               prepared=(("default", LANE_DB, True),),
+                               guard_raises=original,
+                               teardown_on_failure=True,
+                               teardown_raises=secondary)
+        self.assertIs(
+            record.failure, original,
+            "the cleanup failure replaced the original error")
+        self.assertIs(record.teardown_failure, secondary)
+        self.assertEqual(record.teardown_calls, [["default"]])
+
+
+class ProtectedAdapterSelection(SimpleTestCase):
+    """The wrapper-prepared adapter selection, on this branch.
+
+    I previously reported this as impossible here because no
+    `runner_contract` files exist. That was wrong: the protected
+    selection is the REAPER ADAPTER, whose `HNP_REAPER_CONTAINER_EVIDENCE`
+    prerequisite `run_diet_tests.sh` prepares for any
+    `netbox_hedgehog.tests.test_interchange*` label. It is present on
+    this branch, and importing frozen #711 source was never needed.
+    """
+
+    ADAPTER = ("netbox_hedgehog.tests.test_interchange."
+               "test_reaper_adapter_red")
+
+    def test_p01_the_protected_selection_is_discoverable_here(self):
+        """The module and its prerequisite both exist on this branch."""
+        from django.test.runner import DiscoverRunner
+        suite = DiscoverRunner(verbosity=0, interactive=False).build_suite(
+            [self.ADAPTER])
+        self.assertGreater(
+            suite.countTestCases(), 0,
+            "the protected adapter selection discovered no tests")
+
+    def test_p02_the_wrapper_prepares_the_adapter_prerequisite(self):
+        """`run_diet_tests.sh` must prepare the evidence the adapter
+        consumes, for any test_interchange selection.
+
+        Source-level: the wrapper is a shell script, so this reads it.
+        The paired runtime fact is P03.
+        """
+        wrapper = (Path(runner_module.__file__).parent.parent
+                   / "scripts" / "run_diet_tests.sh")
+        text = wrapper.read_text(encoding="utf-8")
+        self.assertIn("netbox_hedgehog.tests.test_interchange", text)
+        self.assertIn("prove_reaper_lane.py", text)
+        self.assertIn("reaper-container-evidence.json", text)
+
+    def test_p03_the_adapter_selection_runs_through_the_runner(self):
+        """RED where the prerequisite is absent, and that is the point:
+        a raw runner invocation without the wrapper's preparation must
+        not silently report success for the protected selection."""
+        result = run_supported_runner([], label=self.ADAPTER)
+        prepared = "HNP_REAPER_CONTAINER_EVIDENCE" in os.environ
+        if prepared:
+            self.assertEqual(result["returncode"], 0,
+                             result["stderr"][-400:])
+        else:
+            self.assertNotEqual(
+                result["returncode"], 0,
+                "the protected adapter selection reported success "
+                "without the wrapper-prepared evidence")

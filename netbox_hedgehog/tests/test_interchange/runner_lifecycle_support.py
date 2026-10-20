@@ -58,6 +58,13 @@ class LifecycleRecord:
     sql: list = field(default_factory=list)
     #: the exception that ended the run, if any.
     failure: BaseException | None = None
+    #: teardown invocations observed after a post-setup refusal, and
+    #: any exception teardown itself raised. Populated by
+    #: `observe_setup`; an earlier draft declared a field nothing
+    #: wrote, which is why R21 could claim to test cleanup while
+    #: testing only the exception identity.
+    teardown_calls: list = field(default_factory=list)
+    teardown_failure: BaseException | None = None
 
     # Deliberately ABSENT: body-execution and teardown observations.
     # Earlier drafts declared `bodies` and `teardown_calls` that nothing
@@ -168,7 +175,8 @@ class FakeConnections:
 
 def observe_setup(runner_module, connections, *, aliases, omit_aliases=False,
                   prepared=(), setup_raises=None, guard_raises=None,
-                  guard_sql_raises=None, real_guard=False):
+                  guard_sql_raises=None, real_guard=False,
+                  teardown_on_failure=False, teardown_raises=None):
     """Run the real `DietTestRunner.setup_databases` and record it.
 
     `prepared` is what Django's superclass setup reports having created,
@@ -244,6 +252,26 @@ def observe_setup(runner_module, connections, *, aliases, omit_aliases=False,
             runner.setup_databases(**call)
         except BaseException as exc:          # recorded, never swallowed
             record.failure = exc
+            # A post-setup refusal must not leave prepared targets
+            # behind. Django's run_suite teardown does NOT run when
+            # setup raises, so the caller is responsible; this records
+            # whether anything attempted it and preserves the ORIGINAL
+            # failure if teardown fails too.
+            if teardown_on_failure and record.setup_returned:
+                def fake_teardown(old_config, verbosity=1, **kw):
+                    record.teardown_calls.append(
+                        [entry["alias"] for entry in record.setup_returned])
+                    if teardown_raises is not None:
+                        raise teardown_raises
+                with mock.patch.object(runner_module.DiscoverRunner,
+                                       "teardown_databases",
+                                       staticmethod(fake_teardown)):
+                    try:
+                        runner.teardown_databases(
+                            [(connections[e["alias"]], e["old_name"],
+                              e["destroy"]) for e in record.setup_returned])
+                    except BaseException as teardown_exc:
+                        record.teardown_failure = teardown_exc
     return record
 
 
@@ -341,9 +369,25 @@ def run_supported_runner(cases, *, label=None, extra_args=(), timeout=600):
         encoding="utf-8")
     receipts = Path(workspace) / "receipts.jsonl"
 
+    # CHILD DATABASE ISOLATION.
+    #
+    # --keepdb alone does not isolate: it makes the child REUSE the same
+    # disposable database the outer run is using, so a row could not
+    # tell "the child got its own target" from "the child borrowed
+    # ours", and a destructive child would act on the outer database.
+    # A generated settings module gives the child its own TEST NAME.
+    settings_name = f"hh715_settings_{os.getpid()}_{abs(hash(workspace)) % 99991}"
+    child_test_db = f"test_hh715_{abs(hash(workspace)) % 99991}"
+    (Path(workspace) / (settings_name + ".py")).write_text(
+        "from netbox.settings import *  # noqa: F401,F403\n"
+        "DATABASES['default'].setdefault('TEST', {})\n"
+        f"DATABASES['default']['TEST']['NAME'] = {child_test_db!r}\n",
+        encoding="utf-8")
+
     environment = dict(os.environ)
     environment["PYTHONPATH"] = workspace + os.pathsep + environment.get(
         "PYTHONPATH", "")
+    environment["DJANGO_SETTINGS_MODULE"] = settings_name
     environment[RECEIPT_VARIABLE] = str(receipts)
 
     # --noinput: an existing disposable database otherwise makes Django
@@ -351,7 +395,10 @@ def run_supported_runner(cases, *, label=None, extra_args=(), timeout=600):
     # --keepdb: so the subprocess REUSES that database instead of
     #   dropping and recreating one the outer run may be using. Without
     #   it a row here could destroy the database the suite runs on.
-    base = ["--noinput", "--keepdb"]
+    # --noinput so an existing target does not prompt; the child owns
+    # its own database (above), so there is no outer database to
+    # protect with --keepdb and it is NOT passed by default.
+    base = ["--noinput"]
     merged = [a for a in base if a not in extra_args] + list(extra_args)
     argv = [sys.executable, "manage.py", "test",
             label or "hh715_disposable.tests",
@@ -367,6 +414,7 @@ def run_supported_runner(cases, *, label=None, extra_args=(), timeout=600):
                 bodies.append(json.loads(line))
     return {
         "argv": argv,
+        "child_test_database": child_test_db,
         "returncode": completed.returncode,
         "stdout": completed.stdout,
         "stderr": completed.stderr,
