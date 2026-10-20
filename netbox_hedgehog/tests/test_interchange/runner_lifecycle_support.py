@@ -292,6 +292,7 @@ def observe_setup(runner_module, connections, *, aliases, omit_aliases=False,
 # speak for.
 # ----------------------------------------------------------------------
 
+import hashlib
 import json
 import os
 import subprocess
@@ -399,10 +400,23 @@ def run_supported_runner(cases, *, label=None, extra_args=(), timeout=600):
     # present, so two lanes never share a child target, and the name is
     # recorded in the result for the retention check below.
     lane = (os.environ.get("COMPOSE_PROJECT_NAME")
-            or os.environ.get("HH715_LANE") or "local")
-    safe_lane = "".join(c if c.isalnum() else "_" for c in lane)[:24]
+            or os.environ.get("HH715_LANE"))
+    if not lane:
+        # FAIL CLOSED. Defaulting to a shared name such as "local"
+        # meant every unidentified environment wrote to ONE database on
+        # a shared server, which is a collision dressed as a default.
+        raise RuntimeError(
+            "no lane identity: set COMPOSE_PROJECT_NAME or HH715_LANE. "
+            "These rows create an owned child database and must not "
+            "share one with an unidentified environment.")
+    # Truncation alone could collide: two lanes agreeing in their first
+    # 24 characters would map to the same database. The digest is taken
+    # over the FULL lane, so distinct lanes cannot collide even when
+    # their readable prefixes match.
+    readable = "".join(c if c.isalnum() else "_" for c in lane)[:24]
+    fingerprint = hashlib.sha256(lane.encode("utf-8")).hexdigest()[:10]
     settings_name = f"hh715_settings_{os.getpid()}"
-    child_test_db = f"test_hh715_{safe_lane}"
+    child_test_db = f"test_hh715_{readable}_{fingerprint}"
     (Path(workspace) / (settings_name + ".py")).write_text(
         "from netbox.settings import *  # noqa: F401,F403\n"
         "DATABASES['default'].setdefault('TEST', {})\n"

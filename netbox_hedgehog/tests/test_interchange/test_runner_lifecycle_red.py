@@ -490,9 +490,31 @@ class SupportedRunnerSubprocess(SimpleTestCase):
             result["child_test_database"],
             "the child database name is not lane-scoped, so two lanes "
             "on one server would collide")
+        # A digest over the FULL lane, so two lanes agreeing in their
+        # readable prefix still get different databases. Truncation
+        # alone permitted exactly that collision.
+        import hashlib as _h
+        self.assertTrue(
+            result["child_test_database"].endswith(
+                _h.sha256(result["child_lane"].encode()).hexdigest()[:10]),
+            f"no full-lane fingerprint in "
+            f"{result['child_test_database']!r}; long lane names could "
+            f"collide after truncation")
         self.assertNotIn(
             result["child_test_database"], (LANE_DB, TEST_DB),
             "the child target collides with a database it must not own")
+
+    def test_w00c_missing_lane_identity_fails_closed(self):
+        """No shared default. An unidentified environment must refuse
+        rather than quietly write to one database everybody shares."""
+        from unittest import mock
+        from .runner_lifecycle_support import run_supported_runner as run
+        with mock.patch.dict(os.environ, {}, clear=False):
+            os.environ.pop("COMPOSE_PROJECT_NAME", None)
+            os.environ.pop("HH715_LANE", None)
+            with self.assertRaises(RuntimeError) as caught:
+                run([CASE_DB])
+        self.assertIn("no lane identity", str(caught.exception))
 
     def test_w02_database_backed_selection_still_works(self):
         """CONTROL. Must keep passing: the DIET-643 protection path."""
@@ -685,6 +707,44 @@ class MirrorsAndPartialSetup(SimpleTestCase):
             "the RUNNER did not tear down the legitimately prepared "
             "target it had created before refusing over another alias")
 
+    def test_r22b_teardown_is_never_asked_about_unprepared_aliases(self):
+        """NEGATIVE control for the unsafe route.
+
+        R22 shows that a refusal tears down what it prepared. This is
+        the other half: the teardown must be scoped to prepared
+        targets only. A cleanup that reached an alias Django never
+        prepared would be acting on an ordinary database -- the exact
+        thing the guard exists to prevent, arriving through the
+        cleanup path instead.
+        """
+        connections = FakeConnections({
+            "default": FakeConnection("default", TEST_DB),
+            "ordinary": FakeConnection("ordinary", LANE_DB),
+        })
+        record = observe_setup(runner_module, connections,
+                               aliases={"default", "ordinary"},
+                               prepared=(("default", LANE_DB, True),))
+        self.assertIsNotNone(record.failure)
+        for call in record.teardown_calls:
+            self.assertNotIn(
+                "ordinary", call,
+                "teardown was asked about an alias that was never "
+                "prepared, i.e. an ordinary database")
+
+    def test_r22c_a_successful_run_tears_nothing_down(self):
+        """NEGATIVE control: cleanup belongs to the failure path.
+
+        If teardown ran on success, Django's own run_suite teardown
+        would destroy the target twice.
+        """
+        record = observe_setup(runner_module, prepared_default(),
+                               aliases={"default"},
+                               prepared=(("default", LANE_DB, True),))
+        self.assertIsNone(record.failure, str(record.failure))
+        self.assertEqual(
+            record.teardown_calls, [],
+            "a successful setup tore down its own target")
+
     def test_r23_a_cleanup_failure_does_not_replace_the_original(self):
         """RED. If teardown itself fails, the FIRST error is the one
         that must reach the caller."""
@@ -788,10 +848,16 @@ class ProtectedAdapterSelection(SimpleTestCase):
             failing = [line for line in output.splitlines()
                        if line.startswith(("FAIL:", "ERROR:"))]
             self.assertTrue(failing, "no row reported a failure")
-            # PRECISE attribution. A substring match on "harness" or
-            # "evidence" would be satisfied by any adapter row whose
-            # name happens to contain either word. These are the
-            # measured evidence-dependent rows by exact id.
+            # SCOPE LIMIT, measured twice and reported rather than
+            # papered over: the adapter surfaces NO machine-checkable
+            # "missing evidence" cause. Its evidence-dependent rows
+            # simply error. So this row can show that the protected
+            # selection does not succeed without the wrapper, and
+            # WHICH rows fail -- it cannot show WHY from the output,
+            # because the why is not emitted. Binding to exact row ids
+            # is the strongest attribution available at this layer;
+            # the missing cause is raised separately as an adapter
+            # gap, not asserted here as though it existed.
             evidence_rows = {
                 "test_a15_harness_emits_artifacts_and_observed_results",
                 "test_a16_missing_or_contradictory_harness_evidence_fails",
