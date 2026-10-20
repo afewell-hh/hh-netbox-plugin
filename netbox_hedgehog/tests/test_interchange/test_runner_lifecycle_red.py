@@ -453,17 +453,46 @@ class SupportedRunnerSubprocess(SimpleTestCase):
         """
         result = run_supported_runner([CASE_DB])
         self.assertEqual(result["returncode"], 0, result["stderr"][-400:])
-        self.assertTrue(result["db_names"], "no body reported a database")
-        for names in result["db_names"]:
+        self.assertTrue(result["server_db_names"],
+                        "no body reported a server-confirmed database")
+        for names in result["server_db_names"]:
             observed = names.get("default")
+            # SERVER-CONFIRMED via current_database(). The configured
+            # settings value only records what was requested; it would
+            # not notice a connection attached elsewhere.
             self.assertEqual(
                 observed, result["child_test_database"],
-                f"the child ran against {observed!r}, not its own "
+                f"the child was attached to {observed!r}, not its own "
                 f"{result['child_test_database']!r}")
             self.assertNotEqual(observed, LANE_DB)
             self.assertNotEqual(
                 observed, TEST_DB,
                 "the child borrowed the outer run's disposable database")
+
+    def test_w00b_the_child_database_is_lane_scoped_and_retained(self):
+        """Retention is deliberate, declared and lane-scoped.
+
+        The child database is kept between rows on purpose -- reuse is
+        what took this suite from a 20-minute timeout kill to minutes.
+        A single global name would collide between concurrent lanes on
+        a shared server, so the name carries the lane.
+        """
+        result = run_supported_runner([CASE_DB])
+        self.assertEqual(result["returncode"], 0, result["stderr"][-400:])
+        self.assertTrue(result["child_database_retained"],
+                        "retention must be declared, not incidental")
+        self.assertTrue(
+            result["child_test_database"].startswith("test_hh715_"),
+            result["child_test_database"])
+        self.assertIn(
+            "".join(c if c.isalnum() else "_"
+                    for c in result["child_lane"])[:24],
+            result["child_test_database"],
+            "the child database name is not lane-scoped, so two lanes "
+            "on one server would collide")
+        self.assertNotIn(
+            result["child_test_database"], (LANE_DB, TEST_DB),
+            "the child target collides with a database it must not own")
 
     def test_w02_database_backed_selection_still_works(self):
         """CONTROL. Must keep passing: the DIET-643 protection path."""
@@ -634,8 +663,18 @@ class MirrorsAndPartialSetup(SimpleTestCase):
         """RED. Django's run_suite teardown does NOT run when setup
         raises, so a refusal after preparation must dispose of what it
         prepared rather than leaving a database behind."""
-        record = observe_setup(runner_module, lane_only(),
-                               aliases={"default"},
+        # The prepared target is a GENUINE disposable database; the
+        # refusal comes from a SECOND required alias that was never
+        # prepared. An earlier version pointed the only target at the
+        # ordinary lane database, so the refusal and the thing to be
+        # torn down were the same object and the row could not say
+        # whether a legitimately prepared target gets disposed of.
+        connections = FakeConnections({
+            "default": FakeConnection("default", TEST_DB),
+            "missing": FakeConnection("missing", "netbox_missing"),
+        })
+        record = observe_setup(runner_module, connections,
+                               aliases={"default", "missing"},
                                prepared=(("default", LANE_DB, True),))
         self.assertIsNotNone(record.failure)
         # OBSERVED, not performed. An earlier version had the harness
@@ -643,8 +682,8 @@ class MirrorsAndPartialSetup(SimpleTestCase):
         # harness cleans up rather than the runner.
         self.assertEqual(
             record.teardown_calls, [["default"]],
-            "the RUNNER did not tear down the target it had prepared "
-            "before refusing")
+            "the RUNNER did not tear down the legitimately prepared "
+            "target it had created before refusing over another alias")
 
     def test_r23_a_cleanup_failure_does_not_replace_the_original(self):
         """RED. If teardown itself fails, the FIRST error is the one
@@ -749,8 +788,18 @@ class ProtectedAdapterSelection(SimpleTestCase):
             failing = [line for line in output.splitlines()
                        if line.startswith(("FAIL:", "ERROR:"))]
             self.assertTrue(failing, "no row reported a failure")
-            self.assertTrue(
-                any("harness" in line or "evidence" in line
-                    for line in failing),
-                f"the failures are not in the evidence-dependent rows: "
-                f"{failing[:3]}")
+            # PRECISE attribution. A substring match on "harness" or
+            # "evidence" would be satisfied by any adapter row whose
+            # name happens to contain either word. These are the
+            # measured evidence-dependent rows by exact id.
+            evidence_rows = {
+                "test_a15_harness_emits_artifacts_and_observed_results",
+                "test_a16_missing_or_contradictory_harness_evidence_fails",
+            }
+            named = {row for row in evidence_rows
+                     if any(row in line for line in failing)}
+            self.assertEqual(
+                named, evidence_rows,
+                f"the evidence-dependent rows did not fail; the refusal "
+                f"is not attributable to the missing prerequisite. "
+                f"failing={failing[:4]}")

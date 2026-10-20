@@ -315,7 +315,18 @@ def _receipt(name, extra=None):
     path = os.environ.get("{receipt}")
     if not path:
         return
-    record = {{"body": name, "db_names": {{
+    # Configured name AND the name the SERVER reports. A settings
+    # value only says what was asked for; current_database() says
+    # what the connection is actually attached to.
+    server = {{}}
+    for alias in connections:
+        try:
+            with connections[alias].cursor() as cursor:
+                cursor.execute("SELECT current_database()")
+                server[alias] = cursor.fetchone()[0]
+        except Exception as exc:
+            server[alias] = f"unavailable: {{type(exc).__name__}}"
+    record = {{"body": name, "server_db_names": server, "db_names": {{
         alias: connections[alias].settings_dict.get("NAME")
         for alias in connections}}}}
     if extra:
@@ -381,8 +392,17 @@ def run_supported_runner(cases, *, label=None, extra_args=(), timeout=600):
     # row, which is not viable in the interchange job. A fixed name is
     # still isolated from the outer run's `test_netbox` -- isolation
     # comes from the name differing, not from it being unique.
+    # One owned child database PER LANE, reused across rows.
+    #
+    # A single global name would collide between concurrent lanes on a
+    # shared server. The lane is taken from the Compose project when
+    # present, so two lanes never share a child target, and the name is
+    # recorded in the result for the retention check below.
+    lane = (os.environ.get("COMPOSE_PROJECT_NAME")
+            or os.environ.get("HH715_LANE") or "local")
+    safe_lane = "".join(c if c.isalnum() else "_" for c in lane)[:24]
     settings_name = f"hh715_settings_{os.getpid()}"
-    child_test_db = "test_hh715_child"
+    child_test_db = f"test_hh715_{safe_lane}"
     (Path(workspace) / (settings_name + ".py")).write_text(
         "from netbox.settings import *  # noqa: F401,F403\n"
         "DATABASES['default'].setdefault('TEST', {})\n"
@@ -422,11 +442,17 @@ def run_supported_runner(cases, *, label=None, extra_args=(), timeout=600):
     return {
         "argv": argv,
         "child_test_database": child_test_db,
+        "child_lane": lane,
+        # RETAINED ON PURPOSE: reuse is what keeps the subprocess rows
+        # affordable. Declared here so a row can assert the retention
+        # is deliberate and lane-scoped rather than accidental.
+        "child_database_retained": True,
         "returncode": completed.returncode,
         "stdout": completed.stdout,
         "stderr": completed.stderr,
         "bodies": bodies,
         "body_names": [b["body"] for b in bodies],
+        "server_db_names": [b.get("server_db_names", {}) for b in bodies],
         "db_names": [b.get("db_names", {}) for b in bodies],
         # With --keepdb Django reports reuse rather than creation; both
         # mean "a disposable target was prepared for this run".
