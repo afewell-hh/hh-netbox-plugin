@@ -443,6 +443,28 @@ class SupportedRunnerSubprocess(SimpleTestCase):
         self.assertFalse(result["guard_applied"],
                          "the guard ran for a selection with no database")
 
+    def test_w00_the_child_uses_its_own_database_not_the_outer_one(self):
+        """Isolation, observed from the child's own receipts.
+
+        --keepdb previously made the child REUSE the outer run's
+        disposable database. Asserting the harness writes a settings
+        module would only prove the harness wrote a file; this reads
+        the database name the child body actually connected to.
+        """
+        result = run_supported_runner([CASE_DB])
+        self.assertEqual(result["returncode"], 0, result["stderr"][-400:])
+        self.assertTrue(result["db_names"], "no body reported a database")
+        for names in result["db_names"]:
+            observed = names.get("default")
+            self.assertEqual(
+                observed, result["child_test_database"],
+                f"the child ran against {observed!r}, not its own "
+                f"{result['child_test_database']!r}")
+            self.assertNotEqual(observed, LANE_DB)
+            self.assertNotEqual(
+                observed, TEST_DB,
+                "the child borrowed the outer run's disposable database")
+
     def test_w02_database_backed_selection_still_works(self):
         """CONTROL. Must keep passing: the DIET-643 protection path."""
         result = run_supported_runner([CASE_DB])
@@ -456,6 +478,8 @@ class SupportedRunnerSubprocess(SimpleTestCase):
             self.assertNotEqual(
                 names.get("default"), LANE_DB,
                 "a body ran against the ordinary lane database")
+            self.assertEqual(names.get("default"),
+                             result["child_test_database"])
 
     def test_w03_a_simpletestcase_declaring_database_access(self):
         """A SimpleTestCase subclass may request a database explicitly.
@@ -612,12 +636,15 @@ class MirrorsAndPartialSetup(SimpleTestCase):
         prepared rather than leaving a database behind."""
         record = observe_setup(runner_module, lane_only(),
                                aliases={"default"},
-                               prepared=(("default", LANE_DB, True),),
-                               teardown_on_failure=True)
+                               prepared=(("default", LANE_DB, True),))
         self.assertIsNotNone(record.failure)
+        # OBSERVED, not performed. An earlier version had the harness
+        # call teardown from its own except branch, which proved the
+        # harness cleans up rather than the runner.
         self.assertEqual(
             record.teardown_calls, [["default"]],
-            "a prepared target was not torn down after the refusal")
+            "the RUNNER did not tear down the target it had prepared "
+            "before refusing")
 
     def test_r23_a_cleanup_failure_does_not_replace_the_original(self):
         """RED. If teardown itself fails, the FIRST error is the one
@@ -628,7 +655,6 @@ class MirrorsAndPartialSetup(SimpleTestCase):
                                aliases={"default"},
                                prepared=(("default", LANE_DB, True),),
                                guard_raises=original,
-                               teardown_on_failure=True,
                                teardown_raises=secondary)
         self.assertIs(
             record.failure, original,
@@ -688,3 +714,43 @@ class ProtectedAdapterSelection(SimpleTestCase):
                 result["returncode"], 0,
                 "the protected adapter selection reported success "
                 "without the wrapper-prepared evidence")
+            # Attribution, with the masking stated rather than hidden.
+            #
+            # MEASURED: today this selection fails on the DIET-715
+            # guard refusal, because the adapter rows are
+            # database-free and the runner aborts before any of them.
+            # So the prerequisite scenario this row exists for is
+            # currently UNREACHABLE -- the row is red, but masked by
+            # the very defect this suite is about. Saying so is the
+            # point; a row that merely asserted "it failed" would read
+            # as evidence it had tested the prerequisite.
+            output = result["stderr"] + result["stdout"]
+            if "refusing to apply the DIET-643 autovacuum guard" in output:
+                self.fail(
+                    "P03 is BLOCKED by the DIET-715 defect: the protected "
+                    "adapter selection is database-free, so the runner "
+                    "refuses before any adapter row executes. The "
+                    "missing-prerequisite behaviour cannot be exercised "
+                    "until W01 passes. This row must not be read as "
+                    "evidence about the prerequisite.")
+            # MEASURED, and not what I first assumed. Without the
+            # wrapper's evidence the adapter does NOT emit a message
+            # naming HNP_REAPER_CONTAINER_EVIDENCE; it fails inside its
+            # evidence-dependent contract rows (a15/a16/a17) with
+            # "FAILED (failures=2, errors=2)". Asserting a prerequisite
+            # message would have been asserting behaviour that does not
+            # exist. Attribution therefore binds to two facts that do:
+            # collection succeeded, so this is not a masking failure,
+            # and the failures are in the evidence-dependent rows.
+            self.assertIn(
+                "Found 34 test(s)", output,
+                "the selection did not even collect; this is a masking "
+                "failure, not the prerequisite scenario")
+            failing = [line for line in output.splitlines()
+                       if line.startswith(("FAIL:", "ERROR:"))]
+            self.assertTrue(failing, "no row reported a failure")
+            self.assertTrue(
+                any("harness" in line or "evidence" in line
+                    for line in failing),
+                f"the failures are not in the evidence-dependent rows: "
+                f"{failing[:3]}")

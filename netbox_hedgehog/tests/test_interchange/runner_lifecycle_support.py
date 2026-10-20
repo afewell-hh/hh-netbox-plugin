@@ -176,7 +176,7 @@ class FakeConnections:
 def observe_setup(runner_module, connections, *, aliases, omit_aliases=False,
                   prepared=(), setup_raises=None, guard_raises=None,
                   guard_sql_raises=None, real_guard=False,
-                  teardown_on_failure=False, teardown_raises=None):
+                  teardown_raises=None):
     """Run the real `DietTestRunner.setup_databases` and record it.
 
     `prepared` is what Django's superclass setup reports having created,
@@ -239,6 +239,21 @@ def observe_setup(runner_module, connections, *, aliases, omit_aliases=False,
             for t in altered]})
         return altered
 
+    def recording_teardown(old_config, verbosity=1, **kwargs):
+        """Records a teardown the RUNNER performs.
+
+        The harness must never call this itself. An earlier version
+        invoked `teardown_databases` from the except branch, so R22/R23
+        proved the harness cleans up -- not the runner. Observing is
+        the only honest option: if the runner never calls it, the rows
+        stay red until it does.
+        """
+        record.teardown_calls.append(
+            [c.alias for c, _old, _destroy in (old_config or [])])
+        if teardown_raises is not None:
+            record.teardown_failure = teardown_raises
+            raise teardown_raises
+
     real_apply = runner_module.apply_autovacuum_guard
     guard = recording_real_guard if real_guard else fake_guard
     call = {} if omit_aliases else {"aliases": aliases}
@@ -247,31 +262,14 @@ def observe_setup(runner_module, connections, *, aliases, omit_aliases=False,
                               guard), \
             mock.patch.object(
                 runner_module.DiscoverRunner, "setup_databases",
-                staticmethod(fake_super_setup)):
+                staticmethod(fake_super_setup)), \
+            mock.patch.object(
+                runner_module.DiscoverRunner, "teardown_databases",
+                staticmethod(recording_teardown)):
         try:
             runner.setup_databases(**call)
         except BaseException as exc:          # recorded, never swallowed
             record.failure = exc
-            # A post-setup refusal must not leave prepared targets
-            # behind. Django's run_suite teardown does NOT run when
-            # setup raises, so the caller is responsible; this records
-            # whether anything attempted it and preserves the ORIGINAL
-            # failure if teardown fails too.
-            if teardown_on_failure and record.setup_returned:
-                def fake_teardown(old_config, verbosity=1, **kw):
-                    record.teardown_calls.append(
-                        [entry["alias"] for entry in record.setup_returned])
-                    if teardown_raises is not None:
-                        raise teardown_raises
-                with mock.patch.object(runner_module.DiscoverRunner,
-                                       "teardown_databases",
-                                       staticmethod(fake_teardown)):
-                    try:
-                        runner.teardown_databases(
-                            [(connections[e["alias"]], e["old_name"],
-                              e["destroy"]) for e in record.setup_returned])
-                    except BaseException as teardown_exc:
-                        record.teardown_failure = teardown_exc
     return record
 
 
@@ -376,8 +374,15 @@ def run_supported_runner(cases, *, label=None, extra_args=(), timeout=600):
     # tell "the child got its own target" from "the child borrowed
     # ours", and a destructive child would act on the outer database.
     # A generated settings module gives the child its own TEST NAME.
-    settings_name = f"hh715_settings_{os.getpid()}_{abs(hash(workspace)) % 99991}"
-    child_test_db = f"test_hh715_{abs(hash(workspace)) % 99991}"
+    # The child's database name is STABLE, not per-invocation. A name
+    # derived from the temporary workspace changed every run, so
+    # --keepdb could never reuse it and every row rebuilt the whole
+    # migration set: measured at roughly two minutes per subprocess
+    # row, which is not viable in the interchange job. A fixed name is
+    # still isolated from the outer run's `test_netbox` -- isolation
+    # comes from the name differing, not from it being unique.
+    settings_name = f"hh715_settings_{os.getpid()}"
+    child_test_db = "test_hh715_child"
     (Path(workspace) / (settings_name + ".py")).write_text(
         "from netbox.settings import *  # noqa: F401,F403\n"
         "DATABASES['default'].setdefault('TEST', {})\n"
@@ -395,10 +400,12 @@ def run_supported_runner(cases, *, label=None, extra_args=(), timeout=600):
     # --keepdb: so the subprocess REUSES that database instead of
     #   dropping and recreating one the outer run may be using. Without
     #   it a row here could destroy the database the suite runs on.
-    # --noinput so an existing target does not prompt; the child owns
-    # its own database (above), so there is no outer database to
-    # protect with --keepdb and it is NOT passed by default.
-    base = ["--noinput"]
+    # --noinput so an existing target does not prompt. --keepdb so the
+    # child REUSES ITS OWN stable database across rows instead of
+    # rebuilding migrations each time; it cannot touch the outer run's
+    # database, which has a different name. W00 verifies that from the
+    # child's own connection rather than from this comment.
+    base = ["--noinput", "--keepdb"]
     merged = [a for a in base if a not in extra_args] + list(extra_args)
     argv = [sys.executable, "manage.py", "test",
             label or "hh715_disposable.tests",
