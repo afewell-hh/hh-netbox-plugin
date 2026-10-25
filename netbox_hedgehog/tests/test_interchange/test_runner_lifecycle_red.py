@@ -46,6 +46,15 @@ def prepared_default():
     return FakeConnections({"default": FakeConnection("default", TEST_DB)})
 
 
+def tearDownModule():
+    """Deterministic disposal of derived-identity child databases.
+
+    Verified necessary: atexit alone left the database on the server.
+    """
+    from . import runner_lifecycle_support as support
+    support.dispose_registered_children()
+
+
 class DatabaseFreeSelection(SimpleTestCase):
     """Gate item 1: a database-free selection must not reach the guard."""
 
@@ -479,8 +488,25 @@ class SupportedRunnerSubprocess(SimpleTestCase):
         """
         result = run_supported_runner([CASE_DB])
         self.assertEqual(result["returncode"], 0, result["stderr"][-400:])
-        self.assertTrue(result["child_database_retained"],
-                        "retention must be declared, not incidental")
+        # Retention is a PROPERTY OF THE IDENTITY, not a constant. An
+        # explicit lane is stable, so its database is reused and kept.
+        # A derived container id changes every run, so keeping it would
+        # orphan one database per run. Asserting True unconditionally
+        # contradicted the CI fallback and would have failed the
+        # required job.
+        expected_retention = result["child_lane_source"] != "container-id"
+        self.assertEqual(
+            result["child_database_retained"], expected_retention,
+            f"retention {result['child_database_retained']} does not "
+            f"match identity source {result['child_lane_source']!r}")
+        if not expected_retention:
+            self.assertTrue(
+                result["child_disposal_registered"],
+                "a non-retained database declared non-retention but "
+                "nothing was arranged to remove it")
+        self.assertIn(
+            "child_database_retained", result,
+            "retention must be declared explicitly, not left implicit")
         self.assertTrue(
             result["child_test_database"].startswith("test_hh715_"),
             result["child_test_database"])
@@ -599,6 +625,74 @@ class SupportedRunnerSubprocess(SimpleTestCase):
         # released: the same lane is usable again afterwards
         with _same_lane_exclusivity("lane-under-test"):
             pass
+
+    def test_w00h_declared_non_retention_is_acted_on(self):
+        """Declaring non-retention is not the same as doing it.
+
+        The child runs with --keepdb so rows reuse one database rather
+        than rebuilding per row. Under a derived identity that leaves
+        the database behind every run, so the result said
+        `retained: False` while the database survived -- a false
+        declaration. Disposal must be really arranged.
+        """
+        from .runner_lifecycle_support import (
+            _arrange_child_disposal, _DROP_REGISTERED,
+            _admin_connection, child_database_exists,
+            dispose_registered_children, DISPOSAL_FAILURES)
+        # Registration is not removal. The earlier form asserted only
+        # that a handler had been registered; measured on the server, a
+        # registered handler still left the database behind. This
+        # creates a real database and requires the server to confirm it
+        # is gone.
+        probe = "test_hh715_disposal_selftest"
+        with _admin_connection() as conn:
+            with conn.cursor() as cur:
+                cur.execute(f'DROP DATABASE IF EXISTS "{probe}"')
+                cur.execute(f'CREATE DATABASE "{probe}"')
+        self.assertTrue(child_database_exists(probe))
+        _DROP_REGISTERED.add(probe)
+        dispose_registered_children()
+        self.assertFalse(
+            child_database_exists(probe),
+            f"{probe} survived disposal; a declared non-retention that "
+            f"does not remove the database is a false declaration")
+        self.assertEqual(DISPOSAL_FAILURES, [], "disposal reported errors")
+        # NOT atexit.unregister(_drop_child_database): that removes
+        # EVERY registration of the function, including the real lane
+        # disposal. Locally the lane is explicit and retained, so none
+        # exists and the row passes; in CI the fallback registers a
+        # real one and this control would have unregistered it --
+        # causing the orphaned database it exists to prevent, in the
+        # only environment that suffers it. The probe registration is
+        # harmless: the drop is IF EXISTS on a name never created.
+        name = "test_hh715_disposal_probe"
+        _DROP_REGISTERED.discard(name)
+        self.assertTrue(
+            _arrange_child_disposal(name, retained=False),
+            "no disposal was arranged for a non-retained database")
+        self.assertIn(name, _DROP_REGISTERED)
+        # idempotent: one registration per name, not one per row
+        self.assertFalse(_arrange_child_disposal(name, retained=False))
+        _DROP_REGISTERED.discard(name)
+        # an explicit lane keeps its database, so nothing is arranged
+        self.assertFalse(
+            _arrange_child_disposal("test_hh715_explicit", retained=True))
+
+    def test_w00i_an_unobservable_outer_database_refuses_to_spawn(self):
+        """FAIL CLOSED. Returning None let the caller's `if outer and ...`
+        skip the collision check and spawn anyway -- waving through the
+        exact case where the check matters most."""
+        from unittest import mock
+        from . import runner_lifecycle_support as support
+        with mock.patch.object(
+                support, "_admin_connection",
+                side_effect=OSError("server unreachable")):
+            with self.assertRaises(support.OuterDatabaseUnobservable):
+                support._outer_server_database(required=True)
+            with self.assertRaises(support.OuterDatabaseUnobservable):
+                support._assert_child_target_is_safe(
+                    "test_hh715_anything", "anylane")
+            self.assertIsNone(support._outer_server_database())
 
     def test_w02_database_backed_selection_still_works(self):
         """CONTROL. Must keep passing: the DIET-643 protection path."""

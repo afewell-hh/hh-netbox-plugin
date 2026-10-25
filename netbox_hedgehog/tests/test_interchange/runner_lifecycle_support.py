@@ -292,7 +292,7 @@ def observe_setup(runner_module, connections, *, aliases, omit_aliases=False,
 # speak for.
 # ----------------------------------------------------------------------
 
-import contextlib
+import atexit
 import hashlib
 import json
 import os
@@ -394,6 +394,79 @@ def _resolve_lane():
     return None, "none", False
 
 
+_DROP_REGISTERED = set()
+
+
+DISPOSAL_FAILURES = []
+
+
+def _drop_child_database(name):
+    """Remove a child database created under a DERIVED identity.
+
+    Returns True on success. Failures are RECORDED, not swallowed: the
+    previous version passed silently, so a disposal that never worked
+    reported exactly like one that did.
+    """
+    try:
+        with _admin_connection() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    "SELECT pg_terminate_backend(pid) FROM pg_stat_activity "
+                    "WHERE datname = %s AND pid <> pg_backend_pid()", [name])
+                cur.execute(f'DROP DATABASE IF EXISTS "{name}"')
+        return True
+    except Exception as exc:  # pragma: no cover - recorded, not raised
+        DISPOSAL_FAILURES.append((name, repr(exc)))
+        return False
+
+
+def dispose_registered_children():
+    """Drop every registered child database, deterministically.
+
+    atexit was not enough. Measured on a shared server: a CI-shape run
+    registered disposal, reported `retained: False`, and still left its
+    database behind -- whatever failed at interpreter shutdown was
+    hidden by a bare `except Exception: pass`. This is called from
+    tearDownModule, so disposal happens at a defined point while the
+    interpreter is still fully alive, with atexit kept only as a
+    backstop.
+    """
+    results = []
+    for name in sorted(_DROP_REGISTERED):
+        results.append((name, _drop_child_database(name)))
+    _DROP_REGISTERED.clear()
+    return results
+
+
+def child_database_exists(name):
+    """Ask the server, rather than trusting a declaration."""
+    try:
+        with _admin_connection() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    "SELECT 1 FROM pg_database WHERE datname = %s", [name])
+                return cur.fetchone() is not None
+    except Exception:
+        return None
+
+
+def _arrange_child_disposal(name, retained):
+    """Declaring non-retention is not the same as acting on it.
+
+    The child is invoked with --keepdb so rows reuse one database
+    instead of rebuilding it per row. Under a DERIVED identity the name
+    changes every run, so --keepdb alone leaves one orphan database per
+    CI run -- the result said `retained: False` while the database
+    survived. Dropping per row would undo the reuse, so disposal is
+    registered ONCE and runs at process exit.
+    """
+    if retained or name in _DROP_REGISTERED:
+        return False
+    _DROP_REGISTERED.add(name)
+    atexit.register(_drop_child_database, name)
+    return True
+
+
 @contextlib.contextmanager
 def _admin_connection():
     """A driver connection that does NOT go through Django.
@@ -424,16 +497,35 @@ def _admin_connection():
         conn.close()
 
 
-def _outer_server_database():
+class OuterDatabaseUnobservable(RuntimeError):
+    """The outer target could not be confirmed with the server."""
+
+
+def _outer_server_database(*, required=False):
     """The database this process is actually attached to, as the server
-    reports it. settings_dict['NAME'] states only what was requested."""
+    reports it. settings_dict['NAME'] states only what was requested.
+
+    `required=True` RAISES instead of returning None. Returning None to
+    a caller that then writes `if outer and ...` silently SKIPS the
+    collision check and spawns anyway -- an unobservable outer target
+    is the case where the check matters most, not one to wave through.
+    """
     try:
         with _admin_connection() as conn:
             with conn.cursor() as cur:
                 cur.execute("SELECT current_database()")
-                return cur.fetchone()[0]
-    except Exception:
+                name = cur.fetchone()[0]
+    except Exception as exc:
+        if required:
+            raise OuterDatabaseUnobservable(
+                f"cannot confirm the outer database with the server "
+                f"({exc!r}); refusing to spawn a child whose collision "
+                f"with it cannot be ruled out") from exc
         return None
+    if required and not name:
+        raise OuterDatabaseUnobservable(
+            "the server reported no current database; refusing to spawn")
+    return name
 
 
 def _assert_child_target_is_safe(child_test_db, lane):
@@ -445,8 +537,8 @@ def _assert_child_target_is_safe(child_test_db, lane):
       2. two concurrent runs in ONE lane -- same name, so the second
          would drop the first's database mid-run.
     """
-    outer = _outer_server_database()
-    if outer and child_test_db == outer:
+    outer = _outer_server_database(required=True)
+    if child_test_db == outer:
         raise RuntimeError(
             f"child target {child_test_db!r} is the database this "
             f"process is attached to; spawning would destroy its own "
@@ -537,6 +629,7 @@ def run_supported_runner(cases, *, label=None, extra_args=(), timeout=600):
     child_test_db = f"test_hh715_{readable}_{fingerprint}"
     # PRE-SPAWN, before a settings file or a database exists.
     outer_db = _assert_child_target_is_safe(child_test_db, lane)
+    disposal_registered = _arrange_child_disposal(child_test_db, lane_retained)
     (Path(workspace) / (settings_name + ".py")).write_text(
         "from netbox.settings import *  # noqa: F401,F403\n"
         "DATABASES['default'].setdefault('TEST', {})\n"
@@ -559,6 +652,9 @@ def run_supported_runner(cases, *, label=None, extra_args=(), timeout=600):
     # rebuilding migrations each time; it cannot touch the outer run's
     # database, which has a different name. W00 verifies that from the
     # child's own connection rather than from this comment.
+    # --keepdb regardless of retention: rows must reuse one database
+    # rather than rebuild per row. Retention is handled at process exit
+    # by _arrange_child_disposal, not by forcing a rebuild here.
     base = ["--noinput", "--keepdb"]
     merged = [a for a in base if a not in extra_args] + list(extra_args)
     argv = [sys.executable, "manage.py", "test",
@@ -583,6 +679,8 @@ def run_supported_runner(cases, *, label=None, extra_args=(), timeout=600):
         # is deliberate and lane-scoped rather than accidental.
         "child_database_retained": lane_retained,
         "child_lane_source": lane_source,
+        "child_disposal_registered": (
+            disposal_registered or child_test_db in _DROP_REGISTERED),
         "outer_server_database": _outer_server_database(),
         "returncode": completed.returncode,
         "stdout": completed.stdout,
