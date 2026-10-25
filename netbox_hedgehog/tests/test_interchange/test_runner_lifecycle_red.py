@@ -505,16 +505,100 @@ class SupportedRunnerSubprocess(SimpleTestCase):
             "the child target collides with a database it must not own")
 
     def test_w00c_missing_lane_identity_fails_closed(self):
-        """No shared default. An unidentified environment must refuse
-        rather than quietly write to one database everybody shares."""
+        """No shared default, still -- but the reachable case changed.
+
+        I wrote this row when identity came only from the environment.
+        Adding the container-id fallback (required, or CI fails closed)
+        made "no env vars" a RESOLVABLE case, so the old form asserted
+        a refusal that can no longer happen. Left alone it would have
+        been a permanently red row blamed on the runner. The genuine
+        unidentified case is now: no env lane AND no container id.
+        """
         from unittest import mock
-        from .runner_lifecycle_support import run_supported_runner as run
+        from . import runner_lifecycle_support as support
         with mock.patch.dict(os.environ, {}, clear=False):
             os.environ.pop("COMPOSE_PROJECT_NAME", None)
             os.environ.pop("HH715_LANE", None)
-            with self.assertRaises(RuntimeError) as caught:
-                run([CASE_DB])
+            with mock.patch.object(support.socket, "gethostname",
+                                   return_value=""):
+                lane, source, retained = support._resolve_lane()
+                self.assertIsNone(
+                    lane,
+                    "with no env lane and no container id there is no "
+                    "identity, and sharing one database is exactly "
+                    "what must not happen")
+                with self.assertRaises(RuntimeError) as caught:
+                    support.run_supported_runner([CASE_DB])
         self.assertIn("no lane identity", str(caught.exception))
+
+    def test_w00d_the_identity_chain_is_satisfiable_inside_ci(self):
+        """REGRESSION CONTROL for a break I introduced.
+
+        Making identity mandatory is right, but the required CI job runs
+        these rows via `docker compose exec`, which passes neither the
+        runner environment nor the Compose project into the container.
+        Measured inside a CI-shaped container: COMPOSE_PROJECT_NAME,
+        HH715_LANE and GITHUB_RUN_ID are ALL unset. An env-var-only
+        requirement therefore fails the required job closed.
+        """
+        from .runner_lifecycle_support import _resolve_lane
+        import os as _os
+        from unittest import mock
+        with mock.patch.dict(_os.environ, {}, clear=False):
+            for var in ("COMPOSE_PROJECT_NAME", "HH715_LANE",
+                        "GITHUB_RUN_ID"):
+                _os.environ.pop(var, None)
+            lane, source, retained = _resolve_lane()
+        self.assertTrue(
+            lane,
+            "with no identity variables -- exactly the CI container -- "
+            "the rows cannot resolve a lane and the required job fails")
+        self.assertEqual(source, "container-id")
+        self.assertFalse(
+            retained,
+            "a per-run derived identity must not retain its database, "
+            "or CI orphans one database per run")
+
+    def test_w00e_an_explicit_lane_is_still_preferred_and_retained(self):
+        """The derived fallback must not mask an explicit lane."""
+        from .runner_lifecycle_support import _resolve_lane
+        import os as _os
+        from unittest import mock
+        with mock.patch.dict(_os.environ,
+                             {"COMPOSE_PROJECT_NAME": "diet715devA"}):
+            lane, source, retained = _resolve_lane()
+        self.assertEqual((lane, source, retained),
+                         ("diet715devA", "COMPOSE_PROJECT_NAME", True))
+
+    def test_w00f_a_child_colliding_with_the_outer_target_is_refused(self):
+        """PRE-SPAWN. The check must fire before anything is created:
+        afterwards the damage -- dropping its own parent -- is done."""
+        from .runner_lifecycle_support import (
+            _assert_child_target_is_safe, _outer_server_database)
+        outer = _outer_server_database()
+        self.assertTrue(outer, "no server-confirmed outer database")
+        with self.assertRaises(RuntimeError) as caught:
+            _assert_child_target_is_safe(outer, "anylane")
+        self.assertIn("its own parent", str(caught.exception))
+        for reserved in ("netbox", "test_netbox"):
+            with self.assertRaises(RuntimeError):
+                _assert_child_target_is_safe(reserved, "anylane")
+
+    def test_w00g_a_second_run_in_one_lane_is_refused_not_queued(self):
+        """Same-lane exclusivity, enforced by the server.
+
+        Queueing would hide the collision instead of reporting it, so
+        the second holder must be REFUSED while the first still holds.
+        """
+        from .runner_lifecycle_support import _same_lane_exclusivity
+        with _same_lane_exclusivity("lane-under-test"):
+            with self.assertRaises(RuntimeError) as caught:
+                with _same_lane_exclusivity("lane-under-test"):
+                    pass
+            self.assertIn("already running", str(caught.exception))
+        # released: the same lane is usable again afterwards
+        with _same_lane_exclusivity("lane-under-test"):
+            pass
 
     def test_w02_database_backed_selection_still_works(self):
         """CONTROL. Must keep passing: the DIET-643 protection path."""
@@ -730,6 +814,43 @@ class MirrorsAndPartialSetup(SimpleTestCase):
                 "ordinary", call,
                 "teardown was asked about an alias that was never "
                 "prepared, i.e. an ordinary database")
+
+    def test_r22d_a_returned_tuple_on_an_ordinary_db_is_not_destroyed(self):
+        """The gap r22b does NOT cover.
+
+        r22b covers an alias Django never prepared. This is the other
+        shape: Django RETURNS the alias in its config, with destroy=True,
+        but the connection is routed to an ordinary database. Django
+        believes it owns a disposable target; it does not. Cleanup
+        would then issue DROP DATABASE against production data, and the
+        refusal path is what would trigger it.
+        """
+        connections = FakeConnections({
+            "default": FakeConnection("default", TEST_DB),
+            "claimed": FakeConnection("claimed", LANE_DB),
+        })
+        record = observe_setup(
+            runner_module, connections,
+            aliases={"default", "claimed"},
+            # "claimed" comes back as prepared and destroyable while
+            # still pointed at an ordinary database.
+            prepared=(("default", LANE_DB, True), ("claimed", LANE_DB, True)))
+        # NOT merely "something failed". Under current code the guard
+        # refuses `claimed` as a non-test database before any target
+        # validation runs, so assertIsNotNone(record.failure) passes on
+        # a mechanism this row is not about -- a false green. The
+        # refusal must come from TARGET VALIDATION and must name the
+        # offending alias.
+        self.assertEqual(
+            type(record.failure).__name__, "UnpreparedTarget",
+            f"the refusal came from {type(record.failure).__name__}, "
+            f"not from validating the returned targets")
+        self.assertIn("claimed", getattr(record.failure, "aliases", []))
+        for call in record.teardown_calls:
+            self.assertNotIn(
+                "claimed", call,
+                "cleanup was asked to destroy a database that is not a "
+                "disposable test target")
 
     def test_r22c_a_successful_run_tears_nothing_down(self):
         """NEGATIVE control: cleanup belongs to the failure path.

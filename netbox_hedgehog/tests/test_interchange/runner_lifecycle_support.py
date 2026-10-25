@@ -292,9 +292,11 @@ def observe_setup(runner_module, connections, *, aliases, omit_aliases=False,
 # speak for.
 # ----------------------------------------------------------------------
 
+import contextlib
 import hashlib
 import json
 import os
+import socket
 import subprocess
 import sys
 import tempfile
@@ -367,6 +369,123 @@ class DeclaresAllDatabases(SimpleTestCase):
 '''
 
 
+# Accepted identity sources, strongest first. The container is the
+# unit of isolation, so its own id is a legitimate identity -- and it
+# is the ONLY one CI has. Measured inside a CI-shaped container:
+# COMPOSE_PROJECT_NAME, HH715_LANE and GITHUB_RUN_ID are all unset,
+# because `docker compose exec` passes neither the runner environment
+# nor the Compose project through. Requiring an env var alone would
+# have failed the required CI job closed.
+def _resolve_lane():
+    """Returns (lane, source, retained).
+
+    A derived container id is unique per run, so retaining its database
+    would orphan one per CI run. Only an EXPLICIT lane is retained.
+    """
+    explicit = (os.environ.get("COMPOSE_PROJECT_NAME")
+                or os.environ.get("HH715_LANE"))
+    if explicit:
+        source = ("COMPOSE_PROJECT_NAME"
+                  if os.environ.get("COMPOSE_PROJECT_NAME") else "HH715_LANE")
+        return explicit, source, True
+    container = socket.gethostname()
+    if container:
+        return container, "container-id", False
+    return None, "none", False
+
+
+@contextlib.contextmanager
+def _admin_connection():
+    """A driver connection that does NOT go through Django.
+
+    These rows are database-free by design, so they run as
+    SimpleTestCase and Django refuses connections from them
+    (DatabaseOperationForbidden). That refusal is correct and must
+    stay: it is the protection under test. But the pre-spawn checks
+    are out-of-band ADMIN queries about the server -- which database
+    this process sits on, and who holds the lane -- not ORM work and
+    not part of the selection's own data access. Going straight to the
+    driver keeps Django's guard intact while still letting the harness
+    ask the server a question before it creates anything.
+    """
+    from django.conf import settings
+    try:
+        import psycopg
+    except ImportError:  # pragma: no cover - older driver
+        import psycopg2 as psycopg
+    cfg = settings.DATABASES["default"]
+    conn = psycopg.connect(
+        dbname=cfg["NAME"], user=cfg["USER"], password=cfg["PASSWORD"],
+        host=cfg["HOST"] or "localhost", port=cfg["PORT"] or 5432)
+    try:
+        conn.autocommit = True
+        yield conn
+    finally:
+        conn.close()
+
+
+def _outer_server_database():
+    """The database this process is actually attached to, as the server
+    reports it. settings_dict['NAME'] states only what was requested."""
+    try:
+        with _admin_connection() as conn:
+            with conn.cursor() as cur:
+                cur.execute("SELECT current_database()")
+                return cur.fetchone()[0]
+    except Exception:
+        return None
+
+
+def _assert_child_target_is_safe(child_test_db, lane):
+    """PRE-SPAWN. Refuse before creating anything.
+
+    Two separate hazards:
+      1. collision with the OUTER target -- the child would drop the
+         database its own parent is running on;
+      2. two concurrent runs in ONE lane -- same name, so the second
+         would drop the first's database mid-run.
+    """
+    outer = _outer_server_database()
+    if outer and child_test_db == outer:
+        raise RuntimeError(
+            f"child target {child_test_db!r} is the database this "
+            f"process is attached to; spawning would destroy its own "
+            f"parent")
+    for reserved in ("netbox", "test_netbox"):
+        if child_test_db == reserved:
+            raise RuntimeError(
+                f"child target {child_test_db!r} collides with the "
+                f"reserved database {reserved!r}")
+    return outer
+
+
+@contextlib.contextmanager
+def _same_lane_exclusivity(lane):
+    """One holder per lane, enforced by the server rather than by
+    convention. A second concurrent run in the same lane is REFUSED,
+    not queued: queueing would hide the collision it exists to catch.
+    """
+    key = int(hashlib.sha256(
+        f"hh715:{lane}".encode("utf-8")).hexdigest()[:15], 16)
+    # A DEDICATED session per holder. Advisory locks are re-entrant
+    # within one session, so sharing one connection would let a second
+    # holder succeed and prove nothing -- the exact false pass this
+    # control exists to catch.
+    with _admin_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute("SELECT pg_try_advisory_lock(%s)", [key])
+            if not cur.fetchone()[0]:
+                raise RuntimeError(
+                    f"lane {lane!r} is already running these rows; a "
+                    f"second concurrent run would share the child "
+                    f"database")
+        try:
+            yield key
+        finally:
+            with conn.cursor() as cur:
+                cur.execute("SELECT pg_advisory_unlock(%s)", [key])
+
+
 def run_supported_runner(cases, *, label=None, extra_args=(), timeout=600):
     """Spawn the real runner on a disposable module and report facts."""
     workspace = tempfile.mkdtemp(prefix="hh715-")
@@ -399,8 +518,7 @@ def run_supported_runner(cases, *, label=None, extra_args=(), timeout=600):
     # shared server. The lane is taken from the Compose project when
     # present, so two lanes never share a child target, and the name is
     # recorded in the result for the retention check below.
-    lane = (os.environ.get("COMPOSE_PROJECT_NAME")
-            or os.environ.get("HH715_LANE"))
+    lane, lane_source, lane_retained = _resolve_lane()
     if not lane:
         # FAIL CLOSED. Defaulting to a shared name such as "local"
         # meant every unidentified environment wrote to ONE database on
@@ -417,6 +535,8 @@ def run_supported_runner(cases, *, label=None, extra_args=(), timeout=600):
     fingerprint = hashlib.sha256(lane.encode("utf-8")).hexdigest()[:10]
     settings_name = f"hh715_settings_{os.getpid()}"
     child_test_db = f"test_hh715_{readable}_{fingerprint}"
+    # PRE-SPAWN, before a settings file or a database exists.
+    outer_db = _assert_child_target_is_safe(child_test_db, lane)
     (Path(workspace) / (settings_name + ".py")).write_text(
         "from netbox.settings import *  # noqa: F401,F403\n"
         "DATABASES['default'].setdefault('TEST', {})\n"
@@ -444,9 +564,10 @@ def run_supported_runner(cases, *, label=None, extra_args=(), timeout=600):
     argv = [sys.executable, "manage.py", "test",
             label or "hh715_disposable.tests",
             f"--testrunner={RUNNER_LABEL}", "-v", "1", *merged]
-    completed = subprocess.run(
-        argv, capture_output=True, text=True, timeout=timeout,
-        env=environment, cwd="/opt/netbox/netbox")
+    with _same_lane_exclusivity(lane):
+        completed = subprocess.run(
+            argv, capture_output=True, text=True, timeout=timeout,
+            env=environment, cwd="/opt/netbox/netbox")
 
     bodies = []
     if receipts.exists():
@@ -460,7 +581,9 @@ def run_supported_runner(cases, *, label=None, extra_args=(), timeout=600):
         # RETAINED ON PURPOSE: reuse is what keeps the subprocess rows
         # affordable. Declared here so a row can assert the retention
         # is deliberate and lane-scoped rather than accidental.
-        "child_database_retained": True,
+        "child_database_retained": lane_retained,
+        "child_lane_source": lane_source,
+        "outer_server_database": _outer_server_database(),
         "returncode": completed.returncode,
         "stdout": completed.stdout,
         "stderr": completed.stderr,
