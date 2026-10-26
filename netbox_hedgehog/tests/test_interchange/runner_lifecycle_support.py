@@ -486,6 +486,29 @@ def ensure_disposed(name):
     return dispose_child_databases([name])
 
 
+def ensure_disposed_keeping_obligation(name):
+    """Dispose, and KEEP the obligation unless removal is proven.
+
+    Three ways cleanup can fail to remove a database while the caller
+    walks away believing it did: disposal declines (recorded), disposal
+    raises (previously propagated out of a finally, skipping the rest
+    of it), or the server cannot confirm absence. In every one of those
+    the name must stay registered so module teardown retries and
+    reports it. Returns True only on a CONFIRMED removal.
+    """
+    try:
+        results = ensure_disposed(name)
+    except BaseException as exc:
+        DISPOSAL_FAILURES.append((name, f"disposal raised: {exc!r}"))
+        _DROP_REGISTERED.add(name)
+        return False
+    declined = [n for n, ok in results if not ok]
+    if declined or child_database_exists(name) is not False:
+        _DROP_REGISTERED.add(name)
+        return False
+    return True
+
+
 def restore_registry(saved):
     """Put `saved` back WITHOUT discarding anything still pending.
 

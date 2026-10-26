@@ -651,7 +651,7 @@ class SupportedRunnerSubprocess(SimpleTestCase):
             _arrange_child_disposal, _DROP_REGISTERED, _resolve_lane,
             _admin_connection, child_database_absent, _database_ownership,
             child_database_exists, ensure_disposed, restore_registry,
-            retire_expected_failure,
+            retire_expected_failure, ensure_disposed_keeping_obligation,
             dispose_child_databases, DISPOSAL_FAILURES)
         # Registration is not removal. The earlier form asserted only
         # that a handler had been registered; measured on the server, a
@@ -678,6 +678,10 @@ class SupportedRunnerSubprocess(SimpleTestCase):
         from .runner_lifecycle_support import create_probe_database
         before = set(_DROP_REGISTERED)
         create_probe_database(probe)
+        # An obligation from the moment it exists. Registering only on
+        # the way out meant a cleanup that failed or raised left the
+        # probe unregistered, so module teardown never retried it.
+        _DROP_REGISTERED.add(probe)
         try:
             self.assertFalse(child_database_absent(probe))
             # Dispose THIS probe explicitly. The registry-draining form
@@ -687,7 +691,7 @@ class SupportedRunnerSubprocess(SimpleTestCase):
             self.assertEqual(dispose_child_databases([probe]),
                              [(probe, True)])
             self.assertEqual(
-                set(_DROP_REGISTERED), before,
+                set(_DROP_REGISTERED) - {probe}, before,
                 "the control mutated the real disposal registry")
         finally:
             # The obligation must survive an EARLY failure. If an
@@ -697,10 +701,11 @@ class SupportedRunnerSubprocess(SimpleTestCase):
             # the previous blanket filter stripped every entry for
             # this name, so a real cleanup failure was erased and the
             # row could pass while leaving an orphan behind.
-            # ensure_disposed, not `if child_database_exists(...)`:
-            # unknown existence (None) made that condition falsy and
-            # skipped cleanup exactly when an orphan is most likely.
-            ensure_disposed(probe)
+            # Keeps the probe registered unless removal is PROVEN,
+            # so a cleanup that fails or raises is retried and
+            # reported by module teardown instead of silently
+            # orphaning the database.
+            ensure_disposed_keeping_obligation(probe)
         # Confirmed absence only: child_database_absent RAISES when the
         # server cannot be asked, so an unreachable server can no
         # longer read as a successfully removed database.
@@ -917,14 +922,75 @@ class SupportedRunnerSubprocess(SimpleTestCase):
         finally:
             support.DISPOSAL_FAILURES[:] = [
                 f for f in support.DISPOSAL_FAILURES if f != burning]
-            # Dispose on unknown too, and keep the registration if the
-            # database may still be there: discarding an obligation
-            # after a failed or unobservable disposal is the leak this
-            # row exists to prevent.
-            support.ensure_disposed(name)
-            if support.child_database_exists(name) is not False:
-                support._DROP_REGISTERED.add(name)
-            support.restore_registry(saved)
+            # NESTED finally. ensure_disposed reaches the server, so
+            # it can RAISE -- and when it did, restore_registry below
+            # was never reached and the saved obligations were lost.
+            # The restore must be unconditional.
+            try:
+                support.ensure_disposed_keeping_obligation(name)
+            finally:
+                support.restore_registry(saved)
+
+    def test_w00n_a_raising_disposal_keeps_every_obligation(self):
+        """The cleanup path's OWN exceptions.
+
+        ensure_disposed reaches the server, so it can raise. Two
+        consequences, both silent: the raise propagates out of a
+        finally and skips the restore below it, losing previously saved
+        obligations; and the database it failed to drop is left
+        unregistered, so teardown never retries. Driven against the
+        real helpers, with disposal made to raise.
+        """
+        from unittest import mock
+        from . import runner_lifecycle_support as support
+        saved = {"test_hh715_pre_existing_obligation"}
+        name = "test_hh715_raiser"
+        original = set(support._DROP_REGISTERED)
+        try:
+            support._DROP_REGISTERED.clear()
+            support._DROP_REGISTERED.update(saved)
+            # (a) a raising disposal must not escape, and must keep the
+            # name registered for teardown to retry.
+            with mock.patch.object(
+                    support, "ensure_disposed",
+                    side_effect=OSError("server went away")):
+                kept = support.ensure_disposed_keeping_obligation(name)
+            self.assertFalse(kept, "a raising disposal reported success")
+            self.assertIn(
+                name, support._DROP_REGISTERED,
+                "a database whose disposal raised was left unregistered, "
+                "so teardown would never retry it")
+            self.assertTrue(
+                any(n == name and "raised" in why
+                    for n, why in support.DISPOSAL_FAILURES),
+                "the raising disposal was not recorded")
+            # (b) the previously saved obligations survive it.
+            self.assertTrue(
+                saved <= set(support._DROP_REGISTERED),
+                "saved obligations were lost when disposal raised")
+            # (c) a DECLINED disposal keeps the obligation too.
+            support.DISPOSAL_FAILURES[:] = [
+                f for f in support.DISPOSAL_FAILURES if f[0] != name]
+            support._DROP_REGISTERED.discard(name)
+            with mock.patch.object(support, "ensure_disposed",
+                                   return_value=[(name, False)]):
+                self.assertFalse(
+                    support.ensure_disposed_keeping_obligation(name))
+            self.assertIn(name, support._DROP_REGISTERED)
+            # (d) only a CONFIRMED removal clears it.
+            support._DROP_REGISTERED.discard(name)
+            with mock.patch.object(support, "ensure_disposed",
+                                   return_value=[(name, True)]):
+                with mock.patch.object(support, "child_database_exists",
+                                       return_value=False):
+                    self.assertTrue(
+                        support.ensure_disposed_keeping_obligation(name))
+            self.assertNotIn(name, support._DROP_REGISTERED)
+        finally:
+            support.DISPOSAL_FAILURES[:] = [
+                f for f in support.DISPOSAL_FAILURES if f[0] != name]
+            support._DROP_REGISTERED.clear()
+            support._DROP_REGISTERED.update(original)
 
     def test_w00i_an_unobservable_outer_database_refuses_to_spawn(self):
         """FAIL CLOSED. Returning None let the caller's `if outer and ...`
