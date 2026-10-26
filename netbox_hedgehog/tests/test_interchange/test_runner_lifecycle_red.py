@@ -18,7 +18,8 @@ from django.test import SimpleTestCase
 
 from netbox_hedgehog.tests import runner as runner_module
 from .runner_lifecycle_support import (
-    CASE_ALL_DATABASES, CASE_DB, CASE_SIMPLE, CASE_SIMPLE_WITH_DB,
+    CASE_ALL_DATABASES, CASE_DB, CASE_MULTI_ALIAS, CASE_SECONDARY_ONLY,
+    CASE_SIMPLE, CASE_SIMPLE_WITH_DB,
     FakeConnection, FakeConnections, LifecycleRecord, NotObserved,
     observe_setup, require, run_supported_runner,
 )
@@ -1049,6 +1050,61 @@ class SupportedRunnerSubprocess(SimpleTestCase):
                     "test_hh715_anything", "anylane")
             self.assertIsNone(support._outer_server_database())
 
+    def test_w10_live_multi_alias_is_unmeasured_and_must_not_be_claimed(self):
+        """BOUNDED RED, per the lead's alternative to live measurement.
+
+        The gate allows measured multi-alias lifecycle evidence OR an
+        explicitly bounded RED row that stops an unmeasured assertion
+        being claimed. This is the latter, and it is not a placeholder:
+        it performs the real multi-alias run every time, goes GREEN the
+        moment that run succeeds, and otherwise fails while naming the
+        OBSERVED cause.
+
+        Observed cause (not inferred -- captured from the child's own
+        stderr): NetBox migration extras/0100_customfield_ui_attrs runs
+        `CustomField.objects.filter(ui_visibility=...)` with no
+        `.using(schema_editor.connection.alias)`, so migrating a SECOND
+        alias executes that query against `default`, which is already
+        past 0100 and no longer has the column. Any second migrated
+        NetBox database therefore fails on this version, upstream of
+        this plugin.
+        """
+        result = run_supported_runner([CASE_MULTI_ALIAS], extra_alias=True)
+        if result["returncode"] == 0:
+            # MEASURED. Hold it to the full standard.
+            receipts = result["body_names"]
+            self.assertEqual(len(receipts), 1, receipts)
+            reported = receipts[0]
+            self.assertTrue(reported.startswith("multi_alias:"), reported)
+            seen = dict(pair.split("=", 1) for pair in
+                        reported.split(":", 1)[1].split(","))
+            self.assertEqual(seen["default"],
+                             result["child_test_database"])
+            self.assertEqual(seen["secondary"],
+                             result["secondary_test_database"])
+            self.assertNotEqual(seen["default"], seen["secondary"])
+            for alias, name in seen.items():
+                self.assertNotIn(
+                    name, (LANE_DB, TEST_DB),
+                    f"alias {alias} ran against an ordinary database")
+            return
+        combined = (result["stderr"] or "") + (result["stdout"] or "")
+        known = ("0100_customfield_ui_attrs" in combined
+                 and "ui_visibility does not exist" in combined)
+        self.assertTrue(
+            known,
+            "live multi-alias is unmeasured for an UNEXPECTED reason, "
+            "which must be investigated rather than treated as the "
+            f"known upstream blocker: {combined[-600:]}")
+        self.fail(
+            "BOUNDED RED: live multi-alias lifecycle evidence is NOT "
+            "measured. Blocked upstream by NetBox migration "
+            "extras/0100_customfield_ui_attrs, which omits "
+            ".using(schema_editor.connection.alias), so a second "
+            "migrated alias cannot be created. This row exists so the "
+            "multi-alias gate cannot be reported as covered while that "
+            "evidence is absent; it turns GREEN when the run succeeds.")
+
     def test_w02_database_backed_selection_still_works(self):
         """CONTROL. Must keep passing: the DIET-643 protection path."""
         result = run_supported_runner([CASE_DB])
@@ -1374,7 +1430,21 @@ class ProtectedAdapterSelection(SimpleTestCase):
         a raw runner invocation without the wrapper's preparation must
         not silently report success for the protected selection."""
         result = run_supported_runner([], label=self.ADAPTER)
-        prepared = "HNP_REAPER_CONTAINER_EVIDENCE" in os.environ
+        # ASK THE ADAPTER, do not guess the marker. This predicate was
+        # `"HNP_REAPER_CONTAINER_EVIDENCE" in os.environ` -- a name that
+        # appears NOWHERE in the adapter. The supported wrapper never
+        # sets it; it exports HNP_TEST_LOCAL_CHECKOUT_ROOT and ships the
+        # evidence as a file. So under the real wrapper the prerequisite
+        # IS satisfied, the selection succeeds, and the row asserted the
+        # opposite. It passed in the isolated harness and failed on the
+        # supported path -- measured, not reasoned.
+        from .reaper_adapter_red_support import (
+            repository_checkout_root, ShippedConfigurationUnavailable)
+        try:
+            repository_checkout_root()
+            prepared = True
+        except (ShippedConfigurationUnavailable, OSError):
+            prepared = False
         if prepared:
             self.assertEqual(result["returncode"], 0,
                              result["stderr"][-400:])

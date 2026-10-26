@@ -369,6 +369,33 @@ class DeclaresAllDatabases(SimpleTestCase):
 '''
 
 
+CASE_MULTI_ALIAS = '''
+class UsesBothAliases(TestCase):
+    databases = {"default", "secondary"}
+
+    def test_body_uses_both_aliases(self):
+        from django.db import connections
+        seen = {}
+        for alias in sorted(self.databases):
+            with connections[alias].cursor() as cursor:
+                cursor.execute("SELECT current_database()")
+                seen[alias] = cursor.fetchone()[0]
+        _receipt("multi_alias:" + ",".join(
+            f"{a}={seen[a]}" for a in sorted(seen)))
+'''
+
+CASE_SECONDARY_ONLY = '''
+class UsesOnlyTheSecondary(TestCase):
+    databases = {"secondary"}
+
+    def test_body_uses_only_the_secondary(self):
+        from django.db import connections
+        with connections["secondary"].cursor() as cursor:
+            cursor.execute("SELECT current_database()")
+            _receipt("secondary_only:" + cursor.fetchone()[0])
+'''
+
+
 # Accepted identity sources, strongest first. The container is the
 # unit of isolation, so its own id is a legitimate identity -- and it
 # is the ONLY one CI has. Measured inside a CI-shaped container:
@@ -799,7 +826,8 @@ def _same_lane_exclusivity(lane):
         yield _child_db_name(lane)
 
 
-def run_supported_runner(cases, *, label=None, extra_args=(), timeout=600):
+def run_supported_runner(cases, *, label=None, extra_args=(), timeout=600,
+                         extra_alias=False):
     """Spawn the real runner on a disposable module and report facts."""
     workspace = tempfile.mkdtemp(prefix="hh715-")
     package = Path(workspace) / "hh715_disposable"
@@ -850,11 +878,24 @@ def run_supported_runner(cases, *, label=None, extra_args=(), timeout=600):
     child_test_db = _child_db_name(lane)
     # PRE-SPAWN, before a settings file or a database exists.
     outer_db = _assert_child_target_is_safe(child_test_db, lane)
-    (Path(workspace) / (settings_name + ".py")).write_text(
+    # A REAL second alias, OPT-IN. Declaring it for every child made
+    # databases="__all__" reach it, so w04 failed on the second
+    # alias's blocker rather than on anything it asserts. Only the
+    # bounded multi-alias row asks for it.
+    secondary_test_db = (child_test_db + "_b") if extra_alias else None
+    settings_body = (
         "from netbox.settings import *  # noqa: F401,F403\n"
         "DATABASES['default'].setdefault('TEST', {})\n"
-        f"DATABASES['default']['TEST']['NAME'] = {child_test_db!r}\n",
-        encoding="utf-8")
+        f"DATABASES['default']['TEST']['NAME'] = {child_test_db!r}\n")
+    if extra_alias:
+        settings_body += (
+            "import copy\n"
+            "DATABASES['secondary'] = copy.deepcopy(DATABASES['default'])\n"
+            "DATABASES['secondary'].setdefault('TEST', {})\n"
+            f"DATABASES['secondary']['TEST']['NAME'] = "
+            f"{secondary_test_db!r}\n")
+    (Path(workspace) / (settings_name + ".py")).write_text(
+        settings_body, encoding="utf-8")
 
     environment = dict(os.environ)
     environment["PYTHONPATH"] = workspace + os.pathsep + environment.get(
@@ -888,6 +929,8 @@ def run_supported_runner(cases, *, label=None, extra_args=(), timeout=600):
         # race, against a database it never owned.
         disposal_registered = _arrange_child_disposal(
             child_test_db, lane_retained)
+        if secondary_test_db:
+            _arrange_child_disposal(secondary_test_db, lane_retained)
         completed = subprocess.run(
             argv, capture_output=True, text=True, timeout=timeout,
             env=environment, cwd="/opt/netbox/netbox")
@@ -906,6 +949,7 @@ def run_supported_runner(cases, *, label=None, extra_args=(), timeout=600):
         # is deliberate and lane-scoped rather than accidental.
         "child_database_retained": lane_retained,
         "child_lane_source": lane_source,
+        "secondary_test_database": secondary_test_db,
         "child_disposal_registered": (
             disposal_registered or child_test_db in _DROP_REGISTERED),
         "outer_server_database": _outer_server_database(),
