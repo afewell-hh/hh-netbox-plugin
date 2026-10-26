@@ -420,6 +420,49 @@ def _drop_child_database(name):
         return False
 
 
+@contextlib.contextmanager
+def _database_ownership(name):
+    """Hold an exclusive claim on ONE database name while dropping it.
+
+    Dropping without a claim is a cross-holder hazard: another process
+    in the same lane may be mid-run against that database, and
+    pg_terminate_backend would kill its sessions before the DROP. The
+    claim is keyed on the database NAME, so two holders of the same
+    name serialise and a non-owner declines instead of acting.
+    """
+    key = int(hashlib.sha256(
+        f"hh715-db:{name}".encode("utf-8")).hexdigest()[:15], 16)
+    with _admin_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute("SELECT pg_try_advisory_lock(%s)", [key])
+            owned = cur.fetchone()[0]
+        try:
+            yield owned
+        finally:
+            if owned:
+                with conn.cursor() as cur:
+                    cur.execute("SELECT pg_advisory_unlock(%s)", [key])
+
+
+def dispose_child_databases(names):
+    """Drop exactly the named databases, each under its own claim.
+
+    Takes an EXPLICIT list and does not touch the shared registry, so a
+    caller disposing its own probe cannot drain pending real entries
+    and leave them to leak.
+    """
+    results = []
+    for name in sorted(set(names)):
+        with _database_ownership(name) as owned:
+            if not owned:
+                # Someone else holds it; acting would hit their run.
+                DISPOSAL_FAILURES.append((name, "not owned by this process"))
+                results.append((name, False))
+                continue
+            results.append((name, _drop_child_database(name)))
+    return results
+
+
 def dispose_registered_children():
     """Drop every registered child database, deterministically.
 
@@ -431,15 +474,22 @@ def dispose_registered_children():
     interpreter is still fully alive, with atexit kept only as a
     backstop.
     """
-    results = []
-    for name in sorted(_DROP_REGISTERED):
-        results.append((name, _drop_child_database(name)))
-    _DROP_REGISTERED.clear()
+    names = sorted(_DROP_REGISTERED)
+    results = dispose_child_databases(names)
+    for name, ok in results:
+        if ok:
+            _DROP_REGISTERED.discard(name)
     return results
 
 
 def child_database_exists(name):
-    """Ask the server, rather than trusting a declaration."""
+    """Ask the server, rather than trusting a declaration.
+
+    Returns True/False, or None when the server could not be asked.
+    None is NOT absence: a caller writing assertFalse(...) would read
+    an unreachable server as a successfully removed database.
+    `child_database_absent` exists so that mistake cannot be made.
+    """
     try:
         with _admin_connection() as conn:
             with conn.cursor() as cur:
@@ -448,6 +498,16 @@ def child_database_exists(name):
                 return cur.fetchone() is not None
     except Exception:
         return None
+
+
+def child_database_absent(name):
+    """True only on a CONFIRMED absence. Raises if unobservable."""
+    present = child_database_exists(name)
+    if present is None:
+        raise OuterDatabaseUnobservable(
+            f"cannot confirm whether {name!r} still exists; an "
+            f"unobservable server is not evidence of removal")
+    return not present
 
 
 def _arrange_child_disposal(name, retained):

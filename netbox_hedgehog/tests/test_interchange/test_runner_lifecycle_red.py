@@ -10,6 +10,7 @@ Nothing in `runner.py` or the guard is modified by this suite.
 
 from __future__ import annotations
 
+import hashlib
 import os
 from pathlib import Path
 
@@ -50,9 +51,20 @@ def tearDownModule():
     """Deterministic disposal of derived-identity child databases.
 
     Verified necessary: atexit alone left the database on the server.
+
+    A failure here RAISES. Recording a failure and returning quietly
+    reproduces the original defect in a new place: the run goes green,
+    the database stays on the shared server, and nobody learns until
+    someone lists pg_database by hand. An orphan is a real leak on
+    shared infrastructure and must be loud.
     """
     from . import runner_lifecycle_support as support
-    support.dispose_registered_children()
+    results = support.dispose_registered_children()
+    failed = [name for name, ok in results if not ok]
+    if failed or support.DISPOSAL_FAILURES:
+        raise AssertionError(
+            f"child database disposal failed: {failed}; "
+            f"details={support.DISPOSAL_FAILURES}")
 
 
 class DatabaseFreeSelection(SimpleTestCase):
@@ -636,27 +648,46 @@ class SupportedRunnerSubprocess(SimpleTestCase):
         declaration. Disposal must be really arranged.
         """
         from .runner_lifecycle_support import (
-            _arrange_child_disposal, _DROP_REGISTERED,
-            _admin_connection, child_database_exists,
-            dispose_registered_children, DISPOSAL_FAILURES)
+            _arrange_child_disposal, _DROP_REGISTERED, _resolve_lane,
+            _admin_connection, child_database_absent,
+            dispose_child_databases, DISPOSAL_FAILURES)
         # Registration is not removal. The earlier form asserted only
         # that a handler had been registered; measured on the server, a
         # registered handler still left the database behind. This
         # creates a real database and requires the server to confirm it
         # is gone.
-        probe = "test_hh715_disposal_selftest"
+        # Lane- AND pid-scoped. A global probe name is shared state:
+        # two lanes running this row at once would drop each other's
+        # probe, which is the collision class this file exists to
+        # prevent, reintroduced by its own control.
+        lane, _source, _retained = _resolve_lane()
+        probe = (f"test_hh715_probe_"
+                 f"{hashlib.sha256(lane.encode()).hexdigest()[:8]}_"
+                 f"{os.getpid()}")
         with _admin_connection() as conn:
             with conn.cursor() as cur:
                 cur.execute(f'DROP DATABASE IF EXISTS "{probe}"')
                 cur.execute(f'CREATE DATABASE "{probe}"')
-        self.assertTrue(child_database_exists(probe))
-        _DROP_REGISTERED.add(probe)
-        dispose_registered_children()
-        self.assertFalse(
-            child_database_exists(probe),
+        self.assertFalse(child_database_absent(probe))
+        # Dispose THIS probe explicitly. Calling the registry-draining
+        # form would clear pending real entries too, so genuine child
+        # databases registered by actual spawns would never be
+        # disposed at module teardown -- the control causing the leak.
+        before = set(_DROP_REGISTERED)
+        dispose_child_databases([probe])
+        self.assertEqual(
+            set(_DROP_REGISTERED), before,
+            "the control mutated the real disposal registry")
+        # Confirmed absence only: child_database_absent RAISES when the
+        # server cannot be asked, so an unreachable server can no
+        # longer read as a successfully removed database.
+        self.assertTrue(
+            child_database_absent(probe),
             f"{probe} survived disposal; a declared non-retention that "
             f"does not remove the database is a false declaration")
-        self.assertEqual(DISPOSAL_FAILURES, [], "disposal reported errors")
+        self.assertEqual(
+            [f for f in DISPOSAL_FAILURES if probe in f[0]], [],
+            "disposal reported errors for the probe")
         # NOT atexit.unregister(_drop_child_database): that removes
         # EVERY registration of the function, including the real lane
         # disposal. Locally the lane is explicit and retained, so none
@@ -677,6 +708,46 @@ class SupportedRunnerSubprocess(SimpleTestCase):
         # an explicit lane keeps its database, so nothing is arranged
         self.assertFalse(
             _arrange_child_disposal("test_hh715_explicit", retained=True))
+
+    def test_w00j_disposal_declines_a_database_it_does_not_own(self):
+        """Cleanup without ownership is a cross-holder hazard.
+
+        _drop_child_database runs pg_terminate_backend before DROP, so
+        disposing a database another process is mid-run against would
+        kill its sessions. A non-owner must DECLINE and record it,
+        not act.
+        """
+        from .runner_lifecycle_support import (
+            _admin_connection, _database_ownership, dispose_child_databases,
+            child_database_exists, DISPOSAL_FAILURES, _resolve_lane)
+        lane, _s, _r = _resolve_lane()
+        name = (f"test_hh715_owned_"
+                f"{hashlib.sha256(lane.encode()).hexdigest()[:8]}_"
+                f"{os.getpid()}")
+        with _admin_connection() as conn:
+            with conn.cursor() as cur:
+                cur.execute(f'DROP DATABASE IF EXISTS "{name}"')
+                cur.execute(f'CREATE DATABASE "{name}"')
+        try:
+            # A different holder owns the claim for the whole attempt.
+            with _database_ownership(name) as owned:
+                self.assertTrue(owned, "could not take the claim")
+                results = dispose_child_databases([name])
+            self.assertEqual(results, [(name, False)],
+                             "disposal acted without holding the claim")
+            self.assertTrue(
+                child_database_exists(name),
+                "a database owned by another holder was dropped")
+            self.assertTrue(
+                any(name == n and "not owned" in why
+                    for n, why in DISPOSAL_FAILURES),
+                "the declined disposal was not recorded")
+        finally:
+            DISPOSAL_FAILURES[:] = [f for f in DISPOSAL_FAILURES
+                                    if f[0] != name]
+            with _admin_connection() as conn:
+                with conn.cursor() as cur:
+                    cur.execute(f'DROP DATABASE IF EXISTS "{name}"')
 
     def test_w00i_an_unobservable_outer_database_refuses_to_spawn(self):
         """FAIL CLOSED. Returning None let the caller's `if outer and ...`
