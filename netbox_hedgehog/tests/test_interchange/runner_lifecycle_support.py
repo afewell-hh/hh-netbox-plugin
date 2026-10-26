@@ -796,6 +796,39 @@ def _database_ownership(name):
                     cur.execute("SELECT pg_advisory_unlock(%s)", [key])
 
 
+def reaper_evidence_path():
+    """Resolve the evidence file exactly as the CONSUMER does.
+
+    Mirrors netbox_hedgehog/reaper_lane.py::_container_evidence (~line
+    65): HNP_REAPER_CONTAINER_EVIDENCE when set (CI, which exports it
+    in interchange-security-tests.yml), otherwise
+    $HNP_TEST_LOCAL_CHECKOUT_ROOT/reaper-container-evidence.json (the
+    supported local wrapper). Returns None when neither input is
+    present.
+    """
+    explicit = os.environ.get("HNP_REAPER_CONTAINER_EVIDENCE")
+    if explicit:
+        return Path(explicit)
+    root = os.environ.get("HNP_TEST_LOCAL_CHECKOUT_ROOT")
+    if root:
+        return Path(root) / "reaper-container-evidence.json"
+    return None
+
+
+def reaper_evidence_is_ready():
+    """True only when the evidence the adapter consumes is PRESENT.
+
+    A resolvable checkout root is not evidence readiness: the root
+    locates the repository, while the adapter's prerequisite is this
+    file. Conflating them made p03 branch wrong under the wrapper.
+    """
+    path = reaper_evidence_path()
+    try:
+        return bool(path) and path.is_file()
+    except OSError:
+        return False
+
+
 def _child_db_name(lane):
     """The single authority for a lane's child database name.
 
@@ -876,13 +909,21 @@ def run_supported_runner(cases, *, label=None, extra_args=(), timeout=600,
     # Single authority, so the claim taken to RUN is the same claim
     # disposal takes to DROP.
     child_test_db = _child_db_name(lane)
-    # PRE-SPAWN, before a settings file or a database exists.
+    # Named here, BEFORE the preflight below reads it. It used to be
+    # assigned further down with the settings body, so the preflight
+    # referenced it unbound.
+    secondary_test_db = (child_test_db + "_b") if extra_alias else None
+    # PRE-SPAWN, before a settings file or a database exists. The
+    # secondary was previously created by Django with NO preflight and
+    # NO claim: it was never checked against the outer target and
+    # nothing stopped a concurrent holder using the same name.
     outer_db = _assert_child_target_is_safe(child_test_db, lane)
+    if secondary_test_db:
+        _assert_child_target_is_safe(secondary_test_db, lane)
     # A REAL second alias, OPT-IN. Declaring it for every child made
     # databases="__all__" reach it, so w04 failed on the second
     # alias's blocker rather than on anything it asserts. Only the
     # bounded multi-alias row asks for it.
-    secondary_test_db = (child_test_db + "_b") if extra_alias else None
     settings_body = (
         "from netbox.settings import *  # noqa: F401,F403\n"
         "DATABASES['default'].setdefault('TEST', {})\n"
@@ -921,7 +962,17 @@ def run_supported_runner(cases, *, label=None, extra_args=(), timeout=600,
     argv = [sys.executable, "manage.py", "test",
             label or "hh715_disposable.tests",
             f"--testrunner={RUNNER_LABEL}", "-v", "1", *merged]
-    with _same_lane_exclusivity(lane):
+    with contextlib.ExitStack() as claims:
+        claims.enter_context(_same_lane_exclusivity(lane))
+        if secondary_test_db:
+            # An EXECUTION claim on the secondary for the whole run,
+            # on the same terms as the default target.
+            owned_secondary = claims.enter_context(
+                _database_ownership(secondary_test_db))
+            if not owned_secondary:
+                raise RuntimeError(
+                    f"secondary target {secondary_test_db!r} is owned "
+                    f"by another holder; refusing to run against it")
         # Registered ONLY after the claim is held. Registering before
         # acquiring meant a REFUSED contender had already put the
         # holder's database on its own disposal list, and would drop it

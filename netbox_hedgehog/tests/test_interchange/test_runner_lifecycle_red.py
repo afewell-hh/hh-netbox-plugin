@@ -19,6 +19,7 @@ from django.test import SimpleTestCase
 from netbox_hedgehog.tests import runner as runner_module
 from .runner_lifecycle_support import (
     CASE_ALL_DATABASES, CASE_DB, CASE_MULTI_ALIAS, CASE_SECONDARY_ONLY,
+    reaper_evidence_is_ready,
     CASE_SIMPLE, CASE_SIMPLE_WITH_DB,
     FakeConnection, FakeConnections, LifecycleRecord, NotObserved,
     observe_setup, require, run_supported_runner,
@@ -1430,21 +1431,21 @@ class ProtectedAdapterSelection(SimpleTestCase):
         a raw runner invocation without the wrapper's preparation must
         not silently report success for the protected selection."""
         result = run_supported_runner([], label=self.ADAPTER)
-        # ASK THE ADAPTER, do not guess the marker. This predicate was
-        # `"HNP_REAPER_CONTAINER_EVIDENCE" in os.environ` -- a name that
-        # appears NOWHERE in the adapter. The supported wrapper never
-        # sets it; it exports HNP_TEST_LOCAL_CHECKOUT_ROOT and ships the
-        # evidence as a file. So under the real wrapper the prerequisite
-        # IS satisfied, the selection succeeds, and the row asserted the
-        # opposite. It passed in the isolated harness and failed on the
-        # supported path -- measured, not reasoned.
-        from .reaper_adapter_red_support import (
-            repository_checkout_root, ShippedConfigurationUnavailable)
-        try:
-            repository_checkout_root()
-            prepared = True
-        except (ShippedConfigurationUnavailable, OSError):
-            prepared = False
+        # EVIDENCE READINESS, resolved the way the consumer resolves it.
+        #
+        # Two wrong predicates preceded this one. First
+        # `"HNP_REAPER_CONTAINER_EVIDENCE" in os.environ`, which I
+        # described as a name appearing nowhere in the adapter -- that
+        # was my own narrow grep: reaper_lane.py reads it at ~line 65
+        # and CI exports it in interchange-security-tests.yml. Then
+        # repository_checkout_root(), which only LOCATES the repository
+        # and is satisfied in contexts holding no evidence at all, so
+        # it does not establish readiness either.
+        #
+        # reaper_evidence_is_ready() mirrors _container_evidence: the
+        # explicit CI variable when set, otherwise the file inside
+        # HNP_TEST_LOCAL_CHECKOUT_ROOT that the local wrapper ships.
+        prepared = reaper_evidence_is_ready()
         if prepared:
             self.assertEqual(result["returncode"], 0,
                              result["stderr"][-400:])
