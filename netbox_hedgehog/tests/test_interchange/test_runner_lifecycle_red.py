@@ -650,6 +650,7 @@ class SupportedRunnerSubprocess(SimpleTestCase):
         from .runner_lifecycle_support import (
             _arrange_child_disposal, _DROP_REGISTERED, _resolve_lane,
             _admin_connection, child_database_absent, _database_ownership,
+            child_database_exists,
             dispose_child_databases, DISPOSAL_FAILURES)
         # Registration is not removal. The earlier form asserted only
         # that a handler had been registered; measured on the server, a
@@ -688,8 +689,15 @@ class SupportedRunnerSubprocess(SimpleTestCase):
                 set(_DROP_REGISTERED), before,
                 "the control mutated the real disposal registry")
         finally:
-            DISPOSAL_FAILURES[:] = [f for f in DISPOSAL_FAILURES
-                                    if f[0] != probe]
+            # The obligation must survive an EARLY failure. If an
+            # assertion above fails before disposal runs, the probe
+            # database still exists and nothing has recorded it.
+            # Dispose here, and leave any genuine failure RECORDED:
+            # the previous blanket filter stripped every entry for
+            # this name, so a real cleanup failure was erased and the
+            # row could pass while leaving an orphan behind.
+            if child_database_exists(probe):
+                dispose_child_databases([probe])
         # Confirmed absence only: child_database_absent RAISES when the
         # server cannot be asked, so an unreachable server can no
         # longer read as a successfully removed database.
@@ -759,8 +767,21 @@ class SupportedRunnerSubprocess(SimpleTestCase):
                         for n, why in DISPOSAL_FAILURES),
                     "the declined disposal was not recorded")
         finally:
-            DISPOSAL_FAILURES[:] = [f for f in DISPOSAL_FAILURES
-                                    if f[0] != name]
+            # Remove ONLY the entry this row deliberately caused. The
+            # blanket filter also erased unexpected failures, so a
+            # genuine drop failure disappeared and the row passed with
+            # an orphan on the server.
+            expected = (name, "not owned by this process")
+            if expected in DISPOSAL_FAILURES:
+                DISPOSAL_FAILURES.remove(expected)
+            unexpected = [f for f in DISPOSAL_FAILURES if f[0] == name]
+            # Whatever happened, the probe must not survive.
+            if child_database_exists(name):
+                dispose_child_databases([name])
+            self.assertEqual(
+                unexpected, [],
+                f"an unexpected cleanup failure for {name} was about "
+                f"to be erased: {unexpected}")
 
     def test_w00k_running_and_disposing_take_the_same_claim(self):
         """Execution and disposal must INTERLOCK.
@@ -832,11 +853,64 @@ class SupportedRunnerSubprocess(SimpleTestCase):
                 support._atexit_backstop()
                 disp.assert_not_called()
         finally:
+            # Restore the saved entries WITHOUT discarding anything
+            # registered during the row. The previous form replaced the
+            # registry with `saved` alone, so an early failure between
+            # registration and disposal silently dropped the pending
+            # obligation and orphaned its database.
+            still_pending = set(support._DROP_REGISTERED)
             support._DROP_REGISTERED.clear()
-            support._DROP_REGISTERED.update(saved)
+            support._DROP_REGISTERED.update(saved | still_pending)
         self.assertEqual(
             support._DROP_REGISTERED, saved,
             "the control altered the real disposal registry")
+
+    def test_w00m_an_early_failure_keeps_the_cleanup_obligation(self):
+        """Failure paths, not just the happy path.
+
+        Two ways a row can leave an orphan while reporting success:
+        it loses the pending registration when it fails partway, or it
+        erases a genuine cleanup failure along with an expected one.
+        Both are simulated here against the real helpers.
+        """
+        from . import runner_lifecycle_support as support
+        name = (f"test_hh715_oblig_"
+                f"{hashlib.sha256(str(os.getpid()).encode()).hexdigest()[:8]}")
+        saved = set(support._DROP_REGISTERED)
+        try:
+            support._DROP_REGISTERED.clear()
+            support.create_probe_database(name)
+            support._arrange_child_disposal(name, retained=False)
+            # An early failure strikes HERE, before disposal runs.
+            still_pending = set(support._DROP_REGISTERED)
+            self.assertIn(
+                name, still_pending,
+                "the obligation was lost before disposal could run")
+            # The restore must union, not replace: replacing with the
+            # saved set alone discards this pending name.
+            merged = saved | still_pending
+            self.assertIn(name, merged,
+                          "restoring the registry dropped a pending name")
+            # And a genuine failure must not be strippable as though
+            # it were the expected one.
+            support.DISPOSAL_FAILURES.append((name, "disk on fire"))
+            expected = (name, "not owned by this process")
+            self.assertNotIn(
+                expected, support.DISPOSAL_FAILURES,
+                "the expected entry is not what was recorded")
+            leftover = [f for f in support.DISPOSAL_FAILURES
+                        if f[0] == name and f != expected]
+            self.assertEqual(
+                leftover, [(name, "disk on fire")],
+                "a genuine cleanup failure would have been erased")
+        finally:
+            support.DISPOSAL_FAILURES[:] = [
+                f for f in support.DISPOSAL_FAILURES
+                if f != (name, "disk on fire")]
+            if support.child_database_exists(name):
+                support.dispose_child_databases([name])
+            support._DROP_REGISTERED.clear()
+            support._DROP_REGISTERED.update(saved)
 
     def test_w00i_an_unobservable_outer_database_refuses_to_spawn(self):
         """FAIL CLOSED. Returning None let the caller's `if outer and ...`
