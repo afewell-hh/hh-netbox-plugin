@@ -473,6 +473,44 @@ def owned_probe_database(name):
             _drop_child_database(name)
 
 
+def ensure_disposed(name):
+    """Dispose unless the database is CONFIRMED absent.
+
+    `if child_database_exists(name):` skipped disposal when existence
+    was UNKNOWN (None, an unobservable server) -- exactly when an
+    orphan is most likely and least visible. Unknown must mean try,
+    not skip.
+    """
+    if child_database_exists(name) is False:
+        return []
+    return dispose_child_databases([name])
+
+
+def restore_registry(saved):
+    """Put `saved` back WITHOUT discarding anything still pending.
+
+    Replacing the registry with `saved` alone drops obligations
+    registered during the row, so a failure between registration and
+    disposal orphans the database silently.
+    """
+    still_pending = set(_DROP_REGISTERED)
+    _DROP_REGISTERED.clear()
+    _DROP_REGISTERED.update(set(saved) | still_pending)
+    return set(_DROP_REGISTERED)
+
+
+def retire_expected_failure(name, expected):
+    """Remove ONLY the one failure a row deliberately caused.
+
+    Returns whatever else was recorded for that name. A blanket filter
+    erased genuine failures along with the expected one, so a real
+    cleanup failure disappeared and the row passed with an orphan.
+    """
+    if expected in DISPOSAL_FAILURES:
+        DISPOSAL_FAILURES.remove(expected)
+    return [f for f in DISPOSAL_FAILURES if f[0] == name]
+
+
 def dispose_child_databases(names):
     """Drop exactly the named databases, each under its own claim.
 
