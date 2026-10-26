@@ -666,22 +666,30 @@ class SupportedRunnerSubprocess(SimpleTestCase):
                  f"{os.getpid()}")
         # Created under the claim, so the probe cannot be made or
         # destroyed while another holder owns that name.
-        with _database_ownership(probe) as owned:
-            self.assertTrue(owned, "could not claim the probe name")
-            with _admin_connection() as conn:
-                with conn.cursor() as cur:
-                    cur.execute(f'DROP DATABASE IF EXISTS "{probe}"')
-                    cur.execute(f'CREATE DATABASE "{probe}"')
-        self.assertFalse(child_database_absent(probe))
-        # Dispose THIS probe explicitly. Calling the registry-draining
-        # form would clear pending real entries too, so genuine child
-        # databases registered by actual spawns would never be
-        # disposed at module teardown -- the control causing the leak.
+        # The probe takes the claim BEFORE touching the name and
+        # refuses a pre-existing target rather than dropping it, so it
+        # cannot delete someone else's database sharing that name.
+        # create_probe_database, NOT owned_probe_database: the claim
+        # must be RELEASED before the disposal below, because
+        # _database_ownership opens a fresh session per call. Holding
+        # it here made the row's own disposal decline as a non-owner.
+        from .runner_lifecycle_support import create_probe_database
         before = set(_DROP_REGISTERED)
-        dispose_child_databases([probe])
-        self.assertEqual(
-            set(_DROP_REGISTERED), before,
-            "the control mutated the real disposal registry")
+        create_probe_database(probe)
+        try:
+            self.assertFalse(child_database_absent(probe))
+            # Dispose THIS probe explicitly. The registry-draining form
+            # would clear pending real entries too, so genuine child
+            # databases from actual spawns would never be disposed at
+            # module teardown -- the control causing the leak.
+            self.assertEqual(dispose_child_databases([probe]),
+                             [(probe, True)])
+            self.assertEqual(
+                set(_DROP_REGISTERED), before,
+                "the control mutated the real disposal registry")
+        finally:
+            DISPOSAL_FAILURES[:] = [f for f in DISPOSAL_FAILURES
+                                    if f[0] != probe]
         # Confirmed absence only: child_database_absent RAISES when the
         # server cannot be asked, so an unreachable server can no
         # longer read as a successfully removed database.
@@ -727,35 +735,32 @@ class SupportedRunnerSubprocess(SimpleTestCase):
         """
         from .runner_lifecycle_support import (
             _admin_connection, _database_ownership, dispose_child_databases,
-            child_database_exists, DISPOSAL_FAILURES, _resolve_lane)
+            child_database_exists, DISPOSAL_FAILURES, _resolve_lane,
+            owned_probe_database)
         lane, _s, _r = _resolve_lane()
         name = (f"test_hh715_owned_"
                 f"{hashlib.sha256(lane.encode()).hexdigest()[:8]}_"
                 f"{os.getpid()}")
-        with _admin_connection() as conn:
-            with conn.cursor() as cur:
-                cur.execute(f'DROP DATABASE IF EXISTS "{name}"')
-                cur.execute(f'CREATE DATABASE "{name}"')
+        # Created under its claim, and never over a pre-existing
+        # database: owned_probe_database refuses rather than clearing
+        # a name that already exists.
         try:
-            # A different holder owns the claim for the whole attempt.
-            with _database_ownership(name) as owned:
-                self.assertTrue(owned, "could not take the claim")
+            with owned_probe_database(name):
+                # The claim is held for the whole attempt, so the
+                # disposal below is the non-owner.
                 results = dispose_child_databases([name])
-            self.assertEqual(results, [(name, False)],
-                             "disposal acted without holding the claim")
-            self.assertTrue(
-                child_database_exists(name),
-                "a database owned by another holder was dropped")
-            self.assertTrue(
-                any(name == n and "not owned" in why
-                    for n, why in DISPOSAL_FAILURES),
-                "the declined disposal was not recorded")
+                self.assertEqual(results, [(name, False)],
+                                 "disposal acted without holding the claim")
+                self.assertTrue(
+                    child_database_exists(name),
+                    "a database owned by another holder was dropped")
+                self.assertTrue(
+                    any(name == n and "not owned" in why
+                        for n, why in DISPOSAL_FAILURES),
+                    "the declined disposal was not recorded")
         finally:
             DISPOSAL_FAILURES[:] = [f for f in DISPOSAL_FAILURES
                                     if f[0] != name]
-            with _admin_connection() as conn:
-                with conn.cursor() as cur:
-                    cur.execute(f'DROP DATABASE IF EXISTS "{name}"')
 
     def test_w00k_running_and_disposing_take_the_same_claim(self):
         """Execution and disposal must INTERLOCK.
@@ -799,6 +804,11 @@ class SupportedRunnerSubprocess(SimpleTestCase):
         saved = set(support._DROP_REGISTERED)
         try:
             support._DROP_REGISTERED.clear()
+            # Created under the claim, which is then RELEASED: the
+            # disposal below must acquire it itself, as a real one
+            # would. Holding it here would make disposal decline as a
+            # non-owner and the row would prove nothing.
+            support.create_probe_database(name)
             support._arrange_child_disposal(name, retained=False)
             self.assertIn(name, support._DROP_REGISTERED)
             # Armed: a pending name goes through the OWNED path.
@@ -806,9 +816,17 @@ class SupportedRunnerSubprocess(SimpleTestCase):
                                    "dispose_child_databases") as disp:
                 support._atexit_backstop()
                 disp.assert_called_once_with([name])
-            # Successful disposal clears the registry, and THAT is what
-            # disarms the backstop.
-            support._DROP_REGISTERED.discard(name)
+            # DISARMED BY REAL DISPOSAL, not by a manual discard.
+            # Clearing the entry by hand asserts the bookkeeping I
+            # wrote rather than the behaviour: it would pass even if
+            # disposal never cleared the registry at all.
+            results = support.dispose_registered_children()
+            self.assertEqual(results, [(name, True)])
+            self.assertTrue(support.child_database_absent(name))
+            self.assertNotIn(
+                name, support._DROP_REGISTERED,
+                "successful disposal did not clear the registry, so "
+                "nothing disarms the backstop")
             with mock.patch.object(support,
                                    "dispose_child_databases") as disp:
                 support._atexit_backstop()

@@ -420,6 +420,59 @@ def _drop_child_database(name):
         return False
 
 
+def create_probe_database(name):
+    """Create a probe database under its claim, then RELEASE the claim.
+
+    Needed where the probe is later disposed through the ordinary
+    owned path: _database_ownership opens a fresh session per call, so
+    a caller still holding the claim would make its own disposal
+    decline as a non-owner.
+    """
+    with _database_ownership(name) as owned:
+        if not owned:
+            raise RuntimeError(
+                f"{name!r} is owned by another holder; refusing to use "
+                f"it as a probe")
+        if child_database_exists(name):
+            raise RuntimeError(
+                f"{name!r} already exists; refusing to delete a "
+                f"pre-existing database to make room for a probe")
+        with _admin_connection() as conn:
+            with conn.cursor() as cur:
+                cur.execute(f'CREATE DATABASE "{name}"')
+    return name
+
+
+@contextlib.contextmanager
+def owned_probe_database(name):
+    """Create a probe database under its claim, and remove it again.
+
+    Two rules a test probe must not break:
+      * take the claim BEFORE touching the name, so nothing is created
+        or dropped while another holder owns it;
+      * never DROP IF EXISTS a pre-existing target -- that silently
+        deletes someone else's database that happens to share the
+        name. A pre-existing target is a REFUSAL, not something to
+        clear out of the way.
+    """
+    with _database_ownership(name) as owned:
+        if not owned:
+            raise RuntimeError(
+                f"{name!r} is owned by another holder; refusing to use "
+                f"it as a probe")
+        if child_database_exists(name):
+            raise RuntimeError(
+                f"{name!r} already exists; refusing to delete a "
+                f"pre-existing database to make room for a probe")
+        with _admin_connection() as conn:
+            with conn.cursor() as cur:
+                cur.execute(f'CREATE DATABASE "{name}"')
+        try:
+            yield name
+        finally:
+            _drop_child_database(name)
+
+
 def dispose_child_databases(names):
     """Drop exactly the named databases, each under its own claim.
 
@@ -718,7 +771,6 @@ def run_supported_runner(cases, *, label=None, extra_args=(), timeout=600):
     child_test_db = _child_db_name(lane)
     # PRE-SPAWN, before a settings file or a database exists.
     outer_db = _assert_child_target_is_safe(child_test_db, lane)
-    disposal_registered = _arrange_child_disposal(child_test_db, lane_retained)
     (Path(workspace) / (settings_name + ".py")).write_text(
         "from netbox.settings import *  # noqa: F401,F403\n"
         "DATABASES['default'].setdefault('TEST', {})\n"
@@ -750,6 +802,13 @@ def run_supported_runner(cases, *, label=None, extra_args=(), timeout=600):
             label or "hh715_disposable.tests",
             f"--testrunner={RUNNER_LABEL}", "-v", "1", *merged]
     with _same_lane_exclusivity(lane):
+        # Registered ONLY after the claim is held. Registering before
+        # acquiring meant a REFUSED contender had already put the
+        # holder's database on its own disposal list, and would drop it
+        # at teardown or exit -- cleanup by a process that lost the
+        # race, against a database it never owned.
+        disposal_registered = _arrange_child_disposal(
+            child_test_db, lane_retained)
         completed = subprocess.run(
             argv, capture_output=True, text=True, timeout=timeout,
             env=environment, cwd="/opt/netbox/netbox")
