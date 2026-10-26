@@ -502,10 +502,28 @@ def ensure_disposed_keeping_obligation(name):
         DISPOSAL_FAILURES.append((name, f"disposal raised: {exc!r}"))
         _DROP_REGISTERED.add(name)
         return False
-    declined = [n for n, ok in results if not ok]
-    if declined or child_database_exists(name) is not False:
+    if [n for n, ok in results if not ok]:
+        # dispose_child_databases already recorded the reason.
         _DROP_REGISTERED.add(name)
         return False
+    present = child_database_exists(name)
+    if present is None:
+        # Previously re-registered but recorded NOTHING, so an
+        # unconfirmable removal left no trace for teardown to report.
+        DISPOSAL_FAILURES.append(
+            (name, "removal unconfirmable: the server could not be asked"))
+        _DROP_REGISTERED.add(name)
+        return False
+    if present:
+        DISPOSAL_FAILURES.append(
+            (name, "database still present after disposal reported success"))
+        _DROP_REGISTERED.add(name)
+        return False
+    # CONFIRMED removal clears the obligation. Returning True while
+    # leaving the name registered left a stale entry: teardown would
+    # keep trying to drop a database that no longer exists, and the
+    # registry no longer described what is actually outstanding.
+    _DROP_REGISTERED.discard(name)
     return True
 
 

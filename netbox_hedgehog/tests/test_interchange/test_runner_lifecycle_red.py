@@ -977,15 +977,56 @@ class SupportedRunnerSubprocess(SimpleTestCase):
                 self.assertFalse(
                     support.ensure_disposed_keeping_obligation(name))
             self.assertIn(name, support._DROP_REGISTERED)
-            # (d) only a CONFIRMED removal clears it.
-            support._DROP_REGISTERED.discard(name)
+            # (d) only a CONFIRMED removal clears it -- and the HELPER
+            # must do the clearing. This row previously discarded the
+            # name itself before calling, so assertNotIn passed on the
+            # test's own bookkeeping while the helper left a stale
+            # registration behind. The name is REGISTERED here first.
+            support._DROP_REGISTERED.add(name)
             with mock.patch.object(support, "ensure_disposed",
                                    return_value=[(name, True)]):
                 with mock.patch.object(support, "child_database_exists",
                                        return_value=False):
                     self.assertTrue(
                         support.ensure_disposed_keeping_obligation(name))
-            self.assertNotIn(name, support._DROP_REGISTERED)
+            self.assertNotIn(
+                name, support._DROP_REGISTERED,
+                "a confirmed removal left a stale registration, so "
+                "teardown would keep retrying a database that is gone")
+
+            # (e) UNCONFIRMABLE removal: registered AND recorded. The
+            # helper previously re-registered silently, so teardown had
+            # nothing to report and the reason was lost.
+            support._DROP_REGISTERED.discard(name)
+            support.DISPOSAL_FAILURES[:] = [
+                f for f in support.DISPOSAL_FAILURES if f[0] != name]
+            with mock.patch.object(support, "ensure_disposed",
+                                   return_value=[(name, True)]):
+                with mock.patch.object(support, "child_database_exists",
+                                       return_value=None):
+                    self.assertFalse(
+                        support.ensure_disposed_keeping_obligation(name))
+            self.assertIn(name, support._DROP_REGISTERED)
+            self.assertTrue(
+                any(n == name and "unconfirmable" in why
+                    for n, why in support.DISPOSAL_FAILURES),
+                "an unconfirmable removal was not recorded")
+
+            # (f) STILL PRESENT after a success report: also recorded.
+            support._DROP_REGISTERED.discard(name)
+            support.DISPOSAL_FAILURES[:] = [
+                f for f in support.DISPOSAL_FAILURES if f[0] != name]
+            with mock.patch.object(support, "ensure_disposed",
+                                   return_value=[(name, True)]):
+                with mock.patch.object(support, "child_database_exists",
+                                       return_value=True):
+                    self.assertFalse(
+                        support.ensure_disposed_keeping_obligation(name))
+            self.assertIn(name, support._DROP_REGISTERED)
+            self.assertTrue(
+                any(n == name and "still present" in why
+                    for n, why in support.DISPOSAL_FAILURES),
+                "a database surviving disposal was not recorded")
         finally:
             support.DISPOSAL_FAILURES[:] = [
                 f for f in support.DISPOSAL_FAILURES if f[0] != name]
