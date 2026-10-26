@@ -649,7 +649,7 @@ class SupportedRunnerSubprocess(SimpleTestCase):
         """
         from .runner_lifecycle_support import (
             _arrange_child_disposal, _DROP_REGISTERED, _resolve_lane,
-            _admin_connection, child_database_absent,
+            _admin_connection, child_database_absent, _database_ownership,
             dispose_child_databases, DISPOSAL_FAILURES)
         # Registration is not removal. The earlier form asserted only
         # that a handler had been registered; measured on the server, a
@@ -664,10 +664,14 @@ class SupportedRunnerSubprocess(SimpleTestCase):
         probe = (f"test_hh715_probe_"
                  f"{hashlib.sha256(lane.encode()).hexdigest()[:8]}_"
                  f"{os.getpid()}")
-        with _admin_connection() as conn:
-            with conn.cursor() as cur:
-                cur.execute(f'DROP DATABASE IF EXISTS "{probe}"')
-                cur.execute(f'CREATE DATABASE "{probe}"')
+        # Created under the claim, so the probe cannot be made or
+        # destroyed while another holder owns that name.
+        with _database_ownership(probe) as owned:
+            self.assertTrue(owned, "could not claim the probe name")
+            with _admin_connection() as conn:
+                with conn.cursor() as cur:
+                    cur.execute(f'DROP DATABASE IF EXISTS "{probe}"')
+                    cur.execute(f'CREATE DATABASE "{probe}"')
         self.assertFalse(child_database_absent(probe))
         # Dispose THIS probe explicitly. Calling the registry-draining
         # form would clear pending real entries too, so genuine child
@@ -696,7 +700,11 @@ class SupportedRunnerSubprocess(SimpleTestCase):
         # causing the orphaned database it exists to prevent, in the
         # only environment that suffers it. The probe registration is
         # harmless: the drop is IF EXISTS on a name never created.
-        name = "test_hh715_disposal_probe"
+        # Lane- and pid-scoped, like the first probe. The global name
+        # was registered into the SHARED registry and armed a backstop
+        # for it, so two lanes running this row would register and
+        # then drop each other's name.
+        name = f"{probe}_reg"
         _DROP_REGISTERED.discard(name)
         self.assertTrue(
             _arrange_child_disposal(name, retained=False),
@@ -748,6 +756,69 @@ class SupportedRunnerSubprocess(SimpleTestCase):
             with _admin_connection() as conn:
                 with conn.cursor() as cur:
                     cur.execute(f'DROP DATABASE IF EXISTS "{name}"')
+
+    def test_w00k_running_and_disposing_take_the_same_claim(self):
+        """Execution and disposal must INTERLOCK.
+
+        They previously keyed on different things -- the lane for
+        running, the database name for dropping -- so a disposal could
+        take its own lock and drop the database while a child run held
+        the lane lock and was actively using it. One key, or no
+        protection at all.
+        """
+        from .runner_lifecycle_support import (
+            _same_lane_exclusivity, _database_ownership, _child_db_name)
+        lane = f"interlock-{os.getpid()}"
+        name = _child_db_name(lane)
+        # While a run holds the lane, the disposal claim is unavailable.
+        with _same_lane_exclusivity(lane):
+            with _database_ownership(name) as owned:
+                self.assertFalse(
+                    owned,
+                    "disposal could claim the database while a child "
+                    "run held the lane")
+        # Released afterwards.
+        with _database_ownership(name) as owned:
+            self.assertTrue(owned)
+
+    def test_w00l_the_atexit_backstop_is_owned_and_self_disarming(self):
+        """The backstop registered _drop_child_database(name) per name:
+        it bypassed ownership, and stayed armed after a successful
+        disposal, so at exit it could drop a database a DIFFERENT
+        process had since created under the same name."""
+        from unittest import mock
+        from . import runner_lifecycle_support as support
+        name = (f"test_hh715_backstop_"
+                f"{hashlib.sha256(str(os.getpid()).encode()).hexdigest()[:8]}")
+        # ISOLATE, without draining. Under a derived identity the real
+        # registry holds the live child database from actual spawns, so
+        # asserting the backstop is a no-op against the SHARED registry
+        # is only true when the lane is explicit and retained. Saving
+        # and restoring keeps the real pending entries intact -- the
+        # registry must not be drained by a control.
+        saved = set(support._DROP_REGISTERED)
+        try:
+            support._DROP_REGISTERED.clear()
+            support._arrange_child_disposal(name, retained=False)
+            self.assertIn(name, support._DROP_REGISTERED)
+            # Armed: a pending name goes through the OWNED path.
+            with mock.patch.object(support,
+                                   "dispose_child_databases") as disp:
+                support._atexit_backstop()
+                disp.assert_called_once_with([name])
+            # Successful disposal clears the registry, and THAT is what
+            # disarms the backstop.
+            support._DROP_REGISTERED.discard(name)
+            with mock.patch.object(support,
+                                   "dispose_child_databases") as disp:
+                support._atexit_backstop()
+                disp.assert_not_called()
+        finally:
+            support._DROP_REGISTERED.clear()
+            support._DROP_REGISTERED.update(saved)
+        self.assertEqual(
+            support._DROP_REGISTERED, saved,
+            "the control altered the real disposal registry")
 
     def test_w00i_an_unobservable_outer_database_refuses_to_spawn(self):
         """FAIL CLOSED. Returning None let the caller's `if outer and ...`

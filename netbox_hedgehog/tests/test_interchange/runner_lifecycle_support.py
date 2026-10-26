@@ -420,30 +420,6 @@ def _drop_child_database(name):
         return False
 
 
-@contextlib.contextmanager
-def _database_ownership(name):
-    """Hold an exclusive claim on ONE database name while dropping it.
-
-    Dropping without a claim is a cross-holder hazard: another process
-    in the same lane may be mid-run against that database, and
-    pg_terminate_backend would kill its sessions before the DROP. The
-    claim is keyed on the database NAME, so two holders of the same
-    name serialise and a non-owner declines instead of acting.
-    """
-    key = int(hashlib.sha256(
-        f"hh715-db:{name}".encode("utf-8")).hexdigest()[:15], 16)
-    with _admin_connection() as conn:
-        with conn.cursor() as cur:
-            cur.execute("SELECT pg_try_advisory_lock(%s)", [key])
-            owned = cur.fetchone()[0]
-        try:
-            yield owned
-        finally:
-            if owned:
-                with conn.cursor() as cur:
-                    cur.execute("SELECT pg_advisory_unlock(%s)", [key])
-
-
 def dispose_child_databases(names):
     """Drop exactly the named databases, each under its own claim.
 
@@ -523,7 +499,33 @@ def _arrange_child_disposal(name, retained):
     if retained or name in _DROP_REGISTERED:
         return False
     _DROP_REGISTERED.add(name)
-    atexit.register(_drop_child_database, name)
+    _arm_atexit_backstop()
+    return True
+
+
+_ATEXIT_ARMED = False
+
+
+def _atexit_backstop():
+    """Backstop only. Goes through the OWNED path, and disposes
+    whatever is still registered -- nothing, once deterministic
+    disposal has succeeded and cleared the registry.
+
+    The previous form registered _drop_child_database(name) per name:
+    it bypassed ownership entirely, and stayed armed after successful
+    disposal, so at exit it could drop a database a DIFFERENT process
+    had since created under the same name.
+    """
+    pending = sorted(_DROP_REGISTERED)
+    if pending:
+        dispose_child_databases(pending)
+
+
+def _arm_atexit_backstop():
+    global _ATEXIT_ARMED
+    if not _ATEXIT_ARMED:
+        atexit.register(_atexit_backstop)
+        _ATEXIT_ARMED = True
     return True
 
 
@@ -612,30 +614,57 @@ def _assert_child_target_is_safe(child_test_db, lane):
 
 
 @contextlib.contextmanager
+def _database_ownership(name):
+    """Hold an exclusive claim on ONE database name.
+
+    One claim covers BOTH running a child against the database and
+    dropping it, so cleanup cannot run during a live child run. A
+    DEDICATED session per holder: advisory locks are re-entrant within
+    a session, so sharing one connection would let a second holder
+    succeed and prove nothing.
+    """
+    key = int(hashlib.sha256(
+        f"hh715-db:{name}".encode("utf-8")).hexdigest()[:15], 16)
+    with _admin_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute("SELECT pg_try_advisory_lock(%s)", [key])
+            owned = cur.fetchone()[0]
+        try:
+            yield owned
+        finally:
+            if owned:
+                with conn.cursor() as cur:
+                    cur.execute("SELECT pg_advisory_unlock(%s)", [key])
+
+
+def _child_db_name(lane):
+    """The single authority for a lane's child database name.
+
+    Execution and disposal MUST derive the same name, or they take
+    different locks and stop interlocking.
+    """
+    readable = "".join(c if c.isalnum() else "_" for c in lane)[:24]
+    fingerprint = hashlib.sha256(lane.encode("utf-8")).hexdigest()[:10]
+    return f"test_hh715_{readable}_{fingerprint}"
+
+
+@contextlib.contextmanager
 def _same_lane_exclusivity(lane):
     """One holder per lane, enforced by the server rather than by
     convention. A second concurrent run in the same lane is REFUSED,
     not queued: queueing would hide the collision it exists to catch.
     """
-    key = int(hashlib.sha256(
-        f"hh715:{lane}".encode("utf-8")).hexdigest()[:15], 16)
-    # A DEDICATED session per holder. Advisory locks are re-entrant
-    # within one session, so sharing one connection would let a second
-    # holder succeed and prove nothing -- the exact false pass this
-    # control exists to catch.
-    with _admin_connection() as conn:
-        with conn.cursor() as cur:
-            cur.execute("SELECT pg_try_advisory_lock(%s)", [key])
-            if not cur.fetchone()[0]:
-                raise RuntimeError(
-                    f"lane {lane!r} is already running these rows; a "
-                    f"second concurrent run would share the child "
-                    f"database")
-        try:
-            yield key
-        finally:
-            with conn.cursor() as cur:
-                cur.execute("SELECT pg_advisory_unlock(%s)", [key])
+    # Keyed on the CHILD DATABASE NAME, the same key disposal uses.
+    # Separate keys for "running" and "dropping" do not interlock:
+    # a disposal could take its own lock and drop the database while
+    # a child run held the lane lock and was actively using it.
+    with _database_ownership(_child_db_name(lane)) as owned:
+        if not owned:
+            raise RuntimeError(
+                f"lane {lane!r} is already running these rows; a "
+                f"second concurrent run would share the child "
+                f"database")
+        yield _child_db_name(lane)
 
 
 def run_supported_runner(cases, *, label=None, extra_args=(), timeout=600):
@@ -683,10 +712,10 @@ def run_supported_runner(cases, *, label=None, extra_args=(), timeout=600):
     # 24 characters would map to the same database. The digest is taken
     # over the FULL lane, so distinct lanes cannot collide even when
     # their readable prefixes match.
-    readable = "".join(c if c.isalnum() else "_" for c in lane)[:24]
-    fingerprint = hashlib.sha256(lane.encode("utf-8")).hexdigest()[:10]
     settings_name = f"hh715_settings_{os.getpid()}"
-    child_test_db = f"test_hh715_{readable}_{fingerprint}"
+    # Single authority, so the claim taken to RUN is the same claim
+    # disposal takes to DROP.
+    child_test_db = _child_db_name(lane)
     # PRE-SPAWN, before a settings file or a database exists.
     outer_db = _assert_child_target_is_safe(child_test_db, lane)
     disposal_registered = _arrange_child_disposal(child_test_db, lane_retained)
