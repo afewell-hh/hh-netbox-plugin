@@ -296,7 +296,9 @@ import atexit
 import hashlib
 import json
 import os
+import re
 import socket
+import time
 import subprocess
 import sys
 import tempfile
@@ -806,27 +808,56 @@ def reaper_evidence_path():
     supported local wrapper). Returns None when neither input is
     present.
     """
-    explicit = os.environ.get("HNP_REAPER_CONTAINER_EVIDENCE")
-    if explicit:
-        return Path(explicit)
+    # PRESENCE, not truthiness. The consumer branches on
+    # `if 'HNP_REAPER_CONTAINER_EVIDENCE' in os.environ:`, so an empty
+    # value selects the explicit path (and then fails) rather than
+    # falling back. Testing truthiness made an empty explicit input
+    # silently fall back to the LOCAL checkout file, reporting ready
+    # where the consumer would refuse.
+    if "HNP_REAPER_CONTAINER_EVIDENCE" in os.environ:
+        return Path(os.environ["HNP_REAPER_CONTAINER_EVIDENCE"])
     root = os.environ.get("HNP_TEST_LOCAL_CHECKOUT_ROOT")
     if root:
         return Path(root) / "reaper-container-evidence.json"
     return None
 
 
-def reaper_evidence_is_ready():
-    """True only when the evidence the adapter consumes is PRESENT.
+def reaper_evidence_state():
+    """How close the evidence is to what the CONSUMER will accept.
 
-    A resolvable checkout root is not evidence readiness: the root
-    locates the repository, while the adapter's prerequisite is this
-    file. Conflating them made p03 branch wrong under the wrapper.
+    Returns "absent", "unusable", or "necessary-conditions-met".
+
+    File presence is NOT readiness. reaper_lane._container_evidence
+    additionally requires a read-only path, size <= 65536, parseable
+    JSON, a matching code digest, a matching reaper uid, specific
+    mount/capability counts, a 32-hex run_id, and observation within
+    the last 3600 seconds. A stale or malformed file is PRESENT and
+    still refused.
+
+    This checks only the uid-independent necessary conditions. The
+    code-digest and uid checks cannot be reproduced from a test row --
+    they need the reaper's own uid -- so a "necessary-conditions-met"
+    result means NOT-YET-REFUSED, never guaranteed acceptance. Callers
+    must treat it that way rather than predicting success.
     """
     path = reaper_evidence_path()
+    if path is None:
+        return "absent"
     try:
-        return bool(path) and path.is_file()
-    except OSError:
-        return False
+        if not path.is_file():
+            return "absent"
+        raw = path.read_bytes()
+        if len(raw) > 65536:
+            return "unusable"
+        data = json.loads(raw)
+        observed = data["observed_at"]
+        if not 0 <= time.time() - observed <= 3600:
+            return "unusable"
+        if not re.fullmatch("[a-f0-9]{32}", data["run_id"]):
+            return "unusable"
+    except (OSError, ValueError, KeyError, TypeError):
+        return "unusable"
+    return "necessary-conditions-met"
 
 
 def _child_db_name(lane):
