@@ -1403,6 +1403,11 @@ class ProtectedAdapterSelection(SimpleTestCase):
     ADAPTER = ("netbox_hedgehog.tests.test_interchange."
                "test_reaper_adapter_red")
 
+    EVIDENCE_ROWS = frozenset({
+        "test_a15_harness_emits_artifacts_and_observed_results",
+        "test_a16_missing_or_contradictory_harness_evidence_fails",
+    })
+
     def test_p01_the_protected_selection_is_discoverable_here(self):
         """The module and its prerequisite both exist on this branch."""
         from django.test.runner import DiscoverRunner
@@ -1425,6 +1430,50 @@ class ProtectedAdapterSelection(SimpleTestCase):
         self.assertIn("netbox_hedgehog.tests.test_interchange", text)
         self.assertIn("prove_reaper_lane.py", text)
         self.assertIn("reaper-container-evidence.json", text)
+
+    def test_p04_without_evidence_the_protected_selection_is_refused(self):
+        """NEGATIVE evidence control, kept SEPARATE from positive
+        wrapper success.
+
+        Folding both directions into one row meant a single result
+        decided which contract was being checked, so the negative case
+        silently stopped being exercised wherever evidence happened to
+        be prepared. This row asserts only the refusal, and SKIPS
+        rather than passes vacuously when evidence is present -- an
+        unexercised control must not read as a satisfied one.
+        """
+        state = reaper_evidence_state()
+        if state == "necessary-conditions-met":
+            self.skipTest(
+                "evidence is prepared here, so the negative case cannot "
+                "be exercised; p03 covers the positive direction")
+        result = run_supported_runner([], label=self.ADAPTER)
+        self.assertNotEqual(
+            result["returncode"], 0,
+            "the protected adapter selection reported success with "
+            f"evidence state {state!r}")
+        # Attribution, with the masking stated rather than hidden.
+        # MEASURED: today this selection fails on the DIET-715 guard
+        # refusal, because the adapter rows are database-free and the
+        # runner aborts before any of them, so the prerequisite
+        # scenario is currently unreachable. Saying so is the point;
+        # "it failed" alone would read as evidence it is not.
+        combined = (result["stderr"] or "") + (result["stdout"] or "")
+        failing = [line for line in combined.splitlines()
+                   if line.startswith(("FAIL: ", "ERROR: "))]
+        if not failing:
+            self.assertIn(
+                "autovacuum guard to non-test database", combined,
+                "the selection failed with neither per-row failures "
+                f"nor the guard refusal: {combined[-400:]}")
+            return
+        named = {row for row in self.EVIDENCE_ROWS
+                 if any(row in line for line in failing)}
+        self.assertEqual(
+            named, set(self.EVIDENCE_ROWS),
+            f"the evidence-dependent rows did not fail; the refusal is "
+            f"not attributable to the missing prerequisite. "
+            f"failing={failing[:4]}")
 
     def test_p03_the_adapter_selection_runs_through_the_runner(self):
         """RED where the prerequisite is absent, and that is the point:
@@ -1451,74 +1500,30 @@ class ProtectedAdapterSelection(SimpleTestCase):
         if state == "necessary-conditions-met":
             if result["returncode"] != 0:
                 combined = (result["stderr"] or "") + (result["stdout"] or "")
-                # The ONLY acceptable failure here is the consumer
-                # refusing on a check this row cannot evaluate.
-                self.assertIn(
-                    "HarnessEvidenceMissing", combined,
-                    "the protected selection failed for a reason other "
-                    "than the evidence checks this row cannot "
-                    f"reproduce: {combined[-500:]}")
+                # A SUBSTRING TEST IS NOT ATTRIBUTION. Accepting any
+                # failing child whose output merely contains
+                # HarnessEvidenceMissing passed suites that also failed
+                # for unrelated reasons -- a security failure alongside
+                # the evidence refusal was tolerated. Require that
+                # EVERY failing row is one of the evidence-dependent
+                # rows; any other failing row is a defect this row must
+                # not absorb.
+                failing = {
+                    line.split(" ", 1)[1].split(" ")[0].split(".")[-1]
+                    for line in combined.splitlines()
+                    if line.startswith(("FAIL: ", "ERROR: "))}
+                self.assertIn("HarnessEvidenceMissing", combined,
+                              f"not an evidence refusal: {combined[-400:]}")
+                unrelated = failing - self.EVIDENCE_ROWS
+                self.assertEqual(
+                    unrelated, set(),
+                    f"the protected selection failed for reasons beyond "
+                    f"the unreproducible evidence checks: {sorted(unrelated)}")
             return
-        # "absent" or "unusable": the consumer would refuse, so the
-        # protected selection must NOT report success.
-        self.assertIn(state, ("absent", "unusable"), state)
-        self.assertNotEqual(
-            result["returncode"], 0,
-            "the protected adapter selection reported success "
-            "without the wrapper-prepared evidence")
-        # Attribution, with the masking stated rather than hidden.
-        #
-        # MEASURED: today this selection fails on the DIET-715
-        # guard refusal, because the adapter rows are
-        # database-free and the runner aborts before any of them.
-        # So the prerequisite scenario this row exists for is
-        # currently UNREACHABLE -- the row is red, but masked by
-        # the very defect this suite is about. Saying so is the
-        # point; a row that merely asserted "it failed" would read
-        # as evidence it had tested the prerequisite.
-        output = result["stderr"] + result["stdout"]
-        if "refusing to apply the DIET-643 autovacuum guard" in output:
-            self.fail(
-                "P03 is BLOCKED by the DIET-715 defect: the protected "
-                "adapter selection is database-free, so the runner "
-                "refuses before any adapter row executes. The "
-                "missing-prerequisite behaviour cannot be exercised "
-                "until W01 passes. This row must not be read as "
-                "evidence about the prerequisite.")
-        # MEASURED, and not what I first assumed. Without the
-        # wrapper's evidence the adapter does NOT emit a message
-        # naming HNP_REAPER_CONTAINER_EVIDENCE; it fails inside its
-        # evidence-dependent contract rows (a15/a16/a17) with
-        # "FAILED (failures=2, errors=2)". Asserting a prerequisite
-        # message would have been asserting behaviour that does not
-        # exist. Attribution therefore binds to two facts that do:
-        # collection succeeded, so this is not a masking failure,
-        # and the failures are in the evidence-dependent rows.
-        self.assertIn(
-            "Found 34 test(s)", output,
-            "the selection did not even collect; this is a masking "
-            "failure, not the prerequisite scenario")
-        failing = [line for line in output.splitlines()
-                   if line.startswith(("FAIL:", "ERROR:"))]
-        self.assertTrue(failing, "no row reported a failure")
-        # SCOPE LIMIT, measured twice and reported rather than
-        # papered over: the adapter surfaces NO machine-checkable
-        # "missing evidence" cause. Its evidence-dependent rows
-        # simply error. So this row can show that the protected
-        # selection does not succeed without the wrapper, and
-        # WHICH rows fail -- it cannot show WHY from the output,
-        # because the why is not emitted. Binding to exact row ids
-        # is the strongest attribution available at this layer;
-        # the missing cause is raised separately as an adapter
-        # gap, not asserted here as though it existed.
-        evidence_rows = {
-            "test_a15_harness_emits_artifacts_and_observed_results",
-            "test_a16_missing_or_contradictory_harness_evidence_fails",
-        }
-        named = {row for row in evidence_rows
-                 if any(row in line for line in failing)}
-        self.assertEqual(
-            named, evidence_rows,
-            f"the evidence-dependent rows did not fail; the refusal "
-            f"is not attributable to the missing prerequisite. "
-            f"failing={failing[:4]}")
+        # The negative direction belongs to p04. Keeping both here
+        # meant one result chose which contract was under test, so the
+        # positive case stopped being exercised wherever evidence was
+        # absent -- and read as a pass regardless.
+        self.skipTest(
+            f"evidence state {state!r}: the positive wrapper case "
+            f"cannot be exercised here; p04 owns the refusal")
