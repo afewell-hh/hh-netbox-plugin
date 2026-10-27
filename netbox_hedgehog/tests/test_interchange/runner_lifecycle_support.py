@@ -891,7 +891,7 @@ def _same_lane_exclusivity(lane):
 
 
 def run_supported_runner(cases, *, label=None, extra_args=(), timeout=600,
-                         extra_alias=False):
+                         extra_alias=False, clear_evidence=False):
     """Spawn the real runner on a disposable module and report facts."""
     workspace = tempfile.mkdtemp(prefix="hh715-")
     package = Path(workspace) / "hh715_disposable"
@@ -973,6 +973,22 @@ def run_supported_runner(cases, *, label=None, extra_args=(), timeout=600,
     environment["PYTHONPATH"] = workspace + os.pathsep + environment.get(
         "PYTHONPATH", "")
     environment["DJANGO_SETTINGS_MODULE"] = settings_name
+    if clear_evidence:
+        # CONSTRUCT the negative rather than wait for an environment
+        # that happens to lack evidence. A row that only exercises the
+        # refusal when evidence is absent stops testing anything under
+        # the wrapper, where it is present.
+        #
+        # Remove ONLY the evidence. Dropping the checkout-root
+        # variables as well took the REPOSITORY away too, so rows that
+        # scan shipped configuration (a17, the shipped-inventory row)
+        # failed for lack of a checkout rather than lack of evidence,
+        # and the refusal stopped being attributable. Pointing the
+        # explicit variable at a path that does not exist makes the
+        # consumer take its explicit branch and refuse, while every
+        # other input stays exactly as the wrapper left it.
+        environment["HNP_REAPER_CONTAINER_EVIDENCE"] = (
+            "/nonexistent/hh715-evidence-deliberately-absent.json")
     environment[RECEIPT_VARIABLE] = str(receipts)
 
     # --noinput: an existing disposable database otherwise makes Django
