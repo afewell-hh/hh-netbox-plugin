@@ -69,20 +69,18 @@ def _require_topologyplan_change_permission(request, plan=None):
 
 
 def _generation_is_busy(plan):
-    """True when a queued/in-progress generation with a live job is observed.
+    """True when a QUEUED or IN_PROGRESS GenerationState is observed.
 
-    Mirrors the busy check in TopologyPlanGenerateUpdateView (an orphaned state
-    whose job was deleted is not busy). Observational only, not a lock.
+    Any such status is treated as busy, whether or not its job still exists
+    (a deleted/missing job does not clear the state). Observational only, not
+    a lock.
     """
     state = getattr(plan, 'generation_state', None)
     if state is None:
         return False
-    return (
-        state.status in (
-            choices.GenerationStatusChoices.QUEUED,
-            choices.GenerationStatusChoices.IN_PROGRESS,
-        )
-        and state.job_id is not None
+    return state.status in (
+        choices.GenerationStatusChoices.QUEUED,
+        choices.GenerationStatusChoices.IN_PROGRESS,
     )
 
 

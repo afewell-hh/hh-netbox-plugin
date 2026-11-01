@@ -18,7 +18,9 @@ from django.test import Client, TestCase
 from django.urls import reverse
 
 from core.models import Job
-from dcim.models import Cable, Device, DeviceType, Interface, Manufacturer, Module
+from dcim.models import (
+    Cable, Device, DeviceRole, DeviceType, Interface, Manufacturer, Module, ModuleBay, Site,
+)
 from users.models import ObjectPermission
 
 from netbox_hedgehog.choices import (
@@ -43,6 +45,7 @@ from netbox_hedgehog.models.topology_planning import (
     TopologyPlan,
 )
 from netbox_hedgehog.tests.test_topology_planning import (
+    get_test_non_transceiver_module_type,
     get_test_server_nic,
     get_test_transceiver_module_type,
 )
@@ -140,14 +143,72 @@ class CalculateDesignBase(TestCase):
             'states': GenerationState.objects.count(),
         }
 
-    def _make_busy(self, plan, status=GenerationStatusChoices.IN_PROGRESS):
-        job = Job.objects.create(
-            object_type=ContentType.objects.get_for_model(plan), object_id=plan.pk,
-            name='busy', user=self.superuser, job_id=uuid.uuid4())
+    def _make_busy(self, plan, status=GenerationStatusChoices.IN_PROGRESS, with_job=True):
+        """Create a busy GenerationState, with a Job or with job=None (deleted/missing)."""
+        job = None
+        if with_job:
+            job = Job.objects.create(
+                object_type=ContentType.objects.get_for_model(plan), object_id=plan.pk,
+                name='busy', user=self.superuser, job_id=uuid.uuid4())
         return GenerationState.objects.update_or_create(
             plan=plan, defaults={'status': status, 'job': job, 'snapshot': {},
                                  'device_count': 0, 'interface_count': 0,
                                  'cable_count': 0})[0]
+
+    def make_sentinel_inventory(self):
+        """Small valid synthetic inventory (Device/Interface/Cable/Module/Job)."""
+        role, _ = DeviceRole.objects.get_or_create(
+            slug='cd-sentinel-role', defaults={'name': 'CD Sentinel', 'color': 'aa1409'})
+        site, _ = Site.objects.get_or_create(
+            name='CD-Sentinel-Site', defaults={'slug': 'cd-sentinel-site'})
+        plan_id = str(self.plan.pk)
+        devs = [
+            Device.objects.create(
+                name=f'cd-sentinel-{suffix}', device_type=self.server_type, role=role,
+                site=site, status='planned',
+                custom_field_data={'hedgehog_plan_id': plan_id})
+            for suffix in ('a', 'b')
+        ]
+        iface_a = Interface.objects.create(device=devs[0], name='eth0', type='1000base-t')
+        iface_b = Interface.objects.create(device=devs[1], name='eth0', type='1000base-t')
+        cable = Cable(a_terminations=[iface_a], b_terminations=[iface_b])
+        cable.custom_field_data = {'hedgehog_plan_id': plan_id}
+        cable.save()
+        bay = ModuleBay.objects.create(device=devs[0], name='cd-bay')
+        Module.objects.create(
+            device=devs[0], module_bay=bay,
+            module_type=get_test_non_transceiver_module_type())
+        Job.objects.create(
+            object_type=ContentType.objects.get_for_model(self.plan),
+            object_id=self.plan.pk, name='sentinel-job', user=self.superuser,
+            job_id=uuid.uuid4())
+
+    def inventory_snapshot(self):
+        """Identities plus relevant field values, so updates and count-neutral
+        replacements (new pk, same count) are detected."""
+        return {
+            'devices': sorted(
+                (d.pk, d.name, d.status, d.device_type_id, d.role_id, d.site_id,
+                 str(d.custom_field_data), str(d.last_updated))
+                for d in Device.objects.all()),
+            'interfaces': sorted(
+                (i.pk, i.device_id, i.name, i.type, i.cable_id, str(i.last_updated))
+                for i in Interface.objects.all()),
+            'cables': sorted(
+                (c.pk, str(c.custom_field_data), c.status, str(c.last_updated))
+                for c in Cable.objects.all()),
+            'modules': sorted(
+                (m.pk, m.device_id, m.module_bay_id, m.module_type_id, m.status,
+                 str(m.last_updated))
+                for m in Module.objects.all()),
+            'jobs': sorted(
+                (j.pk, str(j.job_id), j.name, j.status, j.object_id, j.user_id)
+                for j in Job.objects.all()),
+            'states': sorted(
+                (g.pk, g.plan_id, g.status, g.job_id, g.device_count, g.interface_count,
+                 g.cable_count, str(g.snapshot), str(g.generated_at))
+                for g in GenerationState.objects.all()),
+        }
 
     def qty(self, plan=None):
         sc = (plan or self.plan).switch_classes.get(switch_class_id='fe-leaf')
@@ -184,13 +245,17 @@ class CalculateDesignRenderTests(CalculateDesignBase):
         # Other plan is not even viewable under the constraint.
         self.assertEqual(client.get(self.detail_url(self.other_plan)).status_code, 404)
 
-    def test_button_disabled_with_explanation_when_generation_busy(self):
-        self._make_busy(self.plan)
-        resp = self.login(self.superuser).get(self.detail_url())
-        html = resp.content.decode()
-        btn = html.split('id="calculate-design-btn"')[1].split('>')[0]
-        self.assertIn('disabled', btn)
-        self.assertIn('Unavailable while a generation job is queued or in progress.', html)
+    def test_button_disabled_with_explanation_for_every_busy_status_with_or_without_job(self):
+        for status in (GenerationStatusChoices.QUEUED, GenerationStatusChoices.IN_PROGRESS):
+            for with_job in (True, False):
+                with self.subTest(status=status, with_job=with_job):
+                    self._make_busy(self.plan, status, with_job=with_job)
+                    resp = self.login(self.superuser).get(self.detail_url())
+                    html = resp.content.decode()
+                    btn = html.split('id="calculate-design-btn"')[1].split('>')[0]
+                    self.assertIn('disabled', btn)
+                    self.assertIn(
+                        'Unavailable while a generation job is queued or in progress.', html)
 
     def test_existing_generate_controls_still_render(self):
         html = self.login(self.superuser).get(self.detail_url()).content.decode()
@@ -267,44 +332,58 @@ class CalculateDesignBehaviourTests(CalculateDesignBase):
         self.post(plan)
         self.assertEqual(self.qty(plan), (1, 5))
 
-    def test_queued_and_in_progress_rejected_without_calculation(self):
+    def test_queued_and_in_progress_rejected_with_or_without_job(self):
         for status in (GenerationStatusChoices.QUEUED, GenerationStatusChoices.IN_PROGRESS):
-            state = self._make_busy(self.plan, status)
-            before = self.inventory_counts()
-            resp = self.post()
-            self.assertEqual(resp.status_code, 302)
-            self.assertEqual(resp.url, self.detail_url())
-            self.assertTrue(any('Cannot calculate design' in m for m in self.msgs(resp)))
-            self.assertEqual(self.qty(), (None, None))
-            self.assertEqual(self.inventory_counts(), before)
-            state.refresh_from_db()
-            self.assertEqual(state.status, status)
-            self.assertIsNotNone(state.job_id)
+            for with_job in (True, False):
+                with self.subTest(status=status, with_job=with_job):
+                    state = self._make_busy(self.plan, status, with_job=with_job)
+                    self.assertEqual(state.job_id is not None, with_job)
+                    before = self.inventory_snapshot()
+                    resp = self.post()
+                    self.assertEqual(resp.status_code, 302)
+                    self.assertEqual(resp.url, self.detail_url())
+                    self.assertTrue(
+                        any('Cannot calculate design' in m for m in self.msgs(resp)))
+                    self.assertEqual(self.qty(), (None, None))
+                    self.assertEqual(self.inventory_snapshot(), before)
+                    state.refresh_from_db()
+                    self.assertEqual(state.status, status)
+                    self.assertEqual(state.job_id is not None, with_job)
 
-    def test_orphaned_busy_state_without_job_is_not_busy_and_left_untouched(self):
+    def test_orphaned_busy_state_without_job_is_refused_and_left_untouched(self):
         GenerationState.objects.create(
-            plan=self.plan, status=GenerationStatusChoices.QUEUED, snapshot={})
-        self.post()
-        self.assertEqual(self.qty(), (1, None))
+            plan=self.plan, status=GenerationStatusChoices.QUEUED, snapshot={},
+            device_count=0, interface_count=0, cable_count=0)
+        before = self.inventory_snapshot()
+        resp = self.post()
+        self.assertTrue(any('Cannot calculate design' in m for m in self.msgs(resp)))
+        self.assertEqual(self.qty(), (None, None))
+        self.assertEqual(self.inventory_snapshot(), before)
         state = GenerationState.objects.get(plan=self.plan)
         self.assertEqual(state.status, GenerationStatusChoices.QUEUED)
+        self.assertIsNone(state.job_id)
 
-    def test_no_inventory_jobs_or_generation_state_created_when_absent(self):
-        before = self.inventory_counts()
+    def test_populated_inventory_and_jobs_unchanged_by_real_calculation(self):
+        self.make_sentinel_inventory()
+        before = self.inventory_snapshot()
+        for key in ('devices', 'interfaces', 'cables', 'modules', 'jobs'):
+            self.assertTrue(before[key], key)
         self.post()
-        self.assertEqual(self.inventory_counts(), before)
+        self.assertEqual(self.qty(), (1, None))  # the real calculation ran
+        self.assertEqual(self.inventory_snapshot(), before)
         self.assertFalse(GenerationState.objects.filter(plan=self.plan).exists())
 
     def test_existing_generation_state_and_snapshot_unchanged(self):
+        self.make_sentinel_inventory()
         snapshot = {'marker': {'servers': 8}}
         state = GenerationState.objects.create(
             plan=self.plan, status=GenerationStatusChoices.GENERATED, snapshot=snapshot,
             device_count=7, interface_count=11, cable_count=5)
         generated_at = state.generated_at
-        before = self.inventory_counts()
+        before = self.inventory_snapshot()
         self.post()
         self.assertEqual(self.qty(), (1, None))
-        self.assertEqual(self.inventory_counts(), before)
+        self.assertEqual(self.inventory_snapshot(), before)
         state.refresh_from_db()
         self.assertEqual(state.status, GenerationStatusChoices.GENERATED)
         self.assertEqual(state.snapshot, snapshot)
