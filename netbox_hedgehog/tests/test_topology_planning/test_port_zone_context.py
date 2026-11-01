@@ -180,16 +180,30 @@ class ListContextTests(PortZoneContextBase):
     def test_pagination_sort_links_retain_filters(self):
         for i in range(3):
             self._zone(self.sw_a1, f'extra-{i}')
-        r = self.client.get(reverse(LIST), {'plan': self.plan_a.pk, 'per_page': 2})
-        html = r.content.decode()
+        import html as html_lib
         import re
-        hrefs = re.findall(r'href="([^"]*)"', html)
+        r = self.client.get(reverse(LIST), {'plan': self.plan_a.pk, 'per_page': 2})
+        body = r.content.decode()
+        hrefs = re.findall(r'href="([^"]*)"', body)
         page_links = [h for h in hrefs if 'page=2' in h]
-        sort_links = [h for h in hrefs if 'sort=' in h]
         self.assertTrue(page_links, 'pagination link expected')
-        self.assertTrue(sort_links, 'sort link expected')
-        for h in page_links + sort_links:
+        for h in page_links:
             self.assertIn(f'plan={self.plan_a.pk}', h)
+        # NetBox 4.4 HTMX tables: sort anchors use href="#" and carry hx-get.
+        hx_gets = [html_lib.unescape(h) for h in re.findall(r'hx-get="([^"]*)"', body)]
+        sort_links = [h for h in hx_gets if 'sort=' in h]
+        self.assertTrue(sort_links, 'HTMX sort control (hx-get with sort=) expected')
+        for h in sort_links:
+            self.assertIn(f'plan={self.plan_a.pk}', h)
+        # Follow a real sort control with the HTMX header and verify rows.
+        resp = self.client.get(sort_links[0], HTTP_HX_REQUEST='true')
+        self.assertEqual(resp.status_code, 200)
+        names = [z.zone_name for z in resp.context['table'].data]
+        self.assertTrue(names)
+        self.assertNotIn('bravo-server', names)
+        self.assertNotIn('bravo-server', resp.content.decode())
+        self.assertTrue(all(n.startswith(('alpha-', 'extra-')) for n in names))
+        self.assertEqual(len(names), len(set(names)))
 
     def test_selection_retained_in_form(self):
         r = self.get(plan=self.plan_a.pk, switch_class=self.sw_a1.pk, q='alpha')
@@ -477,3 +491,35 @@ class RenderedAddAffordanceTests(PortZoneContextBase):
         url = f'{reverse(EDIT, args=[self.z_a1.pk])}?switch_class={self.sw_b1.pk}&plan={self.plan_b.pk}'
         r = self.client.get(url)
         self.assertIn(self.sw_a1, r.context['form'].fields['switch_class'].queryset)
+        # R3: unbound edit initial must show the real parent, not the URL context.
+        bound = r.context['form']['switch_class']
+        self.assertEqual(str(bound.value()), str(self.sw_a1.pk))
+        body = r.content.decode()
+        self.assertRegex(body, r'<option value="%d"[^>]*selected' % self.sw_a1.pk)
+        self.assertNotRegex(body, r'<option value="%d"[^>]*selected' % self.sw_b1.pk)
+
+    def test_edit_with_foreign_context_ordinary_save_retains_parent(self):
+        url = f'{reverse(EDIT, args=[self.z_a1.pk])}?switch_class={self.sw_b1.pk}&plan={self.plan_b.pk}'
+        form = self.client.get(url).context['form']
+        r = self.client.post(url, {
+            'switch_class': form['switch_class'].value(),
+            'zone_name': 'alpha-ctx-save',
+            'zone_type': PortZoneTypeChoices.SERVER, 'port_spec': '1-8',
+            'breakout_option': self.breakout.pk,
+            'allocation_strategy': AllocationStrategyChoices.SEQUENTIAL, 'priority': 100,
+        })
+        self.assertEqual(r.status_code, 302)
+        self.z_a1.refresh_from_db()
+        self.assertEqual(self.z_a1.switch_class_id, self.sw_a1.pk)
+        self.assertEqual(self.z_a1.zone_name, 'alpha-ctx-save')
+
+    def test_edit_intentional_bound_post_can_change_parent(self):
+        r = self.client.post(reverse(EDIT, args=[self.z_a1.pk]), {
+            'switch_class': self.sw_a2.pk, 'zone_name': 'alpha-server',
+            'zone_type': PortZoneTypeChoices.SERVER, 'port_spec': '1-8',
+            'breakout_option': self.breakout.pk,
+            'allocation_strategy': AllocationStrategyChoices.SEQUENTIAL, 'priority': 100,
+        })
+        self.assertEqual(r.status_code, 302)
+        self.z_a1.refresh_from_db()
+        self.assertEqual(self.z_a1.switch_class_id, self.sw_a2.pk)

@@ -728,6 +728,12 @@ class SwitchPortZoneForm(NetBoxModelForm):
         visible_plans = TopologyPlan.objects.restrict(user, 'view')
         qs = PlanSwitchClass.objects.restrict(user, 'view').filter(plan__in=visible_plans)
         if self.instance.pk:
+            # NetBox's ObjectEditView.get passes the GET query string as form
+            # ``initial``, which overrides the instance value. On an unbound
+            # edit form, force the real parent so ?switch_class=B cannot change
+            # what is displayed or ordinarily saved. Bound POSTs are untouched.
+            if not self.is_bound:
+                self.initial['switch_class'] = self.instance.switch_class_id
             qs = PlanSwitchClass.objects.filter(
                 Q(pk__in=qs.values('pk')) | Q(pk=self.instance.switch_class_id)
             )
