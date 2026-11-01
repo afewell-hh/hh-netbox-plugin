@@ -19,7 +19,8 @@ from django.urls import reverse
 
 from core.models import Job
 from dcim.models import (
-    Cable, Device, DeviceRole, DeviceType, Interface, Manufacturer, Module, ModuleBay, Site,
+    Cable, Device, DeviceRole, DeviceType, Interface, InterfaceTemplate, Manufacturer, Module,
+    ModuleBay, ModuleBayTemplate, Site,
 )
 from users.models import ObjectPermission
 
@@ -44,8 +45,10 @@ from netbox_hedgehog.models.topology_planning import (
     SwitchPortZone,
     TopologyPlan,
 )
+from netbox_hedgehog.services.preflight import check_transceiver_bay_readiness
 from netbox_hedgehog.tests.test_topology_planning import (
     get_test_non_transceiver_module_type,
+    get_test_nic_module_type,
     get_test_server_nic,
     get_test_transceiver_module_type,
 )
@@ -440,6 +443,20 @@ class CalculateDesignBehaviourTests(CalculateDesignBase):
         self.assertEqual(self.qty(self.other_plan), (None, None))
 
     def test_existing_generate_update_still_rejects_busy_plan(self):
+        # Generate/Update runs transceiver-bay readiness before its busy guard,
+        # so satisfy those prerequisites (same conventions as
+        # test_unified_generate_update): NIC cage bays for port_index 0 with
+        # ports_per_connection=2, and switch bay parity for interface templates.
+        nic_mt = get_test_nic_module_type()
+        ModuleBayTemplate.objects.get_or_create(module_type=nic_mt, name='cage-0')
+        ModuleBayTemplate.objects.get_or_create(module_type=nic_mt, name='cage-1')
+        for it in InterfaceTemplate.objects.filter(device_type=self.switch_type):
+            ModuleBayTemplate.objects.get_or_create(
+                device_type=self.switch_type, name=it.name)
+        readiness = check_transceiver_bay_readiness(self.plan)
+        self.assertTrue(
+            readiness.is_ready,
+            f'Preflight prerequisites not satisfied: {readiness.missing}')
         self._make_busy(self.plan)
         url = reverse('plugins:netbox_hedgehog:topologyplan_generate_update',
                       args=[self.plan.pk])
