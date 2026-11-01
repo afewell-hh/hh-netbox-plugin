@@ -68,6 +68,22 @@ def _require_topologyplan_change_permission(request, plan=None):
             raise PermissionDenied
 
 
+def _generation_is_busy(plan):
+    """True when a QUEUED or IN_PROGRESS GenerationState is observed.
+
+    Any such status is treated as busy, whether or not its job still exists
+    (a deleted/missing job does not clear the state). Observational only, not
+    a lock.
+    """
+    state = getattr(plan, 'generation_state', None)
+    if state is None:
+        return False
+    return state.status in (
+        choices.GenerationStatusChoices.QUEUED,
+        choices.GenerationStatusChoices.IN_PROGRESS,
+    )
+
+
 # BreakoutOption Views
 class BreakoutOptionListView(generic.ObjectListView):
     """List view for BreakoutOptions"""
@@ -146,6 +162,13 @@ class TopologyPlanView(generic.ObjectView):
 
         # Check if user can generate devices (object-level permission + DCIM perms)
         can_generate_devices = self._can_user_generate_devices(request, instance)
+
+        # "Calculate design" (#727): object-level change permission only, independent
+        # of DCIM generation permissions; disabled while generation is busy.
+        can_calculate_design = request.user.has_perm(
+            'netbox_hedgehog.change_topologyplan', instance
+        )
+        generation_busy = _generation_is_busy(instance)
 
         # Calculate expected counts for modal data attributes
         server_classes = instance.server_classes.prefetch_related('connections')
@@ -269,6 +292,8 @@ class TopologyPlanView(generic.ObjectView):
             'switch_classes': instance.switch_classes.all(),
             'server_connections': server_connections,
             'can_generate_devices': can_generate_devices,
+            'can_calculate_design': can_calculate_design,
+            'generation_busy': generation_busy,
             'is_first_time_generation': is_first_time,
             'is_destructive_regeneration': is_destructive,
             'expected_device_count': expected_device_count,
@@ -438,7 +463,10 @@ class TopologyPlanGenerateUpdateView(View):
     2. Generates/regenerates NetBox objects via DeviceGenerator
     3. Creates/updates GenerationState with comprehensive snapshot
 
-    Replaces dual "Generate" + "Recalculate" buttons with single unified action.
+    Originally replaced the dual "Generate" + "Recalculate" buttons (#127). A
+    separate, clearly labelled "Calculate design" action (#727, served by
+    TopologyPlanRecalculateView) now exists for calculation-only use; this
+    view remains the only generation path.
 
     POST: Generate or update devices based on current plan state
 
@@ -618,27 +646,59 @@ class TopologyPlanRecalculateView(PermissionRequiredMixin, View):
     raise_exception = True
 
     def post(self, request, pk):
-        """Handle recalculate POST request"""
+        """Handle recalculate POST request ("Calculate design" action).
+
+        Updates saved calculated switch quantities only. It never creates,
+        updates or deletes NetBox inventory or GenerationState.
+        """
         _require_topologyplan_change_permission(request)
         plan = get_object_or_404(models.TopologyPlan, pk=pk)
+        # Object-level check: a constrained ObjectPermission must not allow
+        # calculating a plan it does not cover.
+        _require_topologyplan_change_permission(request, plan)
+
+        # Busy-state check (not a concurrency fence): do not calculate while a
+        # generation job is observed as queued / in progress.
+        if _generation_is_busy(plan):
+            messages.error(
+                request,
+                "Cannot calculate design: a generation job is queued or in progress "
+                "for this plan. Wait for it to finish, then try again."
+            )
+            return redirect('plugins:netbox_hedgehog:topologyplan_detail', pk=pk)
 
         # Run calculation engine
         result = update_plan_calculations(plan)
+        calculated = len(result['summary'])
+        failed = len(result['errors'])
 
-        # Show success message for successfully calculated switches
-        if result['summary']:
+        if calculated and not failed:
             messages.success(
                 request,
-                f"Recalculated {len(result['summary'])} switch classes for plan '{plan.name}'."
+                f"Recalculated {calculated} switch classes for plan '{plan.name}'. "
+                "Saved design quantities only; NetBox inventory was not changed."
+            )
+        elif calculated and failed:
+            messages.warning(
+                request,
+                f"Partially calculated plan '{plan.name}': {calculated} switch classes "
+                f"updated, {failed} failed (see errors below). "
+                "NetBox inventory was not changed."
+            )
+        elif not failed:
+            messages.info(
+                request,
+                f"Nothing to calculate for plan '{plan.name}': no switch classes use "
+                "calculated quantities (for example, only mesh classes with manual "
+                "quantities). No quantities were changed and NetBox inventory was not changed."
             )
 
         # Show error messages for any validation errors
-        if result['errors']:
-            for error_info in result['errors']:
-                messages.error(
-                    request,
-                    f"Error calculating '{error_info['switch_class']}': {error_info['error']}"
-                )
+        for error_info in result['errors']:
+            messages.error(
+                request,
+                f"Error calculating '{error_info['switch_class']}': {error_info['error']}"
+            )
 
         # Redirect back to plan detail page
         return redirect('plugins:netbox_hedgehog:topologyplan_detail', pk=pk)

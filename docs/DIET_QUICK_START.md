@@ -302,18 +302,26 @@ Port Type: data
 
 ---
 
-## Step 8: Recalculate Switch Quantities
+## Step 8: Calculate Design (Switch Quantities)
 
 After adding server classes, switch classes, and connections, trigger the calculation engine.
 
-### Run Recalculate
+**Calculate vs. Generate:** **Calculate design** updates the saved switch quantities only. It does
+not create, update or delete NetBox devices, interfaces, cables or modules, and it does not mark
+existing inventory as in sync. **Generate/Update Devices** (Step 9) is the separate action that
+writes NetBox inventory; it also recalculates automatically first.
+
+### Run Calculate design
 
 1. Go to your **Topology Plan detail page**
-2. Click the **Recalculate Switch Quantities** button
+2. In the **Actions** card, click **Calculate design**
 
-   **Required Permission:** `netbox_hedgehog.change_topologyplan`
+   **Required Permission:** `netbox_hedgehog.change_topologyplan` on that plan (no DCIM
+   permissions needed). The button is disabled while a generation job is queued or in progress.
 
-3. You'll see a success message: "Recalculated N switch classes for plan '[Plan Name]'."
+3. You'll see a success message: "Recalculated N switch classes for plan '[Plan Name]'. ..." If some
+   classes fail you'll see a "Partially calculated" warning plus one error per failed class; if
+   nothing is calculable (for example only mesh classes) you'll see a "Nothing to calculate" notice.
 
 4. Check the **Switch Classes** section - each switch class now shows:
    - **Calculated Quantity**: Auto-calculated based on port demand
@@ -553,7 +561,7 @@ spec:
 3. Click **Edit**
 4. Change the **Quantity** field
 5. Click **Update**
-6. Go back to plan detail and click **Recalculate** to update switch quantities
+6. Go back to plan detail and click **Calculate design** to update switch quantities
 
 ### Override Calculated Switch Quantity
 

@@ -100,6 +100,7 @@ jobs:
             netbox_hedgehog.tests.test_topology_planning.test_generate_integration.TopologyPlanGenerateIntegrationTestCase.test_generate_post_creates_devices \
             netbox_hedgehog.tests.test_topology_planning.test_generate_integration.TopologyPlanGenerateIntegrationTestCase.test_generate_post_creates_cables \
             netbox_hedgehog.tests.test_topology_planning.test_form_validation.TopologyPlanFormValidationTestCase \
+            netbox_hedgehog.tests.test_topology_planning.test_calculate_design \
             --testrunner=netbox_hedgehog.tests.runner.DietTestRunner \
             --verbosity=2 | tee diet-pr-regression.log
 
