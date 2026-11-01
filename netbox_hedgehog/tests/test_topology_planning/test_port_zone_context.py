@@ -5,7 +5,7 @@ Two plans, several switch classes and distinct zones prove isolation, explicit
 All plans, search, empty/invalid contexts, retention, RBAC and safe return URLs.
 """
 
-from urllib.parse import quote
+from urllib.parse import parse_qs, quote, urljoin, urlsplit
 
 from django.contrib.auth import get_user_model
 from django.contrib.contenttypes.models import ContentType
@@ -195,15 +195,30 @@ class ListContextTests(PortZoneContextBase):
         self.assertTrue(sort_links, 'HTMX sort control (hx-get with sort=) expected')
         for h in sort_links:
             self.assertIn(f'plan={self.plan_a.pk}', h)
-        # Follow a real sort control with the HTMX header and verify rows.
-        resp = self.client.get(sort_links[0], HTTP_HX_REQUEST='true')
+        # Follow the Zone Name sort control as a browser does: query-only
+        # hx-get URLs resolve against the list path, not the site root.
+        def sort_value(h):
+            return parse_qs(urlsplit(h).query).get('sort', [''])[0]
+        zone_links = [h for h in sort_links if sort_value(h).lstrip('-') == 'zone_name']
+        self.assertTrue(zone_links, 'Zone Name sort control expected')
+        href = zone_links[0]
+        url = urljoin(reverse(LIST), href)
+        self.assertTrue(url.startswith(reverse(LIST)), url)
+        resp = self.client.get(url, HTTP_HX_REQUEST='true')
         self.assertEqual(resp.status_code, 200)
-        names = [z.zone_name for z in resp.context['table'].data]
-        self.assertTrue(names)
-        self.assertNotIn('bravo-server', names)
-        self.assertNotIn('bravo-server', resp.content.decode())
-        self.assertTrue(all(n.startswith(('alpha-', 'extra-')) for n in names))
-        self.assertEqual(len(names), len(set(names)))
+        content = resp.content.decode()
+        self.assertNotIn('bravo-server', content)
+        self.assertNotIn('PZ-Plan-B', content)
+        rendered = []
+        for n in re.findall(r'(?:alpha|extra|bravo)-[a-z0-9]+', content):
+            if n not in rendered:
+                rendered.append(n)
+        self.assertTrue(rendered, 'sorted HTMX response must render zone rows')
+        expected = sorted(
+            ['alpha-server', 'alpha-uplink', 'extra-0', 'extra-1', 'extra-2'],
+            reverse=sort_value(href).startswith('-'))
+        # per_page=2 may be retained, so rendered rows are the leading slice.
+        self.assertEqual(rendered, expected[:len(rendered)])
 
     def test_selection_retained_in_form(self):
         r = self.get(plan=self.plan_a.pk, switch_class=self.sw_a1.pk, q='alpha')
@@ -380,6 +395,7 @@ class AsymmetricGrantTests(PortZoneContextBase):
         cls.user = User.objects.create_user(username='pz-asym', password='pass')
         _grant(cls.user, TopologyPlan, ['view'], {'pk': cls.plan_a.pk})
         _grant(cls.user, PlanSwitchClass, ['view'])
+        _grant(cls.user, BreakoutOption, ['view'])
         _grant(cls.user, SwitchPortZone, ['view', 'add'])
 
     def setUp(self):
