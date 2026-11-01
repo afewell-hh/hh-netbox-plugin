@@ -138,6 +138,21 @@
                     </p>
                 </div>
                 {% endif %}
+                {# Calculate design (#727): calculation-only, separate from Generate/Update #}
+                {% if can_calculate_design %}
+                <form method="post" action="{% url 'plugins:netbox_hedgehog:topologyplan_recalculate' pk=object.pk %}" class="mb-3" id="calculate-design-form">
+                    {% csrf_token %}
+                    <button type="submit" class="btn btn-primary" id="calculate-design-btn"{% if generation_busy %} disabled title="Generation is queued or in progress"{% endif %}>
+                        <i class="mdi mdi-calculator"></i> Calculate design
+                    </button>
+                    <div class="form-text text-muted" id="calculate-design-help">
+                        Updates saved switch quantities only; does not create/update NetBox inventory.
+                        {% if generation_busy %}
+                        <br><strong>Unavailable while a generation job is queued or in progress.</strong>
+                        {% endif %}
+                    </div>
+                </form>
+                {% endif %}
                 {# Unified Generate/Update Button (DIET #127 + #132) #}
                 {# Check for active job (not orphaned) #}
                 {% if object.generation_state and object.generation_state.job and object.generation_state.status == 'queued' or object.generation_state and object.generation_state.job and object.generation_state.status == 'in_progress' %}
