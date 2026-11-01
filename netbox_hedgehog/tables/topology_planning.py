@@ -424,6 +424,13 @@ class SwitchPortZoneTable(NetBoxTable):
         verbose_name='Zone Name'
     )
 
+    plan = tables.Column(
+        accessor='switch_class__plan',
+        order_by=('switch_class__plan__name',),
+        linkify=True,
+        verbose_name='Plan'
+    )
+
     switch_class = tables.Column(
         linkify=True,
         verbose_name='Switch Class'
@@ -452,12 +459,12 @@ class SwitchPortZoneTable(NetBoxTable):
     class Meta(NetBoxTable.Meta):
         model = SwitchPortZone
         fields = (
-            'pk', 'id', 'zone_name', 'switch_class', 'zone_type', 'port_spec',
+            'pk', 'id', 'zone_name', 'plan', 'switch_class', 'zone_type', 'port_spec',
             'breakout_option', 'allocation_strategy', 'priority',
             'transceiver_module_type', 'tags', 'created', 'last_updated'
         )
         default_columns = (
-            'zone_name', 'switch_class', 'zone_type', 'port_spec',
+            'zone_name', 'plan', 'switch_class', 'zone_type', 'port_spec',
             'breakout_option', 'allocation_strategy', 'priority'
         )
 

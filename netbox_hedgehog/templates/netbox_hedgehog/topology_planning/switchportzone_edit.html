@@ -2,3 +2,13 @@
 {% load helpers %}
 
 {% block title %}{% if object.pk %}Edit{% else %}Add{% endif %} Switch Port Zone{% endblock %}
+
+{% block content %}
+{% if object.pk %}
+  <p class="text-muted" id="port-zone-parent">
+    Zone of switch class <a href="{{ object.switch_class.get_absolute_url }}">{{ object.switch_class }}</a>
+    in plan <a href="{{ object.switch_class.plan.get_absolute_url }}">{{ object.switch_class.plan.name }}</a>.
+  </p>
+{% endif %}
+{{ block.super }}
+{% endblock content %}

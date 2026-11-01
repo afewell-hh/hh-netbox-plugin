@@ -1195,8 +1195,34 @@ class PlanServerConnectionDeleteView(generic.ObjectDeleteView):
 # SwitchPortZone Views (DIET-011)
 # =============================================================================
 
+def _safe_internal_return_url(request, raw):
+    """Return ``raw`` only if it is a same-site relative path, else None (#729)."""
+    from urllib.parse import urlsplit
+    from django.utils.http import url_has_allowed_host_and_scheme
+
+    if not raw or not isinstance(raw, str) or len(raw) > 2000:
+        return None
+    if not raw.startswith('/') or raw.startswith('//') or '\\' in raw:
+        return None
+    if any(ord(c) < 32 for c in raw):
+        return None
+    parts = urlsplit(raw)
+    if parts.scheme or parts.netloc:
+        return None
+    if not url_has_allowed_host_and_scheme(raw, allowed_hosts={request.get_host()}):
+        return None
+    return raw
+
+
 class SwitchPortZoneListView(generic.ObjectListView):
-    """List view for SwitchPortZones"""
+    """
+    List view for SwitchPortZones (#729).
+
+    Zones are plan-scoped, so the list shows nothing until a topology plan (or
+    the explicit "All plans" option) is chosen via GET. No plan is remembered or
+    guessed. The user's restricted querysets bound choices and rows; the filter
+    is navigation, not authorization.
+    """
     queryset = models.SwitchPortZone.objects.select_related(
         'switch_class',
         'switch_class__plan',
@@ -1204,6 +1230,63 @@ class SwitchPortZoneListView(generic.ObjectListView):
     )
     table = tables.SwitchPortZoneTable
     template_name = 'netbox_hedgehog/topology_planning/switchportzone_list.html'
+
+    def get(self, request, *args, **kwargs):
+        from urllib.parse import urlencode
+        from django.urls import reverse
+        from ..forms.topology_planning import SwitchPortZoneFilterForm
+
+        form = SwitchPortZoneFilterForm(request.GET or None, user=request.user)
+        ctx = {
+            'zone_filter_form': form,
+            'zone_state': 'unselected',
+            'zone_plan': None,
+            'zone_switch_class': None,
+            'zone_q': '',
+            'zone_scope_has_zones': False,
+            'zone_add_url': None,
+            'zone_can_add': request.user.has_perm('netbox_hedgehog.add_switchportzone'),
+        }
+        qs = self.queryset.restrict(request.user, 'view')
+
+        if form.is_bound and not form.is_valid():
+            ctx['zone_state'] = 'invalid'
+            qs = qs.none()
+        elif not form.is_bound or not form.cleaned_data.get('plan'):
+            qs = qs.none()
+        else:
+            data = form.cleaned_data
+            plan = form.get_plan()
+            switch_class = data.get('switch_class')
+            if plan is not None:
+                qs = qs.filter(switch_class__plan_id=plan.pk)
+            if switch_class is not None:
+                qs = qs.filter(switch_class_id=switch_class.pk)
+            ctx['zone_state'] = 'plan' if plan is not None else 'all'
+            ctx['zone_plan'] = plan
+            ctx['zone_switch_class'] = switch_class
+            ctx['zone_scope_has_zones'] = qs.exists()
+            q = (data.get('q') or '').strip()
+            ctx['zone_q'] = q
+            if q:
+                qs = qs.filter(zone_name__icontains=q)
+            add_params = {'return_url': request.get_full_path()}
+            if switch_class is not None:
+                add_params['switch_class'] = switch_class.pk
+            elif plan is not None:
+                add_params['plan'] = plan.pk
+            ctx['zone_add_url'] = (
+                reverse('plugins:netbox_hedgehog:switchportzone_add') + '?' + urlencode(add_params)
+            )
+
+        self.queryset = qs
+        self._zone_ctx = ctx
+        return super().get(request, *args, **kwargs)
+
+    def get_extra_context(self, request, *args, **kwargs):
+        context = super().get_extra_context(request, *args, **kwargs) or {}
+        context.update(getattr(self, '_zone_ctx', {}))
+        return context
 
 
 class SwitchPortZoneView(generic.ObjectView):
@@ -1221,6 +1304,24 @@ class SwitchPortZoneEditView(generic.ObjectEditView):
     queryset = models.SwitchPortZone.objects.all()
     form = forms.SwitchPortZoneForm
     template_name = 'netbox_hedgehog/topology_planning/switchportzone_edit.html'
+
+    def dispatch(self, request, *args, **kwargs):
+        # Per-request scoped form: limits Switch Class choices on add (#729).
+        plan_id = None if kwargs.get('pk') else request.GET.get('plan')
+        self.form = forms.SwitchPortZoneForm.scoped(request.user, plan_id)
+        return super().dispatch(request, *args, **kwargs)
+
+    def get_return_url(self, request, obj=None):
+        """Honor only a validated same-site return_url; never an external one."""
+        safe = _safe_internal_return_url(
+            request, request.POST.get('return_url') or request.GET.get('return_url')
+        )
+        if safe:
+            return safe
+        if obj is not None and getattr(obj, 'pk', None):
+            return obj.get_absolute_url()
+        from django.urls import reverse
+        return reverse('plugins:netbox_hedgehog:switchportzone_list')
 
 
 class SwitchPortZoneDeleteView(generic.ObjectDeleteView):

@@ -563,6 +563,7 @@
             <h5 class="card-header">
                 Switch Classes
                 <span class="badge badge-secondary">{{ switch_classes|length }}</span>
+                <a href="{% url 'plugins:netbox_hedgehog:switchportzone_list' %}?plan={{ object.pk }}" class="btn btn-sm btn-outline-secondary float-end">Port zones</a>
             </h5>
             <div class="card-body table-responsive">
                 {% if switch_classes %}

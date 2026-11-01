@@ -552,10 +552,92 @@ class PlanServerConnectionForm(NetBoxModelForm):
 # SwitchPortZone Form (DIET-011)
 # =============================================================================
 
+class SwitchPortZoneFilterForm(forms.Form):
+    """
+    GET-only context/filter form for the Switch Port Zones list (#729).
+
+    ``plan`` is a ChoiceField built from the plans the user may view, plus the
+    explicit ``all`` option. An inaccessible, nonexistent or malformed value is
+    a plain "Select a valid choice" error that never names hidden objects.
+    ``switch_class`` is constrained to the selected plan context.
+    """
+
+    ALL_PLANS = 'all'
+
+    plan = forms.ChoiceField(required=False, label='Topology Plan')
+    switch_class = forms.ModelChoiceField(
+        queryset=PlanSwitchClass.objects.none(),
+        required=False,
+        label='Switch Class',
+        empty_label='Any switch class',
+        error_messages={
+            'invalid_choice': 'Select a switch class that belongs to the selected plan.',
+        },
+    )
+    q = forms.CharField(required=False, max_length=100, label='Zone name')
+
+    def __init__(self, *args, user=None, **kwargs):
+        super().__init__(*args, **kwargs)
+        if user is not None:
+            plans = TopologyPlan.objects.restrict(user, 'view')
+            switch_classes = PlanSwitchClass.objects.restrict(user, 'view')
+        else:
+            plans = TopologyPlan.objects.none()
+            switch_classes = PlanSwitchClass.objects.none()
+
+        self.plans_by_pk = {str(p.pk): p for p in plans.order_by('name')}
+        self.fields['plan'].choices = (
+            [('', 'Select a topology plan'), (self.ALL_PLANS, 'All plans')]
+            + [(pk, p.name) for pk, p in self.plans_by_pk.items()]
+        )
+
+        raw_plan = (self.data.get('plan') or '').strip() if self.is_bound else ''
+        switch_classes = switch_classes.select_related('plan').order_by('plan__name', 'switch_class_id')
+        label_with_plan = False
+        if raw_plan == self.ALL_PLANS:
+            label_with_plan = True
+        elif raw_plan in self.plans_by_pk:
+            switch_classes = switch_classes.filter(plan_id=int(raw_plan))
+        else:
+            switch_classes = switch_classes.none()
+        sc_field = self.fields['switch_class']
+        sc_field.queryset = switch_classes
+        if label_with_plan:
+            sc_field.label_from_instance = lambda sc: f'{sc.plan.name} / {sc.switch_class_id}'
+        else:
+            sc_field.label_from_instance = lambda sc: sc.switch_class_id
+
+        self.fields['plan'].widget.attrs['class'] = 'form-select'
+        self.fields['switch_class'].widget.attrs['class'] = 'form-select'
+        self.fields['q'].widget.attrs['class'] = 'form-control'
+
+    def get_plan(self):
+        """Selected TopologyPlan (None for unselected or All plans)."""
+        if not self.is_valid():
+            return None
+        return self.plans_by_pk.get(self.cleaned_data.get('plan') or '')
+
+    @property
+    def all_plans_selected(self):
+        return self.is_valid() and self.cleaned_data.get('plan') == self.ALL_PLANS
+
+
 class SwitchPortZoneForm(NetBoxModelForm):
     """
     Form for creating and editing SwitchPortZones.
+
+    ``scoped(user, plan_id)`` returns a per-request subclass that limits the
+    Switch Class choices on *add* to what the user may view (and to one plan
+    when a ``?plan=`` context is supplied). Unscoped use keeps the legacy
+    behavior.
     """
+
+    scope_user = None
+    scope_plan_id = None
+
+    @classmethod
+    def scoped(cls, user, plan_id=None):
+        return type(cls)(cls.__name__, (cls,), {'scope_user': user, 'scope_plan_id': plan_id})
 
     switch_class = forms.ModelChoiceField(
         queryset=PlanSwitchClass.objects.all(),
@@ -602,6 +684,7 @@ class SwitchPortZoneForm(NetBoxModelForm):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
+        self._scope_switch_class_choices()
         # Filter transceiver_module_type to Network Transceiver profile only (DIET-334).
         # Wire description-first labels (DIET-460).
         from dcim.models import ModuleType, ModuleTypeProfile
@@ -616,3 +699,26 @@ class SwitchPortZoneForm(NetBoxModelForm):
             self.fields['transceiver_module_type'].queryset = ModuleType.objects.none()
         # transceiver_module_type is optional — null means no module placed.
         self.fields['transceiver_module_type'].required = False
+
+    def _scope_switch_class_choices(self):
+        """Limit Switch Class choices on add (#729). Edit keeps legacy choices.
+
+        If the user holds no view permission on switch classes at all the
+        legacy (unrestricted) queryset is kept so zone-only ObjectPermission
+        users are not broken; otherwise NetBox restriction applies.
+        """
+        if self.instance.pk:
+            return
+        user = self.scope_user
+        plan_id = self.scope_plan_id
+        if (user is None or not user.is_authenticated) and plan_id in (None, ''):
+            return
+        qs = PlanSwitchClass.objects.select_related('plan').order_by('plan__name', 'switch_class_id')
+        if user is not None and user.is_authenticated and user.has_perm(
+            'netbox_hedgehog.view_planswitchclass'
+        ):
+            qs = qs.restrict(user, 'view')
+        if plan_id not in (None, ''):
+            plan_id = str(plan_id).strip()
+            qs = qs.filter(plan_id=int(plan_id)) if plan_id.isdigit() else qs.none()
+        self.fields['switch_class'].queryset = qs
