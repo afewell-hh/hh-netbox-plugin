@@ -1,249 +1,81 @@
-# Hedgehog NetBox Plugin Documentation
+# Hedgehog NetBox Plugin (HNP) Documentation Index
 
-Welcome to the comprehensive documentation for the Hedgehog NetBox Plugin! This plugin provides a powerful self-service catalog for managing Hedgehog Open Network Fabric resources directly from NetBox.
+This index points to the maintained entry points for HNP, a NetBox plugin. It does not
+catalog features or report project status. Several linked guides are dated; the "Status"
+notes below say which ones to treat with caution. Where a guide and the source disagree,
+the source and the linked GitHub issues win.
 
-## 📚 Documentation Index
+## For end users
 
-### Getting Started
-- **[Quick Start Guide](QUICK_START.md)** - Get up and running in 5 minutes (Operational Features)
-- **[DIET Quick Start](DIET_QUICK_START.md)** - Topology Planning for Pre-Sales (NEW)
-- **[Installation Guide](../README.md#installation)** - Complete installation instructions
-- **[Service Account Setup](SERVICE_ACCOUNT_SETUP.md)** - Kubernetes authentication setup
+| Need | Start here | Notes |
+|------|-----------|-------|
+| Install and configure the plugin | [Installation](../INSTALLATION.md), [root README](../README.md#installation) | Setup, version and runtime requirements are not restated here. Follow those files and check them against your NetBox version. |
+| Plan a topology (DIET) | [DIET Quick Start](DIET_QUICK_START.md) | Design-time usage path. Last revised 2024-12-21. |
+| DIET topology plan YAML | [DIET Topology Plan YAML Reference](DIET_TOPOLOGY_PLAN_YAML_REFERENCE.md) | Reference for the YAML loaded by `apply_diet_test_case`. |
+| Portable text interchange | [Paste-only interchange prerequisite](../README.md#paste-only-interchange-prerequisite) | The only usage documentation in the tree. See [Text interchange](#text-interchange) below. |
+| Operational (Kubernetes/fabric) features | [Quick Start](QUICK_START.md), [User Guide](USER_GUIDE.md), [Workflows](WORKFLOWS.md), [Service Account Setup](SERVICE_ACCOUNT_SETUP.md) | Written in mid-2025. They have not been re-verified against the current source. |
+| REST API for operational resources | [API Reference](API_REFERENCE.md) | Written in mid-2025. It does not document an interchange REST or GraphQL API. |
 
-### User Documentation
-- **[User Guide](USER_GUIDE.md)** - Comprehensive guide to all features
-- **[Common Workflows](WORKFLOWS.md)** - Step-by-step workflows for daily operations
-- **[Best Practices](USER_GUIDE.md#best-practices)** - Recommended practices and conventions
+## For developers and contributors
 
-### Technical Documentation
-- **[API Reference](API_REFERENCE.md)** - Complete REST API documentation
-- **[Development Guide](../DEVELOPMENT_GUIDE.md)** - For developers and contributors
-- **[Architecture Overview](../PROJECT_MANAGEMENT.md)** - Technical architecture details
+| Need | Start here |
+|------|-----------|
+| Contributor and agent rules (UX-accurate testing, branch and commit conventions, container-based commands) | [AGENTS.md](../AGENTS.md), [CLAUDE.md](../CLAUDE.md) |
+| Testing approach for DIET | [Testing Strategy](TESTING_STRATEGY.md), plus the "Testing Commands" section of [AGENTS.md](../AGENTS.md) |
+| Local development environment | [Development Environment Setup](../DEVELOPMENT_ENVIRONMENT_SETUP.md), [CONTRIBUTORS.md](../CONTRIBUTORS.md), `scripts/setup_dev_env.sh` |
+| DIET design decisions | [DIET Module Documentation](DIET_README.md). It states that design decisions live in GitHub issues, not in repo docs. |
 
-### Operations
-- **[Troubleshooting](USER_GUIDE.md#troubleshooting)** - Common issues and solutions
-- **[Maintenance Procedures](WORKFLOWS.md#maintenance-workflows)** - Regular maintenance tasks
-- **[Security Considerations](USER_GUIDE.md#security-best-practices)** - Security guidelines
+Setup instructions in these files are dated and may overlap. This index does not pick
+one as authoritative. [AGENTS.md](../AGENTS.md) is the maintained contributor entry point.
 
-## 🚀 What is the Hedgehog NetBox Plugin?
+## Current program and accepted direction
 
-The Hedgehog NetBox Plugin is a comprehensive solution that bridges NetBox IPAM/DCIM capabilities with Hedgehog Open Network Fabric management. It provides:
+Work tracking, architecture and roadmap decisions live in GitHub issues, not in this
+file. Issue closure alone is not proof that something is implemented; check the source.
 
-### Key Capabilities
+- [#617](https://github.com/afewell-hh/hh-netbox-plugin/issues/617): the active HNP/AID evolution program and its tracking. Current work, status and ticket inventory are there, not here.
+- [#660](https://github.com/afewell-hh/hh-netbox-plugin/issues/660), [#661](https://github.com/afewell-hh/hh-netbox-plugin/issues/661) and [#662](https://github.com/afewell-hh/hh-netbox-plugin/issues/662): accepted architecture and roadmap decisions (read each issue's amendments and the corrected dependency table in #662).
 
-🏗️ **Multi-Fabric Management**
-- Connect and manage multiple Hedgehog fabric installations
-- Centralized monitoring and control from NetBox
-- Fabric health monitoring and status tracking
+Accepted direction:
 
-☁️ **Self-Service VPC Catalog**
-- Template-based VPC creation (Basic, Web+DB, Three-Tier, Custom)
-- Real-time deployment to Kubernetes clusters
-- IP address and VLAN management integration
+- Portable design functionality, a NetBox/HNP adapter and UI, and NetBox ownership of deployed DCIM state.
 
-🔌 **Infrastructure Tracking**
-- Automatic discovery of switches, connections, and servers
-- Physical topology visualization and monitoring
-- Connection type management (unbundled, bundled, MCLAG, ESLAG)
+What those decisions did not do:
 
-⚡ **Bulk Operations**
-- Efficient management of multiple resources
-- Batch apply, update, and delete operations
-- Progress tracking and error handling
+- They did not select a new language, runtime or service boundary.
+- Extraction (T6) is gated.
+- HNP remains a NetBox plugin.
+- The older standalone AID repository is historical exploration relative to this program. It is not evidence that the new core is deployed there or synchronized with it.
+- No completed external AID service is claimed.
 
-🔄 **Bidirectional Synchronization**
-- Automatic sync between NetBox and Kubernetes
-- Detection and import of external changes
-- Conflict resolution and change notifications
+## Text interchange
 
-### Architecture Overview
+Portable v1 text interchange is implemented as a synchronous core with a paste-only UI.
+It is the delivered surface, and the sources are:
 
-```
-┌─────────────┐    ┌─────────────┐    ┌─────────────┐
-│   NetBox    │◄──►│   Plugin    │◄──►│ Hedgehog    │
-│   IPAM/DCIM │    │             │    │ Kubernetes  │
-└─────────────┘    └─────────────┘    └─────────────┘
-      │                    │                  │
-      ▼                    ▼                  ▼
-┌─────────────┐    ┌─────────────┐    ┌─────────────┐
-│ IP/VLAN     │    │ Templates   │    │ CRDs        │
-│ Management  │    │ Workflows   │    │ Controllers │
-└─────────────┘    └─────────────┘    └─────────────┘
-```
+- Core: [`netbox_hedgehog/interchange.py`](../netbox_hedgehog/interchange.py) (#675)
+- Models: [`netbox_hedgehog/models/interchange.py`](../netbox_hedgehog/models/interchange.py) and migrations `0057`–`0059`
+- UI: [`netbox_hedgehog/views/interchange.py`](../netbox_hedgehog/views/interchange.py) (#684), templates in `netbox_hedgehog/templates/netbox_hedgehog/interchange/`, routes under `interchange/` in [`netbox_hedgehog/urls.py`](../netbox_hedgehog/urls.py)
+- Host-setting prerequisite: [root README](../README.md#paste-only-interchange-prerequisite)
+- Completion and limit records: [#675](https://github.com/afewell-hh/hh-netbox-plugin/issues/675), [#684](https://github.com/afewell-hh/hh-netbox-plugin/issues/684), [#709](https://github.com/afewell-hh/hh-netbox-plugin/issues/709)
 
-## 🎯 Who Should Use This Plugin?
+Boundaries, as the source states them:
 
-### Network Engineers
-- Manage multiple Hedgehog fabric installations
-- Deploy VPCs using standardized templates
-- Monitor infrastructure health and status
-- Perform bulk operations efficiently
+- The UI is paste-only. `urls.py` says upload and API are deliberately absent, and `views/interchange.py` says there is no upload or public API surface.
+- This index does not claim a public interchange REST or GraphQL API, or a file-upload release.
+- Runtime reaper deployment in the shared environment is not claimed.
+- Equivalence evidence (#669) is diagnostic only. No parity claim is made.
+- The #712 draft and the #719 G1 handoff are open or paused. Do not treat them as delivered.
 
-### Operations Teams
-- Automate fabric onboarding processes
-- Maintain consistency across environments
-- Monitor resource utilization and health
-- Implement change management workflows
+## Historical or superseded material
 
-### Developers
-- Use REST API for automation and integration
-- Build custom workflows and tools
-- Integrate with CI/CD pipelines
-- Access programmatic fabric management
+Do not read these as current architecture or status.
 
-### IT Managers
-- Centralized visibility across all fabrics
-- Standardized deployment processes
-- Improved operational efficiency
-- Reduced manual configuration errors
+- [`../archive/`](../archive/) and `../project_management/`: older project-management and architecture pages (for example `archive/project_management_old/ARCHITECTURE_OVERVIEW.md`, last updated 2025-07-02).
+- [`../ARCHITECTURE_DECISION_NETBOX_CORE_MODELS.md`](../ARCHITECTURE_DECISION_NETBOX_CORE_MODELS.md): a 2025-12-19 proposal marked "Proposed - Awaiting User Confirmation".
+- [DIET-140 Architecture Options](DIET-140-ARCHITECTURE-OPTIONS.md), [DIET-140 Research Summary](DIET-140-RESEARCH-SUMMARY.md), [DIET Generation Patterns](DIET-GENERATION-PATTERNS.md) and its [Summary](DIET-GENERATION-PATTERNS-SUMMARY.md), [DIET Test Cases](DIET_TEST_CASES.md): DIET research and design notes. Defer to the issue threads where they conflict.
+- The root-level `DEVELOPMENT_GUIDE.md` and `PROJECT_MANAGEMENT.md`, which earlier versions of this index linked, do not exist in the tracked tree. `project_management/DEVELOPMENT_GUIDE.md` and `project_management/ARCHITECTURE.md` exist but have not been verified as current.
 
-## 📖 Quick Navigation
+## Reference-architecture (RA) pipeline files
 
-### New Users - Operational Features
-1. Start with the [Quick Start Guide](QUICK_START.md)
-2. Read the [User Guide](USER_GUIDE.md) overview
-3. Follow [Common Workflows](WORKFLOWS.md) for your use case
-
-### New Users - Topology Planning (DIET)
-1. Start with the [DIET Quick Start](DIET_QUICK_START.md)
-2. Learn about auto-calculating switch requirements
-3. Export Hedgehog wiring diagrams
-
-### Existing NetBox Users
-1. Review [Installation Guide](../README.md#installation)
-2. Check [Service Account Setup](SERVICE_ACCOUNT_SETUP.md)
-3. Explore [API Reference](API_REFERENCE.md) for automation
-
-### Developers
-1. Review [Development Guide](../DEVELOPMENT_GUIDE.md)
-2. Check [API Reference](API_REFERENCE.md)
-3. See [Code Examples](API_REFERENCE.md#code-examples)
-
-## 🎨 Feature Highlights
-
-### Dashboard & Monitoring
-- **Fabric Overview**: Centralized health dashboard
-- **Resource Statistics**: Real-time counts and utilization
-- **Activity Timeline**: Track changes and operations
-- **Health Indicators**: Visual status monitoring
-
-### VPC Management
-- **Template Library**: Pre-configured VPC patterns
-- **Visual Designer**: Interactive VPC configuration
-- **Real-time Deployment**: Immediate Kubernetes deployment
-- **Status Tracking**: Monitor deployment progress
-
-### Infrastructure Management
-- **Auto-Discovery**: Automatic resource import
-- **Topology Visualization**: Interactive network diagrams
-- **Connection Management**: Physical and logical connections
-- **Switch Configuration**: Role and profile management
-
-### Bulk Operations
-- **Multi-Selection**: Checkbox-based selection
-- **Progress Tracking**: Real-time operation status
-- **Error Handling**: Individual failure management
-- **Confirmation Dialogs**: Safety for destructive actions
-
-## 🔧 Technical Requirements
-
-### NetBox Requirements
-- NetBox 4.0 or higher
-- Python 3.9+
-- Django 4.2+
-- PostgreSQL database
-
-### Hedgehog Requirements
-- Hedgehog Open Network Fabric
-- Kubernetes cluster access
-- Service account with appropriate permissions
-- Network connectivity between NetBox and Kubernetes
-
-### Browser Requirements
-- Modern web browser (Chrome, Firefox, Safari, Edge)
-- JavaScript enabled
-- Responsive design supports mobile devices
-
-## 🚦 Getting Started Checklist
-
-- [ ] NetBox instance with plugin installed
-- [ ] Access to Hedgehog Kubernetes cluster
-- [ ] Service account configured with permissions
-- [ ] Network connectivity verified
-- [ ] User account with appropriate NetBox permissions
-
-**Ready to start?** → [Quick Start Guide](QUICK_START.md)
-
-## 📋 Common Use Cases
-
-### Scenario 1: Multi-Environment Management
-**Challenge**: Managing separate production, staging, and development fabrics
-**Solution**: Use multiple fabric connections with environment-specific configurations
-
-### Scenario 2: Application Deployment
-**Challenge**: Consistent VPC deployment across environments
-**Solution**: Use VPC templates with standardized configurations
-
-### Scenario 3: Infrastructure Changes
-**Challenge**: Tracking physical infrastructure changes
-**Solution**: Automatic sync and change detection with notifications
-
-### Scenario 4: Bulk Operations
-**Challenge**: Managing hundreds of VPCs and connections
-**Solution**: Bulk operations with progress tracking and error handling
-
-### Scenario 5: Compliance and Auditing
-**Challenge**: Maintaining audit trails for network changes
-**Solution**: Comprehensive logging and change tracking
-
-## 🔍 Documentation Features
-
-### Comprehensive Coverage
-- **Complete Feature Documentation**: Every capability covered
-- **Step-by-Step Procedures**: Detailed workflows
-- **Code Examples**: Multiple programming languages
-- **Screenshots and Diagrams**: Visual learning aids
-
-### Multiple Skill Levels
-- **Beginner**: Quick start and basic operations
-- **Intermediate**: Advanced workflows and bulk operations
-- **Expert**: API integration and custom development
-
-### Searchable and Organized
-- **Table of Contents**: Easy navigation
-- **Cross-References**: Linked related topics
-- **Index**: Quick topic lookup
-- **Examples**: Practical implementations
-
-## 🤝 Support and Community
-
-### Documentation Updates
-This documentation is actively maintained and updated with each plugin release. Check for updates regularly.
-
-### Getting Help
-- **User Guide**: Comprehensive troubleshooting section
-- **Workflows**: Step-by-step problem resolution
-- **API Reference**: Complete technical documentation
-- **Community**: Join Hedgehog community discussions
-
-### Contributing
-Contributions to documentation are welcome! See the development guide for details on contributing improvements and additions.
-
----
-
-## 📄 Document Status
-
-| Document | Status | Last Updated | Audience |
-|----------|--------|--------------|----------|
-| [Quick Start](QUICK_START.md) | ✅ Complete | 2025-06-29 | New Users (Operational) |
-| [DIET Quick Start](DIET_QUICK_START.md) | ✅ Complete | 2024-12-21 | Pre-Sales / Design |
-| [User Guide](USER_GUIDE.md) | ✅ Complete | 2025-06-29 | All Users |
-| [Workflows](WORKFLOWS.md) | ✅ Complete | 2025-06-29 | Operators |
-| [API Reference](API_REFERENCE.md) | ✅ Complete | 2025-06-29 | Developers |
-| [Service Account Setup](SERVICE_ACCOUNT_SETUP.md) | ✅ Complete | 2025-06-29 | Administrators |
-
----
-
-**Happy networking with Hedgehog! 🦔**
-
-*For the latest updates and announcements, follow the project repository and community channels.*
+[RA Asset Publishing](RA_ASSET_PUBLISHING.md), [RA Pipeline Execution Plan](RA_PIPELINE_EXECUTION_PLAN.md), [RA pilot translation worksheet](ra_pilot_translation_worksheet.md), and the RA variant manifest [catalog](ra_variant_manifest_catalog.yaml) and [template](ra_variant_manifest_template.yaml). These were not reviewed for currency.
