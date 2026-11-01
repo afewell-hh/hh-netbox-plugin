@@ -3,16 +3,17 @@
 This index points to the maintained entry points for HNP, a NetBox plugin. It does not
 catalog features or report project status. Several linked guides are dated; the "Status"
 notes below say which ones to treat with caution. Where a guide and the source disagree,
-the source and the linked GitHub issues win.
+approved issue decisions establish intended behavior, and source is implementation
+evidence. Unresolved discrepancies must be reconciled, not assumed away.
 
 ## For end users
 
 | Need | Start here | Notes |
 |------|-----------|-------|
 | Install and configure the plugin | [Installation](../INSTALLATION.md), [root README](../README.md#installation) | Setup, version and runtime requirements are not restated here. Follow those files and check them against your NetBox version. |
-| Plan a topology (DIET) | [DIET Quick Start](DIET_QUICK_START.md) | Design-time usage path. Last revised 2024-12-21. |
+| Plan a topology (DIET) | [DIET Quick Start](DIET_QUICK_START.md) | Design-time usage path. |
 | DIET topology plan YAML | [DIET Topology Plan YAML Reference](DIET_TOPOLOGY_PLAN_YAML_REFERENCE.md) | Reference for the YAML loaded by `apply_diet_test_case`. |
-| Portable text interchange | [Paste-only interchange prerequisite](../README.md#paste-only-interchange-prerequisite) | The only usage documentation in the tree. See [Text interchange](#text-interchange) below. |
+| Portable text interchange | [Paste-only interchange prerequisite](../README.md#paste-only-interchange-prerequisite) | Host-setting prerequisite; not a full interchange usage guide. See [Text interchange](#text-interchange) below. |
 | Operational (Kubernetes/fabric) features | [Quick Start](QUICK_START.md), [User Guide](USER_GUIDE.md), [Workflows](WORKFLOWS.md), [Service Account Setup](SERVICE_ACCOUNT_SETUP.md) | Written in mid-2025. They have not been re-verified against the current source. |
 | REST API for operational resources | [API Reference](API_REFERENCE.md) | Written in mid-2025. It does not document an interchange REST or GraphQL API. |
 
@@ -65,7 +66,7 @@ Boundaries, as the source states them:
 - This index does not claim a public interchange REST or GraphQL API, or a file-upload release.
 - Runtime reaper deployment in the shared environment is not claimed.
 - Equivalence evidence (#669) is diagnostic only. No parity claim is made.
-- The #712 draft and the #719 G1 handoff are open or paused. Do not treat them as delivered.
+- Specifications and test-evidence handoffs, such as [#712](https://github.com/afewell-hh/hh-netbox-plugin/issues/712) and [#719](https://github.com/afewell-hh/hh-netbox-plugin/issues/719), do not by themselves establish implementation or release. See the linked issues for their current acceptance records.
 
 ## Historical or superseded material
 
