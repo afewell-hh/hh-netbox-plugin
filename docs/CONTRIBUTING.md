@@ -173,7 +173,7 @@ place.
 
 ### Parallel vs sequential
 `--parallel N` creates isolated per-worker test databases and is useful for targeted
-development runs. Choose N conservatively for the available CPUs.
+development runs. Use N <= available CPUs / 2.
 
 ```bash
 # Targeted dev-cycle run
@@ -205,7 +205,8 @@ In your final update, include:
 
 ## File organization and documentation
 - Place DIET models in `netbox_hedgehog/models/topology_planning/`.
-- Place DIET views in `netbox_hedgehog/views/topology_planning/`.
+- Place DIET views in `netbox_hedgehog/views/topology_planning.py`. Keep DIET code separate
+  from operational code; do not move existing code.
 - Do not modify operational code unless explicitly required.
 - Update documentation together with code. Update existing canonical pages first; add a
   new page only for a distinct purpose, and link it from the [documentation index](README.md).
