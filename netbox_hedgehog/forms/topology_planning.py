@@ -552,10 +552,98 @@ class PlanServerConnectionForm(NetBoxModelForm):
 # SwitchPortZone Form (DIET-011)
 # =============================================================================
 
+class SwitchPortZoneFilterForm(forms.Form):
+    """
+    GET-only context/filter form for the Switch Port Zones list (#729).
+
+    ``plan`` is a ChoiceField built from the plans the user may view, plus the
+    explicit ``all`` option. An inaccessible, nonexistent or malformed value is
+    a plain "Select a valid choice" error that never names hidden objects.
+    ``switch_class`` is constrained to the selected plan context.
+    """
+
+    ALL_PLANS = 'all'
+
+    plan = forms.ChoiceField(required=False, label='Topology Plan')
+    switch_class = forms.ModelChoiceField(
+        queryset=PlanSwitchClass.objects.none(),
+        required=False,
+        label='Switch Class',
+        empty_label='Any switch class',
+        error_messages={
+            'invalid_choice': 'Select a switch class that belongs to the selected plan.',
+        },
+    )
+    q = forms.CharField(required=False, max_length=100, label='Zone name')
+
+    def __init__(self, *args, user=None, **kwargs):
+        super().__init__(*args, **kwargs)
+        if user is not None:
+            plans = TopologyPlan.objects.restrict(user, 'view')
+            switch_classes = PlanSwitchClass.objects.restrict(user, 'view').filter(plan__in=plans)
+        else:
+            plans = TopologyPlan.objects.none()
+            switch_classes = PlanSwitchClass.objects.none()
+
+        self.plans_by_pk = {str(p.pk): p for p in plans.order_by('name')}
+        self.fields['plan'].choices = (
+            [('', 'Select a topology plan'), (self.ALL_PLANS, 'All plans')]
+            + [(pk, p.name) for pk, p in self.plans_by_pk.items()]
+        )
+
+        raw_plan = (self.data.get('plan') or '').strip() if self.is_bound else ''
+        switch_classes = switch_classes.select_related('plan').order_by('plan__name', 'switch_class_id')
+        label_with_plan = False
+        if raw_plan == self.ALL_PLANS:
+            label_with_plan = True
+        elif raw_plan in self.plans_by_pk:
+            switch_classes = switch_classes.filter(plan_id=int(raw_plan))
+        else:
+            switch_classes = switch_classes.none()
+        sc_field = self.fields['switch_class']
+        sc_field.queryset = switch_classes
+        if label_with_plan:
+            sc_field.label_from_instance = lambda sc: f'{sc.plan.name} / {sc.switch_class_id}'
+        else:
+            sc_field.label_from_instance = lambda sc: sc.switch_class_id
+
+        self.fields['plan'].widget.attrs['class'] = 'form-select'
+        self.fields['switch_class'].widget.attrs['class'] = 'form-select'
+        self.fields['q'].widget.attrs['class'] = 'form-control'
+
+    def get_plan(self):
+        """Selected TopologyPlan (None for unselected or All plans)."""
+        if not self.is_valid():
+            return None
+        return self.plans_by_pk.get(self.cleaned_data.get('plan') or '')
+
+    @property
+    def all_plans_selected(self):
+        return self.is_valid() and self.cleaned_data.get('plan') == self.ALL_PLANS
+
+
 class SwitchPortZoneForm(NetBoxModelForm):
     """
     Form for creating and editing SwitchPortZones.
+
+    ``scoped(user, plan_id)`` returns a per-request subclass that limits the
+    Switch Class choices on *add* to what the user may view (and to one plan
+    when a ``?plan=`` context is supplied). Unscoped use keeps the legacy
+    behavior.
     """
+
+    scope_user = None
+    scope_plan_id = None
+    scope_switch_class_id = None
+    context_error = None
+
+    @classmethod
+    def scoped(cls, user, plan_id=None, switch_class_id=None):
+        return type(cls)(cls.__name__, (cls,), {
+            'scope_user': user,
+            'scope_plan_id': plan_id,
+            'scope_switch_class_id': switch_class_id,
+        })
 
     switch_class = forms.ModelChoiceField(
         queryset=PlanSwitchClass.objects.all(),
@@ -602,6 +690,7 @@ class SwitchPortZoneForm(NetBoxModelForm):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
+        self._scope_switch_class_choices()
         # Filter transceiver_module_type to Network Transceiver profile only (DIET-334).
         # Wire description-first labels (DIET-460).
         from dcim.models import ModuleType, ModuleTypeProfile
@@ -616,3 +705,56 @@ class SwitchPortZoneForm(NetBoxModelForm):
             self.fields['transceiver_module_type'].queryset = ModuleType.objects.none()
         # transceiver_module_type is optional — null means no module placed.
         self.fields['transceiver_module_type'].required = False
+
+    def _scope_switch_class_choices(self):
+        """Limit Switch Class choices to the visible parent/switch/context (#729).
+
+        Choices are always the intersection of switch classes the user may view
+        and whose parent plan the user may view. On add, a ``plan`` and/or
+        ``switch_class`` context further constrains choices (GET and POST, as
+        the form posts back to the same URL); a hidden, invalid or mismatched
+        context yields no choices, never a fallback to everything. On edit the
+        context is ignored so the existing parent is never silently changed and
+        stays selectable. Unscoped use (no ``scope_user``) keeps legacy behavior.
+        """
+        user = self.scope_user
+        if user is None:
+            return
+        from django.db.models import Q
+
+        if not user.is_authenticated:
+            self.fields['switch_class'].queryset = PlanSwitchClass.objects.none()
+            return
+        visible_plans = TopologyPlan.objects.restrict(user, 'view')
+        qs = PlanSwitchClass.objects.restrict(user, 'view').filter(plan__in=visible_plans)
+        if self.instance.pk:
+            # NetBox's ObjectEditView.get passes the GET query string as form
+            # ``initial``, which overrides the instance value. On an unbound
+            # edit form, force the real parent so ?switch_class=B cannot change
+            # what is displayed or ordinarily saved. Bound POSTs are untouched.
+            if not self.is_bound:
+                self.initial['switch_class'] = self.instance.switch_class_id
+            qs = PlanSwitchClass.objects.filter(
+                Q(pk__in=qs.values('pk')) | Q(pk=self.instance.switch_class_id)
+            )
+        else:
+            has_context = False
+            for raw, lookup in (
+                (self.scope_plan_id, 'plan_id'),
+                (self.scope_switch_class_id, 'pk'),
+            ):
+                if raw in (None, ''):
+                    continue
+                has_context = True
+                text = str(raw).strip()
+                if text.isascii() and text.isdigit():
+                    qs = qs.filter(**{lookup: int(text)})
+                else:
+                    qs = qs.none()
+            if has_context and not qs.exists():
+                self.context_error = (
+                    'The requested plan or switch class context is not valid or not available.'
+                )
+        self.fields['switch_class'].queryset = qs.select_related('plan').order_by(
+            'plan__name', 'switch_class_id'
+        )

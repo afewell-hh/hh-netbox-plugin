@@ -253,6 +253,20 @@ Override Quantity: [leave blank]
 
 **Note:** The **calculated_quantity** and **effective_quantity** will be populated when you run the recalculate action.
 
+### Working with Switch Port Zones
+
+Port zones belong to one switch class in one topology plan; they are not shared templates.
+
+- From a plan: open the plan and use **Port zones** in the Switch Classes card
+  (`Switch Port Zones` list filtered to that plan).
+- From a switch class: **View all zones** opens that plan and switch class; **Add Port Zone**
+  preselects the switch class and returns you to the switch class on Save or Cancel.
+- From the sidebar: **Switch Port Zones** first shows *Select a topology plan*. Choose a plan
+  (optionally a switch class and a zone-name search) and press **Apply**; **Clear** resets.
+  Choose **All plans** for cross-plan administration. Nothing is remembered between visits.
+- Rows show the owning Plan and Switch Class. You only see plans and zones your NetBox
+  permissions allow; an invalid or inaccessible selection shows an error instead of rows.
+
 ---
 
 ## Step 7: Add Server Connections

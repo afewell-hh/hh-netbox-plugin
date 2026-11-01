@@ -2,3 +2,87 @@
 {% load helpers %}
 
 {% block title %}Switch Port Zones{% endblock %}
+
+{% block content %}
+<div class="card mb-3" id="port-zone-context">
+  <div class="card-body">
+    <form method="get" action="{% url 'plugins:netbox_hedgehog:switchportzone_list' %}" class="row g-2 align-items-end" id="port-zone-filter-form">
+      <div class="col-md-3">
+        <label class="form-label" for="{{ zone_filter_form.plan.id_for_label }}">Topology Plan</label>
+        {{ zone_filter_form.plan }}
+      </div>
+      <div class="col-md-3">
+        <label class="form-label" for="{{ zone_filter_form.switch_class.id_for_label }}">Switch Class</label>
+        {{ zone_filter_form.switch_class }}
+      </div>
+      <div class="col-md-3">
+        <label class="form-label" for="{{ zone_filter_form.q.id_for_label }}">Zone name</label>
+        {{ zone_filter_form.q }}
+      </div>
+      <div class="col-md-3">
+        <button type="submit" class="btn btn-primary">Apply</button>
+        <a href="{% url 'plugins:netbox_hedgehog:switchportzone_list' %}" class="btn btn-outline-secondary">Clear</a>
+      </div>
+    </form>
+    <p class="text-muted small mt-2 mb-0">
+      Port zones belong to a switch class in one topology plan. Choose a plan, or choose
+      <strong>All plans</strong> for cross-plan administration. After changing the plan, reset Switch Class to
+      &ldquo;Any switch class&rdquo; before applying.
+    </p>
+  </div>
+</div>
+
+{% if zone_state == 'invalid' %}
+  <div class="alert alert-danger" id="port-zone-invalid-context">
+    <strong>The selected filter is not valid, so no zones are shown.</strong>
+    <ul class="mb-0">
+      {% for field in zone_filter_form %}
+        {% for error in field.errors %}<li>{{ field.label }}: {{ error }}</li>{% endfor %}
+      {% endfor %}
+      {% for error in zone_filter_form.non_field_errors %}<li>{{ error }}</li>{% endfor %}
+    </ul>
+  </div>
+{% elif zone_state == 'unselected' %}
+  <div class="card" id="port-zone-select-plan">
+    <div class="card-body text-center py-5">
+      <h4>Select a topology plan</h4>
+      <p class="text-muted mb-0">
+        Port zones are plan-specific. Pick a topology plan above and press Apply, or open
+        <em>Port zones</em> from a topology plan or switch class page. Choose <strong>All plans</strong> to list zones across plans.
+      </p>
+    </div>
+  </div>
+{% else %}
+  <div class="card mb-3" id="port-zone-scope">
+    <div class="card-body d-flex justify-content-between align-items-center flex-wrap">
+      <div>
+        {% if zone_plan %}
+          <div>Plan: <a href="{{ zone_plan.get_absolute_url }}"><strong>{{ zone_plan.name }}</strong></a></div>
+        {% else %}
+          <div><strong>All plans</strong> (zones across every plan you can view)</div>
+        {% endif %}
+        {% if zone_switch_class %}
+          <div>Switch class: <a href="{{ zone_switch_class.get_absolute_url }}"><strong>{{ zone_switch_class.switch_class_id }}</strong></a></div>
+        {% endif %}
+        {% if zone_q %}<div>Zone name contains: <strong>{{ zone_q }}</strong></div>{% endif %}
+      </div>
+      {% if zone_can_add and zone_add_url %}
+        <a href="{{ zone_add_url }}" class="btn btn-success"><i class="mdi mdi-plus-thick"></i> Add Port Zone</a>
+      {% endif %}
+    </div>
+  </div>
+
+  {% if table.rows|length %}
+    {{ block.super }}
+  {% elif zone_q and zone_scope_has_zones %}
+    <div class="alert alert-info" id="port-zone-no-match">No port zones match &ldquo;{{ zone_q }}&rdquo; in this selection.</div>
+  {% else %}
+    <div class="alert alert-info" id="port-zone-empty">
+      {% if zone_switch_class %}This switch class has no port zones yet.
+      {% elif zone_plan %}This plan has no port zones yet.
+      {% else %}There are no port zones to show.{% endif %}
+      {% if zone_can_add and zone_add_url %}<a href="{{ zone_add_url }}">Add a port zone</a>.{% endif %}
+    </div>
+  {% endif %}
+{% endif %}
+{% endblock content %}
