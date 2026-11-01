@@ -21,13 +21,13 @@ evidence. Unresolved discrepancies must be reconciled, not assumed away.
 
 | Need | Start here |
 |------|-----------|
-| Contributor and agent rules (UX-accurate testing, branch and commit conventions, container-based commands) | [AGENTS.md](../AGENTS.md), [CLAUDE.md](../CLAUDE.md) |
-| Testing approach for DIET | [Testing Strategy](TESTING_STRATEGY.md), plus the "Testing Commands" section of [AGENTS.md](../AGENTS.md) |
+| Contributor and agent rules (UX-accurate testing, branch and commit conventions, container-based commands) | [Contributing guide](CONTRIBUTING.md) (canonical); [AGENTS.md](../AGENTS.md) and [CLAUDE.md](../CLAUDE.md) are thin entry points to it |
+| Testing approach for DIET | [Testing Strategy](TESTING_STRATEGY.md), plus the "Testing commands" section of the [Contributing guide](CONTRIBUTING.md#testing-commands) |
 | Local development environment | [Development Environment Setup](../DEVELOPMENT_ENVIRONMENT_SETUP.md), [CONTRIBUTORS.md](../CONTRIBUTORS.md), `scripts/setup_dev_env.sh` |
 | DIET design decisions | [DIET Module Documentation](DIET_README.md). It states that design decisions live in GitHub issues, not in repo docs. |
 
 Setup instructions in these files are dated and may overlap. This index does not pick
-one as authoritative. [AGENTS.md](../AGENTS.md) is the maintained contributor entry point.
+one as authoritative. The [Contributing guide](CONTRIBUTING.md) is the maintained contributor entry point.
 
 ## Current program and accepted direction
 
