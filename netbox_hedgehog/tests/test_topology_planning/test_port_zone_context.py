@@ -5,6 +5,8 @@ Two plans, several switch classes and distinct zones prove isolation, explicit
 All plans, search, empty/invalid contexts, retention, RBAC and safe return URLs.
 """
 
+import re
+from html.parser import HTMLParser
 from urllib.parse import parse_qs, quote, urljoin, urlsplit
 
 from django.contrib.auth import get_user_model
@@ -38,6 +40,50 @@ ADD = 'plugins:netbox_hedgehog:switchportzone_add'
 EDIT = 'plugins:netbox_hedgehog:switchportzone_edit'
 DELETE = 'plugins:netbox_hedgehog:switchportzone_delete'
 DETAIL = 'plugins:netbox_hedgehog:switchportzone'
+
+
+class _ZoneRowParser(HTMLParser):
+    """Collect zone-name anchors (detail URL) inside table rows, keeping multiplicity."""
+
+    DETAIL_RE = re.compile(r'/switch-port-zones/\d+/$')
+
+    def __init__(self):
+        super().__init__()
+        self.names = []
+        self._in_row = 0
+        self._row_done = False
+        self._in_anchor = False
+        self._buf = []
+
+    def handle_starttag(self, tag, attrs):
+        if tag == 'tr':
+            self._in_row += 1
+            self._row_done = False
+        elif tag == 'a' and self._in_row and not self._row_done:
+            href = dict(attrs).get('href') or ''
+            if self.DETAIL_RE.search(urlsplit(href).path):
+                self._in_anchor = True
+                self._buf = []
+
+    def handle_data(self, data):
+        if self._in_anchor:
+            self._buf.append(data)
+
+    def handle_endtag(self, tag):
+        if tag == 'a' and self._in_anchor:
+            self._in_anchor = False
+            self._row_done = True
+            self.names.append(''.join(self._buf).strip())
+        elif tag == 'tr' and self._in_row:
+            self._in_row -= 1
+
+
+def rendered_zone_names(markup):
+    """Zone-name cell links, one per table row, in rendered order, duplicates kept."""
+    parser = _ZoneRowParser()
+    parser.feed(markup)
+    parser.close()
+    return parser.names
 
 
 def _grant(user, model, actions, constraints=None):
@@ -209,11 +255,11 @@ class ListContextTests(PortZoneContextBase):
         content = resp.content.decode()
         self.assertNotIn('bravo-server', content)
         self.assertNotIn('PZ-Plan-B', content)
-        rendered = []
-        for n in re.findall(r'(?:alpha|extra|bravo)-[a-z0-9]+', content):
-            if n not in rendered:
-                rendered.append(n)
+        rendered = rendered_zone_names(content)
         self.assertTrue(rendered, 'sorted HTMX response must render zone rows')
+        self.assertEqual(
+            len(rendered), len(set(rendered)),
+            f'duplicate zone rows rendered: {rendered}')
         expected = sorted(
             ['alpha-server', 'alpha-uplink', 'extra-0', 'extra-1', 'extra-2'],
             reverse=sort_value(href).startswith('-'))
@@ -226,6 +272,30 @@ class ListContextTests(PortZoneContextBase):
         self.assertEqual(form.cleaned_data['plan'], str(self.plan_a.pk))
         self.assertEqual(form.cleaned_data['switch_class'], self.sw_a1)
         self.assertEqual(form.cleaned_data['q'], 'alpha')
+
+
+class ZoneRowExtractionTests(TestCase):
+    """Synthetic markup: extraction keeps duplicates and the uniqueness guard sees them."""
+
+    BASE = '/plugins/hedgehog/switch-port-zones/'
+
+    def _markup(self, names):
+        rows = ''.join(
+            f'<tr><td><a href="{self.BASE}{i}/">{n}</a></td>'
+            f'<td><a href="{self.BASE}{i}/edit/">edit</a></td></tr>'
+            for i, n in enumerate(names, start=1))
+        return (f'<table><tbody>{rows}</tbody></table>'
+                f'<a href="{self.BASE}99/">outside-table</a>')
+
+    def test_extraction_retains_duplicates(self):
+        names = rendered_zone_names(self._markup(['alpha-server', 'alpha-server', 'extra-0']))
+        self.assertEqual(names, ['alpha-server', 'alpha-server', 'extra-0'])
+
+    def test_uniqueness_guard_detects_duplicates(self):
+        dup = rendered_zone_names(self._markup(['alpha-server', 'alpha-server']))
+        self.assertNotEqual(len(dup), len(set(dup)))
+        ok = rendered_zone_names(self._markup(['alpha-server', 'alpha-uplink']))
+        self.assertEqual(len(ok), len(set(ok)))
 
 
 class LinkTests(PortZoneContextBase):
