@@ -580,7 +580,7 @@ class SwitchPortZoneFilterForm(forms.Form):
         super().__init__(*args, **kwargs)
         if user is not None:
             plans = TopologyPlan.objects.restrict(user, 'view')
-            switch_classes = PlanSwitchClass.objects.restrict(user, 'view')
+            switch_classes = PlanSwitchClass.objects.restrict(user, 'view').filter(plan__in=plans)
         else:
             plans = TopologyPlan.objects.none()
             switch_classes = PlanSwitchClass.objects.none()
@@ -634,10 +634,16 @@ class SwitchPortZoneForm(NetBoxModelForm):
 
     scope_user = None
     scope_plan_id = None
+    scope_switch_class_id = None
+    context_error = None
 
     @classmethod
-    def scoped(cls, user, plan_id=None):
-        return type(cls)(cls.__name__, (cls,), {'scope_user': user, 'scope_plan_id': plan_id})
+    def scoped(cls, user, plan_id=None, switch_class_id=None):
+        return type(cls)(cls.__name__, (cls,), {
+            'scope_user': user,
+            'scope_plan_id': plan_id,
+            'scope_switch_class_id': switch_class_id,
+        })
 
     switch_class = forms.ModelChoiceField(
         queryset=PlanSwitchClass.objects.all(),
@@ -701,24 +707,48 @@ class SwitchPortZoneForm(NetBoxModelForm):
         self.fields['transceiver_module_type'].required = False
 
     def _scope_switch_class_choices(self):
-        """Limit Switch Class choices on add (#729). Edit keeps legacy choices.
+        """Limit Switch Class choices to the visible parent/switch/context (#729).
 
-        If the user holds no view permission on switch classes at all the
-        legacy (unrestricted) queryset is kept so zone-only ObjectPermission
-        users are not broken; otherwise NetBox restriction applies.
+        Choices are always the intersection of switch classes the user may view
+        and whose parent plan the user may view. On add, a ``plan`` and/or
+        ``switch_class`` context further constrains choices (GET and POST, as
+        the form posts back to the same URL); a hidden, invalid or mismatched
+        context yields no choices, never a fallback to everything. On edit the
+        context is ignored so the existing parent is never silently changed and
+        stays selectable. Unscoped use (no ``scope_user``) keeps legacy behavior.
         """
-        if self.instance.pk:
-            return
         user = self.scope_user
-        plan_id = self.scope_plan_id
-        if (user is None or not user.is_authenticated) and plan_id in (None, ''):
+        if user is None:
             return
-        qs = PlanSwitchClass.objects.select_related('plan').order_by('plan__name', 'switch_class_id')
-        if user is not None and user.is_authenticated and user.has_perm(
-            'netbox_hedgehog.view_planswitchclass'
-        ):
-            qs = qs.restrict(user, 'view')
-        if plan_id not in (None, ''):
-            plan_id = str(plan_id).strip()
-            qs = qs.filter(plan_id=int(plan_id)) if plan_id.isdigit() else qs.none()
-        self.fields['switch_class'].queryset = qs
+        from django.db.models import Q
+
+        if not user.is_authenticated:
+            self.fields['switch_class'].queryset = PlanSwitchClass.objects.none()
+            return
+        visible_plans = TopologyPlan.objects.restrict(user, 'view')
+        qs = PlanSwitchClass.objects.restrict(user, 'view').filter(plan__in=visible_plans)
+        if self.instance.pk:
+            qs = PlanSwitchClass.objects.filter(
+                Q(pk__in=qs.values('pk')) | Q(pk=self.instance.switch_class_id)
+            )
+        else:
+            has_context = False
+            for raw, lookup in (
+                (self.scope_plan_id, 'plan_id'),
+                (self.scope_switch_class_id, 'pk'),
+            ):
+                if raw in (None, ''):
+                    continue
+                has_context = True
+                text = str(raw).strip()
+                if text.isascii() and text.isdigit():
+                    qs = qs.filter(**{lookup: int(text)})
+                else:
+                    qs = qs.none()
+            if has_context and not qs.exists():
+                self.context_error = (
+                    'The requested plan or switch class context is not valid or not available.'
+                )
+        self.fields['switch_class'].queryset = qs.select_related('plan').order_by(
+            'plan__name', 'switch_class_id'
+        )

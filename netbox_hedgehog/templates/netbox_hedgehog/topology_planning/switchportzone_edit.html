@@ -9,6 +9,8 @@
     Zone of switch class <a href="{{ object.switch_class.get_absolute_url }}">{{ object.switch_class }}</a>
     in plan <a href="{{ object.switch_class.plan.get_absolute_url }}">{{ object.switch_class.plan.name }}</a>.
   </p>
+{% elif form.context_error %}
+  <div class="alert alert-warning" id="port-zone-context-error">{{ form.context_error }}</div>
 {% endif %}
 {{ block.super }}
 {% endblock content %}

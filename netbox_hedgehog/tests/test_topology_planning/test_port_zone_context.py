@@ -355,3 +355,125 @@ class LegacyCrudTests(PortZoneContextBase):
         r = self.client.post(reverse(DELETE, args=[self.z_b1.pk]), {'confirm': True})
         self.assertEqual(r.status_code, 302)
         self.assertFalse(SwitchPortZone.objects.filter(pk=self.z_b1.pk).exists())
+
+
+class AsymmetricGrantTests(PortZoneContextBase):
+    """Plan view for A only; switch classes and zones granted globally (#729 R1/R2)."""
+
+    @classmethod
+    def setUpTestData(cls):
+        super().setUpTestData()
+        cls.user = User.objects.create_user(username='pz-asym', password='pass')
+        _grant(cls.user, TopologyPlan, ['view'], {'pk': cls.plan_a.pk})
+        _grant(cls.user, PlanSwitchClass, ['view'])
+        _grant(cls.user, SwitchPortZone, ['view', 'add'])
+
+    def setUp(self):
+        self.client = Client()
+        self.client.force_login(self.user)
+
+    def _payload(self, sw, name):
+        return {
+            'switch_class': sw.pk, 'zone_name': name,
+            'zone_type': PortZoneTypeChoices.SERVER, 'port_spec': '20-24',
+            'breakout_option': self.breakout.pk,
+            'allocation_strategy': AllocationStrategyChoices.SEQUENTIAL, 'priority': 100,
+        }
+
+    def test_all_plans_rows_and_labels_exclude_hidden_plan(self):
+        r = self.get(plan='all')
+        self.assertEqual(self.names(r), {'alpha-server', 'alpha-uplink'})
+        self.assertNotContains(r, 'PZ-Plan-B')
+        self.assertNotContains(r, 'b-leaf-1')
+        self.assertNotContains(r, 'bravo-server')
+
+    def test_add_choices_exclude_hidden_plan(self):
+        r = self.client.get(reverse(ADD))
+        self.assertEqual(set(r.context['form'].fields['switch_class'].queryset), {self.sw_a1, self.sw_a2})
+        self.assertNotContains(r, 'b-leaf-1')
+
+    def test_crafted_add_for_hidden_context_has_no_choices_and_rejects_post(self):
+        cases = (
+            f'plan={self.plan_b.pk}',
+            f'switch_class={self.sw_b1.pk}',
+            f'plan={self.plan_b.pk}&switch_class={self.sw_b1.pk}',
+        )
+        for query in cases:
+            with self.subTest(query=query):
+                url = f'{reverse(ADD)}?{query}'
+                r = self.client.get(url)
+                self.assertEqual(r.status_code, 200)
+                self.assertEqual(list(r.context['form'].fields['switch_class'].queryset), [])
+                self.assertNotContains(r, 'b-leaf-1')
+                r = self.client.post(url, self._payload(self.sw_b1, 'crafted'))
+                self.assertEqual(r.status_code, 200)
+                self.assertFalse(SwitchPortZone.objects.filter(zone_name='crafted').exists())
+
+    def test_selected_switch_context_enforced_on_get_and_post(self):
+        url = f'{reverse(ADD)}?switch_class={self.sw_a1.pk}'
+        r = self.client.get(url)
+        self.assertEqual(list(r.context['form'].fields['switch_class'].queryset), [self.sw_a1])
+        r = self.client.post(url, self._payload(self.sw_a2, 'other-switch'))
+        self.assertEqual(r.status_code, 200)
+        self.assertFalse(SwitchPortZone.objects.filter(zone_name='other-switch').exists())
+        self.client.post(url, self._payload(self.sw_b1, 'other-plan'))
+        self.assertFalse(SwitchPortZone.objects.filter(zone_name='other-plan').exists())
+        r = self.client.post(url, self._payload(self.sw_a1, 'in-context'))
+        self.assertEqual(r.status_code, 302)
+
+    def test_mismatched_plan_and_switch_context_has_no_choices(self):
+        r = self.client.get(reverse(ADD), {'plan': self.plan_a.pk, 'switch_class': self.sw_b1.pk})
+        self.assertEqual(list(r.context['form'].fields['switch_class'].queryset), [])
+        self.assertContains(r, 'not valid or not available')
+
+
+class RenderedAddAffordanceTests(PortZoneContextBase):
+    def _add_hrefs(self, response):
+        import html
+        import re
+        hrefs = [html.unescape(h) for h in re.findall(r'href="([^"]*)"', response.content.decode())]
+        return [h for h in hrefs if h.startswith(reverse(ADD))]
+
+    def test_list_has_only_scoped_add_links(self):
+        r = self.get(plan=self.plan_a.pk, switch_class=self.sw_a1.pk)
+        adds = self._add_hrefs(r)
+        self.assertTrue(adds)
+        for h in adds:
+            self.assertIn(f'plan={self.plan_a.pk}', h)
+            self.assertIn(f'switch_class={self.sw_a1.pk}', h)
+            self.assertIn('return_url=', h)
+
+    def test_followed_add_link_has_safe_save_and_cancel(self):
+        r = self.get(plan=self.plan_a.pk, switch_class=self.sw_a1.pk)
+        add = self._add_hrefs(r)[0]
+        r2 = self.client.get(add)
+        self.assertEqual(r2.status_code, 200)
+        self.assertEqual(list(r2.context['form'].fields['switch_class'].queryset), [self.sw_a1])
+        back = f'{reverse(LIST)}?plan={self.plan_a.pk}&switch_class={self.sw_a1.pk}'
+        self.assertEqual(r2.context['return_url'], back)
+        r3 = self.client.post(add, {
+            'switch_class': self.sw_a1.pk, 'zone_name': 'via-link',
+            'zone_type': PortZoneTypeChoices.SERVER, 'port_spec': '9-10',
+            'breakout_option': self.breakout.pk,
+            'allocation_strategy': AllocationStrategyChoices.SEQUENTIAL, 'priority': 100,
+        })
+        self.assertEqual(r3.status_code, 302)
+        self.assertEqual(r3['Location'], back)
+
+    def test_switch_detail_add_link_is_scoped(self):
+        r = self.client.get(self.sw_a1.get_absolute_url())
+        adds = self._add_hrefs(r)
+        self.assertTrue(adds)
+        for h in adds:
+            self.assertIn(f'plan={self.plan_a.pk}', h)
+            self.assertIn(f'switch_class={self.sw_a1.pk}', h)
+            self.assertIn('return_url=', h)
+
+    def test_unfiltered_list_has_no_unscoped_add(self):
+        r = self.client.get(reverse(LIST))
+        self.assertEqual(self._add_hrefs(r), [])
+
+    def test_edit_ignores_add_context_and_keeps_parent_selectable(self):
+        url = f'{reverse(EDIT, args=[self.z_a1.pk])}?switch_class={self.sw_b1.pk}&plan={self.plan_b.pk}'
+        r = self.client.get(url)
+        self.assertIn(self.sw_a1, r.context['form'].fields['switch_class'].queryset)

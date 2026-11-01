@@ -166,7 +166,7 @@
         {% else %}
           <p class="text-muted">No port zones defined yet.</p>
         {% endif %}
-        <a href="{% url 'plugins:netbox_hedgehog:switchportzone_add' %}?switch_class={{ object.pk }}&amp;return_url={{ object.get_absolute_url|urlencode:'' }}" class="btn btn-sm btn-success mt-2">
+        <a href="{% url 'plugins:netbox_hedgehog:switchportzone_add' %}?plan={{ object.plan_id }}&amp;switch_class={{ object.pk }}&amp;return_url={{ object.get_absolute_url|urlencode:'' }}" class="btn btn-sm btn-success mt-2">
           <i class="mdi mdi-plus-thick"></i> Add Port Zone
         </a>
         <a href="{% url 'plugins:netbox_hedgehog:switchportzone_list' %}?plan={{ object.plan_id }}&amp;switch_class={{ object.pk }}" class="btn btn-sm btn-outline-secondary mt-2">

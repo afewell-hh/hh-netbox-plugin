@@ -1230,6 +1230,11 @@ class SwitchPortZoneListView(generic.ObjectListView):
     )
     table = tables.SwitchPortZoneTable
     template_name = 'netbox_hedgehog/topology_planning/switchportzone_list.html'
+    # NetBox 4.4's header Add button ignores ObjectAction.url_params and would
+    # lose plan/return context, so drop it; the template renders a scoped Add.
+    actions = tuple(
+        a for a in generic.ObjectListView.actions if getattr(a, '__name__', '') != 'AddObject'
+    )
 
     def get(self, request, *args, **kwargs):
         from urllib.parse import urlencode
@@ -1247,7 +1252,11 @@ class SwitchPortZoneListView(generic.ObjectListView):
             'zone_add_url': None,
             'zone_can_add': request.user.has_perm('netbox_hedgehog.add_switchportzone'),
         }
-        qs = self.queryset.restrict(request.user, 'view')
+        # Rows are the intersection of visible zones, switch classes and parent plans.
+        qs = self.queryset.restrict(request.user, 'view').filter(
+            switch_class__in=models.PlanSwitchClass.objects.restrict(request.user, 'view'),
+            switch_class__plan__in=models.TopologyPlan.objects.restrict(request.user, 'view'),
+        )
 
         if form.is_bound and not form.is_valid():
             ctx['zone_state'] = 'invalid'
@@ -1271,10 +1280,10 @@ class SwitchPortZoneListView(generic.ObjectListView):
             if q:
                 qs = qs.filter(zone_name__icontains=q)
             add_params = {'return_url': request.get_full_path()}
+            if plan is not None:
+                add_params['plan'] = plan.pk
             if switch_class is not None:
                 add_params['switch_class'] = switch_class.pk
-            elif plan is not None:
-                add_params['plan'] = plan.pk
             ctx['zone_add_url'] = (
                 reverse('plugins:netbox_hedgehog:switchportzone_add') + '?' + urlencode(add_params)
             )
@@ -1307,8 +1316,12 @@ class SwitchPortZoneEditView(generic.ObjectEditView):
 
     def dispatch(self, request, *args, **kwargs):
         # Per-request scoped form: limits Switch Class choices on add (#729).
-        plan_id = None if kwargs.get('pk') else request.GET.get('plan')
-        self.form = forms.SwitchPortZoneForm.scoped(request.user, plan_id)
+        if kwargs.get('pk'):
+            plan_id = switch_class_id = None
+        else:
+            plan_id = request.GET.get('plan')
+            switch_class_id = request.GET.get('switch_class')
+        self.form = forms.SwitchPortZoneForm.scoped(request.user, plan_id, switch_class_id)
         return super().dispatch(request, *args, **kwargs)
 
     def get_return_url(self, request, obj=None):
