@@ -4,6 +4,8 @@ Generation state models for topology planning.
 GenerationState tracks the state of NetBox object generation from a TopologyPlan.
 """
 
+import copy
+
 from django.db import models
 from django.core.validators import MinValueValidator
 from django.core.exceptions import ValidationError
@@ -14,6 +16,79 @@ from netbox_hedgehog.utils.snapshot_builder import (
     build_plan_snapshot,
     compare_snapshots,
 )
+
+# Display-only sync classification values (issue #739).
+SYNC_IN_SYNC = 'in_sync'
+SYNC_CHANGED = 'changed'
+SYNC_SNAPSHOT_INCOMPLETE = 'snapshot_incomplete'
+
+# Server-class keys added to snapshots after some records were saved (DIET-607).
+# When a saved record omits them, their historical values are UNKNOWN.
+HISTORICAL_SERVER_CLASS_KEYS = ('place_in_racks', 'servers_per_rack', 'membership_only')
+
+_SNAPSHOT_LIST_KEYS = (
+    'server_classes', 'switch_classes', 'connections', 'port_zones', 'mclag_domains',
+)
+
+
+def _unique_server_class_index(entries):
+    """Map server_class_id -> entry, or None on malformed/duplicate identities."""
+    index = {}
+    for entry in entries:
+        if not isinstance(entry, dict):
+            return None
+        identity = entry.get('server_class_id')
+        if not isinstance(identity, str) or not identity or identity in index:
+            return None
+        index[identity] = entry
+    return index
+
+
+def classify_snapshot_sync(current, saved) -> str:
+    """
+    Pure, read-only DISPLAY classification of current vs saved snapshots.
+
+    Returns SYNC_IN_SYNC, SYNC_CHANGED or SYNC_SNAPSHOT_INCOMPLETE.
+
+    SYNC_SNAPSHOT_INCOMPLETE means the ONLY discrepancy is omission of known
+    historical server-class keys on correctly matched identities; those saved
+    values are unknown (neither changed nor proved in sync). A temporary
+    projection is used solely for this classification; it is never returned,
+    persisted, or used by compare_snapshots()/is_dirty() or any admission logic.
+    Malformed or missing saved data is reported as incomplete, never in sync.
+    """
+    if not isinstance(saved, dict) or not isinstance(current, dict):
+        return SYNC_SNAPSHOT_INCOMPLETE
+    if any(
+        not isinstance(saved.get(key), list) or not isinstance(current.get(key), list)
+        for key in _SNAPSHOT_LIST_KEYS
+    ):
+        return SYNC_SNAPSHOT_INCOMPLETE
+
+    try:
+        if compare_snapshots(current, saved):
+            return SYNC_IN_SYNC
+
+        saved_index = _unique_server_class_index(saved['server_classes'])
+        current_index = _unique_server_class_index(current['server_classes'])
+        if saved_index is None or current_index is None:
+            return SYNC_CHANGED
+
+        projected = copy.deepcopy(saved)
+        filled = False
+        for entry in projected['server_classes']:
+            match = current_index.get(entry['server_class_id'])
+            if match is None:
+                continue
+            for key in HISTORICAL_SERVER_CLASS_KEYS:
+                if key not in entry and key in match:
+                    entry[key] = copy.deepcopy(match[key])
+                    filled = True
+        if filled and compare_snapshots(current, projected):
+            return SYNC_SNAPSHOT_INCOMPLETE
+        return SYNC_CHANGED
+    except (TypeError, ValueError):
+        return SYNC_SNAPSHOT_INCOMPLETE
 
 
 class GenerationState(models.Model):
@@ -120,3 +195,14 @@ class GenerationState(models.Model):
         """
         current = build_plan_snapshot(self.plan)
         return not compare_snapshots(current, self.snapshot)
+
+    def sync_display_state(self, current=None) -> str:
+        """
+        Read-only display classification: in_sync / changed / snapshot_incomplete.
+
+        Does not alter is_dirty() or needs_regeneration; for an incomplete
+        snapshot those remain True. Grants no generation or retry authority.
+        """
+        if current is None:
+            current = build_plan_snapshot(self.plan)
+        return classify_snapshot_sync(current, self.snapshot)

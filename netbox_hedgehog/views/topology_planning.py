@@ -275,6 +275,15 @@ class TopologyPlanView(generic.ObjectView):
         else:
             plan_bom_comparison = None
 
+        # Display-only sync classification (#739); never affects actions.
+        if (
+            gs_for_bom is not None
+            and gs_for_bom.status == choices.GenerationStatusChoices.GENERATED
+        ):
+            sync_display_state = gs_for_bom.sync_display_state()
+        else:
+            sync_display_state = None
+
         # Server-Link Review + Switch-Fabric Link Review (#460)
         from netbox_hedgehog.services.connection_review import build_server_link_review
         from netbox_hedgehog.services.switch_fabric_review import build_switch_fabric_review
@@ -305,6 +314,7 @@ class TopologyPlanView(generic.ObjectView):
             'bay_error_rows': bay_error_rows,
             'plan_bom': plan_bom,
             'plan_bom_comparison': plan_bom_comparison,
+            'sync_display_state': sync_display_state,
             'server_link_review': server_link_review,
             'switch_fabric_review': switch_fabric_review,
         }

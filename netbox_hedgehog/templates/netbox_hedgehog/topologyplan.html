@@ -64,6 +64,22 @@
                                     <i class="mdi mdi-help-circle"></i> Not Generated
                                 </span>
                                 <br><small class="text-muted">No devices have been generated yet</small>
+                            {% elif object.needs_regeneration and sync_display_state == 'snapshot_incomplete' %}
+                                {# Saved snapshot incomplete: sync unknown (not in sync, not proven changed) #}
+                                <span class="badge badge-secondary">
+                                    <i class="mdi mdi-help-circle"></i> Sync unknown
+                                </span>
+                                <br><small class="text-muted">
+                                    Last generated {{ object.last_generated_at|naturaltime }}.
+                                    <strong>Saved generation snapshot is incomplete; synchronization cannot be confirmed.</strong>
+                                </small>
+                                {% if object.generation_state %}
+                                <br><small class="text-muted">
+                                    {{ object.generation_state.device_count }} devices,
+                                    {{ object.generation_state.interface_count }} interfaces,
+                                    {{ object.generation_state.cable_count }} cables
+                                </small>
+                                {% endif %}
                             {% elif object.needs_regeneration %}
                                 {# Out of sync #}
                                 <span class="badge badge-warning">
@@ -446,7 +462,13 @@
                 BOM Comparison (Plan vs. Generated) <small class="text-muted">(Server-side only)</small>
             </h5>
             <div class="card-body">
-                {% if plan_bom_comparison.needs_regeneration %}
+                {% if plan_bom_comparison.needs_regeneration and sync_display_state == 'snapshot_incomplete' %}
+                <div class="alert alert-warning">
+                    <strong>Warning:</strong> The saved generation snapshot is incomplete, so it cannot be
+                    confirmed whether this plan matches the last generation run.
+                    Comparison data reflects the previously generated inventory, which is preserved unchanged.
+                </div>
+                {% elif plan_bom_comparison.needs_regeneration %}
                 <div class="alert alert-warning">
                     <strong>Warning:</strong> This plan has been modified since the last generation run.
                     Comparison data reflects the previously generated inventory, not the current plan state.

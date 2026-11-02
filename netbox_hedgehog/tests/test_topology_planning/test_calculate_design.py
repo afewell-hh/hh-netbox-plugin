@@ -544,3 +544,112 @@ class CalculateDesignBehaviourTests(CalculateDesignBase):
         resp = self.login(self.superuser).post(url)
         self.assertEqual(resp.status_code, 302)
         self.assertTrue(any('Cannot start generation' in m for m in self.msgs(resp)))
+
+
+class SyncDisplayRenderTests(CalculateDesignBase):
+    """Real detail GET coverage for the snapshot-incomplete display (#739)."""
+
+    INCOMPLETE_TEXT = 'Saved generation snapshot is incomplete; synchronization cannot be confirmed.'
+    HISTORICAL = ('place_in_racks', 'servers_per_rack', 'membership_only')
+
+    def _state(self, plan, mutate=None, status=GenerationStatusChoices.GENERATED):
+        from netbox_hedgehog.utils.snapshot_builder import build_plan_snapshot
+        snapshot = build_plan_snapshot(plan)
+        if mutate:
+            mutate(snapshot)
+        return GenerationState.objects.update_or_create(
+            plan=plan, defaults=dict(
+                status=status, job=None, snapshot=snapshot,
+                device_count=3, interface_count=4, cable_count=5))[0]
+
+    def _get(self):
+        resp = self.login(self.superuser).get(self.detail_url())
+        self.assertEqual(resp.status_code, 200)
+        return resp.content.decode()
+
+    @classmethod
+    def _strip(cls, snapshot):
+        for entry in snapshot['server_classes']:
+            for key in cls.HISTORICAL:
+                entry.pop(key, None)
+
+    def test_complete_equal_snapshot_shows_in_sync(self):
+        self._state(self.plan)
+        html = self._get()
+        self.assertIn('In Sync', html)
+        self.assertNotIn('Sync unknown', html)
+        self.assertNotIn(self.INCOMPLETE_TEXT, html)
+        self.assertNotIn('has been modified since the last generation run', html)
+
+    def test_incomplete_only_snapshot_shows_unknown_in_both_locations(self):
+        gs = self._state(self.plan, self._strip)
+        before = (gs.snapshot, gs.status, gs.device_count)
+        html = self._get()
+        self.assertIn('Sync unknown', html)
+        self.assertIn(self.INCOMPLETE_TEXT, html)
+        self.assertIn('saved generation snapshot is incomplete, so it cannot be', html)
+        self.assertNotIn('In Sync', html)
+        self.assertNotIn('Out of Sync', html)
+        self.assertNotIn('Plan has changed since generation', html)
+        self.assertNotIn('has been modified since the last generation run', html)
+        self.assertNotIn('Re-generate to bring the comparison up to date', html)
+        self.assertIn('id="generate-btn"', html)
+        self.plan.refresh_from_db()
+        self.assertTrue(self.plan.needs_regeneration)
+        gs.refresh_from_db()
+        self.assertEqual(before, (gs.snapshot, gs.status, gs.device_count))
+
+    def test_known_change_with_missing_keys_still_out_of_sync(self):
+        def mutate(snapshot):
+            snapshot['server_classes'][0]['quantity'] += 5
+            self._strip(snapshot)
+        self._state(self.plan, mutate)
+        html = self._get()
+        self.assertIn('Out of Sync', html)
+        self.assertIn('Plan has changed since generation', html)
+        self.assertIn('has been modified since the last generation run', html)
+        self.assertNotIn('Sync unknown', html)
+        self.assertNotIn(self.INCOMPLETE_TEXT, html)
+
+    def test_known_change_alone_still_out_of_sync(self):
+        def mutate(snapshot):
+            snapshot['server_classes'][0]['quantity'] += 5
+        self._state(self.plan, mutate)
+        html = self._get()
+        self.assertIn('Out of Sync', html)
+        self.assertNotIn('Sync unknown', html)
+
+    def test_not_generated_busy_and_failed_precedence_unchanged(self):
+        html = self._get()
+        self.assertIn('Not Generated', html)
+        self.assertNotIn('Sync unknown', html)
+        for status in (GenerationStatusChoices.QUEUED, GenerationStatusChoices.IN_PROGRESS):
+            with self.subTest(status=status):
+                self._state(self.plan, self._strip, status=status)
+                html = self._get()
+                self.assertNotIn('Sync unknown', html)
+                self.assertNotIn(self.INCOMPLETE_TEXT, html)
+        self._state(self.plan, self._strip, status=GenerationStatusChoices.FAILED)
+        html = self._get()
+        self.assertIn('Failed', html)
+        self.assertNotIn('Sync unknown', html)
+        self.assertNotIn(self.INCOMPLETE_TEXT, html)
+
+    def test_get_is_read_only_and_actions_unchanged(self):
+        self._state(self.plan, self._strip)
+        self.make_sentinel_inventory()
+        before = self.inventory_snapshot()
+        html = self._get()
+        self.assertEqual(before, self.inventory_snapshot())
+        gen_url = reverse('plugins:netbox_hedgehog:topologyplan_generate_update',
+                          args=[self.plan.pk])
+        self.assertIn(f'action="{gen_url}"', html)
+        self.assertIn('data-destructive="true"', html)
+        self.assertIn('id="calculate-design-btn"', html)
+
+    def test_view_only_user_sees_text_without_action_buttons(self):
+        self._state(self.plan, self._strip)
+        user = self.user_with_perm('cd-sync-viewonly', actions=('view',))
+        html = self.login(user).get(self.detail_url()).content.decode()
+        self.assertIn('Sync unknown', html)
+        self.assertNotIn('calculate-design-btn', html)

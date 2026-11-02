@@ -605,3 +605,141 @@ class TopologyPlanPropertiesTestCase(TestCase):
         plan.refresh_from_db()
 
         self.assertTrue(plan.needs_regeneration)
+
+
+class SnapshotSyncDisplayClassificationTests(TestCase):
+    """Display-only classifier (#739): pure, never changes is_dirty()."""
+
+    HISTORICAL = ('place_in_racks', 'servers_per_rack', 'membership_only')
+
+    @staticmethod
+    def _server(sid, qty=2, **extra):
+        data = dict(
+            server_class_id=sid, quantity=qty, device_type_id=1,
+            gpus_per_server=8, place_in_racks=False,
+            servers_per_rack=None, membership_only=False,
+        )
+        data.update(extra)
+        return data
+
+    def _snap(self, servers=None, **overrides):
+        snap = dict(
+            server_classes=servers if servers is not None else [self._server('gpu')],
+            switch_classes=[dict(switch_class_id='leaf', effective_quantity=2)],
+            connections=[dict(connection_id='c1', speed=200, rail=None)],
+            port_zones=[dict(zone_name='z1', allocation_order=None)],
+            mclag_domains=[],
+        )
+        snap.update(overrides)
+        return snap
+
+    def _strip(self, snap, keys=HISTORICAL):
+        import copy
+        out = copy.deepcopy(snap)
+        for entry in out['server_classes']:
+            for key in keys:
+                entry.pop(key, None)
+        return out
+
+    def classify(self, current, saved):
+        from netbox_hedgehog.models.topology_planning.generation import classify_snapshot_sync
+        return classify_snapshot_sync(current, saved)
+
+    def test_complete_equal_is_in_sync_and_order_insensitive(self):
+        current = self._snap(servers=[self._server('a'), self._server('b')])
+        saved = self._snap(servers=[self._server('b'), self._server('a')])
+        self.assertEqual(self.classify(current, saved), 'in_sync')
+
+    def test_three_missing_keys_is_incomplete(self):
+        current = self._snap()
+        self.assertEqual(self.classify(current, self._strip(current)), 'snapshot_incomplete')
+
+    def test_partial_missing_keys_and_multiple_classes_incomplete(self):
+        current = self._snap(servers=[self._server('a'), self._server('b')])
+        saved = self._strip(current, keys=('servers_per_rack',))
+        saved['server_classes'][1].pop('membership_only')
+        self.assertEqual(self.classify(current, saved), 'snapshot_incomplete')
+
+    def test_nondefault_current_value_for_missing_key_is_still_incomplete(self):
+        current = self._snap(servers=[self._server(
+            'gpu', place_in_racks=True, servers_per_rack=8, membership_only=True)])
+        self.assertEqual(self.classify(current, self._strip(current)), 'snapshot_incomplete')
+
+    def test_present_historical_key_with_different_value_is_changed(self):
+        current = self._snap(servers=[self._server('gpu', place_in_racks=True)])
+        self.assertEqual(self.classify(current, self._snap()), 'changed')
+
+    def test_known_changes_alongside_missing_keys_are_changed(self):
+        stripped = self._strip(self._snap())
+        cases = dict(
+            quantity=self._snap(servers=[self._server('gpu', qty=4)]),
+            connection=self._snap(connections=[dict(connection_id='c1', speed=400, rail=None)]),
+            zone=self._snap(port_zones=[dict(zone_name='z1', allocation_order=3)]),
+            added_class=self._snap(servers=[self._server('gpu'), self._server('new')]),
+        )
+        for name, current in cases.items():
+            with self.subTest(name=name):
+                self.assertEqual(self.classify(current, stripped), 'changed')
+
+    def test_removed_class_is_changed(self):
+        saved = self._strip(self._snap(servers=[self._server('a'), self._server('b')]))
+        current = self._snap(servers=[self._server('a')])
+        self.assertEqual(self.classify(current, saved), 'changed')
+
+    def test_none_and_zero_remain_distinct(self):
+        current = self._snap(servers=[self._server('gpu', servers_per_rack=None)])
+        saved = self._snap(servers=[self._server('gpu', servers_per_rack=0)])
+        self.assertEqual(self.classify(current, saved), 'changed')
+
+    def test_malformed_missing_or_duplicate_identities_never_in_sync(self):
+        current = self._snap()
+        malformed = dict(
+            none=None, empty={}, string='bad',
+            non_list=self._snap(server_classes='x'),
+            non_dict_entry=self._snap(servers=['x']),
+        )
+        for name, saved in malformed.items():
+            with self.subTest(name=name):
+                self.assertNotEqual(self.classify(current, saved), 'in_sync')
+        dup = self._strip(self._snap(servers=[self._server('gpu'), self._server('gpu')]))
+        self.assertNotEqual(self.classify(current, dup), 'in_sync')
+        no_id = self._snap(servers=[dict(quantity=2)])
+        self.assertNotEqual(self.classify(current, no_id), 'in_sync')
+
+    def test_classification_does_not_mutate_inputs(self):
+        import copy
+        current = self._snap()
+        saved = self._strip(current)
+        before = (copy.deepcopy(current), copy.deepcopy(saved))
+        self.classify(current, saved)
+        self.assertEqual((current, saved), before)
+
+    def _plan_with_server(self, suffix):
+        manufacturer = Manufacturer.objects.create(name='Sync Mfr ' + suffix, slug='sync-mfr-' + suffix)
+        dt = DeviceType.objects.create(
+            manufacturer=manufacturer, model='Sync Srv ' + suffix, slug='sync-srv-' + suffix)
+        plan = TopologyPlan.objects.create(name='Sync Plan ' + suffix)
+        PlanServerClass.objects.create(
+            plan=plan, server_class_id='gpu', quantity=2, server_device_type=dt)
+        return plan
+
+    def test_incomplete_state_remains_dirty_and_needs_regeneration(self):
+        plan = self._plan_with_server('inc')
+        saved = self._strip(build_plan_snapshot(plan))
+        state = GenerationState.objects.create(
+            plan=plan, device_count=1, interface_count=1, cable_count=1,
+            snapshot=saved, status='generated')
+        self.assertEqual(state.sync_display_state(), 'snapshot_incomplete')
+        self.assertTrue(state.is_dirty())
+        plan.refresh_from_db()
+        self.assertTrue(plan.needs_regeneration)
+        state.refresh_from_db()
+        self.assertEqual(state.snapshot, saved)  # no backfill/persistence
+
+    def test_complete_state_is_in_sync_and_clean(self):
+        plan = self._plan_with_server('ok')
+        state = GenerationState.objects.create(
+            plan=plan, device_count=1, interface_count=1, cable_count=1,
+            snapshot=build_plan_snapshot(plan), status='generated')
+        self.assertEqual(state.sync_display_state(), 'in_sync')
+        self.assertFalse(state.is_dirty())
