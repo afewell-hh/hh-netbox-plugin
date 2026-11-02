@@ -17,6 +17,13 @@ from netbox_hedgehog.models.topology_planning import (
 )
 
 
+# Value of wiringapi.NonBreakoutPortExceptionSuffix in the pinned fabric source.
+# This is the only Go constant expression the parser resolves; nothing is evaluated.
+# The identifier must end at a boundary so longer names are not truncated to a match.
+_NON_BREAKOUT_SUFFIX_EXPR = r'\s*\+\s*wiringapi\.NonBreakoutPortExceptionSuffix(?![\w.])'
+NON_BREAKOUT_PORT_EXCEPTION_SUFFIX = "-nb"
+
+
 class FabricProfileGoParser:
     """
     Parser for Hedgehog Fabric switch profiles defined in Go source files.
@@ -218,9 +225,18 @@ class FabricProfileGoParser:
                 port_data["label"] = label_match.group(1)
 
             # Extract Profile
-            profile_match = re.search(r'Profile:\s*"([^"]+)"', port_content)
+            # Only a COMPLETE plain quoted literal, or that literal plus exactly the known
+            # suffix constant, is recognised. Any other expression (unknown constant,
+            # longer identifier, extra concatenation) leaves the port profile unresolved.
+            profile_match = re.search(
+                r'(?<!\w)Profile:\s*"([^"]+)"(' + _NON_BREAKOUT_SUFFIX_EXPR + r')?'
+                r'(?=\s*(?:,|\Z))',
+                port_content
+            )
             if profile_match:
-                port_data["profile"] = profile_match.group(1)
+                port_data["profile"] = profile_match.group(1) + (
+                    NON_BREAKOUT_PORT_EXCEPTION_SUFFIX if profile_match.group(2) else ""
+                )
 
             ports[port_key] = port_data
 
@@ -284,16 +300,23 @@ class FabricProfileGoParser:
 
         # Find profile names - look for quoted strings with hyphens followed by :\s*{
         # This distinguishes profile names (SFP28-25G, OSFP-800G) from breakout modes (1x800G)
-        profile_name_pattern = re.compile(r'"([^"]*-[^"]*)":\s*\{')
-        profile_names = profile_name_pattern.findall(profiles_block)
+        # A key may carry the known "+ wiringapi.NonBreakoutPortExceptionSuffix" expression.
+        profile_name_pattern = re.compile(
+            r'("([^"]*-[^"]*)"(' + _NON_BREAKOUT_SUFFIX_EXPR + r')?):\s*\{'
+        )
+        profile_keys = [
+            (m.group(1),
+             m.group(2) + (NON_BREAKOUT_PORT_EXCEPTION_SUFFIX if m.group(3) else ""))
+            for m in profile_name_pattern.finditer(profiles_block)
+        ]
 
-        for profile_name in profile_names:
+        for key_source, profile_name in profile_keys:
             # Extract the profile block for this name
             # This is tricky because the block might contain nested {...}
             # Use a more sophisticated approach
 
             # Find the start of this profile
-            profile_start = profiles_block.find(f'"{profile_name}":')
+            profile_start = profiles_block.find(key_source + ':')
             if profile_start == -1:
                 continue
 
