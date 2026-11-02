@@ -696,6 +696,34 @@ class SyncDisplayRenderTests(CalculateDesignBase):
                 gs.refresh_from_db()
                 self.assertEqual(gs.snapshot, before)
 
+    def test_same_connection_id_on_two_server_classes_is_in_sync_on_real_get(self):
+        """Identity is (server_class_id, connection_id) per
+        PlanServerConnection.Meta.unique_together; comparison is not mocked."""
+        zone = SwitchPortZone.objects.get(switch_class__plan=self.plan)
+        other = PlanServerClass.objects.create(
+            plan=self.plan, server_class_id='storage',
+            category=ServerClassCategoryChoices.GPU, quantity=1,
+            gpus_per_server=8, server_device_type=self.server_type)
+        PlanServerConnection.objects.create(
+            server_class=other, connection_id='FE-001',
+            nic=get_test_server_nic(other), port_index=0, target_zone=zone,
+            ports_per_connection=2, hedgehog_conn_type=ConnectionTypeChoices.UNBUNDLED,
+            distribution=ConnectionDistributionChoices.SAME_SWITCH, speed=200,
+            port_type='data', transceiver_module_type=self.xcvr)
+        gs = self._state(self.plan)
+        conns = gs.snapshot['connections']
+        self.assertEqual(len(conns), 2)
+        self.assertEqual({c['connection_id'] for c in conns}, {'FE-001'})
+        self.assertEqual({c['server_class_id'] for c in conns}, {'gpu', 'storage'})
+        before = gs.snapshot
+        html = self._get()
+        self.assertIn('In Sync', html)
+        self.assertNotIn('Sync unknown', html)
+        self.assertNotIn(self.INCOMPLETE_TEXT, html)
+        self.assertNotIn('has been modified since the last generation run', html)
+        gs.refresh_from_db()
+        self.assertEqual(gs.snapshot, before)
+
     def test_incomplete_classification_takes_precedence_over_clean_dirty_flag(self):
         """Template precedence only: the classification is mocked here, so this
         does NOT prove the comparison; classifier tests cover that."""

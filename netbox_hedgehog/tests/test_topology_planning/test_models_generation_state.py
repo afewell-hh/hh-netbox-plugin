@@ -858,6 +858,33 @@ class SnapshotSyncDisplayClassificationTests(TestCase):
             with self.subTest(name=name):
                 self.assertEqual(self.classify(current, snap), 'snapshot_incomplete')
 
+    def test_same_connection_id_on_different_server_classes_is_not_duplicate(self):
+        # PlanServerConnection.Meta.unique_together is [server_class, connection_id]
+        snap = self._snap(
+            servers=[self._server('gpu'), self._server('storage')],
+            connections=[
+                self._conn(cid='FE-001'),
+                self._conn(cid='FE-001', server_class_id='storage'),
+            ],
+        )
+        self.assertEqual(self.classify(snap, snap), 'in_sync')
+
+    def test_duplicate_composite_connection_identity_is_incomplete(self):
+        import copy
+        servers = [self._server('gpu'), self._server('storage')]
+        snap = self._snap(
+            servers=servers,
+            connections=[
+                self._conn(cid='FE-001', server_class_id='storage'),
+                self._conn(cid='FE-001', server_class_id='storage'),
+            ],
+        )
+        current = self._snap(servers=servers)
+        self.assertEqual(self.classify(current, snap), 'snapshot_incomplete')
+        self.assertEqual(
+            self.classify(copy.deepcopy(snap), copy.deepcopy(snap)),
+            'snapshot_incomplete')
+
     def test_same_zone_name_on_different_switches_is_not_duplicate(self):
         snap = self._snap(port_zones=[self._zone(), self._zone(switch='leaf2')])
         self.assertEqual(self.classify(snap, snap), 'in_sync')

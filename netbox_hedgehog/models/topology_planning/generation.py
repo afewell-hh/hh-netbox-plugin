@@ -58,7 +58,8 @@ _REQUIRED_MCLAG_KEYS = (
 _SECTION_CONTRACT = {
     'server_classes': (_REQUIRED_SERVER_CLASS_KEYS, ('server_class_id',)),
     'switch_classes': (_REQUIRED_SWITCH_CLASS_KEYS, ('switch_class_id',)),
-    'connections': (_REQUIRED_CONNECTION_KEYS, ('connection_id',)),
+    # PlanServerConnection.Meta.unique_together is [server_class, connection_id]
+    'connections': (_REQUIRED_CONNECTION_KEYS, ('server_class_id', 'connection_id')),
     'port_zones': (_REQUIRED_PORT_ZONE_KEYS, ('switch_class_id', 'zone_name')),
     'mclag_domains': (_REQUIRED_MCLAG_KEYS, ('domain_id',)),
 }
