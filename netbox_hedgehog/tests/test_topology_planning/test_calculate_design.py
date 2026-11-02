@@ -310,7 +310,7 @@ class GenerationConfirmationEstimateTests(CalculateDesignBase):
         modal = self._modal(html)
 
         self.assertIn('Pre-generation estimates (not guaranteed totals)', modal)
-        self.assertIn('Devices (servers and switches): <span id="expected-devices">', modal)
+        self.assertIn('Devices: <span id="expected-devices">0</span> (servers and switches)', modal)
         self.assertIn('Server-link endpoint interfaces: <span id="expected-interfaces">', modal)
         self.assertIn('Server-link cables: <span id="expected-cables">', modal)
         self.assertIn('exclude switch-to-switch fabric links', modal)
