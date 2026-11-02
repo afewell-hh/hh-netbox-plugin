@@ -4,6 +4,8 @@ Generation state models for topology planning.
 GenerationState tracks the state of NetBox object generation from a TopologyPlan.
 """
 
+import copy
+
 from django.db import models
 from django.core.validators import MinValueValidator
 from django.core.exceptions import ValidationError
@@ -14,6 +16,133 @@ from netbox_hedgehog.utils.snapshot_builder import (
     build_plan_snapshot,
     compare_snapshots,
 )
+
+# Display-only sync classification values (issue #739).
+SYNC_IN_SYNC = 'in_sync'
+SYNC_CHANGED = 'changed'
+SYNC_SNAPSHOT_INCOMPLETE = 'snapshot_incomplete'
+
+# Server-class keys added to snapshots after some records were saved (DIET-607).
+# When a saved record omits them, their historical values are UNKNOWN.
+HISTORICAL_SERVER_CLASS_KEYS = ('place_in_racks', 'servers_per_rack', 'membership_only')
+
+_SNAPSHOT_LIST_KEYS = (
+    'server_classes', 'switch_classes', 'connections', 'port_zones', 'mclag_domains',
+)
+
+
+# Non-historical server-class fields every valid snapshot record must carry.
+_REQUIRED_SERVER_CLASS_KEYS = (
+    'server_class_id', 'quantity', 'device_type_id', 'gpus_per_server',
+)
+# Required fields per build_plan_snapshot(); nullable ones are always emitted
+# (as None), so absence means missing evidence, not None.
+_REQUIRED_SWITCH_CLASS_KEYS = (
+    'switch_class_id', 'effective_quantity', 'device_type_extension_id',
+    'fabric', 'fabric_name', 'fabric_class', 'hedgehog_role',
+    'uplink_ports_per_switch', 'mclag_pair', 'topology_mode',
+)
+_REQUIRED_CONNECTION_KEYS = (
+    'connection_id', 'server_class_id', 'target_zone_id', 'ports_per_connection',
+    'hedgehog_conn_type', 'distribution', 'speed', 'rail', 'port_type',
+)
+_REQUIRED_PORT_ZONE_KEYS = (
+    'switch_class_id', 'zone_name', 'zone_type', 'port_spec',
+    'breakout_option_id', 'allocation_strategy', 'allocation_order', 'priority',
+)
+_REQUIRED_MCLAG_KEYS = (
+    'domain_id', 'switch_class_id', 'peer_link_count', 'session_link_count',
+)
+
+# section -> (required keys, keys forming the unique stable identity)
+_SECTION_CONTRACT = {
+    'server_classes': (_REQUIRED_SERVER_CLASS_KEYS, ('server_class_id',)),
+    'switch_classes': (_REQUIRED_SWITCH_CLASS_KEYS, ('switch_class_id',)),
+    # PlanServerConnection.Meta.unique_together is [server_class, connection_id]
+    'connections': (_REQUIRED_CONNECTION_KEYS, ('server_class_id', 'connection_id')),
+    'port_zones': (_REQUIRED_PORT_ZONE_KEYS, ('switch_class_id', 'zone_name')),
+    'mclag_domains': (_REQUIRED_MCLAG_KEYS, ('domain_id', 'switch_class_id')),
+}
+
+
+def _valid_server_class_index(snapshot):
+    """
+    Validate record shapes/identities; return server_class_id -> entry, or None.
+
+    None means the evidence is malformed or unavailable: a non-list container,
+    a non-dict record, a missing required field, or a missing/non-string/empty/
+    duplicate identity. Historical keys (HISTORICAL_SERVER_CLASS_KEYS) are optional.
+    """
+    for key in _SNAPSHOT_LIST_KEYS:
+        entries = snapshot.get(key)
+        if not isinstance(entries, list):
+            return None
+        if any(not isinstance(entry, dict) for entry in entries):
+            return None
+    index = {}
+    for section, (required, identity_keys) in _SECTION_CONTRACT.items():
+        seen = set()
+        for entry in snapshot[section]:
+            if any(key not in entry for key in required):
+                return None
+            identity = tuple(entry[key] for key in identity_keys)
+            if any(not isinstance(part, str) or not part for part in identity):
+                return None
+            if identity in seen:
+                return None
+            seen.add(identity)
+            if section == 'server_classes':
+                index[identity[0]] = entry
+    return index
+
+
+def classify_snapshot_sync(current, saved) -> str:
+    """
+    Pure, read-only DISPLAY classification of current vs saved snapshots.
+
+    Returns SYNC_IN_SYNC, SYNC_CHANGED or SYNC_SNAPSHOT_INCOMPLETE.
+
+    SYNC_SNAPSHOT_INCOMPLETE means the ONLY discrepancy is omission of known
+    historical server-class keys on correctly matched identities; those saved
+    values are unknown (neither changed nor proved in sync). A temporary
+    projection is used solely for this classification; it is never returned,
+    persisted, or used by compare_snapshots()/is_dirty() or any admission logic.
+    Record shapes, required fields and identities of BOTH snapshots are
+    validated BEFORE any equality check: malformed, missing or duplicate
+    evidence is incomplete (never in sync, never a claimed modification),
+    even when the two inputs are identical.
+    """
+    if not isinstance(saved, dict) or not isinstance(current, dict):
+        return SYNC_SNAPSHOT_INCOMPLETE
+
+    try:
+        saved_index = _valid_server_class_index(saved)
+        current_index = _valid_server_class_index(current)
+        if saved_index is None or current_index is None:
+            return SYNC_SNAPSHOT_INCOMPLETE
+
+        if any(key not in entry for entry in current_index.values()
+               for key in HISTORICAL_SERVER_CLASS_KEYS):
+            return SYNC_SNAPSHOT_INCOMPLETE
+
+        if compare_snapshots(current, saved):
+            return SYNC_IN_SYNC
+
+        projected = copy.deepcopy(saved)
+        filled = False
+        for entry in projected['server_classes']:
+            match = current_index.get(entry['server_class_id'])
+            if match is None:
+                continue
+            for key in HISTORICAL_SERVER_CLASS_KEYS:
+                if key not in entry and key in match:
+                    entry[key] = copy.deepcopy(match[key])
+                    filled = True
+        if filled and compare_snapshots(current, projected):
+            return SYNC_SNAPSHOT_INCOMPLETE
+        return SYNC_CHANGED
+    except (TypeError, ValueError):
+        return SYNC_SNAPSHOT_INCOMPLETE
 
 
 class GenerationState(models.Model):
@@ -120,3 +249,14 @@ class GenerationState(models.Model):
         """
         current = build_plan_snapshot(self.plan)
         return not compare_snapshots(current, self.snapshot)
+
+    def sync_display_state(self, current=None) -> str:
+        """
+        Read-only display classification: in_sync / changed / snapshot_incomplete.
+
+        Does not alter is_dirty() or needs_regeneration; for an incomplete
+        snapshot those remain True. Grants no generation or retry authority.
+        """
+        if current is None:
+            current = build_plan_snapshot(self.plan)
+        return classify_snapshot_sync(current, self.snapshot)

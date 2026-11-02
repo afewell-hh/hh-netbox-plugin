@@ -104,6 +104,7 @@ jobs:
             netbox_hedgehog.tests.test_topology_planning.test_port_zone_context \
             netbox_hedgehog.tests.test_topology_planning.test_yaml_export_inventory_based \
             netbox_hedgehog.tests.test_fabric_import.test_go_parser \
+            netbox_hedgehog.tests.test_topology_planning.test_models_generation_state \
             --testrunner=netbox_hedgehog.tests.runner.DietTestRunner \
             --verbosity=2 | tee diet-pr-regression.log
 

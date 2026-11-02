@@ -544,3 +544,285 @@ class CalculateDesignBehaviourTests(CalculateDesignBase):
         resp = self.login(self.superuser).post(url)
         self.assertEqual(resp.status_code, 302)
         self.assertTrue(any('Cannot start generation' in m for m in self.msgs(resp)))
+
+
+class SyncDisplayRenderTests(CalculateDesignBase):
+    """Real detail GET coverage for the snapshot-incomplete display (#739)."""
+
+    INCOMPLETE_TEXT = 'Saved generation snapshot is incomplete; synchronization cannot be confirmed.'
+    HISTORICAL = ('place_in_racks', 'servers_per_rack', 'membership_only')
+
+    def _state(self, plan, mutate=None, status=GenerationStatusChoices.GENERATED):
+        from netbox_hedgehog.utils.snapshot_builder import build_plan_snapshot
+        snapshot = build_plan_snapshot(plan)
+        if mutate:
+            mutate(snapshot)
+        return GenerationState.objects.update_or_create(
+            plan=plan, defaults=dict(
+                status=status, job=None, snapshot=snapshot,
+                device_count=3, interface_count=4, cable_count=5))[0]
+
+    def _get(self):
+        resp = self.login(self.superuser).get(self.detail_url())
+        self.assertEqual(resp.status_code, 200)
+        return resp.content.decode()
+
+    @classmethod
+    def _strip(cls, snapshot):
+        for entry in snapshot['server_classes']:
+            for key in cls.HISTORICAL:
+                entry.pop(key, None)
+
+    def test_complete_equal_snapshot_shows_in_sync(self):
+        self._state(self.plan)
+        html = self._get()
+        self.assertIn('In Sync', html)
+        self.assertNotIn('Sync unknown', html)
+        self.assertNotIn(self.INCOMPLETE_TEXT, html)
+        self.assertNotIn('has been modified since the last generation run', html)
+
+    def test_incomplete_only_snapshot_shows_unknown_in_both_locations(self):
+        gs = self._state(self.plan, self._strip)
+        before = (gs.snapshot, gs.status, gs.device_count)
+        html = self._get()
+        self.assertIn('Sync unknown', html)
+        self.assertIn(self.INCOMPLETE_TEXT, html)
+        self.assertIn('saved generation snapshot is incomplete, so it cannot be', html)
+        self.assertNotIn('In Sync', html)
+        self.assertNotIn('Out of Sync', html)
+        self.assertNotIn('Plan has changed since generation', html)
+        self.assertNotIn('has been modified since the last generation run', html)
+        self.assertNotIn('Re-generate to bring the comparison up to date', html)
+        self.assertIn('id="generate-btn"', html)
+        self.plan.refresh_from_db()
+        self.assertTrue(self.plan.needs_regeneration)
+        gs.refresh_from_db()
+        self.assertEqual(before, (gs.snapshot, gs.status, gs.device_count))
+
+    def test_known_change_with_missing_keys_still_out_of_sync(self):
+        def mutate(snapshot):
+            snapshot['server_classes'][0]['quantity'] += 5
+            self._strip(snapshot)
+        self._state(self.plan, mutate)
+        html = self._get()
+        self.assertIn('Out of Sync', html)
+        self.assertIn('Plan has changed since generation', html)
+        self.assertIn('has been modified since the last generation run', html)
+        self.assertNotIn('Sync unknown', html)
+        self.assertNotIn(self.INCOMPLETE_TEXT, html)
+
+    def test_malformed_saved_records_show_unknown_not_modified_on_real_get(self):
+        def missing_quantity(snapshot):
+            del snapshot['server_classes'][0]['quantity']
+
+        def missing_identity(snapshot):
+            del snapshot['server_classes'][0]['server_class_id']
+
+        def duplicate_identity(snapshot):
+            snapshot['server_classes'].append(dict(snapshot['server_classes'][0]))
+
+        def none_connection(snapshot):
+            snapshot['connections'].append(None)
+
+        cases = dict(
+            missing_quantity=missing_quantity,
+            missing_identity=missing_identity,
+            duplicate_identity=duplicate_identity,
+            none_connection=none_connection,
+        )
+        for name, mutate in cases.items():
+            with self.subTest(name=name):
+                gs = self._state(self.plan, mutate)
+                before = gs.snapshot
+                html = self._get()
+                self.assertIn('Sync unknown', html)
+                self.assertIn(self.INCOMPLETE_TEXT, html)
+                self.assertIn('saved generation snapshot is incomplete, so it cannot be', html)
+                self.assertNotIn('Out of Sync', html)
+                self.assertNotIn('In Sync', html)
+                self.assertNotIn('Plan has changed since generation', html)
+                self.assertNotIn('has been modified since the last generation run', html)
+                gs.refresh_from_db()
+                self.assertEqual(gs.snapshot, before)
+
+    def test_missing_nonserver_fields_show_unknown_not_modified_on_real_get(self):
+        """Real GET, real comparison (no mocks): a saved switch/connection/zone
+        record that lacks a required field is unknown evidence, not a change."""
+        from netbox_hedgehog.utils.snapshot_builder import build_plan_snapshot
+        real = build_plan_snapshot(self.plan)
+        for section in ('switch_classes', 'connections', 'port_zones'):
+            self.assertTrue(real[section], 'fixture plan must have %s' % section)
+        omissions = (
+            ('switch_classes', 'effective_quantity'),
+            ('switch_classes', 'fabric_class'),
+            ('connections', 'speed'),
+            ('port_zones', 'allocation_order'),
+            ('port_zones', 'port_spec'),
+        )
+        for section, key in omissions:
+            for with_historical_omitted in (False, True):
+                with self.subTest(section=section, key=key,
+                                  historical_omitted=with_historical_omitted):
+                    def mutate(snapshot, section=section, key=key,
+                               strip=with_historical_omitted):
+                        del snapshot[section][0][key]
+                        if strip:
+                            self._strip(snapshot)
+                    gs = self._state(self.plan, mutate)
+                    before = gs.snapshot
+                    html = self._get()
+                    self.assertIn('Sync unknown', html)
+                    self.assertIn(self.INCOMPLETE_TEXT, html)
+                    self.assertIn('saved generation snapshot is incomplete, so it cannot be', html)
+                    self.assertNotIn('Out of Sync', html)
+                    self.assertNotIn('In Sync', html)
+                    self.assertNotIn('Plan has changed since generation', html)
+                    self.assertNotIn('has been modified since the last generation run', html)
+                    gs.refresh_from_db()
+                    self.assertEqual(gs.snapshot, before)
+
+    def test_duplicate_nonserver_identities_show_unknown_on_real_get(self):
+        for section in ('switch_classes', 'connections', 'port_zones'):
+            with self.subTest(section=section):
+                def mutate(snapshot, section=section):
+                    snapshot[section].append(dict(snapshot[section][0]))
+                gs = self._state(self.plan, mutate)
+                before = gs.snapshot
+                html = self._get()
+                self.assertIn('Sync unknown', html)
+                self.assertIn(self.INCOMPLETE_TEXT, html)
+                self.assertNotIn('Out of Sync', html)
+                self.assertNotIn('has been modified since the last generation run', html)
+                gs.refresh_from_db()
+                self.assertEqual(gs.snapshot, before)
+
+    def test_same_connection_id_on_two_server_classes_is_in_sync_on_real_get(self):
+        """Identity is (server_class_id, connection_id) per
+        PlanServerConnection.Meta.unique_together; comparison is not mocked."""
+        zone = SwitchPortZone.objects.get(switch_class__plan=self.plan)
+        other = PlanServerClass.objects.create(
+            plan=self.plan, server_class_id='storage',
+            category=ServerClassCategoryChoices.GPU, quantity=1,
+            gpus_per_server=8, server_device_type=self.server_type)
+        PlanServerConnection.objects.create(
+            server_class=other, connection_id='FE-001',
+            nic=get_test_server_nic(other), port_index=0, target_zone=zone,
+            ports_per_connection=2, hedgehog_conn_type=ConnectionTypeChoices.UNBUNDLED,
+            distribution=ConnectionDistributionChoices.SAME_SWITCH, speed=200,
+            port_type='data', transceiver_module_type=self.xcvr)
+        gs = self._state(self.plan)
+        conns = gs.snapshot['connections']
+        self.assertEqual(len(conns), 2)
+        self.assertEqual({c['connection_id'] for c in conns}, {'FE-001'})
+        self.assertEqual({c['server_class_id'] for c in conns}, {'gpu', 'storage'})
+        before = gs.snapshot
+        html = self._get()
+        self.assertIn('In Sync', html)
+        self.assertNotIn('Sync unknown', html)
+        self.assertNotIn(self.INCOMPLETE_TEXT, html)
+        self.assertNotIn('has been modified since the last generation run', html)
+        gs.refresh_from_db()
+        self.assertEqual(gs.snapshot, before)
+
+    def test_shared_mclag_domain_id_on_real_get(self):
+        from netbox_hedgehog.models.topology_planning import PlanMCLAGDomain
+
+        first_switch = self.plan.switch_classes.get(switch_class_id='fe-leaf')
+        second_switch = PlanSwitchClass.objects.create(
+            plan=self.plan, switch_class_id='be-leaf',
+            fabric=FabricTypeChoices.FRONTEND,
+            hedgehog_role=HedgehogRoleChoices.SERVER_LEAF,
+            device_type_extension=self.device_ext, uplink_ports_per_switch=4,
+            mclag_pair=False, calculated_quantity=2)
+        for switch_class, group_name in (
+            (first_switch, 'mclag-frontend'), (second_switch, 'mclag-backend')
+        ):
+            domain = PlanMCLAGDomain(
+                plan=self.plan, domain_id='MCLAG-001', switch_class=switch_class,
+                peer_link_count=2, session_link_count=2,
+                switch_group_name=group_name)
+            domain.full_clean()
+            domain.save()
+
+        state = self._state(self.plan)
+        before = state.snapshot
+        html = self._get()
+        self.assertIn('In Sync', html)
+        self.assertNotIn('Out of Sync', html)
+        self.assertNotIn('Sync unknown', html)
+        for field in ('peer_link_count', 'quantity'):
+            with self.subTest(field=field):
+                self._state(self.plan)
+                if field == 'peer_link_count':
+                    record = self.plan.mclag_domains.get(switch_class=second_switch)
+                else:
+                    record = self.plan.server_classes.get(server_class_id='gpu')
+                original = getattr(record, field)
+                setattr(record, field, original + 1)
+                record.save(update_fields=[field])
+                html = self._get()
+                self.assertIn('Out of Sync', html)
+                self.assertNotIn('Sync unknown', html)
+                self.assertIn('has been modified since the last generation run', html)
+                setattr(record, field, original)
+                record.save(update_fields=[field])
+        state.refresh_from_db()
+        self.assertEqual(state.snapshot, before)
+
+    def test_incomplete_classification_takes_precedence_over_clean_dirty_flag(self):
+        """Template precedence only: the classification is mocked here, so this
+        does NOT prove the comparison; classifier tests cover that."""
+        from unittest import mock
+        self._state(self.plan)  # complete + equal => is_dirty() is False
+        with mock.patch.object(
+            GenerationState, 'sync_display_state', return_value='snapshot_incomplete'
+        ):
+            html = self._get()
+        self.plan.refresh_from_db()
+        self.assertFalse(self.plan.needs_regeneration)
+        self.assertIn('Sync unknown', html)
+        self.assertIn('saved generation snapshot is incomplete, so it cannot be', html)
+        self.assertNotIn('In Sync', html)
+
+    def test_known_change_alone_still_out_of_sync(self):
+        def mutate(snapshot):
+            snapshot['server_classes'][0]['quantity'] += 5
+        self._state(self.plan, mutate)
+        html = self._get()
+        self.assertIn('Out of Sync', html)
+        self.assertNotIn('Sync unknown', html)
+
+    def test_not_generated_busy_and_failed_precedence_unchanged(self):
+        html = self._get()
+        self.assertIn('Not Generated', html)
+        self.assertNotIn('Sync unknown', html)
+        for status in (GenerationStatusChoices.QUEUED, GenerationStatusChoices.IN_PROGRESS):
+            with self.subTest(status=status):
+                self._state(self.plan, self._strip, status=status)
+                html = self._get()
+                self.assertNotIn('Sync unknown', html)
+                self.assertNotIn(self.INCOMPLETE_TEXT, html)
+        self._state(self.plan, self._strip, status=GenerationStatusChoices.FAILED)
+        html = self._get()
+        self.assertIn('Failed', html)
+        self.assertNotIn('Sync unknown', html)
+        self.assertNotIn(self.INCOMPLETE_TEXT, html)
+
+    def test_get_is_read_only_and_actions_unchanged(self):
+        self._state(self.plan, self._strip)
+        self.make_sentinel_inventory()
+        before = self.inventory_snapshot()
+        html = self._get()
+        self.assertEqual(before, self.inventory_snapshot())
+        gen_url = reverse('plugins:netbox_hedgehog:topologyplan_generate_update',
+                          args=[self.plan.pk])
+        self.assertIn(f'action="{gen_url}"', html)
+        self.assertIn('data-destructive="true"', html)
+        self.assertIn('id="calculate-design-btn"', html)
+
+    def test_view_only_user_sees_text_without_action_buttons(self):
+        self._state(self.plan, self._strip)
+        user = self.user_with_perm('cd-sync-viewonly', actions=('view',))
+        html = self.login(user).get(self.detail_url()).content.decode()
+        self.assertIn('Sync unknown', html)
+        self.assertNotIn('calculate-design-btn', html)
