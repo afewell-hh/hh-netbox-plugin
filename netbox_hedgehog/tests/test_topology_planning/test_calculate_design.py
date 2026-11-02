@@ -611,6 +611,55 @@ class SyncDisplayRenderTests(CalculateDesignBase):
         self.assertNotIn('Sync unknown', html)
         self.assertNotIn(self.INCOMPLETE_TEXT, html)
 
+    def test_malformed_saved_records_show_unknown_not_modified_on_real_get(self):
+        def missing_quantity(snapshot):
+            del snapshot['server_classes'][0]['quantity']
+
+        def missing_identity(snapshot):
+            del snapshot['server_classes'][0]['server_class_id']
+
+        def duplicate_identity(snapshot):
+            snapshot['server_classes'].append(dict(snapshot['server_classes'][0]))
+
+        def none_connection(snapshot):
+            snapshot['connections'].append(None)
+
+        cases = dict(
+            missing_quantity=missing_quantity,
+            missing_identity=missing_identity,
+            duplicate_identity=duplicate_identity,
+            none_connection=none_connection,
+        )
+        for name, mutate in cases.items():
+            with self.subTest(name=name):
+                gs = self._state(self.plan, mutate)
+                before = gs.snapshot
+                html = self._get()
+                self.assertIn('Sync unknown', html)
+                self.assertIn(self.INCOMPLETE_TEXT, html)
+                self.assertIn('saved generation snapshot is incomplete, so it cannot be', html)
+                self.assertNotIn('Out of Sync', html)
+                self.assertNotIn('In Sync', html)
+                self.assertNotIn('Plan has changed since generation', html)
+                self.assertNotIn('has been modified since the last generation run', html)
+                gs.refresh_from_db()
+                self.assertEqual(gs.snapshot, before)
+
+    def test_incomplete_classification_takes_precedence_over_clean_dirty_flag(self):
+        """Template precedence only: the classification is mocked here, so this
+        does NOT prove the comparison; classifier tests cover that."""
+        from unittest import mock
+        self._state(self.plan)  # complete + equal => is_dirty() is False
+        with mock.patch.object(
+            GenerationState, 'sync_display_state', return_value='snapshot_incomplete'
+        ):
+            html = self._get()
+        self.plan.refresh_from_db()
+        self.assertFalse(self.plan.needs_regeneration)
+        self.assertIn('Sync unknown', html)
+        self.assertIn('saved generation snapshot is incomplete, so it cannot be', html)
+        self.assertNotIn('In Sync', html)
+
     def test_known_change_alone_still_out_of_sync(self):
         def mutate(snapshot):
             snapshot['server_classes'][0]['quantity'] += 5

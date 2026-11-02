@@ -64,7 +64,7 @@
                                     <i class="mdi mdi-help-circle"></i> Not Generated
                                 </span>
                                 <br><small class="text-muted">No devices have been generated yet</small>
-                            {% elif object.needs_regeneration and sync_display_state == 'snapshot_incomplete' %}
+                            {% elif sync_display_state == 'snapshot_incomplete' %}
                                 {# Saved snapshot incomplete: sync unknown (not in sync, not proven changed) #}
                                 <span class="badge badge-secondary">
                                     <i class="mdi mdi-help-circle"></i> Sync unknown
@@ -462,7 +462,7 @@
                 BOM Comparison (Plan vs. Generated) <small class="text-muted">(Server-side only)</small>
             </h5>
             <div class="card-body">
-                {% if plan_bom_comparison.needs_regeneration and sync_display_state == 'snapshot_incomplete' %}
+                {% if sync_display_state == 'snapshot_incomplete' %}
                 <div class="alert alert-warning">
                     <strong>Warning:</strong> The saved generation snapshot is incomplete, so it cannot be
                     confirmed whether this plan matches the last generation run.

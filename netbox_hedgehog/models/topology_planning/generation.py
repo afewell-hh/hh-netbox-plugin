@@ -31,13 +31,31 @@ _SNAPSHOT_LIST_KEYS = (
 )
 
 
-def _unique_server_class_index(entries):
-    """Map server_class_id -> entry, or None on malformed/duplicate identities."""
-    index = {}
-    for entry in entries:
-        if not isinstance(entry, dict):
+# Non-historical server-class fields every valid snapshot record must carry.
+_REQUIRED_SERVER_CLASS_KEYS = (
+    'server_class_id', 'quantity', 'device_type_id', 'gpus_per_server',
+)
+
+
+def _valid_server_class_index(snapshot):
+    """
+    Validate record shapes/identities; return server_class_id -> entry, or None.
+
+    None means the evidence is malformed or unavailable: a non-list container,
+    a non-dict record, a missing required field, or a missing/non-string/empty/
+    duplicate identity. Historical keys (HISTORICAL_SERVER_CLASS_KEYS) are optional.
+    """
+    for key in _SNAPSHOT_LIST_KEYS:
+        entries = snapshot.get(key)
+        if not isinstance(entries, list):
             return None
-        identity = entry.get('server_class_id')
+        if any(not isinstance(entry, dict) for entry in entries):
+            return None
+    index = {}
+    for entry in snapshot['server_classes']:
+        if any(key not in entry for key in _REQUIRED_SERVER_CLASS_KEYS):
+            return None
+        identity = entry['server_class_id']
         if not isinstance(identity, str) or not identity or identity in index:
             return None
         index[identity] = entry
@@ -55,24 +73,22 @@ def classify_snapshot_sync(current, saved) -> str:
     values are unknown (neither changed nor proved in sync). A temporary
     projection is used solely for this classification; it is never returned,
     persisted, or used by compare_snapshots()/is_dirty() or any admission logic.
-    Malformed or missing saved data is reported as incomplete, never in sync.
+    Record shapes, required fields and identities of BOTH snapshots are
+    validated BEFORE any equality check: malformed, missing or duplicate
+    evidence is incomplete (never in sync, never a claimed modification),
+    even when the two inputs are identical.
     """
     if not isinstance(saved, dict) or not isinstance(current, dict):
         return SYNC_SNAPSHOT_INCOMPLETE
-    if any(
-        not isinstance(saved.get(key), list) or not isinstance(current.get(key), list)
-        for key in _SNAPSHOT_LIST_KEYS
-    ):
-        return SYNC_SNAPSHOT_INCOMPLETE
 
     try:
+        saved_index = _valid_server_class_index(saved)
+        current_index = _valid_server_class_index(current)
+        if saved_index is None or current_index is None:
+            return SYNC_SNAPSHOT_INCOMPLETE
+
         if compare_snapshots(current, saved):
             return SYNC_IN_SYNC
-
-        saved_index = _unique_server_class_index(saved['server_classes'])
-        current_index = _unique_server_class_index(current['server_classes'])
-        if saved_index is None or current_index is None:
-            return SYNC_CHANGED
 
         projected = copy.deepcopy(saved)
         filled = False

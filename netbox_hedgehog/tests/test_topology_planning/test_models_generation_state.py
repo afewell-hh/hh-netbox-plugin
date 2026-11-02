@@ -700,11 +700,52 @@ class SnapshotSyncDisplayClassificationTests(TestCase):
         )
         for name, saved in malformed.items():
             with self.subTest(name=name):
-                self.assertNotEqual(self.classify(current, saved), 'in_sync')
+                self.assertEqual(self.classify(current, saved), 'snapshot_incomplete')
         dup = self._strip(self._snap(servers=[self._server('gpu'), self._server('gpu')]))
-        self.assertNotEqual(self.classify(current, dup), 'in_sync')
+        self.assertEqual(self.classify(current, dup), 'snapshot_incomplete')
         no_id = self._snap(servers=[dict(quantity=2)])
-        self.assertNotEqual(self.classify(current, no_id), 'in_sync')
+        self.assertEqual(self.classify(current, no_id), 'snapshot_incomplete')
+
+    def test_record_level_malformed_saved_evidence_is_incomplete_not_changed(self):
+        current = self._snap()
+        no_qty = self._snap(servers=[self._server('gpu')])
+        del no_qty['server_classes'][0]['quantity']
+        no_id = self._snap(servers=[self._server('gpu')])
+        del no_id['server_classes'][0]['server_class_id']
+        cases = dict(
+            missing_quantity=no_qty,
+            missing_server_class_id=no_id,
+            duplicate_identity=self._snap(servers=[self._server('gpu'), self._server('gpu')]),
+            none_connection=self._snap(connections=[None]),
+            none_switch=self._snap(switch_classes=[None]),
+            none_zone=self._snap(port_zones=[None]),
+        )
+        for name, saved in cases.items():
+            with self.subTest(name=name):
+                self.assertEqual(self.classify(current, saved), 'snapshot_incomplete')
+
+    def test_identical_malformed_snapshots_are_never_in_sync(self):
+        import copy
+        no_qty = self._snap()
+        del no_qty['server_classes'][0]['quantity']
+        no_id = self._snap(servers=[dict(quantity=2)])
+        cases = dict(
+            missing_quantity=no_qty,
+            missing_identity=no_id,
+            duplicate=self._snap(servers=[self._server('gpu'), self._server('gpu')]),
+            none_connection=self._snap(connections=[None]),
+        )
+        for name, snap in cases.items():
+            with self.subTest(name=name):
+                self.assertEqual(
+                    self.classify(copy.deepcopy(snap), copy.deepcopy(snap)),
+                    'snapshot_incomplete',
+                )
+
+    def test_malformed_current_evidence_is_incomplete(self):
+        saved = self._snap()
+        self.assertEqual(
+            self.classify(self._snap(connections=[None]), saved), 'snapshot_incomplete')
 
     def test_classification_does_not_mutate_inputs(self):
         import copy
