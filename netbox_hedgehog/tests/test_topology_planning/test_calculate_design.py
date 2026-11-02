@@ -272,9 +272,9 @@ class GenerationConfirmationEstimateTests(CalculateDesignBase):
     """#734: the Start Device Generation modal labels its server-link-only estimates.
 
     Real GET render, no generation mocking. Hand-computed for a Clos with fabric
-    uplinks: 2 servers x ports_per_connection=2 -> 4 server-link endpoint interfaces
-    and 2 server-link cables (spine-to-leaf fabric links are NOT counted); devices =
-    2 servers + 1 leaf (override) + 2 spines (override) = 5.
+    uplinks: 2 servers x ports_per_connection=2 -> 4 server-link cables and 8
+    server-link endpoint interfaces (the 2 modeled leaf-to-spine fabric links are NOT
+    counted); devices = 2 servers + 1 leaf (override) + 2 spines (override) = 5.
     """
 
     def _modal(self, html):
@@ -282,13 +282,29 @@ class GenerationConfirmationEstimateTests(CalculateDesignBase):
 
     def test_clos_with_fabric_uplinks_shows_partial_estimates_and_exclusions(self):
         plan = self.make_plan('Calc Clos', servers=2, override=1)
-        PlanSwitchClass.objects.create(
+        spine = PlanSwitchClass.objects.create(
             plan=plan, switch_class_id='spine', fabric=FabricTypeChoices.FRONTEND,
             hedgehog_role=HedgehogRoleChoices.SPINE,
             device_type_extension=self.device_ext, uplink_ports_per_switch=0,
             mclag_pair=False, calculated_quantity=None, override_quantity=2)
+        # Explicit fabric wiring in the same managed fabric: leaf uplink ports 49-50
+        # match spine fabric port 1 on each of the 2 spines -> 2 fabric links.
+        breakout_1x800, _ = BreakoutOption.objects.get_or_create(
+            breakout_id='1x800g',
+            defaults={'from_speed': 800, 'logical_ports': 1, 'logical_speed': 800})
+        leaf = plan.switch_classes.get(switch_class_id='fe-leaf')
+        SwitchPortZone.objects.create(
+            switch_class=leaf, zone_name='fabric-uplinks',
+            zone_type=PortZoneTypeChoices.UPLINK, port_spec='49-50',
+            breakout_option=breakout_1x800,
+            allocation_strategy=AllocationStrategyChoices.SEQUENTIAL, priority=200)
+        SwitchPortZone.objects.create(
+            switch_class=spine, zone_name='fabric',
+            zone_type=PortZoneTypeChoices.FABRIC, port_spec='1',
+            breakout_option=breakout_1x800,
+            allocation_strategy=AllocationStrategyChoices.SEQUENTIAL, priority=100)
         before = self.inventory_snapshot()
-        resp = self.login(self.superuser).get(self.detail_url(plan))
+        resp =self.login(self.superuser).get(self.detail_url(plan))
         self.assertEqual(resp.status_code, 200)
         html = resp.content.decode()
         modal = self._modal(html)
@@ -301,11 +317,11 @@ class GenerationConfirmationEstimateTests(CalculateDesignBase):
         self.assertIn('unused interfaces created from device templates', modal)
         self.assertIn('generated inventory is the source for complete counts', modal)
 
-        # Unchanged values: 5 devices, 4 server-link endpoint interfaces, 2 cables.
+        # 5 devices, 8 server-link endpoint interfaces, 4 server-link cables.
         btn = html.split('id="generate-btn"')[1].split('>')[0]
         self.assertIn('data-device-count="5"', btn)
-        self.assertIn('data-interface-count="4"', btn)
-        self.assertIn('data-cable-count="2"', btn)
+        self.assertIn('data-interface-count="8"', btn)
+        self.assertIn('data-cable-count="4"', btn)
 
         # Unchanged wiring and actions; GET created no inventory, job or state.
         gen_url = reverse('plugins:netbox_hedgehog:topologyplan_generate_update',
