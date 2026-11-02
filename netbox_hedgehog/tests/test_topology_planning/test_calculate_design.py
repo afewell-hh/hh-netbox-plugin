@@ -645,6 +645,57 @@ class SyncDisplayRenderTests(CalculateDesignBase):
                 gs.refresh_from_db()
                 self.assertEqual(gs.snapshot, before)
 
+    def test_missing_nonserver_fields_show_unknown_not_modified_on_real_get(self):
+        """Real GET, real comparison (no mocks): a saved switch/connection/zone
+        record that lacks a required field is unknown evidence, not a change."""
+        from netbox_hedgehog.utils.snapshot_builder import build_plan_snapshot
+        real = build_plan_snapshot(self.plan)
+        for section in ('switch_classes', 'connections', 'port_zones'):
+            self.assertTrue(real[section], 'fixture plan must have %s' % section)
+        omissions = (
+            ('switch_classes', 'effective_quantity'),
+            ('switch_classes', 'fabric_class'),
+            ('connections', 'speed'),
+            ('port_zones', 'allocation_order'),
+            ('port_zones', 'port_spec'),
+        )
+        for section, key in omissions:
+            for with_historical_omitted in (False, True):
+                with self.subTest(section=section, key=key,
+                                  historical_omitted=with_historical_omitted):
+                    def mutate(snapshot, section=section, key=key,
+                               strip=with_historical_omitted):
+                        del snapshot[section][0][key]
+                        if strip:
+                            self._strip(snapshot)
+                    gs = self._state(self.plan, mutate)
+                    before = gs.snapshot
+                    html = self._get()
+                    self.assertIn('Sync unknown', html)
+                    self.assertIn(self.INCOMPLETE_TEXT, html)
+                    self.assertIn('saved generation snapshot is incomplete, so it cannot be', html)
+                    self.assertNotIn('Out of Sync', html)
+                    self.assertNotIn('In Sync', html)
+                    self.assertNotIn('Plan has changed since generation', html)
+                    self.assertNotIn('has been modified since the last generation run', html)
+                    gs.refresh_from_db()
+                    self.assertEqual(gs.snapshot, before)
+
+    def test_duplicate_nonserver_identities_show_unknown_on_real_get(self):
+        for section in ('switch_classes', 'connections', 'port_zones'):
+            with self.subTest(section=section):
+                def mutate(snapshot, section=section):
+                    snapshot[section].append(dict(snapshot[section][0]))
+                gs = self._state(self.plan, mutate)
+                before = gs.snapshot
+                html = self._get()
+                self.assertIn('Sync unknown', html)
+                self.assertIn(self.INCOMPLETE_TEXT, html)
+                self.assertNotIn('Out of Sync', html)
+                self.assertNotIn('has been modified since the last generation run', html)
+                gs.refresh_from_db()
+                self.assertEqual(gs.snapshot, before)
+
     def test_incomplete_classification_takes_precedence_over_clean_dirty_flag(self):
         """Template precedence only: the classification is mocked here, so this
         does NOT prove the comparison; classifier tests cover that."""

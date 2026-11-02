@@ -622,13 +622,53 @@ class SnapshotSyncDisplayClassificationTests(TestCase):
         data.update(extra)
         return data
 
+    @staticmethod
+    def _switch(sid='leaf', **extra):
+        data = dict(
+            switch_class_id=sid, effective_quantity=2, device_type_extension_id=1,
+            fabric='frontend', fabric_name='frontend', fabric_class='managed',
+            hedgehog_role='server-leaf', uplink_ports_per_switch=None,
+            mclag_pair=False, topology_mode='spine-leaf',
+        )
+        data.update(extra)
+        return data
+
+    @staticmethod
+    def _conn(cid='c1', **extra):
+        data = dict(
+            connection_id=cid, server_class_id='gpu', target_zone_id='leaf:z1',
+            ports_per_connection=1, hedgehog_conn_type='unbundled',
+            distribution='alternating', speed=200, rail=None, port_type='data',
+        )
+        data.update(extra)
+        return data
+
+    @staticmethod
+    def _zone(name='z1', switch='leaf', **extra):
+        data = dict(
+            switch_class_id=switch, zone_name=name, zone_type='server',
+            port_spec='1-32', breakout_option_id=None,
+            allocation_strategy='sequential', allocation_order=None, priority=100,
+        )
+        data.update(extra)
+        return data
+
+    @staticmethod
+    def _mclag(did='m1', **extra):
+        data = dict(
+            domain_id=did, switch_class_id='leaf',
+            peer_link_count=2, session_link_count=2,
+        )
+        data.update(extra)
+        return data
+
     def _snap(self, servers=None, **overrides):
         snap = dict(
             server_classes=servers if servers is not None else [self._server('gpu')],
-            switch_classes=[dict(switch_class_id='leaf', effective_quantity=2)],
-            connections=[dict(connection_id='c1', speed=200, rail=None)],
-            port_zones=[dict(zone_name='z1', allocation_order=None)],
-            mclag_domains=[],
+            switch_classes=[self._switch()],
+            connections=[self._conn()],
+            port_zones=[self._zone()],
+            mclag_domains=[self._mclag()],
         )
         snap.update(overrides)
         return snap
@@ -673,8 +713,8 @@ class SnapshotSyncDisplayClassificationTests(TestCase):
         stripped = self._strip(self._snap())
         cases = dict(
             quantity=self._snap(servers=[self._server('gpu', qty=4)]),
-            connection=self._snap(connections=[dict(connection_id='c1', speed=400, rail=None)]),
-            zone=self._snap(port_zones=[dict(zone_name='z1', allocation_order=3)]),
+            connection=self._snap(connections=[self._conn(speed=400)]),
+            zone=self._snap(port_zones=[self._zone(allocation_order=3)]),
             added_class=self._snap(servers=[self._server('gpu'), self._server('new')]),
         )
         for name, current in cases.items():
@@ -741,6 +781,107 @@ class SnapshotSyncDisplayClassificationTests(TestCase):
                     self.classify(copy.deepcopy(snap), copy.deepcopy(snap)),
                     'snapshot_incomplete',
                 )
+
+    # (section, record builder name) -> (required keys, identity builder kwargs)
+    NONSERVER_REQUIRED = {
+        'switch_classes': ('_switch', (
+            'switch_class_id', 'effective_quantity', 'device_type_extension_id',
+            'fabric', 'fabric_name', 'fabric_class', 'hedgehog_role',
+            'uplink_ports_per_switch', 'mclag_pair', 'topology_mode')),
+        'connections': ('_conn', (
+            'connection_id', 'server_class_id', 'target_zone_id',
+            'ports_per_connection', 'hedgehog_conn_type', 'distribution',
+            'speed', 'rail', 'port_type')),
+        'port_zones': ('_zone', (
+            'switch_class_id', 'zone_name', 'zone_type', 'port_spec',
+            'breakout_option_id', 'allocation_strategy', 'allocation_order',
+            'priority')),
+        'mclag_domains': ('_mclag', (
+            'domain_id', 'switch_class_id', 'peer_link_count',
+            'session_link_count')),
+    }
+
+    def _missing_field_snaps(self):
+        """Yield (name, snapshot) with exactly one required field omitted."""
+        import copy
+        for section, (_builder, keys) in self.NONSERVER_REQUIRED.items():
+            for key in keys:
+                snap = self._snap()
+                del snap[section][0][key]
+                yield '%s.%s' % (section, key), snap
+        for key in ('server_class_id', 'quantity', 'device_type_id', 'gpus_per_server'):
+            snap = self._snap()
+            del snap['server_classes'][0][key]
+            yield 'server_classes.%s' % key, snap
+
+    def test_every_missing_required_field_in_every_section_is_incomplete(self):
+        import copy
+        current = self._snap()
+        for name, snap in self._missing_field_snaps():
+            with self.subTest(name=name, role='saved'):
+                self.assertEqual(self.classify(current, snap), 'snapshot_incomplete')
+            with self.subTest(name=name, role='equal-malformed'):
+                self.assertEqual(
+                    self.classify(copy.deepcopy(snap), copy.deepcopy(snap)),
+                    'snapshot_incomplete')
+            with self.subTest(name=name, role='saved-and-historical-keys-omitted'):
+                self.assertEqual(
+                    self.classify(current, self._strip(snap)), 'snapshot_incomplete')
+
+    def test_duplicate_identities_in_every_section_are_incomplete(self):
+        import copy
+        current = self._snap()
+        cases = dict(
+            servers=self._snap(servers=[self._server('gpu'), self._server('gpu')]),
+            switches=self._snap(switch_classes=[self._switch(), self._switch()]),
+            connections=self._snap(connections=[self._conn(), self._conn()]),
+            zones=self._snap(port_zones=[self._zone(), self._zone()]),
+            mclag=self._snap(mclag_domains=[self._mclag(), self._mclag()]),
+        )
+        for name, snap in cases.items():
+            with self.subTest(name=name, role='saved'):
+                self.assertEqual(self.classify(current, snap), 'snapshot_incomplete')
+            with self.subTest(name=name, role='equal-duplicate'):
+                self.assertEqual(
+                    self.classify(copy.deepcopy(snap), copy.deepcopy(snap)),
+                    'snapshot_incomplete')
+
+    def test_non_string_or_empty_identities_in_every_section_are_incomplete(self):
+        current = self._snap()
+        cases = dict(
+            switch_none=self._snap(switch_classes=[self._switch(sid=None)]),
+            conn_empty=self._snap(connections=[self._conn(cid='')]),
+            zone_none=self._snap(port_zones=[self._zone(name=None)]),
+            mclag_int=self._snap(mclag_domains=[self._mclag(did=7)]),
+        )
+        for name, snap in cases.items():
+            with self.subTest(name=name):
+                self.assertEqual(self.classify(current, snap), 'snapshot_incomplete')
+
+    def test_same_zone_name_on_different_switches_is_not_duplicate(self):
+        snap = self._snap(port_zones=[self._zone(), self._zone(switch='leaf2')])
+        self.assertEqual(self.classify(snap, snap), 'in_sync')
+
+    def test_complete_valid_nonserver_value_changes_remain_changed(self):
+        saved = self._snap()
+        cases = dict(
+            switch_qty=self._snap(switch_classes=[self._switch(effective_quantity=4)]),
+            switch_added=self._snap(switch_classes=[self._switch(), self._switch('spine')]),
+            conn_speed=self._snap(connections=[self._conn(speed=800)]),
+            conn_removed=self._snap(connections=[]),
+            zone_spec=self._snap(port_zones=[self._zone(port_spec='1-16')]),
+            mclag_links=self._snap(mclag_domains=[self._mclag(peer_link_count=4)]),
+        )
+        for name, current in cases.items():
+            with self.subTest(name=name, saved='complete'):
+                self.assertEqual(self.classify(current, saved), 'changed')
+            with self.subTest(name=name, saved='historical-keys-omitted'):
+                self.assertEqual(self.classify(current, self._strip(saved)), 'changed')
+
+    def test_complete_equal_with_all_sections_is_in_sync(self):
+        import copy
+        snap = self._snap()
+        self.assertEqual(self.classify(snap, copy.deepcopy(snap)), 'in_sync')
 
     def test_malformed_current_evidence_is_incomplete(self):
         saved = self._snap()

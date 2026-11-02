@@ -35,6 +35,33 @@ _SNAPSHOT_LIST_KEYS = (
 _REQUIRED_SERVER_CLASS_KEYS = (
     'server_class_id', 'quantity', 'device_type_id', 'gpus_per_server',
 )
+# Required fields per build_plan_snapshot(); nullable ones are always emitted
+# (as None), so absence means missing evidence, not None.
+_REQUIRED_SWITCH_CLASS_KEYS = (
+    'switch_class_id', 'effective_quantity', 'device_type_extension_id',
+    'fabric', 'fabric_name', 'fabric_class', 'hedgehog_role',
+    'uplink_ports_per_switch', 'mclag_pair', 'topology_mode',
+)
+_REQUIRED_CONNECTION_KEYS = (
+    'connection_id', 'server_class_id', 'target_zone_id', 'ports_per_connection',
+    'hedgehog_conn_type', 'distribution', 'speed', 'rail', 'port_type',
+)
+_REQUIRED_PORT_ZONE_KEYS = (
+    'switch_class_id', 'zone_name', 'zone_type', 'port_spec',
+    'breakout_option_id', 'allocation_strategy', 'allocation_order', 'priority',
+)
+_REQUIRED_MCLAG_KEYS = (
+    'domain_id', 'switch_class_id', 'peer_link_count', 'session_link_count',
+)
+
+# section -> (required keys, keys forming the unique stable identity)
+_SECTION_CONTRACT = {
+    'server_classes': (_REQUIRED_SERVER_CLASS_KEYS, ('server_class_id',)),
+    'switch_classes': (_REQUIRED_SWITCH_CLASS_KEYS, ('switch_class_id',)),
+    'connections': (_REQUIRED_CONNECTION_KEYS, ('connection_id',)),
+    'port_zones': (_REQUIRED_PORT_ZONE_KEYS, ('switch_class_id', 'zone_name')),
+    'mclag_domains': (_REQUIRED_MCLAG_KEYS, ('domain_id',)),
+}
 
 
 def _valid_server_class_index(snapshot):
@@ -52,13 +79,19 @@ def _valid_server_class_index(snapshot):
         if any(not isinstance(entry, dict) for entry in entries):
             return None
     index = {}
-    for entry in snapshot['server_classes']:
-        if any(key not in entry for key in _REQUIRED_SERVER_CLASS_KEYS):
-            return None
-        identity = entry['server_class_id']
-        if not isinstance(identity, str) or not identity or identity in index:
-            return None
-        index[identity] = entry
+    for section, (required, identity_keys) in _SECTION_CONTRACT.items():
+        seen = set()
+        for entry in snapshot[section]:
+            if any(key not in entry for key in required):
+                return None
+            identity = tuple(entry[key] for key in identity_keys)
+            if any(not isinstance(part, str) or not part for part in identity):
+                return None
+            if identity in seen:
+                return None
+            seen.add(identity)
+            if section == 'server_classes':
+                index[identity[0]] = entry
     return index
 
 
