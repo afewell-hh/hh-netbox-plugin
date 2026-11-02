@@ -378,6 +378,11 @@ writes NetBox inventory; it also recalculates automatically first.
    - Site name where devices will be created (default: "Hedgehog")
    - Warnings if plan is empty or incomplete
 
+   The **Start Device Generation** confirmation shows pre-generation estimates, not guaranteed
+   totals: devices (servers and switches), server-link endpoint interfaces and server-link cables.
+   Server-link counts exclude switch-to-switch fabric links and unused interfaces created from
+   device templates; the generated inventory is the source for complete counts.
+
 4. Review the preview and click **Generate** to confirm
 
 5. You'll see a success message: "Generation complete: created N devices, M interfaces, P cables"
