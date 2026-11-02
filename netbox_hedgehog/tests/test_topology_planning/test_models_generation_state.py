@@ -709,6 +709,32 @@ class SnapshotSyncDisplayClassificationTests(TestCase):
         current = self._snap(servers=[self._server('gpu', place_in_racks=True)])
         self.assertEqual(self.classify(current, self._snap()), 'changed')
 
+    def test_missing_current_historical_fields_are_incomplete(self):
+        import copy
+        for key in self.HISTORICAL:
+            incomplete = self._snap()
+            del incomplete['server_classes'][0][key]
+            with self.subTest(key=key, side='current'):
+                self.assertEqual(
+                    self.classify(incomplete, self._snap()), 'snapshot_incomplete')
+            with self.subTest(key=key, side='both'):
+                self.assertEqual(
+                    self.classify(incomplete, copy.deepcopy(incomplete)),
+                    'snapshot_incomplete')
+
+    def test_mclag_shared_domain_id_with_distinct_switches(self):
+        import copy
+        saved = self._snap(
+            switch_classes=[self._switch(), self._switch(sid='leaf2')],
+            mclag_domains=[self._mclag(), self._mclag(switch_class_id='leaf2')])
+        current = copy.deepcopy(saved)
+        self.assertEqual(self.classify(current, saved), 'in_sync')
+        current['mclag_domains'][1]['peer_link_count'] += 1
+        self.assertEqual(self.classify(current, saved), 'changed')
+        current = copy.deepcopy(saved)
+        current['server_classes'][0]['quantity'] += 1
+        self.assertEqual(self.classify(current, saved), 'changed')
+
     def test_known_changes_alongside_missing_keys_are_changed(self):
         stripped = self._strip(self._snap())
         cases = dict(

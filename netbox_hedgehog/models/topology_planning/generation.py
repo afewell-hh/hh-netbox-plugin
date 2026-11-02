@@ -61,7 +61,7 @@ _SECTION_CONTRACT = {
     # PlanServerConnection.Meta.unique_together is [server_class, connection_id]
     'connections': (_REQUIRED_CONNECTION_KEYS, ('server_class_id', 'connection_id')),
     'port_zones': (_REQUIRED_PORT_ZONE_KEYS, ('switch_class_id', 'zone_name')),
-    'mclag_domains': (_REQUIRED_MCLAG_KEYS, ('domain_id',)),
+    'mclag_domains': (_REQUIRED_MCLAG_KEYS, ('domain_id', 'switch_class_id')),
 }
 
 
@@ -119,6 +119,10 @@ def classify_snapshot_sync(current, saved) -> str:
         saved_index = _valid_server_class_index(saved)
         current_index = _valid_server_class_index(current)
         if saved_index is None or current_index is None:
+            return SYNC_SNAPSHOT_INCOMPLETE
+
+        if any(key not in entry for entry in current_index.values()
+               for key in HISTORICAL_SERVER_CLASS_KEYS):
             return SYNC_SNAPSHOT_INCOMPLETE
 
         if compare_snapshots(current, saved):

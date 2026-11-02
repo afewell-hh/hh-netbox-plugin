@@ -724,6 +724,51 @@ class SyncDisplayRenderTests(CalculateDesignBase):
         gs.refresh_from_db()
         self.assertEqual(gs.snapshot, before)
 
+    def test_shared_mclag_domain_id_on_real_get(self):
+        from netbox_hedgehog.models.topology_planning import PlanMCLAGDomain
+
+        first_switch = self.plan.switch_classes.get(switch_class_id='fe-leaf')
+        second_switch = PlanSwitchClass.objects.create(
+            plan=self.plan, switch_class_id='be-leaf',
+            fabric=FabricTypeChoices.FRONTEND,
+            hedgehog_role=HedgehogRoleChoices.SERVER_LEAF,
+            device_type_extension=self.device_ext, uplink_ports_per_switch=4,
+            mclag_pair=False, calculated_quantity=2)
+        for switch_class, group_name in (
+            (first_switch, 'mclag-frontend'), (second_switch, 'mclag-backend')
+        ):
+            domain = PlanMCLAGDomain(
+                plan=self.plan, domain_id='MCLAG-001', switch_class=switch_class,
+                peer_link_count=2, session_link_count=2,
+                switch_group_name=group_name)
+            domain.full_clean()
+            domain.save()
+
+        state = self._state(self.plan)
+        before = state.snapshot
+        html = self._get()
+        self.assertIn('In Sync', html)
+        self.assertNotIn('Out of Sync', html)
+        self.assertNotIn('Sync unknown', html)
+        for field in ('peer_link_count', 'quantity'):
+            with self.subTest(field=field):
+                self._state(self.plan)
+                if field == 'peer_link_count':
+                    record = self.plan.mclag_domains.get(switch_class=second_switch)
+                else:
+                    record = self.plan.server_classes.get(server_class_id='gpu')
+                original = getattr(record, field)
+                setattr(record, field, original + 1)
+                record.save(update_fields=[field])
+                html = self._get()
+                self.assertIn('Out of Sync', html)
+                self.assertNotIn('Sync unknown', html)
+                self.assertIn('has been modified since the last generation run', html)
+                setattr(record, field, original)
+                record.save(update_fields=[field])
+        state.refresh_from_db()
+        self.assertEqual(state.snapshot, before)
+
     def test_incomplete_classification_takes_precedence_over_clean_dirty_flag(self):
         """Template precedence only: the classification is mocked here, so this
         does NOT prove the comparison; classifier tests cover that."""
