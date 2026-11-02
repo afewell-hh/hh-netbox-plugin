@@ -1637,3 +1637,274 @@ class YAMLExportProfileAwarePortConfigTestCase(YAMLExportTestBase):
         config = self._config([('1', self.breakout_4x200), ('2', self.breakout_1x800)], ext=ext)
         self.assertEqual(config['portBreakouts'], {'E1/1': '4x200G', 'E1/2': '1x800G'})
         self.assertEqual(config['portSpeeds'], {})
+
+
+class YAMLExportProfileCapabilityEndpointTestCase(YAMLExportTestBase):
+    """
+    #737 review fixes: inventory-backed DS2000 export through the real endpoint, plus
+    capability-resolution controls. Expected values are independent literals.
+    """
+
+    @classmethod
+    def setUpTestData(cls):
+        super().setUpTestData()
+        cls.ds2000_type, _ = DeviceType.objects.get_or_create(
+            manufacturer=cls.manufacturer, model='DS2000', defaults={'slug': 'ds2000'}
+        )
+        cls.ds2000_ext, _ = DeviceTypeExtension.objects.update_or_create(
+            device_type=cls.ds2000_type,
+            defaults={
+                'mclag_capable': False, 'hedgehog_roles': ['server-leaf'],
+                'native_speed': 100, 'supported_breakouts': ['1x100g', '4x25g'],
+                'uplink_ports': 0, 'hedgehog_profile_name': 'celestica-ds2000',
+            },
+        )
+        ds5000_type, _ = DeviceType.objects.get_or_create(
+            manufacturer=cls.manufacturer, model='DS5000-real', defaults={'slug': 'ds5000-real'}
+        )
+        cls.ds5000_ext, _ = DeviceTypeExtension.objects.update_or_create(
+            device_type=ds5000_type,
+            defaults={
+                'mclag_capable': False, 'hedgehog_roles': ['server-leaf'],
+                'native_speed': 800, 'supported_breakouts': ['1x800g', '4x200g'],
+                'uplink_ports': 0, 'hedgehog_profile_name': 'celestica-ds5000',
+            },
+        )
+
+        def option(breakout_id, from_speed, ports, speed):
+            return BreakoutOption.objects.get_or_create(
+                breakout_id=breakout_id,
+                defaults={'from_speed': from_speed, 'logical_ports': ports,
+                          'logical_speed': speed},
+            )[0]
+
+        cls.bo_1x100 = option('1x100g', 100, 1, 100)
+        cls.bo_4x25 = option('4x25g', 100, 4, 25)
+        cls.bo_4x10 = option('4x10g', 40, 4, 10)
+        cls.bo_1x50 = option('1x50g', 50, 1, 50)
+        cls.bo_1x25 = option('1x25g', 25, 1, 25)
+
+    def setUp(self):
+        self.client = Client()
+        self.client.login(username='testuser', password='testpass123')
+        from unittest import mock
+        from netbox_hedgehog.services import yaml_generator
+        patcher = mock.patch.dict(yaml_generator._PORT_CAPABILITY_CACHE, clear=True)
+        patcher.start()
+        self.addCleanup(patcher.stop)
+
+    # -- helpers ---------------------------------------------------------------------
+    def _plan_with_zones(self, zones, class_ext=None):
+        plan = TopologyPlan.objects.create(name='Cap Plan', created_by=self.user)
+        switch_class = PlanSwitchClass.objects.create(
+            plan=plan, switch_class_id='ds2000-leaf', fabric=FabricTypeChoices.FRONTEND,
+            hedgehog_role=HedgehogRoleChoices.SERVER_LEAF,
+            device_type_extension=class_ext or self.ds2000_ext,
+            uplink_ports_per_switch=0, mclag_pair=False,
+            calculated_quantity=1, override_quantity=1,
+        )
+        for index, (port_spec, option) in enumerate(zones):
+            SwitchPortZone.objects.create(
+                switch_class=switch_class, zone_name='zone-%d' % index,
+                zone_type=PortZoneTypeChoices.SERVER, port_spec=port_spec,
+                breakout_option=option,
+                allocation_strategy=AllocationStrategyChoices.SEQUENTIAL,
+                priority=100 + index,
+            )
+        return plan, switch_class
+
+    def _inventory(self, plan, interface_names):
+        switch = Device.objects.create(
+            name='ds2000-leaf-01', device_type=self.ds2000_type,
+            role=self.leaf_role, site=self.site,
+            custom_field_data={
+                'hedgehog_plan_id': str(plan.pk), 'hedgehog_class': 'ds2000-leaf',
+                'hedgehog_role': 'server-leaf', 'hedgehog_fabric': 'frontend',
+                'boot_mac': '0c:20:12:ff:00:01',
+            },
+        )
+        for index, name in enumerate(interface_names):
+            server = Device.objects.create(
+                name='srv-%02d' % index, device_type=self.server_type,
+                role=self.server_role, site=self.site,
+                custom_field_data={'hedgehog_plan_id': str(plan.pk)},
+            )
+            a = Interface.objects.create(device=switch, name=name, type='100gbase-x-qsfp28')
+            b = Interface.objects.create(device=server, name='eth0', type='100gbase-x-qsfp28')
+            cable = Cable(a_terminations=[a], b_terminations=[b])
+            cable.custom_field_data = {
+                'hedgehog_plan_id': str(plan.pk), 'hedgehog_zone': PortZoneTypeChoices.SERVER,
+            }
+            cable.save()
+        GenerationState.objects.create(
+            plan=plan, status=GenerationStatusChoices.GENERATED,
+            device_count=1 + len(interface_names), interface_count=2 * len(interface_names),
+            cable_count=len(interface_names), snapshot={'marker': 'preserved'},
+        )
+
+    def _binding(self, plan):
+        plan.refresh_from_db()
+        state = GenerationState.objects.get(plan=plan)
+        pid = str(plan.pk)
+        return (
+            plan.last_updated,
+            sorted(Device.objects.filter(
+                custom_field_data__hedgehog_plan_id=pid).values_list('pk', 'name')),
+            sorted(Interface.objects.filter(
+                device__custom_field_data__hedgehog_plan_id=pid).values_list('pk', 'name')),
+            sorted(Cable.objects.filter(
+                custom_field_data__hedgehog_plan_id=pid).values_list('pk', flat=True)),
+            sorted(SwitchPortZone.objects.filter(
+                switch_class__plan=plan).values_list('pk', 'port_spec', 'breakout_option_id')),
+            (state.status, state.snapshot, state.device_count, state.interface_count,
+             state.cable_count),
+        )
+
+    def _export(self, plan):
+        return self.client.get(
+            reverse('plugins:netbox_hedgehog:topologyplan_export', args=[plan.pk]))
+
+    def _docs(self, response):
+        return [d for d in yaml.safe_load_all(response.content.decode('utf-8')) if d]
+
+    def _config(self, switch_class, profile_name=None):
+        from netbox_hedgehog.services.yaml_generator import YAMLGenerator
+        return YAMLGenerator(plan=switch_class.plan)._generate_port_configuration(
+            switch_class, profile_name=profile_name)
+
+    # -- finding 5: real endpoint ----------------------------------------------------
+    def test_ds2000_export_endpoint_native_vs_breakout_and_lane_endpoints(self):
+        plan, _ = self._plan_with_zones([
+            ('49', self.bo_4x25), ('50', self.bo_1x100), ('56', self.bo_1x100),
+        ])
+        self._inventory(plan, ['E1/49/1', 'E1/50', 'E1/56'])
+        before = self._binding(plan)
+
+        response = self._export(plan)
+
+        self.assertEqual(response.status_code, 200)
+        docs = self._docs(response)
+        switch = [d for d in docs if d['kind'] == 'Switch'][0]['spec']
+        self.assertEqual(switch['profile'], 'celestica-ds2000')
+        self.assertEqual(switch['portSpeeds'], {'E1/50': '100G'})
+        self.assertEqual(switch['portBreakouts'], {'E1/49': '4x25G', 'E1/56': '1x100G'})
+        endpoints = {
+            d['spec']['unbundled']['link']['switch']['port']
+            for d in docs if d['kind'] == 'Connection' and 'unbundled' in d['spec']
+        }
+        self.assertEqual(endpoints, {
+            'ds2000-leaf-01/E1/49/1', 'ds2000-leaf-01/E1/50', 'ds2000-leaf-01/E1/56',
+        })
+        self.assertEqual(self._binding(plan), before)
+
+    def test_ds2000_export_endpoint_rejects_impossible_split_visibly(self):
+        plan, _ = self._plan_with_zones([('50', self.bo_4x25)])
+        self._inventory(plan, ['E1/50/1'])
+        before = self._binding(plan)
+
+        response = self._export(plan)
+
+        self.assertEqual(response.status_code, 400)
+        text = response.content.decode('utf-8')
+        self.assertIn('YAML generation failed', text)
+        self.assertIn('E1/50', text)
+        self.assertIn('speed-only', text)
+        self.assertEqual(self._binding(plan), before)
+
+    # -- finding 1: resolved breakout beats the numeric threshold --------------------
+    def test_ds2000_supported_4x10g_stays_breakout(self):
+        _, switch_class = self._plan_with_zones([('49', self.bo_4x10), ('56', self.bo_4x10)])
+        config = self._config(switch_class)
+        self.assertEqual(config['portBreakouts'], {'E1/49': '4x10G', 'E1/56': '4x10G'})
+        self.assertEqual(config['portSpeeds'], {})
+
+    def test_ds5000_supported_1x50g_stays_breakout(self):
+        _, switch_class = self._plan_with_zones([('1', self.bo_1x50)], class_ext=self.ds5000_ext)
+        config = self._config(switch_class)
+        self.assertEqual(config['portBreakouts'], {'E1/1': '1x50G'})
+        self.assertEqual(config['portSpeeds'], {})
+
+    def test_unresolved_port_keeps_legacy_threshold(self):
+        # E1/98 and E1/99 do not exist in the DS2000 profile: legacy rule applies.
+        _, switch_class = self._plan_with_zones([('99', self.bo_1x25), ('98', self.bo_1x100)])
+        config = self._config(switch_class)
+        self.assertEqual(config['portSpeeds'], {'E1/99': '25G'})
+        self.assertEqual(config['portBreakouts'], {'E1/98': '1x100G'})
+
+    def test_10g_25g_800g_compatibility(self):
+        _, ds2000 = self._plan_with_zones([('1-2', self.bo_1x25)])
+        self.assertEqual(self._config(ds2000)['portSpeeds'], {'E1/1': '25G', 'E1/2': '25G'})
+        _, ds5000 = self._plan_with_zones(
+            [('1', self.breakout_4x200), ('2', self.breakout_1x800)], class_ext=self.ds5000_ext)
+        config = self._config(ds5000)
+        self.assertEqual(config['portBreakouts'], {'E1/1': '4x200G', 'E1/2': '1x800G'})
+
+    # -- finding 4: inventory profile is authoritative -------------------------------
+    def test_inventory_profile_overrides_mismatched_plan_class_profile(self):
+        # Plan class now references DS5000, but the retained inventory device is DS2000.
+        plan, switch_class = self._plan_with_zones(
+            [('50', self.bo_1x100)], class_ext=self.ds5000_ext)
+        self._inventory(plan, ['E1/50'])
+        before = self._binding(plan)
+
+        response = self._export(plan)
+
+        self.assertEqual(response.status_code, 200)
+        switch = [d for d in self._docs(response) if d['kind'] == 'Switch'][0]['spec']
+        self.assertEqual(switch['profile'], 'celestica-ds2000')
+        self.assertEqual(switch['portSpeeds'], {'E1/50': '100G'})
+        self.assertNotIn('portBreakouts', switch)
+        self.assertEqual(self._binding(plan), before)
+        # Direct helper compatibility: no profile argument uses the plan class profile.
+        self.assertEqual(self._config(switch_class)['portSpeeds'], {})
+
+    # -- finding 2: failures are explicit, uncached, and recoverable -----------------
+    def test_parse_failure_is_explicit_not_cached_and_recovers(self):
+        from unittest import mock
+        from django.core.exceptions import ValidationError
+        from netbox_hedgehog.services import yaml_generator
+        from netbox_hedgehog.services.yaml_generator import YAMLGenerator
+        from netbox_hedgehog.utils.fabric_import import FabricProfileGoParser
+
+        with mock.patch.object(
+            FabricProfileGoParser, 'parse_profile_from_file', side_effect=ValueError('boom')
+        ):
+            with self.assertRaises(ValidationError) as ctx:
+                YAMLGenerator._load_port_capabilities('celestica-ds2000')
+        self.assertIn('boom', str(ctx.exception))
+        self.assertNotIn('celestica-ds2000', yaml_generator._PORT_CAPABILITY_CACHE)
+
+        caps = YAMLGenerator._load_port_capabilities('celestica-ds2000')
+        self.assertEqual(caps['E1/50']['kind'], 'speed')
+        self.assertEqual(caps['E1/49']['kind'], 'breakout')
+
+    def test_unrelated_unreadable_file_does_not_disable_requested_profile(self):
+        from pathlib import Path
+        from unittest import mock
+        from netbox_hedgehog.services.yaml_generator import YAMLGenerator
+        original = Path.read_text
+
+        def flaky(path, *args, **kwargs):
+            if path.name != 'p_bcm_celestica_ds2000.go':
+                raise OSError('unrelated read failure')
+            return original(path, *args, **kwargs)
+
+        with mock.patch.object(Path, 'read_text', autospec=True, side_effect=flaky):
+            caps = YAMLGenerator._load_port_capabilities('celestica-ds2000')
+        self.assertEqual(caps['E1/50']['kind'], 'speed')
+
+    def test_unreadable_files_without_match_raise_and_are_not_cached(self):
+        from pathlib import Path
+        from unittest import mock
+        from django.core.exceptions import ValidationError
+        from netbox_hedgehog.services import yaml_generator
+        from netbox_hedgehog.services.yaml_generator import YAMLGenerator
+
+        with mock.patch.object(Path, 'read_text', side_effect=OSError('disk')):
+            with self.assertRaises(ValidationError):
+                YAMLGenerator._load_port_capabilities('celestica-ds2000')
+        self.assertNotIn('celestica-ds2000', yaml_generator._PORT_CAPABILITY_CACHE)
+
+    def test_genuinely_missing_profile_uses_documented_fallback(self):
+        from netbox_hedgehog.services.yaml_generator import YAMLGenerator
+        self.assertEqual(YAMLGenerator._load_port_capabilities('no-such-profile'), {})

@@ -891,21 +891,27 @@ class YAMLGenerator:
         mac_bytes = bytes([0x02]) + hash_bytes[1:6]
         return ':'.join(f'{b:02x}' for b in mac_bytes)
 
-    def _generate_port_configuration(self, switch_class: 'PlanSwitchClass') -> Dict[str, Dict[str, Any]]:
+    def _generate_port_configuration(
+        self, switch_class: 'PlanSwitchClass', profile_name: str = None
+    ) -> Dict[str, Dict[str, Any]]:
         """
-        Generate portBreakouts for a switch class using hhfab-compatible key format.
+        Generate port configuration for a switch class using hhfab-compatible key format.
 
-        All ports (breakout and native) are represented in portBreakouts with
-        'E1/<port>' keys, matching the hhfab wiring schema. portSpeeds and
-        portAutoNegs are not emitted; hhfab derives speeds from portBreakouts.
+        Keys are 'E1/<port>'. Each port goes to portBreakouts (breakout-capable, e.g.
+        '1x100G', '4x10G') or portSpeeds (speed-only, e.g. '100G') according to its
+        capability in the bundled switch profile. Ports the profile does not resolve (or
+        profiles that are not bundled) keep the legacy rule: breakouts whose source speed
+        is below the low-speed threshold use portSpeeds, others portBreakouts.
+        portAutoNegs is always empty.
 
         Args:
             switch_class: PlanSwitchClass instance
+            profile_name: Profile to resolve capabilities from. _generate_switches passes
+                the inventory device's profile (the one emitted in Switch.spec.profile);
+                when None, the switch class's device type extension profile is used.
 
         Returns:
             Dict with keys: portBreakouts, portSpeeds, portAutoNegs
-            (portSpeeds and portAutoNegs are always empty; retained for
-            compatibility with the existing emit check in _generate_switches)
 
         Example output for fe-gpu-leaf (odd ports = 4x200G, even ports = 1x800G):
             {
@@ -924,10 +930,18 @@ class YAMLGenerator:
 
         port_speeds = {}
 
-        # Per-port capability from the bundled local profile source (None if unresolved).
-        port_caps = self._load_port_capabilities(
-            switch_class.device_type_extension.hedgehog_profile_name
-        )
+        profile_name = profile_name or switch_class.device_type_extension.hedgehog_profile_name
+
+        # Per-port capability from the bundled local profile source. Empty when the profile
+        # is not bundled; ports absent from it are "unresolved" and keep the legacy rule.
+        port_caps = self._load_port_capabilities(profile_name)
+
+        def _speed_only_error(port, cap, detail):
+            supported = ', '.join(sorted({s.upper() for s in cap['supported']}))
+            return ValidationError(
+                f"Switch class {switch_class.switch_class_id}: port E1/{port} is speed-only "
+                f"in profile '{profile_name}' (supported speeds: {supported}); {detail}"
+            )
 
         for zone in zones:
             # Parse port_spec to get list of physical ports
@@ -935,41 +949,34 @@ class YAMLGenerator:
             ports = self._parse_port_spec(zone.port_spec)
 
             if zone.breakout_option:
-                from_speed = zone.breakout_option.from_speed
-                speed_only_ports = [
-                    p for p in ports if port_caps.get(f"E1/{p}", {}).get('kind') == 'speed'
-                ]
-                if speed_only_ports:
-                    # Resolved speed-only ports (e.g. DS2000 E1/50-55 QSFP28-100G-nb) accept
-                    # only a single-lane speed they support; never silently altered.
-                    bo = zone.breakout_option
-                    requested = f"{bo.logical_speed}G"
-                    for port in speed_only_ports:
-                        supported = {s.upper() for s in port_caps[f"E1/{port}"]['supported']}
-                        if bo.logical_ports != 1 or requested.upper() not in supported:
-                            raise ValidationError(
-                                f"Switch class {switch_class.switch_class_id}: port E1/{port} "
-                                f"is speed-only in profile "
-                                f"'{switch_class.device_type_extension.hedgehog_profile_name}' "
-                                f"(supported speeds: {', '.join(sorted(supported))}); "
-                                f"cannot apply breakout '{bo.breakout_id}'"
+                bo = zone.breakout_option
+                # Normalise breakout_id to hhfab-canonical form: lowercase 'x', uppercase 'G'
+                # e.g. "2x400g" -> "2x400G", "4x200g" -> "4x200G", "1x800g" -> "1x800G"
+                breakout_id = bo.breakout_id.replace('g', 'G')
+                requested = f"{bo.logical_speed}G"
+                for port in ports:
+                    key = f"E1/{port}"
+                    cap = port_caps.get(key)
+                    if cap and cap['kind'] == 'speed':
+                        # Speed-only port (e.g. DS2000 E1/50-55): single-lane supported speed
+                        # only; the request is never silently altered.
+                        if bo.logical_ports != 1 or requested.upper() not in {
+                            s.upper() for s in cap['supported']
+                        }:
+                            raise _speed_only_error(
+                                port, cap, f"cannot apply breakout '{bo.breakout_id}'"
                             )
-                        port_speeds[f"E1/{port}"] = requested
-                    ports = [p for p in ports if p not in speed_only_ports]
-                if not ports:
-                    continue
-                if from_speed < _LOW_SPEED_THRESHOLD_GBPS:
-                    # Speed-only profile (e.g. SFP28-25G): hhfab uses portSpeeds, not portBreakouts.
-                    # Value is bare speed string: '25G', '10G', not breakout notation '1x25G'.
-                    logical_speed = zone.breakout_option.logical_speed
-                    for port in ports:
-                        port_speeds[f"E1/{port}"] = f"{logical_speed}G"
-                else:
-                    # Normalise breakout_id to hhfab-canonical form: lowercase 'x', uppercase 'G'
-                    # e.g. "2x400g" → "2x400G", "4x200g" → "4x200G", "1x800g" → "1x800G"
-                    breakout_id = zone.breakout_option.breakout_id.replace('g', 'G')
-                    for port in ports:
-                        port_breakouts[f"E1/{port}"] = breakout_id
+                        port_speeds[key] = requested
+                    elif cap and cap['kind'] == 'breakout':
+                        # Resolved breakout-capable port: always portBreakouts, independent of
+                        # the legacy numeric threshold (e.g. 4x10G, 1x50G).
+                        port_breakouts[key] = breakout_id
+                    elif bo.from_speed < _LOW_SPEED_THRESHOLD_GBPS:
+                        # Unresolved port, legacy rule: hhfab uses portSpeeds for low-speed
+                        # profiles (e.g. SFP28-25G); bare speed string '25G', not '1x25G'.
+                        port_speeds[key] = requested
+                    else:
+                        port_breakouts[key] = breakout_id
             else:
                 # No breakout_option configured: emit native speed as 1x<N>G.
                 native_speed = switch_class.device_type_extension.native_speed
@@ -977,12 +984,9 @@ class YAMLGenerator:
                     cap = port_caps.get(f"E1/{port}")
                     if cap and cap['kind'] == 'speed':
                         speed_str = f"{native_speed}G"
-                        supported = {s.upper() for s in cap['supported']}
-                        if speed_str.upper() not in supported:
-                            raise ValidationError(
-                                f"Switch class {switch_class.switch_class_id}: port E1/{port} "
-                                f"is speed-only and does not support native {speed_str} "
-                                f"(supported speeds: {', '.join(sorted(supported))})"
+                        if speed_str.upper() not in {s.upper() for s in cap['supported']}:
+                            raise _speed_only_error(
+                                port, cap, f"native {speed_str} is not supported"
                             )
                         port_speeds[f"E1/{port}"] = speed_str
                     else:
@@ -999,8 +1003,14 @@ class YAMLGenerator:
         """
         Resolve per-port capability ('speed' or 'breakout') for a switch profile from the
         bundled local Go sources in netbox_hedgehog/fabric_profiles/ (no network, no Go
-        execution, no catalog writes). Returns {} when the profile or its data cannot be
-        resolved, so callers keep their documented fallback and never invent capability.
+        execution, no catalog writes).
+
+        Returns {} only when the profile is genuinely not bundled (documented fallback:
+        callers keep the legacy speed-based behaviour). Unreadable or unparsable matched
+        profile data raises ValidationError (visible through the export view) and is never
+        cached, so a later call can recover. An unreadable unrelated file is skipped while
+        searching; if the profile is then not found, the failure is raised instead of
+        being treated as "not bundled".
         """
         if not profile_name:
             return {}
@@ -1010,29 +1020,48 @@ class YAMLGenerator:
         from pathlib import Path
         from ..utils.fabric_import import FabricProfileGoParser
 
-        caps: Dict[str, Dict[str, Any]] = {}
         profile_dir = Path(__file__).resolve().parents[1] / 'fabric_profiles'
         name_re = re.compile(r'ObjectMeta:\s*kmetav1\.ObjectMeta\s*\{\s*Name:\s*"([^"]+)"')
-        try:
-            for go_file in sorted(profile_dir.glob('*.go')):
+        matched_file = None
+        unreadable = []
+        for go_file in sorted(profile_dir.glob('*.go')):
+            try:
                 match = name_re.search(go_file.read_text(encoding='utf-8'))
-                if not match or match.group(1) != profile_name:
-                    continue
-                spec = FabricProfileGoParser().parse_profile_from_file(str(go_file))['spec']
-                for port_name, port in spec['ports'].items():
-                    profile = spec['port_profiles'].get(port.get('profile'))
-                    if not profile:
-                        continue
-                    if 'breakout' in profile:
-                        caps[port_name] = {'kind': 'breakout'}
-                    elif 'speed' in profile and profile['speed'].get('supported'):
-                        caps[port_name] = {
-                            'kind': 'speed',
-                            'supported': profile['speed']['supported'],
-                        }
+            except (OSError, UnicodeDecodeError) as exc:
+                unreadable.append(f"{go_file.name}: {exc}")
+                continue
+            if match and match.group(1) == profile_name:
+                matched_file = go_file
                 break
-        except Exception:
-            caps = {}
+
+        if matched_file is None:
+            if unreadable:
+                raise ValidationError(
+                    f"Cannot resolve port capabilities for profile '{profile_name}': "
+                    f"bundled profile files were unreadable ({'; '.join(unreadable)})"
+                )
+            _PORT_CAPABILITY_CACHE[profile_name] = {}
+            return {}
+
+        try:
+            spec = FabricProfileGoParser().parse_profile_from_file(str(matched_file))['spec']
+            caps: Dict[str, Dict[str, Any]] = {}
+            for port_name, port in spec['ports'].items():
+                profile = spec['port_profiles'].get(port.get('profile'))
+                if not profile:
+                    continue
+                if 'breakout' in profile:
+                    caps[port_name] = {'kind': 'breakout'}
+                elif 'speed' in profile and profile['speed'].get('supported'):
+                    caps[port_name] = {
+                        'kind': 'speed',
+                        'supported': profile['speed']['supported'],
+                    }
+        except Exception as exc:
+            raise ValidationError(
+                f"Cannot resolve port capabilities for profile '{profile_name}' from "
+                f"{matched_file.name}: {exc}"
+            ) from exc
         _PORT_CAPABILITY_CACHE[profile_name] = caps
         return caps
 
@@ -1217,7 +1246,9 @@ class YAMLGenerator:
                         plan=self.plan,
                         switch_class_id=hedgehog_class_id
                     )
-                    port_config = self._generate_port_configuration(switch_class)
+                    port_config = self._generate_port_configuration(
+                        switch_class, profile_name=profile_name
+                    )
                     if port_config['portBreakouts']:
                         spec['portBreakouts'] = port_config['portBreakouts']
                     if port_config['portSpeeds']:

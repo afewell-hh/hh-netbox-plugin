@@ -226,3 +226,36 @@ class NonBreakoutSuffixParserTestCase(unittest.TestCase):
         self.assertEqual(nb["speed"]["supported"], ["40G", "100G"])
         self.assertIn("4x25g", profiles["QSFP28-100G"]["breakout"]["supported"])
         self.assertIn("SFP28-25G", profiles)
+
+
+class PortReferenceBoundaryTestCase(unittest.TestCase):
+    """#737: port Profile references resolve only a COMPLETE literal or literal+known suffix."""
+
+    SUFFIX = "wiringapi.NonBreakoutPortExceptionSuffix"
+
+    def _profile(self, expr):
+        src = '"E1/1": {NOSName: "Ethernet0", Label: "1", Profile: %s},' % expr
+        return FabricProfileGoParser()._parse_ports(src)["E1/1"].get("profile")
+
+    def test_plain_literal(self):
+        self.assertEqual(self._profile('"QSFP28-100G"'), "QSFP28-100G")
+
+    def test_known_suffix(self):
+        self.assertEqual(self._profile('"QSFP28-100G" + %s' % self.SUFFIX), "QSFP28-100G-nb")
+
+    def test_known_suffix_whitespace_variants(self):
+        self.assertEqual(self._profile('"QSFP28-100G"+%s' % self.SUFFIX), "QSFP28-100G-nb")
+        self.assertEqual(self._profile('"QSFP28-100G"  +\t%s' % self.SUFFIX), "QSFP28-100G-nb")
+
+    def test_longer_identifier_is_unresolved(self):
+        self.assertIsNone(self._profile('"QSFP28-100G" + %sOther' % self.SUFFIX))
+
+    def test_unknown_constant_is_unresolved(self):
+        self.assertIsNone(self._profile('"QSFP28-100G" + wiringapi.SomethingElse'))
+
+    def test_additional_concatenation_is_unresolved(self):
+        self.assertIsNone(self._profile('"QSFP28-100G" + %s + "x"' % self.SUFFIX))
+        self.assertIsNone(self._profile('"QSFP28-100G" + "x"'))
+
+    def test_dotted_continuation_is_unresolved(self):
+        self.assertIsNone(self._profile('"QSFP28-100G" + %s.Foo' % self.SUFFIX))
