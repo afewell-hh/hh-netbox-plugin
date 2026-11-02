@@ -200,3 +200,29 @@ class FabricProfileGoParserTestCase(unittest.TestCase):
         self.assertIn("ports", result["spec"])
         self.assertIn("port_profiles", result["spec"])
         self.assertIn("features", result["spec"])
+
+
+class NonBreakoutSuffixParserTestCase(unittest.TestCase):
+    """#737: the known +NonBreakoutPortExceptionSuffix expression is preserved per port."""
+
+    def setUp(self):
+        self.parser = FabricProfileGoParser()
+        self.profile = (
+            Path(__file__).resolve().parents[2] / "fabric_profiles" / "p_bcm_celestica_ds2000.go"
+        )
+
+    def test_ds2000_port_references_keep_nb_suffix(self):
+        spec = self.parser.parse_profile_from_file(str(self.profile))["spec"]
+        self.assertEqual(spec["ports"]["E1/49"]["profile"], "QSFP28-100G")
+        self.assertEqual(spec["ports"]["E1/56"]["profile"], "QSFP28-100G")
+        for n in range(50, 56):
+            self.assertEqual(spec["ports"]["E1/%d" % n]["profile"], "QSFP28-100G-nb")
+
+    def test_ds2000_nb_port_profile_is_speed_only(self):
+        profiles = self.parser.parse_profile_from_file(str(self.profile))["spec"]["port_profiles"]
+        nb = profiles["QSFP28-100G-nb"]
+        self.assertNotIn("breakout", nb)
+        self.assertEqual(nb["speed"]["default"], "100G")
+        self.assertEqual(nb["speed"]["supported"], ["40G", "100G"])
+        self.assertIn("4x25g", profiles["QSFP28-100G"]["breakout"]["supported"])
+        self.assertIn("SFP28-25G", profiles)

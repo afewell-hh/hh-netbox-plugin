@@ -1512,3 +1512,128 @@ class YAMLExportUITestCase(YAMLExportTestBase):
 
         self.assertTrue(has_disabled_indicator,
                        "Export button should indicate disabled state when generation not run")
+
+
+class YAMLExportProfileAwarePortConfigTestCase(YAMLExportTestBase):
+    """
+    #737: native 100G ports export per the actual port capability in the bundled
+    celestica-ds2000 profile (E1/49 and E1/56 breakout-capable; E1/50-55 speed-only),
+    not a global speed threshold. Read-only: calls the exporter helper only.
+    """
+
+    @classmethod
+    def setUpTestData(cls):
+        super().setUpTestData()
+        ds2000_type, _ = DeviceType.objects.get_or_create(
+            manufacturer=cls.manufacturer, model='DS2000', defaults={'slug': 'ds2000'}
+        )
+        cls.ds2000_ext, _ = DeviceTypeExtension.objects.update_or_create(
+            device_type=ds2000_type,
+            defaults={
+                'mclag_capable': False,
+                'hedgehog_roles': ['server-leaf'],
+                'native_speed': 100,
+                'supported_breakouts': ['1x100g', '4x25g'],
+                'uplink_ports': 0,
+                'hedgehog_profile_name': 'celestica-ds2000',
+            },
+        )
+        cls.bo_1x100, _ = BreakoutOption.objects.get_or_create(
+            breakout_id='1x100g',
+            defaults={'from_speed': 100, 'logical_ports': 1, 'logical_speed': 100},
+        )
+        cls.bo_4x25, _ = BreakoutOption.objects.get_or_create(
+            breakout_id='4x25g',
+            defaults={'from_speed': 100, 'logical_ports': 4, 'logical_speed': 25},
+        )
+        cls.bo_1x25, _ = BreakoutOption.objects.get_or_create(
+            breakout_id='1x25g',
+            defaults={'from_speed': 25, 'logical_ports': 1, 'logical_speed': 25},
+        )
+
+    def _config(self, zones, ext=None):
+        plan = TopologyPlan.objects.create(name='Profile Aware Plan', created_by=self.user)
+        switch_class = PlanSwitchClass.objects.create(
+            plan=plan,
+            switch_class_id='ds2000-leaf',
+            fabric=FabricTypeChoices.FRONTEND,
+            hedgehog_role=HedgehogRoleChoices.SERVER_LEAF,
+            device_type_extension=ext or self.ds2000_ext,
+            uplink_ports_per_switch=0,
+            mclag_pair=False,
+            calculated_quantity=1,
+            override_quantity=1,
+        )
+        for index, (port_spec, option) in enumerate(zones):
+            SwitchPortZone.objects.create(
+                switch_class=switch_class,
+                zone_name='zone-%d' % index,
+                zone_type=PortZoneTypeChoices.SERVER,
+                port_spec=port_spec,
+                breakout_option=option,
+                allocation_strategy=AllocationStrategyChoices.SEQUENTIAL,
+                priority=100 + index,
+            )
+        from netbox_hedgehog.services.yaml_generator import YAMLGenerator
+        return YAMLGenerator(plan=plan)._generate_port_configuration(switch_class)
+
+    def test_speed_only_100g_port_exports_port_speeds(self):
+        config = self._config([('50', self.bo_1x100)])
+        self.assertEqual(config['portSpeeds'], {'E1/50': '100G'})
+        self.assertNotIn('E1/50', config['portBreakouts'])
+
+    def test_breakout_capable_100g_ports_stay_breakouts(self):
+        config = self._config([('49', self.bo_1x100), ('56', self.bo_1x100)])
+        self.assertEqual(config['portBreakouts'], {'E1/49': '1x100G', 'E1/56': '1x100G'})
+        self.assertEqual(config['portSpeeds'], {})
+
+    def test_mixed_zone_splits_by_port_capability(self):
+        config = self._config([('49-56', self.bo_1x100)])
+        self.assertEqual(set(config['portBreakouts']), {'E1/49', 'E1/56'})
+        self.assertEqual(set(config['portSpeeds']), {'E1/%d' % p for p in range(50, 56)})
+
+    def test_supported_multilane_mode_stays_breakout(self):
+        config = self._config([('49', self.bo_4x25)])
+        self.assertEqual(config['portBreakouts'], {'E1/49': '4x25G'})
+        self.assertEqual(config['portSpeeds'], {})
+
+    def test_25g_speed_only_ports_unchanged(self):
+        config = self._config([('1-4', self.bo_1x25)])
+        self.assertEqual(config['portSpeeds'], {'E1/%d' % p: '25G' for p in range(1, 5)})
+        self.assertEqual(config['portBreakouts'], {})
+
+    def test_no_breakout_option_native_speed_uses_port_capability(self):
+        config = self._config([('49-50', None)])
+        self.assertEqual(config['portBreakouts'], {'E1/49': '1x100G'})
+        self.assertEqual(config['portSpeeds'], {'E1/50': '100G'})
+
+    def test_impossible_split_on_speed_only_port_is_rejected(self):
+        from django.core.exceptions import ValidationError
+        with self.assertRaises(ValidationError) as ctx:
+            self._config([('50', self.bo_4x25)])
+        self.assertIn('E1/50', str(ctx.exception))
+
+    def test_impossible_speed_on_speed_only_port_is_rejected(self):
+        from django.core.exceptions import ValidationError
+        with self.assertRaises(ValidationError):
+            self._config([('1', self.bo_1x100)])  # SFP28-25G does not support 100G
+
+    def test_unknown_profile_keeps_existing_fallback(self):
+        # Base fixture extension uses the non-bundled 'test-switch-profile' name.
+        config = self._config([('1-2', self.breakout_4x200), ('3', None)], ext=self.device_ext)
+        self.assertEqual(config['portBreakouts']['E1/1'], '4x200G')
+        self.assertEqual(config['portBreakouts']['E1/3'], '1x800G')
+        self.assertEqual(config['portSpeeds'], {})
+
+    def test_800g_native_profile_export_unchanged(self):
+        ds5000_type, _ = DeviceType.objects.get_or_create(
+            manufacturer=self.manufacturer, model='DS5000-real', defaults={'slug': 'ds5000-real'}
+        )
+        ext = DeviceTypeExtension.objects.create(
+            device_type=ds5000_type, mclag_capable=False, hedgehog_roles=['server-leaf'],
+            native_speed=800, supported_breakouts=['1x800g', '4x200g'], uplink_ports=0,
+            hedgehog_profile_name='celestica-ds5000',
+        )
+        config = self._config([('1', self.breakout_4x200), ('2', self.breakout_1x800)], ext=ext)
+        self.assertEqual(config['portBreakouts'], {'E1/1': '4x200G', 'E1/2': '1x800G'})
+        self.assertEqual(config['portSpeeds'], {})

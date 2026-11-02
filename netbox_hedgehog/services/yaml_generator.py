@@ -14,6 +14,7 @@ from typing import Dict, Any, List
 from collections import defaultdict
 
 _LOW_SPEED_THRESHOLD_GBPS = 100
+_PORT_CAPABILITY_CACHE: Dict[str, Dict[str, Dict[str, Any]]] = {}
 from django.core.exceptions import ValidationError
 from dcim.models import Cable, Interface, Device
 
@@ -923,6 +924,11 @@ class YAMLGenerator:
 
         port_speeds = {}
 
+        # Per-port capability from the bundled local profile source (None if unresolved).
+        port_caps = self._load_port_capabilities(
+            switch_class.device_type_extension.hedgehog_profile_name
+        )
+
         for zone in zones:
             # Parse port_spec to get list of physical ports
             # Formats: "1-32", "1-63:2" (odds), "2-64:2" (evens)
@@ -930,6 +936,28 @@ class YAMLGenerator:
 
             if zone.breakout_option:
                 from_speed = zone.breakout_option.from_speed
+                speed_only_ports = [
+                    p for p in ports if port_caps.get(f"E1/{p}", {}).get('kind') == 'speed'
+                ]
+                if speed_only_ports:
+                    # Resolved speed-only ports (e.g. DS2000 E1/50-55 QSFP28-100G-nb) accept
+                    # only a single-lane speed they support; never silently altered.
+                    bo = zone.breakout_option
+                    requested = f"{bo.logical_speed}G"
+                    for port in speed_only_ports:
+                        supported = {s.upper() for s in port_caps[f"E1/{port}"]['supported']}
+                        if bo.logical_ports != 1 or requested.upper() not in supported:
+                            raise ValidationError(
+                                f"Switch class {switch_class.switch_class_id}: port E1/{port} "
+                                f"is speed-only in profile "
+                                f"'{switch_class.device_type_extension.hedgehog_profile_name}' "
+                                f"(supported speeds: {', '.join(sorted(supported))}); "
+                                f"cannot apply breakout '{bo.breakout_id}'"
+                            )
+                        port_speeds[f"E1/{port}"] = requested
+                    ports = [p for p in ports if p not in speed_only_ports]
+                if not ports:
+                    continue
                 if from_speed < _LOW_SPEED_THRESHOLD_GBPS:
                     # Speed-only profile (e.g. SFP28-25G): hhfab uses portSpeeds, not portBreakouts.
                     # Value is bare speed string: '25G', '10G', not breakout notation '1x25G'.
@@ -946,13 +974,67 @@ class YAMLGenerator:
                 # No breakout_option configured: emit native speed as 1x<N>G.
                 native_speed = switch_class.device_type_extension.native_speed
                 for port in ports:
-                    port_breakouts[f"E1/{port}"] = f"1x{native_speed}G"
+                    cap = port_caps.get(f"E1/{port}")
+                    if cap and cap['kind'] == 'speed':
+                        speed_str = f"{native_speed}G"
+                        supported = {s.upper() for s in cap['supported']}
+                        if speed_str.upper() not in supported:
+                            raise ValidationError(
+                                f"Switch class {switch_class.switch_class_id}: port E1/{port} "
+                                f"is speed-only and does not support native {speed_str} "
+                                f"(supported speeds: {', '.join(sorted(supported))})"
+                            )
+                        port_speeds[f"E1/{port}"] = speed_str
+                    else:
+                        port_breakouts[f"E1/{port}"] = f"1x{native_speed}G"
 
         return {
             'portBreakouts': port_breakouts,
             'portSpeeds': port_speeds,
             'portAutoNegs': {}
         }
+
+    @staticmethod
+    def _load_port_capabilities(profile_name) -> Dict[str, Dict[str, Any]]:
+        """
+        Resolve per-port capability ('speed' or 'breakout') for a switch profile from the
+        bundled local Go sources in netbox_hedgehog/fabric_profiles/ (no network, no Go
+        execution, no catalog writes). Returns {} when the profile or its data cannot be
+        resolved, so callers keep their documented fallback and never invent capability.
+        """
+        if not profile_name:
+            return {}
+        if profile_name in _PORT_CAPABILITY_CACHE:
+            return _PORT_CAPABILITY_CACHE[profile_name]
+
+        from pathlib import Path
+        from ..utils.fabric_import import FabricProfileGoParser
+
+        caps: Dict[str, Dict[str, Any]] = {}
+        profile_dir = Path(__file__).resolve().parents[1] / 'fabric_profiles'
+        name_re = re.compile(r'ObjectMeta:\s*kmetav1\.ObjectMeta\s*\{\s*Name:\s*"([^"]+)"')
+        try:
+            for go_file in sorted(profile_dir.glob('*.go')):
+                match = name_re.search(go_file.read_text(encoding='utf-8'))
+                if not match or match.group(1) != profile_name:
+                    continue
+                spec = FabricProfileGoParser().parse_profile_from_file(str(go_file))['spec']
+                for port_name, port in spec['ports'].items():
+                    profile = spec['port_profiles'].get(port.get('profile'))
+                    if not profile:
+                        continue
+                    if 'breakout' in profile:
+                        caps[port_name] = {'kind': 'breakout'}
+                    elif 'speed' in profile and profile['speed'].get('supported'):
+                        caps[port_name] = {
+                            'kind': 'speed',
+                            'supported': profile['speed']['supported'],
+                        }
+                break
+        except Exception:
+            caps = {}
+        _PORT_CAPABILITY_CACHE[profile_name] = caps
+        return caps
 
     def _parse_port_spec(self, port_spec: str) -> List[int]:
         """
