@@ -95,6 +95,7 @@ jobs:
           cd netbox-docker
           docker compose exec -T netbox python manage.py test \
             netbox_hedgehog.tests.test_topology_planning.test_topology_calculations.DetermineOptimalBreakoutTestCase \
+            netbox_hedgehog.tests.test_topology_planning.test_spine_sizing_wiring_integration \
             netbox_hedgehog.tests.test_topology_planning.test_helpers_port_specification \
             netbox_hedgehog.tests.test_topology_planning.test_port_allocator \
             netbox_hedgehog.tests.test_topology_planning.test_generate_integration.TopologyPlanGenerateIntegrationTestCase.test_generate_post_creates_devices \

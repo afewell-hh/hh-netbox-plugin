@@ -875,6 +875,39 @@ def determine_leaf_uplink_breakout(
     return None
 
 
+def _get_uplink_logical_link_count(switch_class, uplink_ports: int) -> int:
+    """
+    Convert a leaf's get_uplink_port_count() result into logical uplinks.
+
+    Each uplink zone contributes port count × its declared logical_ports; a zone
+    with no declared breakout counts each port once. Zero uplinks (including the
+    explicit uplink_ports_per_switch=0 override) and zoneless leaves return
+    uplink_ports unchanged.
+
+    Args:
+        switch_class: PlanSwitchClass leaf whose uplink_ports was already validated
+        uplink_ports: Value returned by get_uplink_port_count(switch_class)
+
+    Returns:
+        int: Logical uplinks contributed by one switch of this class
+    """
+    uplink_zones = list(
+        SwitchPortZone.objects.filter(
+            switch_class=switch_class,
+            zone_type=PortZoneTypeChoices.UPLINK
+        ).select_related('breakout_option')
+    )
+
+    if uplink_ports == 0 or not uplink_zones:
+        return uplink_ports
+
+    return sum(
+        len(PortSpecification(zone.port_spec).parse())
+        * (zone.breakout_option.logical_ports if zone.breakout_option else 1)
+        for zone in uplink_zones
+    )
+
+
 def calculate_spine_quantity(spine_switch_class) -> int:
     """
     Calculate required spine switch quantity based on leaf uplink demand.
@@ -899,7 +932,13 @@ def calculate_spine_quantity(spine_switch_class) -> int:
         2. Calculate total uplink demand: sum(leaf.effective_quantity × get_uplink_port_count(leaf))
            - get_uplink_port_count() returns override or zone-derived uplink count per leaf
         3. Calculate available downlink ports per spine
-        4. Spine quantity = ceil(total_uplink_demand / available_downlink_ports)
+           - Explicit spine FABRIC zone: port count × the zone's declared logical_ports,
+             compared against leaf demand in logical links (each uplink zone's port
+             count × its declared logical_ports; a leaf without zones counts each
+             configured uplink once)
+           - No spine FABRIC zone (fallback): native-speed capacity minus spine uplinks,
+             compared against the uplink counts from step 2
+        4. Spine quantity = ceil(demand / available_downlink_ports), both from step 3
 
     Usage Pattern:
         # Step 1: Calculate how many spines are needed (bandwidth-based)
@@ -958,6 +997,7 @@ def calculate_spine_quantity(spine_switch_class) -> int:
 
     # Calculate total uplink demand from all leaves
     total_uplink_demand = 0
+    total_logical_link_demand = 0
     for leaf in leaf_switches:
         # Use effective_quantity (respects overrides)
         leaf_quantity = leaf.effective_quantity
@@ -976,6 +1016,9 @@ def calculate_spine_quantity(spine_switch_class) -> int:
             ) from e
 
         total_uplink_demand += leaf_quantity * uplink_ports
+        total_logical_link_demand += (
+            leaf_quantity * _get_uplink_logical_link_count(leaf, uplink_ports)
+        )
 
     if total_uplink_demand == 0:
         # No uplink demand
@@ -995,33 +1038,44 @@ def calculate_spine_quantity(spine_switch_class) -> int:
     physical_ports = capacity.port_count
     supported_breakouts = device_extension.supported_breakouts or []
 
-    # Spines typically use 1x800G (no breakout) for leaf connections
-    # Use the native speed for spine-to-leaf links
-    breakout = determine_optimal_breakout(
-        native_speed=native_speed,
-        required_speed=native_speed,  # Use native speed for spine
-        supported_breakouts=supported_breakouts
-    )
-
-    # Calculate available ports per spine
-    logical_ports_per_spine = physical_ports * breakout.logical_ports
-
     # Conditional uplink subtraction based on capacity source
     # Spines may have uplink ports for border/external connections
     if capacity.is_fallback:
+        # Spines typically use 1x800G (no breakout) for leaf connections
+        # Use the native speed for spine-to-leaf links
+        breakout = determine_optimal_breakout(
+            native_speed=native_speed,
+            required_speed=native_speed,  # Use native speed for spine
+            supported_breakouts=supported_breakouts
+        )
+
+        # Calculate available ports per spine
+        logical_ports_per_spine = physical_ports * breakout.logical_ports
+
         # Fallback path: total ports includes uplinks, subtract them
         spine_uplink_ports = get_uplink_port_count(spine_switch_class)
         available_downlink_ports = logical_ports_per_spine - spine_uplink_ports
+        spine_demand = total_uplink_demand
     else:
         # Zone-based path: uplink zone already configured for downlink capacity
-        available_downlink_ports = logical_ports_per_spine
+        zone_breakout = capacity.source_zone.breakout_option
+        if supported_breakouts and zone_breakout.breakout_id not in supported_breakouts:
+            raise ValidationError(
+                f"Spine calculation failed: spine switch class "
+                f"'{spine_switch_class.switch_class_id}' has a FABRIC zone breakout "
+                f"'{zone_breakout.breakout_id}' that is excluded by the device type's "
+                f"supported_breakouts policy. "
+                f"Supported breakouts: {', '.join(supported_breakouts)}."
+            )
+        available_downlink_ports = physical_ports * zone_breakout.logical_ports
+        spine_demand = total_logical_link_demand
 
     if available_downlink_ports <= 0:
         # All ports reserved for uplinks, cannot accept leaf connections
         return 0
 
     # Calculate spines needed
-    spines_needed = math.ceil(total_uplink_demand / available_downlink_ports)
+    spines_needed = math.ceil(spine_demand / available_downlink_ports)
 
     return spines_needed
 
