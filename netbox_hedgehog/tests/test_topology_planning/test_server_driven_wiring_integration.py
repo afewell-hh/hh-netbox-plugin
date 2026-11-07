@@ -17,8 +17,15 @@ leaf/spine counts are stated literals, not formulas mirroring the implementation
 Case E (9 servers) encodes the #661 accepted equal-spine / exact-distributability rule
 (S>=2, each leaf's 4 uplinks split equally over spines): with 20 leaf uplinks and 8
 fabric ports per spine, S=2 overloads (10>8), S=3 does not divide 4, so S=4 is the only
-feasible count. Current source appears to compute ceil(20/8)=3, so case E is an
-expected controlled RED against the current product until the rule is implemented.
+feasible count. Historical: initial CI on source 6a51ac4 observed E RED (calculated
+spine=3) before generation; repaired calculation is not claimed passing here.
+
+Case F (9 servers, 6 logical uplinks/leaf): 30 uplinks / 8 -> capacity minimum 4,
+but 4 and 5 do not divide 6, so S=6 (distinguishes next-feasible from capacity
+minimum, power-of-two rounding or a hard-coded 4). Case G (17 servers, 9 leaves x 4
+uplinks): minimum ceil(36/8)=5 exceeds the 4 possible equal spines -> structured
+spine-class error, no generation. Case H (two active leaf classes, 3x4 + 2x6 uplinks,
+8 fabric ports): minimum 3, common equal divisors of 4 and 6 are only 1/2 -> error.
 
 Not covered: real hardware, optics/transceivers/BOM, UI/jobs, whole workbook flows,
 YAML export or all fabric families. All device/module models are synthetic
@@ -94,6 +101,12 @@ NATIVE = {
     'leaf_server_spec': '1-2', 'leaf_uplink_spec': '3-6', 'spine_spec': '1-8',
     'breakout': '1x100g', 'supported': ['1x100g'], 'link_type': T100, 'speed': 100,
 }
+SIX_UPLINK = dict(
+    NATIVE,
+    leaf_parents=[1, 2, 3, 4, 5, 6, 7, 8],
+    leaf_uplink=[(f'E1/{p}', p, None) for p in (3, 4, 5, 6, 7, 8)],
+    leaf_uplink_spec='3-8',
+)
 BREAKOUT = {
     'leaf_parents': [1, 2, 3],
     'leaf_server': [('E1/1/1', 1, 1), ('E1/1/2', 1, 2)],
@@ -491,7 +504,101 @@ class ServerDrivenWiringIntegrationTestCase(TestCase):
 
     def test_e_native_100g_9_servers_equal_spine_distribution(self):
         # #661: 5 leaves x 4 uplinks; S=2 overloads (10>8), S=3 does not divide 4 -> S=4.
-        # Expected controlled RED on current source if it still chooses ceil(20/8)=3.
+        # Historical: initially observed RED on 6a51ac4 (calculated ceil(20/8)=3).
         self._build('e', 9, NATIVE)
         self._run(servers=9, leaves=5, spines=4, links_per_pair=1, cables_total=29, devices_total=18,
                   generated_interfaces=49)
+
+    def test_f_native_100g_9_servers_six_uplinks_next_feasible_spines(self):
+        # 5 leaves x 6 uplinks = 30; ceil(30/8)=4; 4,5 do not divide 6 -> S=6 (k=1).
+        self._build('f', 9, SIX_UPLINK)
+        self._run(servers=9, leaves=5, spines=6, links_per_pair=1, cables_total=39, devices_total=20,
+                  generated_interfaces=69)
+
+    # ------------------------------------------------- infeasible (no generation)
+
+    def _assert_spine_infeasible(self, result, leaf_summary):
+        self.assertEqual(result['summary'], leaf_summary)
+        self.assertEqual(len(result['errors']), 1, result['errors'])
+        error = result['errors'][0]
+        self.assertEqual(error['switch_class'], self.spine_class.switch_class_id)
+        self.assertIn('equal-spine distribution infeasible', error['error'])
+        self.assertIn(self.spine_class.switch_class_id, error['error'])
+        self.spine_class.refresh_from_db()
+        self.assertIsNone(self.spine_class.override_quantity)
+        self.assertEqual(self.spine_class.calculated_quantity, 0)
+        for model in INVENTORY_MODELS:
+            self.assertEqual(_pks(model), self.baseline[model], f'{model.__name__} inventory changed')
+        self.assertFalse(GenerationState.objects.filter(plan=self.plan).exists())
+
+    def test_g_native_100g_17_servers_spine_infeasible(self):
+        # 9 leaves x 4 uplinks = 36; minimum ceil(36/8)=5 > 4 equal spines possible.
+        self._build('g', 17, NATIVE)
+        self.assertIsNone(self.leaf_class.override_quantity)
+        self.assertIsNone(self.spine_class.override_quantity)
+        self._capture_baseline()
+        result = update_plan_calculations(self.plan)
+        self._assert_spine_infeasible(result, {
+            self.leaf_class.switch_class_id: {'calculated': 9, 'override': None, 'effective': 9},
+        })
+        self.leaf_class.refresh_from_db()
+        self.assertIsNone(self.leaf_class.override_quantity)
+        self.assertEqual(self.leaf_class.calculated_quantity, 9)
+
+    def _leaf_class_with_servers(self, case, label, uplink_parents, servers):
+        """Separate leaf class (server zone E1/1-2, uplinks on uplink_parents) fed by
+        its own one-port server class / NIC type / connection."""
+        parents = [1, 2] + list(uplink_parents)
+        ext = _switch_ext(f'srv29-leaf-{case}{label}', parents, 100, T100, ['1x100g'], ['server-leaf'])
+        breakout = _breakout('1x100g')
+        leaf = self._switch_class(f'srv29-{case}{label}-leaf', HedgehogRoleChoices.SERVER_LEAF, ext)
+        server_zone = self._zone(leaf, f'srv29-{case}{label}-server', PortZoneTypeChoices.SERVER, '1-2',
+                                 breakout)
+        self._zone(leaf, f'srv29-{case}{label}-uplink', PortZoneTypeChoices.UPLINK,
+                   f'{uplink_parents[0]}-{uplink_parents[-1]}', breakout)
+        server_type = DeviceType.objects.create(
+            manufacturer=_manufacturer(), model=f'srv29-server-{case}{label}',
+            slug=f'srv29-server-{case}{label}', u_height=1,
+        )
+        nic_type = ModuleType.objects.create(manufacturer=_manufacturer(), model=f'srv29-nic-{case}{label}-1x100g')
+        InterfaceTemplate.objects.create(module_type=nic_type, name='p0', type=T100)
+        server_class = PlanServerClass.objects.create(
+            plan=self.plan, server_class_id=f'srv29-{case}{label}-server',
+            server_device_type=server_type, quantity=servers,
+        )
+        nic = PlanServerNIC.objects.create(server_class=server_class, nic_id=NIC_ID, module_type=nic_type)
+        PlanServerConnection.objects.create(
+            server_class=server_class, connection_id=f'srv29-{case}{label}-conn', nic=nic, port_index=0,
+            ports_per_connection=1, hedgehog_conn_type=ConnectionTypeChoices.UNBUNDLED,
+            distribution=ConnectionDistributionChoices.SAME_SWITCH, target_zone=server_zone, speed=100,
+        )
+        return leaf
+
+    def test_h_two_leaf_classes_no_common_equal_spine_count(self):
+        # leaf A: 6 servers -> 3 leaves x 4 uplinks; leaf B: 4 servers -> 2 leaves x 6
+        # uplinks; demand 24 / 8 -> minimum 3; equal divisors common to 4 and 6: 1, 2.
+        case = 'h'
+        self.case = case
+        self.plan = TopologyPlan.objects.create(name=f'srv29-plan-{case}', customer_name='srv29')
+        for category in (DeviceCategoryChoices.SERVER, DeviceCategoryChoices.LEAF,
+                         DeviceCategoryChoices.SPINE):
+            NamingTemplate.objects.create(plan=self.plan, device_category=category, pattern=NAME_PATTERN)
+        leaf_a = self._leaf_class_with_servers(case, 'a', [3, 4, 5, 6], 6)
+        leaf_b = self._leaf_class_with_servers(case, 'b', [3, 4, 5, 6, 7, 8], 4)
+        spine_ext = _switch_ext(f'srv29-spine-{case}', list(range(1, 9)), 100, T100, ['1x100g'], ['spine'])
+        self.spine_class = self._switch_class(f'srv29-{case}-spine', HedgehogRoleChoices.SPINE, spine_ext)
+        self._zone(self.spine_class, f'srv29-{case}-fabric', PortZoneTypeChoices.FABRIC, '1-8',
+                   _breakout('1x100g'))
+        for switch_class in (leaf_a, leaf_b, self.spine_class):
+            self.assertIsNone(switch_class.override_quantity)
+            self.assertEqual(switch_class.calculated_quantity, 0)
+        self._capture_baseline()
+        result = update_plan_calculations(self.plan)
+        self._assert_spine_infeasible(result, {
+            leaf_a.switch_class_id: {'calculated': 3, 'override': None, 'effective': 3},
+            leaf_b.switch_class_id: {'calculated': 2, 'override': None, 'effective': 2},
+        })
+        for leaf, expected in ((leaf_a, 3), (leaf_b, 2)):
+            leaf.refresh_from_db()
+            self.assertIsNone(leaf.override_quantity)
+            self.assertEqual(leaf.calculated_quantity, expected)
