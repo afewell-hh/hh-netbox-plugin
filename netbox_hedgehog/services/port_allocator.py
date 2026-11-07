@@ -71,6 +71,19 @@ class PortAllocatorV2:
         """Return total logical port capacity for a zone (all ports, no allocation consumed)."""
         return len(self._build_sequence(zone))
 
+    def remaining_for_zone(self, switch_name: str, zone) -> int:
+        """
+        Return remaining logical ports for a switch/zone without consuming them.
+
+        Read-only: does not create, reset or advance allocation state. A
+        switch/zone pair that has not been allocated yet reports full capacity.
+        """
+        key = (switch_name, zone.pk)
+        sequence = self._sequences.get(key)
+        if sequence is None:
+            return self.capacity_for_zone(zone)
+        return len(sequence) - self._cursors.get(key, 0)
+
     def _build_sequence(self, zone) -> list[PortSlot]:
         ports = PortSpecification(zone.port_spec).parse()
         ordered_ports = self._apply_strategy(zone, ports)
