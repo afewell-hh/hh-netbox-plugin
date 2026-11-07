@@ -1054,3 +1054,336 @@ class ServerDrivenWiringIntegrationTestCase(TestCase):
     def test_ah_ten20_41_servers_spine_infeasible(self):
         # 21 leaves; at S=10 each spine needs 21 > 20 fabric ports.
         self._scale_negative('ah', 'ten20', 41, 21)
+
+    # --------------------- ARTIFACT35 AI-AO: generated graph -> public YAML + export GET
+    # Real update_plan_calculations -> DeviceGenerator.generate_all -> public
+    # generate_yaml_for_plan and the existing authenticated export route. Profile labels
+    # are synthetic, non-bundled fixture declarations (no real-hardware/profile claim).
+    # The graph oracle is the declared slot table (_names/_expected_edges), never the
+    # YAML generator. No hhfab/schema, optics/BOM, workbook or pixel qualification.
+
+    def _a35_assign_profiles(self, profile_name):
+        """Explicit fixture intent BEFORE generation: fictional leaf/spine profile labels."""
+        labels = {}
+        for switch_class, role in ((self.leaf_class, 'leaf'), (self.spine_class, 'spine')):
+            label = f'artifact35-{profile_name}-{role}'
+            ext = switch_class.device_type_extension
+            ext.refresh_from_db()
+            self.assertFalse(ext.hedgehog_profile_name, 'fixture extension unexpectedly pre-profiled')
+            ext.hedgehog_profile_name = label
+            ext.save()
+            ext.refresh_from_db()
+            self.assertEqual(ext.hedgehog_profile_name, label)
+            labels[role] = label
+        return labels
+
+    def _a35_login(self, superuser=True):
+        """User/session setup happens before any snapshot or read-only boundary."""
+        model = get_user_model()
+        username = f'artifact35-{self.case}-{"admin" if superuser else "noperm"}'
+        if superuser:
+            user = model.objects.create_superuser(
+                username=username, email=f'{username}@example.invalid', password=None,
+            )
+        else:
+            user = model.objects.create_user(
+                username=username, email=f'{username}@example.invalid', password=None,
+            )
+        self.client.force_login(user)
+        return user
+
+    def _a35_export_url(self):
+        return reverse('plugins:netbox_hedgehog:topologyplan_export', args=[self.plan.pk])
+
+    def _a35_snapshot(self):
+        """Full row values: existing _db_snapshot plus plan intent and profile/type rows."""
+        snap = self._db_snapshot()
+        snap['TopologyPlan'] = list(TopologyPlan.objects.filter(pk=self.plan.pk).values())
+        snap['NamingTemplate'] = list(NamingTemplate.objects.filter(plan=self.plan).order_by('pk').values())
+        snap['PlanServerClass'] = list(PlanServerClass.objects.filter(plan=self.plan).order_by('pk').values())
+        snap['PlanServerNIC'] = list(
+            PlanServerNIC.objects.filter(server_class__plan=self.plan).order_by('pk').values()
+        )
+        snap['PlanServerConnection'] = list(
+            PlanServerConnection.objects.filter(server_class__plan=self.plan).order_by('pk').values()
+        )
+        snap['SwitchPortZone'] = list(
+            SwitchPortZone.objects.filter(switch_class__plan=self.plan).order_by('pk').values()
+        )
+        for model in (DeviceTypeExtension, BreakoutOption, DeviceType, ModuleType, InterfaceTemplate):
+            snap[model.__name__] = list(model.objects.order_by('pk').values())
+        return snap
+
+    def _a35_guarded(self, operation):
+        """Run ONE export operation under a wrapper rejecting any non-read SQL."""
+        attempts = []
+        allowed_heads = ('SELECT', 'SAVEPOINT', 'RELEASE', 'ROLLBACK', 'BEGIN', 'COMMIT')
+
+        def guard(execute, sql, params, many, context):
+            text = sql.strip() if isinstance(sql, str) else str(sql).strip()
+            head = text.split(None, 1)[0].upper() if text else ''
+            if head not in allowed_heads:
+                attempts.append(text[:200])
+                raise AssertionError(f'mutation/unexpected SQL during export: {text[:200]}')
+            return execute(sql, params, many, context)
+
+        with connection.execute_wrapper(guard):
+            result = operation()
+        self.assertEqual(attempts, [], 'SQL mutation/unexpected statement attempted during export')
+        return result
+
+    def _a35_port(self, endpoint):
+        """Split '<device>/<interface>' at the FIRST slash only (keeps E1/x/y breakouts)."""
+        self.assertIsInstance(endpoint, dict)
+        self.assertEqual(set(endpoint), {'port'}, endpoint)
+        port = endpoint['port']
+        self.assertIsInstance(port, str)
+        device, sep, iface = port.partition('/')
+        self.assertEqual(sep, '/', port)
+        self.assertTrue(device and iface, port)
+        return device, iface
+
+    def _a35_assert_artifact(self, text, servers, leaves, spines, links_per_pair, cables_total, labels):
+        """Parse and validate a complete wiring artifact against the declared fixture graph."""
+        import re
+        import yaml
+
+        wiring = 'wiring.githedgehog.com/v1beta1'
+        dns = re.compile(r'^[a-z0-9]([-a-z0-9]*[a-z0-9])?$')
+        api_re = re.compile(r'^[a-z0-9]([-a-z0-9.]*[a-z0-9])?/v[0-9a-z]+$')
+        self.assertIsInstance(text, str)
+        docs = list(yaml.safe_load_all(text))
+        self.assertTrue(docs, 'empty artifact')
+        identities, by_kind = Counter(), {}
+        for doc in docs:
+            self.assertIsInstance(doc, dict, f'unstructured document {doc!r}')
+            self.assertEqual(set(doc), {'apiVersion', 'kind', 'metadata', 'spec'}, doc)
+            api, kind, meta = doc['apiVersion'], doc['kind'], doc['metadata']
+            self.assertIsInstance(api, str)
+            self.assertRegex(api, api_re)
+            self.assertIsInstance(kind, str)
+            self.assertTrue(kind)
+            self.assertIsInstance(meta, dict)
+            self.assertEqual(set(meta), {'name', 'namespace'}, meta)
+            for value in (meta['name'], meta['namespace']):
+                self.assertIsInstance(value, str)
+                self.assertLessEqual(len(value), 63, value)
+                self.assertRegex(value, dns)
+            identities[(api, kind, meta['namespace'], meta['name'])] += 1
+            by_kind.setdefault(kind, []).append(doc)
+        self.assertEqual({i: n for i, n in identities.items() if n > 1}, {}, 'duplicate identity')
+
+        server_names, leaf_names, spine_names = self._names(servers, leaves, spines)
+        connection_docs = servers + leaves * spines
+        self.assertEqual(
+            Counter({kind: len(items) for kind, items in by_kind.items()}),
+            Counter({'VLANNamespace': 1, 'IPv4Namespace': 1, 'Switch': leaves + spines,
+                     'Server': servers, 'Connection': connection_docs}),
+            'artifact document kinds/counts (foundational namespaces counted separately)',
+        )
+
+        switches = {}
+        for doc in by_kind['Switch']:
+            self.assertEqual(doc['apiVersion'], wiring)
+            spec = doc['spec']
+            self.assertIsInstance(spec, dict)
+            self.assertIsInstance(spec.get('boot'), dict)
+            self.assertTrue(spec['boot'].get('mac'))
+            switches[doc['metadata']['name']] = (spec.get('role'), spec.get('profile'))
+        expected_switches = {n: (HedgehogRoleChoices.SERVER_LEAF, labels['leaf']) for n in leaf_names}
+        expected_switches.update({n: (HedgehogRoleChoices.SPINE, labels['spine']) for n in spine_names})
+        self.assertEqual(switches, expected_switches, 'Switch identities/roles/profile labels')
+        for doc in by_kind['Server']:
+            self.assertEqual(doc['apiVersion'], wiring)
+            self.assertIsInstance(doc['spec'], dict)
+        self.assertEqual({d['metadata']['name'] for d in by_kind['Server']}, set(server_names))
+
+        allowed_ifaces = {n: {NIC_PORT} for n in server_names}
+        allowed_ifaces.update({n: {s[0] for s in self.p['leaf_server'] + self.p['leaf_uplink']}
+                               for n in leaf_names})
+        allowed_ifaces.update({n: {s[0] for s in self.p['spine_fabric']} for n in spine_names})
+        server_links, fabric_links, endpoints, pairs = Counter(), Counter(), Counter(), Counter()
+        modes = Counter()
+        for doc in by_kind['Connection']:
+            self.assertEqual(doc['apiVersion'], wiring)
+            spec = doc['spec']
+            self.assertIsInstance(spec, dict)
+            self.assertEqual(len(spec), 1, f'connection has multiple/no modes: {spec}')
+            (mode, body), = spec.items()
+            self.assertIn(mode, ('unbundled', 'fabric'), f'unexpected connection mode {mode!r}')
+            modes[mode] += 1
+            self.assertIsInstance(body, dict)
+            if mode == 'unbundled':
+                self.assertEqual(set(body), {'link'}, body)
+                link = body['link']
+                self.assertIsInstance(link, dict)
+                self.assertEqual(set(link), {'server', 'switch'}, link)
+                server, switch = self._a35_port(link['server']), self._a35_port(link['switch'])
+                self.assertIn(server[0], server_names, server)
+                self.assertIn(switch[0], leaf_names, switch)
+                server_links[server + switch] += 1
+                endpoints[server] += 1
+                endpoints[switch] += 1
+                continue
+            self.assertEqual(set(body), {'links'}, body)
+            self.assertIsInstance(body['links'], list)
+            self.assertTrue(body['links'], 'fabric connection without links')
+            doc_pairs = set()
+            for link in body['links']:
+                self.assertIsInstance(link, dict)
+                self.assertEqual(set(link), {'leaf', 'spine'}, link)
+                leaf, spine = self._a35_port(link['leaf']), self._a35_port(link['spine'])
+                self.assertIn(leaf[0], leaf_names, leaf)
+                self.assertIn(spine[0], spine_names, spine)
+                fabric_links[leaf + spine] += 1
+                endpoints[leaf] += 1
+                endpoints[spine] += 1
+                doc_pairs.add((leaf[0], spine[0]))
+            self.assertEqual(len(doc_pairs), 1, f'fabric connection mixes pairs {doc_pairs}')
+            pairs[doc_pairs.pop()] += 1
+
+        server_edges, fabric_edges = self._expected_edges(servers, leaves, spines, links_per_pair)
+        self.assertEqual(modes, Counter({'unbundled': servers, 'fabric': leaves * spines}))
+        self.assertEqual(pairs, Counter({(l, s): 1 for l in leaf_names for s in spine_names}))
+        self.assertEqual(server_links, server_edges, 'exported server links')
+        self.assertEqual(fabric_links, fabric_edges, 'exported fabric links')
+        self.assertEqual(sum(server_links.values()) + sum(fabric_links.values()), cables_total)
+        self.assertEqual({e: n for e, n in endpoints.items() if n > 1}, {}, 'endpoint exported twice')
+        expected_endpoints = set()
+        for edge in list(server_edges) + list(fabric_edges):
+            expected_endpoints.update({edge[:2], edge[2:]})
+        self.assertEqual(set(endpoints), expected_endpoints)
+        for device, iface in endpoints:
+            self.assertIn(iface, allowed_ifaces[device], f'{device}/{iface} not a declared slot')
+        return docs, (server_links, fabric_links)
+
+    def _a35_export(self, servers, leaves, spines, links_per_pair, cables_total, labels):
+        """Public service + authenticated GET + repeat GET, all read-only; returns bytes, graph."""
+        import json
+        from netbox_hedgehog.services.yaml_generator import generate_yaml_for_plan
+
+        url = self._a35_export_url()
+        before = self._a35_snapshot()
+        service_text = self._a35_guarded(lambda: generate_yaml_for_plan(self.plan))
+        first = self._a35_guarded(lambda: self.client.get(url))
+        repeat = self._a35_guarded(lambda: self.client.get(url))
+        self.assertEqual(self._a35_snapshot(), before, 'export changed persisted rows')
+        disposition = f'attachment; filename="{self.plan.name}-{FABRIC}.yaml"'
+        for response in (first, repeat):
+            self.assertEqual(response.status_code, 200, response.content[:500])
+            self.assertEqual(response['Content-Type'], 'text/yaml; charset=utf-8')
+            self.assertEqual(response['Content-Disposition'], disposition)
+        self.assertEqual(first.content, repeat.content, 'repeat download not byte-identical')
+        args = (servers, leaves, spines, links_per_pair, cables_total, labels)
+        service_docs, _ = self._a35_assert_artifact(service_text, *args)
+        download_docs, graph = self._a35_assert_artifact(first.content.decode('utf-8'), *args)
+
+        def canonical(docs):
+            return sorted(json.dumps(doc, sort_keys=True) for doc in docs)
+
+        self.assertEqual(canonical(service_docs), canonical(download_docs),
+                         'service output and download differ semantically')
+        return first.content, graph
+
+    def _a35_positive(self, case, profile_name, servers, leaves, spines, links_per_pair,
+                      cables_total, devices_total, generated_interfaces):
+        self._build(case, servers, self._scale_profile(profile_name))
+        labels = self._a35_assign_profiles(profile_name)
+        self._run(servers=servers, leaves=leaves, spines=spines, links_per_pair=links_per_pair,
+                  cables_total=cables_total, devices_total=devices_total,
+                  generated_interfaces=generated_interfaces)
+        self._a35_login()
+        return self._a35_export(servers, leaves, spines, links_per_pair, cables_total, labels)
+
+    def test_ai_native8_export_service_and_download_match_graph(self):
+        self._a35_positive('ai', 'native8', 8, 4, 2, 2, 24, 14, 40)
+
+    def test_aj_breakout8_export_preserves_breakout_interface_names(self):
+        self._a35_positive('aj', 'breakout8', 8, 4, 2, 2, 24, 14, 40)
+
+    def test_ak_six12_export_service_and_download_match_graph(self):
+        self._a35_positive('ak', 'six12', 9, 5, 3, 2, 39, 17, 69)
+
+    def test_al_ten20_export_service_and_download_match_graph(self):
+        self._a35_positive('al', 'ten20', 31, 16, 10, 1, 191, 57, 351)
+
+    def test_am_breakout8_regenerate_16_servers_export_reflects_new_graph(self):
+        self._build('am', 8, self._scale_profile('breakout8'))
+        labels = self._a35_assign_profiles('breakout8')
+        first_edges, first_ids = self._run(servers=8, leaves=4, spines=2, links_per_pair=2,
+                                           cables_total=24, devices_total=14, generated_interfaces=40)
+        self._a35_login()
+        first_content, _ = self._a35_export(8, 4, 2, 2, 24, labels)
+
+        self.server_class.refresh_from_db()
+        self.server_class.quantity = 16
+        self.server_class.save()
+        self._calculate(leaves=8, spines=4)
+        # baseline stays the ORIGINAL pre-first-generation baseline
+        self._generate(devices_total=28, generated_interfaces=80, cables_total=48)
+        second_edges, second_ids = self._verify(servers=16, leaves=8, spines=4, links_per_pair=1,
+                                                cables_total=48, devices_total=28)
+        self.assertNotEqual(second_edges, first_edges)
+        for model in INVENTORY_MODELS:
+            self.assertEqual(first_ids[model] & second_ids[model], set(), f'stale {model.__name__} reused')
+            self.assertFalse(model.objects.filter(pk__in=first_ids[model]).exists(),
+                             f'first-generation {model.__name__} remains')
+
+        second_content, (_, exported_fabric) = self._a35_export(16, 8, 4, 1, 48, labels)
+        self.assertNotEqual(second_content, first_content, 'artifact unchanged after regeneration')
+        _, old_fabric = self._expected_edges(8, 4, 2, 2)
+        _, new_fabric = self._expected_edges(16, 8, 4, 1)
+        old_exclusive = set(old_fabric) - set(new_fabric)
+        self.assertTrue(old_exclusive)
+        self.assertEqual(old_exclusive & set(exported_fabric), set(), 'old-exclusive fabric edge exported')
+
+    def test_an_native8_export_missing_profile_returns_400_without_mutation(self):
+        from netbox_hedgehog.services.yaml_generator import generate_yaml_for_plan
+
+        self._build('an', 8, self._scale_profile('native8'))
+        for switch_class in (self.leaf_class, self.spine_class):
+            ext = switch_class.device_type_extension
+            ext.refresh_from_db()
+            self.assertFalse(ext.hedgehog_profile_name, 'fixture intent: no export profile assigned')
+        self._run(servers=8, leaves=4, spines=2, links_per_pair=2, cables_total=24, devices_total=14,
+                  generated_interfaces=40)
+        self._a35_login()
+        url = self._a35_export_url()
+        before = self._a35_snapshot()
+
+        def service():
+            with self.assertRaises(ValidationError) as ctx:
+                generate_yaml_for_plan(self.plan)
+            return ' '.join(ctx.exception.messages)
+
+        message = self._a35_guarded(service)
+        response = self._a35_guarded(lambda: self.client.get(url))
+        self.assertEqual(self._a35_snapshot(), before, 'failed export changed persisted rows')
+        self.assertIn('missing hedgehog_profile_name', message)
+        self.assertEqual(response.status_code, 400)
+        self.assertFalse(response.has_header('Content-Disposition'), 'attachment on failed export')
+        self.assertFalse(response['Content-Type'].startswith('text/yaml'))
+        body = response.content.decode('utf-8')
+        self.assertIn('YAML generation failed', body)
+        self.assertIn('missing hedgehog_profile_name', body)
+        _, leaf_names, spine_names = self._names(8, 4, 2)
+        self.assertTrue(any(f'Switch {n} device type' in body for n in leaf_names + spine_names), body)
+        self.assertNotIn('apiVersion', body)
+
+    def test_ao_native8_export_without_permission_returns_403_without_mutation(self):
+        self._build('ao', 8, self._scale_profile('native8'))
+        self._a35_assign_profiles('native8')
+        self._run(servers=8, leaves=4, spines=2, links_per_pair=2, cables_total=24, devices_total=14,
+                  generated_interfaces=40)
+        user = self._a35_login(superuser=False)
+        self.assertFalse(user.is_superuser)
+        self.assertFalse(user.has_perm('netbox_hedgehog.change_topologyplan'))
+        url = self._a35_export_url()
+        before = self._a35_snapshot()
+        responses = [self._a35_guarded(lambda: self.client.get(url)) for _ in range(2)]
+        self.assertEqual(self._a35_snapshot(), before, 'denied export changed persisted rows')
+        for response in responses:
+            self.assertEqual(response.status_code, 403)
+            self.assertFalse(response.has_header('Content-Disposition'), 'attachment on denied export')
+            self.assertFalse(response.get('Content-Type', '').startswith('text/yaml'))
+            self.assertNotIn(b'apiVersion', response.content)
