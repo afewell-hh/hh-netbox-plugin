@@ -1387,3 +1387,249 @@ class ServerDrivenWiringIntegrationTestCase(TestCase):
             self.assertFalse(response.has_header('Content-Disposition'), 'attachment on denied export')
             self.assertFalse(response.get('Content-Type', '').startswith('text/yaml'))
             self.assertNotIn(b'apiVersion', response.content)
+
+    # ------------------- CAGE38 AP: synthetic shared physical NIC cage (first baseline)
+
+    def test_ap_shared_nic_cage_physical_inventory(self):
+        """Synthetic shared-physical-cage regression (CAGE38 first baseline, not full spec).
+
+        One test-owned two-port NIC type (p0/p1, 400G) declares, via a test-owned
+        schema-bearing ModuleTypeProfile and native full_clean, ``hnp_nic_cage_map``
+        version 1 mapping both logical ports to channels 0/1 of ONE physical cage
+        ``cage-0`` in mode 2x400g. One fictional test-owned optic type (existing Network
+        Transceiver profile, synthetic declared capacity, no vendor qualification) is the
+        same non-null FK on the server connection and the leaf SERVER zone. Real
+        update_plan_calculations -> populate_bays (explicit test-owned scope) ->
+        DeviceGenerator.generate_all, then the full logical graph, then the intended
+        physical state: per server exactly one root NIC Module, one nested cage-0 and one
+        optic; one switch optic per used leaf physical cage; exact public BOM quantities.
+        Expected counts are stated literals, never derived from output. Not covered:
+        regeneration, negative/malformed layouts, workbook, hardware, YAML, UI, snapshot.
+        """
+        import copy
+
+        from dcim.models import ModuleTypeProfile
+        from netbox_hedgehog.management.commands.populate_transceiver_bays import populate_bays
+        from netbox_hedgehog.services.bom_export import get_plan_bom
+
+        self._build('ap', 4, BREAKOUT)
+        nic_type = self.nic_module_type
+        InterfaceTemplate.objects.create(module_type=nic_type, name='p1', type=T400)
+        self.assertEqual(
+            sorted(InterfaceTemplate.objects.filter(module_type=nic_type).values_list('name', 'type')),
+            [('p0', T400), ('p1', T400)],
+        )
+
+        # --- test-owned schema-bearing NIC profile + declared cage map (native validation)
+        cage_map = {
+            'version': 1,
+            'ports': [{'cage': 'cage-0', 'logical_lane': 0}, {'cage': 'cage-0', 'logical_lane': 1}],
+            'cages': {'cage-0': {'breakout_id': '2x400g'}},
+        }
+        map_schema = {
+            'type': 'object',
+            'required': ['version', 'ports', 'cages'],
+            'additionalProperties': False,
+            'properties': {
+                'version': {'type': 'integer', 'enum': [1]},
+                'ports': {
+                    'type': 'array', 'minItems': 1,
+                    'items': {
+                        'type': 'object', 'required': ['cage', 'logical_lane'],
+                        'additionalProperties': False,
+                        'properties': {
+                            'cage': {'type': 'string', 'minLength': 1, 'maxLength': 64},
+                            'logical_lane': {'type': 'integer', 'minimum': 0},
+                        },
+                    },
+                },
+                'cages': {
+                    'type': 'object', 'minProperties': 1,
+                    'additionalProperties': {
+                        'type': 'object', 'required': ['breakout_id'], 'additionalProperties': False,
+                        'properties': {'breakout_id': {'type': 'string', 'minLength': 1}},
+                    },
+                },
+            },
+        }
+        nic_schema = {
+            'type': 'object',
+            'required': ['hnp_nic_cage_map'],
+            'properties': {'hnp_nic_cage_map': map_schema},
+        }
+        nic_profile = ModuleTypeProfile(name='srv29-ap-nic-cage-profile', schema=copy.deepcopy(nic_schema))
+        nic_profile.full_clean()
+        nic_profile.save()
+        nic_profile.refresh_from_db()
+        self.assertEqual(nic_profile.schema, nic_schema)
+
+        nic_type.profile = nic_profile
+        nic_type.attribute_data = {'hnp_nic_cage_map': copy.deepcopy(cage_map)}
+        nic_type.full_clean()
+        nic_type.save()
+        nic_type.refresh_from_db()
+        self.assertEqual(nic_type.profile_id, nic_profile.pk)
+        self.assertEqual(nic_type.attribute_data, {'hnp_nic_cage_map': cage_map}, 'persisted map not exact')
+
+        # --- fictional test-owned optic on the EXISTING (unaltered) Network Transceiver profile
+        xcvr_profile = ModuleTypeProfile.objects.filter(name='Network Transceiver').first()
+        self.assertIsNotNone(xcvr_profile, 'shared Network Transceiver profile missing')
+        self.assertTrue(xcvr_profile.schema, 'shared Network Transceiver profile has no schema')
+        xcvr_schema_before = copy.deepcopy(xcvr_profile.schema)
+        optic_attrs = {
+            'cage_type': 'OSFP', 'medium': 'SMF', 'connector': 'MPO-12', 'standard': '400GBASE-DR4',
+            'reach_class': 'DR', 'lane_count': 8, 'host_serdes_gbps_per_lane': 100,
+            'breakout_topology': '2x400g',
+        }
+        optic_type = ModuleType(
+            manufacturer=_manufacturer(), model='srv29-ap-fictional-osfp-2x400g',
+            profile=xcvr_profile, attribute_data=dict(optic_attrs),
+        )
+        optic_type.full_clean()
+        optic_type.save()
+        optic_type.refresh_from_db()
+        self.assertEqual(optic_type.profile_id, xcvr_profile.pk)
+        self.assertEqual(optic_type.attribute_data, optic_attrs)
+
+        # --- intent: same optic FK on server connection and leaf SERVER zone; 2 ports/conn
+        conn = PlanServerConnection.objects.get(server_class=self.server_class)
+        conn.ports_per_connection = 2
+        conn.port_index = 0
+        conn.transceiver_module_type = optic_type
+        conn.full_clean()
+        conn.save()
+        server_zone = SwitchPortZone.objects.get(switch_class=self.leaf_class,
+                                                 zone_type=PortZoneTypeChoices.SERVER)
+        server_zone.transceiver_module_type = optic_type
+        server_zone.full_clean()
+        server_zone.save()
+        conn.refresh_from_db()
+        server_zone.refresh_from_db()
+        self.assertEqual(
+            (conn.ports_per_connection, conn.port_index, conn.speed, conn.distribution,
+             conn.hedgehog_conn_type, conn.transceiver_module_type_id, conn.target_zone_id),
+            (2, 0, 400, ConnectionDistributionChoices.SAME_SWITCH, ConnectionTypeChoices.UNBUNDLED,
+             optic_type.pk, server_zone.pk),
+        )
+        self.assertEqual(server_zone.transceiver_module_type_id, optic_type.pk)
+        for zone in SwitchPortZone.objects.filter(switch_class__plan=self.plan).exclude(pk=server_zone.pk):
+            self.assertIsNone(zone.transceiver_module_type_id, f'{zone.zone_name} unexpectedly has optic FK')
+
+        # --- real populate_bays, ONLY test-owned switch device types and NIC type
+        populate_bays(device_types=[self.leaf_device_type, self.spine_device_type], module_types=[nic_type])
+
+        # --- real calculation + generation; literals: 4 leaves, 2 spines, (10, 40, 24)
+        self._calculate(leaves=4, spines=2)
+        self._capture_baseline()
+        self._generate(devices_total=10, generated_interfaces=40, cables_total=24)
+
+        # --- full logical graph BEFORE physical assertions
+        servers, leaves, spines, cables_total, devices_total = 4, 4, 2, 24, 10
+        names = self._names(servers, leaves, spines)
+        server_names, leaf_names, spine_names = names
+        server_edges = Counter()
+        for i, server in enumerate(server_names):  # one server per leaf; p0->E1/1/1, p1->E1/1/2
+            for port, (slot, _, _) in enumerate(BREAKOUT['leaf_server']):
+                server_edges[(server, f'{NIC_ID}-p{port}', leaf_names[i], slot)] += 1
+        _, fabric_edges = self._expected_edges(servers, leaves, spines, 2)  # fabric part only
+        self.assertEqual(sum(server_edges.values()), 8)
+        self.assertEqual(sum(fabric_edges.values()), 16)
+        devices, interfaces, cables, modules, bays = self._new_inventory()
+        self.assertEqual(len(devices), devices_total)
+        by_name = self._assert_devices(devices, names)
+        self._assert_switch_interfaces(by_name, names, interfaces, server_edges, fabric_edges)
+        self.assertEqual(len(cables), cables_total)
+        self._assert_cables(by_name, names, cables, server_edges, fabric_edges)
+        for name in server_names:
+            ifaces = sorted((i for i in interfaces if i.device_id == by_name[name].pk), key=lambda i: i.name)
+            self.assertEqual([i.name for i in ifaces], [f'{NIC_ID}-p0', f'{NIC_ID}-p1'], name)
+            for iface in ifaces:
+                self.assertEqual(iface.type, T400, f'{name} {iface.name}')
+                self.assertIsNotNone(iface.cable_id, f'{name} {iface.name} uncabled')
+
+        # --- intended physical state: one NIC, one nested cage-0, one optic per server
+        plan_id = str(self.plan.pk)
+        modules_by_device, bays_by_device = {}, {}
+        for module in modules:
+            modules_by_device.setdefault(module.device_id, []).append(module)
+        for bay in bays:
+            bays_by_device.setdefault(bay.device_id, []).append(bay)
+        for name in server_names:
+            device = by_name[name]
+            dev_bays = bays_by_device.get(device.pk, [])
+            roots = [b for b in dev_bays if b.module_id is None]
+            self.assertEqual([b.name for b in roots], [NIC_ID], f'{name} top-level bays')
+            root = roots[0]
+            self.assertIsNone(root.parent_id, f'{name} root NIC bay has a parent')
+            dev_modules = modules_by_device.get(device.pk, [])
+            nics = [m for m in dev_modules if m.module_bay_id == root.pk]
+            self.assertEqual(len(nics), 1, f'{name} NIC module count')
+            nic = nics[0]
+            self.assertEqual((nic.device_id, nic.module_type_id), (device.pk, nic_type.pk), name)
+            self.assertEqual(nic.custom_field_data.get('hedgehog_plan_id'), plan_id, name)
+            nested = [b for b in dev_bays if b.module_id is not None]
+            self.assertEqual(sorted(b.name for b in nested), ['cage-0'],
+                             f'{name} physical nested cages (shared cage expected, no cage-1)')
+            cage = nested[0]
+            self.assertEqual((cage.module_id, cage.device_id), (nic.pk, device.pk), f'{name} cage owner')
+            self.assertEqual(cage.parent_id, root.pk, f'{name} cage parent bay')
+            optics = [m for m in dev_modules if m.pk != nic.pk]
+            self.assertEqual(len(optics), 1, f'{name} server optic count (one per physical cage)')
+            optic = optics[0]
+            self.assertEqual((optic.device_id, optic.module_bay_id, optic.module_type_id),
+                             (device.pk, cage.pk, optic_type.pk), f'{name} optic placement')
+            self.assertEqual(optic.custom_field_data.get('hedgehog_plan_id'), plan_id, name)
+
+        # --- switch optics: one per used leaf physical cage (E1/1); none on fabric zones
+        for name in leaf_names + spine_names:
+            device = by_name[name]
+            is_spine = name in spine_names
+            parents = BREAKOUT['spine_parents'] if is_spine else BREAKOUT['leaf_parents']
+            dev_bays = bays_by_device.get(device.pk, [])
+            self.assertEqual(sorted(b.name for b in dev_bays), sorted(f'E1/{p}' for p in parents), name)
+            for bay in dev_bays:
+                self.assertIsNone(bay.module_id, f'{name} {bay.name} nested')
+            dev_modules = modules_by_device.get(device.pk, [])
+            if is_spine:
+                self.assertEqual(dev_modules, [], f'{name} unexpected spine optic')
+                continue
+            self.assertEqual(len(dev_modules), 1, f'{name} leaf optic count')
+            bay_by_pk = {b.pk: b for b in dev_bays}
+            optic = dev_modules[0]
+            self.assertEqual(bay_by_pk[optic.module_bay_id].name, 'E1/1', name)
+            self.assertEqual((optic.device_id, optic.module_type_id), (device.pk, optic_type.pk), name)
+
+        self.assertEqual(Counter(m.module_type_id for m in modules),
+                         Counter({nic_type.pk: 4, optic_type.pk: 8}), 'total module inventory')
+        self.assertEqual(len(modules), 12, 'surprise modules')
+        self.assertEqual(len(bays), 4 * 2 + 4 * 3 + 2 * 4, 'module bay inventory')
+
+        # --- actual public BOM: exact sections/types/quantities, no suppression
+        bom = get_plan_bom(self.plan)
+        self.assertEqual(bom.suppressed_switch_cable_assembly_count, 0)
+        self.assertEqual(len(bom.line_items), 3, [(i.section, i.module_type_model) for i in bom.line_items])
+        self.assertEqual(
+            {(i.section, i.module_type_id): i.quantity for i in bom.line_items},
+            {('nic', nic_type.pk): 4, ('server_transceiver', optic_type.pk): 4,
+             ('switch_transceiver', optic_type.pk): 4},
+        )
+        self.assertEqual(bom.module_total_qty, 12)
+        self.assertEqual(
+            Counter({(i.section, i.role, i.hedgehog_class, i.device_type_model): i.quantity
+                     for i in bom.base_device_items}),
+            Counter({
+                ('server', DeviceCategoryChoices.SERVER, self.server_class.server_class_id,
+                 self.server_device_type.model): 4,
+                ('switch', DeviceCategoryChoices.LEAF, self.leaf_class.switch_class_id,
+                 self.leaf_device_type.model): 4,
+                ('switch', DeviceCategoryChoices.SPINE, self.spine_class.switch_class_id,
+                 self.spine_device_type.model): 2,
+            }),
+        )
+        self.assertEqual(bom.base_device_total_qty, 10)
+
+        # --- shared schema untouched; declared map still exact
+        xcvr_profile.refresh_from_db()
+        self.assertEqual(xcvr_profile.schema, xcvr_schema_before, 'shared transceiver schema altered')
+        nic_type.refresh_from_db()
+        self.assertEqual(nic_type.attribute_data, {'hnp_nic_cage_map': cage_map})
