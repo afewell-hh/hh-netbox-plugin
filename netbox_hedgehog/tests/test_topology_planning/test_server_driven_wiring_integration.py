@@ -1,8 +1,8 @@
 """
 SERVER29: server demand -> leaf/spine sizing -> physical wiring integration tests.
 
-Scope: synthetic server classes (quantity is the only sizing input; every leaf and
-spine ``override_quantity`` stays NULL and ``calculated_quantity`` starts at 0) are
+Scope (cases A-H): synthetic server classes (quantity is the only sizing input; every
+leaf and spine ``override_quantity`` stays NULL and ``calculated_quantity`` starts at 0) are
 run through the real public ``update_plan_calculations(plan)`` and then the real
 ``DeviceGenerator(plan).generate_all()``. The tests assert the persisted calculated
 quantities/summary, GENERATED state, the complete generated device/interface/cable/
@@ -27,14 +27,36 @@ uplinks): minimum ceil(36/8)=5 exceeds the 4 possible equal spines -> structured
 spine-class error, no generation. Case H (two active leaf classes, 3x4 + 2x6 uplinks,
 8 fabric ports): minimum 3, common equal divisors of 4 and 6 are only 1/2 -> error.
 
-Not covered: real hardware, optics/transceivers/BOM, UI/jobs, whole workbook flows,
+Cases I-N (ADMISSION30) cover generator-side equal-spine admission with an
+intentional spine ``override_quantity`` applied after the real calculation: I/J/K
+reject at real ``generate_all`` before any INSERT/UPDATE/DELETE/DDL (enforced by a
+``connection.execute_wrapper`` around ``generate_all`` only; constructor
+get_or_create runs before it), J/K/I preserve inventory row values, cable
+terminations, tag memberships and GenerationState; L/M are valid overrides that
+still generate exact graphs; N exercises the real authorized Generate POST and
+error render (behaviour only, no pixel claim). O uses two disjoint, explicitly ordered
+spine FABRIC zones (E1/1-4 then E1/5-8) with an explicit spine override 2 and asserts
+the full graph crosses the zone boundary (the calculated spine quantity is captured as
+a preservation baseline only, never as an oracle or optimality claim). P removes the
+leaf UPLINK declaration after a valid calculation and expects a pre-write
+missing-configuration rejection with the same no-mutation proof.
+
+Not covered: real hardware, optics/transceivers/BOM, UI/jobs (except N's specific
+synchronous Generate POST journey), whole workbook flows,
 YAML export or all fabric families. All device/module models are synthetic
 ``srv29-*``. Nothing is mocked; no private generator helper is called.
 """
 
 from collections import Counter
 
+from django.contrib.auth import get_user_model
+from django.core.exceptions import ValidationError
+from django.db import connection
 from django.test import TestCase
+from django.urls import reverse
+
+from dcim.models import CableTermination
+from extras.models import TaggedItem
 
 from dcim.choices import InterfaceTypeChoices
 from dcim.models import (
@@ -602,3 +624,301 @@ class ServerDrivenWiringIntegrationTestCase(TestCase):
             leaf.refresh_from_db()
             self.assertIsNone(leaf.override_quantity)
             self.assertEqual(leaf.calculated_quantity, expected)
+
+    # ------------------------------------- ADMISSION30: generator equal-spine admission
+
+    def _set_spine_override(self, override, calculated):
+        """Intentional caller edit after the real calculation; never via the generator."""
+        self.spine_class.refresh_from_db()
+        self.assertEqual(self.spine_class.calculated_quantity, calculated)
+        self.spine_class.override_quantity = override
+        self.spine_class.save()
+        self._assert_intent(override, calculated)
+
+    def _assert_intent(self, override, calculated):
+        self.spine_class.refresh_from_db()
+        self.assertEqual(self.spine_class.override_quantity, override)
+        self.assertEqual(self.spine_class.calculated_quantity, calculated)
+        self.assertEqual(self.spine_class.effective_quantity, override)
+        self.leaf_class.refresh_from_db()
+        self.assertIsNone(self.leaf_class.override_quantity)
+
+    def _db_snapshot(self):
+        """Full row values (not metadata-filtered) of inventory, terminations, tags, state, intent."""
+        snap = {}
+        for model in INVENTORY_MODELS + (CableTermination, TaggedItem):
+            snap[model.__name__] = list(model.objects.order_by('pk').values())
+        snap['GenerationState'] = list(
+            GenerationState.objects.filter(plan=self.plan).order_by('pk').values()
+        )
+        snap['PlanSwitchClass'] = list(
+            PlanSwitchClass.objects.filter(plan=self.plan).order_by('pk').values()
+        )
+        return snap
+
+    def _reject_without_mutation(self, generator):
+        """Run real generate_all under a mutation-denying execute_wrapper (generate_all ONLY)."""
+        denied = []
+        allowed_heads = ('SELECT', 'SAVEPOINT', 'RELEASE', 'ROLLBACK')
+        denied_heads = ('INSERT', 'UPDATE', 'DELETE', 'CREATE', 'ALTER', 'DROP', 'TRUNCATE',
+                        'RENAME', 'COMMENT', 'GRANT', 'REVOKE', 'COPY', 'MERGE')
+
+        def deny(execute, sql, params, many, context):
+            head = sql.lstrip().split(None, 1)[0].upper() if sql.strip() else ''
+            if head in denied_heads or head not in allowed_heads:
+                denied.append(sql)
+                raise AssertionError(f'mutation/unexpected SQL during admission: {sql[:200]}')
+            return execute(sql, params, many, context)
+
+        with connection.execute_wrapper(deny):
+            with self.assertRaises(ValidationError) as ctx:
+                generator.generate_all()
+        self.assertEqual(denied, [], 'SQL mutation attempted before admission rejection')
+        return ' '.join(ctx.exception.messages)
+
+    def _assert_equal_spine_message(self, message, *fragments):
+        self.assertIn('equal-spine distribution infeasible', message)
+        self.assertIn(f"fabric '{FABRIC}'", message)
+        self.assertIn(self.spine_class.switch_class_id, message)
+        for fragment in fragments:
+            self.assertIn(fragment, message)
+
+    def _generate_with_override(self, override, calculated, devices_total, generated_interfaces,
+                                cables_total):
+        """Public generator with intentional override; the NULL-override _generate is unchanged."""
+        self._assert_intent(override, calculated)
+        DeviceGenerator(self.plan).generate_all()
+        state = GenerationState.objects.get(plan=self.plan)
+        self.assertEqual(state.status, GenerationStatusChoices.GENERATED)
+        self.assertFalse(state.mismatch_report)
+        self.assertEqual(
+            (state.device_count, state.interface_count, state.cable_count),
+            (devices_total, generated_interfaces, cables_total),
+            'persisted GenerationState (device, switch-endpoint interface, cable) counts',
+        )
+        self._assert_intent(override, calculated)
+
+    def test_i_native_override_three_spines_rejected_indivisible(self):
+        # 4 leaves x 4 uplinks over S=3: capacity 4*2=8 would fit, but 4 -> 2/1/1 is unequal.
+        self._build('i', 8, NATIVE)
+        self._calculate(leaves=4, spines=2)
+        self._set_spine_override(3, calculated=2)
+        self._capture_baseline()
+        generator = DeviceGenerator(self.plan)  # default Site/Tag get_or_create before denial
+        before = self._db_snapshot()
+        message = self._reject_without_mutation(generator)
+        self._assert_equal_spine_message(
+            message, self.leaf_class.switch_class_id, '4 logical uplinks',
+            'not divisible by spine count 3',
+        )
+        self.assertEqual(self._db_snapshot(), before)
+        for model in INVENTORY_MODELS:
+            self.assertEqual(_pks(model), self.baseline[model], f'{model.__name__} inventory changed')
+        self.assertFalse(GenerationState.objects.filter(plan=self.plan).exists())
+        self._assert_intent(3, calculated=2)
+
+    def test_j_regenerate_after_invalid_override_preserves_prior_generation(self):
+        self._build('j', 8, NATIVE)
+        _, first_ids = self._run(servers=8, leaves=4, spines=2, links_per_pair=2, cables_total=24,
+                                 devices_total=14, generated_interfaces=40)
+        self._set_spine_override(3, calculated=2)
+        generator = DeviceGenerator(self.plan)
+        before = self._db_snapshot()  # after intent edit and constructor setup
+        self.assertEqual(len(before['GenerationState']), 1)
+        message = self._reject_without_mutation(generator)
+        self._assert_equal_spine_message(message, '4 logical uplinks', 'not divisible by spine count 3')
+        after = self._db_snapshot()
+        self.assertEqual(after, before, 'prior generated rows/terminations/tags/state changed')
+        for model in INVENTORY_MODELS:
+            self.assertTrue(first_ids[model] <= _pks(model), f'first-generation {model.__name__} lost')
+        state = GenerationState.objects.get(plan=self.plan)
+        self.assertEqual(state.status, GenerationStatusChoices.GENERATED)
+        self.assertEqual((state.device_count, state.interface_count, state.cable_count), (14, 40, 24))
+        self._assert_intent(3, calculated=2)
+
+    def test_k_six_uplink_override_three_spines_rejected_capacity(self):
+        # 5 leaves x 6 uplinks, S=3: 6%3==0 but 5*2=10 > 8 fabric ports per spine.
+        self._build('k', 9, SIX_UPLINK)
+        self._calculate(leaves=5, spines=6)
+        self._set_spine_override(3, calculated=6)
+        self._capture_baseline()
+        generator = DeviceGenerator(self.plan)
+        before = self._db_snapshot()
+        message = self._reject_without_mutation(generator)
+        self._assert_equal_spine_message(message, 'needs 10 fabric ports', 'capacity 8')
+        self.assertNotIn('not divisible', message)
+        self.assertEqual(self._db_snapshot(), before)
+        for model in INVENTORY_MODELS:
+            self.assertEqual(_pks(model), self.baseline[model], f'{model.__name__} inventory changed')
+        self.assertFalse(GenerationState.objects.filter(plan=self.plan).exists())
+        self._assert_intent(3, calculated=6)
+
+    def test_l_six_uplink_valid_override_three_generates_exact_graph(self):
+        self._build('l', 8, SIX_UPLINK)
+        self._calculate(leaves=4, spines=3)
+        self._set_spine_override(3, calculated=3)
+        self._capture_baseline()
+        self._generate_with_override(3, 3, devices_total=15, generated_interfaces=56, cables_total=32)
+        self._verify(servers=8, leaves=4, spines=3, links_per_pair=2, cables_total=32, devices_total=15)
+
+    def test_m_native_valid_override_four_above_minimum_generates_exact_graph(self):
+        self._build('m', 8, NATIVE)
+        self._calculate(leaves=4, spines=2)
+        self._set_spine_override(4, calculated=2)
+        self._capture_baseline()
+        self._generate_with_override(4, 2, devices_total=16, generated_interfaces=40, cables_total=24)
+        self._verify(servers=8, leaves=4, spines=4, links_per_pair=1, cables_total=24, devices_total=16)
+
+    def test_n_generate_post_renders_equal_spine_error(self):
+        # Synthetic NULL transceiver FKs: preflight readiness is legitimately ready.
+        self._build('n', 8, NATIVE)
+        self._calculate(leaves=4, spines=2)
+        self._set_spine_override(3, calculated=2)
+        self._capture_baseline()
+        user = get_user_model().objects.create_superuser(
+            username='srv29-admission-admin', email='srv29-admin@example.invalid', password='unused-pw',
+        )
+        self.client.force_login(user)
+        url = reverse('plugins:netbox_hedgehog:topologyplan_generate', kwargs={'pk': self.plan.pk})
+        response = self.client.post(url, follow=True)
+        self.assertEqual(response.redirect_chain, [(url, 302)])
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'Generation failed')
+        self.assertContains(response, 'equal-spine distribution infeasible')
+        self.assertContains(response, 'not divisible by spine count 3')
+        self.assertContains(response, self.spine_class.switch_class_id)
+        for model in INVENTORY_MODELS:
+            self.assertEqual(_pks(model), self.baseline[model], f'{model.__name__} inventory changed')
+        self.assertFalse(GenerationState.objects.filter(plan=self.plan).exists())
+        self._assert_intent(3, calculated=2)
+
+    # ----------------------------------- O: two disjoint spine FABRIC zones (cursor-aware)
+
+    # Declared fixture tables: zone A then zone B, explicit priority order.
+    O_SPINE_ZONES = (
+        # (zone suffix, port_spec, priority)
+        ('fabric-a', '1-4', 100),
+        ('fabric-b', '5-8', 200),
+    )
+    # Declared spine slot -> (zone suffix, physical parent); every spine uses all 8.
+    O_SPINE_SLOT_ZONE = {
+        'E1/1': ('fabric-a', 1), 'E1/2': ('fabric-a', 2),
+        'E1/3': ('fabric-a', 3), 'E1/4': ('fabric-a', 4),
+        'E1/5': ('fabric-b', 5), 'E1/6': ('fabric-b', 6),
+        'E1/7': ('fabric-b', 7), 'E1/8': ('fabric-b', 8),
+    }
+
+    def _o_split_spine_fabric_zones(self):
+        SwitchPortZone.objects.filter(
+            switch_class=self.spine_class, zone_type=PortZoneTypeChoices.FABRIC,
+        ).delete()
+        breakout = _breakout(self.p['breakout'])
+        for suffix, spec, priority in self.O_SPINE_ZONES:
+            SwitchPortZone.objects.create(
+                switch_class=self.spine_class, zone_name=f'srv29-{self.case}-{suffix}',
+                zone_type=PortZoneTypeChoices.FABRIC, port_spec=spec, breakout_option=breakout,
+                allocation_strategy='sequential', priority=priority,
+            )
+        self.assertEqual(
+            list(SwitchPortZone.objects.filter(
+                switch_class=self.spine_class, zone_type=PortZoneTypeChoices.FABRIC,
+            ).order_by('priority', 'zone_name').values_list('zone_name', 'port_spec', 'priority')),
+            [(f'srv29-{self.case}-{s}', spec, pr) for s, spec, pr in self.O_SPINE_ZONES],
+        )
+
+    def _o_assert_spine_interfaces(self, by_name, spine_names, interfaces):
+        """All 8 spine interfaces per device: exact zone/plan/parent/lane/type/tag/cable, no extras."""
+        plan_id = str(self.plan.pk)
+        per_device = {}
+        for iface in interfaces:
+            per_device.setdefault(iface.device_id, {})[iface.name] = iface
+        for name in spine_names:
+            ifaces = per_device.get(by_name[name].pk, {})
+            self.assertEqual(set(ifaces), set(self.O_SPINE_SLOT_ZONE), f'{name} interface set')
+            for slot_name, (suffix, parent) in self.O_SPINE_SLOT_ZONE.items():
+                iface = ifaces[slot_name]
+                cf = iface.custom_field_data
+                self.assertEqual(iface.type, self.p['link_type'], f'{name} {slot_name}')
+                self.assertEqual(cf.get('hedgehog_plan_id'), plan_id, f'{name} {slot_name}')
+                self.assertEqual(cf.get('hedgehog_zone'), f'srv29-{self.case}-{suffix}', f'{name} {slot_name}')
+                self.assertEqual(cf.get('hedgehog_physical_port'), parent, f'{name} {slot_name}')
+                self.assertIsNone(cf.get('hedgehog_breakout_index'), f'{name} {slot_name}')
+                self.assertIsNotNone(iface.cable_id, f'{name} {slot_name} uncabled')
+                self.assertIn(TAG, set(iface.tags.values_list('slug', flat=True)), f'{name} {slot_name}')
+
+    def test_o_two_spine_fabric_zones_cross_zone_boundary(self):
+        self._build('o', 8, NATIVE)
+        self._o_split_spine_fabric_zones()
+        for switch_class in (self.leaf_class, self.spine_class):
+            switch_class.refresh_from_db()
+            self.assertIsNone(switch_class.override_quantity)
+        result = update_plan_calculations(self.plan)
+        self.assertEqual(result['summary'].get(self.leaf_class.switch_class_id),
+                         {'calculated': 4, 'override': None, 'effective': 4})
+        self.leaf_class.refresh_from_db()
+        self.assertIsNone(self.leaf_class.override_quantity)
+        self.assertEqual(self.leaf_class.calculated_quantity, 4)
+        self.spine_class.refresh_from_db()
+        calculated_spines = self.spine_class.calculated_quantity  # preservation baseline only
+        self._set_spine_override(2, calculated=calculated_spines)
+        self._capture_baseline()
+        self._generate_with_override(2, calculated_spines, devices_total=14, generated_interfaces=40,
+                                     cables_total=24)
+
+        servers, leaves, spines, k, cables_total, devices_total = 8, 4, 2, 2, 24, 14
+        names = self._names(servers, leaves, spines)
+        server_edges, fabric_edges = self._expected_edges(servers, leaves, spines, k)
+        self.assertEqual(sum(server_edges.values()) + sum(fabric_edges.values()), cables_total)
+        devices, interfaces, cables, modules, bays = self._new_inventory()
+        self.assertEqual(len(devices), devices_total)
+        by_name = self._assert_devices(devices, names)
+        self._assert_nics(by_name, names[0], interfaces, modules, bays)
+        # Old one-zone helper on leaves only; spines verified separately per declared zone table.
+        self._assert_switch_interfaces(by_name, (names[0], names[1], []), interfaces,
+                                       server_edges, fabric_edges)
+        self._o_assert_spine_interfaces(by_name, names[2], interfaces)
+        switch_pks = {by_name[n].pk for n in names[1] + names[2]}
+        self.assertEqual(sum(1 for i in interfaces if i.device_id in switch_pks), 4 * 6 + 2 * 8,
+                         'switch interface inventory has extras')
+        self.assertEqual(len(cables), cables_total)
+        self._assert_cables(by_name, names, cables, server_edges, fabric_edges)
+        # Explicit cross-boundary edges: leaf-03/04 land on spine zone B ports 5..8.
+        for spine in names[2]:
+            for leaf, ports in ((names[1][0], ('E1/1', 'E1/2')), (names[1][1], ('E1/3', 'E1/4')),
+                                (names[1][2], ('E1/5', 'E1/6')), (names[1][3], ('E1/7', 'E1/8'))):
+                self.assertEqual(
+                    sorted(e[3] for e in fabric_edges if e[0] == leaf and e[2] == spine), list(ports),
+                )
+        self._assert_intent(2, calculated_spines)
+
+    # --------------------------------------------- P: missing leaf UPLINK declaration
+
+    def test_p_missing_leaf_uplink_zone_rejected_before_writes(self):
+        self._build('p', 8, NATIVE)
+        self._calculate(leaves=4, spines=2)
+        SwitchPortZone.objects.filter(
+            switch_class=self.leaf_class, zone_type=PortZoneTypeChoices.UPLINK,
+        ).delete()
+        self.assertFalse(self.leaf_class.port_zones.filter(zone_type=PortZoneTypeChoices.UPLINK).exists())
+        self._set_spine_override(2, calculated=2)
+        self.leaf_class.refresh_from_db()
+        self.assertEqual(self.leaf_class.effective_quantity, 4)
+        self._capture_baseline()
+        generator = DeviceGenerator(self.plan)
+        before = self._db_snapshot()
+        zones_before = list(SwitchPortZone.objects.filter(
+            switch_class__plan=self.plan).order_by('pk').values())
+        message = self._reject_without_mutation(generator)
+        self.assertIn('missing configuration', message)
+        self.assertIn(f"fabric '{FABRIC}'", message)
+        self.assertIn(self.leaf_class.switch_class_id, message)
+        self.assertIn('no UPLINK port zones', message)
+        self.assertNotIn('equal-spine distribution infeasible', message)
+        self.assertEqual(self._db_snapshot(), before)
+        self.assertEqual(list(SwitchPortZone.objects.filter(
+            switch_class__plan=self.plan).order_by('pk').values()), zones_before)
+        for model in INVENTORY_MODELS:
+            self.assertEqual(_pks(model), self.baseline[model], f'{model.__name__} inventory changed')
+        self.assertFalse(GenerationState.objects.filter(plan=self.plan).exists())
+        self._assert_intent(2, calculated=2)
+        self.assertEqual(self.leaf_class.calculated_quantity, 4)

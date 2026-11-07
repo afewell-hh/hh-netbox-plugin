@@ -204,7 +204,17 @@ class DeviceGenerator:
         """
         Generate devices, interfaces, and cables for the plan.
         Deletes any previously generated objects before creating new ones.
+
+        Admission (#661): before any cleanup or write, explicitly SPINE_LEAF
+        managed fabrics with one active spine class and an effective spine
+        count S >= 2 are rejected with a ValidationError when a leaf class's
+        declared logical uplinks cannot be split equally across all S spines
+        or the per-spine fabric-port capacity would be exceeded. A rejected
+        plan leaves previously generated inventory and GenerationState intact.
         """
+        # #661 equal-spine admission: read-only, must run before cleanup/writes.
+        self._preflight_equal_spine_admission()
+
         # Fail fast, before any writes or cleanup, if the plan's connection
         # distributions would over-subscribe a switch-port zone.  Otherwise the
         # exhaustion is only discovered deep inside the O(connections) write loop
@@ -901,6 +911,9 @@ class DeviceGenerator:
                 if total_uplinks == 0:
                     continue
 
+                # For fabrics guarded by _preflight_equal_spine_admission the
+                # remainder is always 0; non-zero remainders remain only for held
+                # branches (S<2, multi-spine-class, mixed/legacy fabrics).
                 base = total_uplinks // len(spines)
                 remainder = total_uplinks % len(spines)
                 cursor = 0
@@ -1251,13 +1264,18 @@ class DeviceGenerator:
     def _allocate_ports_for_zones(self, switch_name, zones, count: int | None = None):
         allocated: list[tuple[object, object]] = []
 
+        # Zones are consumed in the given order. For a counted request, each
+        # zone contributes only its actual remaining (unallocated) slots for
+        # this switch, so later requests advance past an exhausted zone
+        # instead of re-requesting it. The uncounted path is unchanged.
         for zone in zones:
             zone_capacity = self._get_zone_logical_port_count(zone)
             if count is not None:
                 remaining = count - len(allocated)
                 if remaining <= 0:
                     break
-                zone_capacity = min(zone_capacity, remaining)
+                zone_remaining = self.port_allocator.remaining_for_zone(switch_name, zone)
+                zone_capacity = min(zone_capacity, zone_remaining, remaining)
 
             if zone_capacity <= 0:
                 continue
@@ -1548,6 +1566,150 @@ class DeviceGenerator:
         self._rail_count_cache[cache_key] = total_rails
 
         return total_rails
+
+    def _preflight_equal_spine_admission(self) -> None:
+        """
+        Pre-cleanup equal-spine admission for explicit Clos fabrics (#661).
+
+        Applies only to managed fabrics where every managed switch class is
+        explicitly ``topology_mode=SPINE_LEAF``, exactly one spine class has a
+        positive effective quantity, that spine class declares FABRIC zones and
+        its effective quantity (override honoured, never modified) is S >= 2.
+
+        For each participating leaf class (server/border leaf, effective
+        quantity > 0, ``uplink_ports_per_switch != 0``); such a leaf with no
+        UPLINK zones is rejected as missing configuration:
+
+        * declared logical uplinks U (sum of allocator ``capacity_for_zone``
+          over all its UPLINK zones, the same zones the fabric wiring path
+          consumes) must be positive and divisible by S, so every spine gets
+          exactly U/S links from every leaf;
+        * sum(quantity * U / S) over those classes must not exceed one spine's
+          logical capacity (sum of ``capacity_for_zone`` over its FABRIC zones).
+
+        Pure reads: ``capacity_for_zone`` does not consume allocator cursors.
+        Summed multi-zone capacity is usable because counted wiring requests
+        in ``_allocate_ports_for_zones`` consume each zone's remaining slots in
+        order and advance to the next zone once one is exhausted.
+        Held branches keep their prior behaviour and are not evaluated here:
+        mesh or mixed-mode fabrics, multiple active spine classes, S < 2,
+        intentional ``uplink_ports_per_switch == 0`` leaves, inactive classes,
+        and fabrics using peer_zone uplink targeting. This check makes no
+        speed, media, optics or all-Clos-family claim.
+
+        Raises:
+            ValidationError: naming fabric, classes, counts and the
+            divisibility or capacity cause.
+        """
+        from netbox_hedgehog.choices import TopologyModeChoices
+
+        leaf_roles = (HedgehogRoleChoices.SERVER_LEAF, HedgehogRoleChoices.BORDER_LEAF)
+        errors: list[str] = []
+
+        for fabric in self._managed_fabric_names_from_plan():
+            classes = list(
+                self.plan.switch_classes.filter(
+                    fabric_name=fabric,
+                    fabric_class=FabricClassChoices.MANAGED,
+                ).order_by('switch_class_id')
+            )
+            if not classes or any(
+                sc.topology_mode != TopologyModeChoices.SPINE_LEAF for sc in classes
+            ):
+                continue
+
+            spine_classes = [
+                sc for sc in classes
+                if sc.hedgehog_role == HedgehogRoleChoices.SPINE and sc.effective_quantity > 0
+            ]
+            if len(spine_classes) != 1:
+                continue
+            spine_class = spine_classes[0]
+            spine_count = spine_class.effective_quantity
+            if spine_count < 2:
+                continue
+
+            fabric_zones = list(
+                spine_class.port_zones.filter(zone_type=PortZoneTypeChoices.FABRIC)
+            )
+            if not fabric_zones:
+                continue
+
+            leaf_classes = [
+                sc for sc in classes
+                if sc.hedgehog_role in leaf_roles and sc.effective_quantity > 0
+            ]
+            if any(
+                sc.port_zones.filter(
+                    zone_type=PortZoneTypeChoices.UPLINK, peer_zone__isnull=False,
+                ).exists()
+                for sc in leaf_classes
+            ):
+                continue
+
+            per_spine_capacity = sum(
+                self.port_allocator.capacity_for_zone(zone) for zone in fabric_zones
+            )
+
+            demand_per_spine = 0
+            fabric_errors: list[str] = []
+            for leaf_class in leaf_classes:
+                if leaf_class.uplink_ports_per_switch == 0:
+                    continue
+                uplink_zones = list(
+                    leaf_class.port_zones.filter(zone_type=PortZoneTypeChoices.UPLINK)
+                )
+                if not uplink_zones:
+                    # Missing configuration, not mathematical infeasibility:
+                    # reject before cleanup rather than failing mid-write.
+                    fabric_errors.append(
+                        f"missing configuration in fabric '{fabric}': active leaf "
+                        f"class '{leaf_class.switch_class_id}' (quantity "
+                        f"{leaf_class.effective_quantity}) declares no UPLINK port "
+                        f"zones; add an UPLINK zone so it can connect to the "
+                        f"{spine_count} spines of spine class "
+                        f"'{spine_class.switch_class_id}'."
+                    )
+                    continue
+                uplinks = sum(
+                    self.port_allocator.capacity_for_zone(zone) for zone in uplink_zones
+                )
+                if uplinks <= 0:
+                    fabric_errors.append(
+                        f"equal-spine distribution infeasible in fabric '{fabric}': "
+                        f"leaf class '{leaf_class.switch_class_id}' declares {uplinks} "
+                        f"logical uplinks; at least one uplink per spine is required "
+                        f"for {spine_count} spines of spine class "
+                        f"'{spine_class.switch_class_id}'."
+                    )
+                    continue
+                if uplinks % spine_count != 0:
+                    fabric_errors.append(
+                        f"equal-spine distribution infeasible in fabric '{fabric}': "
+                        f"leaf class '{leaf_class.switch_class_id}' has {uplinks} "
+                        f"logical uplinks per switch, not divisible by spine count "
+                        f"{spine_count} of spine class '{spine_class.switch_class_id}'. "
+                        f"Every leaf must connect an equal number of uplinks to every "
+                        f"spine; choose a spine quantity that divides {uplinks}."
+                    )
+                    continue
+                demand_per_spine += leaf_class.effective_quantity * (uplinks // spine_count)
+
+            if not fabric_errors and demand_per_spine > per_spine_capacity:
+                fabric_errors.append(
+                    f"equal-spine distribution infeasible in fabric '{fabric}': "
+                    f"each of the {spine_count} spines of spine class "
+                    f"'{spine_class.switch_class_id}' needs {demand_per_spine} fabric "
+                    f"ports but has capacity {per_spine_capacity}. Exceeds per-spine "
+                    f"fabric capacity; choose a larger valid spine quantity or fewer leaves."
+                )
+            errors.extend(fabric_errors)
+
+        if errors:
+            raise ValidationError(
+                ["Generation blocked: equal-spine admission check failed "
+                 "(pre-write; generated inventory unchanged)."] + errors
+            )
 
     def _preflight_zone_capacity(self) -> None:
         """
