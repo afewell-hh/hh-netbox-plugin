@@ -922,3 +922,135 @@ class ServerDrivenWiringIntegrationTestCase(TestCase):
         self.assertFalse(GenerationState.objects.filter(plan=self.plan).exists())
         self._assert_intent(2, calculated=2)
         self.assertEqual(self.leaf_class.calculated_quantity, 4)
+
+    # ------------------------------- SCALE34 Q-AH: frozen server-scale boundary matrix
+
+    def _scale_profile(self, name):
+        """Return an independent new copy of a declared SCALE34 slot table.
+
+        native8/breakout8 are unchanged copies of NATIVE/BREAKOUT. native16/six12 extend
+        only the native spine (parents/slots 1..16 or 1..12, spec 1-16/1-12); ten20 also
+        extends the native leaf (parents 1..12, uplinks E1/3..E1/12, spec 3-12) and the
+        spine (1..20). Every slot is a native parent with lane None; one zone per role, the
+        two leaf server slots E1/1-2 are kept. Existing module profiles are never mutated.
+        """
+        def native(ports):
+            return [(f'E1/{p}', p, None) for p in ports]
+
+        if name == 'native8':
+            profile = dict(NATIVE)
+        elif name == 'breakout8':
+            profile = dict(BREAKOUT)
+        elif name == 'native16':
+            profile = dict(NATIVE, spine_parents=list(range(1, 17)),
+                           spine_fabric=native(range(1, 17)), spine_spec='1-16')
+        elif name == 'six12':
+            profile = dict(SIX_UPLINK, spine_parents=list(range(1, 13)),
+                           spine_fabric=native(range(1, 13)), spine_spec='1-12')
+        elif name == 'ten20':
+            profile = dict(NATIVE, leaf_parents=list(range(1, 13)),
+                           leaf_uplink=native(range(3, 13)), leaf_uplink_spec='3-12',
+                           spine_parents=list(range(1, 21)),
+                           spine_fabric=native(range(1, 21)), spine_spec='1-20')
+        else:
+            self.fail(f'undeclared SCALE34 profile {name!r}')
+        for key in ('leaf_parents', 'leaf_server', 'leaf_uplink', 'spine_parents', 'spine_fabric'):
+            profile[key] = list(profile[key])  # no list shared with a module profile
+        source = BREAKOUT if name == 'breakout8' else NATIVE
+        self.assertEqual(profile['leaf_server'], source['leaf_server'], 'two leaf server slots preserved')
+        self.assertEqual(len(profile['leaf_server']), 2)
+        return profile
+
+    def _scale_positive(self, case, profile_name, servers, leaves, spines, links_per_pair,
+                        cables_total, devices_total, generated_interfaces):
+        """Frozen matrix positive row through existing _build/_run.
+
+        Real update_plan_calculations and DeviceGenerator.generate_all; expected graph is the
+        existing declared sequential slot oracle (_expected_edges); all counts are literals
+        from matrix.json, never derived from output or a production sizing helper.
+        """
+        self._build(case, servers, self._scale_profile(profile_name))
+        self._run(servers=servers, leaves=leaves, spines=spines, links_per_pair=links_per_pair,
+                  cables_total=cables_total, devices_total=devices_total,
+                  generated_interfaces=generated_interfaces)
+
+    def _scale_negative(self, case, profile_name, servers, leaves):
+        """Frozen matrix negative row: spine demand crosses maximum feasible equal capacity.
+
+        Asserts only the real calculation rejection (structured spine-class error, literal
+        leaf summary, spine calculated 0, no overrides, unchanged inventory, no
+        GenerationState). generate_all is deliberately NOT called; no generator-rejection or
+        no-SQL claim is made for these rows.
+        """
+        self._build(case, servers, self._scale_profile(profile_name))
+        self.assertIsNone(self.leaf_class.override_quantity)
+        self.assertIsNone(self.spine_class.override_quantity)
+        self._capture_baseline()
+        result = update_plan_calculations(self.plan)
+        self._assert_spine_infeasible(result, {
+            self.leaf_class.switch_class_id: {'calculated': leaves, 'override': None, 'effective': leaves},
+        })
+        self.leaf_class.refresh_from_db()
+        self.assertIsNone(self.leaf_class.override_quantity)
+        self.assertEqual(self.leaf_class.calculated_quantity, leaves)
+        self.assertEqual(self.leaf_class.effective_quantity, leaves)
+
+    def test_q_native8_6_servers_3_leaves_2_spines(self):
+        self._scale_positive('q', 'native8', 6, 3, 2, 2, 18, 11, 30)
+
+    def test_r_native8_7_servers_odd_last_leaf(self):
+        self._scale_positive('r', 'native8', 7, 4, 2, 2, 23, 13, 39)
+
+    def test_s_native8_10_servers_4_spines(self):
+        # 5 leaves x 4 = 20 uplinks; S=2 overloads (10>8), 3 does not divide 4 -> 4.
+        self._scale_positive('s', 'native8', 10, 5, 4, 1, 30, 19, 50)
+
+    def test_t_native8_15_servers_full_spine_capacity(self):
+        self._scale_positive('t', 'native8', 15, 8, 4, 1, 47, 27, 79)
+
+    def test_u_breakout8_7_servers(self):
+        self._scale_positive('u', 'breakout8', 7, 4, 2, 2, 23, 13, 39)
+
+    def test_v_breakout8_15_servers_full_logical_capacity(self):
+        self._scale_positive('v', 'breakout8', 15, 8, 4, 1, 47, 27, 79)
+
+    def test_w_native16_17_servers(self):
+        self._scale_positive('w', 'native16', 17, 9, 4, 1, 53, 30, 89)
+
+    def test_x_native16_31_servers(self):
+        self._scale_positive('x', 'native16', 31, 16, 4, 1, 95, 51, 159)
+
+    def test_y_native16_32_servers_max_capacity(self):
+        self._scale_positive('y', 'native16', 32, 16, 4, 1, 96, 52, 160)
+
+    def test_z_six12_9_servers_3_spines_not_power_of_two(self):
+        # 5 leaves x 6 = 30 uplinks / 12 -> minimum 3; 3 divides 6 -> S=3 (not 4).
+        self._scale_positive('z', 'six12', 9, 5, 3, 2, 39, 17, 69)
+
+    def test_aa_six12_17_servers_6_spines(self):
+        self._scale_positive('aa', 'six12', 17, 9, 6, 1, 71, 32, 125)
+
+    def test_ab_six12_23_servers_max_capacity(self):
+        self._scale_positive('ab', 'six12', 23, 12, 6, 1, 95, 41, 167)
+
+    def test_ac_ten20_17_servers_5_spines_not_power_of_two(self):
+        # 9 leaves x 10 = 90 uplinks / 20 -> minimum 5; 5 divides 10 -> S=5 (not 8).
+        self._scale_positive('ac', 'ten20', 17, 9, 5, 2, 107, 31, 197)
+
+    def test_ad_ten20_31_servers_10_spines(self):
+        self._scale_positive('ad', 'ten20', 31, 16, 10, 1, 191, 57, 351)
+
+    def test_ae_ten20_39_servers_20_leaves_10_spines(self):
+        self._scale_positive('ae', 'ten20', 39, 20, 10, 1, 239, 69, 439)
+
+    def test_af_native16_33_servers_spine_infeasible(self):
+        # 17 leaves; at S=4 each spine needs 17 > 16 fabric ports.
+        self._scale_negative('af', 'native16', 33, 17)
+
+    def test_ag_six12_25_servers_spine_infeasible(self):
+        # 13 leaves; at S=6 each spine needs 13 > 12 fabric ports.
+        self._scale_negative('ag', 'six12', 25, 13)
+
+    def test_ah_ten20_41_servers_spine_infeasible(self):
+        # 21 leaves; at S=10 each spine needs 21 > 20 fabric ports.
+        self._scale_negative('ah', 'ten20', 41, 21)
