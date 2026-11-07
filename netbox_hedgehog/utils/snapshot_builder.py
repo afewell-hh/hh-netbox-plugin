@@ -13,7 +13,10 @@ if TYPE_CHECKING:
     from netbox_hedgehog.models.topology_planning import TopologyPlan
 
 
-def build_plan_snapshot(plan: 'TopologyPlan') -> dict:
+_LIVE = object()
+
+
+def build_plan_snapshot(plan: 'TopologyPlan', nic_cage_extension=_LIVE) -> dict:
     """
     Build comprehensive snapshot of plan state for generation tracking.
 
@@ -125,6 +128,21 @@ def build_plan_snapshot(plan: 'TopologyPlan') -> dict:
             'peer_link_count': mclag.peer_link_count,
             'session_link_count': mclag.session_link_count,
         })
+
+    # CAGE37 C08 / snapshot_contract_v1: optional ``nic_cage_layouts`` key.
+    # Omitted entirely when no plan NIC ModuleType carries hnp_nic_cage_map, so
+    # legacy five-section snapshots are byte-for-byte unchanged. A live build
+    # never raises or writes: unreadable/invalid current layouts become the
+    # typed invalid marker. DeviceGenerator passes its admitted preflight
+    # capture instead of a fresh reread.
+    if nic_cage_extension is _LIVE:
+        from netbox_hedgehog.services.nic_cage_layout import build_snapshot_extension
+
+        nic_cage_extension = build_snapshot_extension(plan)
+    if nic_cage_extension is not None:
+        from netbox_hedgehog.services.nic_cage_layout import SNAPSHOT_KEY
+
+        snapshot[SNAPSHOT_KEY] = nic_cage_extension
 
     return snapshot
 

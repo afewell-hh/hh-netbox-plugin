@@ -129,3 +129,72 @@ Resolved Features
   (1 switch per rail × 8 rails) without needing override_quantity
 - ✅ Spine sizing: fe-spine and be-spine quantities are calculated based on
   leaf uplink demand (fe-spine: 2, be-spine: 4)
+
+Case: Shared Physical NIC Cage (synthetic)
+------------------------------------------
+
+Goal
+Two logical NIC interfaces on two logical channels of one physical cage share one
+installed optic. The schema is in the
+[YAML reference](DIET_TOPOLOGY_PLAN_YAML_REFERENCE.md#mapped-nic-cage-layouts-hnp_nic_cage_map).
+The example uses a fictional two-port 400G NIC type mapped to `cage-0` in mode
+`2x400g`, with one fictional optic type. Generation should produce one NIC Module, one
+nested `cage-0` ModuleBay and one optic per server. Both logical interfaces stay
+separate wiring endpoints, and the public BOM counts one NIC and one server optic per
+server. This is synthetic behavior coverage only. It does not qualify any vendor part,
+optic, workbook, topology family, hhfab run, GUI rendering or release.
+
+Configuring a mapped NIC type through the native NetBox API
+-----------------------------------------------------------
+HNP has no layout editor and no layout REST route. The HNP NIC form still just selects
+a configured ModuleType. An operator authorized for the target NetBox catalog
+configures the type with the native API:
+
+1. Create or choose a ModuleTypeProfile whose `schema` declares `hnp_nic_cage_map`,
+   plus any other attributes the type carries:
+
+   ```http
+   POST /api/dcim/module-type-profiles/
+   Authorization: Token <API_TOKEN from your secret store>
+   Content-Type: application/json
+
+   {"name": "<profile name>", "schema": {"type": "object",
+     "required": ["hnp_nic_cage_map"],
+     "properties": {"hnp_nic_cage_map": {"type": "object"}, "<other_attribute>": {"type": "string"}}}}
+   ```
+
+2. Create the NIC ModuleType with that profile and the complete `attributes` object.
+   The native API field is `attributes`, which is stored as `attribute_data`:
+
+   ```http
+   POST /api/dcim/module-types/
+   {"manufacturer": <manufacturer id>, "model": "<NIC model>", "profile": <profile id>,
+    "attributes": {"hnp_nic_cage_map": {"version": 1,
+        "ports": [{"cage": "cage-0", "logical_lane": 0}, {"cage": "cage-0", "logical_lane": 1}],
+        "cages": {"cage-0": {"breakout_id": "2x400g"}}},
+      "<other_attribute>": "<value>"}}
+   ```
+
+   To change the map later, `PATCH /api/dcim/module-types/<id>/` with the complete
+   `attributes` object.
+3. Check admission with a read-back: `GET /api/dcim/module-types/<id>/`. The type is
+   admitted only if `profile.id` is the intended profile and `attributes` equals exactly
+   what was sent. A 2xx status alone does not admit it. Native validation returns 400
+   for attributes that violate the profile schema. A request without a profile can
+   return 2xx with the attributes cleared, and that lost layout is not admitted. Any
+   other HNP-owned rule is enforced later by bay population and generation, with
+   specific `[nic_layout_*]` errors.
+4. Create the type's InterfaceTemplates, one per `ports` row, in natural name order.
+   Then ready the declared cage bays with the scoped `populate_bays` / ingest
+   population, which creates only declared cages. Configure the optic type on the
+   existing `Network Transceiver` profile, with `breakout_topology` equal to the cage
+   mode.
+5. Reference the configured type from a plan: through the NIC form, through a V1 case
+   (`attribute_data` absent, or the exact whole payload) or through a V2 `module_type`
+   reference.
+
+Use placeholders and secret-store references only. Never put token values in case
+files, docs or issues. `logical_lane` values are logical channels of the BreakoutOption,
+not 8 SerDes lanes. These steps create no seeds, aliases or profiles and need no DDL or
+HNP editor. Applying them to a real catalog is a separate, explicitly authorized
+operation.

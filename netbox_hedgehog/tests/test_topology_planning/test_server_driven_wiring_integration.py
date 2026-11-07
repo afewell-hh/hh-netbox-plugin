@@ -1633,3 +1633,2484 @@ class ServerDrivenWiringIntegrationTestCase(TestCase):
         self.assertEqual(xcvr_profile.schema, xcvr_schema_before, 'shared transceiver schema altered')
         nic_type.refresh_from_db()
         self.assertEqual(nic_type.attribute_data, {'hnp_nic_cage_map': cage_map})
+
+    # ------------------- CAGE39: shared NIC cage feature coverage (T01-T12, appended)
+    # Fictional test-owned profiles/types only; no real-hardware/catalog qualification.
+
+    C39_MAP = {
+        'version': 1,
+        'ports': [{'cage': 'cage-0', 'logical_lane': 0}, {'cage': 'cage-0', 'logical_lane': 1}],
+        'cages': {'cage-0': {'breakout_id': '2x400g'}},
+    }
+    C39_OPTIC_ATTRS = {
+        'cage_type': 'OSFP', 'medium': 'SMF', 'connector': 'MPO-12', 'standard': '400GBASE-DR4',
+        'reach_class': 'DR', 'lane_count': 8, 'host_serdes_gbps_per_lane': 100,
+        'breakout_topology': '2x400g',
+    }
+
+    def _c39_fixture(self, case, weak_schema=False):
+        """AP-equivalent declared fixture (BREAKOUT, 4 servers, one 2-port mapped NIC/cage),
+        through scoped populate_bays and real calculation; NOT generated."""
+        import copy
+
+        from dcim.models import ModuleTypeProfile
+        from netbox_hedgehog.management.commands.populate_transceiver_bays import populate_bays
+
+        self._build(case, 4, BREAKOUT)
+        nic_type = self.nic_module_type
+        InterfaceTemplate.objects.create(module_type=nic_type, name='p1', type=T400)
+        if weak_schema:
+            schema = {'type': 'object', 'properties': {'hnp_nic_cage_map': {}}}
+        else:
+            schema = {'type': 'object', 'required': ['hnp_nic_cage_map'],
+                      'properties': {'hnp_nic_cage_map': {
+                          'type': 'object', 'required': ['version', 'ports', 'cages'],
+                          'additionalProperties': False,
+                          'properties': {'version': {'type': 'integer', 'enum': [1]},
+                                         'ports': {'type': 'array', 'minItems': 1},
+                                         'cages': {'type': 'object', 'minProperties': 1}}}}}
+        profile = ModuleTypeProfile(name=f'srv29-{case}-nic-profile', schema=schema)
+        profile.full_clean()
+        profile.save()
+        nic_type.profile = profile
+        nic_type.attribute_data = {'hnp_nic_cage_map': copy.deepcopy(self.C39_MAP)}
+        nic_type.full_clean()
+        nic_type.save()
+        xcvr_profile = ModuleTypeProfile.objects.get(name='Network Transceiver')
+        optic = ModuleType(manufacturer=_manufacturer(), model=f'srv29-{case}-fictional-osfp-2x400g',
+                           profile=xcvr_profile, attribute_data=dict(self.C39_OPTIC_ATTRS))
+        optic.full_clean()
+        optic.save()
+        conn = PlanServerConnection.objects.get(server_class=self.server_class)
+        conn.ports_per_connection = 2
+        conn.transceiver_module_type = optic
+        conn.full_clean()
+        conn.save()
+        zone = SwitchPortZone.objects.get(switch_class=self.leaf_class, zone_type=PortZoneTypeChoices.SERVER)
+        zone.transceiver_module_type = optic
+        zone.full_clean()
+        zone.save()
+        populate_bays(device_types=[self.leaf_device_type, self.spine_device_type], module_types=[nic_type])
+        self._calculate(leaves=4, spines=2)
+        self.c39 = {'nic_type': nic_type, 'optic': optic, 'profile': profile, 'conn': conn, 'zone': zone}
+        return self.c39
+
+    def _c39_generate(self):
+        self._capture_baseline()
+        self._generate(devices_total=10, generated_interfaces=40, cables_total=24)
+
+    def _c39_set_map(self, value, key_present=True):
+        data = {} if not key_present else {'hnp_nic_cage_map': value}
+        ModuleType.objects.filter(pk=self.c39['nic_type'].pk).update(attribute_data=data)
+
+    def _c39_parse_code(self, expected_code):
+        from netbox_hedgehog.services.nic_cage_layout import parse_layout
+
+        mt = ModuleType.objects.select_related('profile').get(pk=self.c39['nic_type'].pk)
+        with self.assertRaises(ValidationError) as ctx:
+            parse_layout(mt)
+        self.assertIn(f'[{expected_code}]', ' '.join(ctx.exception.messages))
+
+    def _c39_prewrite_reject(self, *fragments):
+        """Public generate_all must reject with ZERO attempted mutations; full rows preserved."""
+        self._capture_baseline()
+        generator = DeviceGenerator(self.plan)  # constructor Site/Tag setup outside guarantee
+        before = self._db_snapshot()
+        message = self._reject_without_mutation(generator)
+        for fragment in fragments:
+            self.assertIn(fragment, message)
+        self.assertEqual(self._db_snapshot(), before)
+        for model in INVENTORY_MODELS:
+            self.assertEqual(_pks(model), self.baseline[model], f'{model.__name__} inventory changed')
+        return message
+
+    def _c39_physical(self):
+        """Per-server {name: (nic count, nested cage names TUPLE, optic count)} from actual ORM graph.
+
+        Values are fully immutable (review03 P2-1: a list inside made set()/literal sets raise
+        TypeError). Only servers actually generated appear, so complete dict equality against
+        ``_c39_assert_physical``'s declared names detects a missing server."""
+        _, _, _, modules, bays = self._new_inventory()
+        out = {}
+        server_names = self._names(4, 4, 2)[0]
+        devices = {d.pk: d.name for d in Device.objects.filter(name__in=server_names)}
+        for pk, name in devices.items():
+            dev_bays = [b for b in bays if b.device_id == pk]
+            dev_mods = [m for m in modules if m.device_id == pk]
+            nested = tuple(sorted(b.name for b in dev_bays if b.module_id is not None))
+            nics = [m for m in dev_mods if m.module_type_id == self.c39['nic_type'].pk]
+            optics = [m for m in dev_mods if m.module_type_id == self.c39['optic'].pk]
+            out[name] = (len(nics), nested, len(optics))
+        return out
+
+    def _c39_assert_physical(self, nested, optics):
+        """Complete per-device equality: EVERY declared server (explicit literal ordinals 1..4)
+        has exactly one NIC, exactly the literal nested cage names and the literal optic count.
+        No set-collapse: a missing/extra server or a single wrong device fails."""
+        expected = {f'srv29-{self.case}-server-{i:02d}': (1, tuple(nested), optics) for i in (1, 2, 3, 4)}
+        physical = self._c39_physical()
+        self.assertEqual(physical, expected, physical)
+        return physical
+
+    @staticmethod
+    def _c39_rehash(ext):
+        from netbox_hedgehog.services.nic_cage_layout import canonical_sha256
+
+        for nic in ext['nics']:
+            nic['evidence_sha256'] = canonical_sha256({k: v for k, v in nic.items() if k != 'evidence_sha256'})
+        ext['evidence_sha256'] = canonical_sha256({k: v for k, v in ext.items() if k != 'evidence_sha256'})
+        return ext
+
+    def test_c39_t01_shared_cage_generation_one_optic_and_valid_snapshot(self):
+        """T01/C05/C06/C08/C09: one NIC, two logical links, one physical cage + one optic."""
+        from netbox_hedgehog.models.topology_planning.generation import SYNC_IN_SYNC
+        from netbox_hedgehog.services.nic_cage_layout import SNAPSHOT_KEY, extension_errors
+        from netbox_hedgehog.services.bom_export import get_plan_bom
+        from netbox_hedgehog.utils.snapshot_builder import build_plan_snapshot
+
+        self._c39_fixture('c39a')
+        self._c39_generate()
+        self._c39_assert_physical(('cage-0',), 1)
+        bom = get_plan_bom(self.plan)
+        self.assertEqual(
+            {(i.section, i.module_type_id): i.quantity for i in bom.line_items},
+            {('nic', self.c39['nic_type'].pk): 4, ('server_transceiver', self.c39['optic'].pk): 4,
+             ('switch_transceiver', self.c39['optic'].pk): 4},
+        )
+        state = GenerationState.objects.get(plan=self.plan)
+        self.assertIn(SNAPSHOT_KEY, state.snapshot)
+        self.assertEqual(extension_errors(state.snapshot[SNAPSHOT_KEY], base_snapshot=state.snapshot), [])
+        self.assertEqual(state.snapshot[SNAPSHOT_KEY], build_plan_snapshot(self.plan)[SNAPSHOT_KEY])
+        self.assertFalse(state.is_dirty())
+        self.assertEqual(state.sync_display_state(), SYNC_IN_SYNC)
+
+    def test_c39_t05_typed_malformed_layouts_never_fall_back(self):
+        """T05: weak schema stores malformed maps (direct ORM); strong parser rejects each."""
+        import copy
+
+        self._c39_fixture('c39b', weak_schema=True)
+        good = copy.deepcopy(self.C39_MAP)
+
+        def variant(**changes):
+            value = copy.deepcopy(good)
+            value.update(changes)
+            return value
+
+        cases = [
+            ('null', None, 'nic_layout_shape'),
+            ('empty', {}, 'nic_layout_shape'),
+            ('extra_root', variant(extra=1), 'nic_layout_shape'),
+            ('version_bool', variant(version=True), 'nic_layout_version'),
+            ('version_2', variant(version=2), 'nic_layout_version'),
+            ('ports_dict', variant(ports={}), 'nic_layout_ports'),
+            ('cages_list', variant(cages=[]), 'nic_layout_cages'),
+            ('port_count', variant(ports=good['ports'][:1]), 'nic_layout_port_count'),
+            ('lane_negative', variant(ports=[{'cage': 'cage-0', 'logical_lane': -1}, good['ports'][1]]),
+             'nic_layout_port_lane'),
+            ('lane_bool', variant(ports=[{'cage': 'cage-0', 'logical_lane': False}, good['ports'][1]]),
+             'nic_layout_port_lane'),
+            ('lane_over_mode', variant(ports=[good['ports'][0], {'cage': 'cage-0', 'logical_lane': 2}]),
+             'nic_layout_port_lane'),
+            ('port_extra_field', variant(ports=[dict(good['ports'][0], x=1), good['ports'][1]]),
+             'nic_layout_port_shape'),
+            ('duplicate_channel', variant(ports=[good['ports'][0], good['ports'][0]]),
+             'nic_layout_duplicate_channel'),
+            ('unknown_mode', variant(cages={'cage-0': {'breakout_id': 'srv29-no-such-mode'}}),
+             'nic_layout_unknown_mode'),
+            ('cage_body_extra', variant(cages={'cage-0': {'breakout_id': '2x400g', 'x': 1}}),
+             'nic_layout_cage_body'),
+            ('substitution_name', {'version': 1,
+                                   'ports': [{'cage': '{module}', 'logical_lane': 0},
+                                             {'cage': '{module}', 'logical_lane': 1}],
+                                   'cages': {'{module}': {'breakout_id': '2x400g'}}}, 'nic_layout_cage_name'),
+            ('trim_unstable_name', {'version': 1,
+                                    'ports': [{'cage': 'cage-0 ', 'logical_lane': 0},
+                                              {'cage': 'cage-0 ', 'logical_lane': 1}],
+                                    'cages': {'cage-0 ': {'breakout_id': '2x400g'}}}, 'nic_layout_cage_name'),
+            ('unreferenced_cage', variant(cages={'cage-0': {'breakout_id': '2x400g'},
+                                                 'cage-9': {'breakout_id': '2x400g'}}),
+             'nic_layout_unreferenced_cage'),
+            ('undeclared_cage', variant(ports=[good['ports'][0], {'cage': 'cage-x', 'logical_lane': 1}]),
+             'nic_layout_port_cage'),
+        ]
+        for label, value, code in cases:
+            with self.subTest(label):
+                self._c39_set_map(value)
+                self._c39_parse_code(code)
+                self.assertIsNone(GenerationState.objects.filter(plan=self.plan).first())
+        # No silent fallback at the public generator either (one representative, zero writes).
+        self._c39_set_map(variant(version=2))
+        self._c39_prewrite_reject('[nic_layout_version]')
+
+    def test_c39_t05_profile_failures_profileless_weak_and_malformed_stored_schema(self):
+        """T05/T08/L2: profileless ORM, undeclared property, schema mismatch, malformed stored schema."""
+        from dcim.models import ModuleTypeProfile
+
+        fixture = self._c39_fixture('c39c')
+        ModuleType.objects.filter(pk=fixture['nic_type'].pk).update(profile=None)
+        self._c39_parse_code('nic_layout_profile_missing')
+        other = ModuleTypeProfile.objects.create(name='srv29-c39c-undeclared',
+                                                 schema={'type': 'object', 'properties': {'x': {}}})
+        ModuleType.objects.filter(pk=fixture['nic_type'].pk).update(profile=other)
+        self._c39_parse_code('nic_layout_profile_schema')
+        ModuleType.objects.filter(pk=fixture['nic_type'].pk).update(profile=fixture['profile'])
+        self._c39_set_map(dict(self.C39_MAP, version=7))  # violates strict profile enum
+        self._c39_parse_code('nic_layout_profile_schema_invalid')
+        self._c39_set_map(self.C39_MAP)
+        # Stored profile schema itself malformed (jsonschema.SchemaError) -> typed error, not crash.
+        ModuleTypeProfile.objects.filter(pk=fixture['profile'].pk).update(
+            schema={'type': 'srv29-not-a-type', 'properties': {'hnp_nic_cage_map': {}}})
+        self._c39_parse_code('nic_layout_profile_schema_invalid')
+        message = self._c39_prewrite_reject('[nic_layout_profile_schema_invalid]', 'malformed')
+        self.assertIn(self.c39['nic_type'].model, message)
+
+    def test_c39_t06_v7_reach_medium_conflict_rejected_before_writes(self):
+        """T06/C05/L1/review P2-2: existing V7 invariant enforced on mapped active optic."""
+        fixture = self._c39_fixture('c39d')
+        ModuleType.objects.filter(pk=fixture['optic'].pk).update(
+            attribute_data=dict(self.C39_OPTIC_ATTRS, reach_class='DAC', medium='SMF'))
+        self._c39_prewrite_reject('[nic_layout_optic_reach_medium]', 'DAC')
+        self.assertFalse(GenerationState.objects.filter(plan=self.plan).exists())
+
+    def test_c39_t06_cross_owner_connection_rejected_before_writes(self):
+        """T06/review P2-5: ORM connection of class A pointing at class B's mapped NIC."""
+        fixture = self._c39_fixture('c39e')
+        other = PlanServerClass.objects.create(
+            plan=self.plan, server_class_id='srv29-c39e-other', server_device_type=self.server_device_type,
+            quantity=0,
+        )
+        other_nic = PlanServerNIC.objects.create(server_class=other, nic_id=NIC_ID, module_type=fixture['nic_type'])
+        PlanServerConnection.objects.filter(pk=fixture['conn'].pk).update(nic=other_nic)
+        message = self._c39_prewrite_reject('[nic_layout_connection_owner]', 'srv29-c39e-other')
+        self.assertIn(self.server_class.server_class_id, message)
+
+    def test_c39_t06_inactive_class_structural_evidence_and_no_required_optic(self):
+        """T06/review P2-4: inactive mapped class needs valid speed; null optic allowed."""
+        from netbox_hedgehog.services.nic_cage_layout import capture_plan_layouts, extension_errors
+
+        fixture = self._c39_fixture('c39f')
+        idle = PlanServerClass.objects.create(
+            plan=self.plan, server_class_id='srv29-c39f-idle', server_device_type=self.server_device_type,
+            quantity=0,
+        )
+        idle_nic = PlanServerNIC.objects.create(server_class=idle, nic_id=NIC_ID, module_type=fixture['nic_type'])
+        conn = PlanServerConnection.objects.create(
+            server_class=idle, connection_id='srv29-c39f-idle-conn', nic=idle_nic, port_index=0,
+            ports_per_connection=1, hedgehog_conn_type=ConnectionTypeChoices.UNBUNDLED,
+            distribution=ConnectionDistributionChoices.SAME_SWITCH, target_zone=fixture['zone'], speed=400,
+        )
+        capture = capture_plan_layouts(self.plan)  # null optic on inactive class admitted
+        self.assertEqual(extension_errors(capture.extension, active_classes={self.server_class.server_class_id}), [])
+        self.assertTrue(extension_errors(capture.extension), 'strict all-active view must need the optic')
+        PlanServerConnection.objects.filter(pk=conn.pk).update(speed=0)
+        self._c39_prewrite_reject('[nic_layout_connection_speed]', 'srv29-c39f-idle-conn')
+        self.assertFalse(GenerationState.objects.filter(plan=self.plan).exists())
+
+    def _c39_catalog_snapshot(self):
+        """Broader full-row evidence: existing _a35_snapshot (inventory, terminations, tags,
+        state, plan/server/NIC/connection/zone intent, extensions, BreakoutOption, DeviceType,
+        ModuleType, InterfaceTemplate) PLUS ModuleBayTemplate and ModuleTypeProfile rows."""
+        from dcim.models import ModuleBayTemplate, ModuleTypeProfile
+
+        snap = self._a35_snapshot()
+        for model in (ModuleBayTemplate, ModuleTypeProfile):
+            snap[model.__name__] = list(model.objects.order_by('pk').values())
+        return snap
+
+    def _c39_public_reject_after_generation(self, code, prior):
+        """Public generate_all AFTER a valid prior generation, under the existing mutation-
+        denying wrapper: exact typed code, zero attempted mutations, and every full row
+        (old generated inventory, GenerationState, the bad current intent, catalog) intact."""
+        generator = DeviceGenerator(self.plan)  # constructor Site/Tag setup outside the proof
+        before = self._c39_catalog_snapshot()
+        message = self._reject_without_mutation(generator)
+        self.assertIn(f'[{code}]', message)
+        self.assertEqual(self._c39_catalog_snapshot(), before, f'{code}: persisted rows changed')
+        for model, pks in prior.items():
+            self.assertTrue(pks <= _pks(model), f'{code}: prior generated {model.__name__} lost')
+        state = GenerationState.objects.get(plan=self.plan)
+        self.assertEqual(state.status, GenerationStatusChoices.GENERATED, code)
+        self.assertEqual((state.device_count, state.interface_count, state.cable_count), (10, 40, 24), code)
+        return message
+
+    def test_c39_t06_used_port_matrix_specific_preflight_errors(self):
+        """T06/review02 P2-3: range, null optic, speed, optic mode, collision, two CONFLICTING
+        non-null optic FKs, BreakoutOption capacity and missing bay template, each through
+        UNMOCKED public generate_all after a valid prior mapped generation: exact code, SQL
+        mutation attempts denied, full prior inventory/state + bad intent + catalog preserved."""
+        from dcim.models import ModuleBayTemplate, ModuleTypeProfile
+
+        fixture = self._c39_fixture('c39g')
+        conn, optic = fixture['conn'], fixture['optic']
+        other_optic = ModuleType(manufacturer=_manufacturer(), model='srv29-c39g-fictional-osfp-2x400g-b',
+                                 profile=ModuleTypeProfile.objects.get(name='Network Transceiver'),
+                                 attribute_data=dict(self.C39_OPTIC_ATTRS))
+        other_optic.full_clean()
+        other_optic.save()
+        # Positive generation FIRST: proves the fixture valid and creates the prior inventory.
+        self._c39_generate()
+        prior = {model: _pks(model) - self.baseline[model] for model in INVENTORY_MODELS}
+        for model, pks in prior.items():
+            self.assertTrue(pks, f'positive generation produced no {model.__name__}')
+        self._c39_assert_physical(('cage-0',), 1)
+        conns = PlanServerConnection.objects.filter(pk=conn.pk)
+        optics = ModuleType.objects.filter(pk=optic.pk)
+        breakout = BreakoutOption.objects.filter(breakout_id='2x400g')
+        self.assertEqual(list(breakout.values_list('from_speed', 'logical_ports', 'logical_speed')), [(800, 2, 400)])
+
+        with self.subTest('range'):
+            conns.update(port_index=1)  # ports 1..2 of a 2-port NIC
+            self._c39_public_reject_after_generation('nic_layout_index_range', prior)
+            conns.update(port_index=0)
+        with self.subTest('null_optic'):
+            conns.update(transceiver_module_type=None)
+            self._c39_public_reject_after_generation('nic_layout_null_optic', prior)
+            conns.update(transceiver_module_type=optic)
+        with self.subTest('speed'):
+            conns.update(speed=800)
+            self._c39_public_reject_after_generation('nic_layout_speed', prior)
+            conns.update(speed=400)
+        with self.subTest('optic_mode'):
+            optics.update(attribute_data=dict(self.C39_OPTIC_ATTRS, breakout_topology='1x800g'))
+            self._c39_public_reject_after_generation('nic_layout_optic_mode', prior)
+            optics.update(attribute_data=dict(self.C39_OPTIC_ATTRS))
+        nic = PlanServerNIC.objects.get(server_class=self.server_class)
+        conns.update(ports_per_connection=1)
+        second = PlanServerConnection.objects.create(
+            server_class=self.server_class, connection_id='srv29-c39g-conn2', nic=nic, port_index=0,
+            ports_per_connection=1, hedgehog_conn_type=ConnectionTypeChoices.UNBUNDLED,
+            distribution=ConnectionDistributionChoices.SAME_SWITCH, target_zone=fixture['zone'], speed=400,
+            transceiver_module_type=optic,
+        )
+        with self.subTest('collision'):
+            self._c39_public_reject_after_generation('nic_layout_port_collision', prior)
+        with self.subTest('conflicting_nonnull_optics'):
+            # Channel 1 of the same cage, DIFFERENT non-null optic FK than channel 0.
+            PlanServerConnection.objects.filter(pk=second.pk).update(port_index=1, transceiver_module_type=other_optic)
+            self.assertEqual(
+                sorted(PlanServerConnection.objects.filter(server_class=self.server_class)
+                       .values_list('port_index', 'transceiver_module_type_id')),
+                [(0, optic.pk), (1, other_optic.pk)])
+            self._c39_public_reject_after_generation('nic_layout_conflicting_optic', prior)
+        second.delete()
+        conns.update(ports_per_connection=2)
+        with self.subTest('breakout_capacity'):
+            # Selected mode declares 2 x 400 on an 800 cage; shrinking from_speed makes it incoherent.
+            breakout.update(from_speed=400)
+            self._c39_public_reject_after_generation('nic_layout_mode_capacity', prior)
+            breakout.update(from_speed=800)
+        with self.subTest('missing_bay_template'):
+            ModuleBayTemplate.objects.filter(module_type=fixture['nic_type'], name='cage-0').delete()
+            self._c39_public_reject_after_generation('nic_layout_missing_bay_template', prior)
+
+    def test_c39_t06_weak_schema_unhashable_optic_attrs_typed_rejection(self):
+        """Review02 P2-1 regression: a weak (object-accepting) schema on the 'Network Transceiver'
+        profile lets container/non-string reach_class/medium be stored; public generate_all must
+        raise the typed nic_layout_optic_attr_type error (never TypeError) with zero attempted
+        mutations. Existing scalar V7 outcome and valid scalar generation are unchanged. The
+        shared profile schema change is an ORM update inside this test's rolled-back transaction."""
+        from dcim.models import ModuleTypeProfile
+
+        fixture = self._c39_fixture('c39w')
+        optic = fixture['optic']
+        xcvr = ModuleTypeProfile.objects.get(name='Network Transceiver')
+        ModuleTypeProfile.objects.filter(pk=xcvr.pk).update(schema={'type': 'object'})
+        optics = ModuleType.objects.filter(pk=optic.pk)
+        for label, change in (('reach_class_list', {'reach_class': ['DR']}),
+                              ('reach_class_dict', {'reach_class': {'DR': True}}),
+                              ('medium_list', {'medium': ['SMF']}),
+                              ('medium_int', {'medium': 7})):
+            with self.subTest(label):
+                optics.update(attribute_data=dict(self.C39_OPTIC_ATTRS, **change))
+                message = self._c39_prewrite_reject('[nic_layout_optic_attr_type]')
+                self.assertIn(optic.model, message)
+                self.assertFalse(GenerationState.objects.filter(plan=self.plan).exists())
+        with self.subTest('scalar_v7_conflict_unchanged'):
+            optics.update(attribute_data=dict(self.C39_OPTIC_ATTRS, reach_class='DAC', medium='SMF'))
+            self._c39_prewrite_reject('[nic_layout_optic_reach_medium]')
+        optics.update(attribute_data=dict(self.C39_OPTIC_ATTRS))
+        self._c39_generate()
+        self._c39_assert_physical(('cage-0',), 1)
+
+    def test_c39_t11_rehashed_mapped_module_token_template_incomplete_not_in_sync(self):
+        """Review02 P2-2 regression: valid mapped evidence whose interface-template name is changed
+        to literal '{module}-p0' and RE-HASHED is invalid (layout_template_module_token); identical
+        such snapshots are never in sync through the public methods. Live parse also rejects it."""
+        import copy
+
+        from netbox_hedgehog.models.topology_planning.generation import SYNC_SNAPSHOT_INCOMPLETE
+        from netbox_hedgehog.services.nic_cage_layout import SNAPSHOT_KEY, extension_errors
+        from netbox_hedgehog.utils.snapshot_builder import build_plan_snapshot
+
+        fixture = self._c39_fixture('c39u')
+        snapshot = build_plan_snapshot(self.plan)
+        self.assertEqual(extension_errors(snapshot[SNAPSHOT_KEY], base_snapshot=snapshot), [])
+        bad = copy.deepcopy(snapshot)
+        names = [t['name'] for t in bad[SNAPSHOT_KEY]['nics'][0]['interface_templates']]
+        self.assertEqual(names, ['p0', 'p1'])
+        bad[SNAPSHOT_KEY]['nics'][0]['interface_templates'][0]['name'] = '{module}-p0'
+        self._c39_rehash(bad[SNAPSHOT_KEY])
+        self.assertEqual(extension_errors(bad[SNAPSHOT_KEY], base_snapshot=bad), ['layout_template_module_token'])
+        probe = GenerationState(plan=self.plan, device_count=0, interface_count=0, cable_count=0,
+                                snapshot=copy.deepcopy(bad))
+        self.assertTrue(probe.is_dirty())
+        self.assertEqual(probe.sync_display_state(current=copy.deepcopy(bad)), SYNC_SNAPSHOT_INCOMPLETE)
+        InterfaceTemplate.objects.filter(module_type=fixture['nic_type'], name='p0').update(name='{module}-p0')
+        self._c39_parse_code('nic_layout_template_module_token')
+
+    def test_c39_t07_population_prewrite_declared_cages_idempotent_preserves_extras(self):
+        """T07/C04/review02 P2-4: invalid later layout in the passed scope -> specific layout
+        error with ZERO attempted SQL mutations (execute_wrapper denial, not a rollback-only
+        row comparison); mapped creation only declared cages, idempotent, extras/unpassed kept."""
+        from dcim.models import ModuleBayTemplate, ModuleTypeProfile
+        from netbox_hedgehog.management.commands.populate_transceiver_bays import populate_bays
+
+        fixture = self._c39_fixture('c39h')
+        nic_type = ModuleType.objects.select_related('profile').get(pk=fixture['nic_type'].pk)
+        self.assertEqual(sorted(ModuleBayTemplate.objects.filter(module_type=nic_type).values_list('name', flat=True)),
+                         ['cage-0'], 'mapped population creates declared cages only')
+        extra = ModuleBayTemplate.objects.create(module_type=nic_type, name='srv29-historical-extra')
+        weak = ModuleTypeProfile(name='srv29-c39h-weak-profile',
+                                 schema={'type': 'object', 'properties': {'hnp_nic_cage_map': {}}})
+        weak.full_clean()
+        weak.save()
+        bad = ModuleType.objects.create(manufacturer=_manufacturer(), model='srv29-c39h-bad-nic', profile=weak)
+        InterfaceTemplate.objects.create(module_type=bad, name='p0', type=T400)
+        bad_map = dict(self.C39_MAP, version=2)  # exact root shape, unknown version
+        ModuleType.objects.filter(pk=bad.pk).update(attribute_data={'hnp_nic_cage_map': bad_map})
+        bad = ModuleType.objects.select_related('profile').get(pk=bad.pk)  # setup: the stored row
+        self.assertEqual(bad.attribute_data, {'hnp_nic_cage_map': bad_map})
+        unpassed = ModuleType.objects.create(manufacturer=_manufacturer(), model='srv29-c39h-unpassed-nic')
+        InterfaceTemplate.objects.create(module_type=unpassed, name='p0', type=T400)
+
+        def rows():
+            return {m.__name__: list(m.objects.order_by('pk').values())
+                    for m in (ModuleBayTemplate, ModuleType, ModuleTypeProfile, InterfaceTemplate)}
+
+        before = rows()
+        attempts = []
+
+        def deny(execute, sql, params, many, context):
+            text = sql.strip() if isinstance(sql, str) else str(sql).strip()
+            head = text.split(None, 1)[0].upper() if text else ''
+            if head not in ('SELECT', 'SAVEPOINT', 'RELEASE', 'ROLLBACK'):
+                attempts.append(text[:200])
+                raise AssertionError(f'mutation/unexpected SQL during population admission: {text[:200]}')
+            return execute(sql, params, many, context)
+
+        with connection.execute_wrapper(deny):
+            with self.assertRaises(ValidationError) as ctx:
+                populate_bays(device_types=[self.leaf_device_type], module_types=[nic_type, bad])
+        self.assertEqual(attempts, [], 'population attempted SQL mutation before layout rejection')
+        message = ' '.join(ctx.exception.messages)
+        self.assertIn('[nic_layout_version]', message)
+        self.assertIn('srv29-c39h-bad-nic', message)
+        self.assertEqual(rows(), before, 'population changed rows')
+        first = populate_bays(device_types=[self.leaf_device_type], module_types=[nic_type])
+        second = populate_bays(device_types=[self.leaf_device_type], module_types=[nic_type])
+        self.assertEqual((first['nic_added'], second['nic_added']), (0, 0), 'declared cage already present')
+        self.assertEqual(second['switch_added'], 0)
+        self.assertEqual(
+            sorted(ModuleBayTemplate.objects.filter(module_type=nic_type).values_list('name', flat=True)),
+            ['cage-0', 'srv29-historical-extra'], 'idempotent; extra preserved; no per-logical cage-1',
+        )
+        self.assertTrue(ModuleBayTemplate.objects.filter(pk=extra.pk).exists())
+        self.assertFalse(ModuleBayTemplate.objects.filter(module_type=bad).exists(), 'invalid type populated')
+        self.assertFalse(ModuleBayTemplate.objects.filter(module_type=unpassed).exists(), 'unpassed type reached')
+        self.assertEqual(ModuleType.objects.get(pk=nic_type.pk).attribute_data, {'hnp_nic_cage_map': self.C39_MAP})
+
+    def test_c39_t04_legacy_absent_key_two_independent_cages_and_no_snapshot_key(self):
+        """T04: key absent -> unchanged per-logical-port cages/optics; no extension key."""
+        from netbox_hedgehog.management.commands.populate_transceiver_bays import populate_bays
+        from netbox_hedgehog.services.nic_cage_layout import SNAPSHOT_KEY
+        from dcim.models import ModuleTypeProfile
+
+        self._build('c39i', 4, BREAKOUT)
+        nic_type = self.nic_module_type
+        InterfaceTemplate.objects.create(module_type=nic_type, name='p1', type=T400)
+        optic = ModuleType(manufacturer=_manufacturer(), model='srv29-c39i-fictional-osfp-2x400g',
+                           profile=ModuleTypeProfile.objects.get(name='Network Transceiver'),
+                           attribute_data=dict(self.C39_OPTIC_ATTRS))
+        optic.full_clean()
+        optic.save()
+        conn = PlanServerConnection.objects.get(server_class=self.server_class)
+        conn.ports_per_connection = 2
+        conn.transceiver_module_type = optic
+        conn.full_clean()
+        conn.save()
+        zone = SwitchPortZone.objects.get(switch_class=self.leaf_class, zone_type=PortZoneTypeChoices.SERVER)
+        zone.transceiver_module_type = optic
+        zone.full_clean()
+        zone.save()
+        populate_bays(device_types=[self.leaf_device_type, self.spine_device_type], module_types=[nic_type])
+        self._calculate(leaves=4, spines=2)
+        self.c39 = {'nic_type': nic_type, 'optic': optic}
+        self._c39_generate()
+        self._c39_assert_physical(('cage-0', 'cage-1'), 2)
+        state = GenerationState.objects.get(plan=self.plan)
+        self.assertNotIn(SNAPSHOT_KEY, state.snapshot)
+        self.assertEqual(sorted(state.snapshot), ['connections', 'mclag_domains', 'port_zones',
+                                                  'server_classes', 'switch_classes'])
+        self.assertFalse(state.is_dirty())
+
+    def test_c39_t10_regeneration_removes_all_old_modules_and_keeps_bom(self):
+        """T10/C09: repeated public generation -> no stale Module/ModuleBay PKs, same BOM."""
+        from netbox_hedgehog.services.bom_export import get_plan_bom
+
+        fixture = self._c39_fixture('c39j')
+        self._c39_generate()
+        _, _, _, first_modules, first_bays = self._new_inventory()
+        first_module_pks = {m.pk for m in first_modules}
+        first_bay_pks = {b.pk for b in first_bays}
+        self.assertEqual(len(first_module_pks), 12)
+        self._generate(devices_total=10, generated_interfaces=40, cables_total=24)
+        _, _, _, modules, bays = self._new_inventory()
+        self.assertFalse(Module.objects.filter(pk__in=first_module_pks).exists(), 'old Module PK remains')
+        self.assertFalse(ModuleBay.objects.filter(pk__in=first_bay_pks).exists(), 'old ModuleBay PK remains')
+        self.assertEqual(Counter(m.module_type_id for m in modules),
+                         Counter({fixture['nic_type'].pk: 4, fixture['optic'].pk: 8}))
+        for module in modules:
+            if module.module_type_id != fixture['optic'].pk or module.module_bay.module_id is None:
+                continue
+            parent_nic = module.module_bay.module
+            self.assertEqual(parent_nic.module_type_id, fixture['nic_type'].pk)
+            self.assertEqual(parent_nic.device_id, module.device_id)
+            self.assertIsNone(parent_nic.module_bay.module_id, 'NIC installed in a nested bay')
+        self._c39_assert_physical(('cage-0',), 1)
+        bom = get_plan_bom(self.plan)
+        self.assertEqual(
+            {(i.section, i.module_type_id): i.quantity for i in bom.line_items},
+            {('nic', fixture['nic_type'].pk): 4, ('server_transceiver', fixture['optic'].pk): 4,
+             ('switch_transceiver', fixture['optic'].pk): 4},
+        )
+
+    def test_c39_t11_validator_rejects_rehashed_internally_invalid_evidence(self):
+        """T11/review P2-3/L3: corrupt relationships, RE-HASH digests, expect specific invalid."""
+        import copy
+
+        from netbox_hedgehog.services.nic_cage_layout import capture_plan_layouts, extension_errors
+
+        self._c39_fixture('c39k')
+        valid = capture_plan_layouts(self.plan).extension
+        self.assertEqual(extension_errors(valid), [])
+
+        def mutate(fn):
+            ext = copy.deepcopy(valid)
+            fn(ext)
+            return self._c39_rehash(ext)
+
+        def nic(ext):
+            return ext['nics'][0]
+
+        def add_cage(ext):
+            n = nic(ext)
+            n['layout']['cages'].append({'cage': 'cage-9', 'breakout_id': '2x400g'})
+            n['modes'].append(dict(n['modes'][0], cage='cage-9'))
+
+        def overlap(ext):
+            n = nic(ext)
+            extra = dict(n['connections'][0], connection_id='srv29-c39k-dup', ports_per_connection=1)
+            n['connections'].append(extra)
+            ext['expected_connection_keys'] = sorted(ext['expected_connection_keys']
+                                                     + [[extra['server_class_id'], extra['connection_id']]])
+
+        def swap_names(ext, name):
+            n = nic(ext)
+            for row in n['layout']['ports'] + n['layout']['cages'] + n['modes']:
+                row['cage'] = name
+
+        cases = [
+            ('unreferenced_cage', add_cage, 'layout_unreferenced_cage'),
+            ('consumed_cage_bay_removed', lambda e: nic(e).update(bay_templates=[]), 'used_cage_missing_bay'),
+            ('optic_mode_mismatch', lambda e: nic(e)['optics'][0].update(breakout_topology='1x800g'),
+             'used_cage_optic_mode'),
+            ('overlapping_ranges', overlap, 'connection_index_collision'),
+            ('speed_vs_mode', lambda e: nic(e)['connections'][0].update(speed=800), 'used_cage_speed'),
+            ('empty_geometry', lambda e: nic(e)['layout'].update(ports=[]), 'layout_empty_geometry'),
+            ('substitution_name', lambda e: swap_names(e, '{module}'), 'layout_cage_name'),
+            ('trim_unstable_name', lambda e: swap_names(e, 'cage-0 '), 'layout_cage_name'),
+            ('null_target_zone', lambda e: nic(e)['connections'][0].update(target_zone_id=None),
+             'connection_fields'),
+            ('cross_owner', lambda e: nic(e)['connections'][0].update(server_class_id='srv29-other'),
+             'connection_owner'),
+            ('omitted_nic', lambda e: e.update(nics=[]), 'nic_completeness'),
+            ('duplicate_nic', lambda e: e['nics'].append(copy.deepcopy(e['nics'][0])), 'nic_completeness'),
+            ('empty_manifest', lambda e: e.update(expected_nic_keys=[], nics=[]), 'nic_manifest_empty'),
+            ('omitted_connection', lambda e: nic(e).update(connections=[], optics=[]), 'connection_completeness'),
+            ('omitted_optic', lambda e: nic(e).update(optics=[]), 'optic_coverage'),
+            ('omitted_template', lambda e: nic(e).update(interface_templates=nic(e)['interface_templates'][:1]),
+             'layout_index'),
+            ('omitted_mode', lambda e: nic(e).update(modes=[]), 'mode_coverage'),
+            ('version_bool', lambda e: e.update(version=True), 'version'),
+            ('version_unknown', lambda e: e.update(version=2), 'version'),
+            ('bool_module_type_id', lambda e: nic(e).update(module_type_id=True), 'nic_fields'),
+        ]
+        for label, fn, code in cases:
+            with self.subTest(label):
+                self.assertEqual(extension_errors(mutate(fn)), [code])
+        marker = {'version': 1, 'status': 'invalid', 'errors': ['nic_layout_version']}
+        self.assertEqual(extension_errors(marker), ['invalid_marker'])
+        tampered = copy.deepcopy(valid)
+        tampered['nics'][0]['connections'][0]['target_zone_id'] += 1000  # semantically valid, NOT rehashed
+        self.assertEqual(extension_errors(tampered), ['nic_digest_mismatch'])
+
+    def test_c39_t11_public_sync_methods_invalid_equal_fk_attrs_ports_swap_last_map(self):
+        """T11: is_dirty + sync_display_state for invalid-equal, unchanged-FK attribute/mode,
+        ordered ports swap and last-map removal; read-only (state row unchanged)."""
+        import copy
+
+        from netbox_hedgehog.models.topology_planning.generation import (
+            SYNC_CHANGED,
+            SYNC_IN_SYNC,
+            SYNC_SNAPSHOT_INCOMPLETE,
+        )
+        from netbox_hedgehog.services.nic_cage_layout import SNAPSHOT_KEY
+        from netbox_hedgehog.utils.snapshot_builder import build_plan_snapshot
+
+        fixture = self._c39_fixture('c39l')
+        self._c39_generate()
+        state = GenerationState.objects.get(plan=self.plan)
+        saved_row = list(GenerationState.objects.filter(pk=state.pk).values())
+        self.assertFalse(state.is_dirty())
+        self.assertEqual(state.sync_display_state(), SYNC_IN_SYNC)
+
+        # Serialized re-hashed invalid saved evidence: sync_display_state(current=identical) is
+        # incomplete. is_dirty() here compares against the VALID live current, so it only proves
+        # saved-invalid -> dirty; the genuine identical-invalid-current proof (live marker equal
+        # to saved, equality verified first) is test_c39_t11_live_invalid_current_...
+        invalid = copy.deepcopy(state.snapshot)
+        invalid[SNAPSHOT_KEY]['nics'][0]['bay_templates'] = []
+        self._c39_rehash(invalid[SNAPSHOT_KEY])
+        probe = GenerationState(plan=self.plan, device_count=0, interface_count=0, cable_count=0,
+                                snapshot=copy.deepcopy(invalid))
+        self.assertTrue(self._c39_sync_guarded(probe.is_dirty))
+        self.assertEqual(self._c39_sync_guarded(lambda: probe.sync_display_state(current=copy.deepcopy(invalid))),
+                         SYNC_SNAPSHOT_INCOMPLETE)
+
+        def assert_changed(label):
+            state.refresh_from_db()
+            self.assertTrue(self._c39_sync_guarded(state.is_dirty), label)
+            self.assertEqual(self._c39_sync_guarded(state.sync_display_state), SYNC_CHANGED, label)
+
+        # Unchanged optic FK, changed optic attributes (still valid/coherent) -> changed.
+        ModuleType.objects.filter(pk=fixture['optic'].pk).update(
+            attribute_data=dict(self.C39_OPTIC_ATTRS, host_serdes_gbps_per_lane=50))
+        assert_changed('optic attribute change behind unchanged FK')
+        ModuleType.objects.filter(pk=fixture['optic'].pk).update(attribute_data=dict(self.C39_OPTIC_ATTRS))
+        self.assertFalse(state.is_dirty())
+        # Ordered port swap (lanes exchanged): same multiset, different index association.
+        swapped = copy.deepcopy(self.C39_MAP)
+        swapped['ports'] = [{'cage': 'cage-0', 'logical_lane': 1}, {'cage': 'cage-0', 'logical_lane': 0}]
+        self._c39_set_map(swapped)
+        assert_changed('ports swap')
+        self._c39_set_map(self.C39_MAP)
+        self.assertFalse(state.is_dirty())
+        # Last map removal: extension disappears from current -> changed, never projected away.
+        self._c39_set_map(None, key_present=False)
+        self.assertNotIn(SNAPSHOT_KEY, build_plan_snapshot(self.plan))
+        assert_changed('last map removal')
+        self.assertEqual(list(GenerationState.objects.filter(pk=state.pk).values()), saved_row,
+                         'sync methods wrote/persisted a projection')
+
+    def test_c39_snapshot_extension_normalizes_dict_form_validation_error(self):
+        """Item1: native dict-form (model V7-style) ValidationError never escapes as 500."""
+        from netbox_hedgehog.services.nic_cage_layout import validation_error_codes
+
+        dict_form = ValidationError({'transceiver_module_type': ValidationError('V7 conflict', code='v7_reach')})
+        self.assertFalse(hasattr(dict_form, 'error_list'), 'fixture must be genuine dict-form')
+        self.assertEqual(validation_error_codes(dict_form), ['v7_reach'])
+        self.assertEqual(validation_error_codes(ValidationError('x', code='nic_layout_shape')),
+                         ['nic_layout_shape'])
+        self.assertEqual(validation_error_codes(ValidationError('uncoded')), ['nic_layout_invalid'])
+        self.assertEqual(validation_error_codes(ValidationError({'f': ['a', 'b']})), ['nic_layout_invalid'])
+
+    def test_c39_t02_two_one_port_connections_two_fabrics_share_one_nic_cage(self):
+        """T02: TWO one-port connections of ONE NIC/physical cage to two eligible fabrics.
+
+        Explicitly declared ordinary spine-leaf fabrics A (existing BREAKOUT fixture) and B
+        (duplicated leaf/spine classes on the same synthetic device types, fabric
+        'srv29-fabric-b'). 8 servers: p0 -> fabric A server zone, p1 -> fabric B server zone,
+        channels 0/1 of cage-0. Expected: 8 physical servers (not 16), one NIC, one nested
+        cage-0, one optic each; 4 leaves + 2 spines per fabric. Expected edges are literal
+        declared slots, never allocator output. Unbundled physical semantics only.
+        """
+        from netbox_hedgehog.services.bom_export import get_plan_bom
+
+        fixture = self._c39_fixture('c39t02')
+        optic = fixture['optic']
+        self.server_class.quantity = 8
+        self.server_class.save()
+        conn_a = PlanServerConnection.objects.get(pk=fixture['conn'].pk)
+        conn_a.ports_per_connection = 1
+        conn_a.port_index = 0
+        conn_a.full_clean()
+        conn_a.save()
+
+        fabric_b = 'srv29-fabric-b'
+        leaf_ext = self.leaf_class.device_type_extension
+        spine_ext = self.spine_class.device_type_extension
+        leaf_b = PlanSwitchClass.objects.create(
+            plan=self.plan, switch_class_id='srv29-c39t02b-leaf', fabric_name=fabric_b,
+            fabric_class=FabricClassChoices.MANAGED, hedgehog_role=HedgehogRoleChoices.SERVER_LEAF,
+            topology_mode=TopologyModeChoices.SPINE_LEAF, device_type_extension=leaf_ext,
+            override_quantity=None, calculated_quantity=0,
+        )
+        spine_b = PlanSwitchClass.objects.create(
+            plan=self.plan, switch_class_id='srv29-c39t02b-spine', fabric_name=fabric_b,
+            fabric_class=FabricClassChoices.MANAGED, hedgehog_role=HedgehogRoleChoices.SPINE,
+            topology_mode=TopologyModeChoices.SPINE_LEAF, device_type_extension=spine_ext,
+            override_quantity=None, calculated_quantity=0,
+        )
+        breakout = _breakout('2x400g')
+        zone_b = self._zone(leaf_b, 'srv29-c39t02b-server', PortZoneTypeChoices.SERVER, '1', breakout)
+        zone_b.transceiver_module_type = optic
+        zone_b.full_clean()
+        zone_b.save()
+        self._zone(leaf_b, 'srv29-c39t02b-uplink', PortZoneTypeChoices.UPLINK, '2-3', breakout)
+        self._zone(spine_b, 'srv29-c39t02b-fabric', PortZoneTypeChoices.FABRIC, '1-4', breakout)
+        nic = PlanServerNIC.objects.get(server_class=self.server_class, nic_id=NIC_ID)
+        conn_b = PlanServerConnection(
+            server_class=self.server_class, connection_id='srv29-c39t02-conn-b', nic=nic, port_index=1,
+            ports_per_connection=1, hedgehog_conn_type=ConnectionTypeChoices.UNBUNDLED,
+            distribution=ConnectionDistributionChoices.SAME_SWITCH, target_zone=zone_b, speed=400,
+            transceiver_module_type=optic,
+        )
+        conn_b.full_clean()
+        conn_b.save()
+
+        result = update_plan_calculations(self.plan)
+        self.assertEqual(result['errors'], [])
+        self.assertEqual(result['summary'], {
+            self.leaf_class.switch_class_id: {'calculated': 4, 'override': None, 'effective': 4},
+            self.spine_class.switch_class_id: {'calculated': 2, 'override': None, 'effective': 2},
+            leaf_b.switch_class_id: {'calculated': 4, 'override': None, 'effective': 4},
+            spine_b.switch_class_id: {'calculated': 2, 'override': None, 'effective': 2},
+        })
+        self._capture_baseline()
+        self._generate(devices_total=20, generated_interfaces=80, cables_total=48)
+
+        servers = [f'srv29-c39t02-server-{i:02d}' for i in range(1, 9)]
+        leaves_a = [f'srv29-c39t02-leaf-{i:02d}' for i in range(1, 5)]
+        spines_a = [f'srv29-c39t02-spine-{i:02d}' for i in range(1, 3)]
+        leaves_b = [f'srv29-c39t02b-leaf-{i:02d}' for i in range(1, 5)]
+        spines_b = [f'srv29-c39t02b-spine-{i:02d}' for i in range(1, 3)]
+        server_slots = ['E1/1/1', 'E1/1/2']
+        leaf_uplinks = ['E1/2/1', 'E1/2/2', 'E1/3/1', 'E1/3/2']
+        spine_slots = [f'E1/{p}/{lane}' for p in (1, 2, 3, 4) for lane in (1, 2)]
+        server_edges, fabric_edges = Counter(), Counter()
+        for i, server in enumerate(servers):
+            server_edges[(server, f'{NIC_ID}-p0', leaves_a[i // 2], server_slots[i % 2])] += 1
+            server_edges[(server, f'{NIC_ID}-p1', leaves_b[i // 2], server_slots[i % 2])] += 1
+        for leaves, spines in ((leaves_a, spines_a), (leaves_b, spines_b)):
+            for i, leaf in enumerate(leaves):
+                for j, spine in enumerate(spines):
+                    for n in range(2):
+                        fabric_edges[(leaf, leaf_uplinks[j * 2 + n], spine, spine_slots[i * 2 + n])] += 1
+        self.assertEqual((sum(server_edges.values()), sum(fabric_edges.values())), (16, 32))
+
+        devices, interfaces, cables, modules, bays = self._new_inventory()
+        by_name = {d.name: d for d in devices.values()}
+        self.assertEqual(set(by_name), set(servers + leaves_a + spines_a + leaves_b + spines_b),
+                         'exactly 8 physical servers (no duplicate hosts) + 4/2 per fabric')
+        for name in leaves_b + spines_b:
+            self.assertEqual(by_name[name].custom_field_data.get('hedgehog_fabric'), fabric_b, name)
+        for name in leaves_a + spines_a:
+            self.assertEqual(by_name[name].custom_field_data.get('hedgehog_fabric'), FABRIC, name)
+        self.assertEqual(len(cables), 48)
+        self._assert_cables(by_name, (servers, leaves_a + leaves_b, spines_a + spines_b), cables,
+                            server_edges, fabric_edges)
+
+        for name in servers:
+            pk = by_name[name].pk
+            dev_bays = [b for b in bays if b.device_id == pk]
+            dev_mods = [m for m in modules if m.device_id == pk]
+            roots = [b for b in dev_bays if b.module_id is None]
+            self.assertEqual([b.name for b in roots], [NIC_ID], name)
+            nics = [m for m in dev_mods if m.module_bay_id == roots[0].pk]
+            self.assertEqual([m.module_type_id for m in nics], [fixture['nic_type'].pk], name)
+            nested = [b for b in dev_bays if b.module_id is not None]
+            self.assertEqual([(b.name, b.module_id) for b in nested], [('cage-0', nics[0].pk)], name)
+            optics = [m for m in dev_mods if m.pk != nics[0].pk]
+            self.assertEqual([(m.module_type_id, m.module_bay_id) for m in optics],
+                             [(optic.pk, nested[0].pk)], f'{name}: one shared optic for both fabrics')
+            ifaces = sorted(i.name for i in interfaces if i.device_id == pk)
+            self.assertEqual(ifaces, [f'{NIC_ID}-p0', f'{NIC_ID}-p1'], name)
+
+        bom = get_plan_bom(self.plan)
+        self.assertEqual(
+            {(i.section, i.module_type_id): i.quantity for i in bom.line_items},
+            {('nic', fixture['nic_type'].pk): 8, ('server_transceiver', optic.pk): 8,
+             ('switch_transceiver', optic.pk): 8},
+        )
+
+    # ------------- CAGE39 SOURCE6: T03/C12/T10 physical cards (declared literal oracles)
+    # Fictional test-owned NIC/optic types and profiles only. Expected graphs/counts are
+    # literals from the declared fixture, never allocator/generator output.
+
+    C39_STRONG_SCHEMA = {
+        'type': 'object', 'required': ['hnp_nic_cage_map'],
+        'properties': {'hnp_nic_cage_map': {
+            'type': 'object', 'required': ['version', 'ports', 'cages'], 'additionalProperties': False,
+            'properties': {'version': {'type': 'integer', 'enum': [1]},
+                           'ports': {'type': 'array', 'minItems': 1},
+                           'cages': {'type': 'object', 'minProperties': 1}}}},
+    }
+    # Declared cages 'data' and 'b-slot'; p0 -> data ch0 (used), p1 -> b-slot ch0 (unused).
+    C39_CARD_MAP = {
+        'version': 1,
+        'ports': [{'cage': 'data', 'logical_lane': 0}, {'cage': 'b-slot', 'logical_lane': 0}],
+        'cages': {'b-slot': {'breakout_id': '2x400g'}, 'data': {'breakout_id': '2x400g'}},
+    }
+    # Four logical ports on two physical cages (two channels each).
+    C39_FOUR_PORT_MAP = {
+        'version': 1,
+        'ports': [{'cage': 'cage-0', 'logical_lane': 0}, {'cage': 'cage-0', 'logical_lane': 1},
+                  {'cage': 'cage-1', 'logical_lane': 0}, {'cage': 'cage-1', 'logical_lane': 1}],
+        'cages': {'cage-0': {'breakout_id': '2x400g'}, 'cage-1': {'breakout_id': '2x400g'}},
+    }
+
+    def _c39_mapped_type(self, case, suffix, port_names, layout):
+        """Test-owned mapped NIC ModuleType under a strong schema-bearing profile (native full_clean)."""
+        import copy
+
+        from dcim.models import ModuleTypeProfile
+
+        _breakout('2x400g')
+        profile = ModuleTypeProfile(name=f'srv29-{case}-{suffix}-profile',
+                                    schema=copy.deepcopy(self.C39_STRONG_SCHEMA))
+        profile.full_clean()
+        profile.save()
+        module_type = ModuleType(manufacturer=_manufacturer(), model=f'srv29-{case}-{suffix}', profile=profile,
+                                 attribute_data={'hnp_nic_cage_map': copy.deepcopy(layout)})
+        module_type.full_clean()
+        module_type.save()
+        for name in port_names:
+            InterfaceTemplate.objects.create(module_type=module_type, name=name, type=T400)
+        module_type.refresh_from_db()
+        self.assertEqual(module_type.attribute_data, {'hnp_nic_cage_map': layout})
+        self.assertEqual(module_type.profile_id, profile.pk)
+        return module_type
+
+    def _c39_cards_fixture(self, case, cards):
+        """BREAKOUT, 4 servers. ``cards`` = [(nic_id, module_type, port_index)]: one PlanServerNIC
+        per card and one one-port 400G connection per card (declaration order conn-a, conn-b)
+        to the existing two-slot leaf SERVER zone, same fictional optic on both ends.
+        Scoped populate_bays and real calculation (4 leaves, 2 spines); NOT generated."""
+        from dcim.models import ModuleTypeProfile
+        from netbox_hedgehog.management.commands.populate_transceiver_bays import populate_bays
+
+        self._build(case, 4, BREAKOUT)
+        # Replace the default single nic0 declaration; its unused unmapped type is not in scope.
+        PlanServerConnection.objects.filter(server_class=self.server_class).delete()
+        PlanServerNIC.objects.filter(server_class=self.server_class).delete()
+        optic = ModuleType(manufacturer=_manufacturer(), model=f'srv29-{case}-fictional-osfp-2x400g',
+                           profile=ModuleTypeProfile.objects.get(name='Network Transceiver'),
+                           attribute_data=dict(self.C39_OPTIC_ATTRS))
+        optic.full_clean()
+        optic.save()
+        zone = SwitchPortZone.objects.get(switch_class=self.leaf_class, zone_type=PortZoneTypeChoices.SERVER)
+        zone.transceiver_module_type = optic
+        zone.full_clean()
+        zone.save()
+        module_types, nics = [], {}
+        for suffix, (nic_id, module_type, port_index) in zip('abcd', cards):
+            nic = nics.get(nic_id)
+            if nic is None:  # one PlanServerNIC per declared card; repeated nic_id shares it
+                nic = nics[nic_id] = PlanServerNIC.objects.create(
+                    server_class=self.server_class, nic_id=nic_id, module_type=module_type)
+            self.assertEqual(nic.module_type_id, module_type.pk, 'fixture: one type per card')
+            conn = PlanServerConnection(
+                server_class=self.server_class, connection_id=f'srv29-{case}-conn-{suffix}', nic=nic,
+                port_index=port_index, ports_per_connection=1, hedgehog_conn_type=ConnectionTypeChoices.UNBUNDLED,
+                distribution=ConnectionDistributionChoices.SAME_SWITCH, target_zone=zone, speed=400,
+                transceiver_module_type=optic,
+            )
+            conn.full_clean()
+            conn.save()
+            if module_type not in module_types:
+                module_types.append(module_type)
+        populate_bays(device_types=[self.leaf_device_type, self.spine_device_type], module_types=module_types)
+        self._calculate(leaves=4, spines=2)
+        self.c39 = {'optic': optic, 'zone': zone, 'module_types': module_types}
+        return optic
+
+    def _c39_card_edges(self, used_ifaces):
+        """Declared oracle: server i -> leaf i; k-th declared connection -> leaf slot E1/1/(k+1)."""
+        server_names, leaf_names, _ = self._names(4, 4, 2)
+        server_edges = Counter()
+        for i, server in enumerate(server_names):
+            for k, iface in enumerate(used_ifaces):
+                server_edges[(server, iface, leaf_names[i], ('E1/1/1', 'E1/1/2')[k])] += 1
+        _, fabric_edges = self._expected_edges(4, 4, 2, 2)
+        self.assertEqual((sum(server_edges.values()), sum(fabric_edges.values())), (8, 16))
+        return server_edges, fabric_edges
+
+    def _c39_assert_logical(self, used_ifaces):
+        names = self._names(4, 4, 2)
+        server_edges, fabric_edges = self._c39_card_edges(used_ifaces)
+        devices, interfaces, cables, _, _ = self._new_inventory()
+        self.assertEqual(len(devices), 10)
+        by_name = self._assert_devices(devices, names)
+        self._assert_switch_interfaces(by_name, names, interfaces, server_edges, fabric_edges)
+        self.assertEqual(len(cables), 24)
+        self._assert_cables(by_name, names, cables, server_edges, fabric_edges)
+        return by_name, interfaces
+
+    def _c39_server_ifaces(self, by_name, interfaces, name):
+        """{iface name: (owning card's bay name, card is in a ROOT bay, cabled)} from actual rows."""
+        out = {}
+        for iface in interfaces:
+            if iface.device_id != by_name[name].pk:
+                continue
+            self.assertIsNotNone(iface.module_id, f'{name} {iface.name} not on a module')
+            module = Module.objects.select_related('module_bay').get(pk=iface.module_id)
+            out[iface.name] = (module.module_bay.name, module.module_bay.module_id is None,
+                               iface.cable_id is not None)
+        return out
+
+    def _c39_card_graph(self, server_names):
+        """Actual ORM per-server graph {root bay: (card type, {nested bay: occupant type | None})}.
+
+        Asserts plan ownership of every module, root bays parentless, nested bays parented
+        by their card's root bay, nothing nested inside an optic, and that every bay and
+        module on the device is accounted for (no hidden deeper/misparented rows).
+        """
+        plan_id = str(self.plan.pk)
+        devices, _, _, modules, bays = self._new_inventory()
+        by_name = {d.name: d for d in devices.values()}
+        graph = {}
+        for name in server_names:
+            pk = by_name[name].pk
+            dev_bays = {b.pk: b for b in bays if b.device_id == pk}
+            dev_mods = [m for m in modules if m.device_id == pk]
+            occupant = {}
+            for module in dev_mods:
+                self.assertIn(module.module_bay_id, dev_bays, f'{name}: module {module.pk} in foreign bay')
+                self.assertNotIn(module.module_bay_id, occupant, f'{name}: two modules in one bay')
+                occupant[module.module_bay_id] = module
+                self.assertEqual(module.custom_field_data.get('hedgehog_plan_id'), plan_id,
+                                 f'{name}: module {module.pk} plan ownership')
+            seen_bays, seen_mods, cards = set(), set(), {}
+            for root in sorted((b for b in dev_bays.values() if b.module_id is None), key=lambda b: b.name):
+                self.assertIsNone(root.parent_id, f'{name}: root bay {root.name} has a parent')
+                self.assertNotIn(root.name, cards, f'{name}: duplicate root bay {root.name}')
+                seen_bays.add(root.pk)
+                card = occupant.get(root.pk)
+                if card is None:
+                    cards[root.name] = None
+                    continue
+                seen_mods.add(card.pk)
+                nested = {}
+                for child in (b for b in dev_bays.values() if b.module_id == card.pk):
+                    self.assertEqual(child.parent_id, root.pk, f'{name}: {child.name} parent bay')
+                    self.assertNotIn(child.name, nested, f'{name}: duplicate nested {child.name}')
+                    seen_bays.add(child.pk)
+                    inner = occupant.get(child.pk)
+                    if inner is not None:
+                        seen_mods.add(inner.pk)
+                        self.assertFalse(any(b.module_id == inner.pk for b in dev_bays.values()),
+                                         f'{name}: bay nested inside optic {inner.pk}')
+                    nested[child.name] = None if inner is None else inner.module_type_id
+                cards[root.name] = (card.module_type_id, nested)
+            self.assertEqual(seen_bays, set(dev_bays), f'{name}: unaccounted (deeper/misparented) bays')
+            self.assertEqual(seen_mods, {m.pk for m in dev_mods}, f'{name}: unaccounted modules')
+            graph[name] = cards
+        return graph
+
+    def _c39_assert_boms(self, server_rows, optic_pk, aggregate):
+        """Public per-device and aggregate BOM vs independent literals (``aggregate`` is stated,
+        not summed from ``server_rows``). One switch optic per leaf physical cage E1/1."""
+        from netbox_hedgehog.services.bom_export import get_plan_bom, get_plan_bom_by_device
+
+        server_names, leaf_names, _ = self._names(4, 4, 2)
+        expected = {}
+        for server in server_names:
+            for (section, module_type_id), qty in server_rows.items():
+                expected[(server, self.server_class.server_class_id, DeviceCategoryChoices.SERVER,
+                          section, module_type_id)] = qty
+        for leaf in leaf_names:
+            expected[(leaf, self.leaf_class.switch_class_id, DeviceCategoryChoices.LEAF,
+                      'switch_transceiver', optic_pk)] = 1
+        per_device = get_plan_bom_by_device(self.plan)
+        self.assertEqual(per_device.suppressed_switch_cable_assembly_count, 0)
+        actual = {}
+        for item in per_device.line_items:
+            key = (item.device_name, item.hedgehog_class, item.device_role, item.section, item.module_type_id)
+            self.assertNotIn(key, actual, f'duplicate per-device BOM row {key}')
+            actual[key] = item.quantity
+        self.assertEqual(actual, expected, 'per-device BOM')
+        bom = get_plan_bom(self.plan)
+        self.assertEqual(bom.suppressed_switch_cable_assembly_count, 0)
+        self.assertEqual(len(bom.line_items), len(aggregate))
+        self.assertEqual({(i.section, i.module_type_id): i.quantity for i in bom.line_items}, aggregate,
+                         'aggregate BOM')
+        self.assertEqual(bom.base_device_total_qty, 10)
+
+    def test_c39_t03_four_ports_two_cages_partial_channels_two_optics(self):
+        """T03: 4 logical ports / 2 physical cages; p0 (cage-0 ch0) and p2 (cage-1 ch0) used by
+        two one-port definitions -> exactly two optics per NIC, partial channels valid."""
+        nic_type = self._c39_mapped_type('c39m', 'nic-4x', ['p0', 'p1', 'p2', 'p3'], self.C39_FOUR_PORT_MAP)
+        optic = self._c39_cards_fixture('c39m', [(NIC_ID, nic_type, 0), (NIC_ID, nic_type, 2)])
+        # Both one-port connections belong to ONE PlanServerNIC (one physical card).
+        nics = list(PlanServerNIC.objects.filter(server_class=self.server_class))
+        self.assertEqual([(n.nic_id, n.module_type_id) for n in nics], [(NIC_ID, nic_type.pk)])
+        self.assertEqual(sorted(PlanServerConnection.objects.filter(server_class=self.server_class)
+                                .values_list('port_index', 'ports_per_connection')), [(0, 1), (2, 1)])
+        self._capture_baseline()
+        self._generate(devices_total=10, generated_interfaces=40, cables_total=24)
+        by_name, interfaces = self._c39_assert_logical([f'{NIC_ID}-p0', f'{NIC_ID}-p2'])
+        server_names = self._names(4, 4, 2)[0]
+        for name in server_names:
+            self.assertEqual(self._c39_server_ifaces(by_name, interfaces, name), {
+                f'{NIC_ID}-p0': (NIC_ID, True, True), f'{NIC_ID}-p1': (NIC_ID, True, False),
+                f'{NIC_ID}-p2': (NIC_ID, True, True), f'{NIC_ID}-p3': (NIC_ID, True, False),
+            }, name)
+        expected_card = {NIC_ID: (nic_type.pk, {'cage-0': optic.pk, 'cage-1': optic.pk})}
+        self.assertEqual(self._c39_card_graph(server_names), {n: expected_card for n in server_names})
+        _, _, _, modules, bays = self._new_inventory()
+        self.assertEqual(len(modules), 4 * 3 + 4 * 1, 'modules: per server 1 NIC + 2 optics; 1 per leaf')
+        self.assertEqual(len(bays), 4 * 3 + 4 * 3 + 2 * 4, 'bays: per server 1 root + 2 cages')
+        self._c39_assert_boms({('nic', nic_type.pk): 1, ('server_transceiver', optic.pk): 2}, optic.pk,
+                              {('nic', nic_type.pk): 4, ('server_transceiver', optic.pk): 8,
+                               ('switch_transceiver', optic.pk): 4})
+
+    def _c39_same_type_cards(self, case):
+        nic_type = self._c39_mapped_type(case, 'nic-card', ['p0', 'p1'], self.C39_CARD_MAP)
+        optic = self._c39_cards_fixture(case, [('a-card', nic_type, 0), ('b-slot', nic_type, 0)])
+        expected_card = (nic_type.pk, {'data': optic.pk, 'b-slot': None})
+        return nic_type, optic, {'a-card': expected_card, 'b-slot': expected_card}
+
+    def _c39_assert_same_type_cards(self, nic_type, optic, expected_cards):
+        by_name, interfaces = self._c39_assert_logical(['a-card-p0', 'b-slot-p0'])
+        server_names = self._names(4, 4, 2)[0]
+        for name in server_names:
+            self.assertEqual(self._c39_server_ifaces(by_name, interfaces, name), {
+                'a-card-p0': ('a-card', True, True), 'a-card-p1': ('a-card', True, False),
+                'b-slot-p0': ('b-slot', True, True), 'b-slot-p1': ('b-slot', True, False),
+            }, f'{name}: each card in its own ROOT bay')
+        self.assertEqual(self._c39_card_graph(server_names), {n: expected_cards for n in server_names},
+                         'b-slot card must be ROOT, a-card nested b-slot must stay empty')
+        _, _, _, modules, bays = self._new_inventory()
+        self.assertEqual(len(modules), 4 * 4 + 4 * 1, 'per server 2 NICs + 2 optics; 1 per leaf')
+        self.assertEqual(len(bays), 4 * 6 + 4 * 3 + 2 * 4, 'per server 2 roots + 2x2 nested cages')
+        self._c39_assert_boms({('nic', nic_type.pk): 2, ('server_transceiver', optic.pk): 2}, optic.pk,
+                              {('nic', nic_type.pk): 8, ('server_transceiver', optic.pk): 8,
+                               ('switch_transceiver', optic.pk): 4})
+        return {m.pk for m in modules}, {b.pk for b in bays}
+
+    def test_c39_t03_c12_same_type_cards_a_card_b_slot_root_isolation_and_regeneration(self):
+        """T03/T10/C12: two cards of the SAME mapped type, nic ids 'a-card'/'b-slot', declared cages
+        'data'/'b-slot', only p0/data used. b-slot card occupies its own top-level bay (never
+        a-card's nested b-slot); both nested b-slot cages stay empty; one optic per card/data.
+        Regeneration removes every old Module/ModuleBay PK and reproduces the same graph/BOM."""
+        nic_type, optic, expected_cards = self._c39_same_type_cards('c39n')
+        self._capture_baseline()
+        self._generate(devices_total=10, generated_interfaces=40, cables_total=24)
+        first_modules, first_bays = self._c39_assert_same_type_cards(nic_type, optic, expected_cards)
+        state = GenerationState.objects.get(plan=self.plan)
+        self.assertFalse(state.is_dirty())
+
+        self._generate(devices_total=10, generated_interfaces=40, cables_total=24)
+        second_modules, second_bays = self._c39_assert_same_type_cards(nic_type, optic, expected_cards)
+        self.assertFalse(Module.objects.filter(pk__in=first_modules).exists(), 'old Module PK remains')
+        self.assertFalse(ModuleBay.objects.filter(pk__in=first_bays).exists(), 'old ModuleBay PK remains')
+        self.assertEqual(first_modules & second_modules, set())
+
+    def test_c39_t03_c12_mixed_legacy_sibling_b_slot_stays_root(self):
+        """T03/T10/C12 control: mapped 'a-card' (declared nested 'b-slot') + LEGACY unmapped
+        sibling 'b-slot' (key absent, per-port cage-0). The legacy card must be ROOT and keep its
+        legacy cage-0 optic; a-card's nested b-slot stays empty. No name ban. Review03 P2-4: a
+        second public generate_all reasserts the exact parent graph, interfaces, typed physical
+        counts and per-device + aggregate BOM, and every first-run Module/ModuleBay PK is gone."""
+        from netbox_hedgehog.services.nic_cage_layout import has_layout
+
+        mapped = self._c39_mapped_type('c39o', 'nic-card', ['p0', 'p1'], self.C39_CARD_MAP)
+        legacy = ModuleType.objects.create(manufacturer=_manufacturer(), model='srv29-c39o-legacy-nic')
+        InterfaceTemplate.objects.create(module_type=legacy, name='p0', type=T400)
+        self.assertFalse(has_layout(legacy))
+        optic = self._c39_cards_fixture('c39o', [('a-card', mapped, 0), ('b-slot', legacy, 0)])
+        self._capture_baseline()
+        self._generate(devices_total=10, generated_interfaces=40, cables_total=24)
+        first_modules, first_bays = self._c39_assert_mixed_cards(mapped, legacy, optic)
+        self.assertFalse(GenerationState.objects.get(plan=self.plan).is_dirty())
+
+        # Same-intent regeneration through public generate_all (baseline = original pre-first run).
+        self._generate(devices_total=10, generated_interfaces=40, cables_total=24)
+        second_modules, second_bays = self._c39_assert_mixed_cards(mapped, legacy, optic)
+        self.assertFalse(Module.objects.filter(pk__in=first_modules).exists(), 'old Module PK remains')
+        self.assertFalse(ModuleBay.objects.filter(pk__in=first_bays).exists(), 'old ModuleBay PK remains')
+        self.assertEqual(first_modules & second_modules, set(), 'Module PK reused')
+        self.assertEqual(first_bays & second_bays, set(), 'ModuleBay PK reused')
+        self.assertFalse(GenerationState.objects.get(plan=self.plan).is_dirty())
+
+    def _c39_assert_mixed_cards(self, mapped, legacy, optic):
+        """Exact declared mixed-card oracle (logical graph, interfaces, parent graph, typed
+        physical counts, per-device + aggregate BOM); returns this run's Module/ModuleBay PKs."""
+        by_name, interfaces = self._c39_assert_logical(['a-card-p0', 'b-slot-p0'])
+        server_names = self._names(4, 4, 2)[0]
+        for name in server_names:
+            self.assertEqual(self._c39_server_ifaces(by_name, interfaces, name), {
+                'a-card-p0': ('a-card', True, True), 'a-card-p1': ('a-card', True, False),
+                'b-slot-p0': ('b-slot', True, True),
+            }, name)
+        expected_cards = {'a-card': (mapped.pk, {'data': optic.pk, 'b-slot': None}),
+                          'b-slot': (legacy.pk, {'cage-0': optic.pk})}
+        self.assertEqual(self._c39_card_graph(server_names), {n: expected_cards for n in server_names})
+        _, _, _, modules, bays = self._new_inventory()
+        self.assertEqual(len(modules), 4 * 4 + 4 * 1)
+        self.assertEqual(Counter(m.module_type_id for m in modules),
+                         Counter({mapped.pk: 4, legacy.pk: 4, optic.pk: 8 + 4}),
+                         'typed modules: per server 1 mapped + 1 legacy NIC + 2 optics; 1 optic per leaf')
+        self.assertEqual(len(bays), 4 * 5 + 4 * 3 + 2 * 4, 'per server 2 roots + 2 mapped + 1 legacy cage')
+        self._c39_assert_boms({('nic', mapped.pk): 1, ('nic', legacy.pk): 1,
+                               ('server_transceiver', optic.pk): 2}, optic.pk,
+                              {('nic', mapped.pk): 4, ('nic', legacy.pk): 4,
+                               ('server_transceiver', optic.pk): 8, ('switch_transceiver', optic.pk): 4})
+        return {m.pk for m in modules}, {b.pk for b in bays}
+
+    def _c39_generate_with_injection(self, trigger, inject):
+        """Public generate_all with ONE real owned DB change injected mid-run by a guarded
+        execute_wrapper. Expects ValidationError through the atomic boundary, that writes had
+        begun (no zero-SQL claim), and full rollback of prior inventory/terminations/tags/
+        GenerationState/intent/catalog rows (including the injected change)."""
+        generator = DeviceGenerator(self.plan)  # constructor Site/Tag setup outside the proof
+        before = self._a35_snapshot()
+        probe = {'fired': 0, 'writes': 0, 'busy': False}
+
+        def fire():
+            probe['busy'] = True
+            try:
+                inject()
+            finally:
+                probe['busy'] = False
+            probe['fired'] += 1
+
+        def wrapper(execute, sql, params, many, context):
+            if probe['busy']:
+                return execute(sql, params, many, context)
+            text = sql if isinstance(sql, str) else str(sql)
+            head = text.lstrip().split(None, 1)[0].upper() if text.strip() else ''
+            if head in ('INSERT', 'UPDATE', 'DELETE'):
+                probe['writes'] += 1
+            flat = tuple(params) if (not many and isinstance(params, (list, tuple))) else ()
+            when = None if probe['fired'] else trigger(head, text, flat)
+            if when == 'before':
+                fire()
+            result = execute(sql, params, many, context)
+            if when == 'after':
+                fire()
+            return result
+
+        with connection.execute_wrapper(wrapper):
+            with self.assertRaises(ValidationError) as ctx:
+                generator.generate_all()
+        self.assertEqual(probe['fired'], 1, 'injected owned DB change did not happen')
+        self.assertGreater(probe['writes'], 0, 'runtime failure is after writes began (no zero-SQL claim)')
+        self.assertEqual(self._a35_snapshot(), before, 'atomic rollback did not restore full prior state')
+        return ' '.join(ctx.exception.messages)
+
+    def test_c39_t06_t10_runtime_missing_instance_bay_and_wrong_root_occupant_roll_back(self):
+        """T06/T10/C05/C06/C12 runtime: after a valid prior generation, a mid-run injected owned
+        change (nested 'data' instance bay renamed; conflicting module installed in the fresh
+        root 'a-card' bay) must raise through public generate_all and roll back everything."""
+        nic_type, optic, expected_cards = self._c39_same_type_cards('c39p')
+        self._capture_baseline()
+        self._generate(devices_total=10, generated_interfaces=40, cables_total=24)
+        prior_modules, prior_bays = self._c39_assert_same_type_cards(nic_type, optic, expected_cards)
+        plan_id = str(self.plan.pk)
+
+        def modulebay_sql(head, text, wanted_head):
+            return head == wanted_head and '"dcim_modulebay"' in text
+
+        def rename_new_data_bays():
+            moved = ModuleBay.objects.filter(name='data', module__isnull=False).exclude(
+                pk__in=prior_bays).update(name='srv29-injected-moved')
+            self.assertGreater(moved, 0)
+
+        with self.subTest('missing nested instance bay'):
+            message = self._c39_generate_with_injection(
+                lambda head, text, flat: 'before' if modulebay_sql(head, text, 'SELECT') and 'data' in flat
+                else None,
+                rename_new_data_bays,
+            )
+            self.assertIn('[nic_layout_runtime_missing_bay]', message)
+            self.assertIn("'data'", message)
+
+        def occupy_root(module_type, owned):
+            def inject():
+                bay = ModuleBay.objects.filter(name='a-card', module__isnull=True).exclude(pk__in=prior_bays).get()
+                occupant = Module(device_id=bay.device_id, module_bay=bay, module_type=module_type,
+                                  status='planned', serial='srv29-injected-occupant')
+                occupant.custom_field_data = {'hedgehog_plan_id': plan_id} if owned else {}
+                occupant.save()
+            return inject
+
+        root_insert = (lambda head, text, flat: 'after'
+                       if modulebay_sql(head, text, 'INSERT') and 'NIC slot a-card' in flat else None)
+        for label, module_type, owned in (('wrong-type owned occupant', optic, True),
+                                          ('same-type unowned occupant', nic_type, False)):
+            with self.subTest(label):
+                message = self._c39_generate_with_injection(root_insert, occupy_root(module_type, owned))
+                self.assertIn('[nic_root_bay_conflict]', message)
+                self.assertIn("'a-card'", message)
+
+        for model, pks in ((Module, prior_modules), (ModuleBay, prior_bays)):
+            self.assertEqual(set(model.objects.filter(pk__in=pks).values_list('pk', flat=True)), pks,
+                             f'prior {model.__name__} rows lost')
+        state = GenerationState.objects.get(plan=self.plan)
+        self.assertEqual(state.status, GenerationStatusChoices.GENERATED)
+        self.assertEqual((state.device_count, state.interface_count, state.cable_count), (10, 40, 24))
+        # Uninjected public regeneration still succeeds with the exact declared graph.
+        self._generate(devices_total=10, generated_interfaces=40, cables_total=24)
+        self._c39_assert_same_type_cards(nic_type, optic, expected_cards)
+        self.assertFalse(Module.objects.filter(pk__in=prior_modules).exists())
+
+    # ------------------------------------------- CAGE39 SOURCE6: T08 native catalog API
+
+    def test_c39_t08_native_api_profile_map_roundtrip_bad_schema_profileless_permission(self):
+        """T08/C01: authenticated native dcim REST API (real APIClient + Token) configures a
+        test-owned schema-bearing ModuleTypeProfile and a ModuleType carrying hnp_nic_cage_map
+        plus an unrelated schema-backed attribute; POST/PATCH then GET must persist the exact
+        profile/map. Bad-schema input -> native 400 with a validation body, nothing persisted.
+        Profileless request: observed native 2xx; the GET-persisted result is NOT admitted as a
+        configured layout (no fabricated 400). Unprivileged token -> 403, no change. No HNP REST
+        editor/GUI; all objects fictional test-owned rows."""
+        import copy
+
+        from rest_framework.test import APIClient
+        from users.models import Token
+
+        from dcim.models import ModuleTypeProfile
+        from netbox_hedgehog.services.nic_cage_layout import has_layout, parse_layout
+
+        _breakout('2x400g')
+        manufacturer = _manufacturer()
+        model = get_user_model()
+        admin = model.objects.create_superuser(username='srv29-c39-api-admin',
+                                               email='srv29-c39-api-admin@example.invalid', password=None)
+        api = APIClient()
+        api.credentials(HTTP_AUTHORIZATION=f'Token {Token.objects.create(user=admin).key}')
+
+        schema = copy.deepcopy(self.C39_STRONG_SCHEMA)
+        schema['properties']['srv29_form_factor'] = {'type': 'string', 'enum': ['ocp3', 'pcie']}
+        response = api.post(reverse('dcim-api:moduletypeprofile-list'),
+                            {'name': 'srv29-c39-api-nic-profile', 'schema': schema}, format='json')
+        self.assertEqual(response.status_code, 201, response.content[:1000])
+        profile_id = response.json()['id']
+        got = api.get(reverse('dcim-api:moduletypeprofile-detail', kwargs={'pk': profile_id}))
+        self.assertEqual(got.status_code, 200)
+        self.assertEqual(got.json()['schema'], schema, 'persisted profile schema not exact')
+
+        def admitted(body, expected_attrs):
+            """Authoring-client admission: exact GET-persisted profile AND attributes."""
+            return (isinstance(body.get('profile'), dict) and body['profile'].get('id') == profile_id
+                    and body.get('attributes') == expected_attrs)
+
+        attrs = {'hnp_nic_cage_map': copy.deepcopy(self.C39_MAP), 'srv29_form_factor': 'ocp3'}
+        response = api.post(reverse('dcim-api:moduletype-list'), {
+            'manufacturer': manufacturer.pk, 'model': 'srv29-c39-api-nic', 'profile': profile_id,
+            'attributes': copy.deepcopy(attrs)}, format='json')
+        self.assertEqual(response.status_code, 201, response.content[:1000])
+        type_id = response.json()['id']
+        detail = reverse('dcim-api:moduletype-detail', kwargs={'pk': type_id})
+        body = api.get(detail).json()
+        self.assertTrue(admitted(body, attrs), body)
+        self.assertEqual(body['profile']['name'], 'srv29-c39-api-nic-profile')
+        for name in ('p0', 'p1'):  # fixture templates; layout parse needs the 2 logical ports
+            InterfaceTemplate.objects.create(module_type_id=type_id, name=name, type=T400)
+        layout = parse_layout(ModuleType.objects.select_related('profile').get(pk=type_id))
+        self.assertEqual([(p.cage, p.logical_lane) for p in layout.ports], [('cage-0', 0), ('cage-0', 1)])
+
+        # PATCH (complete attributes) changes the map; unrelated schema-backed attr preserved.
+        swapped = copy.deepcopy(attrs)
+        swapped['hnp_nic_cage_map']['ports'] = [{'cage': 'cage-0', 'logical_lane': 1},
+                                                {'cage': 'cage-0', 'logical_lane': 0}]
+        response = api.patch(detail, {'attributes': copy.deepcopy(swapped)}, format='json')
+        self.assertEqual(response.status_code, 200, response.content[:1000])
+        body = api.get(detail).json()
+        self.assertTrue(admitted(body, swapped), body)
+        # Unrelated-field PATCH: native clean re-validates; map + unrelated attr preserved exactly.
+        response = api.patch(detail, {'description': 'srv29 fictional card'}, format='json')
+        self.assertEqual(response.status_code, 200, response.content[:1000])
+        body = api.get(detail).json()
+        self.assertTrue(admitted(body, swapped), body)
+        self.assertEqual(body['description'], 'srv29 fictional card')
+        persisted = ModuleType.objects.get(pk=type_id)
+        self.assertEqual((persisted.profile_id, persisted.attribute_data), (profile_id, swapped))
+
+        # Bad schema: real native 400 with a meaningful validation body; nothing persisted.
+        bad = copy.deepcopy(swapped)
+        bad['hnp_nic_cage_map']['version'] = 'one'
+        response = api.patch(detail, {'attributes': bad}, format='json')
+        self.assertEqual(response.status_code, 400, response.content[:1000])
+        text = response.content.decode('utf-8')
+        self.assertIn('Invalid schema', text)
+        self.assertIn('one', text)
+        self.assertTrue(admitted(api.get(detail).json(), swapped), 'rejected PATCH changed persisted row')
+        response = api.post(reverse('dcim-api:moduletype-list'), {
+            'manufacturer': manufacturer.pk, 'model': 'srv29-c39-api-bad', 'profile': profile_id,
+            'attributes': bad}, format='json')
+        self.assertEqual(response.status_code, 400, response.content[:1000])
+        self.assertIn('Invalid schema', response.content.decode('utf-8'))
+        self.assertFalse(ModuleType.objects.filter(model='srv29-c39-api-bad').exists())
+
+        # Profileless: observe native outcome; never fabricate a 400; GET result is NOT admitted.
+        response = api.post(reverse('dcim-api:moduletype-list'), {
+            'manufacturer': manufacturer.pk, 'model': 'srv29-c39-api-unprofiled',
+            'attributes': {'hnp_nic_cage_map': copy.deepcopy(self.C39_MAP)}}, format='json')
+        self.assertTrue(200 <= response.status_code < 300,
+                        f'observed native profileless status {response.status_code}: {response.content[:500]}')
+        unprofiled_id = response.json()['id']
+        body = api.get(reverse('dcim-api:moduletype-detail', kwargs={'pk': unprofiled_id})).json()
+        self.assertIsNone(body.get('profile'))
+        self.assertFalse(admitted(body, {'hnp_nic_cage_map': self.C39_MAP}),
+                         'profileless layout must not be admitted as configured')
+        stored = ModuleType.objects.select_related('profile').get(pk=unprofiled_id)
+        InterfaceTemplate.objects.create(module_type=stored, name='p0', type=T400)
+        InterfaceTemplate.objects.create(module_type=stored, name='p1', type=T400)
+        if has_layout(stored):
+            # Native API kept the unprofiled key: strong runtime parser still refuses it.
+            with self.assertRaises(ValidationError) as ctx:
+                parse_layout(stored)
+            self.assertIn('[nic_layout_profile_missing]', ' '.join(ctx.exception.messages))
+        else:
+            # Native clean cleared the attrs: the layout is lost, legacy path, nothing admitted.
+            self.assertIsNone(parse_layout(stored))
+            self.assertNotEqual(body.get('attributes'), {'hnp_nic_cage_map': self.C39_MAP})
+
+        # Unprivileged authenticated token: native permission denial, no change.
+        plain = model.objects.create_user(username='srv29-c39-api-noperm',
+                                          email='srv29-c39-api-noperm@example.invalid', password=None)
+        denied = APIClient()
+        denied.credentials(HTTP_AUTHORIZATION=f'Token {Token.objects.create(user=plain).key}')
+        response = denied.post(reverse('dcim-api:moduletype-list'), {
+            'manufacturer': manufacturer.pk, 'model': 'srv29-c39-api-denied', 'profile': profile_id,
+            'attributes': copy.deepcopy(attrs)}, format='json')
+        self.assertEqual(response.status_code, 403, response.content[:500])
+        self.assertFalse(ModuleType.objects.filter(model='srv29-c39-api-denied').exists())
+        self.assertEqual(ModuleType.objects.get(pk=type_id).attribute_data, swapped)
+        self.assertEqual(ModuleTypeProfile.objects.get(pk=profile_id).schema, schema)
+
+    # --------------------------- CAGE39 SOURCE7: T10 mapped logical wiring + public export
+
+    def _c39_mapped_edges(self):
+        """Declared oracle for the AP-equivalent mapped fixture (never allocator/YAML output):
+        server i -> leaf i, nic0-p0 -> E1/1/1 and nic0-p1 -> E1/1/2 (two channels of ONE cage);
+        fabric part is the existing declared slot table for 4 leaves x 2 spines, k=2."""
+        names = self._names(4, 4, 2)
+        server_names, leaf_names, _ = names
+        server_edges = Counter()
+        for i, server in enumerate(server_names):
+            for port, slot in enumerate(('E1/1/1', 'E1/1/2')):
+                server_edges[(server, f'{NIC_ID}-p{port}', leaf_names[i], slot)] += 1
+        _, fabric_edges = self._expected_edges(4, 4, 2, 2)
+        self.assertEqual((sum(server_edges.values()), sum(fabric_edges.values())), (8, 16))
+        return names, server_edges, fabric_edges
+
+    def _c39_assert_artifact(self, text, names, server_edges, fabric_edges, labels, kinds, modes_expected):
+        """Complete typed wiring artifact vs independently declared Counters/literals."""
+        import re
+        import yaml
+
+        wiring = 'wiring.githedgehog.com/v1beta1'
+        dns = re.compile(r'^[a-z0-9]([-a-z0-9]*[a-z0-9])?$')
+        server_names, leaf_names, spine_names = names
+        self.assertIsInstance(text, str)
+        docs = list(yaml.safe_load_all(text))
+        identities, by_kind = Counter(), {}
+        for doc in docs:
+            self.assertIsInstance(doc, dict, f'unstructured document {doc!r}')
+            self.assertEqual(set(doc), {'apiVersion', 'kind', 'metadata', 'spec'}, doc)
+            meta = doc['metadata']
+            self.assertIsInstance(meta, dict)
+            self.assertEqual(set(meta), {'name', 'namespace'}, meta)
+            for value in (meta['name'], meta['namespace']):
+                self.assertIsInstance(value, str)
+                self.assertLessEqual(len(value), 63, value)
+                self.assertRegex(value, dns)
+            identities[(doc['apiVersion'], doc['kind'], meta['namespace'], meta['name'])] += 1
+            by_kind.setdefault(doc['kind'], []).append(doc)
+        self.assertEqual({i: n for i, n in identities.items() if n > 1}, {}, 'duplicate identity')
+        self.assertEqual(Counter({k: len(v) for k, v in by_kind.items()}), kinds, 'document kinds/counts')
+        switches = {}
+        for doc in by_kind['Switch']:
+            self.assertEqual(doc['apiVersion'], wiring)
+            switches[doc['metadata']['name']] = (doc['spec'].get('role'), doc['spec'].get('profile'))
+        expected_switches = {n: (HedgehogRoleChoices.SERVER_LEAF, labels['leaf']) for n in leaf_names}
+        expected_switches.update({n: (HedgehogRoleChoices.SPINE, labels['spine']) for n in spine_names})
+        self.assertEqual(switches, expected_switches, 'Switch identities/roles/profile labels')
+        self.assertEqual({d['metadata']['name'] for d in by_kind['Server']}, set(server_names))
+        server_links, fabric_links, endpoints, modes = Counter(), Counter(), Counter(), Counter()
+        for doc in by_kind['Connection']:
+            self.assertEqual(doc['apiVersion'], wiring)
+            spec = doc['spec']
+            self.assertIsInstance(spec, dict)
+            self.assertEqual(len(spec), 1, f'connection has multiple/no modes: {spec}')
+            (mode, body), = spec.items()
+            self.assertIn(mode, ('unbundled', 'fabric'), f'unexpected connection mode {mode!r}')
+            modes[mode] += 1
+            if mode == 'unbundled':
+                self.assertEqual(set(body), {'link'}, body)
+                self.assertEqual(set(body['link']), {'server', 'switch'}, body)
+                server = self._a35_port(body['link']['server'])
+                switch = self._a35_port(body['link']['switch'])
+                self.assertIn(server[0], server_names, server)
+                self.assertIn(switch[0], leaf_names, switch)
+                server_links[server + switch] += 1
+                endpoints[server] += 1
+                endpoints[switch] += 1
+                continue
+            self.assertEqual(set(body), {'links'}, body)
+            pairs = set()
+            for link in body['links']:
+                self.assertEqual(set(link), {'leaf', 'spine'}, link)
+                leaf, spine = self._a35_port(link['leaf']), self._a35_port(link['spine'])
+                self.assertIn(leaf[0], leaf_names, leaf)
+                self.assertIn(spine[0], spine_names, spine)
+                fabric_links[leaf + spine] += 1
+                endpoints[leaf] += 1
+                endpoints[spine] += 1
+                pairs.add((leaf[0], spine[0]))
+            self.assertEqual(len(pairs), 1, f'fabric connection mixes pairs {pairs}')
+        self.assertEqual(modes, modes_expected, 'connection modes')
+        self.assertEqual(server_links, server_edges, 'exported server links (logical, shared optic)')
+        self.assertEqual(fabric_links, fabric_edges, 'exported fabric links')
+        self.assertEqual({e: n for e, n in endpoints.items() if n > 1}, {}, 'endpoint exported twice')
+        expected_endpoints = set()
+        for edge in list(server_edges) + list(fabric_edges):
+            expected_endpoints.update({edge[:2], edge[2:]})
+        self.assertEqual(set(endpoints), expected_endpoints, 'dropped/extra endpoints')
+        return docs, (server_links, fabric_links)
+
+    def _c39_export(self, names, server_edges, fabric_edges, labels, kinds, modes):
+        """Public generate_yaml_for_plan + authenticated GET + repeat GET, each under a non-read
+        SQL denial; full catalog/inventory/state/intent rows unchanged; returns bytes + graph."""
+        import json
+
+        from netbox_hedgehog.services.yaml_generator import generate_yaml_for_plan
+
+        url = self._a35_export_url()
+        before = self._c39_catalog_snapshot()
+        service_text = self._a35_guarded(lambda: generate_yaml_for_plan(self.plan))
+        first = self._a35_guarded(lambda: self.client.get(url))
+        repeat = self._a35_guarded(lambda: self.client.get(url))
+        self.assertEqual(self._c39_catalog_snapshot(), before, 'export changed persisted rows')
+        disposition = f'attachment; filename="{self.plan.name}-{FABRIC}.yaml"'
+        for response in (first, repeat):
+            self.assertEqual(response.status_code, 200, response.content[:500])
+            self.assertEqual(response['Content-Type'], 'text/yaml; charset=utf-8')
+            self.assertEqual(response['Content-Disposition'], disposition)
+        self.assertEqual(first.content, repeat.content, 'repeat download not byte-identical')
+        args = (names, server_edges, fabric_edges, labels, kinds, modes)
+        service_docs, _ = self._c39_assert_artifact(service_text, *args)
+        download_docs, graph = self._c39_assert_artifact(first.content.decode('utf-8'), *args)
+
+        def canonical(docs):
+            return sorted(json.dumps(doc, sort_keys=True) for doc in docs)
+
+        self.assertEqual(canonical(service_docs), canonical(download_docs), 'service and download differ')
+        return first.content, graph
+
+    def test_c39_t10_mapped_generation_export_bom_and_regeneration_agree(self):
+        """T10/C09/C10: one shared optic per mapped cage. In the SAME generation the public BOM
+        (one NIC + one server optic per server) and the public wiring service + authenticated
+        download (8 logical unbundled links on the two channels, 16 fabric links, breakout
+        suffixes preserved) agree with declared literals; same-intent regeneration replaces every
+        Module PK and re-exports the identical logical graph. Fictional profile labels declared
+        BEFORE generation; no real-hardware/hhfab/diagram qualification."""
+        from netbox_hedgehog.services.bom_export import get_plan_bom
+
+        fixture = self._c39_fixture('c39x')
+        labels = self._a35_assign_profiles('c39x')
+        self._c39_generate()
+        names, server_edges, fabric_edges = self._c39_mapped_edges()
+        kinds = Counter({'VLANNamespace': 1, 'IPv4Namespace': 1, 'Switch': 6, 'Server': 4, 'Connection': 16})
+        modes = Counter({'unbundled': 8, 'fabric': 8})
+        aggregate = {('nic', fixture['nic_type'].pk): 4, ('server_transceiver', fixture['optic'].pk): 4,
+                     ('switch_transceiver', fixture['optic'].pk): 4}
+
+        def physical_and_bom():
+            self._c39_assert_physical(('cage-0',), 1)
+            bom = get_plan_bom(self.plan)
+            self.assertEqual({(i.section, i.module_type_id): i.quantity for i in bom.line_items}, aggregate)
+            self.assertEqual(bom.module_total_qty, 12)
+
+        physical_and_bom()
+        self._a35_login()  # user/session setup BEFORE the read-only export boundary
+        first_content, first_graph = self._c39_export(names, server_edges, fabric_edges, labels, kinds, modes)
+        self.assertEqual(first_graph, (server_edges, fabric_edges))
+        self.assertIn(b'/E1/1/1', first_content)
+        self.assertIn(b'/E1/1/2', first_content)
+        _, _, _, first_modules, _ = self._new_inventory()
+        first_module_pks = {m.pk for m in first_modules}
+        self.assertEqual(len(first_module_pks), 12)
+
+        self._generate(devices_total=10, generated_interfaces=40, cables_total=24)
+        self.assertFalse(Module.objects.filter(pk__in=first_module_pks).exists(), 'stale Module PK remains')
+        physical_and_bom()
+        _, second_graph = self._c39_export(names, server_edges, fabric_edges, labels, kinds, modes)
+        self.assertEqual(second_graph, first_graph, 'regenerated logical graph differs')
+
+    # ------------------------ CAGE39 SOURCE7: T11 captured-layout change during generation
+
+    def test_c39_t11_optic_attribute_change_mid_generation_raises_and_rolls_back(self):
+        """T11/C08 capture rule: after a valid prior generation, a scoped execute_wrapper applies
+        ONE real test-owned optic attribute_data change (standard string) right after the first
+        generation write (recursion-guarded). Placement uses the captured layout; the final
+        provenance recheck must raise [nic_layout_provenance_changed] through public
+        generate_all's atomic boundary, restoring the full prior inventory/terminations/tags/
+        state/intent AND the optic attributes. Writes had begun (no zero-SQL claim). This is a
+        controlled same-transaction fault, not a cross-process concurrency/fencing claim."""
+        fixture = self._c39_fixture('c39v')
+        optic = fixture['optic']
+        self._c39_generate()
+        prior = {model: _pks(model) - self.baseline[model] for model in INVENTORY_MODELS}
+        state_rows = list(GenerationState.objects.filter(plan=self.plan).values())
+        changed = dict(self.C39_OPTIC_ATTRS, standard='400GBASE-FR4')
+        self.assertNotEqual(changed, self.C39_OPTIC_ATTRS)
+
+        def after_first_write(head, text, flat):
+            return 'after' if head in ('INSERT', 'UPDATE', 'DELETE') else None
+
+        def change_optic():
+            self.assertEqual(ModuleType.objects.filter(pk=optic.pk).update(attribute_data=changed), 1)
+
+        message = self._c39_generate_with_injection(after_first_write, change_optic)
+        self.assertIn('[nic_layout_provenance_changed]', message)
+        self.assertEqual(ModuleType.objects.get(pk=optic.pk).attribute_data, self.C39_OPTIC_ATTRS)
+        self.assertEqual(list(GenerationState.objects.filter(plan=self.plan).values()), state_rows)
+        for model, pks in prior.items():
+            self.assertTrue(pks and pks <= _pks(model), f'prior {model.__name__} rows lost')
+        self.assertFalse(GenerationState.objects.get(plan=self.plan).is_dirty())
+
+    # --------------------------------- CAGE39 SOURCE7: T09 real public YAML case ingest
+
+    C39_INGEST_EXTRA = {'srv29_form_factor': 'ocp3'}
+
+    def _c39_ingest_fixture(self, case):
+        """Preconfigured test-owned mapped NIC type (map + unrelated schema-backed attribute, native
+        full_clean), its declared cage already populated, a foreign mapped control type with an
+        extra bay, a legacy type, and a server DeviceType. No plan yet."""
+        import copy
+
+        from dcim.models import ModuleBayTemplate, ModuleTypeProfile
+        from netbox_hedgehog.management.commands.populate_transceiver_bays import populate_bays
+
+        _breakout('2x400g')
+        manufacturer = _manufacturer()
+        server_type = DeviceType.objects.create(manufacturer=manufacturer, model=f'srv29-{case}-server',
+                                                slug=f'srv29-{case}-server', u_height=1)
+        schema = copy.deepcopy(self.C39_STRONG_SCHEMA)
+        schema['properties']['srv29_form_factor'] = {'type': 'string', 'enum': ['ocp3', 'pcie']}
+        profile = ModuleTypeProfile(name=f'srv29-{case}-ingest-profile', schema=schema)
+        profile.full_clean()
+        profile.save()
+        attrs = dict(self.C39_INGEST_EXTRA, hnp_nic_cage_map=copy.deepcopy(self.C39_MAP))
+        types = {}
+        for key in ('mapped', 'foreign'):
+            module_type = ModuleType(manufacturer=manufacturer, model=f'srv29-{case}-{key}-nic', profile=profile,
+                                     attribute_data=copy.deepcopy(attrs))
+            module_type.full_clean()
+            module_type.save()
+            for name in ('p0', 'p1'):
+                InterfaceTemplate.objects.create(module_type=module_type, name=name, type=T400)
+            types[key] = ModuleType.objects.select_related('profile').get(pk=module_type.pk)
+            self.assertEqual(types[key].attribute_data, attrs)
+        populate_bays(device_types=[], module_types=[types['mapped']])
+        ModuleBayTemplate.objects.create(module_type=types['foreign'], name='srv29-foreign-extra')
+        self.assertEqual(list(ModuleBayTemplate.objects.filter(module_type=types['mapped'])
+                              .values_list('name', flat=True)), ['cage-0'])
+        legacy = ModuleType.objects.create(manufacturer=manufacturer, model=f'srv29-{case}-legacy-nic')
+        return {'server_type': server_type, 'mapped': types['mapped'], 'foreign': types['foreign'],
+                'legacy': legacy, 'profile': profile, 'attrs': attrs}
+
+    def _c39_v1_case(self, case_id, fx, nic_item_extra=None):
+        """Genuinely valid minimal V1 case: one server class/NIC referencing the mapped type."""
+        manufacturer = _manufacturer()
+        nic_item = {'id': 'nic', 'manufacturer': 'mfr', 'model': fx['mapped'].model}
+        nic_item.update(nic_item_extra or {})
+        return {
+            'meta': {'case_id': case_id, 'name': f'Case {case_id}', 'version': 1, 'managed_by': 'yaml'},
+            'plan': {'name': f'srv29 plan {case_id}', 'status': 'draft'},
+            'reference_data': {
+                'manufacturers': [{'id': 'mfr', 'name': manufacturer.name, 'slug': manufacturer.slug}],
+                'device_types': [{'id': 'srv', 'manufacturer': 'mfr', 'model': fx['server_type'].model,
+                                  'slug': fx['server_type'].slug}],
+                'module_types': [nic_item],
+            },
+            'switch_classes': [],
+            'server_classes': [{'server_class_id': 'srv29-c39-srv', 'server_device_type': 'srv', 'quantity': 1}],
+            'server_nics': [{'server_class': 'srv29-c39-srv', 'nic_id': NIC_ID, 'module_type': 'nic'}],
+            'server_connections': [],
+        }
+
+    def _c39_catalog_rows(self):
+        from dcim.models import ModuleBayTemplate, ModuleTypeProfile
+
+        return {m.__name__: list(m.objects.order_by('pk').values())
+                for m in (Manufacturer, DeviceType, ModuleType, ModuleTypeProfile, InterfaceTemplate,
+                          ModuleBayTemplate, BreakoutOption)}
+
+    def _c39_ingest_rows(self):
+        rows = self._c39_catalog_rows()
+        for model in (TopologyPlan, PlanServerClass, PlanServerNIC, PlanServerConnection, PlanSwitchClass,
+                      SwitchPortZone, GenerationState):
+            rows[model.__name__] = list(model.objects.order_by('pk').values())
+        return rows
+
+    @staticmethod
+    def _c39_ingest_codes(exc):
+        errors = getattr(exc, 'errors', None)
+        if errors is None and exc.args:
+            errors = exc.args[0]
+        return sorted({e.get('code') for e in (errors or []) if isinstance(e, dict)})
+
+    def _c39_ingest_reject(self, case, mode, code):
+        """Real public apply_case must raise the specific typed code; the atomic ingest leaves
+        every persisted row unchanged (writes may have been attempted: NO zero-SQL claim)."""
+        from netbox_hedgehog.test_cases.exceptions import TestCaseValidationError
+        from netbox_hedgehog.test_cases.ingest import apply_case
+
+        before = self._c39_ingest_rows()
+        with self.assertRaises(TestCaseValidationError) as ctx:
+            apply_case(case, reference_mode=mode)
+        self.assertEqual(self._c39_ingest_codes(ctx.exception), [code], getattr(ctx.exception, 'errors', None))
+        self.assertEqual(self._c39_ingest_rows(), before, f'{code}: persistent partial change')
+
+    def _c39_assert_mapped_intact(self, fx):
+        for key in ('mapped', 'foreign'):
+            row = ModuleType.objects.get(pk=fx[key].pk)
+            self.assertEqual((row.profile_id, row.attribute_data), (fx['profile'].pk, fx['attrs']), key)
+            self.assertEqual(sorted(InterfaceTemplate.objects.filter(module_type=row).values_list('name', 'type')),
+                             [('p0', T400), ('p1', T400)], key)
+
+    def test_c39_t09_v1_mapped_reference_consumed_read_only_both_modes(self):
+        """T09/C02 positive: in BOTH require and ensure mode, a configured mapped type is consumed
+        when attribute_data is ABSENT or the EXACT whole typed payload (with exact existing
+        templates); no attribute/profile/InterfaceTemplate/bay/foreign-catalog row changes."""
+        import copy
+
+        from netbox_hedgehog.test_cases.ingest import apply_case
+
+        fx = self._c39_ingest_fixture('c39q')
+        exact = {'attribute_data': copy.deepcopy(fx['attrs']),
+                 'interface_templates': [{'name': 'p0', 'type': T400}, {'name': 'p1', 'type': T400}]}
+        for mode in ('require', 'ensure'):
+            for label, extra in (('absent', {}), ('exact', exact)):
+                with self.subTest(mode=mode, variant=label):
+                    case_id = f'srv29_c39q_{mode}_{label}'
+                    catalog_before = self._c39_catalog_rows()
+                    plan = apply_case(self._c39_v1_case(case_id, fx, copy.deepcopy(extra)), reference_mode=mode)
+                    self.assertEqual(self._c39_catalog_rows(), catalog_before, 'catalog rows rewritten')
+                    nics = list(PlanServerNIC.objects.filter(server_class__plan=plan)
+                                .values_list('nic_id', 'module_type_id'))
+                    self.assertEqual(nics, [(NIC_ID, fx['mapped'].pk)])
+                    self.assertFalse(PlanServerConnection.objects.filter(server_class__plan=plan).exists())
+                    self._c39_assert_mapped_intact(fx)
+
+    def test_c39_t09_v1_mapped_reference_alterations_rejected_atomically_both_modes(self):
+        """T09/C02 negative matrix (both modes) after a positive control: omitted unrelated attr,
+        changed unrelated, explicit null, empty, changed map, extra attr, new template, wrong-type
+        template and name-only template -> mapped_catalog_reference_conflict; atomic, intact."""
+        import copy
+
+        from netbox_hedgehog.test_cases.ingest import apply_case
+
+        fx = self._c39_ingest_fixture('c39r')
+        apply_case(self._c39_v1_case('srv29_c39r_control', fx), reference_mode='require')  # fixture valid
+        swapped = copy.deepcopy(self.C39_MAP)
+        swapped['ports'] = [{'cage': 'cage-0', 'logical_lane': 1}, {'cage': 'cage-0', 'logical_lane': 0}]
+        attrs = fx['attrs']
+        variants = [
+            ('subset_map_only', {'attribute_data': {'hnp_nic_cage_map': copy.deepcopy(self.C39_MAP)}}),
+            ('changed_unrelated', {'attribute_data': dict(copy.deepcopy(attrs), srv29_form_factor='pcie')}),
+            ('explicit_null', {'attribute_data': None}),
+            ('empty', {'attribute_data': {}}),
+            ('changed_map', {'attribute_data': dict(copy.deepcopy(attrs), hnp_nic_cage_map=swapped)}),
+            ('extra_attr', {'attribute_data': dict(copy.deepcopy(attrs), srv29_extra='x')}),
+            ('new_template', {'interface_templates': [{'name': 'p2', 'type': T400}]}),
+            ('wrong_type_template', {'interface_templates': [{'name': 'p0', 'type': T100}]}),
+            ('name_only_template', {'interface_templates': [{'name': 'p0'}]}),
+        ]
+        for mode in ('require', 'ensure'):
+            for label, extra in variants:
+                with self.subTest(mode=mode, variant=label):
+                    case = self._c39_v1_case(f'srv29_c39r_{mode}_{label}', fx, copy.deepcopy(extra))
+                    self._c39_ingest_reject(case, mode, 'mapped_catalog_reference_conflict')
+                    self._c39_assert_mapped_intact(fx)
+                    self.assertFalse(InterfaceTemplate.objects.filter(module_type=fx['mapped'], name='p2').exists())
+
+    def test_c39_t09_v1_duplicate_reference_id_rejected_before_effects(self):
+        """T09/review01 P2-1 counterexample: a NEW type with a map then a legacy type under the SAME
+        rid cannot author the first row; an existing mapped declaration with a conflicting payload
+        then a same-rid legacy declaration cannot overwrite the mapped raw payload. Both modes:
+        duplicate_reference_id before effects, no new type created, mapped payload intact."""
+        import copy
+
+        fx = self._c39_ingest_fixture('c39s')
+        new_model = 'srv29-c39s-new-mapped-nic'
+        changed = dict(copy.deepcopy(fx['attrs']), srv29_form_factor='pcie')
+        legacy_row = list(ModuleType.objects.filter(pk=fx['legacy'].pk).values())
+        for mode in ('require', 'ensure'):
+            for label, first in (
+                    ('new_type_with_map', {'model': new_model,
+                                           'attribute_data': {'hnp_nic_cage_map': copy.deepcopy(self.C39_MAP)}}),
+                    ('existing_mapped_conflicting', {'model': fx['mapped'].model, 'attribute_data': changed})):
+                with self.subTest(mode=mode, variant=label):
+                    case = self._c39_v1_case(f'srv29_c39s_{mode}_{label}', fx)
+                    case['reference_data']['module_types'] = [
+                        dict({'id': 'nic', 'manufacturer': 'mfr'}, **copy.deepcopy(first)),
+                        {'id': 'nic', 'manufacturer': 'mfr', 'model': fx['legacy'].model},
+                    ]
+                    self._c39_ingest_reject(case, mode, 'duplicate_reference_id')
+                    self.assertFalse(ModuleType.objects.filter(model=new_model).exists(), 'first new type authored')
+                    self._c39_assert_mapped_intact(fx)
+                    self.assertEqual(list(ModuleType.objects.filter(pk=fx['legacy'].pk).values()), legacy_row)
+
+    def test_c39_t09_v2_configured_reference_survives_layout_authoring_rejected(self):
+        """T09/C03: genuinely valid V2 case referencing the configured mapped NIC type ingests;
+        map/profile/templates survive and NO PlanServerConnection is produced (current V2 is not
+        a server_connections producer). Layout authoring under the NIC, its module_type
+        reference or test_fixtures -> nic_layout_authoring_forbidden before normalization."""
+        import copy
+
+        from netbox_hedgehog.test_cases.ingest import apply_case
+
+        fx = self._c39_ingest_fixture('c39t')
+        manufacturer = _manufacturer()
+        layout = {'hnp_nic_cage_map': copy.deepcopy(self.C39_MAP)}
+
+        def v2(case_id, nic_extra=None, mt_extra=None, fixtures=None):
+            nic = {'server_class': 'srv29-c39t-srv', 'nic_id': NIC_ID,
+                   'module_type': dict({'manufacturer': manufacturer.slug, 'model': fx['mapped'].model},
+                                       **copy.deepcopy(mt_extra or {}))}
+            nic.update(copy.deepcopy(nic_extra or {}))
+            case = {
+                'apiVersion': 'diet/v2', 'kind': 'TopologyPlan',
+                'metadata': {'case_id': case_id, 'name': f'Case {case_id}', 'version': 2, 'managed_by': 'yaml'},
+                'spec': {
+                    'plan': {'name': f'srv29 plan {case_id}', 'status': 'draft'},
+                    'server_classes': [{'server_class_id': 'srv29-c39t-srv',
+                                        'server_device_type': fx['server_type'].slug, 'quantity': 1}],
+                    'server_nics': [nic],
+                    'server_connections': [{'server_class': 'srv29-c39t-srv', 'connection_id': 'srv29-c39t-conn',
+                                            'nic': NIC_ID, 'port_index': 0, 'ports_per_connection': 2,
+                                            'speed': 400}],
+                },
+            }
+            if fixtures is not None:
+                case['test_fixtures'] = copy.deepcopy(fixtures)
+            return case
+
+        catalog_before = self._c39_catalog_rows()
+        plan = apply_case(v2('srv29_c39t_valid'))
+        self.assertEqual(self._c39_catalog_rows(), catalog_before, 'V2 ingest rewrote catalog rows')
+        self.assertEqual(list(PlanServerNIC.objects.filter(server_class__plan=plan)
+                              .values_list('nic_id', 'module_type_id')), [(NIC_ID, fx['mapped'].pk)])
+        self.assertFalse(PlanServerConnection.objects.filter(server_class__plan=plan).exists(),
+                         'V2 must not be treated as a server_connections producer')
+        self._c39_assert_mapped_intact(fx)
+        for label, kwargs in (
+                ('nic', {'nic_extra': layout}),
+                ('module_type', {'mt_extra': layout}),
+                ('test_fixtures', {'fixtures': {'module_types': [{
+                    'manufacturer': manufacturer.slug, 'model': 'srv29-c39t-fixture-nic',
+                    'attribute_data': layout}]}})):
+            with self.subTest(label):
+                self._c39_ingest_reject(v2(f'srv29_c39t_{label}', **kwargs), 'ensure', 'nic_layout_authoring_forbidden')
+                self.assertFalse(ModuleType.objects.filter(model='srv29-c39t-fixture-nic').exists())
+                self._c39_assert_mapped_intact(fx)
+
+    # ------- CAGE39 SOURCE9: read-only sync guard, complete public T11 matrix, virtual controls
+    # Fictional test-owned rows only. Nothing mocked; no production helper patched.
+
+    def _c39_sync_rows(self):
+        """Full rows for read-only proofs: ``_c39_catalog_snapshot`` (inventory, cable
+        terminations, tag memberships, this plan's GenerationState, plan/server/NIC/
+        connection/zone intent, DeviceTypeExtension, BreakoutOption, DeviceType, ModuleType,
+        InterfaceTemplate, ModuleBayTemplate, ModuleTypeProfile) PLUS every GenerationState row
+        of every plan (complete saved history)."""
+        snap = self._c39_catalog_snapshot()
+        snap['GenerationStateAll'] = list(GenerationState.objects.order_by('pk').values())
+        return snap
+
+    def _c39_sync_guarded(self, operation):
+        """Run ONE public read (is_dirty / sync_display_state / live build_plan_snapshot /
+        population admission probe) under an execute_wrapper that allows only SELECT and
+        transaction control. Any other statement is RECORDED independently and refused: the
+        live snapshot builder deliberately converts exceptions into an invalid marker, so the
+        recorded list (not a propagated exception) is the mutation-attempt proof. Full rows
+        before == after. Returns the call's actual result. No auth/session setup needed."""
+        attempts = []
+        allowed_heads = ('SELECT', 'SAVEPOINT', 'RELEASE', 'ROLLBACK', 'BEGIN', 'COMMIT')
+
+        def deny(execute, sql, params, many, context):
+            text = sql.strip() if isinstance(sql, str) else str(sql).strip()
+            head = text.split(None, 1)[0].upper() if text else ''
+            if head not in allowed_heads:
+                attempts.append(text[:200])
+                raise AssertionError(f'mutation/unexpected SQL during read-only call: {text[:200]}')
+            return execute(sql, params, many, context)
+
+        before = self._c39_sync_rows()
+        with connection.execute_wrapper(deny):
+            result = operation()
+        self.assertEqual(attempts, [], 'SQL mutation/unexpected statement attempted during read-only call')
+        self.assertEqual(self._c39_sync_rows(), before, 'read-only call changed persisted rows')
+        return result
+
+    def test_c39_t11_public_matrix_rehashed_invalid_saved_evidence_both_methods(self):
+        """T11/C08 complete public matrix on an ACTUAL generated mapped plan/state.
+
+        Every snapshot_contract_v1 missing/duplicate/provenance/version/bool-ID/template/
+        ordinal/mode/optic/bay/connection/manifest/base-linkage/internal-coherence variant is
+        derived from the real saved evidence and (where the defect is structural/semantic)
+        RE-HASHED at NIC and root level, so it is never merely a checksum failure. For each:
+        the exact typed extension_errors code; pure classify_snapshot_sync(bad, bad)
+        incomplete; public is_dirty() with that saved evidence vs the VALID live current
+        (honest label: saved-invalid -> dirty, NOT an equal-invalid proof); public
+        sync_display_state() live and with current=identical bad (these record corruptions
+        are not producible through DB constraints). The genuine live invalid-EQUAL journey is
+        test_c39_t11_live_invalid_current_equal_saved_dirty_and_incomplete. Then unchanged-FK
+        breakout_topology change (explicitly INVALID current -> incomplete) and BreakoutOption
+        provenance change (from_speed doubled, still coherent -> valid CHANGED). Every public
+        read/live build is mutation-denied with full-row preservation; saved history is never
+        rewritten."""
+        import copy
+
+        from netbox_hedgehog.models.topology_planning.generation import (
+            SYNC_CHANGED,
+            SYNC_IN_SYNC,
+            SYNC_SNAPSHOT_INCOMPLETE,
+            classify_snapshot_sync,
+        )
+        from netbox_hedgehog.services.nic_cage_layout import SNAPSHOT_KEY, extension_errors
+        from netbox_hedgehog.utils.snapshot_builder import build_plan_snapshot
+
+        fixture = self._c39_fixture('c39pm')
+        self._c39_generate()
+        state = GenerationState.objects.get(plan=self.plan)
+        saved_row = list(GenerationState.objects.filter(pk=state.pk).values())
+        valid = copy.deepcopy(state.snapshot)
+        self.assertEqual(extension_errors(valid[SNAPSHOT_KEY], base_snapshot=valid), [])
+        self.assertFalse(self._c39_sync_guarded(state.is_dirty))
+        self.assertEqual(self._c39_sync_guarded(state.sync_display_state), SYNC_IN_SYNC)
+        record = valid[SNAPSHOT_KEY]['nics'][0]
+        self.assertEqual(len(valid[SNAPSHOT_KEY]['nics']), 1)
+        self.assertEqual([(t['logical_index'], t['name']) for t in record['interface_templates']],
+                         [(0, 'p0'), (1, 'p1')])
+        self.assertEqual([b['name'] for b in record['bay_templates']], ['cage-0'])
+        self.assertEqual((len(record['connections']), len(record['optics']), len(record['modes'])), (1, 1, 1))
+        self.assertTrue(record['layout_present'])
+
+        def ext(s):
+            return s[SNAPSHOT_KEY]
+
+        def nic(s):
+            return s[SNAPSHOT_KEY]['nics'][0]
+
+        def conn(s):
+            return nic(s)['connections'][0]
+
+        def names(*new):
+            def fn(s):
+                for row, name in zip(nic(s)['interface_templates'], new):
+                    row['name'] = name
+            return fn
+
+        def add_cage(s):
+            n = nic(s)
+            n['layout']['cages'].append({'cage': 'cage-9', 'breakout_id': '2x400g'})
+            n['modes'].append(dict(n['modes'][0], cage='cage-9'))
+
+        def overlap(s):
+            extra = dict(conn(s), connection_id='srv29-c39pm-dup', ports_per_connection=1)
+            nic(s)['connections'].append(extra)
+            ext(s)['expected_connection_keys'] = sorted(
+                ext(s)['expected_connection_keys'] + [[extra['server_class_id'], extra['connection_id']]])
+
+        def ghost(key, pair):
+            def fn(s):
+                ext(s)[key] = sorted(ext(s)[key] + [list(pair)])
+            return fn
+
+        def cage_names(name):
+            def fn(s):
+                n = nic(s)
+                for row in n['layout']['ports'] + n['layout']['cages'] + n['modes']:
+                    row['cage'] = name
+            return fn
+
+        def null_optic(s):
+            conn(s)['transceiver_module_type_id'] = None
+            nic(s)['optics'] = []
+
+        def claim_legacy(s):
+            nic(s)['layout_present'] = False
+
+        def demote_to_legacy(s):
+            nic(s).update(layout_present=False, layout=None, modes=[])
+
+        def set_ext(value):
+            def fn(s):
+                s[SNAPSHOT_KEY] = copy.deepcopy(value)
+            return fn
+
+        def tamper_zone(s):
+            conn(s)['target_zone_id'] += 1000  # semantically valid, deliberately NOT rehashed
+
+        marker = {'version': 1, 'status': 'invalid', 'errors': ['nic_layout_version']}
+        # (label, mutation, exact code, rehash NIC+root digests)
+        cases = [
+            # --- root / version / manifests
+            ('extension_not_object', set_ext(['srv29']), 'not_object', False),
+            ('extension_null', set_ext(None), 'not_object', False),
+            ('saved_invalid_marker', set_ext(marker), 'invalid_marker', False),
+            ('extra_root_key', lambda s: ext(s).update(srv29_extra=1), 'root_keys', True),
+            ('version_bool', lambda s: ext(s).update(version=True), 'version', True),
+            ('version_unknown', lambda s: ext(s).update(version=2), 'version', True),
+            ('nic_manifest_not_list', lambda s: ext(s).update(expected_nic_keys='srv29'), 'nic_manifest', True),
+            ('empty_manifest', lambda s: ext(s).update(expected_nic_keys=[], nics=[]), 'nic_manifest_empty', True),
+            ('nics_not_list', lambda s: ext(s).update(nics={}), 'nics', False),
+            ('ghost_nic_key', ghost('expected_nic_keys', ('srv29-zz-class', 'srv29-zz-nic')), 'nic_completeness', True),
+            ('ghost_connection_key', ghost('expected_connection_keys', ('srv29-zz-class', 'srv29-zz-conn')),
+             'connection_completeness', True),
+            ('base_connection_linkage', lambda s: s.update(connections=[]), 'base_connection_linkage', True),
+            # --- NIC rows: missing / duplicate / shape / bool IDs / provenance
+            ('omitted_nic', lambda s: ext(s).update(nics=[]), 'nic_completeness', True),
+            ('duplicate_nic', lambda s: ext(s)['nics'].append(copy.deepcopy(nic(s))), 'nic_completeness', True),
+            ('nic_missing_required_field', lambda s: nic(s).pop('optics'), 'nic_record', True),
+            ('bool_module_type_id', lambda s: nic(s).update(module_type_id=True), 'nic_fields', True),
+            ('bool_profile_id', lambda s: nic(s).update(profile_id=True), 'nic_fields', True),
+            ('layout_present_not_bool', lambda s: nic(s).update(layout_present='yes'), 'nic_fields', True),
+            ('optin_profile_id_null', lambda s: nic(s).update(profile_id=None), 'optin_profile', True),
+            ('optin_profile_schema_hash_null', lambda s: nic(s).update(profile_schema_sha256=None),
+             'optin_profile', True),
+            ('mapped_claims_legacy', claim_legacy, 'legacy_layout', True),
+            ('no_opted_in_nic', demote_to_legacy, 'no_opted_in_nic', True),
+            ('layout_version_unknown', lambda s: nic(s)['layout'].update(version=2), 'layout_record', True),
+            ('layout_version_bool', lambda s: nic(s)['layout'].update(version=True), 'layout_record', True),
+            # --- interface templates / ordinals / natural order
+            ('bool_template_id', lambda s: nic(s)['interface_templates'][0].update(template_id=True),
+             'template_record', True),
+            ('template_ordinals_permuted', lambda s: nic(s)['interface_templates'].reverse(), 'template_index', True),
+            ('template_duplicate_id', lambda s: nic(s)['interface_templates'][1].update(
+                template_id=nic(s)['interface_templates'][0]['template_id']), 'template_duplicate', True),
+            ('omitted_template', lambda s: nic(s).update(interface_templates=nic(s)['interface_templates'][:1]),
+             'layout_index', True),
+            ('natural_order_p1_at_0_p0_at_1', names('p1', 'p0'), 'template_order', True),
+            ('lexical_order_p10_at_0_p2_at_1', names('p10', 'p2'), 'template_order', True),
+            ('mapped_module_token_first', names('{module}-p0', 'p1'), 'layout_template_module_token', True),
+            # --- layout geometry / ports / cages
+            ('empty_geometry', lambda s: nic(s)['layout'].update(ports=[]), 'layout_empty_geometry', True),
+            ('bool_logical_lane', lambda s: nic(s)['layout']['ports'][0].update(logical_lane=True),
+             'layout_port', True),
+            ('substitution_cage_name', cage_names('{module}'), 'layout_cage_name', True),
+            ('trim_unstable_cage_name', cage_names('cage-0 '), 'layout_cage_name', True),
+            ('unreferenced_cage', add_cage, 'layout_unreferenced_cage', True),
+            # --- modes
+            ('omitted_mode', lambda s: nic(s).update(modes=[]), 'mode_coverage', True),
+            ('duplicate_mode', lambda s: nic(s)['modes'].append(copy.deepcopy(nic(s)['modes'][0])),
+             'mode_duplicate', True),
+            ('mode_binding', lambda s: nic(s)['modes'][0].update(breakout_id='1x800g'), 'mode_binding', True),
+            ('mode_capacity_incoherent', lambda s: nic(s)['modes'][0].update(from_speed=400), 'mode_record', True),
+            ('bool_breakout_pk', lambda s: nic(s)['modes'][0].update(breakout_pk=True), 'mode_record', True),
+            # --- bays
+            ('omitted_used_cage_bay', lambda s: nic(s).update(bay_templates=[]), 'used_cage_missing_bay', True),
+            ('duplicate_bay', lambda s: nic(s)['bay_templates'].append(copy.deepcopy(nic(s)['bay_templates'][0])),
+             'bay_duplicate', True),
+            # --- optics / provenance
+            ('omitted_optic', lambda s: nic(s).update(optics=[]), 'optic_coverage', True),
+            ('duplicate_optic', lambda s: nic(s)['optics'].append(copy.deepcopy(nic(s)['optics'][0])),
+             'optic_duplicate', True),
+            ('bool_optic_id', lambda s: nic(s)['optics'][0].update(module_type_id=True), 'optic_fields', True),
+            ('optic_attribute_hash_null', lambda s: nic(s)['optics'][0].update(attribute_data_sha256=None),
+             'optic_fields', True),
+            ('optic_profile_null', lambda s: nic(s)['optics'][0].update(profile_id=None),
+             'optin_optic_provenance', True),
+            ('optic_topology_null', lambda s: nic(s)['optics'][0].update(breakout_topology=None),
+             'optin_optic_provenance', True),
+            ('optic_mode_mismatch', lambda s: nic(s)['optics'][0].update(breakout_topology='1x800g'),
+             'used_cage_optic_mode', True),
+            # --- connections / internal coherence
+            ('omitted_connection', lambda s: nic(s).update(connections=[], optics=[]),
+             'connection_completeness', True),
+            ('duplicate_connection', lambda s: nic(s)['connections'].append(copy.deepcopy(conn(s))),
+             'connection_duplicate', True),
+            ('overlapping_ranges', overlap, 'connection_index_collision', True),
+            ('range_beyond_templates', lambda s: conn(s).update(port_index=1), 'connection_range', True),
+            ('speed_vs_mode', lambda s: conn(s).update(speed=800), 'used_cage_speed', True),
+            ('cross_owner', lambda s: conn(s).update(server_class_id='srv29-other'), 'connection_owner', True),
+            ('null_target_zone', lambda s: conn(s).update(target_zone_id=None), 'connection_fields', True),
+            ('bool_port_index', lambda s: conn(s).update(port_index=False), 'connection_fields', True),
+            ('used_cage_null_optic', null_optic, 'used_cage_null_optic', True),
+            # --- digests (deliberately NOT rehashed)
+            ('nic_digest_mismatch', tamper_zone, 'nic_digest_mismatch', False),
+            ('nic_digest_not_hex', lambda s: nic(s).update(evidence_sha256='srv29'), 'nic_digest', False),
+            ('root_digest_mismatch', lambda s: ext(s).update(evidence_sha256='0' * 64), 'root_digest_mismatch', False),
+            ('root_digest_not_hex', lambda s: ext(s).update(evidence_sha256='srv29'), 'root_digest', False),
+        ]
+        self.assertEqual(len({label for label, _, _, _ in cases}), len(cases), 'duplicate case label')
+        for label, mutate, code, rehash in cases:
+            with self.subTest(label):
+                bad = copy.deepcopy(valid)
+                mutate(bad)
+                if rehash:
+                    self._c39_rehash(bad[SNAPSHOT_KEY])
+                self.assertEqual(extension_errors(bad[SNAPSHOT_KEY], base_snapshot=bad), [code], label)
+                self.assertEqual(classify_snapshot_sync(copy.deepcopy(bad), copy.deepcopy(bad)),
+                                 SYNC_SNAPSHOT_INCOMPLETE, f'{label}: pure identical-invalid')
+                probe = GenerationState.objects.get(pk=state.pk)  # actual generated row ...
+                probe.snapshot = copy.deepcopy(bad)  # ... with in-memory saved evidence only (never saved)
+                # Saved-invalid vs VALID live current: dirty. NOT an equal-invalid proof.
+                self.assertTrue(self._c39_sync_guarded(probe.is_dirty), f'{label}: saved-invalid is_dirty')
+                self.assertEqual(self._c39_sync_guarded(probe.sync_display_state), SYNC_SNAPSHOT_INCOMPLETE,
+                                 f'{label}: saved-invalid vs live current')
+                # Identical bad current (record corruption not producible via DB constraints).
+                self.assertEqual(
+                    self._c39_sync_guarded(lambda: probe.sync_display_state(current=copy.deepcopy(bad))),
+                    SYNC_SNAPSHOT_INCOMPLETE, f'{label}: public identical-invalid current')
+
+        # Positive controls: the classifier is not blanket-incomplete. Natural multi-digit order
+        # (p2 at 0, p10 at 1) is internally VALID evidence; identical -> in_sync, vs live -> changed.
+        natural = copy.deepcopy(valid)
+        names('p2', 'p10')(natural)
+        self._c39_rehash(natural[SNAPSHOT_KEY])
+        self.assertEqual(extension_errors(natural[SNAPSHOT_KEY], base_snapshot=natural), [])
+        self.assertEqual(classify_snapshot_sync(copy.deepcopy(natural), copy.deepcopy(natural)), SYNC_IN_SYNC)
+        probe = GenerationState.objects.get(pk=state.pk)
+        probe.snapshot = copy.deepcopy(natural)
+        self.assertTrue(self._c39_sync_guarded(probe.is_dirty))
+        self.assertEqual(self._c39_sync_guarded(probe.sync_display_state), SYNC_CHANGED)
+        probe.snapshot = copy.deepcopy(valid)
+        self.assertFalse(self._c39_sync_guarded(probe.is_dirty))
+        self.assertEqual(self._c39_sync_guarded(probe.sync_display_state), SYNC_IN_SYNC)
+
+        # Unchanged optic FK, changed breakout_topology -> live current is the typed INVALID
+        # marker (explicit classification: incomplete, never in_sync, never a fake 'changed').
+        optics = ModuleType.objects.filter(pk=fixture['optic'].pk)
+        optics.update(attribute_data=dict(self.C39_OPTIC_ATTRS, breakout_topology='1x800g'))
+        state.refresh_from_db()
+        current = self._c39_sync_guarded(lambda: build_plan_snapshot(self.plan))
+        self.assertEqual(current[SNAPSHOT_KEY], {'version': 1, 'status': 'invalid',
+                                                 'errors': ['nic_layout_optic_mode']})
+        self.assertEqual(PlanServerConnection.objects.get(pk=fixture['conn'].pk).transceiver_module_type_id,
+                         fixture['optic'].pk, 'FK unchanged')
+        self.assertTrue(self._c39_sync_guarded(state.is_dirty), 'unchanged-FK mode change dirty')
+        self.assertEqual(self._c39_sync_guarded(state.sync_display_state), SYNC_SNAPSHOT_INCOMPLETE)
+        optics.update(attribute_data=dict(self.C39_OPTIC_ATTRS))
+        self.assertFalse(self._c39_sync_guarded(state.is_dirty))
+
+        # BreakoutOption provenance value change (from_speed doubled 800 -> 1600; 2x400 still
+        # coherent): unchanged PK/breakout_id, valid current with different mode evidence -> CHANGED.
+        breakout = BreakoutOption.objects.filter(breakout_id='2x400g')
+        self.assertEqual(list(breakout.values_list('from_speed', 'logical_ports', 'logical_speed')), [(800, 2, 400)])
+        breakout_pk = breakout.get().pk
+        breakout.update(from_speed=1600)
+        current = self._c39_sync_guarded(lambda: build_plan_snapshot(self.plan))
+        self.assertEqual(extension_errors(current[SNAPSHOT_KEY], base_snapshot=current), [], 'still coherent')
+        self.assertEqual([(m['breakout_pk'], m['from_speed']) for m in current[SNAPSHOT_KEY]['nics'][0]['modes']],
+                         [(breakout_pk, 1600)])
+        self.assertEqual([(m['breakout_pk'], m['from_speed']) for m in valid[SNAPSHOT_KEY]['nics'][0]['modes']],
+                         [(breakout_pk, 800)])
+        self.assertTrue(self._c39_sync_guarded(state.is_dirty), 'BreakoutOption provenance change dirty')
+        self.assertEqual(self._c39_sync_guarded(state.sync_display_state), SYNC_CHANGED)
+        breakout.update(from_speed=800)
+        self.assertFalse(self._c39_sync_guarded(state.is_dirty))
+        self.assertEqual(self._c39_sync_guarded(state.sync_display_state), SYNC_IN_SYNC)
+        self.assertEqual(list(GenerationState.objects.filter(pk=state.pk).values()), saved_row,
+                         'saved history rewritten')
+
+    def test_c39_t11_live_invalid_current_equal_saved_dirty_and_incomplete(self):
+        """T11 genuine invalid-EQUAL journey (no builder patch, no fake current injection).
+
+        After a valid generation, an owned ORM fixture mutation makes the DB current genuinely
+        invalid: (1) malformed stored profile.schema -> LIVE build_plan_snapshot yields the
+        typed marker with exact code nic_layout_profile_schema_invalid (no exception/500);
+        (2) key-present bad map (duplicate channel). The saved snapshot is then set (test-owned
+        ORM fixture write, outside the guards) to the EXACT fresh current invalid snapshot and
+        fresh current == saved is asserted BEFORE the read-method calls. Public is_dirty() must
+        be True and sync_display_state() snapshot_incomplete although both are equal; all reads
+        are mutation-denied and full rows preserved; the original saved history is restored."""
+        import copy
+
+        from dcim.models import ModuleTypeProfile
+        from netbox_hedgehog.models.topology_planning.generation import (
+            SYNC_IN_SYNC,
+            SYNC_SNAPSHOT_INCOMPLETE,
+            classify_snapshot_sync,
+        )
+        from netbox_hedgehog.services.nic_cage_layout import SNAPSHOT_KEY
+        from netbox_hedgehog.utils.snapshot_builder import build_plan_snapshot, compare_snapshots
+
+        fixture = self._c39_fixture('c39li')
+        self._c39_generate()
+        state = GenerationState.objects.get(plan=self.plan)
+        saved_row = list(GenerationState.objects.filter(pk=state.pk).values())
+        original_saved = copy.deepcopy(state.snapshot)
+        self.assertIn(SNAPSHOT_KEY, original_saved)
+        self.assertFalse(self._c39_sync_guarded(state.is_dirty))
+        profiles = ModuleTypeProfile.objects.filter(pk=fixture['profile'].pk)
+        original_schema = copy.deepcopy(profiles.get().schema)
+        duplicate_channel = copy.deepcopy(self.C39_MAP)
+        duplicate_channel['ports'] = [{'cage': 'cage-0', 'logical_lane': 0}, {'cage': 'cage-0', 'logical_lane': 0}]
+
+        def base(snapshot):
+            return {k: v for k, v in snapshot.items() if k != SNAPSHOT_KEY}
+
+        journeys = (
+            ('malformed_stored_profile_schema', 'nic_layout_profile_schema_invalid',
+             lambda: profiles.update(schema={'type': 'srv29-not-a-type', 'properties': {'hnp_nic_cage_map': {}}}),
+             lambda: profiles.update(schema=copy.deepcopy(original_schema))),
+            ('key_present_duplicate_channel_map', 'nic_layout_duplicate_channel',
+             lambda: self._c39_set_map(copy.deepcopy(duplicate_channel)),
+             lambda: self._c39_set_map(copy.deepcopy(self.C39_MAP))),
+        )
+        for label, code, corrupt, restore in journeys:
+            with self.subTest(label):
+                corrupt()
+                fresh = self._c39_sync_guarded(lambda: build_plan_snapshot(self.plan))
+                self.assertEqual(fresh[SNAPSHOT_KEY], {'version': 1, 'status': 'invalid', 'errors': [code]})
+                self.assertTrue(compare_snapshots(base(fresh), base(original_saved)), 'only the extension differs')
+                GenerationState.objects.filter(pk=state.pk).update(snapshot=copy.deepcopy(fresh))
+                state.refresh_from_db()
+                current = self._c39_sync_guarded(lambda: build_plan_snapshot(self.plan))
+                self.assertEqual(current, state.snapshot, f'{label}: fresh current must EQUAL saved first')
+                self.assertTrue(compare_snapshots(current, state.snapshot))
+                self.assertTrue(self._c39_sync_guarded(state.is_dirty), f'{label}: equal-invalid is_dirty')
+                self.assertEqual(self._c39_sync_guarded(state.sync_display_state), SYNC_SNAPSHOT_INCOMPLETE,
+                                 f'{label}: equal-invalid live sync_display_state')
+                self.assertEqual(
+                    self._c39_sync_guarded(lambda: state.sync_display_state(current=copy.deepcopy(current))),
+                    SYNC_SNAPSHOT_INCOMPLETE)
+                self.assertEqual(classify_snapshot_sync(copy.deepcopy(current), copy.deepcopy(current)),
+                                 SYNC_SNAPSHOT_INCOMPLETE)
+                state.refresh_from_db()
+                self.assertEqual(state.snapshot, fresh, 'read methods rewrote the saved snapshot')
+                restore()
+                GenerationState.objects.filter(pk=state.pk).update(snapshot=copy.deepcopy(original_saved))
+                state.refresh_from_db()
+                self.assertFalse(self._c39_sync_guarded(state.is_dirty), f'{label}: restored')
+                self.assertEqual(self._c39_sync_guarded(state.sync_display_state), SYNC_IN_SYNC)
+        self.assertEqual(list(GenerationState.objects.filter(pk=state.pk).values()), saved_row)
+
+    def test_c39_t11_template_natural_order_mapped_and_legacy_controls(self):
+        """T11/review03 P2-2 natural ordering on a live mixed mapped+legacy capture (pure
+        classification; no generation): re-hashed recorded names that contradict natural
+        ordinals are invalid for BOTH mapped and legacy records; natural multi-digit order,
+        equal-natural-key case variants and LEGACY {module} templates remain valid; the mapped
+        {module} token keeps its specific code even when it would also sort out of order."""
+        import copy
+
+        from netbox_hedgehog.models.topology_planning.generation import (
+            SYNC_CHANGED,
+            SYNC_IN_SYNC,
+            SYNC_SNAPSHOT_INCOMPLETE,
+            classify_snapshot_sync,
+        )
+        from netbox_hedgehog.services.nic_cage_layout import SNAPSHOT_KEY, extension_errors
+        from netbox_hedgehog.utils.snapshot_builder import build_plan_snapshot
+
+        mapped = self._c39_mapped_type('c39lt', 'nic-card', ['p0', 'p1'], self.C39_CARD_MAP)
+        legacy = ModuleType.objects.create(manufacturer=_manufacturer(), model='srv29-c39lt-legacy-nic')
+        for name in ('p0', 'p1'):
+            InterfaceTemplate.objects.create(module_type=legacy, name=name, type=T400)
+        self._c39_cards_fixture('c39lt', [('a-card', mapped, 0), ('b-slot', legacy, 0)])
+        current = self._c39_sync_guarded(lambda: build_plan_snapshot(self.plan))
+        self.assertEqual(extension_errors(current[SNAPSHOT_KEY], base_snapshot=current), [])
+        self.assertEqual(classify_snapshot_sync(copy.deepcopy(current), copy.deepcopy(current)), SYNC_IN_SYNC)
+        position = {n['nic_id']: i for i, n in enumerate(current[SNAPSHOT_KEY]['nics'])}
+        self.assertEqual(sorted(position), ['a-card', 'b-slot'])
+        for nic_id, present in (('a-card', True), ('b-slot', False)):
+            row = current[SNAPSHOT_KEY]['nics'][position[nic_id]]
+            self.assertEqual(row['layout_present'], present, nic_id)
+            self.assertEqual([(t['logical_index'], t['name']) for t in row['interface_templates']],
+                             [(0, 'p0'), (1, 'p1')], nic_id)
+
+        def rename(nic_id, *new):
+            def fn(s):
+                rows = s[SNAPSHOT_KEY]['nics'][position[nic_id]]['interface_templates']
+                for row, name in zip(rows, new):
+                    row['name'] = name
+            return fn
+
+        cases = [
+            ('legacy_module_token_allowed', rename('b-slot', '{module}-p0', '{module}-p1'), []),
+            ('legacy_natural_multi_digit', rename('b-slot', 'p2', 'p10'), []),
+            ('legacy_equal_natural_key_case_variant', rename('b-slot', 'p0', 'P0'), []),
+            ('legacy_lexical_order', rename('b-slot', 'p10', 'p2'), ['template_order']),
+            ('legacy_swapped_names', rename('b-slot', 'p1', 'p0'), ['template_order']),
+            ('mapped_equal_natural_key_case_variant', rename('a-card', 'P0', 'p0'), []),
+            ('mapped_swapped_names', rename('a-card', 'p1', 'p0'), ['template_order']),
+            ('mapped_module_token_in_order', rename('a-card', 'p0', '{module}-p1'), ['layout_template_module_token']),
+            ('mapped_module_token_out_of_order', rename('a-card', '{module}-p0', 'p1'),
+             ['layout_template_module_token']),
+        ]
+        for label, mutate, codes in cases:
+            with self.subTest(label):
+                bad = copy.deepcopy(current)
+                mutate(bad)
+                self._c39_rehash(bad[SNAPSHOT_KEY])
+                self.assertEqual(extension_errors(bad[SNAPSHOT_KEY], base_snapshot=bad), codes)
+                if codes:
+                    self.assertEqual(classify_snapshot_sync(copy.deepcopy(bad), copy.deepcopy(bad)),
+                                     SYNC_SNAPSHOT_INCOMPLETE)
+                    self.assertEqual(classify_snapshot_sync(copy.deepcopy(current), copy.deepcopy(bad)),
+                                     SYNC_SNAPSHOT_INCOMPLETE)
+                else:
+                    self.assertEqual(classify_snapshot_sync(copy.deepcopy(bad), copy.deepcopy(bad)), SYNC_IN_SYNC)
+                    self.assertEqual(classify_snapshot_sync(copy.deepcopy(current), copy.deepcopy(bad)),
+                                     SYNC_CHANGED, 'valid but different evidence is a change, not in sync')
+
+    def test_c39_virtual_placeholder_absent_key_legacy_present_key_rejected_before_cleanup(self):
+        """C04/C05/design 'virtual' control with the EXACT bundled predicate
+        (transceiver_bay_policy.is_virtual_placeholder_module_type: model.strip() starts with
+        'Virtual '), on a test-owned synthetic NIC type; no ordinary shared-optic fixture uses
+        this path and no policy/seed/core change.
+
+        Key ABSENT: scoped populate_bays removes the stale nested cage template as before (and
+        leaves a foreign type's bay), real generation (NATIVE, null optic FKs) yields exactly one
+        NIC Module per server with no nested bay/optic, and the saved snapshot has NO extension
+        key. Key PRESENT: populate_bays rejects [nic_layout_virtual] with ZERO attempted SQL
+        mutations BEFORE placeholder cleanup or switch bay writes (stale/foreign rows intact);
+        public generate_all after the prior virtual generation rejects pre-write with the full
+        prior inventory/state preserved; the live snapshot is the typed invalid marker and both
+        public sync methods report dirty/incomplete without rewriting saved history."""
+        import copy
+
+        from dcim.models import ModuleBayTemplate
+        from netbox_hedgehog.management.commands.populate_transceiver_bays import populate_bays
+        from netbox_hedgehog.models.topology_planning.generation import SYNC_IN_SYNC, SYNC_SNAPSHOT_INCOMPLETE
+        from netbox_hedgehog.services.nic_cage_layout import SNAPSHOT_KEY, has_layout
+        from netbox_hedgehog.services.transceiver_bay_policy import is_virtual_placeholder_module_type
+        from netbox_hedgehog.utils.snapshot_builder import build_plan_snapshot
+
+        self._build('c39vp', 8, NATIVE)
+        virtual_model = 'Virtual srv29-c39vp-nic'
+        ModuleType.objects.filter(pk=self.nic_module_type.pk).update(model=virtual_model)
+        self.nic_module_type.refresh_from_db()
+        nic_type = self.nic_module_type
+        self.assertTrue(is_virtual_placeholder_module_type(nic_type), 'actual predicate recognises fixture')
+        self.assertFalse(has_layout(nic_type))
+        foreign = ModuleType.objects.create(manufacturer=_manufacturer(), model='srv29-c39vp-foreign-nic')
+        self.assertFalse(is_virtual_placeholder_module_type(foreign), 'ordinary model is not virtual')
+        foreign_bay = ModuleBayTemplate.objects.create(module_type=foreign, name='cage-0')
+        stale = ModuleBayTemplate.objects.create(module_type=nic_type, name='cage-0')
+
+        # --- key ABSENT: unchanged placeholder behavior
+        counts = populate_bays(device_types=[], module_types=[nic_type])
+        self.assertEqual((counts['nic_removed'], counts['nic_added']), (1, 0))
+        self.assertFalse(ModuleBayTemplate.objects.filter(pk=stale.pk).exists(), 'stale placeholder cage kept')
+        self.assertTrue(ModuleBayTemplate.objects.filter(pk=foreign_bay.pk).exists(), 'foreign bay touched')
+        self._calculate(leaves=4, spines=2)
+        self._capture_baseline()
+        self._generate(devices_total=14, generated_interfaces=40, cables_total=24)
+        _, prior_ids = self._verify(servers=8, leaves=4, spines=2, links_per_pair=2, cables_total=24,
+                                    devices_total=14)  # one NIC Module, NO nested bay/optic per server
+        state = GenerationState.objects.get(plan=self.plan)
+        self.assertNotIn(SNAPSHOT_KEY, state.snapshot)
+        self.assertEqual(sorted(state.snapshot), ['connections', 'mclag_domains', 'port_zones',
+                                                  'server_classes', 'switch_classes'])
+        self.assertNotIn(SNAPSHOT_KEY, self._c39_sync_guarded(lambda: build_plan_snapshot(self.plan)))
+        self.assertFalse(self._c39_sync_guarded(state.is_dirty))
+        self.assertEqual(self._c39_sync_guarded(state.sync_display_state), SYNC_IN_SYNC)
+        saved_row = list(GenerationState.objects.filter(pk=state.pk).values())
+
+        # --- key PRESENT on the virtual placeholder: reject before cleanup/any write
+        stale = ModuleBayTemplate.objects.create(module_type=nic_type, name='cage-0')
+        virtual_map = {'version': 1, 'ports': [{'cage': 'cage-0', 'logical_lane': 0}],
+                       'cages': {'cage-0': {'breakout_id': '1x100g'}}}
+        ModuleType.objects.filter(pk=nic_type.pk).update(attribute_data={'hnp_nic_cage_map': copy.deepcopy(virtual_map)})
+        nic_type = ModuleType.objects.select_related('profile').get(pk=nic_type.pk)
+        self.assertTrue(has_layout(nic_type))
+        self.assertTrue(is_virtual_placeholder_module_type(nic_type))
+        self.assertFalse(ModuleBayTemplate.objects.filter(device_type=self.leaf_device_type).exists())
+
+        def population():
+            with self.assertRaises(ValidationError) as ctx:
+                populate_bays(device_types=[self.leaf_device_type], module_types=[foreign, nic_type])
+            return ' '.join(ctx.exception.messages)
+
+        message = self._c39_sync_guarded(population)  # zero attempted mutations + full rows unchanged
+        self.assertIn('[nic_layout_virtual]', message)
+        self.assertIn(virtual_model, message)
+        self.assertTrue(ModuleBayTemplate.objects.filter(pk=stale.pk).exists(), 'placeholder cleanup ran first')
+        self.assertTrue(ModuleBayTemplate.objects.filter(pk=foreign_bay.pk).exists())
+        self.assertFalse(ModuleBayTemplate.objects.filter(device_type=self.leaf_device_type).exists(),
+                         'switch bays written before rejection')
+
+        generator = DeviceGenerator(self.plan)  # constructor Site/Tag setup outside the proof
+        before = self._c39_sync_rows()
+        message = self._reject_without_mutation(generator)
+        self.assertIn('[nic_layout_virtual]', message)
+        self.assertIn(virtual_model, message)
+        self.assertEqual(self._c39_sync_rows(), before, 'rejected generation changed persisted rows')
+        for model in INVENTORY_MODELS:
+            self.assertTrue(prior_ids[model] <= _pks(model), f'prior virtual-generation {model.__name__} lost')
+        state = GenerationState.objects.get(plan=self.plan)
+        self.assertEqual(state.status, GenerationStatusChoices.GENERATED)
+        self.assertEqual((state.device_count, state.interface_count, state.cable_count), (14, 40, 24))
+
+        current = self._c39_sync_guarded(lambda: build_plan_snapshot(self.plan))
+        self.assertEqual(current[SNAPSHOT_KEY], {'version': 1, 'status': 'invalid', 'errors': ['nic_layout_virtual']})
+        self.assertTrue(self._c39_sync_guarded(state.is_dirty))
+        self.assertEqual(self._c39_sync_guarded(state.sync_display_state), SYNC_SNAPSHOT_INCOMPLETE)
+        self.assertEqual(list(GenerationState.objects.filter(pk=state.pk).values()), saved_row,
+                         'saved history rewritten')
+
+    # ------------- CAGE39 SOURCE10: Review04 P2 regressions (appended; fictional rows only)
+
+    def test_c39_t11_rehashed_duplicate_literal_template_and_bay_names_mapped_and_legacy(self):
+        """Review04 P2-1 / C08 / T11: native uniqueness is (module_type, name) for both
+        InterfaceTemplate and ModuleBayTemplate, so RE-HASHED evidence holding two equal EXACT
+        literal names under distinct IDs inside ONE NIC record is internally invalid, for the
+        mapped AND the legacy record of a live mixed capture: exact typed code, pure identical-
+        invalid classify incomplete, public is_dirty / sync_display_state (live and identical
+        current) under the existing mutation-denying full-row guard. Controls stay VALID (and
+        differ from live -> changed): case variants P0/p0 and DATA/data, and the same cage name
+        recorded under a DIFFERENT NIC owner (no global name rule)."""
+        import copy
+
+        from netbox_hedgehog.models.topology_planning.generation import (
+            SYNC_CHANGED,
+            SYNC_IN_SYNC,
+            SYNC_SNAPSHOT_INCOMPLETE,
+            classify_snapshot_sync,
+        )
+        from netbox_hedgehog.services.nic_cage_layout import SNAPSHOT_KEY, extension_errors
+        from netbox_hedgehog.utils.snapshot_builder import build_plan_snapshot
+
+        mapped = self._c39_mapped_type('c39dn', 'nic-card', ['p0', 'p1'], self.C39_CARD_MAP)
+        legacy = ModuleType.objects.create(manufacturer=_manufacturer(), model='srv29-c39dn-legacy-nic')
+        for name in ('p0', 'p1'):
+            InterfaceTemplate.objects.create(module_type=legacy, name=name, type=T400)
+        self._c39_cards_fixture('c39dn', [('a-card', mapped, 0), ('b-slot', legacy, 0)])
+        current = self._c39_sync_guarded(lambda: build_plan_snapshot(self.plan))
+        self.assertEqual(extension_errors(current[SNAPSHOT_KEY], base_snapshot=current), [])
+        self.assertEqual(classify_snapshot_sync(copy.deepcopy(current), copy.deepcopy(current)), SYNC_IN_SYNC)
+        position = {n['nic_id']: i for i, n in enumerate(current[SNAPSHOT_KEY]['nics'])}
+        self.assertEqual(sorted(position), ['a-card', 'b-slot'])
+        rows = {nic_id: current[SNAPSHOT_KEY]['nics'][i] for nic_id, i in position.items()}
+        self.assertEqual((rows['a-card']['layout_present'], rows['b-slot']['layout_present']), (True, False))
+        for nic_id in ('a-card', 'b-slot'):
+            self.assertEqual([t['name'] for t in rows[nic_id]['interface_templates']], ['p0', 'p1'], nic_id)
+        self.assertEqual(sorted(b['name'] for b in rows['a-card']['bay_templates']), ['b-slot', 'data'])
+        self.assertTrue(rows['b-slot']['bay_templates'], 'legacy record needs recorded bays for this matrix')
+        legacy_bay = rows['b-slot']['bay_templates'][0]['name']
+        self.assertNotEqual(legacy_bay, 'data', 'fixture: cross-owner control must be a NEW name for legacy')
+        fresh_id = 1000 + max(
+            [t['template_id'] for r in rows.values() for t in r['interface_templates']]
+            + [b['template_id'] for r in rows.values() for b in r['bay_templates']])
+
+        def nic(s, nic_id):
+            return s[SNAPSHOT_KEY]['nics'][position[nic_id]]
+
+        def rename(nic_id, *new):
+            def fn(s):
+                for row, name in zip(nic(s, nic_id)['interface_templates'], new):
+                    row['name'] = name
+            return fn
+
+        def add_bay(nic_id, name):
+            def fn(s):
+                bays = nic(s, nic_id)['bay_templates']
+                bays.append({'template_id': fresh_id, 'name': name, 'position': bays[0]['position']})
+            return fn
+
+        invalid = [
+            ('mapped_template_p1_renamed_p0', rename('a-card', 'p0', 'p0'), 'template_duplicate_name'),
+            ('legacy_template_p1_renamed_p0', rename('b-slot', 'p0', 'p0'), 'template_duplicate_name'),
+            ('mapped_bay_second_data_distinct_id', add_bay('a-card', 'data'), 'bay_duplicate_name'),
+            ('legacy_bay_second_same_name_distinct_id', add_bay('b-slot', legacy_bay), 'bay_duplicate_name'),
+        ]
+        valid = [
+            ('mapped_template_case_variant', rename('a-card', 'P0', 'p0')),
+            ('legacy_template_case_variant', rename('b-slot', 'p0', 'P0')),
+            ('mapped_bay_case_variant', add_bay('a-card', 'DATA')),
+            ('same_cage_name_other_nic_owner', add_bay('b-slot', 'data')),
+        ]
+        labels = [label for label, *_ in invalid + valid]
+        self.assertEqual(len(set(labels)), len(labels), 'duplicate case label')
+        for label, mutate, code in invalid:
+            with self.subTest(label):
+                bad = copy.deepcopy(current)
+                mutate(bad)
+                self._c39_rehash(bad[SNAPSHOT_KEY])
+                self.assertEqual(extension_errors(bad[SNAPSHOT_KEY], base_snapshot=bad), [code], label)
+                self.assertEqual(classify_snapshot_sync(copy.deepcopy(bad), copy.deepcopy(bad)),
+                                 SYNC_SNAPSHOT_INCOMPLETE, f'{label}: pure identical-invalid')
+                probe = GenerationState(plan=self.plan, device_count=0, interface_count=0, cable_count=0,
+                                        snapshot=copy.deepcopy(bad))  # in-memory saved evidence, never saved
+                self.assertTrue(self._c39_sync_guarded(probe.is_dirty), f'{label}: saved-invalid is_dirty')
+                self.assertEqual(self._c39_sync_guarded(probe.sync_display_state), SYNC_SNAPSHOT_INCOMPLETE,
+                                 f'{label}: saved-invalid vs live current')
+                self.assertEqual(
+                    self._c39_sync_guarded(lambda: probe.sync_display_state(current=copy.deepcopy(bad))),
+                    SYNC_SNAPSHOT_INCOMPLETE, f'{label}: public identical-invalid current')
+        for label, mutate in valid:
+            with self.subTest(label):
+                good = copy.deepcopy(current)
+                mutate(good)
+                self._c39_rehash(good[SNAPSHOT_KEY])
+                self.assertEqual(extension_errors(good[SNAPSHOT_KEY], base_snapshot=good), [], label)
+                self.assertEqual(classify_snapshot_sync(copy.deepcopy(good), copy.deepcopy(good)), SYNC_IN_SYNC)
+                self.assertEqual(classify_snapshot_sync(copy.deepcopy(current), copy.deepcopy(good)),
+                                 SYNC_CHANGED, f'{label}: valid but different evidence is a change')
+                probe = GenerationState(plan=self.plan, device_count=0, interface_count=0, cable_count=0,
+                                        snapshot=copy.deepcopy(good))
+                self.assertTrue(self._c39_sync_guarded(probe.is_dirty), label)
+                self.assertEqual(self._c39_sync_guarded(probe.sync_display_state), SYNC_CHANGED, label)
+
+    def test_c39_t09_v1_mapped_reference_malformed_template_shapes_rejected_both_modes(self):
+        """Review04 P2-2 / C02 / T09 extension of the public V1 mapped-reference matrix: the V1
+        validator does not check reference interface_templates shapes, so a non-list container,
+        a non-mapping item, or a non-string / empty / unhashable name or type must yield the
+        actionable typed mapped_catalog_reference_conflict (never AttributeError/TypeError)
+        through real apply_case in BOTH require and ensure mode, with every catalog/plan/
+        generation row preserved (existing full-row helper; no zero-SQL claim)."""
+        import copy
+
+        from netbox_hedgehog.test_cases.ingest import apply_case
+
+        fx = self._c39_ingest_fixture('c39ms')
+        apply_case(self._c39_v1_case('srv29_c39ms_control', fx), reference_mode='require')  # fixture valid
+        good = {'name': 'p0', 'type': T400}
+        variants = [
+            ('container_string', 'p0'),
+            ('container_mapping', dict(good)),
+            ('container_int', 7),
+            ('item_string', ['p0']),
+            ('item_list', [['p0', T400]]),
+            ('item_null', [None]),
+            ('valid_then_string_item', [dict(good), 'p1']),
+            ('type_list', [{'name': 'p0', 'type': []}]),
+            ('type_mapping', [{'name': 'p0', 'type': {'x': 1}}]),
+            ('type_int', [{'name': 'p0', 'type': 7}]),
+            ('type_empty', [{'name': 'p0', 'type': ''}]),
+            ('name_list', [{'name': ['p0'], 'type': T400}]),
+            ('name_mapping', [{'name': {'p0': 1}, 'type': T400}]),
+            ('name_int', [{'name': 0, 'type': T400}]),
+            ('name_empty', [{'name': '', 'type': T400}]),
+            ('name_null', [{'name': None, 'type': T400}]),
+        ]
+        self.assertEqual(len({label for label, _ in variants}), len(variants), 'duplicate case label')
+        for mode in ('require', 'ensure'):
+            for label, templates in variants:
+                with self.subTest(mode=mode, variant=label):
+                    case = self._c39_v1_case(f'srv29_c39ms_{mode}_{label}', fx,
+                                             {'interface_templates': copy.deepcopy(templates)})
+                    self._c39_ingest_reject(case, mode, 'mapped_catalog_reference_conflict')
+                    self._c39_assert_mapped_intact(fx)
+                    self.assertFalse(TopologyPlan.objects.filter(name=f'srv29 plan srv29_c39ms_{mode}_{label}')
+                                     .exists(), 'rejected case left a plan')
+        # Positive control after the matrix: exact well-formed declarations are still consumed.
+        exact = {'interface_templates': [dict(good), {'name': 'p1', 'type': T400}]}
+        for mode in ('require', 'ensure'):
+            with self.subTest(mode=mode, variant='exact_control'):
+                catalog_before = self._c39_catalog_rows()
+                plan = apply_case(self._c39_v1_case(f'srv29_c39ms_{mode}_exact', fx, copy.deepcopy(exact)),
+                                  reference_mode=mode)
+                self.assertEqual(self._c39_catalog_rows(), catalog_before, 'catalog rows rewritten')
+                self.assertEqual(list(PlanServerNIC.objects.filter(server_class__plan=plan)
+                                      .values_list('nic_id', 'module_type_id')), [(NIC_ID, fx['mapped'].pk)])
+                self._c39_assert_mapped_intact(fx)

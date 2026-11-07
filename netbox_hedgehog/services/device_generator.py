@@ -226,6 +226,10 @@ class DeviceGenerator:
         # prior generated state completely intact.
         self._preflight_rack_placement()
 
+        # CAGE37 C05: pure mapped-NIC layout preflight before cleanup/writes.
+        # Captures the immutable resolved layouts actually used for placement.
+        self._preflight_nic_cage_layouts()
+
         # Reset per-run rack/locality accumulators.
         self._class_racks = {}
         self._locality_cells = {}
@@ -258,6 +262,9 @@ class DeviceGenerator:
             # share a parent cage (e.g. E1/27/1 and E1/27/2 → cage E1/27) only
             # trigger one Module placement per physical cage per generation run.
             self._placed_switch_xcvr_bays: set[tuple[int, str]] = set()
+
+            # CAGE37 C06: mapped server-optic dedup keyed by (NIC Module pk, cage).
+            self._placed_mapped_optics: dict[tuple[int, str], object] = {}
 
             # Phase 2/6: Creating switch devices
             if self.logger:
@@ -1392,13 +1399,20 @@ class DeviceGenerator:
         status: str = GenerationStatusChoices.GENERATED,
         mismatch_report=None,
     ) -> None:
+        # C08: saved extension is the admitted preflight capture, never a fresh
+        # post-placement reread; changed provenance raises (atomic rollback).
+        if hasattr(self, '_nic_capture_extension'):
+            self._recheck_nic_layout_provenance()
+            snapshot = build_plan_snapshot(self.plan, nic_cage_extension=self._nic_capture_extension)
+        else:  # caller outside generate_all preflight: unchanged live behavior
+            snapshot = build_plan_snapshot(self.plan)
         GenerationState.objects.filter(plan=self.plan).delete()
         state = GenerationState(
             plan=self.plan,
             device_count=device_count,
             interface_count=interface_count,
             cable_count=cable_count,
-            snapshot=build_plan_snapshot(self.plan),
+            snapshot=snapshot,
             status=status,
             mismatch_report=mismatch_report,
         )
@@ -1878,6 +1892,69 @@ class DeviceGenerator:
 
         return switch_instances[server_index % len(switch_instances)]
 
+    def _preflight_nic_cage_layouts(self) -> None:
+        """CAGE37 C05: read-only validation of every opted-in NIC layout.
+
+        Raises ValidationError before any cleanup/write. Stores the captured
+        immutable layouts in ``self._nic_layouts`` (nic.pk -> NicCageLayout);
+        placement uses only this capture and never rereads metadata.
+        """
+        from netbox_hedgehog.services.nic_cage_layout import capture_plan_layouts
+
+        capture = capture_plan_layouts(self.plan)
+        self._nic_layouts = dict(capture.layouts)
+        # Snapshot evidence describing exactly this admitted capture (C08); None
+        # when no plan NIC type opts in, so legacy snapshots stay unchanged.
+        self._nic_capture_extension = capture.extension
+
+    def _recheck_nic_layout_provenance(self) -> None:
+        """C08 capture rule: before commit, the current provenance must still equal
+        the admitted capture; otherwise raise through the atomic boundary (rollback).
+
+        No new fencing/serializability claim: a race after this check leaves the
+        saved captured evidence describing actual generation, and the current
+        comparison then reports dirty.
+        """
+        from netbox_hedgehog.services.nic_cage_layout import build_snapshot_extension, canonical_sha256
+
+        captured = getattr(self, '_nic_capture_extension', None)
+        current = build_snapshot_extension(self.plan)
+        if captured is None and current is None:
+            return
+        if captured is None or current is None or canonical_sha256(captured) != canonical_sha256(current):
+            raise ValidationError(
+                '[nic_layout_provenance_changed] NIC cage layout/profile/template/mode/optic '
+                'provenance changed during generation; rolled back, regenerate.',
+                code='nic_layout_provenance_changed',
+            )
+
+    def _resolve_root_nic_bay(self, device: Device, nic_def):
+        """CAGE37 C12: top-level NIC slot is (device, exact nic_id, module IS NULL).
+
+        Never matches a same-named nested cage inside another NIC. Duplicate or
+        corrupt root candidates raise rather than selecting/deleting one.
+        """
+        from dcim.models import ModuleBay
+
+        candidates = list(
+            ModuleBay.objects.filter(device=device, name=nic_def.nic_id, module__isnull=True)
+        )
+        if len(candidates) > 1:
+            raise ValidationError(
+                f"[nic_root_bay_duplicate] {device.name}: {len(candidates)} top-level "
+                f"bays named {nic_def.nic_id!r}."
+            )
+        if candidates:
+            bay = candidates[0]
+            if bay.device_id != device.pk or bay.parent_id is not None or bay.module_id is not None:
+                raise ValidationError(
+                    f"[nic_root_bay_corrupt] {device.name}: bay {nic_def.nic_id!r} is not a root slot."
+                )
+            return bay
+        bay = ModuleBay(device=device, name=nic_def.nic_id, label=f'NIC slot {nic_def.nic_id}')
+        bay.save()
+        return bay
+
     def _create_module_for_nic(
         self,
         device: Device,
@@ -1900,22 +1977,25 @@ class DeviceGenerator:
         """
         from dcim.models import ModuleBay, Module, Interface
 
-        bay_name = nic_def.nic_id  # ModuleBay.name = nic_id (DIET-294)
+        # CAGE37 C12: resolve the TOP-LEVEL NIC slot only (module IS NULL), so a
+        # same-named nested cage inside another NIC can never capture this card.
+        module_bay = self._resolve_root_nic_bay(device, nic_def)
 
-        # get_or_create to be idempotent on regeneration
-        module_bay, _ = ModuleBay.objects.get_or_create(
-            device=device,
-            name=bay_name,
-            defaults={
-                'label': f'NIC slot {nic_def.nic_id}',
-            },
-        )
-
-        existing_module = Module.objects.filter(
-            device=device,
-            module_bay=module_bay,
-        ).first()
+        # Occupancy check on the bay itself (not filtered by device), so a
+        # wrong-device occupant is detected rather than silently ignored.
+        existing_module = Module.objects.filter(module_bay=module_bay).first()
         if existing_module:
+            owned = (existing_module.custom_field_data or {}).get('hedgehog_plan_id') == str(self.plan.pk)
+            if (
+                existing_module.device_id != device.pk
+                or existing_module.module_type_id != nic_def.module_type_id
+                or not owned
+            ):
+                raise ValidationError(
+                    f"[nic_root_bay_conflict] {device.name}: slot {nic_def.nic_id!r} occupied by "
+                    f"module pk={existing_module.pk} (type {existing_module.module_type_id}); "
+                    "refusing to adopt, replace or delete it."
+                )
             return existing_module
 
         module = Module(
@@ -1967,6 +2047,10 @@ class DeviceGenerator:
             # transceiver intent for review and compatibility checks.
             return None
 
+        layout = getattr(self, '_nic_layouts', {}).get(getattr(connection, 'nic_id', None))
+        if layout is not None:
+            return self._place_mapped_optic(device, nic_module, connection, layout, actual_port_index)
+
         xcvr_mt = getattr(connection, 'transceiver_module_type', None)
         if xcvr_mt is None:
             return None
@@ -2005,6 +2089,57 @@ class DeviceGenerator:
         )
         module.custom_field_data = {'hedgehog_plan_id': str(self.plan.pk)}
         module.save()
+        return module
+
+    def _place_mapped_optic(self, device, nic_module, connection, layout, actual_port_index):
+        """CAGE37 C06: one installed optic per (actual NIC Module, physical cage).
+
+        Uses the preflight-captured layout only. Missing/wrong nested instance bay
+        or conflicting occupant raises ValidationError through generate_all's
+        atomic boundary (never the legacy FAILED-and-return accumulator) and
+        never deletes/replaces an existing optic.
+        """
+        from dcim.models import ModuleBay, Module
+
+        index = actual_port_index if actual_port_index is not None else connection.port_index
+        cage_name = layout.cage_for_index(index)
+        key = (nic_module.pk, cage_name)
+        placed = self._placed_mapped_optics.get(key)
+        if placed is not None:
+            if placed.module_type_id != connection.transceiver_module_type_id:
+                raise ValidationError(
+                    f"[nic_layout_runtime_optic_conflict] {device.name} {cage_name!r}: conflicting optic types."
+                )
+            return placed
+
+        bays = list(ModuleBay.objects.filter(device=device, module=nic_module, name=cage_name))
+        if len(bays) != 1 or bays[0].parent_id != nic_module.module_bay_id:
+            raise ValidationError(
+                f"[nic_layout_runtime_missing_bay] {device.name}: NIC module pk={nic_module.pk} "
+                f"has {len(bays)} correctly scoped nested bay(s) named {cage_name!r}."
+            )
+        nested_bay = bays[0]
+        xcvr_type_id = connection.transceiver_module_type_id
+        existing = Module.objects.filter(module_bay=nested_bay).first()
+        if existing is not None:
+            if existing.module_type_id != xcvr_type_id or existing.device_id != device.pk:
+                raise ValidationError(
+                    f"[nic_layout_runtime_occupant_conflict] {device.name} {cage_name!r}: "
+                    f"occupied by module pk={existing.pk}."
+                )
+            self._placed_mapped_optics[key] = existing
+            return existing
+
+        module = Module(
+            device=device,
+            module_bay=nested_bay,
+            module_type_id=xcvr_type_id,
+            status='planned',
+            serial=f'{device.name}-{nic_module.module_bay.name}-{cage_name}',
+        )
+        module.custom_field_data = {'hedgehog_plan_id': str(self.plan.pk)}
+        module.save()
+        self._placed_mapped_optics[key] = module
         return module
 
     @staticmethod
