@@ -12,7 +12,7 @@ from typing import Optional
 
 from django.core.exceptions import ValidationError
 
-from netbox_hedgehog.choices import PortZoneTypeChoices
+from netbox_hedgehog.choices import PortZoneTypeChoices, TopologyModeChoices
 from netbox_hedgehog.models.topology_planning import BreakoutOption, SwitchPortZone
 from netbox_hedgehog.services.port_specification import PortSpecification
 
@@ -875,6 +875,39 @@ def determine_leaf_uplink_breakout(
     return None
 
 
+def _get_uplink_logical_link_count(switch_class, uplink_ports: int) -> int:
+    """
+    Convert a leaf's get_uplink_port_count() result into logical uplinks.
+
+    Each uplink zone contributes port count × its declared logical_ports; a zone
+    with no declared breakout counts each port once. Zero uplinks (including the
+    explicit uplink_ports_per_switch=0 override) and zoneless leaves return
+    uplink_ports unchanged.
+
+    Args:
+        switch_class: PlanSwitchClass leaf whose uplink_ports was already validated
+        uplink_ports: Value returned by get_uplink_port_count(switch_class)
+
+    Returns:
+        int: Logical uplinks contributed by one switch of this class
+    """
+    uplink_zones = list(
+        SwitchPortZone.objects.filter(
+            switch_class=switch_class,
+            zone_type=PortZoneTypeChoices.UPLINK
+        ).select_related('breakout_option')
+    )
+
+    if uplink_ports == 0 or not uplink_zones:
+        return uplink_ports
+
+    return sum(
+        len(PortSpecification(zone.port_spec).parse())
+        * (zone.breakout_option.logical_ports if zone.breakout_option else 1)
+        for zone in uplink_zones
+    )
+
+
 def calculate_spine_quantity(spine_switch_class) -> int:
     """
     Calculate required spine switch quantity based on leaf uplink demand.
@@ -899,7 +932,25 @@ def calculate_spine_quantity(spine_switch_class) -> int:
         2. Calculate total uplink demand: sum(leaf.effective_quantity × get_uplink_port_count(leaf))
            - get_uplink_port_count() returns override or zone-derived uplink count per leaf
         3. Calculate available downlink ports per spine
-        4. Spine quantity = ceil(total_uplink_demand / available_downlink_ports)
+           - Explicit spine FABRIC zone: port count × the zone's declared logical_ports,
+             compared against leaf demand in logical links (each uplink zone's port
+             count × its declared logical_ports; a leaf without zones counts each
+             configured uplink once)
+           - No spine FABRIC zone (fallback): native-speed capacity minus spine uplinks,
+             compared against the uplink counts from step 2
+        4. Capacity minimum = ceil(demand / available_downlink_ports), both from step 3
+        5. Equal-spine feasibility (#661), applied only when the spine class has
+           topology_mode SPINE_LEAF, capacity comes from an explicit spine FABRIC
+           zone (not fallback) and the capacity minimum is >= 2: return the
+           smallest spine count S >= capacity minimum such that every active leaf
+           class (effective_quantity > 0 with logical uplinks > 0) splits its
+           logical uplinks into the same positive integral number of links per
+           spine and sum(quantity x uplinks / S) fits the spine's fabric
+           capacity. S is bounded by the smallest declared logical uplink
+           count; if no S qualifies a ValidationError ("equal-spine
+           distribution infeasible") is raised. No power-of-two rounding.
+           Zero-quantity leaves do not constrain S. Fallback capacity and
+           capacity minimum 0/1 return the step 4 result unchanged (legacy).
 
     Usage Pattern:
         # Step 1: Calculate how many spines are needed (bandwidth-based)
@@ -958,6 +1009,8 @@ def calculate_spine_quantity(spine_switch_class) -> int:
 
     # Calculate total uplink demand from all leaves
     total_uplink_demand = 0
+    total_logical_link_demand = 0
+    participating_leaves = []
     for leaf in leaf_switches:
         # Use effective_quantity (respects overrides)
         leaf_quantity = leaf.effective_quantity
@@ -975,7 +1028,13 @@ def calculate_spine_quantity(spine_switch_class) -> int:
                 f"set uplink_ports_per_switch=0."
             ) from e
 
+        logical_links = _get_uplink_logical_link_count(leaf, uplink_ports)
         total_uplink_demand += leaf_quantity * uplink_ports
+        total_logical_link_demand += leaf_quantity * logical_links
+        if leaf_quantity and leaf_quantity > 0 and logical_links > 0:
+            participating_leaves.append(
+                (leaf.switch_class_id, leaf_quantity, logical_links)
+            )
 
     if total_uplink_demand == 0:
         # No uplink demand
@@ -995,35 +1054,95 @@ def calculate_spine_quantity(spine_switch_class) -> int:
     physical_ports = capacity.port_count
     supported_breakouts = device_extension.supported_breakouts or []
 
-    # Spines typically use 1x800G (no breakout) for leaf connections
-    # Use the native speed for spine-to-leaf links
-    breakout = determine_optimal_breakout(
-        native_speed=native_speed,
-        required_speed=native_speed,  # Use native speed for spine
-        supported_breakouts=supported_breakouts
-    )
-
-    # Calculate available ports per spine
-    logical_ports_per_spine = physical_ports * breakout.logical_ports
-
     # Conditional uplink subtraction based on capacity source
     # Spines may have uplink ports for border/external connections
     if capacity.is_fallback:
+        # Spines typically use 1x800G (no breakout) for leaf connections
+        # Use the native speed for spine-to-leaf links
+        breakout = determine_optimal_breakout(
+            native_speed=native_speed,
+            required_speed=native_speed,  # Use native speed for spine
+            supported_breakouts=supported_breakouts
+        )
+
+        # Calculate available ports per spine
+        logical_ports_per_spine = physical_ports * breakout.logical_ports
+
         # Fallback path: total ports includes uplinks, subtract them
         spine_uplink_ports = get_uplink_port_count(spine_switch_class)
         available_downlink_ports = logical_ports_per_spine - spine_uplink_ports
+        spine_demand = total_uplink_demand
     else:
         # Zone-based path: uplink zone already configured for downlink capacity
-        available_downlink_ports = logical_ports_per_spine
+        zone_breakout = capacity.source_zone.breakout_option
+        if supported_breakouts and zone_breakout.breakout_id not in supported_breakouts:
+            raise ValidationError(
+                f"Spine calculation failed: spine switch class "
+                f"'{spine_switch_class.switch_class_id}' has a FABRIC zone breakout "
+                f"'{zone_breakout.breakout_id}' that is excluded by the device type's "
+                f"supported_breakouts policy. "
+                f"Supported breakouts: {', '.join(supported_breakouts)}."
+            )
+        available_downlink_ports = physical_ports * zone_breakout.logical_ports
+        spine_demand = total_logical_link_demand
 
     if available_downlink_ports <= 0:
         # All ports reserved for uplinks, cannot accept leaf connections
         return 0
 
-    # Calculate spines needed
-    spines_needed = math.ceil(total_uplink_demand / available_downlink_ports)
+    # Calculate spines needed (capacity minimum)
+    spines_needed = math.ceil(spine_demand / available_downlink_ports)
+
+    # #661 equal-spine feasibility: explicit SPINE_LEAF + explicit spine FABRIC
+    # capacity + capacity minimum >= 2 only. Fallback capacity and minimum 0/1
+    # keep the legacy result unchanged.
+    if (not capacity.is_fallback
+            and spine_switch_class.topology_mode == TopologyModeChoices.SPINE_LEAF
+            and spines_needed >= 2):
+        spines_needed = _select_equal_spine_count(
+            spine_switch_class, participating_leaves, spines_needed,
+            available_downlink_ports,
+        )
 
     return spines_needed
+
+
+def _select_equal_spine_count(spine_switch_class, participating_leaves,
+                              capacity_minimum: int, ports_per_spine: int) -> int:
+    """
+    Smallest spine count >= capacity_minimum admitting equal leaf->spine wiring.
+
+    participating_leaves: (switch_class_id, effective_quantity, logical_uplinks)
+    for every active leaf class (quantity > 0, logical uplinks > 0). A count S is
+    admissible when every class's logical uplinks divide equally by S (positive,
+    integral links per spine) and the resulting per-spine load,
+    sum(quantity * uplinks / S), fits ports_per_spine. The search is bounded by
+    the smallest declared logical uplink count (S above it would leave a leaf
+    without a link to some spine). Raises ValidationError when none exists.
+    """
+    if not participating_leaves:
+        return capacity_minimum
+
+    max_spines = min(links for _, _, links in participating_leaves)
+    for count in range(capacity_minimum, max_spines + 1):
+        if any(links % count for _, _, links in participating_leaves):
+            continue
+        load = sum(qty * (links // count) for _, qty, links in participating_leaves)
+        if load <= ports_per_spine:
+            return count
+
+    classes = ', '.join(
+        f"'{class_id}' ({qty} x {links} logical uplinks)"
+        for class_id, qty, links in participating_leaves
+    )
+    raise ValidationError(
+        f"Spine calculation failed: equal-spine distribution infeasible for spine "
+        f"switch class '{spine_switch_class.switch_class_id}'. Capacity requires at "
+        f"least {capacity_minimum} spines ({ports_per_spine} fabric ports per spine), "
+        f"but no spine count from {capacity_minimum} to {max_spines} divides every "
+        f"active leaf class's logical uplinks equally within spine capacity. "
+        f"Active leaf classes: {classes}."
+    )
 
 
 def update_plan_calculations(plan):

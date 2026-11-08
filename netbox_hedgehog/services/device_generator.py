@@ -204,7 +204,17 @@ class DeviceGenerator:
         """
         Generate devices, interfaces, and cables for the plan.
         Deletes any previously generated objects before creating new ones.
+
+        Admission (#661): before any cleanup or write, explicitly SPINE_LEAF
+        managed fabrics with one active spine class and an effective spine
+        count S >= 2 are rejected with a ValidationError when a leaf class's
+        declared logical uplinks cannot be split equally across all S spines
+        or the per-spine fabric-port capacity would be exceeded. A rejected
+        plan leaves previously generated inventory and GenerationState intact.
         """
+        # #661 equal-spine admission: read-only, must run before cleanup/writes.
+        self._preflight_equal_spine_admission()
+
         # Fail fast, before any writes or cleanup, if the plan's connection
         # distributions would over-subscribe a switch-port zone.  Otherwise the
         # exhaustion is only discovered deep inside the O(connections) write loop
@@ -215,6 +225,10 @@ class DeviceGenerator:
         # and foreign occupants BEFORE any cleanup/writes, so a failure leaves the
         # prior generated state completely intact.
         self._preflight_rack_placement()
+
+        # CAGE37 C05: pure mapped-NIC layout preflight before cleanup/writes.
+        # Captures the immutable resolved layouts actually used for placement.
+        self._preflight_nic_cage_layouts()
 
         # Reset per-run rack/locality accumulators.
         self._class_racks = {}
@@ -248,6 +262,9 @@ class DeviceGenerator:
             # share a parent cage (e.g. E1/27/1 and E1/27/2 → cage E1/27) only
             # trigger one Module placement per physical cage per generation run.
             self._placed_switch_xcvr_bays: set[tuple[int, str]] = set()
+
+            # CAGE37 C06: mapped server-optic dedup keyed by (NIC Module pk, cage).
+            self._placed_mapped_optics: dict[tuple[int, str], object] = {}
 
             # Phase 2/6: Creating switch devices
             if self.logger:
@@ -901,6 +918,9 @@ class DeviceGenerator:
                 if total_uplinks == 0:
                     continue
 
+                # For fabrics guarded by _preflight_equal_spine_admission the
+                # remainder is always 0; non-zero remainders remain only for held
+                # branches (S<2, multi-spine-class, mixed/legacy fabrics).
                 base = total_uplinks // len(spines)
                 remainder = total_uplinks % len(spines)
                 cursor = 0
@@ -1251,13 +1271,18 @@ class DeviceGenerator:
     def _allocate_ports_for_zones(self, switch_name, zones, count: int | None = None):
         allocated: list[tuple[object, object]] = []
 
+        # Zones are consumed in the given order. For a counted request, each
+        # zone contributes only its actual remaining (unallocated) slots for
+        # this switch, so later requests advance past an exhausted zone
+        # instead of re-requesting it. The uncounted path is unchanged.
         for zone in zones:
             zone_capacity = self._get_zone_logical_port_count(zone)
             if count is not None:
                 remaining = count - len(allocated)
                 if remaining <= 0:
                     break
-                zone_capacity = min(zone_capacity, remaining)
+                zone_remaining = self.port_allocator.remaining_for_zone(switch_name, zone)
+                zone_capacity = min(zone_capacity, zone_remaining, remaining)
 
             if zone_capacity <= 0:
                 continue
@@ -1374,13 +1399,20 @@ class DeviceGenerator:
         status: str = GenerationStatusChoices.GENERATED,
         mismatch_report=None,
     ) -> None:
+        # C08: saved extension is the admitted preflight capture, never a fresh
+        # post-placement reread; changed provenance raises (atomic rollback).
+        if hasattr(self, '_nic_capture_extension'):
+            self._recheck_nic_layout_provenance()
+            snapshot = build_plan_snapshot(self.plan, nic_cage_extension=self._nic_capture_extension)
+        else:  # caller outside generate_all preflight: unchanged live behavior
+            snapshot = build_plan_snapshot(self.plan)
         GenerationState.objects.filter(plan=self.plan).delete()
         state = GenerationState(
             plan=self.plan,
             device_count=device_count,
             interface_count=interface_count,
             cable_count=cable_count,
-            snapshot=build_plan_snapshot(self.plan),
+            snapshot=snapshot,
             status=status,
             mismatch_report=mismatch_report,
         )
@@ -1549,6 +1581,150 @@ class DeviceGenerator:
 
         return total_rails
 
+    def _preflight_equal_spine_admission(self) -> None:
+        """
+        Pre-cleanup equal-spine admission for explicit Clos fabrics (#661).
+
+        Applies only to managed fabrics where every managed switch class is
+        explicitly ``topology_mode=SPINE_LEAF``, exactly one spine class has a
+        positive effective quantity, that spine class declares FABRIC zones and
+        its effective quantity (override honoured, never modified) is S >= 2.
+
+        For each participating leaf class (server/border leaf, effective
+        quantity > 0, ``uplink_ports_per_switch != 0``); such a leaf with no
+        UPLINK zones is rejected as missing configuration:
+
+        * declared logical uplinks U (sum of allocator ``capacity_for_zone``
+          over all its UPLINK zones, the same zones the fabric wiring path
+          consumes) must be positive and divisible by S, so every spine gets
+          exactly U/S links from every leaf;
+        * sum(quantity * U / S) over those classes must not exceed one spine's
+          logical capacity (sum of ``capacity_for_zone`` over its FABRIC zones).
+
+        Pure reads: ``capacity_for_zone`` does not consume allocator cursors.
+        Summed multi-zone capacity is usable because counted wiring requests
+        in ``_allocate_ports_for_zones`` consume each zone's remaining slots in
+        order and advance to the next zone once one is exhausted.
+        Held branches keep their prior behaviour and are not evaluated here:
+        mesh or mixed-mode fabrics, multiple active spine classes, S < 2,
+        intentional ``uplink_ports_per_switch == 0`` leaves, inactive classes,
+        and fabrics using peer_zone uplink targeting. This check makes no
+        speed, media, optics or all-Clos-family claim.
+
+        Raises:
+            ValidationError: naming fabric, classes, counts and the
+            divisibility or capacity cause.
+        """
+        from netbox_hedgehog.choices import TopologyModeChoices
+
+        leaf_roles = (HedgehogRoleChoices.SERVER_LEAF, HedgehogRoleChoices.BORDER_LEAF)
+        errors: list[str] = []
+
+        for fabric in self._managed_fabric_names_from_plan():
+            classes = list(
+                self.plan.switch_classes.filter(
+                    fabric_name=fabric,
+                    fabric_class=FabricClassChoices.MANAGED,
+                ).order_by('switch_class_id')
+            )
+            if not classes or any(
+                sc.topology_mode != TopologyModeChoices.SPINE_LEAF for sc in classes
+            ):
+                continue
+
+            spine_classes = [
+                sc for sc in classes
+                if sc.hedgehog_role == HedgehogRoleChoices.SPINE and sc.effective_quantity > 0
+            ]
+            if len(spine_classes) != 1:
+                continue
+            spine_class = spine_classes[0]
+            spine_count = spine_class.effective_quantity
+            if spine_count < 2:
+                continue
+
+            fabric_zones = list(
+                spine_class.port_zones.filter(zone_type=PortZoneTypeChoices.FABRIC)
+            )
+            if not fabric_zones:
+                continue
+
+            leaf_classes = [
+                sc for sc in classes
+                if sc.hedgehog_role in leaf_roles and sc.effective_quantity > 0
+            ]
+            if any(
+                sc.port_zones.filter(
+                    zone_type=PortZoneTypeChoices.UPLINK, peer_zone__isnull=False,
+                ).exists()
+                for sc in leaf_classes
+            ):
+                continue
+
+            per_spine_capacity = sum(
+                self.port_allocator.capacity_for_zone(zone) for zone in fabric_zones
+            )
+
+            demand_per_spine = 0
+            fabric_errors: list[str] = []
+            for leaf_class in leaf_classes:
+                if leaf_class.uplink_ports_per_switch == 0:
+                    continue
+                uplink_zones = list(
+                    leaf_class.port_zones.filter(zone_type=PortZoneTypeChoices.UPLINK)
+                )
+                if not uplink_zones:
+                    # Missing configuration, not mathematical infeasibility:
+                    # reject before cleanup rather than failing mid-write.
+                    fabric_errors.append(
+                        f"missing configuration in fabric '{fabric}': active leaf "
+                        f"class '{leaf_class.switch_class_id}' (quantity "
+                        f"{leaf_class.effective_quantity}) declares no UPLINK port "
+                        f"zones; add an UPLINK zone so it can connect to the "
+                        f"{spine_count} spines of spine class "
+                        f"'{spine_class.switch_class_id}'."
+                    )
+                    continue
+                uplinks = sum(
+                    self.port_allocator.capacity_for_zone(zone) for zone in uplink_zones
+                )
+                if uplinks <= 0:
+                    fabric_errors.append(
+                        f"equal-spine distribution infeasible in fabric '{fabric}': "
+                        f"leaf class '{leaf_class.switch_class_id}' declares {uplinks} "
+                        f"logical uplinks; at least one uplink per spine is required "
+                        f"for {spine_count} spines of spine class "
+                        f"'{spine_class.switch_class_id}'."
+                    )
+                    continue
+                if uplinks % spine_count != 0:
+                    fabric_errors.append(
+                        f"equal-spine distribution infeasible in fabric '{fabric}': "
+                        f"leaf class '{leaf_class.switch_class_id}' has {uplinks} "
+                        f"logical uplinks per switch, not divisible by spine count "
+                        f"{spine_count} of spine class '{spine_class.switch_class_id}'. "
+                        f"Every leaf must connect an equal number of uplinks to every "
+                        f"spine; choose a spine quantity that divides {uplinks}."
+                    )
+                    continue
+                demand_per_spine += leaf_class.effective_quantity * (uplinks // spine_count)
+
+            if not fabric_errors and demand_per_spine > per_spine_capacity:
+                fabric_errors.append(
+                    f"equal-spine distribution infeasible in fabric '{fabric}': "
+                    f"each of the {spine_count} spines of spine class "
+                    f"'{spine_class.switch_class_id}' needs {demand_per_spine} fabric "
+                    f"ports but has capacity {per_spine_capacity}. Exceeds per-spine "
+                    f"fabric capacity; choose a larger valid spine quantity or fewer leaves."
+                )
+            errors.extend(fabric_errors)
+
+        if errors:
+            raise ValidationError(
+                ["Generation blocked: equal-spine admission check failed "
+                 "(pre-write; generated inventory unchanged)."] + errors
+            )
+
     def _preflight_zone_capacity(self) -> None:
         """
         Fast, pre-write capacity check for server-facing switch-port zones.
@@ -1716,6 +1892,69 @@ class DeviceGenerator:
 
         return switch_instances[server_index % len(switch_instances)]
 
+    def _preflight_nic_cage_layouts(self) -> None:
+        """CAGE37 C05: read-only validation of every opted-in NIC layout.
+
+        Raises ValidationError before any cleanup/write. Stores the captured
+        immutable layouts in ``self._nic_layouts`` (nic.pk -> NicCageLayout);
+        placement uses only this capture and never rereads metadata.
+        """
+        from netbox_hedgehog.services.nic_cage_layout import capture_plan_layouts
+
+        capture = capture_plan_layouts(self.plan)
+        self._nic_layouts = dict(capture.layouts)
+        # Snapshot evidence describing exactly this admitted capture (C08); None
+        # when no plan NIC type opts in, so legacy snapshots stay unchanged.
+        self._nic_capture_extension = capture.extension
+
+    def _recheck_nic_layout_provenance(self) -> None:
+        """C08 capture rule: before commit, the current provenance must still equal
+        the admitted capture; otherwise raise through the atomic boundary (rollback).
+
+        No new fencing/serializability claim: a race after this check leaves the
+        saved captured evidence describing actual generation, and the current
+        comparison then reports dirty.
+        """
+        from netbox_hedgehog.services.nic_cage_layout import build_snapshot_extension, canonical_sha256
+
+        captured = getattr(self, '_nic_capture_extension', None)
+        current = build_snapshot_extension(self.plan)
+        if captured is None and current is None:
+            return
+        if captured is None or current is None or canonical_sha256(captured) != canonical_sha256(current):
+            raise ValidationError(
+                '[nic_layout_provenance_changed] NIC cage layout/profile/template/mode/optic '
+                'provenance changed during generation; rolled back, regenerate.',
+                code='nic_layout_provenance_changed',
+            )
+
+    def _resolve_root_nic_bay(self, device: Device, nic_def):
+        """CAGE37 C12: top-level NIC slot is (device, exact nic_id, module IS NULL).
+
+        Never matches a same-named nested cage inside another NIC. Duplicate or
+        corrupt root candidates raise rather than selecting/deleting one.
+        """
+        from dcim.models import ModuleBay
+
+        candidates = list(
+            ModuleBay.objects.filter(device=device, name=nic_def.nic_id, module__isnull=True)
+        )
+        if len(candidates) > 1:
+            raise ValidationError(
+                f"[nic_root_bay_duplicate] {device.name}: {len(candidates)} top-level "
+                f"bays named {nic_def.nic_id!r}."
+            )
+        if candidates:
+            bay = candidates[0]
+            if bay.device_id != device.pk or bay.parent_id is not None or bay.module_id is not None:
+                raise ValidationError(
+                    f"[nic_root_bay_corrupt] {device.name}: bay {nic_def.nic_id!r} is not a root slot."
+                )
+            return bay
+        bay = ModuleBay(device=device, name=nic_def.nic_id, label=f'NIC slot {nic_def.nic_id}')
+        bay.save()
+        return bay
+
     def _create_module_for_nic(
         self,
         device: Device,
@@ -1738,22 +1977,25 @@ class DeviceGenerator:
         """
         from dcim.models import ModuleBay, Module, Interface
 
-        bay_name = nic_def.nic_id  # ModuleBay.name = nic_id (DIET-294)
+        # CAGE37 C12: resolve the TOP-LEVEL NIC slot only (module IS NULL), so a
+        # same-named nested cage inside another NIC can never capture this card.
+        module_bay = self._resolve_root_nic_bay(device, nic_def)
 
-        # get_or_create to be idempotent on regeneration
-        module_bay, _ = ModuleBay.objects.get_or_create(
-            device=device,
-            name=bay_name,
-            defaults={
-                'label': f'NIC slot {nic_def.nic_id}',
-            },
-        )
-
-        existing_module = Module.objects.filter(
-            device=device,
-            module_bay=module_bay,
-        ).first()
+        # Occupancy check on the bay itself (not filtered by device), so a
+        # wrong-device occupant is detected rather than silently ignored.
+        existing_module = Module.objects.filter(module_bay=module_bay).first()
         if existing_module:
+            owned = (existing_module.custom_field_data or {}).get('hedgehog_plan_id') == str(self.plan.pk)
+            if (
+                existing_module.device_id != device.pk
+                or existing_module.module_type_id != nic_def.module_type_id
+                or not owned
+            ):
+                raise ValidationError(
+                    f"[nic_root_bay_conflict] {device.name}: slot {nic_def.nic_id!r} occupied by "
+                    f"module pk={existing_module.pk} (type {existing_module.module_type_id}); "
+                    "refusing to adopt, replace or delete it."
+                )
             return existing_module
 
         module = Module(
@@ -1805,6 +2047,10 @@ class DeviceGenerator:
             # transceiver intent for review and compatibility checks.
             return None
 
+        layout = getattr(self, '_nic_layouts', {}).get(getattr(connection, 'nic_id', None))
+        if layout is not None:
+            return self._place_mapped_optic(device, nic_module, connection, layout, actual_port_index)
+
         xcvr_mt = getattr(connection, 'transceiver_module_type', None)
         if xcvr_mt is None:
             return None
@@ -1843,6 +2089,57 @@ class DeviceGenerator:
         )
         module.custom_field_data = {'hedgehog_plan_id': str(self.plan.pk)}
         module.save()
+        return module
+
+    def _place_mapped_optic(self, device, nic_module, connection, layout, actual_port_index):
+        """CAGE37 C06: one installed optic per (actual NIC Module, physical cage).
+
+        Uses the preflight-captured layout only. Missing/wrong nested instance bay
+        or conflicting occupant raises ValidationError through generate_all's
+        atomic boundary (never the legacy FAILED-and-return accumulator) and
+        never deletes/replaces an existing optic.
+        """
+        from dcim.models import ModuleBay, Module
+
+        index = actual_port_index if actual_port_index is not None else connection.port_index
+        cage_name = layout.cage_for_index(index)
+        key = (nic_module.pk, cage_name)
+        placed = self._placed_mapped_optics.get(key)
+        if placed is not None:
+            if placed.module_type_id != connection.transceiver_module_type_id:
+                raise ValidationError(
+                    f"[nic_layout_runtime_optic_conflict] {device.name} {cage_name!r}: conflicting optic types."
+                )
+            return placed
+
+        bays = list(ModuleBay.objects.filter(device=device, module=nic_module, name=cage_name))
+        if len(bays) != 1 or bays[0].parent_id != nic_module.module_bay_id:
+            raise ValidationError(
+                f"[nic_layout_runtime_missing_bay] {device.name}: NIC module pk={nic_module.pk} "
+                f"has {len(bays)} correctly scoped nested bay(s) named {cage_name!r}."
+            )
+        nested_bay = bays[0]
+        xcvr_type_id = connection.transceiver_module_type_id
+        existing = Module.objects.filter(module_bay=nested_bay).first()
+        if existing is not None:
+            if existing.module_type_id != xcvr_type_id or existing.device_id != device.pk:
+                raise ValidationError(
+                    f"[nic_layout_runtime_occupant_conflict] {device.name} {cage_name!r}: "
+                    f"occupied by module pk={existing.pk}."
+                )
+            self._placed_mapped_optics[key] = existing
+            return existing
+
+        module = Module(
+            device=device,
+            module_bay=nested_bay,
+            module_type_id=xcvr_type_id,
+            status='planned',
+            serial=f'{device.name}-{nic_module.module_bay.name}-{cage_name}',
+        )
+        module.custom_field_data = {'hedgehog_plan_id': str(self.plan.pk)}
+        module.save()
+        self._placed_mapped_optics[key] = module
         return module
 
     @staticmethod

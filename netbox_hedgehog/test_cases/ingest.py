@@ -23,6 +23,174 @@ from .exceptions import TestCaseValidationError
 from .schema import validate_case_dict
 
 
+def _typed_json_equal(a, b) -> bool:
+    """Exact typed JSON equality: bool is not int (True != 1), 1 != 1.0, list order kept."""
+    if type(a) is not type(b):
+        return False
+    if isinstance(a, dict):
+        return a.keys() == b.keys() and all(_typed_json_equal(a[k], b[k]) for k in a)
+    if isinstance(a, list):
+        return len(a) == len(b) and all(_typed_json_equal(x, y) for x, y in zip(a, b))
+    return a == b
+
+
+def _layout_key_paths(value, path: str) -> list[str]:
+    """Every path in a raw payload carrying the hnp_nic_cage_map key."""
+    from netbox_hedgehog.services.nic_cage_layout import LAYOUT_KEY
+
+    found = []
+    if isinstance(value, dict):
+        for key, child in value.items():
+            child_path = f"{path}.{key}" if path else str(key)
+            if key == LAYOUT_KEY:
+                found.append(child_path)
+            found.extend(_layout_key_paths(child, child_path))
+    elif isinstance(value, list):
+        for index, child in enumerate(value):
+            found.extend(_layout_key_paths(child, f"{path}[{index}]"))
+    return found
+
+
+def _authoring_error(path: str) -> dict:
+    return {
+        "severity": "error",
+        "code": "nic_layout_authoring_forbidden",
+        "path": path,
+        "message": (
+            "hnp_nic_cage_map cannot be authored through YAML case ingest. Configure it on the "
+            "NIC ModuleType via the native NetBox ModuleType/Profile API and verify the persisted "
+            "GET round-trip; reference the configured type here."
+        ),
+    }
+
+
+def _guard_raw_nic_layout_authoring(raw_case) -> dict:
+    """CAGE37 C02/C03 guard on the RAW payload (before schema normalization).
+
+    V2: any hnp_nic_cage_map anywhere (NIC/module_type/test_fixtures) is rejected.
+    V1: allowed only as reference_data.module_types[*].attribute_data, where it is
+    later checked against the existing catalog row (exact whole-payload equality);
+    everywhere else it is rejected. Returns {rid: (present, raw attribute_data)}.
+    """
+    import copy
+
+    if not isinstance(raw_case, dict):
+        return {}
+    paths = _layout_key_paths(raw_case, "")
+    raw_attrs: dict = {}
+    if raw_case.get("apiVersion") == "diet/v2":
+        if paths:
+            raise TestCaseValidationError([_authoring_error(p) for p in paths])
+        return raw_attrs
+    module_types = (raw_case.get("reference_data") or {}).get("module_types") or []
+    allowed = set()
+    duplicates = []
+    if isinstance(module_types, list):
+        for index, item in enumerate(module_types):
+            if not isinstance(item, dict):
+                continue
+            prefix = f"reference_data.module_types[{index}].attribute_data"
+            allowed.update(p for p in paths if p.startswith(prefix + ".") and p.count(".") == prefix.count(".") + 1)
+            rid = item.get("id")
+            if rid:
+                if rid in raw_attrs:
+                    # Raw evidence is keyed per reference ID; a later declaration must never
+                    # overwrite an earlier one's evidence, so duplicates are rejected before
+                    # any effect (CAGE39 review01 P2-1).
+                    duplicates.append({
+                        "severity": "error",
+                        "code": "duplicate_reference_id",
+                        "path": f"reference_data.module_types[{index}].id",
+                        "message": f"Duplicate module type reference id {rid!r}; ids must be unique.",
+                    })
+                    continue
+                raw_attrs[rid] = ("attribute_data" in item, copy.deepcopy(item.get("attribute_data")))
+    if duplicates:
+        raise TestCaseValidationError(duplicates)
+    forbidden = [p for p in paths if p not in allowed]
+    if forbidden:
+        raise TestCaseValidationError([_authoring_error(p) for p in forbidden])
+    return raw_attrs
+
+
+def _mapped_reference_errors(obj, item: dict, raw: tuple | None, rid) -> list[dict]:
+    """Read-only checks for an EXISTING mapped catalog ModuleType (both modes)."""
+    path = f"reference_data.module_types[{rid}]"
+    errors = []
+    present, supplied = raw if raw is not None else ("attribute_data" in item, item.get("attribute_data"))
+    if present and not _typed_json_equal(supplied, obj.attribute_data):
+        errors.append({
+            "severity": "error",
+            "code": "mapped_catalog_reference_conflict",
+            "path": f"{path}.attribute_data",
+            "message": (
+                f"ModuleType '{obj.model}' carries hnp_nic_cage_map; it is a read-only catalog "
+                "reference. Omit attribute_data or supply the ENTIRE existing payload exactly."
+            ),
+        })
+    declared = item.get("interface_templates")
+    if declared is None:
+        # Absent (or explicit empty YAML value): nothing declared, nothing to match.
+        declared = []
+    if not isinstance(declared, list):
+        # The V1 schema validator does not check this shape; reject it here, before
+        # any iteration, instead of iterating a string/dict/scalar container.
+        errors.append({
+            "severity": "error",
+            "code": "mapped_catalog_reference_conflict",
+            "path": f"{path}.interface_templates",
+            "message": (
+                f"interface_templates for mapped ModuleType '{obj.model}' must be a list of "
+                f"{{name, type}} mappings (got {type(declared).__name__})."
+            ),
+        })
+        return errors
+    existing = {(t.name, t.type) for t in InterfaceTemplate.objects.filter(module_type=obj)}
+    for index, iface in enumerate(declared):
+        # Shape first: item must be a mapping with nonempty STRING name and type, so
+        # no .get() on a non-dict and no set membership with unhashable values.
+        if not isinstance(iface, dict):
+            errors.append({
+                "severity": "error",
+                "code": "mapped_catalog_reference_conflict",
+                "path": f"{path}.interface_templates[{index}]",
+                "message": (
+                    f"Interface template declaration {iface!r} for mapped ModuleType '{obj.model}' "
+                    f"must be a mapping with string name and type (got {type(iface).__name__})."
+                ),
+            })
+            continue
+        name, iface_type = iface.get("name"), iface.get("type")
+        bad_fields = [
+            field for field, value in (("name", name), ("type", iface_type))
+            if not isinstance(value, str) or not value
+        ]
+        if bad_fields:
+            errors.append({
+                "severity": "error",
+                "code": "mapped_catalog_reference_conflict",
+                "path": f"{path}.interface_templates[{index}]",
+                "message": (
+                    f"Interface template declaration on mapped ModuleType '{obj.model}' requires "
+                    f"nonempty string {' and '.join(bad_fields)} (got name={name!r}, type={iface_type!r}); "
+                    "a name-only declaration never silently defaults/assumes the type."
+                ),
+            })
+            continue
+        # C02: mapped templates must resolve to an existing EXACT (name, type) row.
+        if (name, iface_type) not in existing:
+            errors.append({
+                "severity": "error",
+                "code": "mapped_catalog_reference_conflict",
+                "path": f"{path}.interface_templates[{name}]",
+                "message": (
+                    f"Interface template {name!r} does not match an existing exact template on mapped "
+                    f"ModuleType '{obj.model}'; templates of mapped types are never added or updated."
+                ),
+            })
+    return errors
+
+
 def _owned_case_filter(case_id: str):
     return TopologyPlan.objects.filter(
         custom_field_data__managed_by="yaml",
@@ -58,12 +226,18 @@ def _validate_reference_data(case: dict, reference_mode: str) -> None:
         raise TestCaseValidationError(errors)
 
 
-def _ensure_reference_data(case: dict, reference_mode: str) -> dict:
+def _ensure_reference_data(case: dict, reference_mode: str, raw_module_type_attrs: dict | None = None) -> dict:
     """
     Ensure or resolve reference data.
 
     Returns dict of reference maps keyed by case-local IDs.
+
+    ``raw_module_type_attrs`` (rid -> (present, raw attribute_data)) carries the
+    pre-normalization payload so mapped-type equality is exact and typed.
     """
+    from netbox_hedgehog.services.nic_cage_layout import LAYOUT_KEY as NIC_LAYOUT_KEY
+    from netbox_hedgehog.services.nic_cage_layout import has_layout as has_nic_layout
+
     reference_data = case.get("reference_data", {})
     refs = {
         "manufacturers": {},
@@ -293,6 +467,20 @@ def _ensure_reference_data(case: dict, reference_mode: str) -> dict:
             )
             continue
         obj = ModuleType.objects.filter(manufacturer=manufacturer, model=model).first()
+        # CAGE37 C02: existing mapped types are read-only catalog references in
+        # BOTH modes: no attribute/profile/template writes, whole-payload equality.
+        if obj is not None and has_nic_layout(obj):
+            mapped_errors = _mapped_reference_errors(obj, item, (raw_module_type_attrs or {}).get(rid), rid)
+            if mapped_errors:
+                errors.extend(mapped_errors)
+                continue
+            refs["module_types"][rid] = obj
+            continue
+        raw_present, raw_supplied = (raw_module_type_attrs or {}).get(
+            rid, ("attribute_data" in item, item.get("attribute_data")))
+        if raw_present and isinstance(raw_supplied, dict) and NIC_LAYOUT_KEY in raw_supplied:
+            errors.append(_authoring_error(f"reference_data.module_types[{rid}].attribute_data"))
+            continue
         if reference_mode == "require":
             if not obj:
                 errors.append(
@@ -742,6 +930,9 @@ def apply_case(
     """
     Apply one validated YAML case into DIET planning models.
     """
+    # CAGE37 C02/C03: inspect the RAW payload before normalization so layout
+    # authoring cannot be normalized away and V1 equality stays exactly typed.
+    raw_module_type_attrs = _guard_raw_nic_layout_authoring(case)
     case = validate_case_dict(case)
 
     if case.get("apiVersion") == "diet/v2":
@@ -757,7 +948,7 @@ def apply_case(
     # Silently ignore it if present in legacy YAML (backward-compat transition shim).
 
     _validate_reference_data(case, reference_mode)
-    refs = _ensure_reference_data(case, reference_mode)
+    refs = _ensure_reference_data(case, reference_mode, raw_module_type_attrs)
 
     owned_plans = list(_owned_case_filter(case_id).order_by("id"))
     if clean and owned_plans:

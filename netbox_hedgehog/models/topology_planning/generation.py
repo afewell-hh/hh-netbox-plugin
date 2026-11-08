@@ -96,6 +96,12 @@ def _valid_server_class_index(snapshot):
     return index
 
 
+def _nic_extension_invalid(snapshot) -> bool:
+    from netbox_hedgehog.services.nic_cage_layout import snapshot_extension_invalid
+
+    return snapshot_extension_invalid(snapshot)
+
+
 def classify_snapshot_sync(current, saved) -> str:
     """
     Pure, read-only DISPLAY classification of current vs saved snapshots.
@@ -113,6 +119,13 @@ def classify_snapshot_sync(current, saved) -> str:
     even when the two inputs are identical.
     """
     if not isinstance(saved, dict) or not isinstance(current, dict):
+        return SYNC_SNAPSHOT_INCOMPLETE
+
+    # CAGE37 snapshot_contract_v1: an invalid/malformed/unknown-version NIC
+    # cage extension on EITHER side is incomplete BEFORE any equality, even
+    # when both inputs are identical. With no extension on either side this
+    # is a no-op and base classification is unchanged.
+    if _nic_extension_invalid(current) or _nic_extension_invalid(saved):
         return SYNC_SNAPSHOT_INCOMPLETE
 
     try:
@@ -248,6 +261,11 @@ class GenerationState(models.Model):
             to ensure consistency with DeviceGenerator snapshot logic.
         """
         current = build_plan_snapshot(self.plan)
+        # snapshot_contract_v1: invalid extension on either side is dirty
+        # BEFORE equality (including identical invalid). Missing-vs-present
+        # extension is a key difference, so compare_snapshots reports dirty.
+        if _nic_extension_invalid(current) or _nic_extension_invalid(self.snapshot):
+            return True
         return not compare_snapshots(current, self.snapshot)
 
     def sync_display_state(self, current=None) -> str:

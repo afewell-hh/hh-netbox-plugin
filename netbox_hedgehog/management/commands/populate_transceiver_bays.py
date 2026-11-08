@@ -41,7 +41,16 @@ def populate_bays(*, device_types, module_types):
 
     Idempotent throughout (``get_or_create``).  Returns a counts dict.
     """
+    from netbox_hedgehog.services.nic_cage_layout import parse_layout
+
     counts = {'switch_added': 0, 'switch_removed': 0, 'nic_added': 0, 'nic_removed': 0}
+
+    # CAGE37 C04: validate ALL opted-in NIC layouts in the passed scope before
+    # the first write (including switch bays and legacy placeholder cleanup).
+    # parse_layout returns None for key-absent (legacy) types and raises for
+    # virtual+opt-in or any present-invalid layout.
+    module_types = list(module_types)
+    layouts = {mt.pk: parse_layout(mt) for mt in module_types}
 
     for dt in device_types:
         if is_virtual_placeholder_switch_device_type(dt):
@@ -65,6 +74,19 @@ def populate_bays(*, device_types, module_types):
         if is_virtual_placeholder_module_type(mt):
             counts['nic_removed'] += ModuleBayTemplate.objects.filter(module_type=mt).count()
             ModuleBayTemplate.objects.filter(module_type=mt).delete()
+            continue
+        layout = layouts.get(mt.pk)
+        if layout is not None:
+            # Mapped: create/get ONLY declared physical cages, once per cage.
+            # Existing extra bays are left untouched (never deleted/migrated).
+            for mode in layout.cages:
+                _, created = ModuleBayTemplate.objects.get_or_create(
+                    module_type=mt,
+                    name=mode.cage,
+                    defaults={'label': f'Transceiver cage {mode.cage}'},
+                )
+                if created:
+                    counts['nic_added'] += 1
             continue
         # Natural sort (matching _get_module_interface_by_port_index) so cage-N
         # indices align for multi-digit port names (p0…p10, etc.).

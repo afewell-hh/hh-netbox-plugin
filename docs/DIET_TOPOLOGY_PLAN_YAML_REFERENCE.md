@@ -277,6 +277,100 @@ Critical rule:
 - `interface_templates[]` must exist if the module type will be used by
   `server_nics`, otherwise connection validation fails.
 
+#### Mapped NIC cage layouts (`hnp_nic_cage_map`)
+
+A NIC `ModuleType` can declare which physical transceiver cage, and which logical
+channel of that cage, each of its logical interfaces uses. Several logical interfaces
+can then share one installed optic. The declaration lives on the NIC type itself,
+in `ModuleType.attribute_data["hnp_nic_cage_map"]`. It is configured only through
+the native NetBox ModuleType/ModuleTypeProfile API (see
+[Configuring a mapped NIC type through the native API](DIET_TEST_CASES.md#configuring-a-mapped-nic-type-through-the-native-netbox-api)).
+YAML case ingest can reference a configured type, but it cannot author one.
+
+Schema, version 1:
+
+```json
+{
+  "hnp_nic_cage_map": {
+    "version": 1,
+    "ports": [
+      {"cage": "cage-0", "logical_lane": 0},
+      {"cage": "cage-0", "logical_lane": 1}
+    ],
+    "cages": {"cage-0": {"breakout_id": "2x400g"}}
+  }
+}
+```
+
+- The type must have a profile whose schema declares the `hnp_nic_cage_map` property,
+  and the stored attributes must satisfy that schema under native validation. A missing
+  profile, a schema that does not declare the property, a schema mismatch, or a stored
+  profile schema that is itself malformed are each rejected with a specific error.
+- The root object has exactly `version`, `ports` and `cages`. `version` is the integer
+  `1`; booleans and other versions are rejected.
+- `ports` is a non-empty array. There is one row for each of the type's
+  InterfaceTemplates, matched to the templates in natural name order: array position N
+  is logical port index N, as connection `port_index` uses it. Each row has exactly
+  `cage` (string) and `logical_lane` (integer >= 0; booleans are rejected). The full
+  array is required, and a partial array never falls back to the old behavior.
+  InterfaceTemplate names containing a literal `{module}` are unsupported on a mapped
+  type.
+- `cages` is a non-empty object, and its keys must be exactly the cages that `ports`
+  references. A cage name is the literal physical ModuleBay name: non-blank, unchanged
+  by trimming, at most 64 characters, and without `{` or `}`. Each body is exactly
+  `{"breakout_id": "<existing BreakoutOption.breakout_id>"}`. Breakout options are
+  never created automatically.
+- `logical_lane` is a zero-based logical channel of the selected BreakoutOption, below
+  that option's `logical_ports`. It is not an electrical SerDes lane: `2x400g` has two
+  logical channels, whatever the optic's electrical lane count. A `(cage, logical_lane)`
+  pair may appear only once.
+- In every used cage, each connection's `speed` must equal the mode's `logical_speed`,
+  and all connections must use the same non-null `transceiver_module_type`. That optic
+  must use the `Network Transceiver` profile and satisfy its schema. Its
+  `reach_class`/`medium` must be strings that pass the existing reach/medium check. Its
+  `breakout_topology` must equal the cage's `breakout_id`, ignoring case only (no aliases
+  and no trimming). Each cage also needs a NIC ModuleBayTemplate with the exact cage
+  name.
+
+Absent key versus present key:
+
+- When the key is absent, the existing behavior is unchanged: one nested cage
+  (`cage-<index>`) and one optic per logical port.
+- When the key is present, the map must be valid. A null, empty or malformed map, or one
+  with an unknown version, produces a specific `[nic_layout_*]` validation error from
+  bay population and from generation. Generation rejects readable input errors before
+  any cleanup or write, and nothing silently falls back to the old behavior.
+- Nothing creates aliases, seeds, profiles or schema/DDL automatically. Profileless
+  data is not supported. If a native POST/PATCH without a profile returns 2xx but the
+  attributes come back cleared, the layout was not admitted.
+- Declared metadata states intent only. It does not qualify real hardware, vendor
+  optics or optical interoperability.
+
+YAML ingest of mapped types:
+
+- **V1 (`reference_data.module_types[]`), in both `require` and `ensure` mode:** an
+  existing type that carries the key is a read-only catalog reference. It is consumed
+  only when `attribute_data` is absent or exactly equals the whole stored payload
+  (typed, including unrelated attributes). Its `interface_templates[]`, if given, must
+  name existing templates with their exact `type`. Anything else is rejected with
+  `mapped_catalog_reference_conflict`: a subset, a changed unrelated value, `null`,
+  `{}`, a changed map, an extra attribute, a new or retyped template, or a name-only
+  template. No attribute, profile or template is written. A new or legacy type that
+  supplies `hnp_nic_cage_map` is rejected with `nic_layout_authoring_forbidden`, and
+  duplicate `module_types[].id` values are rejected with `duplicate_reference_id`.
+  Rejection is atomic, so no partial change persists, although ingest may already have
+  issued SQL inside its transaction.
+- **V2 (`diet/v2`):** `spec.server_nics[].module_type` can reference a configured
+  mapped type, and the map is kept as stored. Any `hnp_nic_cage_map` under a NIC, its
+  `module_type` reference or `test_fixtures` is rejected with
+  `nic_layout_authoring_forbidden` before normalization. V2 does not persist
+  `server_connections`, so it does not produce connections for a mapped plan.
+- **Bay population:** the bay population run after ingest is limited to the case plan.
+  For each mapped type it creates only the declared physical cage ModuleBayTemplates,
+  once per cage. Existing extra bays are left alone, and it never attaches profiles or
+  rewrites attributes. Being in the plan's scope identifies a reference; it does not
+  make the case the owner of that catalog row.
+
 ### `plan`
 
 Required:
@@ -552,6 +646,8 @@ Useful flags:
   - Fails if referenced manufacturers/device types/module types are not already present.
 - Default mode is ensure mode
   - Missing reference objects from `reference_data` are created or updated.
+  - Exception: module types that carry `hnp_nic_cage_map` are never updated (see
+    [Mapped NIC cage layouts](#mapped-nic-cage-layouts-hnp_nic_cage_map)).
 
 ## Good source examples
 
