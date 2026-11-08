@@ -4114,3 +4114,293 @@ class ServerDrivenWiringIntegrationTestCase(TestCase):
                 self.assertEqual(list(PlanServerNIC.objects.filter(server_class__plan=plan)
                                       .values_list('nic_id', 'module_type_id')), [(NIC_ID, fx['mapped'].pk)])
                 self._c39_assert_mapped_intact(fx)
+
+    # ------------- CAGE40 SOURCE11: Codex review02 P2 regressions (appended; fictional rows only)
+
+    def _c40_assert_invalid_public(self, state, bad, code, label):
+        """Exact typed code, pure identical-invalid classify incomplete, and public reads on the
+        ACTUAL generated row with in-memory saved evidence (never saved), all mutation-denied
+        with full-row preservation. Honest category: is_dirty / live sync_display_state compare
+        saved-INVALID vs the VALID live current (NOT an equal-invalid proof); the identical-
+        invalid public proof is sync_display_state(current=identical bad)."""
+        import copy
+
+        from netbox_hedgehog.models.topology_planning.generation import (
+            SYNC_SNAPSHOT_INCOMPLETE,
+            classify_snapshot_sync,
+        )
+        from netbox_hedgehog.services.nic_cage_layout import SNAPSHOT_KEY, extension_errors
+
+        self.assertEqual(extension_errors(bad[SNAPSHOT_KEY], base_snapshot=bad), [code], label)
+        self.assertEqual(classify_snapshot_sync(copy.deepcopy(bad), copy.deepcopy(bad)),
+                         SYNC_SNAPSHOT_INCOMPLETE, f'{label}: pure identical-invalid')
+        probe = GenerationState.objects.get(pk=state.pk)
+        probe.snapshot = copy.deepcopy(bad)
+        self.assertTrue(self._c39_sync_guarded(probe.is_dirty), f'{label}: saved-invalid is_dirty')
+        self.assertEqual(self._c39_sync_guarded(probe.sync_display_state), SYNC_SNAPSHOT_INCOMPLETE,
+                         f'{label}: saved-invalid vs valid live current')
+        self.assertEqual(
+            self._c39_sync_guarded(lambda: probe.sync_display_state(current=copy.deepcopy(bad))),
+            SYNC_SNAPSHOT_INCOMPLETE, f'{label}: public identical-invalid current')
+
+    def _c40_assert_valid_control(self, state, valid, good, label):
+        import copy
+
+        from netbox_hedgehog.models.topology_planning.generation import (
+            SYNC_CHANGED,
+            SYNC_IN_SYNC,
+            classify_snapshot_sync,
+        )
+        from netbox_hedgehog.services.nic_cage_layout import SNAPSHOT_KEY, extension_errors
+
+        self.assertEqual(extension_errors(good[SNAPSHOT_KEY], base_snapshot=good), [], label)
+        self.assertEqual(classify_snapshot_sync(copy.deepcopy(good), copy.deepcopy(good)), SYNC_IN_SYNC, label)
+        self.assertEqual(classify_snapshot_sync(copy.deepcopy(valid), copy.deepcopy(good)), SYNC_CHANGED,
+                         f'{label}: valid but different evidence is a change')
+        probe = GenerationState.objects.get(pk=state.pk)
+        probe.snapshot = copy.deepcopy(good)
+        self.assertTrue(self._c39_sync_guarded(probe.is_dirty), label)
+        self.assertEqual(self._c39_sync_guarded(probe.sync_display_state), SYNC_CHANGED, label)
+
+    def test_c40_p2a_base_connection_speed_and_count_cross_checked(self):
+        """Codex review02 P2a / C08 / T11 on an ACTUAL generated mapped plan/state: the base
+        connection record and the extension record of the same identity must carry typed
+        positive-int speed and ports_per_connection that agree EXACTLY (no bool/float/str
+        coercion). Base-only contradictions need NO digest change (base is not hashed) and are
+        base_connection_fields; an extension-side change RE-HASHED is the same code; typed
+        extension omissions keep their existing specific codes. base target_zone_id (display
+        string) vs extension target_zone_id (integer PK) is never compared: a rehashed
+        extension zone change stays valid. These record corruptions are not producible through
+        live DB reads (both sections read the same row), so no live equal-invalid claim."""
+        import copy
+
+        from netbox_hedgehog.models.topology_planning.generation import SYNC_IN_SYNC
+        from netbox_hedgehog.services.nic_cage_layout import SNAPSHOT_KEY, extension_errors
+
+        fixture = self._c39_fixture('c40a')
+        self._c39_generate()
+        state = GenerationState.objects.get(plan=self.plan)
+        saved_row = list(GenerationState.objects.filter(pk=state.pk).values())
+        valid = copy.deepcopy(state.snapshot)
+        self.assertEqual(extension_errors(valid[SNAPSHOT_KEY], base_snapshot=valid), [])
+        self.assertFalse(self._c39_sync_guarded(state.is_dirty))
+        self.assertEqual(self._c39_sync_guarded(state.sync_display_state), SYNC_IN_SYNC)
+        conn_id = fixture['conn'].connection_id
+        base_rows = [r for r in valid['connections'] if r['connection_id'] == conn_id]
+        self.assertEqual(len(base_rows), 1)
+        ext_row = valid[SNAPSHOT_KEY]['nics'][0]['connections'][0]
+        self.assertEqual(ext_row['connection_id'], conn_id)
+        self.assertEqual((base_rows[0]['speed'], base_rows[0]['ports_per_connection']), (400, 2))
+        self.assertEqual((ext_row['speed'], ext_row['ports_per_connection']), (400, 2))
+        self.assertIsInstance(base_rows[0]['target_zone_id'], str)
+        self.assertEqual(ext_row['target_zone_id'], fixture['zone'].pk)
+        missing = object()
+
+        def base(field, value):
+            def fn(s):
+                (row,) = [r for r in s['connections'] if r['connection_id'] == conn_id]
+                if value is missing:
+                    row.pop(field)
+                else:
+                    row[field] = value
+            return fn
+
+        def ext(field, value):
+            def fn(s):
+                row = s[SNAPSHOT_KEY]['nics'][0]['connections'][0]
+                if value is missing:
+                    row.pop(field)
+                else:
+                    row[field] = value
+            return fn
+
+        # (label, mutation, code, rehash extension digests)
+        cases = [
+            ('base_speed_800_vs_ext_and_mode_400', base('speed', 800), 'base_connection_fields', False),
+            ('base_count_1_vs_ext_2', base('ports_per_connection', 1), 'base_connection_fields', False),
+            ('base_speed_float_equal', base('speed', 400.0), 'base_connection_fields', False),
+            ('base_count_float_equal', base('ports_per_connection', 2.0), 'base_connection_fields', False),
+            ('base_speed_string', base('speed', '400'), 'base_connection_fields', False),
+            ('base_speed_bool', base('speed', True), 'base_connection_fields', False),
+            ('base_speed_null', base('speed', None), 'base_connection_fields', False),
+            ('base_speed_missing', base('speed', missing), 'base_connection_fields', False),
+            ('base_count_zero', base('ports_per_connection', 0), 'base_connection_fields', False),
+            ('ext_count_1_rehashed_vs_base_2', ext('ports_per_connection', 1), 'base_connection_fields', True),
+            ('ext_speed_bool_rehashed', ext('speed', True), 'connection_fields', True),
+            ('ext_count_missing_rehashed', ext('ports_per_connection', missing), 'connection_record', True),
+        ]
+        self.assertEqual(len({c[0] for c in cases}), len(cases), 'duplicate case label')
+        for label, mutate, code, rehash in cases:
+            with self.subTest(label):
+                bad = copy.deepcopy(valid)
+                mutate(bad)
+                if rehash:
+                    self._c39_rehash(bad[SNAPSHOT_KEY])
+                else:
+                    self.assertEqual(bad[SNAPSHOT_KEY], valid[SNAPSHOT_KEY], f'{label}: extension/digests untouched')
+                self._c40_assert_invalid_public(state, bad, code, label)
+        # Unlike target_zone representations are never compared: rehashed ext PK change is valid.
+        good = copy.deepcopy(valid)
+        ext('target_zone_id', ext_row['target_zone_id'] + 1000)(good)
+        self._c39_rehash(good[SNAPSHOT_KEY])
+        self.assertEqual(good['connections'], valid['connections'])
+        self._c40_assert_valid_control(state, valid, good, 'ext_zone_pk_vs_base_label_not_compared')
+        self.assertFalse(self._c39_sync_guarded(state.is_dirty))
+        self.assertEqual(list(GenerationState.objects.filter(pk=state.pk).values()), saved_row,
+                         'saved history rewritten')
+
+    def test_c40_p2b_legacy_record_range_and_collision_in_mixed_extension(self):
+        """Codex review02 P2b / C08 / T11 on an ACTUAL generated mixed plan: mapped 'a-card'
+        (declared cages data/b-slot, only data used) + LEGACY 'b-slot' (key absent, p0/p1). The
+        layout-independent range and per-NIC collision checks apply to the LEGACY record too
+        (active or inactive): re-hashed out-of-range logical indices -> connection_range,
+        overlapping distinct connection ranges -> connection_index_collision, with pure
+        identical-invalid and public read classification under the mutation-denying full-row
+        guard. Valid controls: distinct non-overlapping legacy ports, the same index 0 / names
+        p0,p1 under DIFFERENT NIC owners, a legacy case variant, the mapped partial cage. Live
+        DB journeys (genuine current == saved invalid marker): legacy out-of-range ->
+        nic_layout_index_range, legacy overlap -> nic_layout_port_collision, each also rejected
+        by public generate_all with zero attempted mutations and prior inventory intact."""
+        import copy
+
+        from netbox_hedgehog.models.topology_planning.generation import (
+            SYNC_IN_SYNC,
+            SYNC_SNAPSHOT_INCOMPLETE,
+            classify_snapshot_sync,
+        )
+        from netbox_hedgehog.services.nic_cage_layout import SNAPSHOT_KEY, extension_errors, has_layout
+        from netbox_hedgehog.utils.snapshot_builder import build_plan_snapshot
+
+        mapped = self._c39_mapped_type('c40b', 'nic-card', ['p0', 'p1'], self.C39_CARD_MAP)
+        legacy = ModuleType.objects.create(manufacturer=_manufacturer(), model='srv29-c40b-legacy-nic')
+        for name in ('p0', 'p1'):
+            InterfaceTemplate.objects.create(module_type=legacy, name=name, type=T400)
+        self.assertFalse(has_layout(legacy))
+        optic = self._c39_cards_fixture('c40b', [('a-card', mapped, 0), ('b-slot', legacy, 0)])
+        self._capture_baseline()
+        self._generate(devices_total=10, generated_interfaces=40, cables_total=24)
+        prior = {model: _pks(model) - self.baseline[model] for model in INVENTORY_MODELS}
+        state = GenerationState.objects.get(plan=self.plan)
+        saved_row = list(GenerationState.objects.filter(pk=state.pk).values())
+        valid = copy.deepcopy(state.snapshot)
+        self.assertEqual(extension_errors(valid[SNAPSHOT_KEY], base_snapshot=valid), [])
+        self.assertFalse(self._c39_sync_guarded(state.is_dirty))
+        self.assertEqual(self._c39_sync_guarded(state.sync_display_state), SYNC_IN_SYNC)
+        position = {n['nic_id']: i for i, n in enumerate(valid[SNAPSHOT_KEY]['nics'])}
+        self.assertEqual(sorted(position), ['a-card', 'b-slot'])
+        rows = {k: valid[SNAPSHOT_KEY]['nics'][i] for k, i in position.items()}
+        self.assertEqual((rows['a-card']['layout_present'], rows['b-slot']['layout_present']), (True, False))
+        for nic_id in ('a-card', 'b-slot'):  # same names/index 0 under DIFFERENT owners: valid
+            self.assertEqual([t['name'] for t in rows[nic_id]['interface_templates']], ['p0', 'p1'], nic_id)
+            self.assertEqual([(c['port_index'], c['ports_per_connection']) for c in rows[nic_id]['connections']],
+                             [(0, 1)], nic_id)
+        self.assertEqual(sorted(p['cage'] for p in rows['a-card']['layout']['ports']), ['b-slot', 'data'],
+                         'mapped partial cage occupancy: b-slot declared, unused')
+        legacy_conn_id = rows['b-slot']['connections'][0]['connection_id']
+        new_id = 'srv29-c40b-conn-z'
+
+        def lnic(s):
+            return s[SNAPSHOT_KEY]['nics'][position['b-slot']]
+
+        def base_row(s, cid):
+            (row,) = [r for r in s['connections'] if r['connection_id'] == cid]
+            return row
+
+        def set_legacy(**fields):
+            """Change the legacy connection; shared base fields kept consistent (single defect)."""
+            def fn(s):
+                lnic(s)['connections'][0].update(fields)
+                for key in ('speed', 'ports_per_connection'):
+                    if key in fields:
+                        base_row(s, legacy_conn_id)[key] = fields[key]
+            return fn
+
+        def add_legacy_conn(port_index, first_count=None):
+            """Second distinct legacy connection (manifest + base linkage kept complete)."""
+            def fn(s):
+                n = lnic(s)
+                first = n['connections'][0]
+                if first_count is not None:
+                    first['ports_per_connection'] = first_count
+                    base_row(s, legacy_conn_id)['ports_per_connection'] = first_count
+                extra = dict(first, connection_id=new_id, port_index=port_index, ports_per_connection=1)
+                n['connections'] = sorted(n['connections'] + [extra], key=lambda r: r['connection_id'])
+                s[SNAPSHOT_KEY]['expected_connection_keys'] = sorted(
+                    s[SNAPSHOT_KEY]['expected_connection_keys'] + [[extra['server_class_id'], new_id]])
+                s['connections'].append(dict(base_row(s, legacy_conn_id), connection_id=new_id,
+                                             ports_per_connection=1))
+            return fn
+
+        def rename_legacy(*names):
+            def fn(s):
+                for row, name in zip(lnic(s)['interface_templates'], names):
+                    row['name'] = name
+            return fn
+
+        invalid = [
+            ('legacy_port_index_beyond_templates', set_legacy(port_index=2), 'connection_range'),
+            ('legacy_count_overflows_templates', set_legacy(port_index=1, ports_per_connection=2),
+             'connection_range'),
+            ('legacy_overlap_same_start', add_legacy_conn(0), 'connection_index_collision'),
+            ('legacy_overlap_partial_range', add_legacy_conn(1, first_count=2), 'connection_index_collision'),
+        ]
+        for label, mutate, code in invalid:
+            with self.subTest(label):
+                bad = copy.deepcopy(valid)
+                mutate(bad)
+                self._c39_rehash(bad[SNAPSHOT_KEY])
+                self._c40_assert_invalid_public(state, bad, code, label)
+                # Inactive classes are NOT exempt (same as the existing mapped rule).
+                self.assertEqual(extension_errors(bad[SNAPSHOT_KEY], active_classes=set()), [code],
+                                 f'{label}: inactive view')
+        with self.subTest('legacy_base_count_bool_coercion'):
+            bad = copy.deepcopy(valid)
+            base_row(bad, legacy_conn_id)['ports_per_connection'] = True  # True == 1 must not pass
+            self.assertEqual(bad[SNAPSHOT_KEY], valid[SNAPSHOT_KEY])
+            self._c40_assert_invalid_public(state, bad, 'base_connection_fields', 'legacy_base_count_bool')
+        for label, mutate in (('legacy_distinct_nonoverlap_ports', add_legacy_conn(1)),
+                              ('legacy_case_variant_names', rename_legacy('p0', 'P0'))):
+            with self.subTest(label):
+                good = copy.deepcopy(valid)
+                mutate(good)
+                self._c39_rehash(good[SNAPSHOT_KEY])
+                self._c40_assert_valid_control(state, valid, good, label)
+
+        # --- live DB journeys: genuine current == saved invalid marker; public generate_all
+        legacy_conns = PlanServerConnection.objects.filter(server_class=self.server_class,
+                                                           connection_id=legacy_conn_id)
+        legacy_nic = PlanServerNIC.objects.get(server_class=self.server_class, nic_id='b-slot')
+        self.assertEqual(legacy_nic.module_type_id, legacy.pk)
+
+        def live_equal_invalid(code, label):
+            self._c39_public_reject_after_generation(code, prior)
+            fresh = self._c39_sync_guarded(lambda: build_plan_snapshot(self.plan))
+            self.assertEqual(fresh[SNAPSHOT_KEY], {'version': 1, 'status': 'invalid', 'errors': [code]}, label)
+            GenerationState.objects.filter(pk=state.pk).update(snapshot=copy.deepcopy(fresh))  # fixture write
+            state.refresh_from_db()
+            current = self._c39_sync_guarded(lambda: build_plan_snapshot(self.plan))
+            self.assertEqual(current, state.snapshot, f'{label}: fresh current must EQUAL saved first')
+            self.assertTrue(self._c39_sync_guarded(state.is_dirty), f'{label}: equal-invalid is_dirty')
+            self.assertEqual(self._c39_sync_guarded(state.sync_display_state), SYNC_SNAPSHOT_INCOMPLETE, label)
+            self.assertEqual(classify_snapshot_sync(copy.deepcopy(current), copy.deepcopy(current)),
+                             SYNC_SNAPSHOT_INCOMPLETE, label)
+            GenerationState.objects.filter(pk=state.pk).update(snapshot=copy.deepcopy(valid))  # restore
+            state.refresh_from_db()
+
+        with self.subTest('live_legacy_out_of_range'):
+            legacy_conns.update(port_index=2)
+            live_equal_invalid('nic_layout_index_range', 'live_legacy_out_of_range')
+            legacy_conns.update(port_index=0)
+        with self.subTest('live_legacy_overlap'):
+            extra = PlanServerConnection.objects.create(
+                server_class=self.server_class, connection_id=new_id, nic=legacy_nic, port_index=0,
+                ports_per_connection=1, hedgehog_conn_type=ConnectionTypeChoices.UNBUNDLED,
+                distribution=ConnectionDistributionChoices.SAME_SWITCH, target_zone=self.c39['zone'], speed=400,
+                transceiver_module_type=optic,
+            )
+            live_equal_invalid('nic_layout_port_collision', 'live_legacy_overlap')
+            extra.delete()
+        self.assertFalse(self._c39_sync_guarded(state.is_dirty), 'restored intent and saved history')
+        self.assertEqual(self._c39_sync_guarded(state.sync_display_state), SYNC_IN_SYNC)
+        self.assertEqual(list(GenerationState.objects.filter(pk=state.pk).values()), saved_row,
+                         'saved history not restored exactly')

@@ -340,6 +340,18 @@ def _expand_indices(nic_mt, conn, port_count: int):
     return indices
 
 
+def _validate_index_usage(nic_mt, conns, port_count: int) -> None:
+    """Layout-independent live checks (legacy records of an opted-in plan): range via
+    the same strict expansion as mapped, and no logical port consumed twice per NIC."""
+    consumed = {}
+    for c in conns:
+        for idx in _expand_indices(nic_mt, c, port_count):
+            if idx in consumed:
+                raise _err(nic_mt, 'nic_layout_port_collision',
+                           f'logical port {idx} consumed by {consumed[idx]!r} and {c.connection_id!r}')
+            consumed[idx] = c.connection_id
+
+
 def _validate_nic_usage(nic, layout: NicCageLayout, conns, active: bool, bay_names) -> None:
     mt = nic.module_type
     consumed = {}
@@ -492,6 +504,10 @@ def capture_plan_layouts(plan) -> PlanLayoutCapture:
             if mt is None:
                 raise ValidationError(f'[nic_layout_snapshot_nic_type_missing] NIC {nic.nic_id!r} has no module type',
                                       code='nic_layout_snapshot_nic_type_missing')
+            if layout is None:
+                # Legacy record in an opted-in plan: same layout-independent range and
+                # per-NIC collision rules (specific codes), active or inactive.
+                _validate_index_usage(mt, nic_conns, len(_ordered_templates(mt)))
             records.append(_nic_record(sc, nic, layout, nic_conns, bay_rows))
 
     if not any_present:
@@ -712,14 +728,10 @@ def _check_layout_record(nic):
 
 def _check_mapped_usage(nic, port_map, mode_by_cage, conns, optics, active):
     """Internal relationships among layout/modes/used ports/bays/optics (parser-equivalent)."""
-    n = len(nic['interface_templates'])
-    consumed = set()
+    # Range/collision already enforced for EVERY record by _check_connection_indices.
     per_cage = {}
     for c in conns:
-        _need(c['port_index'] + c['ports_per_connection'] <= n, 'connection_range')
         for idx in range(c['port_index'], c['port_index'] + c['ports_per_connection']):
-            _need(idx not in consumed, 'connection_index_collision')
-            consumed.add(idx)
             per_cage.setdefault(port_map[idx][0], []).append((c, port_map[idx][1]))
     if not active:
         return  # inactive: structure above validated; no placement-required optic
@@ -737,6 +749,21 @@ def _check_mapped_usage(nic, port_map, mode_by_cage, conns, optics, active):
         _need(len({lane for _, lane in uses}) <= mode['logical_ports']
               and sum(c['speed'] for c, _ in uses) <= mode['from_speed'], 'used_cage_capacity')
         _need(cage in bay_names, 'used_cage_missing_bay')
+
+
+def _check_connection_indices(nic, conns):
+    """Layout-independent used-port checks for EVERY NIC record (mapped AND legacy),
+    active or inactive: each connection's start+offset indices must lie within the
+    recorded interface templates of THAT NIC, and distinct connections of the same NIC
+    may not consume the same logical interface (generation could not cable it).
+    Per-NIC only: equal indices under different NIC owners are valid."""
+    n = len(nic['interface_templates'])
+    consumed = set()
+    for c in conns:
+        _need(c['port_index'] + c['ports_per_connection'] <= n, 'connection_range')
+        for idx in range(c['port_index'], c['port_index'] + c['ports_per_connection']):
+            _need(idx not in consumed, 'connection_index_collision')
+            consumed.add(idx)
 
 
 def _check_nic(nic, active=True):
@@ -767,6 +794,7 @@ def _check_nic(nic, active=True):
     _need(len(set(optic_ids)) == len(optic_ids), 'optic_duplicate')
     fks = {c['transceiver_module_type_id'] for c in conns} - {None}
     _need(fks == set(optic_ids), 'optic_coverage')
+    _check_connection_indices(nic, conns)
     if nic['layout_present']:
         _check_mapped_usage(nic, port_map, mode_by_cage, conns, optics, active)
     digest = nic['evidence_sha256']
@@ -804,13 +832,15 @@ def extension_errors(extension, base_snapshot=None, active_classes=None) -> list
         _need(isinstance(nics, list), 'nics')
         if active_classes is None and base_snapshot is not None:
             active_classes = _active_classes_from_base(base_snapshot)
-        seen_nics, seen_conns = [], []
+        seen_nics, seen_conns, ext_conn_by_key = [], [], {}
         for nic in nics:
             active = True if active_classes is None else (
                 isinstance(nic, dict) and nic.get('server_class_id') in active_classes)
             conns = _check_nic(nic, active=active)
             seen_nics.append((nic['server_class_id'], nic['nic_id']))
             seen_conns.extend((c['server_class_id'], c['connection_id']) for c in conns)
+            for c in conns:
+                ext_conn_by_key[(c['server_class_id'], c['connection_id'])] = c
         _need(len(set(seen_nics)) == len(seen_nics) and sorted(seen_nics) == nic_keys, 'nic_completeness')
         _need(any(nic['layout_present'] for nic in nics), 'no_opted_in_nic')
         _need(len(set(seen_conns)) == len(seen_conns) and sorted(seen_conns) == conn_keys,
@@ -820,6 +850,18 @@ def extension_errors(extension, base_snapshot=None, active_classes=None) -> list
             _need(isinstance(base, list) and all(isinstance(r, dict) for r in base), 'base_connections')
             base_keys = sorted((r.get('server_class_id'), r.get('connection_id')) for r in base)
             _need(base_keys == conn_keys, 'base_connection_linkage')
+            # Shared connection VALUES, not only identities: the base record and the
+            # extension record of the same (server_class_id, connection_id) describe one
+            # PlanServerConnection, so speed and ports_per_connection must both be typed
+            # positive ints (bool/float/str never coerced) and agree exactly. The base
+            # section is not covered by the extension digests, so this cannot rely on
+            # rehash detection. target_zone_id is deliberately NOT compared: the base
+            # carries a display label string, the extension the integer PK.
+            for r in base:
+                c = ext_conn_by_key[(r['server_class_id'], r['connection_id'])]
+                for field in ('speed', 'ports_per_connection'):
+                    _need(_is_pos_int(r.get(field)) and _is_pos_int(c[field])
+                          and r[field] == c[field], 'base_connection_fields')
         digest = extension['evidence_sha256']
         _need(isinstance(digest, str) and bool(_HEX64.match(digest)), 'root_digest')
         body = {k: v for k, v in extension.items() if k != 'evidence_sha256'}
