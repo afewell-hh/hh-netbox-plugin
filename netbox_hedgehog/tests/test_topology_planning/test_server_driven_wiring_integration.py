@@ -4374,32 +4374,81 @@ class ServerDrivenWiringIntegrationTestCase(TestCase):
 
         def live_equal_invalid(code, label):
             self._c39_public_reject_after_generation(code, prior)
-            fresh = self._c39_sync_guarded(lambda: build_plan_snapshot(self.plan))
-            self.assertEqual(fresh[SNAPSHOT_KEY], {'version': 1, 'status': 'invalid', 'errors': [code]}, label)
-            GenerationState.objects.filter(pk=state.pk).update(snapshot=copy.deepcopy(fresh))  # fixture write
-            state.refresh_from_db()
-            current = self._c39_sync_guarded(lambda: build_plan_snapshot(self.plan))
-            self.assertEqual(current, state.snapshot, f'{label}: fresh current must EQUAL saved first')
-            self.assertTrue(self._c39_sync_guarded(state.is_dirty), f'{label}: equal-invalid is_dirty')
-            self.assertEqual(self._c39_sync_guarded(state.sync_display_state), SYNC_SNAPSHOT_INCOMPLETE, label)
-            self.assertEqual(classify_snapshot_sync(copy.deepcopy(current), copy.deepcopy(current)),
-                             SYNC_SNAPSHOT_INCOMPLETE, label)
-            GenerationState.objects.filter(pk=state.pk).update(snapshot=copy.deepcopy(valid))  # restore
-            state.refresh_from_db()
+            try:
+                fresh = self._c39_sync_guarded(lambda: build_plan_snapshot(self.plan))
+                self.assertEqual(fresh[SNAPSHOT_KEY], {'version': 1, 'status': 'invalid', 'errors': [code]}, label)
+                GenerationState.objects.filter(pk=state.pk).update(snapshot=copy.deepcopy(fresh))  # fixture write
+                state.refresh_from_db()
+                current = self._c39_sync_guarded(lambda: build_plan_snapshot(self.plan))
+                self.assertEqual(current, state.snapshot, f'{label}: fresh current must EQUAL saved first')
+                self.assertTrue(self._c39_sync_guarded(state.is_dirty), f'{label}: equal-invalid is_dirty')
+                self.assertEqual(self._c39_sync_guarded(state.sync_display_state), SYNC_SNAPSHOT_INCOMPLETE, label)
+                self.assertEqual(classify_snapshot_sync(copy.deepcopy(current), copy.deepcopy(current)),
+                                 SYNC_SNAPSHOT_INCOMPLETE, label)
+            finally:
+                GenerationState.objects.filter(pk=state.pk).update(snapshot=copy.deepcopy(valid))  # restore
+                state.refresh_from_db()
 
         with self.subTest('live_legacy_out_of_range'):
             legacy_conns.update(port_index=2)
-            live_equal_invalid('nic_layout_index_range', 'live_legacy_out_of_range')
-            legacy_conns.update(port_index=0)
+            try:
+                live_equal_invalid('nic_layout_index_range', 'live_legacy_out_of_range')
+            finally:
+                legacy_conns.update(port_index=0)
         with self.subTest('live_legacy_overlap'):
-            extra = PlanServerConnection.objects.create(
-                server_class=self.server_class, connection_id=new_id, nic=legacy_nic, port_index=0,
-                ports_per_connection=1, hedgehog_conn_type=ConnectionTypeChoices.UNBUNDLED,
-                distribution=ConnectionDistributionChoices.SAME_SWITCH, target_zone=self.c39['zone'], speed=400,
-                transceiver_module_type=optic,
-            )
-            live_equal_invalid('nic_layout_port_collision', 'live_legacy_overlap')
-            extra.delete()
+            from netbox_hedgehog.services.port_allocator import PortAllocatorV2
+
+            # Fixture-only genuine spare SERVER capacity: the overlap adds a 3rd connection per
+            # server/leaf, but BREAKOUT leaf SERVER zone '1' (2x400g) has only 2 logical ports, so
+            # the earlier valid capacity guard would fire first. Temporarily add a test-owned
+            # native 800G parent E1/4 on this fictional leaf DeviceType and widen the SERVER zone
+            # to '1,4' (capacity 4); UPLINK 2-3, quantities, breakout and speeds unchanged.
+            server_zone = SwitchPortZone.objects.get(pk=self.c39['zone'].pk)
+            zone_rows = SwitchPortZone.objects.filter(pk=server_zone.pk)
+            zone_before = list(zone_rows.values())
+            leaf_templates = InterfaceTemplate.objects.filter(device_type=self.leaf_device_type)
+            leaf_templates_before = list(leaf_templates.order_by('pk').values())
+            uplink_zones = SwitchPortZone.objects.filter(switch_class=self.leaf_class,
+                                                         zone_type=PortZoneTypeChoices.UPLINK)
+            uplink_before = list(uplink_zones.order_by('pk').values())
+            self.assertEqual([(z['port_spec'], z['zone_name']) for z in uplink_before],
+                             [('2-3', 'srv29-c40b-uplink')])
+            self.assertEqual(server_zone.port_spec, '1')
+            self.assertEqual(server_zone.breakout_option.breakout_id, '2x400g')
+            self.assertEqual(PortAllocatorV2().capacity_for_zone(server_zone), 2)
+            self.assertEqual(sorted(leaf_templates.values_list('name', 'type')),
+                             [('E1/1', T800), ('E1/2', T800), ('E1/3', T800)])
+            self.assertFalse(leaf_templates.filter(name='E1/4').exists(), 'E1/4 must not preexist')
+            spare = extra = None
+            try:
+                spare = InterfaceTemplate(device_type=self.leaf_device_type, name='E1/4', type=T800)
+                spare.full_clean()
+                spare.save()
+                server_zone.port_spec = '1,4'
+                server_zone.full_clean()
+                server_zone.save()
+                server_zone.refresh_from_db()
+                self.assertEqual(server_zone.port_spec, '1,4')
+                self.assertEqual(PortAllocatorV2().capacity_for_zone(server_zone), 4)
+                self.assertEqual(list(uplink_zones.order_by('pk').values()), uplink_before, 'UPLINK changed')
+                extra = PlanServerConnection.objects.create(
+                    server_class=self.server_class, connection_id=new_id, nic=legacy_nic, port_index=0,
+                    ports_per_connection=1, hedgehog_conn_type=ConnectionTypeChoices.UNBUNDLED,
+                    distribution=ConnectionDistributionChoices.SAME_SWITCH, target_zone=self.c39['zone'],
+                    speed=400, transceiver_module_type=optic,
+                )
+                live_equal_invalid('nic_layout_port_collision', 'live_legacy_overlap')
+            finally:
+                if extra is not None:
+                    PlanServerConnection.objects.filter(pk=extra.pk).delete()
+                zone_rows.update(port_spec=zone_before[0]['port_spec'],
+                                 last_updated=zone_before[0]['last_updated'])
+                if spare is not None and spare.pk is not None:
+                    InterfaceTemplate.objects.filter(pk=spare.pk).delete()
+            self.assertFalse(PlanServerConnection.objects.filter(connection_id=new_id).exists())
+            self.assertEqual(list(zone_rows.values()), zone_before, 'SERVER zone not restored exactly')
+            self.assertEqual(list(leaf_templates.order_by('pk').values()), leaf_templates_before,
+                             'leaf catalog not restored to three parents')
         self.assertFalse(self._c39_sync_guarded(state.is_dirty), 'restored intent and saved history')
         self.assertEqual(self._c39_sync_guarded(state.sync_display_state), SYNC_IN_SYNC)
         self.assertEqual(list(GenerationState.objects.filter(pk=state.pk).values()), saved_row,
